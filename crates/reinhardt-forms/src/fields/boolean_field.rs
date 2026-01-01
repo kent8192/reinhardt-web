@@ -158,11 +158,6 @@ impl FormField for BooleanField {
 					}
 				};
 
-				// Check required constraint (for BooleanField, required means it must be true)
-				if self.required && !b {
-					return Err(FieldError::Required(self.name.clone()));
-				}
-
 				Ok(serde_json::Value::Bool(b))
 			}
 		}

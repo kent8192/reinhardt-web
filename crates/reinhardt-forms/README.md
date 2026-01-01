@@ -4,7 +4,9 @@ Django-inspired form handling and validation for Rust
 
 ## Overview
 
-`reinhardt-forms` provides a comprehensive form system for HTML form handling, validation, and rendering. Inspired by Django's forms framework, it offers both automatic form generation from models and manual form definitions with extensive validation capabilities.
+`reinhardt-forms` provides a comprehensive form system for form handling and validation. Inspired by Django's forms framework, it offers both automatic form generation from models and manual form definitions with extensive validation capabilities.
+
+This crate is designed to be **WASM-compatible**, providing a pure form processing layer without HTML generation or platform-specific features. For HTML rendering, see `reinhardt-pages`.
 
 ## Installation
 
@@ -17,13 +19,15 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["forms"] }
 # Or use a preset:
 # reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
 # reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+
+# Enable the form! macro:
+# reinhardt = { version = "0.1.0-alpha.1", features = ["forms", "form-macros"] }
 ```
 
 Then import form features:
 
 ```rust
 use reinhardt::forms::{Form, Field, CharField, IntegerField};
-use reinhardt::forms::widgets::{TextInput, NumberInput};
 ```
 
 **Note:** Form features are included in the `standard` and `full` feature presets.
@@ -34,29 +38,23 @@ use reinhardt::forms::widgets::{TextInput, NumberInput};
 
 #### Implemented ✓
 
-- **Form Base (`Form`)**: Complete form data structure with binding, validation, and rendering
+- **Form Base (`Form`)**: Complete form data structure with binding and validation
   - Form creation with initial data and field prefix support
   - Data binding and validation lifecycle
   - Custom clean functions for form-level and field-level validation
-  - Multiple rendering formats: `as_table()`, `as_p()`, `as_ul()`
   - Field access and manipulation (add, remove, get)
   - Initial data and change detection
   - Error handling and reporting
+  - Client-side validation rules (for WASM integration)
 
-- **BoundField**: Field bound to form data for rendering
+- **BoundField**: Field bound to form data
   - Field data and error binding
-  - HTML rendering with proper escaping
-  - Widget integration
   - Label and help text support
 
-- **CSRF Protection (`CsrfToken`)**: Basic CSRF token implementation
-  - Token generation and storage
-  - Hidden input rendering
-  - Form integration via `enable_csrf()`
-
-- **Media Management (`Media`)**: CSS and JavaScript asset management
-  - Media definition structure
-  - Widget media integration (via `MediaDefiningWidget` trait)
+- **WASM Compatibility (`wasm_compat`)**: WASM-compatible form metadata
+  - `FormMetadata`: Serializable form state for client-side processing
+  - `FieldMetadata`: Field information for client-side rendering
+  - `ValidationRule`: Client-side validation rule definitions
 
 ### Field Types
 
@@ -151,20 +149,10 @@ use reinhardt::forms::widgets::{TextInput, NumberInput};
   - Final data compilation
   - Progress tracking
 
-- **Widgets System**: HTML rendering for form fields
-  - Base `Widget` trait
-  - `WidgetType` enumeration
-  - Built-in widgets:
-    - Text inputs (text, password, email, number)
-    - Date/time inputs (date, time, datetime)
-    - Textarea
-    - Select (single and multiple)
-    - Checkbox and radio inputs
-    - File input
-    - Hidden input
-    - Split datetime
-  - Custom attribute support
-  - Choice rendering for select widgets
+- **form! Macro** (with `macros` feature): Declarative form definition
+  - DSL for defining forms with fields, validators, and client validators
+  - Server-side and client-side validation rules
+  - Field property configuration
 
 ### Validation
 
@@ -192,28 +180,15 @@ use reinhardt::forms::widgets::{TextInput, NumberInput};
   - Custom error messages
   - Error message internationalization support
 
-#### Implemented ✓
+### Related Crates
 
-- **Security Features**:
-  - Rate limiting integration (`RateLimiter`)
-  - Honeypot fields (`HoneypotField`)
-  - Form security middleware (`FormSecurityMiddleware`)
+Security and UI features have been moved to dedicated crates:
 
-- **File Handling**:
-  - Temporary file cleanup via `Drop` implementation
-  - File upload handler with size and extension validation
-  - Memory-based file uploads
-  - Disk-based temporary files with auto-deletion
-
-- **Internationalization** (Partial):
-  - Locale-aware date/time formatting (`DateField` with `localize` support)
-  - Number format localization (`DecimalField` with `thousands_separator`)
-  - Locale configuration per field
-
-- **Form Templating** (Partial):
-  - Bootstrap 5 integration (`BootstrapRenderer`)
-  - Tailwind CSS integration (`TailwindRenderer`)
-  - CSS framework renderers for text inputs, selects, and checkboxes
+- **CSRF Protection**: Use `reinhardt-middleware::csrf`
+- **Rate Limiting**: Use `reinhardt-middleware::rate_limit`
+- **Honeypot Fields**: Use `reinhardt-middleware::honeypot`
+- **XSS Protection**: Use `reinhardt-middleware::xss`
+- **HTML Rendering**: Use `reinhardt-pages` for form rendering
 
 ## Usage Examples
 
@@ -233,6 +208,45 @@ data.insert("name".to_string(), json!("John"));
 data.insert("age".to_string(), json!(30));
 
 form.bind(data);
+assert!(form.is_valid());
+```
+
+### Using the form! Macro
+
+```rust
+use reinhardt::forms::form;
+use std::collections::HashMap;
+use serde_json::json;
+
+let mut form = form! {
+    fields: {
+        username: CharField {
+            required,
+            max_length: 150,
+        },
+        password: CharField {
+            required,
+            widget: PasswordInput,
+        },
+    },
+    validators: {
+        username: [
+            |v: &serde_json::Value| v.as_str().map_or(false, |s| s.len() >= 3)
+                => "Username must be at least 3 characters",
+        ],
+    },
+    client_validators: {
+        password: [
+            "value.length >= 8" => "Password must be at least 8 characters",
+        ],
+    },
+};
+
+let mut data = HashMap::new();
+data.insert("username".to_string(), json!("john"));
+data.insert("password".to_string(), json!("secret123"));
+form.bind(data);
+
 assert!(form.is_valid());
 ```
 
@@ -265,10 +279,10 @@ form.add_clean_function(|data| {
 
 - **Field Layer**: Individual field types with validation logic
 - **Form Layer**: Form structure, binding, and validation
-- **Widget Layer**: HTML rendering and browser interaction
 - **Model Layer**: ORM integration and automatic form generation
 - **Formset Layer**: Multiple form management
 - **Wizard Layer**: Multi-step form flows
+- **WASM Layer**: Serializable metadata for client-side integration
 
 ## Design Philosophy
 
@@ -276,9 +290,9 @@ This crate follows Django's forms philosophy:
 
 - Declarative field definitions
 - Separation of validation logic
-- Automatic HTML rendering
 - Model integration
 - Extensible and customizable
+- WASM-compatible core
 
 ## License
 

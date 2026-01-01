@@ -8,20 +8,19 @@
 //!
 //! The metadata extraction follows this pattern:
 //!
-//! ```text
-//! Server-side:                      Client-side (WASM):
-//! ┌──────────┐                     ┌──────────────┐
-//! │   Form   │ ─ to_metadata() ─> │ FormMetadata │
-//! │          │                     │              │
-//! │ (traits, │                     │ (plain data, │
-//! │ closures)│                     │ serializable)│
-//! └──────────┘                     └──────────────┘
-//!                                         │
-//!                                         ▼
-//!                                  ┌──────────────┐
-//!                                  │FormComponent │
-//!                                  │  (WASM UI)   │
-//!                                  └──────────────┘
+//! ```mermaid
+//! flowchart LR
+//!     subgraph Server["Server-side"]
+//!         Form["Form<br/>(traits, closures)"]
+//!     end
+//!
+//!     subgraph Client["Client-side (WASM)"]
+//!         FormMetadata["FormMetadata<br/>(plain data, serializable)"]
+//!         FormComponent["FormComponent<br/>(WASM UI)"]
+//!     end
+//!
+//!     Form -->|"to_metadata()"| FormMetadata
+//!     FormMetadata --> FormComponent
 //! ```
 //!
 //! ## Example
@@ -33,7 +32,6 @@
 //! // Server-side: Create form
 //! let mut form = Form::new();
 //! form.add_field(Box::new(CharField::new("username".to_string())));
-//! form.enable_csrf(Some("secret".to_string()));
 //!
 //! // Extract metadata for client
 //! let metadata: FormMetadata = form.to_metadata();
@@ -104,7 +102,6 @@ pub enum ValidationRule {
 ///
 /// - `fields`: Metadata for each form field
 /// - `initial`: Initial values for the form (form-level)
-/// - `csrf_token`: CSRF token for security (if enabled)
 /// - `prefix`: Field name prefix (for multiple forms on same page)
 /// - `is_bound`: Whether the form has been bound with data
 /// - `errors`: Validation errors (if any)
@@ -117,9 +114,6 @@ pub struct FormMetadata {
 
 	/// Initial values (form-level)
 	pub initial: HashMap<String, serde_json::Value>,
-
-	/// CSRF token (if enabled)
-	pub csrf_token: Option<String>,
 
 	/// Field name prefix
 	pub prefix: String,
@@ -218,13 +212,9 @@ impl FormExt for Form {
 			})
 			.collect();
 
-		// Extract CSRF token as string
-		let csrf_token = self.csrf_token().map(|t| t.token().to_string());
-
 		FormMetadata {
 			fields,
 			initial: self.initial().clone(),
-			csrf_token,
 			prefix: self.prefix().to_string(),
 			is_bound: self.is_bound(),
 			errors: self.errors().clone(),
@@ -256,19 +246,6 @@ mod tests {
 		assert_eq!(metadata.fields[0].name, "username");
 		assert_eq!(metadata.fields[1].name, "email");
 		assert!(!metadata.is_bound);
-		assert!(metadata.csrf_token.is_none());
-	}
-
-	#[test]
-	fn test_form_metadata_with_csrf() {
-		let mut form = Form::new();
-		form.enable_csrf(Some("test-secret".to_string()));
-		form.add_field(Box::new(CharField::new("data".to_string())));
-
-		let metadata = form.to_metadata();
-
-		assert!(metadata.csrf_token.is_some());
-		assert_eq!(metadata.fields.len(), 1);
 	}
 
 	#[test]

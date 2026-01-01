@@ -391,7 +391,10 @@ impl Form {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
 	/// form.add_client_field_validator(
 	///     "password",
 	///     "value.length >= 8",
@@ -428,7 +431,10 @@ impl Form {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
 	/// form.add_cross_field_validator(
 	///     vec!["password".to_string(), "password_confirm".to_string()],
 	///     "fields.password === fields.password_confirm",
@@ -469,9 +475,11 @@ impl Form {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
+	/// use reinhardt_forms::Form;
 	/// use serde_json::json;
 	///
+	/// let mut form = Form::new();
 	/// form.add_validator_rule(
 	///     "email",
 	///     "email",
@@ -513,7 +521,10 @@ impl Form {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
 	/// form.add_date_range_validator("start_date", "end_date", None);
 	/// ```
 	pub fn add_date_range_validator(
@@ -550,7 +561,10 @@ impl Form {
 	///
 	/// # Examples
 	///
-	/// ```ignore
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
 	/// form.add_numeric_range_validator("min_price", "max_price", None);
 	/// ```
 	pub fn add_numeric_range_validator(
