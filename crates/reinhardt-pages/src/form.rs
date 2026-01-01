@@ -5,20 +5,22 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! Server-side:                 Client-side (WASM):
-//! ┌──────────────┐            ┌─────────────────┐
-//! │reinhardt-    │            │reinhardt-pages   │
-//! │forms         │            │                 │
-//! │              │            │                 │
-//! │ Form         │            │ FormComponent   │
-//! │ │to_metadata()│────JSON───▶│ │render()      │──▶ DOM
-//! │ │            │            │ │validate()    │
-//! │ │            │            │ │submit()      │──▶ AJAX
-//! │ │            │            │                 │
-//! │ FormMetadata │            │ FormBinding<F>  │
-//! │              │            │ │bind()        │──▶ Signals
-//! └──────────────┘            └─────────────────┘
+//! ```mermaid
+//! flowchart LR
+//!     subgraph Server["Server-side (reinhardt-forms)"]
+//!         Form["Form<br/>to_metadata()"]
+//!         FormMetadata["FormMetadata"]
+//!     end
+//!
+//!     subgraph Client["Client-side WASM (reinhardt-pages)"]
+//!         FormComponent["FormComponent<br/>render()<br/>validate()<br/>submit()"]
+//!         FormBinding["FormBinding&lt;F&gt;<br/>bind()"]
+//!     end
+//!
+//!     Form -->|JSON| FormComponent
+//!     FormComponent --> DOM
+//!     FormComponent --> AJAX
+//!     FormBinding --> Signals
 //! ```
 //!
 //! ## Components
@@ -50,6 +52,22 @@ pub mod binding;
 pub mod component;
 pub mod validators;
 
+// Server-side only modules for HTML rendering and asset management
+#[cfg(not(target_arch = "wasm32"))]
+pub mod media;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod rendering;
+
 pub use binding::FormBinding;
 pub use component::FormComponent;
 pub use validators::{ClientValidator, ValidatorRegistry};
+
+// Server-side only exports
+#[cfg(not(target_arch = "wasm32"))]
+pub use media::{Media, MediaDefiningWidget};
+#[cfg(not(target_arch = "wasm32"))]
+pub use rendering::{
+	BootstrapRenderer, CheckboxInput, CheckboxSelectMultiple, CssFramework, DateInput, FileInput,
+	RadioSelect, Select, SelectDateWidget, SelectMultiple, SplitDateTimeWidget, TailwindRenderer,
+	TextInput, Widget, WidgetAttrs, WidgetType, html_escape,
+};

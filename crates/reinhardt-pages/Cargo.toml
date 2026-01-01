@@ -18,6 +18,9 @@ urls = []
 debug-hooks = []
 
 [dependencies]
+# Documentation
+aquamarine = "0.5"
+
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
 
