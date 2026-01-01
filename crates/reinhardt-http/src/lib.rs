@@ -38,14 +38,20 @@
 //! ```
 
 pub mod auth_state;
+pub mod chunked_upload;
 pub mod extensions;
 pub mod request;
 pub mod response;
+pub mod upload;
 
 pub use auth_state::AuthState;
+pub use chunked_upload::{
+	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
+};
 pub use extensions::Extensions;
 pub use request::{Request, RequestBuilder};
 pub use response::{Response, StreamBody, StreamingResponse};
+pub use upload::{FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload};
 
 // Re-export error types from reinhardt-exception for consistency across the framework
 pub use reinhardt_exception::{Error, Result};

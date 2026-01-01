@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }
 futures = "0.3.31"
 thiserror = { workspace = true }
+sha2 = { workspace = true }
 reinhardt-parsers = { workspace = true, optional = true }
 reinhardt-exception = { workspace = true }
 async-trait = "0.1"
