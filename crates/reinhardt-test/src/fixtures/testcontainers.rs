@@ -59,12 +59,12 @@ fn get_pool_config() -> (u32, u64) {
 	let max_connections = std::env::var("TEST_MAX_CONNECTIONS")
 		.ok()
 		.and_then(|v| v.parse().ok())
-		.unwrap_or(20); // Default: 5→20 to support 2000+ parallel tests
+		.unwrap_or(1); // Default: 1 to workaround sqlx v0.7+ connection pool bug
 
 	let acquire_timeout = std::env::var("TEST_ACQUIRE_TIMEOUT_SECS")
 		.ok()
 		.and_then(|v| v.parse().ok())
-		.unwrap_or(60); // Default: 5秒→60秒 to reduce PoolTimedOut errors
+		.unwrap_or(300); // Default: 120秒→300秒 for TestContainers startup time
 
 	(max_connections, acquire_timeout)
 }
@@ -265,13 +265,12 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 {
 	use testcontainers::core::IntoContainerPort;
 
-	let image = GenericImage::new("postgres", "17-alpine")
+	let image = GenericImage::new("postgres", "16-alpine")
 		.with_exposed_port(5432.tcp())
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
-		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-		.with_env_var("POSTGRES_INITDB_ARGS", "-c max_connections=200");
+		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
 	let postgres = image
 		.start()
@@ -314,8 +313,8 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 			.max_connections(max_conns)
 			.min_connections(1)
 			.acquire_timeout(std::time::Duration::from_secs(timeout_secs))
-			.idle_timeout(std::time::Duration::from_secs(30))
-			.max_lifetime(std::time::Duration::from_secs(120))
+			.idle_timeout(std::time::Duration::from_secs(600)) // Increase from 30s for sqlx v0.7+ compatibility
+			.max_lifetime(std::time::Duration::from_secs(1800)) // Increase from 120s for long-running tests
 			.connect(&database_url)
 			.await
 		{

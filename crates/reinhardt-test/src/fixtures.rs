@@ -98,6 +98,8 @@ pub mod server;
 #[cfg(feature = "testcontainers")]
 pub mod resources;
 #[cfg(feature = "testcontainers")]
+pub mod shared_postgres;
+#[cfg(feature = "testcontainers")]
 pub mod testcontainers;
 
 // New fixture modules for integration tests
@@ -155,6 +157,13 @@ pub use testcontainers::{
 	redis_cluster_fixture, redis_cluster_lock, redis_cluster_ports_ready, redis_cluster_urls,
 	redis_container, sqlite_with_all_migrations, sqlite_with_apps_migrations,
 	sqlite_with_migrations_from,
+};
+
+// From shared_postgres module (conditional on feature)
+#[cfg(feature = "testcontainers")]
+pub use shared_postgres::{
+	SharedPostgres, cleanup_shared_postgres, get_shared_postgres, get_test_pool,
+	get_test_pool_with_orm, get_test_pool_with_table,
 };
 
 // From resources module (conditional on feature)
