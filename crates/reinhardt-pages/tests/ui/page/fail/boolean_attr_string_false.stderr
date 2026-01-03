@@ -1,0 +1,14 @@
+error: Boolean attribute 'disabled' cannot have a string literal value.
+       HTML boolean attributes represent true/false by their presence/absence:
+       - Attribute present = true
+       - Attribute absent = false
+
+       Use a variable or expression for dynamic boolean values:
+       Correct:   disabled: is_disabled
+       Correct:   disabled: state.is_active()
+       Incorrect: disabled: "true"
+       Incorrect: disabled: "disabled"
+ --> tests/ui/page/fail/boolean_attr_string_false.rs:8:4
+  |
+8 |             disabled: "false",
+  |             ^^^^^^^^
