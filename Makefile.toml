@@ -102,7 +102,7 @@ args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "--check", "."]
 
 [tasks.auto-fix]
 description = "Run all auto-fixes"
-dependencies = ["fmt-fix", "clippy-fix", "fmt-page"]
+dependencies = ["clippy-fix", "fmt-fix", "fmt-page"]
 
 # ============================================================================
 # Testing Tasks
