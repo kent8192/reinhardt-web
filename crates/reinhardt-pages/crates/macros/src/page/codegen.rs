@@ -198,8 +198,39 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 		.map(|event| generate_event(event, pages_crate))
 		.collect();
 
-	// Extract handler expressions for suppressing unused variable warnings on native
+	// Generate typed wrappers for non-WASM to enable closure type inference.
+	// We wrap each handler in a typed closure that calls it, which forces Rust to
+	// infer the closure parameter type from the wrapper's explicit type annotation.
+	//
+	// For Callback types and other non-closure handlers, we use into_event_handler
+	// to convert them first, since they can't be called directly.
 	let handler_exprs: Vec<&syn::Expr> = elem.events.iter().map(|event| &event.handler).collect();
+	let typed_handler_refs: Vec<TokenStream> = handler_exprs
+		.iter()
+		.map(|handler| {
+			// Check if the handler is a closure expression
+			if matches!(handler, syn::Expr::Closure(_)) {
+				// For closures, wrap in a typed closure to enable type inference
+				quote! {
+					{
+						let __typed_wrapper = |__e: #pages_crate::component::DummyEvent| {
+							(#handler)(__e)
+						};
+						let _ = &__typed_wrapper;
+					}
+				}
+			} else {
+				// For non-closure handlers (Callback, variables, etc.),
+				// convert to ViewEventHandler first then reference it
+				quote! {
+					{
+						let __vh = #pages_crate::callback::into_event_handler(#handler);
+						let _ = &__vh;
+					}
+				}
+			}
+		})
+		.collect();
 
 	quote! {
 		{
@@ -210,9 +241,10 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 
 			#[cfg(not(target_arch = "wasm32"))]
 			let __elem_with_events = {
-				// Reference handler closures to suppress unused variable warnings
-				// for captured variables. Using & to reference without executing.
-				#(let _ = &(#handler_exprs);)*
+				// Create typed wrappers to enable closure parameter type inference.
+				// The wrapper calls the user's handler with a typed argument, which forces
+				// Rust to infer the closure parameter type.
+				#(#typed_handler_refs)*
 				__elem_base
 			};
 
@@ -224,14 +256,39 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 /// Generates code for an attribute.
 fn generate_attr(attr: &TypedPageAttr) -> TokenStream {
 	let name = attr.html_name();
-	let value = attr.value.to_expr(); // Convert typed value back to Expr
+
+	// Handle different attribute value types
+	// IntLit and FloatLit need to be converted to strings
+	let value_expr = match &attr.value {
+		AttrValue::IntLit(lit) => {
+			// Generate: lit.to_string()
+			quote! { #lit.to_string() }
+		}
+		AttrValue::FloatLit(lit) => {
+			// Generate: lit.to_string()
+			quote! { #lit.to_string() }
+		}
+		_ => {
+			// For StringLit, BoolLit, Dynamic: use as-is
+			let expr = attr.value.to_expr();
+			quote! { #expr }
+		}
+	};
 
 	quote! {
-		.attr(#name, #value)
+		.attr(#name, #value_expr)
 	}
 }
 
 /// Generates code for an event handler.
+///
+/// This function generates platform-aware code that handles event handler type inference.
+/// The key challenge is that Rust cannot infer closure parameter types from `impl Fn(Event)`
+/// bounds or type annotations on Box.
+///
+/// The solution is to wrap the handler in a typed closure that explicitly calls the handler.
+/// This works because calling `(#handler)(__event)` where `__event` is typed forces Rust
+/// to infer that `#handler` implements `Fn(EventType)`, thereby typing the closure parameter.
 fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 	let event_type = event.dom_event_type();
 	let handler = &event.handler;
@@ -286,11 +343,40 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 		}
 	};
 
-	quote! {
-		.on(
-			#pages_crate::dom::EventType::#event_type_ident,
-			#pages_crate::callback::into_event_handler(#handler)
-		)
+	// Generate event handler code.
+	// For closure expressions, we use a typed wrapper to enable type inference.
+	// For non-closure handlers (Callback, variables), we use into_event_handler.
+	if matches!(handler, syn::Expr::Closure(_)) {
+		// For closures, wrap in a typed closure to enable type inference.
+		// The wrapper calls the user's closure with a typed argument, which forces
+		// Rust to infer the closure parameter type.
+		quote! {
+			.on(
+				#pages_crate::dom::EventType::#event_type_ident,
+				{
+					#[cfg(target_arch = "wasm32")]
+					let __typed_wrapper = |__event: ::web_sys::Event| {
+						(#handler)(__event)
+					};
+
+					#[cfg(not(target_arch = "wasm32"))]
+					let __typed_wrapper = |__event: #pages_crate::component::DummyEvent| {
+						(#handler)(__event)
+					};
+
+					::std::sync::Arc::new(__typed_wrapper)
+				}
+			)
+		}
+	} else {
+		// For non-closure handlers (Callback, variables, etc.),
+		// use into_event_handler which handles all handler types correctly.
+		quote! {
+			.on(
+				#pages_crate::dom::EventType::#event_type_ident,
+				#pages_crate::callback::into_event_handler(#handler)
+			)
+		}
 	}
 }
 

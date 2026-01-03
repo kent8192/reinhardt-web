@@ -175,6 +175,8 @@ pub(crate) fn hydration_boundary_end(id: &str) -> String {
 /// # Example
 ///
 /// ```no_run
+/// use reinhardt_pages::ssr::{HydrationMarkerBuilder, HydrationStrategy};
+///
 /// let marker = HydrationMarkerBuilder::new()
 ///     .component_name("Counter")
 ///     .strategy(HydrationStrategy::Island)

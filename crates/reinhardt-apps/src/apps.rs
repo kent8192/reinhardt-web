@@ -689,3 +689,271 @@ mod typed_tests {
 		assert_eq!(typed.label, regular.label);
 	}
 }
+
+// ============================================================================
+// Global Registry (inventory-based)
+// ============================================================================
+
+/// Base trait for custom management commands
+///
+/// Applications can implement this trait to provide custom commands
+/// that will be automatically discovered by the manage.py CLI.
+pub trait BaseCommand: Send + Sync {
+	/// Command name (e.g., "createsuperuser")
+	fn name(&self) -> &str;
+
+	/// Command help text
+	fn help(&self) -> &str;
+
+	/// Execute the command
+	fn execute(&mut self, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+/// Static files configuration from an app
+///
+/// Applications can register their static files directories using this struct.
+/// Registered configurations will be automatically discovered by collectstatic.
+/// Uses static string references for compile-time registration.
+pub struct AppStaticFilesConfig {
+	pub app_label: &'static str,
+	pub static_dir: &'static str,
+	pub url_prefix: &'static str,
+}
+
+inventory::collect!(AppStaticFilesConfig);
+
+/// Locale configuration from an app
+///
+/// Applications can register their locale directories using this struct.
+/// Registered configurations will be automatically discovered by makemessages.
+/// Uses static string references for compile-time registration.
+pub struct AppLocaleConfig {
+	pub app_label: &'static str,
+	pub locale_dir: &'static str,
+}
+
+inventory::collect!(AppLocaleConfig);
+
+/// Command configuration from an app
+///
+/// Applications can register their custom management commands using this struct.
+/// Registered commands will be automatically discovered by the manage.py CLI.
+/// Uses static string references for compile-time registration.
+pub struct AppCommandConfig {
+	pub app_label: &'static str,
+	pub command_name: &'static str,
+	pub command_fn: fn() -> Box<dyn BaseCommand>,
+}
+
+inventory::collect!(AppCommandConfig);
+
+/// Media files configuration from an app
+///
+/// Applications can register their media files directories using this struct.
+/// Registered configurations will be automatically discovered by collectmedia.
+/// Uses static string references for compile-time registration.
+pub struct AppMediaConfig {
+	pub app_label: &'static str,
+	pub media_dir: &'static str,
+	pub url_prefix: &'static str,
+}
+
+inventory::collect!(AppMediaConfig);
+
+// ============================================================================
+// Registration Macros
+// ============================================================================
+
+/// Register static files for an application
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt_apps::register_app_static_files;
+/// use std::path::PathBuf;
+///
+/// register_app_static_files!(
+///     "myapp",
+///     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static"),
+///     "/static/myapp/"
+/// );
+/// ```
+#[macro_export]
+macro_rules! register_app_static_files {
+	($app_label:expr, $static_dir:expr, $url_prefix:expr) => {
+		$crate::inventory::submit! {
+			$crate::AppStaticFilesConfig {
+				app_label: $app_label,
+				static_dir: $static_dir,
+				url_prefix: $url_prefix,
+			}
+		}
+	};
+}
+
+/// Register locale directory for an application
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt_apps::register_app_locale;
+/// use std::path::PathBuf;
+///
+/// register_app_locale!(
+///     "myapp",
+///     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("locale")
+/// );
+/// ```
+#[macro_export]
+macro_rules! register_app_locale {
+	($app_label:expr, $locale_dir:expr) => {
+		$crate::inventory::submit! {
+			$crate::AppLocaleConfig {
+				app_label: $app_label,
+				locale_dir: $locale_dir,
+			}
+		}
+	};
+}
+
+/// Register a custom management command
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt_apps::{register_app_command, BaseCommand};
+///
+/// struct MyCommand;
+/// impl BaseCommand for MyCommand {
+///     fn name(&self) -> &str { "mycommand" }
+///     fn help(&self) -> &str { "My custom command" }
+///     fn execute(&mut self, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+///         Ok(())
+///     }
+/// }
+///
+/// register_app_command!(
+///     "myapp",
+///     "mycommand",
+///     || Box::new(MyCommand)
+/// );
+/// ```
+#[macro_export]
+macro_rules! register_app_command {
+	($app_label:expr, $command_name:expr, $command_fn:expr) => {
+		$crate::inventory::submit! {
+			$crate::AppCommandConfig {
+				app_label: $app_label,
+				command_name: $command_name,
+				command_fn: $command_fn,
+			}
+		}
+	};
+}
+
+/// Register media files directory for an application
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt_apps::register_app_media;
+/// use std::path::PathBuf;
+///
+/// register_app_media!(
+///     "myapp",
+///     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("media"),
+///     "/media/myapp/"
+/// );
+/// ```
+#[macro_export]
+macro_rules! register_app_media {
+	($app_label:expr, $media_dir:expr, $url_prefix:expr) => {
+		$crate::inventory::submit! {
+			$crate::AppMediaConfig {
+				app_label: $app_label,
+				media_dir: $media_dir,
+				url_prefix: $url_prefix,
+			}
+		}
+	};
+}
+
+// ============================================================================
+// Getter Functions
+// ============================================================================
+
+/// Get all registered static files configurations
+///
+/// Returns all static files configurations that have been registered via
+/// `register_app_static_files!` macro.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_apps::get_app_static_files;
+///
+/// let configs = get_app_static_files();
+/// for config in configs {
+///     println!("App: {}, Dir: {}", config.app_label, config.static_dir);
+/// }
+/// ```
+pub fn get_app_static_files() -> Vec<&'static AppStaticFilesConfig> {
+	inventory::iter::<AppStaticFilesConfig>().collect()
+}
+
+/// Get all registered locale configurations
+///
+/// Returns all locale configurations that have been registered via
+/// `register_app_locale!` macro.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_apps::get_app_locales;
+///
+/// let configs = get_app_locales();
+/// for config in configs {
+///     println!("App: {}, Dir: {}", config.app_label, config.locale_dir);
+/// }
+/// ```
+pub fn get_app_locales() -> Vec<&'static AppLocaleConfig> {
+	inventory::iter::<AppLocaleConfig>().collect()
+}
+
+/// Get all registered command configurations
+///
+/// Returns all command configurations that have been registered via
+/// `register_app_command!` macro.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_apps::get_app_commands;
+///
+/// let configs = get_app_commands();
+/// for config in configs {
+///     println!("App: {}, Command: {}", config.app_label, config.command_name);
+/// }
+/// ```
+pub fn get_app_commands() -> Vec<&'static AppCommandConfig> {
+	inventory::iter::<AppCommandConfig>().collect()
+}
+
+/// Get all registered media configurations
+///
+/// Returns all media configurations that have been registered via
+/// `register_app_media!` macro.
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_apps::get_app_media;
+///
+/// let configs = get_app_media();
+/// for config in configs {
+///     println!("App: {}, Dir: {}", config.app_label, config.media_dir);
+/// }
+/// ```
+pub fn get_app_media() -> Vec<&'static AppMediaConfig> {
+	inventory::iter::<AppMediaConfig>().collect()
+}

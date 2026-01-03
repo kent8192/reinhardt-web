@@ -19,7 +19,7 @@ versioning = []
 metadata = []
 negotiation = []
 browsable-api = []
-openapi = ["reinhardt-openapi"]
+openapi = ["reinhardt-openapi", "reinhardt-openapi/pages"]
 
 # Aggregate all REST features
 rest-full = [

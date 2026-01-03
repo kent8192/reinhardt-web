@@ -48,11 +48,12 @@
 //! }
 //! ```
 
-use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::net::SocketAddr;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::net::TcpListener;
 #[cfg(not(target_arch = "wasm32"))]

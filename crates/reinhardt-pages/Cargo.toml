@@ -88,6 +88,7 @@ reinhardt-middleware = { workspace = true }
 reinhardt-urls = { workspace = true }
 reinhardt-routers = { workspace = true }
 reinhardt-server = { workspace = true }
+reinhardt-static = { workspace = true }
 hyper = { workspace = true }
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4"] }
@@ -99,7 +100,6 @@ inventory = "0.3"
 cfg_aliases = "0.2"
 
 [dev-dependencies]
-reinhardt-static = { workspace = true }
 reinhardt-forms = { workspace = true }
 wasm-bindgen-test = "0.3"
 serial_test = "3"

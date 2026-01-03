@@ -9,8 +9,11 @@
 //! ```no_run
 //! use reinhardt_pages::dom::Document;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let doc = Document::global(); // Cached access
 //! let div = doc.create_element("div")?;
+//! # Ok(())
+//! # }
 //! ```
 
 use std::cell::RefCell;
@@ -93,9 +96,14 @@ impl Document {
 	/// # Example
 	///
 	/// ```no_run
+	/// use reinhardt_pages::dom::Document;
+	///
+	/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let doc = Document::global();
 	/// let div = doc.create_element("div")?;
 	/// let button = doc.create_element("button")?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn create_element(&self, tag_name: &str) -> Result<Element, String> {
 		self.inner
@@ -117,10 +125,15 @@ impl Document {
 	/// # Example
 	///
 	/// ```no_run
+	/// use reinhardt_pages::dom::Document;
+	///
+	/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 	/// let doc = Document::global();
 	/// if let Some(button) = doc.query_selector("#submit-button")? {
 	///     button.set_attribute("disabled", "true")?;
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn query_selector(&self, selector: &str) -> Result<Option<Element>, String> {
 		self.inner
@@ -138,11 +151,16 @@ impl Document {
 	/// # Example
 	///
 	/// ```no_run
+	/// use reinhardt_pages::dom::Document;
+	///
+	/// # fn main() -> Result<(), String> {
 	/// let doc = Document::global();
 	/// if let Some(body) = doc.body() {
 	///     let div = doc.create_element("div")?;
-	///     body.as_web_sys().append_child(div.as_web_sys())?;
+	///     body.as_web_sys().append_child(div.as_web_sys()).map_err(|e| format!("{:?}", e))?;
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn body(&self) -> Option<Element> {
 		self.inner

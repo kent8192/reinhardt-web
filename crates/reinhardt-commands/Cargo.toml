@@ -8,6 +8,7 @@ authors.workspace = true
 description = "Django-style management command framework for Reinhardt"
 
 [dependencies]
+reinhardt-apps = { workspace = true }
 reinhardt-mail = { workspace = true }
 reinhardt-static = { workspace = true }
 reinhardt-utils-core = { workspace = true }

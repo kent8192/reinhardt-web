@@ -740,16 +740,11 @@ fn generate_server_handler(
 					let body = ::std::string::String::from_utf8(body.to_vec())
 						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
 				},
-				// Wrapper body extraction (from req parameter, rename to __req)
+				// Wrapper doesn't extract body when DI is enabled; passes Request directly
 				quote! {
-					let __req = req;
-					// Extract body from request
-					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
-					let body = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+					// Pass Request directly to handler (which will read the body)
 				},
-				vec![quote! { __req }],
+				vec![quote! { req }],
 			)
 		} else {
 			// No DI needed, handler receives body directly

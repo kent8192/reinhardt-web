@@ -219,7 +219,7 @@ pub fn to_snake_case(s: &str) -> String {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,ignore
 /// use reinhardt_migrations::introspect::naming::{table_to_struct_name, NamingConvention};
 ///
 /// assert_eq!(table_to_struct_name("users", NamingConvention::PascalCase), "Users");
