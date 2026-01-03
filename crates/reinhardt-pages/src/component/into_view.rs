@@ -1,10 +1,15 @@
 //! IntoView trait and View enum for component rendering.
 
+use crate::component::Head;
 #[cfg(target_arch = "wasm32")]
 use crate::dom::Element;
 use crate::dom::EventType;
 use std::borrow::Cow;
 use std::sync::Arc;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::closure::Closure;
 
 /// Type alias for event handler functions.
 #[cfg(target_arch = "wasm32")]
@@ -70,6 +75,16 @@ pub enum View {
 	Fragment(Vec<View>),
 	/// An empty view (renders nothing).
 	Empty,
+	/// A view with associated head section.
+	///
+	/// This variant allows components to declare their own `<head>` requirements
+	/// (title, meta tags, stylesheets, etc.) that will be collected during SSR.
+	WithHead {
+		/// The head section for this view.
+		head: Head,
+		/// The actual view content.
+		view: Box<View>,
+	},
 }
 
 /// Represents a DOM element in the view tree.
@@ -245,6 +260,57 @@ impl View {
 		Self::Empty
 	}
 
+	/// Attaches a head section to this view.
+	///
+	/// The head section contains metadata like title, meta tags, stylesheets,
+	/// and scripts that should be included in the HTML `<head>` element.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_pages::{View, Head};
+	///
+	/// let view = View::text("Hello, World!");
+	/// let head = Head::new().title("My Page");
+	/// let view_with_head = view.with_head(head);
+	/// ```
+	pub fn with_head(self, head: Head) -> Self {
+		View::WithHead {
+			head,
+			view: Box::new(self),
+		}
+	}
+
+	/// Extracts the head section from this view if it has one.
+	///
+	/// Returns `Some(&Head)` if this view is a `WithHead` variant,
+	/// or `None` for other variants.
+	pub fn extract_head(&self) -> Option<&Head> {
+		match self {
+			View::WithHead { head, .. } => Some(head),
+			_ => None,
+		}
+	}
+
+	/// Finds the topmost head section in the view tree.
+	///
+	/// This method searches the view tree from the root and returns the first
+	/// head section found. This ensures that the outermost (page-level) head
+	/// takes precedence over inner component heads.
+	///
+	/// # Search Order
+	///
+	/// 1. If this view is a `WithHead`, returns its head
+	/// 2. For `Fragment` views, searches children in order and returns the first found
+	/// 3. For other variants, returns `None`
+	pub fn find_topmost_head(&self) -> Option<&Head> {
+		match self {
+			View::WithHead { head, .. } => Some(head),
+			View::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
+			_ => None,
+		}
+	}
+
 	/// Renders the view to an HTML string.
 	///
 	/// This is the core SSR method that converts the view tree to HTML.
@@ -289,6 +355,10 @@ impl View {
 				}
 			}
 			View::Empty => {}
+			View::WithHead { view, .. } => {
+				// The head is extracted separately during SSR; here we just render the content
+				view.render_to_string_inner(output);
+			}
 		}
 	}
 
@@ -312,7 +382,43 @@ impl View {
 				for (name, value) in el.attrs {
 					element
 						.set_attribute(&name, &value)
-						.map_err(|_| MountError::SetAttributeFailed)?;
+						.map_err(|err_str: String| {
+							#[cfg(target_arch = "wasm32")]
+							{
+								// Log detailed error to browser console
+								let msg: wasm_bindgen::JsValue = format!(
+									"[SetAttributeFailed] attribute='{}', value='{}'",
+									name, value
+								)
+								.into();
+								let label: wasm_bindgen::JsValue = "Error message:".into();
+								let err_msg: wasm_bindgen::JsValue = err_str.into();
+								web_sys::console::error_3(&msg, &label, &err_msg);
+							}
+							MountError::SetAttributeFailed
+						})?;
+				}
+
+				// Attach event handlers before mounting children
+				for (event_type, handler) in el.event_handlers {
+					#[cfg(target_arch = "wasm32")]
+					{
+						let handler_clone = handler.clone();
+						let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+							handler_clone(event);
+						}) as Box<dyn FnMut(web_sys::Event)>);
+
+						element
+							.inner()
+							.add_event_listener_with_callback(
+								event_type.as_str(),
+								closure.as_ref().unchecked_ref(),
+							)
+							.expect("Failed to add event listener");
+
+						// Prevent the closure from being dropped (memory leak, but intentional for app lifetime)
+						closure.forget();
+					}
 				}
 
 				for child in el.children {
@@ -338,6 +444,10 @@ impl View {
 				}
 			}
 			View::Empty => {}
+			View::WithHead { view, .. } => {
+				// On client-side, head is handled separately; just mount the content
+				view.mount_inner(parent)?;
+			}
 		}
 
 		Ok(())

@@ -246,6 +246,35 @@ pub fn into_event_handler<H: IntoEventHandler>(handler: H) -> ViewEventHandler {
 	handler.into_event_handler()
 }
 
+/// Event handler helper with concrete type for better type inference.
+///
+/// This function is used by the `page!` macro's code generation.
+/// Unlike [`into_event_handler`], this function has a concrete argument type,
+/// allowing Rust to infer the closure parameter type automatically.
+///
+/// # Example
+///
+/// ```ignore
+/// // This works without explicit type annotation
+/// let handler = event_handler(|_| {
+///     log!("clicked");
+/// });
+/// ```
+#[cfg(target_arch = "wasm32")]
+pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> ViewEventHandler {
+	Arc::new(f)
+}
+
+/// Event handler helper with concrete type for better type inference (server-side version).
+///
+/// See WASM version for documentation.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn event_handler(
+	f: impl Fn(crate::component::DummyEvent) + Send + Sync + 'static,
+) -> ViewEventHandler {
+	Arc::new(f)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

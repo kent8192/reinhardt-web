@@ -28,10 +28,12 @@
 //! let html = view.render_to_string();
 //! ```
 
+mod head;
 mod into_view;
 mod props;
 mod r#trait;
 
+pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
 #[cfg(not(target_arch = "wasm32"))]
 pub use into_view::DummyEvent;
 pub use into_view::{ElementView, IntoView, MountError, View, ViewEventHandler};
