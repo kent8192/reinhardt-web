@@ -31,6 +31,7 @@
 
 use crate::{FieldState, ModelState, ProjectState};
 use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_backends::types::DatabaseType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -79,6 +80,46 @@ impl std::error::Error for ValidationError {}
 
 /// Result type for migration operations
 pub type ValidationResult<T> = Result<T, ValidationError>;
+
+/// Quote an identifier for the given database type
+///
+/// # Arguments
+///
+/// * `identifier` - The identifier to quote (table name, column name, etc.)
+/// * `database_type` - The database type to use for quoting
+///
+/// # Returns
+///
+/// Quoted identifier suitable for the database type:
+/// - PostgreSQL/SQLite: `"identifier"`
+/// - MySQL: `` `identifier` ``
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_migrations::operations::models::quote_identifier;
+/// use reinhardt_backends::types::DatabaseType;
+///
+/// let postgres_quoted = quote_identifier("user", DatabaseType::Postgres);
+/// assert_eq!(postgres_quoted, "\"user\"");
+///
+/// let mysql_quoted = quote_identifier("order", DatabaseType::Mysql);
+/// assert_eq!(mysql_quoted, "`order`");
+/// ```
+pub fn quote_identifier(identifier: &str, database_type: DatabaseType) -> String {
+	match database_type {
+		DatabaseType::Postgres | DatabaseType::Sqlite => {
+			// PostgreSQL and SQLite use double quotes
+			// Escape existing double quotes by doubling them
+			format!("\"{}\"", identifier.replace('"', "\"\""))
+		}
+		DatabaseType::Mysql => {
+			// MySQL uses backticks
+			// Escape existing backticks by doubling them
+			format!("`{}`", identifier.replace('`', "``"))
+		}
+	}
+}
 
 /// Field definition for model operations
 ///
@@ -555,17 +596,29 @@ impl CreateModel {
 
 		// Add composite primary key constraint if defined
 		if let Some(ref pk_fields) = self.composite_primary_key {
-			// Remove the closing parenthesis from create_sql
-			if create_sql.ends_with(");") {
-				create_sql = create_sql.trim_end_matches(");").to_string();
-			} else if create_sql.ends_with(')') {
-				create_sql = create_sql.trim_end_matches(')').to_string();
-			}
+			let db_type = schema_editor.database_type();
+			let pk_name = format!("{}_pkey", self.name);
+			let quoted_pk_name = quote_identifier(&pk_name, db_type);
+			let quoted_pk_fields = pk_fields
+				.iter()
+				.map(|f| quote_identifier(f, db_type))
+				.collect::<Vec<_>>()
+				.join(", ");
+			let constraint_sql = format!(
+				"CONSTRAINT {} PRIMARY KEY ({})",
+				quoted_pk_name, quoted_pk_fields
+			);
 
-			// Add composite primary key constraint
-			let pk_constraint = format!(", PRIMARY KEY ({})", pk_fields.join(", "));
-			create_sql.push_str(&pk_constraint);
-			create_sql.push_str(");");
+			// Insert constraint before closing parenthesis
+			// CREATE TABLE foo (col1 INT, col2 INT); becomes
+			// CREATE TABLE foo (col1 INT, col2 INT, CONSTRAINT foo_pkey PRIMARY KEY (col1, col2));
+			if create_sql.ends_with(");") {
+				let insert_pos = create_sql.len() - 2; // Before ");"
+				create_sql.insert_str(insert_pos, &format!(", {}", constraint_sql));
+			} else if create_sql.ends_with(")") {
+				let insert_pos = create_sql.len() - 1; // Before ")"
+				create_sql.insert_str(insert_pos, &format!(", {}", constraint_sql));
+			}
 		}
 
 		// Table-level attributes (SQLite)
@@ -729,14 +782,13 @@ impl RenameModel {
 	/// assert!(sql[0].contains("\"users\""));
 	/// assert!(sql[0].contains("\"customers\""));
 	/// ```
-	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-		// Note: BaseDatabaseSchemaEditor doesn't have rename_table_sql yet
-		// We'll need to add that method or use a different approach
-		// Always use double quotes for PostgreSQL identifier safety
-		vec![format!(
-			"ALTER TABLE \"{}\" RENAME TO \"{}\"",
-			self.old_name, self.new_name
-		)]
+	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		// Quote identifiers based on database type
+		let db_type = schema_editor.database_type();
+		let old_name = quote_identifier(&self.old_name, db_type);
+		let new_name = quote_identifier(&self.new_name, db_type);
+
+		vec![format!("ALTER TABLE {} RENAME TO {}", old_name, new_name)]
 	}
 }
 
@@ -900,15 +952,16 @@ impl MoveModel {
 	/// assert_eq!(sql2.len(), 1);
 	/// assert!(sql2[0].contains("ALTER TABLE"));
 	/// ```
-	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		if self.rename_table {
 			if let (Some(old_table), Some(new_table)) = (&self.old_table_name, &self.new_table_name)
 			{
-				// Always use double quotes for PostgreSQL identifier safety
-				vec![format!(
-					"ALTER TABLE \"{}\" RENAME TO \"{}\"",
-					old_table, new_table
-				)]
+				// Quote identifiers based on database type
+				let db_type = schema_editor.database_type();
+				let old_name = quote_identifier(old_table, db_type);
+				let new_name = quote_identifier(new_table, db_type);
+
+				vec![format!("ALTER TABLE {} RENAME TO {}", old_name, new_name)]
 			} else {
 				vec![]
 			}
@@ -919,16 +972,17 @@ impl MoveModel {
 	}
 
 	/// Generate reverse SQL
-	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+	pub fn database_backwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		if self.rename_table {
 			if let (Some(old_table), Some(new_table)) = (&self.old_table_name, &self.new_table_name)
 			{
 				// Reverse: rename back to original
-				// Always use double quotes for PostgreSQL identifier safety
-				vec![format!(
-					"ALTER TABLE \"{}\" RENAME TO \"{}\"",
-					new_table, old_table
-				)]
+				// Quote identifiers based on database type
+				let db_type = schema_editor.database_type();
+				let old_name = quote_identifier(old_table, db_type);
+				let new_name = quote_identifier(new_table, db_type);
+
+				vec![format!("ALTER TABLE {} RENAME TO {}", new_name, old_name)]
 			} else {
 				vec![]
 			}

@@ -270,6 +270,15 @@ impl ToTokens for InterleaveSpec {
 impl ToTokens for Constraint {
 	fn to_tokens(&self, tokens: &mut TokenStream) {
 		match self {
+			Constraint::PrimaryKey { name, columns } => {
+				let columns_iter = columns.iter();
+				tokens.extend(quote! {
+					Constraint::PrimaryKey {
+						name: #name.to_string(),
+						columns: vec![#(#columns_iter.to_string()),*],
+					}
+				});
+			}
 			Constraint::ForeignKey {
 				name,
 				columns,
