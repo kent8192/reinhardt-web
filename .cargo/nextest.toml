@@ -4,18 +4,16 @@
 # particularly for TestContainers-based database integration tests.
 
 [profile.default]
-# Limit concurrent tests to prevent Docker resource exhaustion
-# (file descriptors, memory, Docker daemon connection pool)
-max-tests-per-run = 8
+# Limit concurrent test execution to prevent resource exhaustion
+# Views tests spawn PostgreSQL containers which consume significant resources
+test-threads = 2
 
 # Increase timeout for database operations
-# Database container initialization can be slow under high load
-slow-timeout = "60s"
-timeout = "120s"
+# TestContainers startup can be slow, especially PostgreSQL 17
+slow-timeout = "360s"
 
 # Enable retries for flaky infrastructure tests
-# Uses exponential backoff to handle transient failures
-retries = { backoff = "exponential", max-retries = 2, seed = 12345 }
+retries = 2
 
 # Separate integration tests into dedicated worker threads
 # Reduces resource contention for database-dependent tests
@@ -28,23 +26,38 @@ threads-required = 1
 # Instead, we force these tests to run one at a time via nextest configuration
 [[profile.default.overrides]]
 filter = 'binary(examples-database-integration) & test(test_)'
-test-threads = 1
+threads-required = 1
+
+# Views tests must run serially to prevent connection pool exhaustion
+# Each test spawns independent PostgreSQL containers
+[[profile.default.overrides]]
+filter = 'package(reinhardt-integration-tests) & test(views_)'
+threads-required = 1
 
 # Session database integration tests require serial execution
 # They share an in-memory SQLite database that doesn't persist across processes
 [[profile.default.overrides]]
 filter = 'test(database_backend_integration)'
-test-threads = 1
+threads-required = 1
 
 # Trybuild compile-fail tests need longer timeout
 # The compiler takes significant time to produce error messages
 [[profile.default.overrides]]
-filter = 'test(compile_fail) | test(trybuild) | binary_id(~macro_compile)'
-timeout = "300s"
+filter = 'test(compile_fail) | test(trybuild)'
+slow-timeout = "300s"
 
 # JUnit output for CI/CD integration
 [profile.default.junit]
 path = "target/nextest/junit.xml"
+
+# Views tests profile - runs tests serially to prevent connection pool exhaustion
+# Each views test spawns independent PostgreSQL containers with limited connections
+#
+# Usage:
+#   cargo nextest run --profile views-serial -E 'test(views_)'
+[profile.views-serial]
+test-threads = 1
+slow-timeout = "60s"
 
 # Database-intensive test profile
 # Use this profile for tests that heavily use database connections
@@ -55,11 +68,10 @@ path = "target/nextest/junit.xml"
 #   TEST_MAX_CONNECTIONS=30 cargo nextest run --profile db-tests
 [profile.db-tests]
 # Limit parallelism for database tests to reduce connection pool contention
-test-threads = 4
+test-threads = 2  # 4→2 for stricter connection control
 
 # Increase timeouts for database operations
 slow-timeout = "60s"
-timeout = "180s"
 
 # Database migration/introspect/views tests need sequential execution
 # to avoid connection pool exhaustion
@@ -75,9 +87,8 @@ threads-required = 1
 [profile.slow-tests]
 # Very long timeout for compilation tests
 slow-timeout = { period = "60s", terminate-after = 2 }
-timeout = "600s"
 
 # DI macro compilation tests can run in parallel but need extended timeout
 [[profile.slow-tests.overrides]]
-filter = 'test(compile) | test(trybuild) | binary_id(~macro_compile)'
-timeout = "600s"
+filter = 'test(compile) | test(trybuild)'
+slow-timeout = "600s"
