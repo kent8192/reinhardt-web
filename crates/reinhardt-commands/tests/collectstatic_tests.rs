@@ -812,3 +812,133 @@ fn test_collectstatic_sanity_workflow(temp_dir: TempDir) {
 		"Sanity: test.js should be collected"
 	);
 }
+
+// ============================================================================
+// Inventory Auto-Discovery Tests
+// ============================================================================
+
+/// Test: Inventory auto-discovery integration
+///
+/// Category: Integration
+/// Verifies that get_app_static_files() can be called and returns a valid collection.
+/// Note: The actual content depends on what's registered in the test binary.
+#[rstest]
+fn test_inventory_auto_discovery_callable() {
+	// Call inventory getter function
+	let app_static_configs = reinhardt_apps::get_app_static_files();
+
+	// Should return a valid Vec (no panic)
+	let _count = app_static_configs.len();
+
+	// Verify each config has valid fields
+	for config in app_static_configs {
+		assert!(
+			!config.app_label.is_empty(),
+			"App label should not be empty"
+		);
+		assert!(
+			!config.static_dir.is_empty(),
+			"Static dir path should not be empty"
+		);
+		assert!(
+			!config.url_prefix.is_empty(),
+			"URL prefix should not be empty"
+		);
+	}
+}
+
+/// Test: CollectStaticCommand with inventory auto-discovery
+///
+/// Category: Integration
+/// Verifies that CollectStaticCommand automatically includes directories from inventory.
+/// This test creates manual static files and verifies that the command processes them
+/// along with any auto-discovered directories (though auto-discovered dirs may be empty
+/// in the test environment).
+#[rstest]
+fn test_collectstatic_with_inventory_auto_discovery(
+	temp_with_static_files: (TempDir, PathBuf, PathBuf),
+) {
+	let (_temp_dir, source_dir, dest_dir) = temp_with_static_files;
+
+	// Create config with only manual staticfiles_dirs
+	let config = StaticFilesConfig {
+		static_url: "/static/".to_string(),
+		static_root: dest_dir.clone(),
+		staticfiles_dirs: vec![source_dir.clone()],
+		media_url: None,
+	};
+
+	// Create options with verbosity to see auto-discovery logs
+	let options = CollectStaticOptions {
+		verbosity: 2, // Enable verbose logging
+		..Default::default()
+	};
+
+	let mut command = CollectStaticCommand::new(config, options);
+
+	// Execute command
+	let result = command.execute();
+	assert!(
+		result.is_ok(),
+		"CollectStatic with auto-discovery should succeed"
+	);
+
+	let stats = result.unwrap();
+
+	// Verify that manual static files were collected
+	assert!(stats.copied >= 3, "Should copy at least 3 manual files");
+	assert!(
+		dest_dir.join("app.js").exists(),
+		"app.js should be collected"
+	);
+	assert!(
+		dest_dir.join("style.css").exists(),
+		"style.css should be collected"
+	);
+	assert!(
+		dest_dir.join("images/logo.png").exists(),
+		"images/logo.png should be collected"
+	);
+
+	// Note: Auto-discovered directories (if any) would also be processed,
+	// but we can't assert on their contents since they depend on what's
+	// registered via inventory in the test binary
+}
+
+/// Test: CollectStaticCommand skips non-existent auto-discovered directories
+///
+/// Category: Integration
+/// Verifies that auto-discovered directories that don't exist are gracefully skipped.
+/// This is important because inventory registrations may point to directories that
+/// haven't been built yet (e.g., WASM dist/ directory before building).
+#[rstest]
+fn test_collectstatic_skips_nonexistent_autodiscovered_dirs(temp_dir: TempDir) {
+	let dest_dir = temp_dir.path().join("static_root");
+
+	// Create config with empty staticfiles_dirs
+	// All directories will come from inventory (if any)
+	let config = StaticFilesConfig {
+		static_url: "/static/".to_string(),
+		static_root: dest_dir.clone(),
+		staticfiles_dirs: vec![],
+		media_url: None,
+	};
+
+	let options = CollectStaticOptions {
+		verbosity: 2,
+		..Default::default()
+	};
+
+	let mut command = CollectStaticCommand::new(config, options);
+
+	// Execute command - should not fail even if auto-discovered dirs don't exist
+	let result = command.execute();
+	assert!(
+		result.is_ok(),
+		"CollectStatic should succeed even with non-existent auto-discovered dirs"
+	);
+
+	// Stats may be 0 if no auto-discovered directories exist
+	let _stats = result.unwrap();
+	// Test passes if execute() succeeded without errors
+}

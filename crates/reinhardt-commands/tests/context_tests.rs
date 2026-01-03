@@ -338,23 +338,16 @@ fn test_should_skip_checks_decision(
 	);
 }
 
-/// Decision table test for confirm method in test mode
-///
-/// **Category**: Decision Table
-/// **Verifies**: confirm() behavior with different default values
-///
-/// Note: In test mode (cfg!(test)), confirm always returns default_value
-///
-/// | default_value | Result |
-/// |---------------|--------|
-/// | true          | true   |
-/// | false         | false  |
 #[rstest]
 #[case(true, true)]
 #[case(false, false)]
 #[serial(user_interaction)]
 fn test_confirm_decision_table(#[case] default_value: bool, #[case] expected: bool) {
-	std::env::set_var("REINHARDT_TEST_MODE", "1");
+	// SAFETY: Setting environment variable in test mode with serial execution
+	// No concurrent access from other threads due to #[serial(user_interaction)]
+	unsafe {
+		std::env::set_var("REINHARDT_TEST_MODE", "1");
+	}
 
 	let ctx = CommandContext::new(vec![]);
 
@@ -367,26 +360,23 @@ fn test_confirm_decision_table(#[case] default_value: bool, #[case] expected: bo
 		default_value, expected
 	);
 
-	std::env::remove_var("REINHARDT_TEST_MODE");
+	// SAFETY: Removing environment variable in test mode with serial execution
+	// No concurrent access from other threads due to #[serial(user_interaction)]
+	unsafe {
+		std::env::remove_var("REINHARDT_TEST_MODE");
+	}
 }
 
-/// Decision table test for input method in test mode
-///
-/// **Category**: Decision Table
-/// **Verifies**: input() behavior with different default values
-///
-/// Note: In test mode, input always returns default_value or empty string
-///
-/// | default_value  | Result          |
-/// |----------------|-----------------|
-/// | Some("value")  | "value"         |
-/// | None           | ""              |
 #[rstest]
 #[case(Some("default"), "default")]
 #[case(None, "")]
 #[serial(user_interaction)]
 fn test_input_decision_table(#[case] default_value: Option<&str>, #[case] expected: &str) {
-	std::env::set_var("REINHARDT_TEST_MODE", "1");
+	// SAFETY: Setting environment variable in test mode with serial execution
+	// No concurrent access from other threads due to #[serial(user_interaction)]
+	unsafe {
+		std::env::set_var("REINHARDT_TEST_MODE", "1");
+	}
 
 	let ctx = CommandContext::new(vec![]);
 
@@ -399,7 +389,11 @@ fn test_input_decision_table(#[case] default_value: Option<&str>, #[case] expect
 		default_value, expected
 	);
 
-	std::env::remove_var("REINHARDT_TEST_MODE");
+	// SAFETY: Removing environment variable in test mode with serial execution
+	// No concurrent access from other threads due to #[serial(user_interaction)]
+	unsafe {
+		std::env::remove_var("REINHARDT_TEST_MODE");
+	}
 }
 
 // =============================================================================

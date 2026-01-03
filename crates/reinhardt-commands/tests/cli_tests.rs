@@ -4,11 +4,10 @@
 //! These tests verify that CLI arguments are correctly parsed and converted
 //! to CommandContext for command execution.
 
-use std::path::PathBuf;
-
 use clap::{CommandFactory, Parser};
 use reinhardt_commands::{Cli, CommandContext, Commands};
 use rstest::*;
+use std::path::PathBuf;
 
 // ============================================================================
 // Fixtures
@@ -18,6 +17,45 @@ use rstest::*;
 #[fixture]
 fn empty_context() -> CommandContext {
 	CommandContext::default()
+}
+
+// ============================================================================
+// Test Helper Functions for Runserver Command
+// ============================================================================
+
+/// Runserverコマンドのデフォルト設定を作成
+fn create_runserver_default() -> Commands {
+	Commands::Runserver {
+		address: "127.0.0.1:8000".to_string(),
+		noreload: false,
+		insecure: false,
+		no_docs: false,
+		with_pages: false,
+		static_dir: "dist".to_string(),
+		no_spa: false,
+	}
+}
+
+/// カスタム設定のRunserverコマンドを作成
+#[allow(clippy::too_many_arguments)]
+fn create_runserver_with_options(
+	address: &str,
+	noreload: bool,
+	insecure: bool,
+	no_docs: bool,
+	with_pages: bool,
+	static_dir: &str,
+	no_spa: bool,
+) -> Commands {
+	Commands::Runserver {
+		address: address.to_string(),
+		noreload,
+		insecure,
+		no_docs,
+		with_pages,
+		static_dir: static_dir.to_string(),
+		no_spa,
+	}
 }
 
 // ============================================================================
@@ -144,12 +182,8 @@ fn test_commands_makemigrations_parse_app_labels() {
 fn test_commands_runserver_default_address() {
 	let default_address = "127.0.0.1:8000".to_string();
 
-	let cmd = Commands::Runserver {
-		address: default_address.clone(),
-		noreload: false,
-		insecure: false,
-		no_docs: false,
-	};
+	let cmd =
+		create_runserver_with_options(&default_address, false, false, false, false, "dist", false);
 
 	match cmd {
 		Commands::Runserver { address, .. } => {
@@ -169,12 +203,7 @@ fn test_commands_runserver_default_address() {
 /// Verifies that custom address is correctly parsed.
 #[rstest]
 fn test_commands_runserver_custom_address() {
-	let cmd = Commands::Runserver {
-		address: "0.0.0.0:3000".to_string(),
-		noreload: true,
-		insecure: true,
-		no_docs: true,
-	};
+	let cmd = create_runserver_with_options("0.0.0.0:3000", true, true, true, false, "dist", false);
 
 	match cmd {
 		Commands::Runserver {
@@ -182,6 +211,7 @@ fn test_commands_runserver_custom_address() {
 			noreload,
 			insecure,
 			no_docs,
+			..
 		} => {
 			assert_eq!(address, "0.0.0.0:3000");
 			assert!(noreload, "noreload should be true");
@@ -784,12 +814,7 @@ fn test_cli_commands_sanity() {
 			fake_initial: false,
 			plan: false,
 		},
-		Commands::Runserver {
-			address: "127.0.0.1:8000".to_string(),
-			noreload: false,
-			insecure: false,
-			no_docs: false,
-		},
+		create_runserver_default(),
 		Commands::Shell { command: None },
 		Commands::Check {
 			app_label: None,
@@ -1131,12 +1156,7 @@ fn test_database_url_special_chars() {
 /// Verifies handling of empty address string.
 #[rstest]
 fn test_runserver_empty_address() {
-	let cmd = Commands::Runserver {
-		address: String::new(),
-		noreload: false,
-		insecure: false,
-		no_docs: false,
-	};
+	let cmd = create_runserver_with_options("", false, false, false, false, "dist", false);
 
 	match cmd {
 		Commands::Runserver { address, .. } => {
@@ -1201,12 +1221,8 @@ fn test_all_command_variants_creatable() {
 		plan: true,
 	};
 
-	let runserver = Commands::Runserver {
-		address: "0.0.0.0:8080".to_string(),
-		noreload: true,
-		insecure: true,
-		no_docs: true,
-	};
+	let runserver =
+		create_runserver_with_options("0.0.0.0:8080", true, true, true, true, "custom", true);
 
 	let shell = Commands::Shell {
 		command: Some("test".to_string()),
@@ -1240,5 +1256,108 @@ fn test_all_command_variants_creatable() {
 	for cmd in all_cmds {
 		let debug = format!("{:?}", cmd);
 		assert!(!debug.is_empty(), "All commands should have Debug output");
+	}
+}
+
+// ============================================================================
+// New Field Tests - Runserver with_pages, static_dir, no_spa
+// ============================================================================
+
+/// Test: Runserver with_pages flag
+///
+/// Category: Happy Path
+/// Verifies that with_pages flag can be enabled and disabled.
+#[rstest]
+fn test_runserver_with_pages_flag() {
+	let cmd_enabled =
+		create_runserver_with_options("127.0.0.1:8000", false, false, false, true, "dist", false);
+
+	if let Commands::Runserver { with_pages, .. } = cmd_enabled {
+		assert!(with_pages, "with_pages should be true");
+	} else {
+		panic!("Expected Runserver command");
+	}
+
+	let cmd_disabled = create_runserver_default();
+	if let Commands::Runserver { with_pages, .. } = cmd_disabled {
+		assert!(!with_pages, "with_pages should be false by default");
+	}
+}
+
+/// Test: Runserver static_dir custom directory
+///
+/// Category: Happy Path
+/// Verifies that static_dir can be set to a custom directory.
+#[rstest]
+fn test_runserver_static_dir_custom() {
+	let cmd = create_runserver_with_options(
+		"127.0.0.1:8000",
+		false,
+		false,
+		false,
+		true,
+		"custom_static",
+		false,
+	);
+
+	if let Commands::Runserver { static_dir, .. } = cmd {
+		assert_eq!(
+			static_dir, "custom_static",
+			"static_dir should be custom_static"
+		);
+	} else {
+		panic!("Expected Runserver command");
+	}
+
+	// デフォルト値のテスト
+	let cmd_default = create_runserver_default();
+	if let Commands::Runserver { static_dir, .. } = cmd_default {
+		assert_eq!(static_dir, "dist", "static_dir should default to dist");
+	}
+}
+
+/// Test: Runserver no_spa flag
+///
+/// Category: Happy Path
+/// Verifies that no_spa flag can be enabled and disabled.
+#[rstest]
+fn test_runserver_no_spa_flag() {
+	let cmd_enabled =
+		create_runserver_with_options("127.0.0.1:8000", false, false, false, true, "dist", true);
+
+	if let Commands::Runserver { no_spa, .. } = cmd_enabled {
+		assert!(no_spa, "no_spa should be true");
+	} else {
+		panic!("Expected Runserver command");
+	}
+
+	let cmd_disabled = create_runserver_default();
+	if let Commands::Runserver { no_spa, .. } = cmd_disabled {
+		assert!(!no_spa, "no_spa should be false by default");
+	}
+}
+
+/// Test: Runserver pages integration (multiple fields combination)
+///
+/// Category: Combination
+/// Verifies that multiple new fields work together correctly.
+#[rstest]
+fn test_runserver_pages_integration() {
+	// with_pages有効 + カスタムディレクトリ + SPA無効化の組み合わせ
+	let cmd =
+		create_runserver_with_options("0.0.0.0:3000", false, false, false, true, "build", true);
+
+	if let Commands::Runserver {
+		with_pages,
+		static_dir,
+		no_spa,
+		..
+	} = cmd
+	{
+		assert!(with_pages, "with_pages should be true");
+		assert_eq!(static_dir, "build", "static_dir should be build");
+		assert!(no_spa, "no_spa should be true");
+	} else {
+		panic!("Expected Runserver command");
 	}
 }
