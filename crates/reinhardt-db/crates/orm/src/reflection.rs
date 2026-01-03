@@ -17,11 +17,22 @@
 //!     age: i32,
 //! }
 //!
+//! # #[derive(Clone)]
+//! # struct UserFields;
+//! # impl reinhardt_orm::model::FieldSelector for UserFields {
+//! #     fn with_alias(self, _alias: &str) -> Self { self }
+//! # }
+//! #
 //! impl Model for User {
 //!     type PrimaryKey = i64;
+//!     type Fields = UserFields;
 //!
 //!     fn table_name() -> &'static str {
 //!         "users"
+//!     }
+//!
+//!     fn new_fields() -> Self::Fields {
+//!         UserFields
 //!     }
 //!
 //!     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -257,11 +268,22 @@ impl FieldInfo {
 ///     content: String,
 /// }
 ///
+/// # #[derive(Clone)]
+/// # struct ArticleFields;
+/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+/// #     fn with_alias(self, _alias: &str) -> Self { self }
+/// # }
+/// #
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
+///     type Fields = ArticleFields;
 ///
 ///     fn table_name() -> &'static str {
 ///         "articles"
+///     }
+///
+///     fn new_fields() -> Self::Fields {
+///         ArticleFields
 ///     }
 ///
 ///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -304,11 +326,22 @@ impl ModelReflector {
 	///     name: String,
 	/// }
 	///
+	/// # #[derive(Clone)]
+	/// # struct ProductFields;
+	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Product {
 	///     type PrimaryKey = i64;
+	///     type Fields = ProductFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "products"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         ProductFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
