@@ -489,12 +489,32 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, QuerySet};
+	/// # use reinhardt_orm::annotation::{Annotation, AnnotationValue};
+	/// # use reinhardt_orm::aggregation::Aggregate;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_orm::GroupByFields;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64>, author_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
 	/// // Query from a derived table showing author book counts
 	/// let results = QuerySet::<Book>::from_subquery(
-	///     |subq| {
+	///     |subq: QuerySet<Book>| {
 	///         subq.values(&["author_id"])
-	///             .group_by(|f| GroupByFields::new().add(&f.author_id))
 	///             .annotate(Annotation::new("book_count", AnnotationValue::Aggregate(Aggregate::count_all())))
 	///     },
 	///     "book_stats"
@@ -557,11 +577,46 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Join User and Post on user.id = post.user_id
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .inner_join::<Post>("id", "user_id")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn inner_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
 		let condition = format!(
@@ -591,11 +646,46 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Left join User and Post
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .left_join::<Post>("id", "user_id")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn left_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
 		let condition = format!(
@@ -625,11 +715,46 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Right join User and Post
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .right_join::<Post>("id", "user_id")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn right_join<R: crate::Model>(mut self, left_field: &str, right_field: &str) -> Self {
 		let condition = format!(
@@ -659,11 +784,46 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Category { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct CategoryFields;
+	/// # impl reinhardt_orm::model::FieldSelector for CategoryFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Category {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = CategoryFields;
+	/// #     fn table_name() -> &'static str { "categories" }
+	/// #     fn new_fields() -> Self::Fields { CategoryFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Cross join User and Category
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .cross_join::<Category>()
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn cross_join<R: crate::Model>(mut self) -> Self {
 		self.joins.push(JoinClause {
@@ -686,13 +846,46 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::query_fields::Field;
+	/// # use reinhardt_orm::FieldSelector;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields {
+	/// #     pub id: Field<User, i64>,
+	/// # }
+	/// # impl UserFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self { id: Field::new(vec!["id"]) }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for UserFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.id = self.id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Self-join: find user pairs
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .from_as("u1")
-	///     .inner_join_as::<User>("u2", "u1.id < u2.id")
-	///     .all_raw()
-	///     .await?;
+	///     .inner_join_as::<User, _>("u1", "u2", |left, right| left.id.field_lt(right.id))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn from_as(mut self, alias: &str) -> Self {
 		self.from_alias = Some(alias.to_string());
@@ -715,11 +908,46 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Join with complex condition
-	/// let results = User::objects()
+	/// let sql = User::objects()
+	///     .all()
 	///     .inner_join_on::<Post>("users.id = posts.user_id AND posts.title LIKE 'First%'")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn inner_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
 		self.joins.push(JoinClause {
@@ -747,10 +975,45 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// let results = User::objects()
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let sql = User::objects()
+	///     .all()
 	///     .left_join_on::<Post>("users.id = posts.user_id AND posts.published = true")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn left_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
 		self.joins.push(JoinClause {
@@ -778,10 +1041,45 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// let results = User::objects()
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let sql = User::objects()
+	///     .all()
 	///     .right_join_on::<Post>("users.id = posts.user_id AND users.active = true")
-	///     .all_raw()
-	///     .await?;
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn right_join_on<R: crate::Model>(mut self, condition: &str) -> Self {
 		self.joins.push(JoinClause {
@@ -811,13 +1109,45 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::query_fields::Field;
+	/// # use reinhardt_orm::FieldSelector;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields {
+	/// #     pub id: Field<User, i64>,
+	/// # }
+	/// # impl UserFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self { id: Field::new(vec!["id"]) }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for UserFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.id = self.id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Self-join: find user pairs where user1.id < user2.id
-	/// let results = User::objects()
-	///     .from_as("u1")
-	///     .inner_join_as::<User, _>("u2", |on| on.condition("u1.id < u2.id"))
-	///     .all_raw()
-	///     .await?;
+	/// let sql = User::objects()
+	///     .all()
+	///     .inner_join_as::<User, _>("u1", "u2", |u1, u2| u1.id.field_lt(u2.id))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -874,12 +1204,50 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// let results = User::objects()
-	///     .from_as("u1")
-	///     .left_join_as::<User, _>("u2", |on| on.condition("u1.id = u2.manager_id"))
-	///     .all_raw()
-	///     .await?;
+	/// ```
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::query_fields::Field;
+	/// # use reinhardt_orm::FieldSelector;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields {
+	/// #     pub id: Field<User, i64>,
+	/// #     pub manager_id: Field<User, i64>,
+	/// # }
+	/// # impl UserFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             id: Field::new(vec!["id"]),
+	/// #             manager_id: Field::new(vec!["manager_id"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for UserFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.id = self.id.with_alias(alias);
+	/// #         self.manager_id = self.manager_id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// // Self-join with LEFT JOIN: find employees and their managers
+	/// let sql = User::objects()
+	///     .all()
+	///     .left_join_as::<User, _>("u1", "u2", |u1, u2| u2.id.field_eq(u1.manager_id))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -936,12 +1304,50 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// let results = User::objects()
-	///     .from_as("u1")
-	///     .right_join_as::<User, _>("u2", |on| on.condition("u1.department_id = u2.id"))
-	///     .all_raw()
-	///     .await?;
+	/// ```
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::query_fields::Field;
+	/// # use reinhardt_orm::FieldSelector;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields {
+	/// #     pub id: Field<User, i64>,
+	/// #     pub department_id: Field<User, i64>,
+	/// # }
+	/// # impl UserFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             id: Field::new(vec!["id"]),
+	/// #             department_id: Field::new(vec!["department_id"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for UserFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.id = self.id.with_alias(alias);
+	/// #         self.department_id = self.department_id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// // RIGHT JOIN: find all departments even if no users belong to them
+	/// let sql = User::objects()
+	///     .all()
+	///     .right_join_as::<User, _>("u1", "u2", |u1, u2| u2.id.field_eq(u1.department_id))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -997,24 +1403,80 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct BookFields {
+	/// #     pub author_id: Field<Book, i64>,
+	/// # }
+	/// # impl BookFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self { author_id: Field::new(vec!["author_id"]) }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for BookFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.author_id = self.author_id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Sale { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct SaleFields {
+	/// #     pub region: Field<Sale, String>,
+	/// #     pub product_category: Field<Sale, String>,
+	/// # }
+	/// # impl SaleFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             region: Field::new(vec!["region"]),
+	/// #             product_category: Field::new(vec!["product_category"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for SaleFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.region = self.region.with_alias(alias);
+	/// #         self.product_category = self.product_category.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Sale {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = SaleFields;
+	/// #     fn table_name() -> &'static str { "sales" }
+	/// #     fn new_fields() -> Self::Fields { SaleFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Group by single field
-	/// Book::objects()
-	///     .group_by(|g| g.add("author_id"))
+	/// let sql1 = Book::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.author_id))
+	///     .to_sql();
 	///
-	/// // Group by multiple fields
-	/// Sale::objects()
-	///     .group_by(|g| g.fields(&["region", "product_category"]))
+	/// // Group by multiple fields (chain .add())
+	/// let sql2 = Sale::objects()
 	///     .all()
-	///     .await?;
-	///
-	/// // Chain multiple fields
-	/// Sale::objects()
-	///     .group_by(|g| g.add("region").add("product_category"))
-	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.region).add(&fields.product_category))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -1046,13 +1508,49 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields {
+	/// #     pub author_id: Field<Author, i64>,
+	/// #     pub price: Field<Author, f64>,
+	/// # }
+	/// # impl AuthorFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             author_id: Field::new(vec!["author_id"]),
+	/// #             price: Field::new(vec!["price"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for AuthorFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.author_id = self.author_id.with_alias(alias);
+	/// #         self.price = self.price.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors with average book price > 1500
-	/// Author::objects()
-	///     .group_by(|g| g.add("author_id"))
-	///     .having_avg(|f| f.field("price"), ComparisonOp::Gt, 1500.0)
+	/// let sql = Author::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.author_id))
+	///     .having_avg(|fields| &fields.price, |avg| avg.gt(1500.0))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -1114,13 +1612,44 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields {
+	/// #     pub author_id: Field<Author, i64>,
+	/// # }
+	/// # impl AuthorFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self { author_id: Field::new(vec!["author_id"]) }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for AuthorFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.author_id = self.author_id.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors with more than 5 books
-	/// Author::objects()
-	///     .group_by(|g| g.add("author_id"))
-	///     .having_count(|f| f.field("*"), ComparisonOp::Gt, 5)
+	/// let sql = Author::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.author_id))
+	///     .having_count(|count| count.gt(5))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -1173,13 +1702,49 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Product { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct ProductFields {
+	/// #     pub category: Field<Product, String>,
+	/// #     pub sales_amount: Field<Product, f64>,
+	/// # }
+	/// # impl ProductFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             category: Field::new(vec!["category"]),
+	/// #             sales_amount: Field::new(vec!["sales_amount"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for ProductFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.category = self.category.with_alias(alias);
+	/// #         self.sales_amount = self.sales_amount.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Product {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ProductFields;
+	/// #     fn table_name() -> &'static str { "products" }
+	/// #     fn new_fields() -> Self::Fields { ProductFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find categories with total sales > 10000
-	/// Product::objects()
-	///     .group_by(|g| g.add("category"))
-	///     .having_sum(|f| f.field("sales_amount"), ComparisonOp::Gt, 10000)
+	/// let sql = Product::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.category))
+	///     .having_sum(|fields| &fields.sales_amount, |sum| sum.gt(10000.0))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	/// # Breaking Change
 	///
@@ -1241,13 +1806,49 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields {
+	/// #     pub author_id: Field<Author, i64>,
+	/// #     pub price: Field<Author, f64>,
+	/// # }
+	/// # impl AuthorFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             author_id: Field::new(vec!["author_id"]),
+	/// #             price: Field::new(vec!["price"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for AuthorFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.author_id = self.author_id.with_alias(alias);
+	/// #         self.price = self.price.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors where minimum book price > 1000
-	/// QuerySet::<Author>::new()
-	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
-	///     .having_min(|f| &f.price, |min| min.gt(1000))
+	/// let sql = Author::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.author_id))
+	///     .having_min(|fields| &fields.price, |min| min.gt(1000.0))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn having_min<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
 	where
@@ -1306,13 +1907,49 @@ where
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```
+	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields {
+	/// #     pub author_id: Field<Author, i64>,
+	/// #     pub price: Field<Author, f64>,
+	/// # }
+	/// # impl AuthorFields {
+	/// #     pub fn new() -> Self {
+	/// #         Self {
+	/// #             author_id: Field::new(vec!["author_id"]),
+	/// #             price: Field::new(vec!["price"]),
+	/// #         }
+	/// #     }
+	/// # }
+	/// # impl FieldSelector for AuthorFields {
+	/// #     fn with_alias(mut self, alias: &str) -> Self {
+	/// #         self.author_id = self.author_id.with_alias(alias);
+	/// #         self.price = self.price.with_alias(alias);
+	/// #         self
+	/// #     }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields::new() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors where maximum book price < 5000
-	/// QuerySet::<Author>::new()
-	///     .group_by(|f| GroupByFields::new().add(&f.author_id))
-	///     .having_max(|f| &f.price, |max| max.lt(5000))
+	/// let sql = Author::objects()
 	///     .all()
-	///     .await?;
+	///     .group_by(|fields| GroupByFields::new().add(&fields.author_id))
+	///     .having_max(|fields| &fields.price, |max| max.lt(5000.0))
+	///     .to_sql();
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn having_max<FS, FE, NT>(mut self, field_selector: FS, expr_fn: FE) -> Self
 	where
@@ -1363,6 +2000,40 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields;
+	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors who have books priced over 1500
 	/// let authors = Author::objects()
 	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
@@ -1371,6 +2042,8 @@ where
 	///     })
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_in_subquery<R: crate::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
 	where
@@ -1394,6 +2067,40 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields;
+	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find authors who have NO books priced over 1500
 	/// let authors = Author::objects()
 	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
@@ -1402,6 +2109,8 @@ where
 	///     })
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_not_in_subquery<R: crate::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
 	where
@@ -1426,13 +2135,50 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields;
+	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_orm::F;
 	/// // Find authors who have at least one book
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
-	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef("authors.id")))
+	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
 	///     })
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_exists<R: crate::Model, F>(mut self, subquery_fn: F) -> Self
 	where
@@ -1456,13 +2202,50 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields;
+	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_orm::F;
 	/// // Find authors who have NO books
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
-	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef("authors.id")))
+	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
 	///     })
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_not_exists<R: crate::Model, F>(mut self, subquery_fn: F) -> Self
 	where
@@ -1487,8 +2270,25 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::cte::CTE;
-	///
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::cte::CTE;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Employee { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct EmployeeFields;
+	/// # impl reinhardt_orm::model::FieldSelector for EmployeeFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Employee {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = EmployeeFields;
+	/// #     fn table_name() -> &'static str { "employees" }
+	/// #     fn new_fields() -> Self::Fields { EmployeeFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Simple CTE
 	/// let high_earners = CTE::new("high_earners", "SELECT * FROM employees WHERE salary > 100000");
 	/// let results = Employee::objects()
@@ -1509,6 +2309,8 @@ where
 	///     .with_cte(hierarchy)
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn with_cte(mut self, cte: crate::cte::CTE) -> Self {
 		self.ctes.add(cte);
@@ -1527,6 +2329,24 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Customer { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct CustomerFields;
+	/// # impl reinhardt_orm::model::FieldSelector for CustomerFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Customer {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = CustomerFields;
+	/// #     fn table_name() -> &'static str { "customers" }
+	/// #     fn new_fields() -> Self::Fields { CustomerFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_orm::lateral_join::{LateralJoin, LateralJoinPatterns};
 	///
 	/// // Get top 3 orders per customer
@@ -1540,6 +2360,7 @@ where
 	/// );
 	///
 	/// let results = Customer::objects()
+	///     .all()
 	///     .with_lateral_join(top_orders)
 	///     .all()
 	///     .await?;
@@ -1554,9 +2375,12 @@ where
 	/// );
 	///
 	/// let customers_with_orders = Customer::objects()
+	///     .all()
 	///     .with_lateral_join(latest)
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn with_lateral_join(mut self, join: crate::lateral_join::LateralJoin) -> Self {
 		self.lateral_joins.add(join);
@@ -2067,6 +2891,28 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, author: Author, category: Category }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { name: String }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Category { name: String }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Single query with JOINs instead of N+1 queries
 	/// let posts = Post::objects()
 	///     .select_related(&["author", "category"])
@@ -2077,6 +2923,8 @@ where
 	/// for post in posts {
 	///     println!("Author: {}", post.author.name); // No additional query
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn select_related(mut self, fields: &[&str]) -> Self {
 		self.select_related_fields = fields.iter().map(|s| s.to_string()).collect();
@@ -2090,13 +2938,27 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
 	/// let queryset = Post::objects()
 	///     .select_related(&["author", "category"])
-	///     .filter(Filter::new(
-	///         "published".to_string(),
-	///         FilterOperator::Eq,
-	///         FilterValue::Boolean(true),
-	///     ));
+	///     .filter(Filter::new("published", FilterOperator::Eq, FilterValue::Boolean(true)));
 	///
 	/// let stmt = queryset.select_related_query();
 	/// // Generates:
@@ -2289,6 +3151,28 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, comments: Vec<Comment>, tags: Vec<Tag> }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Comment { text: String }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Tag { name: String }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // 2 queries total instead of N+1 queries
 	/// let posts = Post::objects()
 	///     .prefetch_related(&["comments", "tags"])
@@ -2301,6 +3185,8 @@ where
 	///         println!("Comment: {}", comment.text); // No additional query
 	///     }
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn prefetch_related(mut self, fields: &[&str]) -> Self {
 		self.prefetch_related_fields = fields.iter().map(|s| s.to_string()).collect();
@@ -2315,6 +3201,24 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let queryset = Post::objects()
 	///     .prefetch_related(&["comments", "tags"]);
 	///
@@ -2327,6 +3231,8 @@ where
 	/// // 2. tags: SELECT tags.* FROM tags
 	/// //          INNER JOIN post_tags ON tags.id = post_tags.tag_id
 	/// //          WHERE post_tags.post_id IN ($1, $2, $3)
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn prefetch_related_queries(&self, pk_values: &[i64]) -> Vec<(String, SelectStatement)> {
 		if pk_values.is_empty() {
@@ -2431,19 +3337,40 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// // Fetch all users
-	/// let users = User::objects().all().await?;
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// // Fetch all users (Manager.all() returns QuerySet, then call .all().await)
+	/// let users = User::objects().all().all().await?;
 	///
 	/// // Fetch filtered users with eager loading
 	/// let active_users = User::objects()
-	///     .filter(Filter::new(
-	///         "is_active".to_string(),
+	///     .filter(
+	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     ))
+	///     )
 	///     .select_related(&["profile"])
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	///
 	/// # Errors
@@ -2523,13 +3450,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64>, username: String }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch first active user
 	/// let user = User::objects()
-	///     .filter(Filter::new(
-	///         "is_active".to_string(),
+	///     .filter(
+	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     ))
+	///     )
 	///     .first()
 	///     .await?;
 	///
@@ -2537,6 +3483,8 @@ where
 	///     Some(u) => println!("Found user: {}", u.username),
 	///     None => println!("No active users found"),
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn first(&self) -> reinhardt_core::exception::Result<Option<T>>
 	where
@@ -2553,15 +3501,36 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64>, email: String }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Fetch user with specific email (must be unique)
 	/// let user = User::objects()
-	///     .filter(Filter::new(
-	///         "email".to_string(),
+	///     .filter(
+	///         "email",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("alice@example.com".to_string()),
-	///     ))
+	///     )
 	///     .get()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	///
 	/// # Errors
@@ -2592,11 +3561,31 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// let db = get_database_connection().await?;
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # let db = reinhardt_orm::manager::get_connection().await?;
 	/// let users = User::objects()
-	///     .filter(User::field_status().eq("active"))
-	///     .all(&db)
+	///     .all()
+	///     .all_with_db(&db)
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn all_with_db(
 		&self,
@@ -2662,11 +3651,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// let db = get_database_connection().await?;
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # let user_id = 1;
+	/// let db = reinhardt_orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter(User::field_id().eq(user_id))
-	///     .get(&db)
+	///     .filter("id", reinhardt_orm::FilterOperator::Eq, reinhardt_orm::FilterValue::Integer(user_id))
+	///     .get_with_db(&db)
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn get_with_db(
 		&self,
@@ -2693,11 +3703,31 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// let db = get_database_connection().await?;
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// let db = reinhardt_orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter(User::field_status().eq("active"))
-	///     .first(&db)
+	///     .filter("status", reinhardt_orm::FilterOperator::Eq, reinhardt_orm::FilterValue::String("active".to_string()))
+	///     .first_with_db(&db)
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn first_with_db(
 		&self,
@@ -2717,17 +3747,38 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Count active users
 	/// let count = User::objects()
-	///     .filter(Filter::new(
-	///         "is_active".to_string(),
+	///     .filter(
+	///         "is_active",
 	///         FilterOperator::Eq,
 	///         FilterValue::Boolean(true),
-	///     ))
+	///     )
 	///     .count()
 	///     .await?;
 	///
 	/// println!("Active users: {}", count);
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
 		use sea_query::{Func, PostgresQueryBuilder};
@@ -2771,19 +3822,40 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Check if any admin users exist
 	/// let has_admin = User::objects()
-	///     .filter(Filter::new(
-	///         "role".to_string(),
+	///     .filter(
+	///         "role",
 	///         FilterOperator::Eq,
 	///         FilterValue::String("admin".to_string()),
-	///     ))
+	///     )
 	///     .exists()
 	///     .await?;
 	///
 	/// if has_admin {
 	///     println!("Admin users exist");
 	/// }
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn exists(&self) -> reinhardt_core::exception::Result<bool> {
 		let count = self.count().await?;
@@ -2795,12 +3867,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64>, username: String, email: String }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let user = User {
 	///     id: None,
 	///     username: "alice".to_string(),
 	///     email: "alice@example.com".to_string(),
 	/// };
-	/// let created = User::objects().create(user).await?;
+	/// let created = User::objects().create(&user).await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub async fn create(&self, object: T) -> reinhardt_core::exception::Result<T>
 	where
@@ -2855,13 +3947,28 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_orm::query::UpdateValue;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
 	/// use std::collections::HashMap;
 	/// let queryset = User::objects()
-	///     .filter(Filter::new(
-	///         "id".to_string(),
-	///         FilterOperator::Eq,
-	///         FilterValue::Integer(1),
-	///     ));
+	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
 	///
 	/// let mut updates = HashMap::new();
 	/// updates.insert("name".to_string(), UpdateValue::String("Alice".to_string()));
@@ -2914,12 +4021,26 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
 	/// let queryset = User::objects()
-	///     .filter(Filter::new(
-	///         "id".to_string(),
-	///         FilterOperator::Eq,
-	///         FilterValue::Integer(1),
-	///     ));
+	///     .filter("id", FilterOperator::Eq, FilterValue::Integer(1));
 	///
 	/// let (sql, params) = queryset.delete_sql();
 	/// // sql: "DELETE FROM users WHERE id = $1"
@@ -2963,14 +4084,36 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::composite_pk::PkValue;
-	/// use std::collections::HashMap;
-	///
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::composite_pk::{CompositePrimaryKey, PkValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # use std::collections::HashMap;
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct PostTag { post_id: i64, tag_id: i64 }
+	/// # #[derive(Clone)]
+	/// # struct PostTagFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostTagFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for PostTag {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostTagFields;
+	/// #     fn table_name() -> &'static str { "post_tags" }
+	/// #     fn new_fields() -> Self::Fields { PostTagFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { None }
+	/// #     fn set_primary_key(&mut self, _value: Self::PrimaryKey) {}
+	/// #     fn composite_primary_key() -> Option<CompositePrimaryKey> {
+	/// #         CompositePrimaryKey::new(vec!["post_id".to_string(), "tag_id".to_string()]).ok()
+	/// #     }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut pk_values = HashMap::new();
 	/// pk_values.insert("post_id".to_string(), PkValue::Int(1));
 	/// pk_values.insert("tag_id".to_string(), PkValue::Int(5));
 	///
 	/// let post_tag = PostTag::objects().get_composite(&pk_values).await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	///
 	/// # Errors
@@ -3083,6 +4226,24 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_orm::annotation::{Annotation, AnnotationValue};
 	/// use reinhardt_orm::aggregation::Aggregate;
 	///
@@ -3092,6 +4253,8 @@ where
 	///         AnnotationValue::Aggregate(Aggregate::count(Some("orders")))))
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn annotate(mut self, annotation: crate::annotation::Annotation) -> Self {
 		self.annotations.push(annotation);
@@ -3116,6 +4279,41 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_orm::OuterRef;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Author { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct AuthorFields;
+	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Author {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = AuthorFields;
+	/// #     fn table_name() -> &'static str { "authors" }
+	/// #     fn new_fields() -> Self::Fields { AuthorFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Book { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct BookFields;
+	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Book {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = BookFields;
+	/// #     fn table_name() -> &'static str { "books" }
+	/// #     fn new_fields() -> Self::Fields { BookFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Add book count for each author
 	/// let authors = Author::objects()
 	///     .annotate_subquery::<Book, _>("book_count", |subq| {
@@ -3129,6 +4327,8 @@ where
 	///     .all()
 	///     .await?;
 	/// // Generates: SELECT *, (SELECT COUNT(*) FROM books WHERE author_id = authors.id) AS book_count FROM authors
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn annotate_subquery<M, F>(mut self, name: &str, builder: F) -> Self
 	where
@@ -3159,19 +4359,56 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Serialize, Deserialize, Clone)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Serialize, Deserialize, Clone)]
+	/// # struct Order { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct OrderFields;
+	/// # impl reinhardt_orm::model::FieldSelector for OrderFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Order {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = OrderFields;
+	/// #     fn table_name() -> &'static str { "orders" }
+	/// #     fn new_fields() -> Self::Fields { OrderFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_orm::aggregation::Aggregate;
 	///
 	/// // Count all users
 	/// let result = User::objects()
+	///     .all()
 	///     .aggregate(Aggregate::count_all().with_alias("total_users"))
 	///     .all()
 	///     .await?;
 	///
 	/// // Sum order amounts
 	/// let result = Order::objects()
+	///     .all()
 	///     .aggregate(Aggregate::sum("amount").with_alias("total_amount"))
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn aggregate(mut self, aggregate: crate::aggregation::Aggregate) -> Self {
 		// Convert Aggregate to Annotation and add to annotations list
@@ -3424,6 +4661,25 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Select only specific fields
 	/// let users = User::objects()
 	///     .values(&["id", "username", "email"])
@@ -3433,10 +4689,12 @@ where
 	///
 	/// // Combine with filters
 	/// let active_user_names = User::objects()
-	///     .filter(Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Bool(true)))
+	///     .filter("is_active", FilterOperator::Eq, FilterValue::Boolean(true))
 	///     .values(&["username"])
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn values(mut self, fields: &[&str]) -> Self {
 		self.selected_fields = Some(fields.iter().map(|s| s.to_string()).collect());
@@ -3452,11 +4710,31 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Same as values()
 	/// let user_data = User::objects()
 	///     .values_list(&["id", "username"])
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn values_list(self, fields: &[&str]) -> Self {
 		self.values(fields)
@@ -3467,6 +4745,24 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # fn example() {
 	/// // Ascending order
 	/// User::objects().order_by(&["name"]);
 	///
@@ -3475,6 +4771,7 @@ where
 	///
 	/// // Multiple fields
 	/// User::objects().order_by(&["department", "-salary"]);
+	/// # }
 	/// ```
 	pub fn order_by(mut self, fields: &[&str]) -> Self {
 		self.order_by_fields = fields.iter().map(|s| s.to_string()).collect();
@@ -3495,10 +4792,30 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let users = User::objects()
 	///     .limit(10)
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn limit(mut self, limit: usize) -> Self {
 		self.limit = Some(limit);
@@ -3513,11 +4830,31 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let users = User::objects()
 	///     .offset(20)
 	///     .limit(10)
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn offset(mut self, offset: usize) -> Self {
 		self.offset = Some(offset);
@@ -3532,11 +4869,31 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Page 3, 10 items per page (offset=20, limit=10)
 	/// let users = User::objects()
 	///     .paginate(3, 10)
 	///     .all()
 	///     .await?;
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn paginate(self, page: usize, page_size: usize) -> Self {
 		let offset = page.saturating_sub(1) * page_size;
@@ -3551,16 +4908,49 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64> }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
 	/// // Use in IN clause
 	/// let active_user_ids = User::objects()
-	///     .filter(Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Bool(true)))
-	///     .values(vec!["id"])
+	///     .filter("is_active", FilterOperator::Eq, FilterValue::Bool(true))
+	///     .values(&["id"])
 	///     .as_subquery();
 	/// // Generates: (SELECT id FROM users WHERE is_active = $1)
 	///
 	/// // Use as derived table
 	/// let subquery = Post::objects()
-	///     .filter(Filter::new("published".to_string(), FilterOperator::Eq, FilterValue::Bool(true)))
+	///     .filter("published", FilterOperator::Eq, FilterValue::Bool(true))
 	///     .as_subquery();
 	/// // Generates: (SELECT * FROM posts WHERE published = $1)
 	/// ```
@@ -3576,12 +4966,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64>, username: String, email: String }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Defer large text fields
 	/// let users = User::objects()
 	///     .defer(&["bio", "profile_picture"])
 	///     .all()
 	///     .await?;
 	/// // Generates: SELECT id, username, email FROM users (excluding bio, profile_picture)
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn defer(mut self, fields: &[&str]) -> Self {
 		self.deferred_fields = fields.iter().map(|s| s.to_string()).collect();
@@ -3597,12 +5007,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct User { id: Option<i64>, username: String }
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for User {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
+	/// #     fn table_name() -> &'static str { "users" }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Load only specific fields
 	/// let users = User::objects()
 	///     .only(&["id", "username"])
 	///     .all()
 	///     .await?;
 	/// // Generates: SELECT id, username FROM users
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn only(self, fields: &[&str]) -> Self {
 		self.values(fields)
@@ -3623,12 +5053,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Article { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Article {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ArticleFields;
+	/// #     fn table_name() -> &'static str { "articles" }
+	/// #     fn new_fields() -> Self::Fields { ArticleFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Search articles for "rust programming"
 	/// let articles = Article::objects()
 	///     .full_text_search("search_vector", "rust programming")
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE search_vector @@ plainto_tsquery('english', 'rust programming')
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn full_text_search(self, field: &str, query: &str) -> Self {
 		self.filter(Filter::new(
@@ -3650,12 +5100,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find posts with any of these tags
 	/// let posts = Post::objects()
 	///     .filter_array_overlap("tags", &["rust", "programming"])
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE tags && ARRAY['rust', 'programming']
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_array_overlap(self, field: &str, values: &[&str]) -> Self {
 		self.filter(Filter::new(
@@ -3677,12 +5147,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Post { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Post {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
+	/// #     fn table_name() -> &'static str { "posts" }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find posts that have both "rust" and "async" tags
 	/// let posts = Post::objects()
 	///     .filter_array_contains("tags", &["rust", "async"])
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE tags @> ARRAY['rust', 'async']
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_array_contains(self, field: &str, values: &[&str]) -> Self {
 		self.filter(Filter::new(
@@ -3704,12 +5194,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Product { id: Option<i64>, name: String }
+	/// # #[derive(Clone)]
+	/// # struct ProductFields;
+	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Product {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ProductFields;
+	/// #     fn table_name() -> &'static str { "products" }
+	/// #     fn new_fields() -> Self::Fields { ProductFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find products with specific metadata
 	/// let products = Product::objects()
 	///     .filter_jsonb_contains("metadata", r#"{"active": true}"#)
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE metadata @> '{"active": true}'::jsonb
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_jsonb_contains(self, field: &str, json: &str) -> Self {
 		self.filter(Filter::new(
@@ -3731,12 +5241,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Product { id: Option<i64>, name: String }
+	/// # #[derive(Clone)]
+	/// # struct ProductFields;
+	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Product {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ProductFields;
+	/// #     fn table_name() -> &'static str { "products" }
+	/// #     fn new_fields() -> Self::Fields { ProductFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find products with "sale_price" in metadata
 	/// let products = Product::objects()
 	///     .filter_jsonb_key_exists("metadata", "sale_price")
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE metadata ? 'sale_price'
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_jsonb_key_exists(self, field: &str, key: &str) -> Self {
 		self.filter(Filter::new(
@@ -3758,12 +5288,32 @@ where
 	/// # Examples
 	///
 	/// ```no_run
+	/// # use reinhardt_orm::Model;
+	/// # use serde::{Serialize, Deserialize};
+	/// # #[derive(Clone, Serialize, Deserialize)]
+	/// # struct Event { id: Option<i64>, name: String }
+	/// # #[derive(Clone)]
+	/// # struct EventFields;
+	/// # impl reinhardt_orm::model::FieldSelector for EventFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// # impl Model for Event {
+	/// #     type PrimaryKey = i64;
+	/// #     type Fields = EventFields;
+	/// #     fn table_name() -> &'static str { "events" }
+	/// #     fn new_fields() -> Self::Fields { EventFields }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
+	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// # }
+	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // Find events that include a specific date
 	/// let events = Event::objects()
 	///     .filter_range_contains("date_range", "2024-06-15")
 	///     .all()
 	///     .await?;
 	/// // Generates: WHERE date_range @> '2024-06-15'
+	/// # Ok(())
+	/// # }
 	/// ```
 	pub fn filter_range_contains(self, field: &str, value: &str) -> Self {
 		self.filter(Filter::new(
