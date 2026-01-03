@@ -1,0 +1,7 @@
+error: Attribute 'min' must be an integer, not a boolean.
+
+       Use an integer literal or dynamic expression instead.
+ --> tests/ui/page/fail/numeric_attr_bool_literal.rs:9:4
+  |
+9 |             min: true,
+  |             ^^^

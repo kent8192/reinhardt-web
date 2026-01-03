@@ -1,0 +1,9 @@
+error: Attribute 'rows' must be an integer, not a floating-point number.
+
+       Examples:
+       Incorrect: rows=100.0   // Float literal is not allowed
+       Correct:   rows=100     // Integer literal
+ --> tests/ui/page/fail/numeric_attr_float_literal.rs:8:4
+  |
+8 |             rows: 10.5,
+  |             ^^^^

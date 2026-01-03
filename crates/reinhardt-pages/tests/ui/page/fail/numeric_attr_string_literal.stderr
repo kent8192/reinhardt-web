@@ -1,0 +1,10 @@
+error: Attribute 'maxlength' must be an integer literal or dynamic expression, not a string literal.
+
+       Examples:
+       Incorrect: maxlength="100"  // String literal is not allowed
+       Correct:   maxlength=100      // Integer literal
+       Correct:   maxlength=max_len  // Dynamic expression
+ --> tests/ui/page/fail/numeric_attr_string_literal.rs:9:4
+  |
+9 |             maxlength: "100",
+  |             ^^^^^^^^^
