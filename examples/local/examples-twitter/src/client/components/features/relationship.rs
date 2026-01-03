@@ -58,16 +58,16 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> View {
 
 	#[cfg(target_arch = "wasm32")]
 	{
-		let is_following = is_following.clone();
-		let loading = loading.clone();
-		let error = error.clone();
+		let is_following_clone = is_following.clone();
+		let loading_clone = loading.clone();
+		let error_clone = error.clone();
 
 		page!(|btn_class: String, btn_text: String, has_error: bool, error_text: String| {
 			div {
 				button {
 					r#type: "button",
 					class: btn_class,
-					@click: move |_event| { let is_following = is_following.clone(); let loading = loading.clone(); let error = error.clone(); let currently_following = is_following.get(); spawn_local(async move { loading.set(true); error.set(None); let result = if currently_following { unfollow_user(target_user_id).await } else { follow_user(target_user_id).await }; match result { Ok(()) => { is_following.set(! currently_following); loading.set(false); } Err(e) => { error.set(Some(e.to_string())); loading.set(false); } } }); },
+					@click: { let is_following = is_following_clone.clone(); let loading = loading_clone.clone(); let error = error_clone.clone(); move |_event| { let is_following_inner = is_following.clone(); let loading_inner = loading.clone(); let error_inner = error.clone(); let currently_following = is_following.get(); spawn_local(async move { loading_inner.set(true); error_inner.set(None); let result = if currently_following { unfollow_user(target_user_id).await } else { follow_user(target_user_id).await }; match result { Ok(()) => { is_following_inner.set(! currently_following); loading_inner.set(false); } Err(e) => { error_inner.set(Some(e.to_string())); loading_inner.set(false); } } }); } },
 					{ btn_text }
 				}
 				if has_error {

@@ -4,7 +4,7 @@
 //! Validation is handled server-side via server functions with automatic CSRF protection.
 
 use crate::shared::types::{ProfileResponse, UpdateProfileRequest};
-use reinhardt_pages::component::{ElementView, IntoView, View};
+use reinhardt_pages::component::View;
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::hooks::use_state;
 use uuid::Uuid;
@@ -52,107 +52,116 @@ pub fn profile_view(user_id: Uuid) -> View {
 		});
 	}
 
-	ElementView::new("div")
-		.attr("class", "container mt-5")
-		.child(
-			ElementView::new("div")
-				.attr("class", "row justify-content-center")
-				.child(
-					ElementView::new("div").attr("class", "col-md-8").child(
-						ElementView::new("div").attr("class", "card").child(
-							ElementView::new("div")
-								.attr("class", "card-body")
-								.child(
-									ElementView::new("h2")
-										.attr("class", "card-title mb-4")
-										.child("Profile"),
-								)
-								.child({
-									use crate::client::components::common::{
-										error_alert, loading_spinner,
-									};
+	// Extract signal values for page! macro
+	let loading_state = loading.get();
+	let error_msg = error.get().unwrap_or_default();
+	let has_error = error.get().is_some();
+	let profile_data = profile.get();
+	let has_profile = profile.get().is_some();
 
-									// Loading state
-									if loading.get() {
-										loading_spinner()
-									} else if let Some(err) = error.get() {
-										// Error state
-										error_alert(&err, false)
-									} else if let Some(profile_data) = profile.get() {
-										// Profile data
-										ElementView::new("div")
-											.child(
-												ElementView::new("div")
-													.attr("class", "mb-3")
-													.child(ElementView::new("strong").child("Bio:"))
-													.child(ElementView::new("p").child(
-														profile_data.bio.unwrap_or_else(|| {
-															"No bio provided".to_string()
-														}),
-													)),
-											)
-											.child(
-												ElementView::new("div")
-													.attr("class", "mb-3")
-													.child(
-														ElementView::new("strong")
-															.child("Location:"),
-													)
-													.child(ElementView::new("p").child(
-														profile_data.location.unwrap_or_else(
-															|| "Not specified".to_string(),
-														),
-													)),
-											)
-											.child(
-												ElementView::new("div")
-													.attr("class", "mb-3")
-													.child(
-														ElementView::new("strong")
-															.child("Website:"),
-													)
-													.child(ElementView::new("p").child(
-														if let Some(website) = profile_data.website
-														{
-															ElementView::new("a")
-																.attr("href", website.clone())
-																.attr("target", "_blank")
-																.attr("rel", "noopener noreferrer")
-																.child(website)
-																.into_view()
-														} else {
-															ElementView::new("span")
-																.child("No website")
-																.into_view()
-														},
-													)),
-											)
-											.child(
-												ElementView::new("div")
-													.attr("class", "mt-4")
-													.child(
-														ElementView::new("a")
-															.attr(
-																"href",
-																format!(
-																	"/profile/{}/edit",
-																	user_id
-																),
-															)
-															.attr("class", "btn btn-primary")
-															.child("Edit Profile"),
-													),
-											)
-											.into_view()
-									} else {
-										ElementView::new("div").into_view()
+	// Clone user_id for use in page! macro
+	let user_id_str = user_id.to_string();
+
+	page!(|loading_state: bool, error_msg: String, has_error: bool, profile_data: Option<ProfileResponse>, has_profile: bool, user_id_str: String| {
+		div {
+			class: "container mt-5",
+			div {
+				class: "row justify-content-center",
+				div {
+					class: "col-md-8",
+					div {
+						class: "card",
+						div {
+							class: "card-body",
+							h2 {
+								class: "card-title mb-4",
+								"Profile"
+							}
+							if loading_state {
+								div {
+									class: "text-center my-4",
+									div {
+										class: "spinner-border text-primary",
+										role: "status",
+										span {
+											class: "visually-hidden",
+											"Loading..."
+										}
 									}
-								}),
-						),
-					),
-				),
-		)
-		.into_view()
+								}
+							}
+							if has_error {
+								div {
+									class: "alert alert-danger",
+									role: "alert",
+									{ error_msg }
+								}
+							}
+							if has_profile {
+								div {
+									div {
+										class: "mb-3",
+										strong {
+											"Bio:"
+										}
+										p {
+											{ if let Some(ref data) = profile_data { data.bio.clone().unwrap_or_else(| | "No bio provided".to_string()) } else { String::new() } }
+										}
+									}
+									div {
+										class: "mb-3",
+										strong {
+											"Location:"
+										}
+										p {
+											{ if let Some(ref data) = profile_data { data.location.clone().unwrap_or_else(| | "Not specified".to_string()) } else { String::new() } }
+										}
+									}
+									div {
+										class: "mb-3",
+										strong {
+											"Website:"
+										}
+										p {
+											if let Some(ref data) = profile_data {
+												if let Some(ref website) = data.website {
+													a {
+														href: website.clone(),
+														target: "_blank",
+														rel: "noopener noreferrer",
+														{ website.clone() }
+													}
+												} else {
+													span {
+														"No website"
+													}
+												}
+											}
+										}
+									}
+									div {
+										class: "mt-4",
+										a {
+											href: format!("/profile/{}/edit", user_id_str),
+											class: "btn btn-primary",
+											"Edit Profile"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	})(
+		loading_state,
+		error_msg,
+		has_error,
+		profile_data,
+		has_profile,
+		user_id_str,
+	)
 }
 
 /// Profile edit component using hooks
@@ -191,227 +200,150 @@ pub fn profile_edit(user_id: Uuid) -> View {
 		});
 	}
 
-	// Submit handler using closures with Signal access
-	#[cfg(target_arch = "wasm32")]
-	let on_submit = {
-		let set_error = set_error.clone();
-		let set_loading = set_loading.clone();
-		let set_success = set_success.clone();
-		let bio = bio.clone();
-		let avatar_url = avatar_url.clone();
-		let location = location.clone();
-		let website = website.clone();
+	// Extract signal values for page! macro
+	let bio_value = bio.get();
+	let avatar_url_value = avatar_url.get();
+	let location_value = location.get();
+	let website_value = website.get();
+	let error_msg = error.get().unwrap_or_default();
+	let has_error = error.get().is_some();
+	let loading_state = loading.get();
+	let success_state = success.get();
 
-		move |event: web_sys::Event| {
-			event.prevent_default();
+	// Clone user_id for use in page! macro
+	let user_id_str = user_id.to_string();
 
-			let set_error = set_error.clone();
-			let set_loading = set_loading.clone();
-			let set_success = set_success.clone();
-			let bio_value = bio.get();
-			let avatar_url_value = avatar_url.get();
-			let location_value = location.get();
-			let website_value = website.get();
-
-			spawn_local(async move {
-				set_loading(true);
-				set_error(None);
-				set_success(false);
-
-				let request = UpdateProfileRequest {
-					bio: if bio_value.is_empty() {
-						None
-					} else {
-						Some(bio_value)
-					},
-					avatar_url: if avatar_url_value.is_empty() {
-						None
-					} else {
-						Some(avatar_url_value)
-					},
-					location: if location_value.is_empty() {
-						None
-					} else {
-						Some(location_value)
-					},
-					website: if website_value.is_empty() {
-						None
-					} else {
-						Some(website_value)
-					},
-				};
-
-				match update_profile(request).await {
-					Ok(_) => {
-						set_success(true);
-						set_loading(false);
-						// Redirect to profile view after success
-						if let Some(window) = web_sys::window() {
-							let _ = window.location().set_href(&format!("/profile/{}", user_id));
+	page!(|bio_value: String, avatar_url_value: String, location_value: String, website_value: String, error_msg: String, has_error: bool, loading_state: bool, success_state: bool, user_id_str: String| {
+		div {
+			class: "container mt-5",
+			div {
+				class: "row justify-content-center",
+				div {
+					class: "col-md-8",
+					div {
+						class: "card",
+						div {
+							class: "card-body",
+							h2 {
+								class: "card-title mb-4",
+								"Edit Profile"
+							}
+							if success_state {
+								div {
+									class: "alert alert-success",
+									role: "alert",
+									"Profile updated successfully! Redirecting..."
+								}
+							}
+							if has_error {
+								div {
+									class: "alert alert-danger",
+									role: "alert",
+									{ error_msg }
+								}
+							}
+							form {
+								@submit: { let set_error = set_error.clone(); let set_loading = set_loading.clone(); let set_success = set_success.clone(); let bio = bio.clone(); let avatar_url = avatar_url.clone(); let location = location.clone(); let website = website.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { event.prevent_default(); let set_error = set_error.clone(); let set_loading = set_loading.clone(); let set_success = set_success.clone(); let bio_value = bio.get(); let avatar_url_value = avatar_url.get(); let location_value = location.get(); let website_value = website.get(); spawn_local(async move { set_loading(true); set_error(None); set_success(false); let request = UpdateProfileRequest { bio : if bio_value.is_empty() { None } else { Some(bio_value) }, avatar_url : if avatar_url_value.is_empty() { None } else { Some(avatar_url_value) }, location : if location_value.is_empty() { None } else { Some(location_value) }, website : if website_value.is_empty() { None } else { Some(website_value) }, }; match update_profile(request).await { Ok(_) => { set_success(true); set_loading(false); if let Some(window) = web_sys::window() { let _ = window.location().set_href(&format!("/profile/{}", user_id)); } } Err(e) => { set_error(Some(e.to_string())); set_loading(false); } } }); } } },
+								div {
+									class: "mb-3",
+									label {
+										r#for: "bio",
+										class: "form-label",
+										"Bio"
+									}
+									textarea {
+										class: "form-control",
+										id: "bio",
+										name: "bio",
+										rows: 3,
+										placeholder: "Tell us about yourself",
+										@input: { let set_bio = set_bio.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { use wasm_bindgen::JsCast; use web_sys::HtmlTextAreaElement; if let Some(target) = event.target() { if let Ok(textarea) = target.dyn_into ::<HtmlTextAreaElement>() { set_bio(textarea.value()); } } } } },
+										{ bio_value.clone() }
+									}
+								}
+								div {
+									class: "mb-3",
+									label {
+										r#for: "avatar_url",
+										class: "form-label",
+										"Avatar URL"
+									}
+									input {
+										r#type: "url",
+										class: "form-control",
+										id: "avatar_url",
+										name: "avatar_url",
+										placeholder: "https://example.com/avatar.jpg",
+										value: avatar_url_value.clone(),
+										@input: { let set_avatar_url = set_avatar_url.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { use wasm_bindgen::JsCast; use web_sys::HtmlInputElement; if let Some(target) = event.target() { if let Ok(input) = target.dyn_into ::<HtmlInputElement>() { set_avatar_url(input.value()); } } } } },
+									}
+								}
+								div {
+									class: "mb-3",
+									label {
+										r#for: "location",
+										class: "form-label",
+										"Location"
+									}
+									input {
+										r#type: "text",
+										class: "form-control",
+										id: "location",
+										name: "location",
+										placeholder: "New York, NY",
+										value: location_value.clone(),
+										@input: { let set_location = set_location.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { use wasm_bindgen::JsCast; use web_sys::HtmlInputElement; if let Some(target) = event.target() { if let Ok(input) = target.dyn_into ::<HtmlInputElement>() { set_location(input.value()); } } } } },
+									}
+								}
+								div {
+									class: "mb-3",
+									label {
+										r#for: "website",
+										class: "form-label",
+										"Website"
+									}
+									input {
+										r#type: "url",
+										class: "form-control",
+										id: "website",
+										name: "website",
+										placeholder: "https://example.com",
+										value: website_value.clone(),
+										@input: { let set_website = set_website.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { use wasm_bindgen::JsCast; use web_sys::HtmlInputElement; if let Some(target) = event.target() { if let Ok(input) = target.dyn_into ::<HtmlInputElement>() { set_website(input.value()); } } } } },
+									}
+								}
+								div {
+									class: "d-grid gap-2 d-md-flex justify-content-md-end",
+									a {
+										href: format!("/profile/{}", user_id_str),
+										class: "btn btn-secondary",
+										"Cancel"
+									}
+									button {
+										r#type: "submit",
+										class: if loading_state { "btn btn-primary disabled" } else { "btn btn-primary" },
+										if loading_state {
+											"Saving..."
+										} else {
+											"Save Changes"
+										}
+									}
+								}
+							}
 						}
 					}
-					Err(e) => {
-						set_error(Some(e.to_string()));
-						set_loading(false);
-					}
 				}
-			});
+			}
 		}
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let on_submit = |_event: web_sys::Event| {};
-
-	ElementView::new("div")
-		.attr("class", "container mt-5")
-		.child(
-			ElementView::new("div")
-				.attr("class", "row justify-content-center")
-				.child(
-					ElementView::new("div").attr("class", "col-md-8").child(
-						ElementView::new("div").attr("class", "card").child(
-							ElementView::new("div")
-								.attr("class", "card-body")
-								.child(
-									ElementView::new("h2")
-										.attr("class", "card-title mb-4")
-										.child("Edit Profile"),
-								)
-								.child({
-									use crate::client::components::common::{
-										error_alert, success_alert,
-									};
-
-									// Success message
-									if success.get() {
-										success_alert(
-											"Profile updated successfully! Redirecting...",
-										)
-									} else if let Some(msg) = error.get() {
-										// Error message
-										error_alert(&msg, false)
-									} else {
-										page!(|| { div {} })()
-									}
-								})
-								.child(
-									ElementView::new("form")
-										.listener("submit", on_submit)
-										.child(
-											ElementView::new("div")
-												.attr("class", "mb-3")
-												.child(
-													ElementView::new("label")
-														.attr("for", "bio")
-														.attr("class", "form-label")
-														.child("Bio"),
-												)
-												.child(
-													ElementView::new("textarea")
-														.attr("class", "form-control")
-														.attr("id", "bio")
-														.attr("name", "bio")
-														.attr("rows", "3")
-														.attr(
-															"placeholder",
-															"Tell us about yourself",
-														),
-												),
-										)
-										.child(
-											ElementView::new("div")
-												.attr("class", "mb-3")
-												.child(
-													ElementView::new("label")
-														.attr("for", "avatar_url")
-														.attr("class", "form-label")
-														.child("Avatar URL"),
-												)
-												.child(
-													ElementView::new("input")
-														.attr("type", "url")
-														.attr("class", "form-control")
-														.attr("id", "avatar_url")
-														.attr("name", "avatar_url")
-														.attr(
-															"placeholder",
-															"https://example.com/avatar.jpg",
-														),
-												),
-										)
-										.child(
-											ElementView::new("div")
-												.attr("class", "mb-3")
-												.child(
-													ElementView::new("label")
-														.attr("for", "location")
-														.attr("class", "form-label")
-														.child("Location"),
-												)
-												.child(
-													ElementView::new("input")
-														.attr("type", "text")
-														.attr("class", "form-control")
-														.attr("id", "location")
-														.attr("name", "location")
-														.attr("placeholder", "New York, NY"),
-												),
-										)
-										.child(
-											ElementView::new("div")
-												.attr("class", "mb-3")
-												.child(
-													ElementView::new("label")
-														.attr("for", "website")
-														.attr("class", "form-label")
-														.child("Website"),
-												)
-												.child(
-													ElementView::new("input")
-														.attr("type", "url")
-														.attr("class", "form-control")
-														.attr("id", "website")
-														.attr("name", "website")
-														.attr("placeholder", "https://example.com"),
-												),
-										)
-										.child(
-											ElementView::new("div")
-												.attr(
-													"class",
-													"d-grid gap-2 d-md-flex justify-content-md-end",
-												)
-												.child(
-													ElementView::new("a")
-														.attr(
-															"href",
-															format!("/profile/{}", user_id),
-														)
-														.attr("class", "btn btn-secondary")
-														.child("Cancel"),
-												)
-												.child(
-													ElementView::new("button")
-														.attr("type", "submit")
-														.attr(
-															"class",
-															if loading.get() {
-																"btn btn-primary disabled"
-															} else {
-																"btn btn-primary"
-															},
-														)
-														.child(if loading.get() {
-															"Saving..."
-														} else {
-															"Save Changes"
-														}),
-												),
-										),
-								),
-						),
-					),
-				),
-		)
-		.into_view()
+	})(
+		bio_value,
+		avatar_url_value,
+		location_value,
+		website_value,
+		error_msg,
+		has_error,
+		loading_state,
+		success_state,
+		user_id_str,
+	)
 }

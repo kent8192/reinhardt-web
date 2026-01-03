@@ -7,11 +7,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
+// OpenAPI schema generation (server-side only)
+#[cfg(not(target_arch = "wasm32"))]
+use reinhardt::rest::openapi::{Schema, ToSchema};
+
 // ============================================================================
 // User Types
 // ============================================================================
 
 /// User information (shared between client and server)
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub id: Uuid,
@@ -38,6 +43,7 @@ impl From<crate::apps::auth::models::User> for UserInfo {
 // ============================================================================
 
 /// Login request
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct LoginRequest {
 	#[validate(email(message = "Invalid email address"))]
@@ -48,6 +54,7 @@ pub struct LoginRequest {
 }
 
 /// Register request
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RegisterRequest {
 	#[validate(length(
@@ -85,6 +92,7 @@ impl RegisterRequest {
 // ============================================================================
 
 /// Profile response
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileResponse {
 	pub user_id: Uuid,
@@ -109,6 +117,7 @@ impl From<crate::apps::profile::models::Profile> for ProfileResponse {
 }
 
 /// Update profile request
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, Default)]
 pub struct UpdateProfileRequest {
 	#[validate(length(max = 500, message = "Bio must be less than 500 characters"))]
@@ -129,6 +138,7 @@ pub struct UpdateProfileRequest {
 // ============================================================================
 
 /// Tweet information
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweetInfo {
 	pub id: Uuid,
@@ -180,6 +190,7 @@ impl From<crate::apps::tweet::models::Tweet> for TweetInfo {
 }
 
 /// Create tweet request
+#[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateTweetRequest {
 	#[validate(length(

@@ -3,12 +3,13 @@
 //! Server functions for user authentication and session management.
 //! These are accessible from both WASM (client stubs) and server (handlers).
 
-use crate::shared::types::{LoginRequest, RegisterRequest, UserInfo};
+use crate::shared::types::{RegisterRequest, UserInfo};
 
 // Server-only imports - only needed for server build
 #[cfg(not(target_arch = "wasm32"))]
 use {
 	crate::apps::auth::models::User,
+	crate::shared::types::LoginRequest,
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::middleware::session::{SessionData, SessionStoreRef},
 	reinhardt::pages::server_fn::{ServerFnError, server_fn},
@@ -21,15 +22,17 @@ use {
 #[cfg(target_arch = "wasm32")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
-/// Login user and create session
+/// Login user and return user info (stateless, no session management)
 #[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn login(
-	request: LoginRequest,
+	email: String,
+	password: String,
 	#[inject] _db: DatabaseConnection,
-	#[inject] session: SessionData,
-	#[inject] store: SessionStoreRef,
 ) -> std::result::Result<UserInfo, ServerFnError> {
+	// Construct request from parameters
+	let request = LoginRequest { email, password };
+
 	// Validate request
 	request
 		.validate()
@@ -62,22 +65,17 @@ pub async fn login(
 		return Err(ServerFnError::server(403, "User account is inactive"));
 	}
 
-	// Set user ID in session
-	let mut updated_session = session;
-	updated_session
-		.set("user_id".to_string(), user.id())
-		.map_err(|e| ServerFnError::application(format!("Session error: {}", e)))?;
-
-	// Save updated session to store
-	store.inner().save(updated_session);
-
+	// Return user info (client will manage state)
 	Ok(UserInfo::from(user))
 }
 
 /// Login - WASM client stub
 #[cfg(target_arch = "wasm32")]
 #[server_fn]
-pub async fn login(request: LoginRequest) -> std::result::Result<UserInfo, ServerFnError> {
+pub async fn login(
+	email: String,
+	password: String,
+) -> std::result::Result<UserInfo, ServerFnError> {
 	// This body is replaced by the macro with HTTP request code
 	unreachable!("This function body should be replaced by the server_fn macro")
 }

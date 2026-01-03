@@ -27,83 +27,63 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> View {
 	let (deleted, set_deleted) = use_state(false);
 	let (error, set_error) = use_state(None::<String>);
 
-	#[cfg(target_arch = "wasm32")]
-	let on_delete = {
-		let set_deleted = set_deleted.clone();
-		let set_error = set_error.clone();
+	// Extract signal values for page! macro
+	let deleted_state = deleted.get();
+	let error_msg = error.get().unwrap_or_default();
+	let has_error = error.get().is_some();
 
-		move |_event: web_sys::Event| {
-			let set_deleted = set_deleted.clone();
-			let set_error = set_error.clone();
+	// Clone tweet data for use in page! macro
+	let username = tweet.username.clone();
+	let content = tweet.content.clone();
+	let created_at = tweet.created_at.clone();
 
-			spawn_local(async move {
-				match delete_tweet(tweet_id).await {
-					Ok(()) => {
-						set_deleted(true);
+	page!(|deleted_state: bool, error_msg: String, has_error: bool, show_delete: bool, username: String, content: String, created_at: String| {
+		div {
+			class: if deleted_state { "d-none" } else { "card mb-3" },
+			div {
+				class: "card-body",
+				div {
+					class: "d-flex justify-content-between align-items-start",
+					div {
+						h6 {
+							class: "card-subtitle mb-2 text-muted",
+							{ format!("@{}", username) }
+						}
+						p {
+							class: "card-text",
+							{ content }
+						}
+						small {
+							class: "text-muted",
+							{ created_at }
+						}
 					}
-					Err(e) => {
-						set_error(Some(e.to_string()));
+					if show_delete {
+						button {
+							class: "btn btn-sm btn-danger",
+							r#type: "button",
+							@click: { let set_deleted = set_deleted.clone(); let set_error = set_error.clone(); move |_event| { # [cfg(target_arch = "wasm32")] { let set_deleted = set_deleted.clone(); let set_error = set_error.clone(); spawn_local(async move { match delete_tweet(tweet_id).await { Ok(()) => { set_deleted(true); } Err(e) => { set_error(Some(e.to_string())); } } }); } } },
+							"Delete"
+						}
 					}
 				}
-			});
+				if has_error {
+					div {
+						class: "alert alert-danger mt-2",
+						{ error_msg }
+					}
+				}
+			}
 		}
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let on_delete = |_event: web_sys::Event| {};
-
-	if deleted.get() {
-		// Tweet deleted - show nothing
-		return ElementView::new("div").into_view();
-	}
-
-	ElementView::new("div")
-		.attr("class", "card mb-3")
-		.child(
-			ElementView::new("div")
-				.attr("class", "card-body")
-				.child(
-					ElementView::new("div")
-						.attr("class", "d-flex justify-content-between align-items-start")
-						.child(
-							ElementView::new("div")
-								.child(
-									ElementView::new("h6")
-										.attr("class", "card-subtitle mb-2 text-muted")
-										.child(format!("@{}", tweet.username)),
-								)
-								.child(
-									ElementView::new("p")
-										.attr("class", "card-text")
-										.child(&tweet.content),
-								)
-								.child(
-									ElementView::new("small")
-										.attr("class", "text-muted")
-										.child(&tweet.created_at),
-								),
-						)
-						.child(if show_delete {
-							ElementView::new("button")
-								.attr("class", "btn btn-sm btn-danger")
-								.attr("type", "button")
-								.listener("click", on_delete)
-								.child("Delete")
-								.into_view()
-						} else {
-							ElementView::new("div").into_view()
-						}),
-				)
-				.child(if let Some(err) = error.get() {
-					ElementView::new("div")
-						.attr("class", "alert alert-danger mt-2")
-						.child(err)
-						.into_view()
-				} else {
-					ElementView::new("div").into_view()
-				}),
-		)
-		.into_view()
+	})(
+		deleted_state,
+		error_msg,
+		has_error,
+		show_delete,
+		username,
+		content,
+		created_at,
+	)
 }
 
 /// Tweet form component using hooks
@@ -118,159 +98,70 @@ pub fn tweet_form() -> View {
 	let (loading, set_loading) = use_state(false);
 	let (char_count, set_char_count) = use_state(0usize);
 
-	#[cfg(target_arch = "wasm32")]
-	let on_input = {
-		let set_content = set_content.clone();
-		let set_char_count = set_char_count.clone();
+	// Extract signal values for page! macro
+	let content_value = content.get();
+	let error_msg = error.get().unwrap_or_default();
+	let has_error = error.get().is_some();
+	let loading_state = loading.get();
+	let char_count_value = char_count.get();
 
-		move |event: web_sys::Event| {
-			if let Some(target) = event.target() {
-				if let Ok(textarea) = target.dyn_into::<HtmlTextAreaElement>() {
-					let value = textarea.value();
-					set_char_count(value.len());
-					set_content(value);
+	page!(|content_value: String, error_msg: String, has_error: bool, loading_state: bool, char_count_value: usize| {
+		div {
+			class: "card mb-4",
+			div {
+				class: "card-body",
+				h5 {
+					class: "card-title",
+					"What's happening?"
+				}
+				if has_error {
+					div {
+						class: "alert alert-danger",
+						{ error_msg }
+					}
+				}
+				form {
+					@submit: { let set_error = set_error.clone(); let set_loading = set_loading.clone(); let content = content.clone(); let set_content = set_content.clone(); let set_char_count = set_char_count.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { event.prevent_default(); let set_error = set_error.clone(); let set_loading = set_loading.clone(); let content_value = content.get(); let set_content = set_content.clone(); let set_char_count = set_char_count.clone(); spawn_local(async move { set_loading(true); set_error(None); let request = CreateTweetRequest { content : content_value, }; match create_tweet(request).await { Ok(_) => { set_content(String::new()); set_char_count(0); set_loading(false); if let Some(window) = web_sys::window() { let _ = window.location().reload(); } } Err(e) => { set_error(Some(e.to_string())); set_loading(false); } } }); } } },
+					div {
+						class: "mb-3",
+						textarea {
+							class: "form-control",
+							id: "content",
+							name: "content",
+							rows: 3,
+							maxlength: 280,
+							placeholder: "What's on your mind?",
+							@input: { let set_content = set_content.clone(); let set_char_count = set_char_count.clone(); move |event : web_sys::Event| { # [cfg(target_arch = "wasm32")] { if let Some(target) = event.target() { if let Ok(textarea) = target.dyn_into ::<HtmlTextAreaElement>() { let value = textarea.value(); set_char_count(value.len()); set_content(value); } } } } },
+							{ content_value.clone() }
+						}
+						div {
+							class: "d-flex justify-content-between align-items-center mt-2",
+							small {
+								class: if char_count_value>280 { "text-danger" } else if char_count_value>250 { "text-warning" } else { "text-muted" },
+								{ format!("{}/280", char_count_value) }
+							}
+							button {
+								r#type: "submit",
+								class: if loading_state { "btn btn-primary disabled" } else { "btn btn-primary" },
+								disabled: if char_count_value == 0 || char_count_value>280 { "true" } else { "" },
+								if loading_state {
+									"Posting..."
+								} else {
+									"Post"
+								}
+							}
+						}
+					}
 				}
 			}
 		}
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let on_input = |_event: web_sys::Event| {};
-
-	#[cfg(target_arch = "wasm32")]
-	let on_submit = {
-		let set_error = set_error.clone();
-		let set_loading = set_loading.clone();
-		let content = content.clone();
-		let set_content = set_content.clone();
-		let set_char_count = set_char_count.clone();
-
-		move |event: web_sys::Event| {
-			event.prevent_default();
-
-			let set_error = set_error.clone();
-			let set_loading = set_loading.clone();
-			let content_value = content.get();
-			let set_content = set_content.clone();
-			let set_char_count = set_char_count.clone();
-
-			spawn_local(async move {
-				set_loading(true);
-				set_error(None);
-
-				let request = CreateTweetRequest {
-					content: content_value,
-				};
-
-				match create_tweet(request).await {
-					Ok(_) => {
-						// Clear form
-						set_content(String::new());
-						set_char_count(0);
-						set_loading(false);
-						// Reload page to show new tweet
-						if let Some(window) = web_sys::window() {
-							let _ = window.location().reload();
-						}
-					}
-					Err(e) => {
-						set_error(Some(e.to_string()));
-						set_loading(false);
-					}
-				}
-			});
-		}
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let on_submit = |_event: web_sys::Event| {};
-
-	ElementView::new("div")
-		.attr("class", "card mb-4")
-		.child(
-			ElementView::new("div")
-				.attr("class", "card-body")
-				.child(
-					ElementView::new("h5")
-						.attr("class", "card-title")
-						.child("What's happening?"),
-				)
-				.child(if let Some(msg) = error.get() {
-					ElementView::new("div")
-						.attr("class", "alert alert-danger")
-						.child(msg)
-						.into_view()
-				} else {
-					ElementView::new("div").into_view()
-				})
-				.child(
-					ElementView::new("form")
-						.listener("submit", on_submit)
-						.child(
-							ElementView::new("div")
-								.attr("class", "mb-3")
-								.child(
-									ElementView::new("textarea")
-										.attr("class", "form-control")
-										.attr("id", "content")
-										.attr("name", "content")
-										.attr("rows", "3")
-										.attr("maxlength", "280")
-										.attr("placeholder", "What's on your mind?")
-										.listener("input", on_input),
-								)
-								.child(
-									ElementView::new("div")
-										.attr(
-											"class",
-											"d-flex justify-content-between align-items-center mt-2",
-										)
-										.child(
-											ElementView::new("small")
-												.attr(
-													"class",
-													if char_count.get() > 280 {
-														"text-danger"
-													} else if char_count.get() > 250 {
-														"text-warning"
-													} else {
-														"text-muted"
-													},
-												)
-												.child(format!("{}/280", char_count.get())),
-										)
-										.child(
-											ElementView::new("button")
-												.attr("type", "submit")
-												.attr(
-													"class",
-													if loading.get() {
-														"btn btn-primary disabled"
-													} else {
-														"btn btn-primary"
-													},
-												)
-												.attr(
-													"disabled",
-													if char_count.get() == 0
-														|| char_count.get() > 280
-													{
-														"true"
-													} else {
-														""
-													},
-												)
-												.child(if loading.get() {
-													"Posting..."
-												} else {
-													"Post"
-												}),
-										),
-								),
-						),
-				),
-		)
-		.into_view()
+	})(
+		content_value,
+		error_msg,
+		has_error,
+		loading_state,
+		char_count_value,
+	)
 }
 
 /// Tweet list component using hooks
@@ -278,8 +169,6 @@ pub fn tweet_form() -> View {
 /// Displays list of tweets with loading and error states.
 /// Uses React-like hooks for state management.
 pub fn tweet_list(user_id: Option<Uuid>) -> View {
-	use crate::client::components::common::{error_alert, loading_spinner};
-
 	// Hook-styled state management
 	let (tweets, set_tweets) = use_state(Vec::<TweetInfo>::new());
 	let (loading, set_loading) = use_state(true);
@@ -308,36 +197,59 @@ pub fn tweet_list(user_id: Option<Uuid>) -> View {
 		});
 	}
 
-	ElementView::new("div")
-		.child(if loading.get() {
-			// Loading state - use shared component
-			loading_spinner()
-		} else if let Some(err) = error.get() {
-			// Error state - use shared component
-			error_alert(&err, false)
-		} else {
-			// Tweet list
-			let tweet_list = tweets.get();
-			if tweet_list.is_empty() {
-				page!(|| {
-					div {
-						class: "text-center py-5",
-						p {
-							class: "text-muted",
-							"No tweets yet. Be the first to post!"
-						}
+	// Extract signal values
+	let tweets_data = tweets.get();
+	let loading_state = loading.get();
+	let error_msg = error.get().unwrap_or_default();
+	let has_error = error.get().is_some();
+	let is_empty = tweets_data.is_empty();
+
+	// Generate tweet cards outside page! macro since it returns a Vec<View>
+	let tweet_views = if !loading_state && !has_error && !is_empty {
+		tweets_data
+			.iter()
+			.map(|tweet| tweet_card(tweet, false))
+			.collect::<Vec<_>>()
+	} else {
+		Vec::new()
+	};
+
+	// Use page! macro for the wrapper and ElementView for dynamic children
+	if loading_state {
+		page!(|| {
+			div {
+				class: "text-center my-4",
+				div {
+					class: "spinner-border text-primary",
+					role: "status",
+					span {
+						class: "visually-hidden",
+						"Loading..."
 					}
-				})()
-			} else {
-				ElementView::new("div")
-					.children(
-						tweet_list
-							.iter()
-							.map(|tweet| tweet_card(tweet, false))
-							.collect::<Vec<_>>(),
-					)
-					.into_view()
+				}
 			}
-		})
-		.into_view()
+		})()
+	} else if has_error {
+		let error_msg_clone = error_msg.clone();
+		page!(|error_msg: String| {
+			div {
+				class: "alert alert-danger",
+				role: "alert",
+				{ error_msg }
+			}
+		})(error_msg_clone)
+	} else if is_empty {
+		page!(|| {
+			div {
+				class: "text-center py-5",
+				p {
+					class: "text-muted",
+					"No tweets yet. Be the first to post!"
+				}
+			}
+		})()
+	} else {
+		// Use ElementView for dynamic children list
+		ElementView::new("div").children(tweet_views).into_view()
+	}
 }

@@ -20,11 +20,18 @@ pub static REDOC_UI: LazyLock<Arc<RedocUI>> = LazyLock::new(|| {
 });
 
 /// Build the complete OpenAPI schema for the Twitter API
+///
+/// Note: This function is currently not used when running via `cargo run --bin manage runserver`.
+/// The runserver command uses `OpenApiRouter::wrap()` which calls `generate_openapi_schema()`
+/// from `reinhardt-openapi/src/endpoints.rs` instead.
+///
+/// This function is kept for potential future use or manual schema generation.
 pub fn build_openapi_schema() -> OpenApiSchema {
 	let mut generator = SchemaGenerator::new()
 		.title("Twitter Example API")
 		.version("1.0.0")
-		.description("A Twitter-like API built with Reinhardt Framework");
+		.description("A Twitter-like API built with Reinhardt Framework")
+		.add_server_fn_endpoints(); // Auto-discover server function endpoints from #[server_fn]
 
 	// Register schemas for all apps
 	register_auth_schemas(&mut generator);

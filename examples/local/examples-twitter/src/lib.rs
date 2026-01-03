@@ -48,7 +48,6 @@ pub mod server {
 	// New structure
 	pub mod middleware;
 	pub mod models;
-	pub mod server_fn;
 
 	// Re-export commonly used items
 	pub use crate::config::settings::get_settings;

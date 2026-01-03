@@ -78,13 +78,13 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, on_click: Sign
 
 	#[cfg(target_arch = "wasm32")]
 	{
-		let on_click = on_click.clone();
+		let on_click_clone = on_click.clone();
 		page!(|class: String, text: String, disabled_attr: String| {
 			button {
 				class: class,
 				r#type: "button",
 				disabled: disabled_attr,
-				@click: move |_event| { on_click.set(true); },
+				@click: { let on_click = on_click_clone.clone(); move |_event| { on_click.set(true); } },
 				{ text }
 			}
 		})(class, text, disabled_attr)
@@ -206,7 +206,7 @@ pub fn text_input(
 
 	#[cfg(target_arch = "wasm32")]
 	{
-		let value = value.clone();
+		let value_clone = value.clone();
 		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, current_value: String, required_attr: String| {
 			div {
 				class: "mb-3",
@@ -223,7 +223,7 @@ pub fn text_input(
 					placeholder: placeholder_owned,
 					value: current_value,
 					required: required_attr,
-					@input: move |event : web_sys::Event| { if let Some(target) = event.target() { if let Ok(input_el) = target.dyn_into ::<web_sys::HtmlInputElement>() { value.set(input_el.value()); } } },
+					@input: { let value = value_clone.clone(); move |event : web_sys::Event| { if let Some(target) = event.target() { if let Ok(input_el) = target.dyn_into ::<web_sys::HtmlInputElement>() { value.set(input_el.value()); } } } },
 				}
 			}
 		})(
@@ -323,7 +323,7 @@ pub fn textarea(
 
 	#[cfg(target_arch = "wasm32")]
 	{
-		let value = value.clone();
+		let value_clone = value.clone();
 		page!(|id_owned: String, label_owned: String, rows_str: String, placeholder_owned: String, current_value: String, maxlength_attr: String, show_count: bool, count_class: String, count_text: String| {
 			div {
 				class: "mb-3",
@@ -339,7 +339,7 @@ pub fn textarea(
 					rows: rows_str,
 					placeholder: placeholder_owned,
 					maxlength: maxlength_attr,
-					@input: move |event : web_sys::Event| { if let Some(target) = event.target() { if let Ok(textarea_el) = target.dyn_into ::<web_sys::HtmlTextAreaElement>() { value.set(textarea_el.value()); } } },
+					@input: { let value = value_clone.clone(); move |event : web_sys::Event| { if let Some(target) = event.target() { if let Ok(textarea_el) = target.dyn_into ::<web_sys::HtmlTextAreaElement>() { value.set(textarea_el.value()); } } } },
 					{ current_value }
 				}
 				if show_count {

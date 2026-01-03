@@ -17,6 +17,9 @@ pub fn main() -> Result<(), JsValue> {
 	// Set panic hook for better error messages in browser console
 	console_error_panic_hook::set_once();
 
+	// Initialize hydration state BEFORE any component initialization
+	reinhardt_pages::hydration::init_hydration_state();
+
 	// Initialize global state
 	state::init_auth_state();
 
@@ -33,12 +36,21 @@ pub fn main() -> Result<(), JsValue> {
 	// Clear loading spinner
 	root.set_inner_html("");
 
-	// Mount the router's current view
+	// Mount the router's current view and attach events
 	router::with_router(|router| {
-		let view = router.render_current();
 		let root_element = Element::new(root.clone());
-		let _ = view.mount(&root_element);
+
+		// Render and mount the view (events are attached during mount)
+		let view = router.render_current();
+		if let Err(e) = view.mount(&root_element) {
+			web_sys::console::error_1(&format!("Failed to mount view: {:?}", e).into());
+			return;
+		}
 	});
+
+	// Mark hydration complete after mounting (since this app doesn't use SSR/hydration)
+	// This ensures that form buttons and other hydration-gated UI elements become enabled
+	reinhardt_pages::hydration::mark_hydration_complete();
 
 	Ok(())
 }

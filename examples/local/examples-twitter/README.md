@@ -724,6 +724,35 @@ cargo test -- --nocapture --test-threads=1
 cargo test --package examples-twitter test_user_registration -- --exact --nocapture
 ```
 
+### Static Files Not Found (404 Errors)
+
+**Symptom**: Browser shows 404 errors when accessing `http://localhost:8000/`, WASM application doesn't load.
+
+**Cause**: When the server is started from the workspace root, the relative path `"dist"` resolves incorrectly.
+
+**Solution 1**: Run from project directory (Recommended)
+
+```bash
+cd examples/local/examples-twitter
+cargo run -- runserver --with-pages
+```
+
+**Solution 2**: Specify absolute path
+
+```bash
+# When running from workspace root
+cargo run --bin examples-twitter -- runserver \
+  --with-pages \
+  --static-dir /Users/kent8192/Projects/reinhardt/examples/local/examples-twitter/dist
+```
+
+**Solution 3**: Use environment variable (Future support planned)
+
+```bash
+CARGO_MANIFEST_DIR=$(pwd)/examples/local/examples-twitter \
+  cargo run --bin examples-twitter -- runserver --with-pages
+```
+
 ## References
 
 - [Reinhardt Framework Documentation](https://docs.rs/reinhardt)

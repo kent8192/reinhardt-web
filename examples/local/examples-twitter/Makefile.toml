@@ -9,6 +9,14 @@ default_to_workspace = false
 skip_core_tasks = true
 
 # ============================================================================
+# Environment Variables
+# ============================================================================
+
+[env]
+# Use local target directory for each example (independent from workspace)
+CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
+
+# ============================================================================
 # Development Server
 # ============================================================================
 
@@ -21,7 +29,6 @@ args = ["run", "runserver"]
 description = "Start the development server with auto-reload (requires bacon)"
 command = "bacon"
 args = ["runserver"]
-dependencies = ["install-bacon"]
 
 # ============================================================================
 # Database Migrations
@@ -30,17 +37,17 @@ dependencies = ["install-bacon"]
 [tasks.makemigrations]
 description = "Create new migrations based on model changes"
 command = "cargo"
-args = ["run", "--bin", "manage", "makemigrations"]
+args = ["run", "--bin", "examples-twitter", "makemigrations"]
 
 [tasks.makemigrations-app]
 description = "Create new migrations for a specific app (usage: cargo make makemigrations-app -- <app_label>)"
 command = "cargo"
-args = ["run", "--bin", "manage", "makemigrations", "${@}"]
+args = ["run", "--bin", "examples-twitter", "makemigrations", "${@}"]
 
 [tasks.migrate]
 description = "Apply database migrations"
 command = "cargo"
-args = ["run", "--bin", "manage", "migrate"]
+args = ["run", "--bin", "examples-twitter", "migrate"]
 
 # ============================================================================
 # Static Files
@@ -49,7 +56,7 @@ args = ["run", "--bin", "manage", "migrate"]
 [tasks.collectstatic]
 description = "Collect static files into STATIC_ROOT"
 command = "cargo"
-args = ["run", "--bin", "manage", "collectstatic"]
+args = ["run", "--bin", "examples-twitter", "collectstatic"]
 
 # ============================================================================
 # Project Management
@@ -58,17 +65,17 @@ args = ["run", "--bin", "manage", "collectstatic"]
 [tasks.check]
 description = "Check the project for common issues"
 command = "cargo"
-args = ["run", "--bin", "manage", "check"]
+args = ["run", "--bin", "examples-twitter", "check"]
 
 [tasks.showurls]
 description = "Display all registered URL patterns"
 command = "cargo"
-args = ["run", "--bin", "manage", "showurls"]
+args = ["run", "--bin", "examples-twitter", "showurls"]
 
 [tasks.shell]
 description = "Run an interactive Rust shell (REPL)"
 command = "cargo"
-args = ["run", "--bin", "manage", "shell"]
+args = ["run", "--bin", "examples-twitter", "shell"]
 
 # ============================================================================
 # Testing
@@ -78,25 +85,21 @@ args = ["run", "--bin", "manage", "shell"]
 description = "Run all tests"
 command = "cargo"
 args = ["nextest", "run", "--all-features"]
-dependencies = ["install-nextest"]
 
 [tasks.test-unit]
 description = "Run unit tests only"
 command = "cargo"
 args = ["nextest", "run", "--lib", "--all-features"]
-dependencies = ["install-nextest"]
 
 [tasks.test-integration]
 description = "Run integration tests only"
 command = "cargo"
 args = ["nextest", "run", "--test", "*", "--all-features"]
-dependencies = ["install-nextest"]
 
 [tasks.test-watch]
 description = "Run tests with auto-reload (requires bacon)"
 command = "bacon"
 args = ["test"]
-dependencies = ["install-bacon", "install-nextest"]
 
 # ============================================================================
 # Code Quality
@@ -150,87 +153,6 @@ command = "cargo"
 args = ["clean"]
 
 # ============================================================================
-# Dependencies Installation
-# ============================================================================
-
-[tasks.install-nextest]
-description = "Install cargo-nextest if not already installed"
-script = '''
-if ! command -v cargo-nextest &> /dev/null
-then
-	echo "Installing cargo-nextest..."
-	cargo install cargo-nextest --locked
-else
-	echo "cargo-nextest is already installed"
-fi
-'''
-
-[tasks.install-bacon]
-description = "Install bacon if not already installed"
-script = '''
-if ! command -v bacon &> /dev/null
-then
-	echo "Installing bacon..."
-	cargo install --locked bacon
-else
-	echo "bacon is already installed"
-fi
-'''
-
-[tasks.install-tools]
-description = "Install all required development tools"
-dependencies = ["install-nextest", "install-bacon", "install-wasm-tools"]
-
-# ============================================================================
-# WASM Build Tasks
-# ============================================================================
-
-[tasks.install-wasm-tools]
-description = "Install WASM build tools (wasm-bindgen-cli + wasm-pack + wasm32 target)"
-script = '''
-#!/bin/bash
-set -e
-
-echo "Installing WASM build tools..."
-
-# Add wasm32 target
-if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then
-	echo "Adding wasm32-unknown-unknown target..."
-	rustup target add wasm32-unknown-unknown
-else
-	echo "✓ wasm32-unknown-unknown target already installed"
-fi
-
-# Install wasm-bindgen-cli
-if ! command -v wasm-bindgen &> /dev/null; then
-	echo "Installing wasm-bindgen-cli..."
-	cargo install wasm-bindgen-cli
-else
-	echo "✓ wasm-bindgen-cli already installed"
-fi
-
-# Install wasm-pack (for WASM testing)
-if ! command -v wasm-pack &> /dev/null; then
-	echo "Installing wasm-pack..."
-	cargo install wasm-pack
-else
-	echo "✓ wasm-pack already installed"
-fi
-
-# Check for wasm-opt (optional, for release optimization)
-if ! command -v wasm-opt &> /dev/null; then
-	echo ""
-	echo "⚠️  wasm-opt not found (optional, for release optimization)"
-	echo "   Install with: brew install binaryen"
-else
-	echo "✓ wasm-opt available"
-fi
-
-echo ""
-echo "WASM build tools installed successfully!"
-'''
-
-# ============================================================================
 # WASM Testing Tasks
 # ============================================================================
 
@@ -238,100 +160,94 @@ echo "WASM build tools installed successfully!"
 description = "Run WASM tests in headless Chrome"
 command = "wasm-pack"
 args = ["test", "--headless", "--chrome"]
-dependencies = ["install-wasm-tools"]
 
 [tasks.wasm-test-firefox]
 description = "Run WASM tests in headless Firefox"
 command = "wasm-pack"
 args = ["test", "--headless", "--firefox"]
-dependencies = ["install-wasm-tools"]
 
 [tasks.wasm-test-debug]
 description = "Run WASM tests with browser (for debugging)"
 command = "wasm-pack"
 args = ["test", "--chrome"]
-dependencies = ["install-wasm-tools"]
+
+[tasks.wasm-compile-dev]
+description = "Compile WASM binary (debug mode)"
+command = "cargo"
+args = ["build", "--target", "wasm32-unknown-unknown"]
+
+[tasks.collectstatic-wasm]
+description = "Collect static files to dist/ for WASM frontend"
+command = "cargo"
+args = ["run", "--bin", "examples-twitter", "collectstatic", "--no-input"]
+dependencies = ["wasm-compile-dev"]
+
+[tasks.wasm-bindgen-dev]
+description = "Generate WASM bindings (debug mode)"
+command = "wasm-bindgen"
+args = [
+	"--target", "web",
+	"--out-dir", "dist",
+	"target/wasm32-unknown-unknown/debug/examples_twitter.wasm"
+]
+dependencies = ["collectstatic-wasm"]
+
+[tasks.wasm-finalize-dev]
+description = "Finalize WASM build (copy index.html)"
+script = '''
+[ -f index.html ] && cp index.html dist/
+echo "✓ WASM build completed: dist/"
+'''
+dependencies = ["wasm-bindgen-dev"]
 
 [tasks.wasm-build-dev]
 description = "Build WASM in debug mode"
+dependencies = ["wasm-finalize-dev"]
+
+[tasks.wasm-compile-release]
+description = "Compile WASM binary (release mode)"
+command = "cargo"
+args = ["build", "--target", "wasm32-unknown-unknown", "--release"]
+
+[tasks.wasm-bindgen-release]
+description = "Generate WASM bindings (release mode)"
+command = "wasm-bindgen"
+args = [
+	"--target", "web",
+	"--out-dir", "dist",
+	"target/wasm32-unknown-unknown/release/examples_twitter.wasm"
+]
+dependencies = ["collectstatic-wasm"]
+
+[tasks.wasm-finalize-release]
+description = "Finalize WASM build (copy index.html, optimize with wasm-opt)"
 script = '''
-#!/bin/bash
-set -e
-
-CRATE_NAME="examples_twitter"
-OUTPUT_DIR="dist"
-
-echo "Building WASM (debug) for: $CRATE_NAME"
-
-# Build WASM
-cargo build --target wasm32-unknown-unknown
-
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
-
-# Run wasm-bindgen
-wasm-bindgen \
-	--target web \
-	--out-dir "$OUTPUT_DIR" \
-	"target/wasm32-unknown-unknown/debug/$CRATE_NAME.wasm"
-
-# Copy index.html if exists
-if [ -f "index.html" ]; then
-	cp "index.html" "$OUTPUT_DIR/"
-fi
-
-echo "✓ WASM built successfully: $OUTPUT_DIR"
-'''
-
-[tasks.wasm-build-release]
-description = "Build WASM in release mode with optimization"
-script = '''
-#!/bin/bash
-set -e
-
-CRATE_NAME="examples_twitter"
-OUTPUT_DIR="dist"
-
-echo "Building WASM (release) for: $CRATE_NAME"
-
-# Build WASM in release mode
-cargo build --target wasm32-unknown-unknown --release
-
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
-
-# Run wasm-bindgen
-wasm-bindgen \
-	--target web \
-	--out-dir "$OUTPUT_DIR" \
-	"target/wasm32-unknown-unknown/release/$CRATE_NAME.wasm"
+[ -f index.html ] && cp index.html dist/
 
 # Optimize with wasm-opt if available
 if command -v wasm-opt &> /dev/null; then
 	echo "Running wasm-opt..."
-	WASM_FILE="$OUTPUT_DIR/${CRATE_NAME}_bg.wasm"
+	WASM_FILE="dist/examples_twitter_bg.wasm"
 	wasm-opt -O3 -o "$WASM_FILE.opt" "$WASM_FILE"
 	mv "$WASM_FILE.opt" "$WASM_FILE"
+	echo "✓ WASM optimized"
 else
 	echo "⚠️  wasm-opt not found, skipping optimization"
 fi
 
-# Copy index.html if exists
-if [ -f "index.html" ]; then
-	cp "index.html" "$OUTPUT_DIR/"
-fi
-
-echo "✓ WASM built successfully: $OUTPUT_DIR"
+echo "✓ WASM build completed: dist/"
 '''
+dependencies = ["wasm-bindgen-release"]
+
+[tasks.wasm-build-release]
+description = "Build WASM in release mode with optimization"
+dependencies = ["wasm-finalize-release"]
 
 [tasks.wasm-clean]
 description = "Clean WASM build artifacts"
 script = '''
-#!/bin/bash
-echo "Cleaning WASM artifacts..."
 rm -rf dist
-rm -rf target/wasm32-unknown-unknown
-echo "✓ Cleaned"
+echo "✓ Cleaned WASM artifacts"
 '''
 
 # ============================================================================
@@ -340,17 +256,22 @@ echo "✓ Cleaned"
 
 [tasks.dev]
 description = "Build WASM and start development server with frontend"
+dependencies = ["wasm-build-dev", "collectstatic", "run-dev-server"]
+
+[tasks.run-dev-server]
+description = "Start development server with frontend (MUST run from project directory)"
 script = '''
 #!/bin/bash
-set -e
+# 現在のディレクトリが examples-twitter かチェック
+CURRENT_DIR=$(basename "$PWD")
+if [ "$CURRENT_DIR" != "examples-twitter" ]; then
+	echo "Error: This command must be run from examples/local/examples-twitter directory"
+	echo "Current directory: $PWD"
+	echo "Please run: cd examples/local/examples-twitter && cargo make dev"
+	exit 1
+fi
 
-echo "📦 Building WASM frontend..."
-cargo make wasm-build-dev
-
-echo ""
 echo "🚀 Starting development server with WASM frontend..."
-echo ""
-
 cargo run --bin examples-twitter -- runserver --with-pages --noreload
 '''
 
@@ -360,17 +281,12 @@ dependencies = ["build", "runserver-watch"]
 
 [tasks.dev-release]
 description = "Build optimized WASM and start server"
+dependencies = ["wasm-build-release", "collectstatic", "run-dev-release-server"]
+
+[tasks.run-dev-release-server]
 script = '''
 #!/bin/bash
-set -e
-
-echo "📦 Building optimized WASM for production..."
-cargo make wasm-build-release
-
-echo ""
 echo "🚀 Starting server with optimized WASM frontend..."
-echo ""
-
 cargo run --release --bin examples-twitter -- runserver --with-pages --noreload
 '''
 
@@ -389,17 +305,17 @@ dependencies = ["fmt-check", "clippy-check", "build", "test"]
 [tasks.runserver-v]
 description = "Start the development server with verbose output"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-v"]
+args = ["run", "--bin", "examples-twitter", "runserver", "-v"]
 
 [tasks.runserver-vv]
 description = "Start the development server with very verbose output"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-vv"]
+args = ["run", "--bin", "examples-twitter", "runserver", "-vv"]
 
 [tasks.runserver-vvv]
 description = "Start the development server with maximum verbosity"
 command = "cargo"
-args = ["run", "--bin", "manage", "runserver", "-vvv"]
+args = ["run", "--bin", "examples-twitter", "runserver", "-vvv"]
 
 # ============================================================================
 # Help
@@ -420,7 +336,6 @@ echo "  WASM:"
 echo "    wasm-build-dev     - Build WASM (debug)"
 echo "    wasm-build-release - Build WASM (release, optimized)"
 echo "    wasm-clean         - Clean WASM artifacts"
-echo "    install-wasm-tools - Install WASM build tools"
 echo ""
 echo "  Database:"
 echo "    makemigrations     - Create new migrations"
@@ -456,9 +371,6 @@ echo "    clean              - Clean artifacts"
 echo ""
 echo "  CI/CD:"
 echo "    ci                 - Run CI pipeline"
-echo ""
-echo "  Tools:"
-echo "    install-tools      - Install all dev tools"
 echo ""
 echo "Usage: cargo make <task>"
 '''
