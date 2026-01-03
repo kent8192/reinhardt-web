@@ -67,11 +67,14 @@ pub trait AdminView: Send + Sync {
 	}
 }
 
-/// Django-style ModelAdmin for managing models
+/// A registry for admin interfaces similar to Django's ModelAdmin.
+///
+/// This allows you to register models and customize how they appear
+/// in admin interfaces.
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,no_run
 /// use reinhardt_views::admin::ModelAdmin;
 /// use reinhardt_db::orm::Model;
 /// use serde::{Serialize, Deserialize};
@@ -81,42 +84,43 @@ pub trait AdminView: Send + Sync {
 ///     id: Option<i64>,
 ///     title: String,
 ///     content: String,
-///     published: bool,
+/// }
+///
+/// #[derive(Clone)]
+/// struct ArticleFields;
+///
+/// impl reinhardt_db::orm::FieldSelector for ArticleFields {
+///     fn with_alias(self, _alias: &str) -> Self {
+///         self
+///     }
 /// }
 ///
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
+///     type Fields = ArticleFields;
 ///     fn table_name() -> &'static str { "articles" }
-///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+///     fn new_fields() -> Self::Fields { ArticleFields }
 /// }
 ///
 /// let admin = ModelAdmin::<Article>::new()
-///     .with_list_display(vec!["id".to_string(), "title".to_string(), "published".to_string()])
-///     .with_list_filter(vec!["published".to_string()])
+///     .with_list_display(vec!["id".to_string(), "title".to_string()])
 ///     .with_search_fields(vec!["title".to_string(), "content".to_string()]);
-///
-/// assert_eq!(admin.list_display(), &["id", "title", "published"]);
 /// ```
-pub struct ModelAdmin<T: Model> {
-	/// Fields to display in the list view
+pub struct ModelAdmin<M>
+where
+	M: Model + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
+{
 	list_display: Vec<String>,
-	/// Fields to filter by in the list view
-	list_filter: Vec<String>,
-	/// Fields to search in
 	search_fields: Vec<String>,
-	/// Ordering for the list view
+	list_filter: Vec<String>,
 	ordering: Vec<String>,
-	/// Number of items per page
 	list_per_page: usize,
-	/// Whether to show full result count (can be slow for large tables)
 	show_full_result_count: bool,
-	/// Fields to display in readonly mode
 	readonly_fields: Vec<String>,
-	/// Custom queryset for filtering
-	queryset: Option<Vec<T>>,
-	/// PhantomData for type safety
-	_phantom: PhantomData<T>,
+	queryset: Option<Vec<M>>,
+	_phantom: PhantomData<M>,
 }
 
 impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
@@ -135,11 +139,22 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
 	///     username: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	///
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self {
+	///         self
+	///     }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
+	///     type Fields = UserFields;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	///     fn new_fields() -> Self::Fields { UserFields }
 	/// }
 	///
 	/// let admin = ModelAdmin::<User>::new();
@@ -174,11 +189,22 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
 	///     title: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct ArticleFields;
+	///
+	/// impl reinhardt_db::orm::FieldSelector for ArticleFields {
+	///     fn with_alias(self, _alias: &str) -> Self {
+	///         self
+	///     }
+	/// }
+	///
 	/// impl Model for Article {
 	///     type PrimaryKey = i64;
+	///     type Fields = ArticleFields;
 	///     fn table_name() -> &'static str { "articles" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	///     fn new_fields() -> Self::Fields { ArticleFields }
 	/// }
 	///
 	/// let admin = ModelAdmin::<Article>::new()

@@ -33,11 +33,22 @@ use crate::core::View;
 ///     content: String,
 /// }
 ///
+/// #[derive(Clone)]
+/// struct ArticleFields;
+///
+/// impl reinhardt_db::orm::FieldSelector for ArticleFields {
+///     fn with_alias(self, _alias: &str) -> Self {
+///         self
+///     }
+/// }
+///
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
+///     type Fields = ArticleFields;
 ///     fn table_name() -> &'static str { "articles" }
-///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+///     fn new_fields() -> Self::Fields { ArticleFields }
 /// }
 ///
 /// let view = DestroyAPIView::<Article>::new()
@@ -66,11 +77,18 @@ where
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct Article { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_db::orm::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ArticleFields;
 	/// #     fn table_name() -> &'static str { "articles" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// # }
 	///
 	/// let view = DestroyAPIView::<Article>::new();
@@ -99,11 +117,18 @@ where
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct Article { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_db::orm::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ArticleFields;
 	/// #     fn table_name() -> &'static str { "articles" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// # }
 	///
 	/// let view = DestroyAPIView::<Article>::new()
@@ -131,11 +156,14 @@ where
 			))
 		})?;
 
-		let filter = Filter::new(
-			self.lookup_field.clone(),
-			FilterOperator::Eq,
-			FilterValue::String(lookup_value.clone()),
-		);
+		// Try to parse as i64 first (common for primary keys), fallback to string
+		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
+			FilterValue::Integer(int_value)
+		} else {
+			FilterValue::String(lookup_value.clone())
+		};
+
+		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
 
 		self.get_queryset()
 			.filter(filter)

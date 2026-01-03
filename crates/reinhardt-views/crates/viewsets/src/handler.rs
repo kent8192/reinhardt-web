@@ -164,17 +164,26 @@ impl std::error::Error for ViewError {}
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
-/// # #[derive(Debug, Clone, Serialize, Deserialize)]
+/// # #[derive(Serialize, Deserialize, Clone, Debug)]
 /// # struct User {
 /// #     id: Option<i64>,
 /// #     username: String,
 /// # }
 /// #
+/// # #[derive(Clone)]
+/// # struct UserFields;
+/// #
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+/// #     fn with_alias(self, _alias: &str) -> Self { self }
+/// # }
+/// #
 /// # impl Model for User {
 /// #     type PrimaryKey = i64;
+/// #     type Fields = UserFields;
 /// #     fn table_name() -> &'static str { "users" }
-/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 /// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+/// #     fn new_fields() -> Self::Fields { UserFields }
 /// # }
 /// #
 /// # async fn example() {
@@ -215,11 +224,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// let handler = ModelViewSetHandler::<User>::new();
 	/// ```
@@ -251,11 +269,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// let users = vec![
 	///     User { id: Some(1), username: "alice".to_string() },
@@ -286,11 +313,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// let serializer = Arc::new(ModelSerializer::<User>::new());
 	/// let handler = ModelViewSetHandler::<User>::new()
@@ -321,11 +357,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = Arc::new(AnyPool::connect("postgres://localhost/mydb").await?);
@@ -354,11 +399,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// let handler = ModelViewSetHandler::<User>::new()
 	///     .with_db_backend(DbBackend::Sqlite);
@@ -385,11 +439,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// let handler = ModelViewSetHandler::<User>::new()
 	///     .add_permission(Arc::new(IsAuthenticated));
@@ -585,11 +648,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -645,11 +717,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -717,11 +798,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -806,11 +896,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -903,11 +1002,20 @@ where
 	/// #     username: String,
 	/// # }
 	/// #
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// #
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// # impl Model for User {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	/// #     fn table_name() -> &'static str { "users" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
 	/// # }
 	/// #
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

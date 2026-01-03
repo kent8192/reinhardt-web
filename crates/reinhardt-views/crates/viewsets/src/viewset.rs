@@ -177,17 +177,26 @@ impl<M: 'static, S: 'static> ModelViewSet<M, S> {
 	/// use reinhardt_db::prelude::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
-	/// #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// #[derive(Serialize, Deserialize, Clone, Debug)]
 	/// struct User {
 	///     id: Option<i64>,
 	///     username: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	///
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
+	///     type Fields = UserFields;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	///     fn new_fields() -> Self::Fields { UserFields }
 	/// }
 	///
 	/// let viewset = ModelViewSet::<User, reinhardt_serializers::JsonSerializer<User>>::new("users");
@@ -214,17 +223,26 @@ impl<M: 'static, S: 'static> ModelViewSet<M, S> {
 	/// use reinhardt_db::prelude::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
-	/// #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// #[derive(Serialize, Deserialize, Clone, Debug)]
 	/// struct User {
 	///     id: Option<i64>,
 	///     username: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	///
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
+	///     type Fields = UserFields;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	///     fn new_fields() -> Self::Fields { UserFields }
 	/// }
 	///
 	/// let viewset = ModelViewSet::<User, ()>::new("users")
@@ -440,17 +458,26 @@ impl<M: 'static, S: 'static> ReadOnlyModelViewSet<M, S> {
 	/// use reinhardt_db::prelude::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
-	/// #[derive(Debug, Clone, Serialize, Deserialize)]
+	/// #[derive(Serialize, Deserialize, Clone, Debug)]
 	/// struct User {
 	///     id: Option<i64>,
 	///     username: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	///
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
+	///     type Fields = UserFields;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	///     fn new_fields() -> Self::Fields { UserFields }
 	/// }
 	///
 	/// let viewset = ReadOnlyModelViewSet::<User, reinhardt_serializers::JsonSerializer<User>>::new("users");

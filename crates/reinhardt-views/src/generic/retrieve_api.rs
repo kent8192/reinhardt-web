@@ -36,11 +36,22 @@ use crate::core::View;
 ///     content: String,
 /// }
 ///
+/// #[derive(Clone)]
+/// struct ArticleFields;
+///
+/// impl reinhardt_db::orm::FieldSelector for ArticleFields {
+///     fn with_alias(self, _alias: &str) -> Self {
+///         self
+///     }
+/// }
+///
 /// impl Model for Article {
 ///     type PrimaryKey = i64;
+///     type Fields = ArticleFields;
 ///     fn table_name() -> &'static str { "articles" }
-///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 ///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+///     fn new_fields() -> Self::Fields { ArticleFields }
 /// }
 ///
 /// let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new()
@@ -72,11 +83,18 @@ where
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct Article { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_db::orm::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ArticleFields;
 	/// #     fn table_name() -> &'static str { "articles" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// # }
 	///
 	/// let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new();
@@ -106,11 +124,18 @@ where
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct Article { id: Option<i64>, title: String }
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_db::orm::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// # impl Model for Article {
 	/// #     type PrimaryKey = i64;
+	/// #     type Fields = ArticleFields;
 	/// #     fn table_name() -> &'static str { "articles" }
-	/// #     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id.as_ref() }
+	/// #     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
+	/// #     fn new_fields() -> Self::Fields { ArticleFields }
 	/// # }
 	///
 	/// let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new()
