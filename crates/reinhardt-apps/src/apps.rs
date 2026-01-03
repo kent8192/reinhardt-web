@@ -144,6 +144,111 @@ impl AppConfig {
 	}
 }
 
+// ============================================================================
+// Resource Provider Traits
+// ============================================================================
+
+/// Trait for providing static file directories
+///
+/// Applications can implement this trait to provide static files
+/// that will be automatically discovered by collectstatic.
+pub trait StaticFilesProvider {
+	/// Get the static files directory for this app
+	///
+	/// Returns None if the app does not provide static files
+	fn static_dir(&self) -> Option<std::path::PathBuf> {
+		None
+	}
+
+	/// Get the static URL prefix for this app
+	///
+	/// Default: "/static/{app_label}/"
+	fn static_url_prefix(&self) -> Option<String> {
+		None
+	}
+}
+
+/// Trait for providing locale directories
+///
+/// Applications can implement this trait to provide translation files
+/// that will be automatically discovered by makemessages.
+pub trait LocaleProvider {
+	/// Get the locale directory for this app
+	///
+	/// Returns None if the app does not provide translations
+	fn locale_dir(&self) -> Option<std::path::PathBuf> {
+		None
+	}
+}
+
+/// Trait for providing media directories
+///
+/// Applications can implement this trait to provide initial media files
+/// that will be automatically discovered by collectmedia.
+pub trait MediaProvider {
+	/// Get the media directory for this app
+	///
+	/// Returns None if the app does not provide media files
+	fn media_dir(&self) -> Option<std::path::PathBuf> {
+		None
+	}
+
+	/// Get the media URL prefix for this app
+	///
+	/// Default: "/media/{app_label}/"
+	fn media_url_prefix(&self) -> Option<String> {
+		None
+	}
+}
+
+/// Default implementations for AppConfig
+impl StaticFilesProvider for AppConfig {
+	fn static_dir(&self) -> Option<std::path::PathBuf> {
+		// Default: {app_path}/static/
+		if let Some(path) = &self.path {
+			let static_path = std::path::PathBuf::from(path).join("static");
+			if static_path.exists() && static_path.is_dir() {
+				return Some(static_path);
+			}
+		}
+		None
+	}
+
+	fn static_url_prefix(&self) -> Option<String> {
+		Some(format!("/static/{}/", self.label))
+	}
+}
+
+impl LocaleProvider for AppConfig {
+	fn locale_dir(&self) -> Option<std::path::PathBuf> {
+		// Default: {app_path}/locale/
+		if let Some(path) = &self.path {
+			let locale_path = std::path::PathBuf::from(path).join("locale");
+			if locale_path.exists() && locale_path.is_dir() {
+				return Some(locale_path);
+			}
+		}
+		None
+	}
+}
+
+impl MediaProvider for AppConfig {
+	fn media_dir(&self) -> Option<std::path::PathBuf> {
+		// Default: {app_path}/media/
+		if let Some(path) = &self.path {
+			let media_path = std::path::PathBuf::from(path).join("media");
+			if media_path.exists() && media_path.is_dir() {
+				return Some(media_path);
+			}
+		}
+		None
+	}
+
+	fn media_url_prefix(&self) -> Option<String> {
+		Some(format!("/media/{}/", self.label))
+	}
+}
+
 /// Main application registry
 ///
 /// This is the central registry for all installed applications in a Reinhardt project.
