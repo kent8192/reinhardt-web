@@ -189,10 +189,18 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Comment { id: Option<i64>, content_type: String, object_id: i64 }
 	///
+	/// # #[derive(Clone)]
+	/// # struct CommentFields;
+	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = CommentFields;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { CommentFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -222,10 +230,18 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Comment { id: Option<i64>, content_type: String, object_id: i64 }
 	///
+	/// # #[derive(Clone)]
+	/// # struct CommentFields;
+	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = CommentFields;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { CommentFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -278,10 +294,18 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Comment { id: Option<i64>, content_type: String, object_id: i64 }
 	///
+	/// # #[derive(Clone)]
+	/// # struct CommentFields;
+	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = CommentFields;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { CommentFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
@@ -428,10 +452,18 @@ impl<P: Model> PolymorphicQuery<P> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Comment { id: Option<i64>, content_type: String, object_id: i64 }
 	///
+	/// # #[derive(Clone)]
+	/// # struct CommentFields;
+	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Comment {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = CommentFields;
 	///     fn table_name() -> &'static str { "comments" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { CommentFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///

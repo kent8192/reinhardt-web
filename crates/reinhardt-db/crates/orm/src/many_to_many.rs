@@ -289,17 +289,33 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Course { id: Option<i64>, title: String }
 	///
+	/// # #[derive(Clone)]
+	/// # struct StudentFields;
+	/// # impl reinhardt_orm::FieldSelector for StudentFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct CourseFields;
+	/// # impl reinhardt_orm::FieldSelector for CourseFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for Student {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = StudentFields;
 	///     fn table_name() -> &'static str { "students" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { StudentFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
 	/// impl Model for Course {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = CourseFields;
 	///     fn table_name() -> &'static str { "courses" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { CourseFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///

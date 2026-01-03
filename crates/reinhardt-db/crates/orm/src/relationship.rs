@@ -191,17 +191,33 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct Post { id: Option<i64>, user_id: i64, title: String }
 	///
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
+	/// #
 	/// impl Model for User {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = UserFields;
 	///     fn table_name() -> &'static str { "users" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { UserFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
+	/// #     type Fields = PostFields;
 	///     fn table_name() -> &'static str { "posts" }
-	///     fn primary_key(&self) -> Option<&Self::PrimaryKey> { self.id }
+	/// #     fn new_fields() -> Self::Fields { PostFields }
+	///     fn primary_key(&self) -> Option<Self::PrimaryKey> { self.id }
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// }
 	///

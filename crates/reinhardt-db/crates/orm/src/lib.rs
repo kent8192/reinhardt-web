@@ -166,7 +166,9 @@ pub mod manager;
 // Unified query interface facade
 pub mod query;
 
-pub use manager::{get_connection, init_database, reinitialize_database};
+pub use manager::{
+	get_connection, init_database, init_database_with_pool_size, reinitialize_database,
+};
 
 // Re-export paste for macro usage
 #[doc(hidden)]

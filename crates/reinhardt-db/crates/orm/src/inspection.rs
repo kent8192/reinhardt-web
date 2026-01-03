@@ -408,17 +408,27 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	///     username: String,
 	/// }
 	///
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -448,16 +458,26 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct Post {
 	///     id: i64,
 	/// }
 	///
+	/// # #[derive(Clone)]
+	/// # struct PostFields;
+	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// impl Model for Post {
 	///     type PrimaryKey = i64;
+	///     type Fields = PostFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "blog_posts"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         PostFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -485,13 +505,19 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct Article {
 	///     article_id: u32,
 	/// }
 	///
+	/// # #[derive(Clone)]
+	/// # struct ArticleFields;
+	/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// impl Model for Article {
 	///     type PrimaryKey = u32;
+	///     type Fields = ArticleFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "articles"
@@ -501,8 +527,12 @@ impl<M: Model> ModelInspector<M> {
 	///         "article_id"
 	///     }
 	///
+	///     fn new_fields() -> Self::Fields {
+	///         ArticleFields
+	///     }
+	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
-	///         Some(&self.article_id)
+	///         Some(self.article_id)
 	///     }
 	///
 	///     fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -530,17 +560,28 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	///     name: String,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -572,16 +613,27 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -614,16 +666,27 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -657,16 +720,27 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -700,16 +774,27 @@ impl<M: Model> ModelInspector<M> {
 	/// use reinhardt_orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
-	/// #[derive(Serialize, Deserialize)]
+	/// #[derive(Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: i32,
 	/// }
 	///
+	/// #[derive(Clone)]
+	/// struct UserFields;
+	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	///     fn with_alias(self, _alias: &str) -> Self { self }
+	/// }
+	///
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {

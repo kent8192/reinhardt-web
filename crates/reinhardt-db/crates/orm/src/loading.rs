@@ -154,15 +154,24 @@ impl<T: Model> LoadOptionBuilder<T> {
 	/// use reinhardt_orm::{Model, loading::LoadOptionBuilder};
 	/// use serde::{Serialize, Deserialize};
 	///
-	/// #[derive(Debug, Serialize, Deserialize)]
+	/// #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// struct User {
 	///     id: Option<i32>,
 	/// }
 	///
+	/// # #[derive(Clone)]
+	/// # struct UserFields;
+	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// #     fn with_alias(self, _alias: &str) -> Self { self }
+	/// # }
 	/// impl Model for User {
 	///     type PrimaryKey = i32;
+	///     type Fields = UserFields;
 	///     fn table_name() -> &'static str {
 	///         "users"
+	///     }
+	///     fn new_fields() -> Self::Fields {
+	///         UserFields
 	///     }
 	///     fn primary_key(&self) -> Option<Self::PrimaryKey> {
 	///         self.id
