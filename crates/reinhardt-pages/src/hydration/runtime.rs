@@ -159,22 +159,29 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	use super::events::EventRegistry;
 	use super::reconcile::reconcile;
 
+	web_sys::console::log_1(&"[Hydration] Starting...".into());
+
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
 
 	// 2. Render the component to get expected structure
 	let view = component.render();
+	web_sys::console::log_1(&"[Hydration] View rendered".into());
 
 	// 3. Reconcile DOM structure
 	reconcile(root, &view)
 		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {:?}", e)))?;
+	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 	// 4. Attach event handlers
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(root, &view, &mut registry)?;
+	web_sys::console::log_1(&"[Hydration] Events attached".into());
 
 	// 5. Mark hydration complete
 	context.mark_hydrated();
+	mark_hydration_complete_internal();
+	web_sys::console::log_1(&"[Hydration] Complete!".into());
 
 	Ok(())
 }
@@ -204,9 +211,48 @@ pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 	Ok(())
 }
 
-/// Recursively attaches event handlers to DOM elements.
+/// Attaches event handlers to a mounted view (CSR mode).
+///
+/// This is a convenience function for client-side rendering (CSR) applications.
+/// After mounting a view with `view.mount()`, call this function to attach event handlers.
+///
+/// # Example
+///
+/// ```ignore
+/// use reinhardt_pages::hydration::attach_events_to_mounted_view;
+/// use reinhardt_pages::dom::Element;
+///
+/// // Mount the view
+/// let view = my_component();
+/// let root = Element::new(root_element);
+/// view.mount(&root)?;
+///
+/// // Attach event handlers
+/// attach_events_to_mounted_view(&root, &view)?;
+/// ```
 #[cfg(target_arch = "wasm32")]
-fn attach_events_recursive(
+pub fn attach_events_to_mounted_view(
+	element: &Element,
+	view: &crate::component::View,
+) -> Result<(), HydrationError> {
+	use super::events::EventRegistry;
+
+	web_sys::console::log_1(&"[CSR] Attaching events to mounted view...".into());
+
+	let mut registry = EventRegistry::new();
+	attach_events_recursive(element, view, &mut registry)?;
+
+	web_sys::console::log_1(&"[CSR] Events attached successfully!".into());
+
+	Ok(())
+}
+
+/// Recursively attaches event handlers to DOM elements.
+///
+/// This function can be used for both SSR+Hydration and CSR (client-side rendering only) scenarios.
+/// For CSR, call this after mounting a view to attach event handlers.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn attach_events_recursive(
 	element: &Element,
 	view: &crate::component::View,
 	registry: &mut super::events::EventRegistry,
@@ -216,8 +262,21 @@ fn attach_events_recursive(
 
 	match view {
 		View::Element(el_view) => {
+			let tag = el_view.tag_name();
+			let event_count = el_view.event_handlers().len();
+
+			if event_count > 0 {
+				web_sys::console::log_1(
+					&format!("[attach_events] {} has {} event handlers", tag, event_count).into(),
+				);
+			}
+
 			// Attach events from the view's event handlers
 			for (event_type, handler) in el_view.event_handlers() {
+				web_sys::console::log_1(
+					&format!("[attach_events] Attaching {:?} to {}", event_type, tag).into(),
+				);
+
 				attach_event(element, event_type, handler.clone(), registry)
 					.map_err(|e| HydrationError::EventAttachmentFailed(e.to_string()))?;
 			}
@@ -243,6 +302,11 @@ fn attach_events_recursive(
 		View::Text(_) | View::Empty => {
 			// No events to attach
 		}
+		View::WithHead { view, .. } => {
+			// Head section doesn't have event handlers
+			// Attach events to the inner view
+			attach_events_recursive(element, view, registry)?;
+		}
 	}
 
 	Ok(())
@@ -251,7 +315,7 @@ fn attach_events_recursive(
 /// Finds all elements with hydration markers in the given root.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub fn find_hydration_markers(root: &Element) -> Vec<(String, Element)> {
+pub(super) fn find_hydration_markers(root: &Element) -> Vec<(String, Element)> {
 	let mut markers = Vec::new();
 	find_markers_recursive(root, &mut markers);
 	markers
@@ -273,6 +337,61 @@ fn find_markers_recursive(element: &Element, markers: &mut Vec<(String, Element)
 #[allow(dead_code)]
 pub(super) fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
 	Vec::new()
+}
+
+// Global hydration state management
+type HydrationListener = Box<dyn Fn(bool) + 'static>;
+type HydrationListeners = Vec<HydrationListener>;
+
+thread_local! {
+	static HYDRATION_COMPLETE: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
+	static HYDRATION_LISTENERS: std::cell::RefCell<HydrationListeners> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Initialize hydration state (called before hydration starts)
+pub fn init_hydration_state() {
+	HYDRATION_COMPLETE.with(|state| {
+		*state.borrow_mut() = false;
+	});
+}
+
+/// Check if hydration is complete
+pub fn is_hydration_complete() -> bool {
+	HYDRATION_COMPLETE.with(|state| *state.borrow())
+}
+
+/// Register a callback to be called when hydration completes
+pub fn on_hydration_complete<F>(callback: F)
+where
+	F: Fn(bool) + 'static,
+{
+	HYDRATION_LISTENERS.with(|listeners| {
+		listeners.borrow_mut().push(Box::new(callback));
+	});
+}
+
+/// Mark hydration as complete and notify all listeners (internal)
+#[cfg(target_arch = "wasm32")]
+fn mark_hydration_complete_internal() {
+	HYDRATION_COMPLETE.with(|state| {
+		*state.borrow_mut() = true;
+	});
+
+	// Notify all listeners
+	HYDRATION_LISTENERS.with(|listeners| {
+		for listener in listeners.borrow().iter() {
+			listener(true);
+		}
+	});
+}
+
+/// Manually mark hydration as complete (public API)
+///
+/// This function can be called explicitly to mark hydration as complete
+/// when not using the automatic hydration process (e.g., when using mount() instead of hydrate()).
+#[cfg(target_arch = "wasm32")]
+pub fn mark_hydration_complete() {
+	mark_hydration_complete_internal();
 }
 
 #[cfg(test)]

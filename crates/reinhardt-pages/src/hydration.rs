@@ -34,4 +34,10 @@ pub use events::{
 	AttachOptions, EventBinding, EventRegistry, attach_event, attach_events_recursive,
 };
 pub use reconcile::{ReconcileError, ReconcileOptions, reconcile, reconcile_with_options};
-pub use runtime::{HydrationContext, HydrationError, hydrate, hydrate_root};
+pub use runtime::{
+	HydrationContext, HydrationError, hydrate, hydrate_root, init_hydration_state,
+	is_hydration_complete, on_hydration_complete,
+};
+
+#[cfg(target_arch = "wasm32")]
+pub use runtime::{attach_events_to_mounted_view, mark_hydration_complete};

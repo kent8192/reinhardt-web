@@ -204,6 +204,11 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 			Ok(())
 		}
 		View::Empty => Ok(()),
+		View::WithHead { view, .. } => {
+			// Head section is handled separately during SSR
+			// For hydration, just reconcile the inner view
+			reconcile(element, view)
+		}
 	}
 }
 
@@ -331,7 +336,7 @@ fn normalize_whitespace(s: &str) -> String {
 /// Checks if an element's structure matches the view.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub fn structure_matches(element: &Element, view: &View) -> bool {
+pub(super) fn structure_matches(element: &Element, view: &View) -> bool {
 	reconcile(element, view).is_ok()
 }
 
@@ -374,7 +379,7 @@ impl CompareResult {
 /// Compares DOM structure with view and returns detailed results.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub fn compare_structure(element: &Element, view: &View) -> CompareResult {
+pub(super) fn compare_structure(element: &Element, view: &View) -> CompareResult {
 	let mut differences = Vec::new();
 	compare_recursive(element, view, "", &mut differences);
 
@@ -431,6 +436,11 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 					compare_recursive(&children[i], child_view, &child_path, differences);
 				}
 			}
+		}
+		View::WithHead { view, .. } => {
+			// Head section is handled separately during SSR
+			// For comparison, just compare the inner view
+			compare_recursive(element, view, path, differences);
 		}
 	}
 }

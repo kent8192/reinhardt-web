@@ -144,7 +144,7 @@ impl std::error::Error for EventAttachError {}
 
 /// Type alias for event handler functions.
 #[cfg(target_arch = "wasm32")]
-pub type EventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
+pub(super) type EventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 
 /// Type alias for event handler functions (non-WASM placeholder).
 #[cfg(not(target_arch = "wasm32"))]
@@ -320,7 +320,7 @@ pub fn attach_events_recursive(
 /// Attaches multiple events based on bindings.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub fn attach_events(
+pub(super) fn attach_events(
 	element: &Element,
 	bindings: &[EventBinding],
 	handlers: &HashMap<String, EventHandler>,
