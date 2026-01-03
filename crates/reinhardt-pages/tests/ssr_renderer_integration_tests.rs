@@ -11,7 +11,9 @@
 //! 5. Performance - Large component trees and deep nesting
 //! 6. Edge Cases - SVG, custom attributes, fragments
 
-use reinhardt_pages::component::{Component, ElementView, IntoView, View};
+use reinhardt_pages::component::{
+	Component, ElementView, Head, IntoView, LinkTag, MetaTag, ScriptTag, View,
+};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 
 // ============================================================================
@@ -451,9 +453,10 @@ fn test_full_page_meta_viewport() {
 #[test]
 fn test_full_page_custom_title() {
 	let counter = Counter::new(0);
-	let options = SsrOptions::new().title("Test Page");
-	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let page_head = Head::new().title("Test Page");
+	let view = counter.render().with_head(page_head);
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<title>Test Page</title>"));
 }
@@ -471,9 +474,10 @@ fn test_full_page_custom_lang() {
 #[test]
 fn test_full_page_css_link() {
 	let counter = Counter::new(0);
-	let options = SsrOptions::new().css("/styles.css");
-	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let page_head = Head::new().link(LinkTag::stylesheet("/styles.css"));
+	let view = counter.render().with_head(page_head);
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/styles.css\">"));
 }
@@ -481,9 +485,12 @@ fn test_full_page_css_link() {
 #[test]
 fn test_full_page_multiple_css_links() {
 	let counter = Counter::new(0);
-	let options = SsrOptions::new().css("/reset.css").css("/main.css");
-	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let page_head = Head::new()
+		.link(LinkTag::stylesheet("/reset.css"))
+		.link(LinkTag::stylesheet("/main.css"));
+	let view = counter.render().with_head(page_head);
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/reset.css\">"));
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/main.css\">"));
@@ -492,9 +499,10 @@ fn test_full_page_multiple_css_links() {
 #[test]
 fn test_full_page_js_script() {
 	let counter = Counter::new(0);
-	let options = SsrOptions::new().js("/app.js");
-	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let page_head = Head::new().script(ScriptTag::external("/app.js"));
+	let view = counter.render().with_head(page_head);
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<script src=\"/app.js\"></script>"));
 }
@@ -502,11 +510,12 @@ fn test_full_page_js_script() {
 #[test]
 fn test_full_page_custom_meta_tags() {
 	let counter = Counter::new(0);
-	let options = SsrOptions::new()
-		.meta("description", "Test page")
-		.meta("keywords", "test, rust, ssr");
-	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let page_head = Head::new()
+		.meta(MetaTag::new("description", "Test page"))
+		.meta(MetaTag::new("keywords", "test, rust, ssr"));
+	let view = counter.render().with_head(page_head);
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<meta name=\"description\" content=\"Test page\">"));
 	assert!(html.contains("<meta name=\"keywords\" content=\"test, rust, ssr\">"));
@@ -551,16 +560,18 @@ fn test_full_page_with_auth_data() {
 #[test]
 fn test_full_page_combined_options() {
 	let counter = Counter::new(99);
-	let options = SsrOptions::new()
+	let page_head = Head::new()
 		.title("Combined Test")
-		.lang("fr")
-		.css("/style.css")
-		.js("/script.js")
-		.meta("author", "Test Author")
-		.csrf("csrf-token");
+		.link(LinkTag::stylesheet("/style.css"))
+		.script(ScriptTag::external("/script.js"))
+		.meta(MetaTag::new("author", "Test Author"));
+
+	let view = counter.render().with_head(page_head);
+
+	let options = SsrOptions::new().lang("fr").csrf("csrf-token");
 
 	let mut renderer = SsrRenderer::with_options(options);
-	let html = renderer.render_page(&counter);
+	let html = renderer.render_page_with_view_head(view);
 
 	assert!(html.contains("<title>Combined Test</title>"));
 	assert!(html.contains("<html lang=\"fr\">"));
