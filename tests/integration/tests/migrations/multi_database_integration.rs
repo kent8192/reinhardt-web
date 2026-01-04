@@ -56,6 +56,28 @@ fn create_test_migration(
 	}
 }
 
+/// Create a migration with explicit dependencies for ordering
+fn create_test_migration_with_deps(
+	app: &'static str,
+	name: &'static str,
+	operations: Vec<Operation>,
+	dependencies: Vec<(String, String)>,
+) -> Migration {
+	Migration {
+		app_label: app.to_string(),
+		name: name.to_string(),
+		operations,
+		dependencies,
+		replaces: vec![],
+		atomic: true,
+		initial: None,
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	}
+}
+
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
@@ -434,7 +456,8 @@ async fn test_cascade_delete(
 	);
 
 	// Create child table with CASCADE
-	let migration2 = create_test_migration(
+	// Explicit dependency ensures parent table is created first
+	let migration2 = create_test_migration_with_deps(
 		"testapp",
 		"0002_child",
 		vec![Operation::CreateTable {
@@ -473,6 +496,7 @@ async fn test_cascade_delete(
 			interleave_in_parent: None,
 			partition: None,
 		}],
+		vec![("testapp".to_string(), "0001_parent".to_string())],
 	);
 
 	executor

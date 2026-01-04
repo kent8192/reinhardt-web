@@ -1,14 +1,8 @@
 //! Shared PostgreSQL Container with Template Database Pattern
 //!
-//! This module provides a PostgreSQL database for tests, with support for both
-//! external databases (via environment variable) and TestContainers.
+//! This module provides a PostgreSQL database for tests using TestContainers.
 //!
 //! ## Architecture
-//!
-//! The module supports two modes:
-//!
-//! 1. **Environment Variable Mode**: When `TEST_DATABASE_URL` is set, uses the external database
-//! 2. **TestContainers Mode**: Starts a PostgreSQL container with file-based coordination
 //!
 //! For nextest's process-per-test model, file-based coordination ensures:
 //! - First process starts the container and writes URL to a shared file
@@ -31,7 +25,6 @@
 //!
 //! ## Environment Variables
 //!
-//! - `TEST_DATABASE_URL`: External PostgreSQL URL (bypasses TestContainers)
 //! - `TESTCONTAINERS_RYUK_DISABLED`: Set to "true" to prevent container cleanup
 
 use fs2::FileExt;
@@ -50,7 +43,6 @@ use uuid::Uuid;
 /// Shared PostgreSQL container with base URL for connections
 pub struct SharedPostgres {
 	/// Container reference - kept alive to prevent container shutdown
-	/// None when using external database via TEST_DATABASE_URL
 	#[allow(dead_code)] // Container must be kept alive for the duration of tests
 	container: Option<ContainerAsync<GenericImage>>,
 	/// Base connection URL (without database name)
@@ -146,9 +138,14 @@ async fn start_postgres_container() -> (ContainerAsync<GenericImage>, String) {
 
 /// Initialize the template database
 async fn init_template_database(base_url: &str) {
+	// Pool configuration optimized for parallel test execution
+	// See: https://github.com/launchbadge/sqlx/issues/2885 (prepared statement cache bug)
+	// See: https://github.com/launchbadge/sqlx/issues/3241 (unexpected Sync message bug)
 	let admin_pool = sqlx::postgres::PgPoolOptions::new()
-		.max_connections(2)
-		.acquire_timeout(Duration::from_secs(30))
+		.max_connections(5)
+		.acquire_timeout(Duration::from_secs(60))
+		.test_before_acquire(false)
+		.idle_timeout(Some(Duration::from_secs(30)))
 		.connect(&format!("{}/postgres", base_url))
 		.await
 		.expect("Failed to connect to PostgreSQL for template setup");
@@ -169,9 +166,9 @@ async fn init_template_database(base_url: &str) {
 /// Gets or initializes the shared PostgreSQL instance
 ///
 /// This function handles cross-process coordination for nextest:
-/// 1. Checks for `TEST_DATABASE_URL` environment variable
-/// 2. Uses file-based locking for container coordination
-/// 3. Reuses existing container if available and reachable
+/// 1. Uses file-based locking for container coordination
+/// 2. Reuses existing container if available and reachable
+/// 3. Starts a new TestContainers PostgreSQL if needed
 ///
 /// # Returns
 ///
@@ -183,36 +180,6 @@ async fn init_template_database(base_url: &str) {
 pub async fn get_shared_postgres() -> &'static SharedPostgres {
 	POSTGRES
 		.get_or_init(|| async {
-			// Check for external database URL first
-			if let Ok(url_str) = std::env::var("TEST_DATABASE_URL") {
-				eprintln!("[shared_postgres] Using external database from TEST_DATABASE_URL");
-
-				// URLからデータベース名部分を削除
-				// postgres://user:pass@host:port/database -> postgres://user:pass@host:port
-				let base_url = if let Some(scheme_end) = url_str.find("://") {
-					// スキーム部分（postgres://）の後ろから検索
-					let after_scheme = &url_str[scheme_end + 3..];
-					if let Some(db_slash_pos) = after_scheme.find('/') {
-						// データベース名がある場合は削除
-						url_str[..scheme_end + 3 + db_slash_pos].to_string()
-					} else {
-						// データベース名がない場合はそのまま
-						url_str
-					}
-				} else {
-					// スキームが見つからない場合はそのまま（エラーケース）
-					url_str
-				};
-
-				// Initialize template database
-				init_template_database(&base_url).await;
-
-				return SharedPostgres {
-					container: None,
-					base_url,
-				};
-			}
-
 			// Acquire file lock for cross-process coordination
 			let lock_path = get_lock_file_path();
 			let lock_file = std::fs::OpenOptions::new()

@@ -29,14 +29,12 @@ pub mod migration_duplicate;
 pub mod migrations;
 pub mod validator_test_common;
 
-/// Test database setup
+/// Test database setup using TestContainers
+///
+/// This function uses the shared PostgreSQL container managed by reinhardt-test
+/// fixtures to create an isolated test database.
 pub async fn setup_test_db() -> Pool<Postgres> {
-	let database_url = std::env::var("TEST_DATABASE_URL")
-		.unwrap_or_else(|_| "postgres://localhost/reinhardt_integration_test".into());
-
-	Pool::<Postgres>::connect(&database_url)
-		.await
-		.expect("Failed to connect to test database")
+	reinhardt_test::fixtures::get_test_pool().await
 }
 
 /// Create test tables for flatpages using reinhardt-migrations

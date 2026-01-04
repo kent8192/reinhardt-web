@@ -26,13 +26,6 @@ async fn retry_connect(url: &str, max_retries: u32) -> Pool<Postgres> {
 /// Setup test database pool using testcontainers
 #[cfg(feature = "testcontainers")]
 pub async fn setup_test_db() -> Pool<Postgres> {
-	// Check if a specific DATABASE_URL is provided (for manual testing)
-	if let Ok(database_url) = env::var("TEST_DATABASE_URL") {
-		return Pool::<Postgres>::connect(&database_url)
-			.await
-			.expect("Failed to connect to test database");
-	}
-
 	// Otherwise, use testcontainers to automatically start PostgreSQL
 	let container = GenericImage::new("postgres", "17-alpine")
 		.start()
@@ -53,21 +46,6 @@ pub async fn setup_test_db() -> Pool<Postgres> {
 	std::mem::forget(container);
 
 	pool
-}
-
-/// Setup test database pool without testcontainers (requires manual database setup)
-#[cfg(not(feature = "testcontainers"))]
-pub async fn setup_test_db() -> Pool<Postgres> {
-	// Check if a specific DATABASE_URL is provided (for manual testing)
-	if let Ok(database_url) = env::var("TEST_DATABASE_URL") {
-		return Pool::<Postgres>::connect(&database_url)
-			.await
-			.expect("Failed to connect to test database");
-	}
-
-	panic!(
-		"TEST_DATABASE_URL environment variable must be set when testcontainers feature is not enabled"
-	);
 }
 
 /// Create test schema and tables

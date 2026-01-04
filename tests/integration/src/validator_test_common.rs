@@ -23,29 +23,20 @@ impl TestDatabase {
 	/// Create a new test database connection with automatic PostgreSQL container
 	///
 	/// Uses TestContainers to automatically start a PostgreSQL container for testing.
-	/// Falls back to TEST_DATABASE_URL if the container fails to start.
 	///
 	/// **Note**: This does NOT apply migrations. Each test fixture should call
 	/// `apply_basic_test_migrations()` from the migrations module.
 	pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-		// Try to use TestContainers first
-		let (database_url, container): (String, Option<_>) =
-			if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
-				// Use existing database if TEST_DATABASE_URL is set
-				(url, None)
-			} else {
-				// Start PostgreSQL container using TestContainers
-				let postgres_image = GenericImage::new("postgres", "17-alpine")
-					.with_wait_for(WaitFor::message_on_stderr(
-						"database system is ready to accept connections",
-					))
-					.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+		// Start PostgreSQL container using TestContainers
+		let postgres_image = GenericImage::new("postgres", "17-alpine")
+			.with_wait_for(WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
-				let container = postgres_image.start().await?;
-				let port = container.get_host_port_ipv4(5432).await?;
-				let url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
-				(url, Some(container))
-			};
+		let container = postgres_image.start().await?;
+		let port = container.get_host_port_ipv4(5432).await?;
+		let database_url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
 
 		// Create DatabaseConnection
 		let connection = DatabaseConnection::connect(&database_url)
@@ -59,7 +50,7 @@ impl TestDatabase {
 
 		Ok(Self {
 			connection: Arc::new(connection),
-			_container: container,
+			_container: Some(container),
 		})
 	}
 

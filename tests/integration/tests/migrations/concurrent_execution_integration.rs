@@ -58,6 +58,28 @@ fn create_test_migration(
 	}
 }
 
+/// Create a migration with explicit dependencies for ordering tests
+fn create_test_migration_with_deps(
+	app: &'static str,
+	name: &'static str,
+	operations: Vec<Operation>,
+	dependencies: Vec<(String, String)>,
+) -> Migration {
+	Migration {
+		app_label: app.to_string(),
+		name: name.to_string(),
+		operations,
+		dependencies,
+		replaces: vec![],
+		atomic: true,
+		initial: None,
+		state_only: false,
+		database_only: false,
+		swappable_dependencies: vec![],
+		optional_dependencies: vec![],
+	}
+}
+
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 	ColumnDefinition {
@@ -666,6 +688,7 @@ async fn test_sequential_migration_order(
 	.expect("Failed to create order table");
 
 	// Create migrations that record their execution
+	// Explicit dependencies enforce execution order via topological sort
 	let migrations = vec![
 		create_test_migration(
 			"testapp",
@@ -675,21 +698,23 @@ async fn test_sequential_migration_order(
 				reverse_sql: None,
 			}],
 		),
-		create_test_migration(
+		create_test_migration_with_deps(
 			"testapp",
 			"0002_second",
 			vec![Operation::RunSQL {
 				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step2')").to_string(),
 				reverse_sql: None,
 			}],
+			vec![("testapp".to_string(), "0001_first".to_string())],
 		),
-		create_test_migration(
+		create_test_migration_with_deps(
 			"testapp",
 			"0003_third",
 			vec![Operation::RunSQL {
 				sql: leak_str("INSERT INTO execution_order (step) VALUES ('step3')").to_string(),
 				reverse_sql: None,
 			}],
+			vec![("testapp".to_string(), "0002_second".to_string())],
 		),
 	];
 

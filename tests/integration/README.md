@@ -439,20 +439,6 @@ docker run -d \
 createdb reinhardt_test
 ```
 
-### 2. Environment Variables
-
-Set the test database URL:
-
-```bash
-export TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/reinhardt_test"
-```
-
-Or create a `.env` file in the project root:
-
-```
-TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reinhardt_test
-```
-
 ## Running Tests
 
 ### Run All Integration Tests
@@ -536,14 +522,6 @@ Tests can run in parallel safely due to proper cleanup.
 
 ## Troubleshooting
 
-### Connection Refused
-
-```
-Error: failed to connect to database: Connection refused
-```
-
-**Solution**: Ensure PostgreSQL is running and accessible at the URL specified in `TEST_DATABASE_URL`.
-
 ### Permission Denied
 
 ```
@@ -567,14 +545,6 @@ Error: Address already in use (os error 48)
 ```bash
 cargo test -- --test-threads=1
 ```
-
-### Test Hangs
-
-If a test hangs, it may be waiting for a database connection. Check:
-
-1. PostgreSQL is running
-2. `TEST_DATABASE_URL` is set correctly
-3. Connection pool isn't exhausted (default: 10 connections)
 
 ## Contributing
 

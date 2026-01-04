@@ -48,11 +48,20 @@ fn create_test_migration(
 	name: &'static str,
 	operations: Vec<Operation>,
 ) -> Migration {
+	create_test_migration_with_deps(app, name, operations, vec![])
+}
+
+fn create_test_migration_with_deps(
+	app: &'static str,
+	name: &'static str,
+	operations: Vec<Operation>,
+	dependencies: Vec<(String, String)>,
+) -> Migration {
 	Migration {
 		app_label: app.to_string(),
 		name: name.to_string(),
 		operations,
-		dependencies: vec![],
+		dependencies,
 		replaces: vec![],
 		atomic: true,
 		initial: None,
@@ -212,7 +221,8 @@ async fn test_postgres_deferrable_constraint(
 	);
 
 	// Create child table with DEFERRABLE FK
-	let create_child = create_test_migration(
+	// Must depend on parent migration to ensure correct execution order
+	let create_child = create_test_migration_with_deps(
 		"testapp",
 		"0002_create_child_with_deferrable_fk",
 		vec![Operation::CreateTable {
@@ -234,6 +244,7 @@ async fn test_postgres_deferrable_constraint(
 			interleave_in_parent: None,
 			partition: None,
 		}],
+		vec![("testapp".to_string(), "0001_create_parent".to_string())],
 	);
 
 	executor
