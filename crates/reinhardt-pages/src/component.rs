@@ -31,11 +31,14 @@
 mod head;
 mod into_view;
 mod props;
+mod reactive_if;
 mod r#trait;
 
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
 #[cfg(not(target_arch = "wasm32"))]
 pub use into_view::DummyEvent;
-pub use into_view::{ElementView, IntoView, MountError, View, ViewEventHandler};
+pub use into_view::{ElementView, IntoView, MountError, ReactiveIf, View, ViewEventHandler};
 pub use props::Props;
+#[cfg(target_arch = "wasm32")]
+pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
 pub use r#trait::Component;

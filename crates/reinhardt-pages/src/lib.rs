@@ -69,7 +69,7 @@
 //!     });
 //!
 //!     page! {
-//!         @head: page_head,
+//!         #head: page_head,
 //!         || {
 //!             div { class: "container",
 //!                 h1 { "Welcome Home" }
