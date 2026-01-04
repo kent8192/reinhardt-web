@@ -254,6 +254,7 @@ fn test_alter_column_requires_sqlite_recreation() {
 	let operation = Operation::AlterColumn {
 		table: "t".to_string(),
 		column: "c".to_string(),
+		old_definition: None,
 		new_definition: ColumnDefinition {
 			name: "c".to_string(),
 			type_definition: FieldType::Text,
@@ -330,6 +331,7 @@ fn test_alter_column_reverse_requires_sqlite_recreation() {
 	let operation = Operation::AlterColumn {
 		table: "t".to_string(),
 		column: "c".to_string(),
+		old_definition: None,
 		new_definition: ColumnDefinition {
 			name: "c".to_string(),
 			type_definition: FieldType::Text,

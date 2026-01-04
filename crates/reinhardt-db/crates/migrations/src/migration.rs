@@ -2973,6 +2973,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "test_table".to_string(),
 			column: "name".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new("name", FieldType::VarChar(255)),
 			mysql_options: None,
 		};
@@ -3006,6 +3007,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new("email", FieldType::Text),
 			mysql_options: None,
 		};
@@ -3051,6 +3053,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "items".to_string(),
 			column: "code".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new("code", FieldType::VarChar(100)),
 			mysql_options: None,
 		};
@@ -3090,6 +3093,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "orders".to_string(),
 			column: "year".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"year",
 				FieldType::Custom("SMALLINT".to_string()),
@@ -3141,6 +3145,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "posts".to_string(),
 			column: "author_id".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"author_id",
 				FieldType::Custom("INTEGER REFERENCES users(id)".to_string()),
@@ -3195,6 +3200,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "items".to_string(),
 			column: "cat_id".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"cat_id",
 				FieldType::Custom("INTEGER REFERENCES categories(id)".to_string()),
@@ -3234,6 +3240,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "nickname".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"nickname",
 				FieldType::Custom("VARCHAR(100) NOT NULL".to_string()),
@@ -3275,6 +3282,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "profiles".to_string(),
 			column: "bio".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"bio",
 				FieldType::Custom("TEXT NOT NULL".to_string()),
@@ -3317,6 +3325,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "products".to_string(),
 			column: "quantity".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"quantity",
 				FieldType::Custom("INTEGER NOT NULL DEFAULT 0".to_string()),
@@ -3358,6 +3367,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "items".to_string(),
 			column: "available".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"available",
 				FieldType::Custom("BOOLEAN NOT NULL DEFAULT TRUE".to_string()),
@@ -3400,6 +3410,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "status".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"status",
 				FieldType::Custom("VARCHAR(50) NOT NULL DEFAULT 'active'".to_string()),
@@ -3441,6 +3452,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "products".to_string(),
 			column: "active".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"active",
 				FieldType::Custom("BOOLEAN NOT NULL DEFAULT TRUE".to_string()),
@@ -3483,6 +3495,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"email",
 				FieldType::Custom("VARCHAR(255) NOT NULL".to_string()),
@@ -3524,6 +3537,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "orders".to_string(),
 			column: "customer_id".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"customer_id",
 				FieldType::Custom("INTEGER NOT NULL".to_string()),
@@ -3595,6 +3609,7 @@ mod migrations_extended_tests {
 		let alter_fk = Operation::AlterColumn {
 			table: "referencing".to_string(),
 			column: "ref_id".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"ref_id",
 				FieldType::Custom("INTEGER REFERENCES new_table(id)".to_string()),
@@ -3651,6 +3666,7 @@ mod migrations_extended_tests {
 		let alter_op = Operation::AlterColumn {
 			table: "products".to_string(),
 			column: "cat_id".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"cat_id",
 				FieldType::Custom("INTEGER NULL".to_string()),
@@ -3813,6 +3829,7 @@ mod migrations_extended_tests {
 		let alter_grade = Operation::AlterColumn {
 			table: "enrollments".to_string(),
 			column: "grade".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition::new(
 				"grade",
 				FieldType::Decimal {

@@ -177,6 +177,7 @@ fn test_alter_column() {
 	let operation = Operation::AlterColumn {
 		table: "test_table".to_string(),
 		column: "field_name".to_string(),
+		old_definition: None,
 		new_definition: ColumnDefinition::new(
 			"field_name",
 			FieldType::Custom("INTEGER NOT NULL".to_string()),
@@ -583,6 +584,7 @@ fn test_alter_column_multi_db() {
 	let operation = Operation::AlterColumn {
 		table: "users".to_string(),
 		column: "status".to_string(),
+		old_definition: None,
 		new_definition: ColumnDefinition::new(
 			"status",
 			FieldType::Custom("VARCHAR(20) NOT NULL".to_string()),

@@ -90,6 +90,7 @@ fn test_alter_column_fragment() {
 	let op = Operation::AlterColumn {
 		table: "Users".to_string(),
 		column: "Email".to_string(),
+		old_definition: None,
 		new_definition: ColumnDefinition::new("email", FieldType::Custom("TEXT".to_string())),
 		mysql_options: None,
 	};

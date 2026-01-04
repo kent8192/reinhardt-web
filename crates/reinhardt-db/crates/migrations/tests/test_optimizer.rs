@@ -74,12 +74,14 @@ fn test_consecutive_alter_optimization() {
 		Operation::AlterColumn {
 			table: "test_table".to_string(),
 			column: "field".to_string(),
+			old_definition: None,
 			new_definition: create_column("field", FieldType::Integer),
 			mysql_options: None,
 		},
 		Operation::AlterColumn {
 			table: "test_table".to_string(),
 			column: "field".to_string(),
+			old_definition: None,
 			new_definition: create_column(
 				"field",
 				FieldType::Custom("INTEGER NOT NULL".to_string()),

@@ -3568,7 +3568,12 @@ impl Operation {
 			FieldType::Text | FieldType::TinyText | FieldType::MediumText | FieldType::LongText => {
 				col_def.text()
 			}
-			FieldType::Boolean => col_def.boolean(),
+			// Use custom "BOOLEAN" type name instead of col_def.boolean() to ensure
+			// consistent type naming across all databases. This is important for SQLite
+			// where col_def.boolean() would generate "INTEGER", but we need "BOOLEAN"
+			// so that sqlx's type_info().name() returns "BOOLEAN" and our convert_row
+			// can properly detect boolean columns and convert integer 0/1 to bool values.
+			FieldType::Boolean => col_def.custom(Alias::new("BOOLEAN")),
 			FieldType::DateTime | FieldType::TimestampTz => col_def.timestamp(),
 			FieldType::Date => col_def.date(),
 			FieldType::Time => col_def.time(),
@@ -4145,6 +4150,7 @@ mod tests {
 		let op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition {
 				name: "age".to_string(),
 				type_definition: crate::FieldType::BigInteger,
@@ -5141,6 +5147,7 @@ mod tests {
 		let op = Operation::AlterColumn {
 			table: "users".to_string(),
 			column: "age".to_string(),
+			old_definition: None,
 			new_definition: ColumnDefinition {
 				name: "age".to_string(),
 				type_definition: crate::FieldType::BigInteger,
