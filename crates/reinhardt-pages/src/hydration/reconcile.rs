@@ -209,6 +209,22 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 			// For hydration, just reconcile the inner view
 			reconcile(element, view)
 		}
+		View::ReactiveIf(reactive_if) => {
+			// For hydration, evaluate the condition and reconcile the rendered branch.
+			// SSR rendered one branch based on the initial condition value.
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			reconcile(element, &branch_view)
+		}
+		View::Reactive(reactive) => {
+			// For hydration, evaluate the render closure and reconcile the resulting view.
+			// SSR rendered the initial view from the closure.
+			let rendered_view = reactive.render();
+			reconcile(element, &rendered_view)
+		}
 	}
 }
 
@@ -441,6 +457,20 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 			// Head section is handled separately during SSR
 			// For comparison, just compare the inner view
 			compare_recursive(element, view, path, differences);
+		}
+		View::ReactiveIf(reactive_if) => {
+			// For comparison, evaluate the condition and compare the rendered branch
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			compare_recursive(element, &branch_view, path, differences);
+		}
+		View::Reactive(reactive) => {
+			// For comparison, evaluate the render closure and compare the resulting view
+			let rendered_view = reactive.render();
+			compare_recursive(element, &rendered_view, path, differences);
 		}
 	}
 }

@@ -307,6 +307,20 @@ pub(crate) fn attach_events_recursive(
 			// Attach events to the inner view
 			attach_events_recursive(element, view, registry)?;
 		}
+		View::ReactiveIf(reactive_if) => {
+			// For hydration, evaluate the condition and attach events to the rendered branch
+			let branch_view = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			attach_events_recursive(element, &branch_view, registry)?;
+		}
+		View::Reactive(reactive) => {
+			// For hydration, evaluate the render closure and attach events to the resulting view
+			let rendered_view = reactive.render();
+			attach_events_recursive(element, &rendered_view, registry)?;
+		}
 	}
 
 	Ok(())

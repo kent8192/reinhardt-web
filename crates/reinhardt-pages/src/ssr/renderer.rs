@@ -71,7 +71,7 @@ impl SsrOptions {
 	///
 	/// # Deprecated
 	///
-	/// Use the `head!` macro with `@head` directive in `page!` macro instead.
+	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
 	/// This method will be removed in a future version.
 	///
 	/// # Example (new approach)
@@ -84,13 +84,13 @@ impl SsrOptions {
 	/// });
 	///
 	/// page! {
-	///     @head: my_head,
+	///     #head: my_head,
 	///     || { div { "Content" } }
 	/// }
 	/// ```
 	#[deprecated(
 		since = "0.2.0",
-		note = "Use head! macro with @head directive in page! macro instead"
+		note = "Use head! macro with #head directive in page! macro instead"
 	)]
 	pub fn title(mut self, title: impl Into<String>) -> Self {
 		self.title = Some(title.into());
@@ -101,7 +101,7 @@ impl SsrOptions {
 	///
 	/// # Deprecated
 	///
-	/// Use the `head!` macro with `@head` directive in `page!` macro instead.
+	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
 	///
 	/// # Example (new approach)
 	///
@@ -113,13 +113,13 @@ impl SsrOptions {
 	/// });
 	///
 	/// page! {
-	///     @head: my_head,
+	///     #head: my_head,
 	///     || { div { "Content" } }
 	/// }
 	/// ```
 	#[deprecated(
 		since = "0.2.0",
-		note = "Use head! macro with @head directive in page! macro instead"
+		note = "Use head! macro with #head directive in page! macro instead"
 	)]
 	pub fn meta(mut self, name: impl Into<String>, content: impl Into<String>) -> Self {
 		self.meta_tags.push((name.into(), content.into()));
@@ -130,7 +130,7 @@ impl SsrOptions {
 	///
 	/// # Deprecated
 	///
-	/// Use the `head!` macro with `@head` directive in `page!` macro instead.
+	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
 	///
 	/// # Example (new approach)
 	///
@@ -142,13 +142,13 @@ impl SsrOptions {
 	/// });
 	///
 	/// page! {
-	///     @head: my_head,
+	///     #head: my_head,
 	///     || { div { "Content" } }
 	/// }
 	/// ```
 	#[deprecated(
 		since = "0.2.0",
-		note = "Use head! macro with @head directive in page! macro instead"
+		note = "Use head! macro with #head directive in page! macro instead"
 	)]
 	pub fn css(mut self, href: impl Into<String>) -> Self {
 		self.css_links.push(href.into());
@@ -159,7 +159,7 @@ impl SsrOptions {
 	///
 	/// # Deprecated
 	///
-	/// Use the `head!` macro with `@head` directive in `page!` macro instead.
+	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
 	///
 	/// # Example (new approach)
 	///
@@ -171,13 +171,13 @@ impl SsrOptions {
 	/// });
 	///
 	/// page! {
-	///     @head: my_head,
+	///     #head: my_head,
 	///     || { div { "Content" } }
 	/// }
 	/// ```
 	#[deprecated(
 		since = "0.2.0",
-		note = "Use head! macro with @head directive in page! macro instead"
+		note = "Use head! macro with #head directive in page! macro instead"
 	)]
 	pub fn js(mut self, src: impl Into<String>) -> Self {
 		self.js_scripts.push(src.into());

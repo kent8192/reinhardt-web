@@ -23,7 +23,8 @@
 //! }
 //! ```
 
-use hyper::Method;
+use crate::server_fn::ServerFnError;
+use hyper::{Method, StatusCode};
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::prelude::UnifiedRouter;
 use std::future::Future;
@@ -80,6 +81,7 @@ pub fn register_all_server_functions(mut router: UnifiedRouter) -> UnifiedRouter
 	for route in inventory::iter::<ServerFnRoute> {
 		let handler = route.handler;
 		let path = route.path;
+		let name = route.name;
 
 		// Create a wrapper closure that converts ServerFnHandler to the router's expected type
 		let wrapper = move |req: Request| -> Pin<
@@ -90,9 +92,26 @@ pub fn register_all_server_functions(mut router: UnifiedRouter) -> UnifiedRouter
 					Ok(body) => Ok(Response::ok()
 						.with_header("Content-Type", "application/json")
 						.with_body(body)),
-					Err(error_body) => Ok(Response::internal_server_error()
-						.with_header("Content-Type", "application/json")
-						.with_body(error_body)),
+					Err(error_body) => {
+						// Log the error to stderr for debugging
+						eprintln!("[server_fn ERROR] {} ({}): {}", name, path, error_body);
+
+						// Extract status code from ServerFnError if possible
+						let status_code = serde_json::from_str::<ServerFnError>(&error_body)
+							.ok()
+							.map(|err| match err {
+								ServerFnError::Server { status, .. } => {
+									StatusCode::from_u16(status)
+										.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+								}
+								_ => StatusCode::INTERNAL_SERVER_ERROR,
+							})
+							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+						Ok(Response::new(status_code)
+							.with_header("Content-Type", "application/json")
+							.with_body(error_body))
+					}
 				}
 			})
 		};

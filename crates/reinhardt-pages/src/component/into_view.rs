@@ -2,6 +2,8 @@
 
 use crate::component::Head;
 #[cfg(target_arch = "wasm32")]
+use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
+#[cfg(target_arch = "wasm32")]
 use crate::dom::Element;
 use crate::dom::EventType;
 use std::borrow::Cow;
@@ -61,6 +63,138 @@ impl std::fmt::Display for MountError {
 
 impl std::error::Error for MountError {}
 
+/// HTML boolean attributes that should only be set when the value is truthy.
+///
+/// Boolean attributes in HTML are special: the presence of the attribute alone
+/// makes it active, regardless of its value. For example:
+/// - `<button disabled="">` is disabled
+/// - `<button disabled="false">` is STILL disabled
+/// - `<button>` is NOT disabled (attribute absent)
+///
+/// This list follows the HTML5 specification for boolean attributes.
+const BOOLEAN_ATTRS: &[&str] = &[
+	"allowfullscreen",
+	"async",
+	"autofocus",
+	"autoplay",
+	"checked",
+	"controls",
+	"default",
+	"defer",
+	"disabled",
+	"formnovalidate",
+	"hidden",
+	"inert",
+	"ismap",
+	"itemscope",
+	"loop",
+	"multiple",
+	"muted",
+	"nomodule",
+	"novalidate",
+	"open",
+	"playsinline",
+	"readonly",
+	"required",
+	"reversed",
+	"selected",
+	"truespeed",
+];
+
+/// Checks if a boolean attribute value should result in the attribute being set.
+///
+/// Returns `true` if the value is non-empty and not "false" or "0".
+/// Returns `false` for empty strings, "false", or "0", meaning the attribute
+/// should NOT be set (to properly disable the boolean attribute).
+fn is_boolean_attr_truthy(value: &str) -> bool {
+	!value.is_empty() && value != "false" && value != "0"
+}
+
+/// Reactive conditional rendering.
+///
+/// This struct holds closures for condition evaluation and view generation,
+/// enabling automatic DOM updates when the condition's dependencies change.
+pub struct ReactiveIf {
+	/// Condition closure that returns bool when called.
+	/// This closure is re-evaluated whenever its Signal dependencies change.
+	condition: Box<dyn Fn() -> bool + 'static>,
+	/// View to render when condition is true.
+	then_view: Box<dyn Fn() -> View + 'static>,
+	/// View to render when condition is false.
+	else_view: Box<dyn Fn() -> View + 'static>,
+}
+
+/// Reactive view that re-evaluates when Signal dependencies change.
+///
+/// This struct holds a single closure that generates a View, enabling
+/// automatic DOM updates when any Signal accessed within the closure changes.
+pub struct Reactive {
+	/// View generation closure that returns a View when called.
+	/// This closure is re-evaluated whenever its Signal dependencies change.
+	render: Box<dyn Fn() -> View + 'static>,
+}
+
+impl std::fmt::Debug for Reactive {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Reactive")
+			.field("render", &"<closure>")
+			.finish()
+	}
+}
+
+impl Reactive {
+	/// Returns the rendered view.
+	pub fn render(&self) -> View {
+		(self.render)()
+	}
+
+	/// Consumes the Reactive and returns the render closure.
+	pub fn into_render(self) -> Box<dyn Fn() -> View + 'static> {
+		self.render
+	}
+}
+
+impl std::fmt::Debug for ReactiveIf {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ReactiveIf")
+			.field("condition", &"<closure>")
+			.field("then_view", &"<closure>")
+			.field("else_view", &"<closure>")
+			.finish()
+	}
+}
+
+impl ReactiveIf {
+	/// Evaluates the condition closure.
+	pub fn condition(&self) -> bool {
+		(self.condition)()
+	}
+
+	/// Calls the then_view closure and returns the view.
+	pub fn then_view(&self) -> View {
+		(self.then_view)()
+	}
+
+	/// Calls the else_view closure and returns the view.
+	pub fn else_view(&self) -> View {
+		(self.else_view)()
+	}
+
+	/// Consumes the ReactiveIf and returns its parts.
+	///
+	/// Returns a tuple of (condition, then_view, else_view) closures.
+	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
+	pub fn into_parts(
+		self,
+	) -> (
+		Box<dyn Fn() -> bool + 'static>,
+		Box<dyn Fn() -> View + 'static>,
+		Box<dyn Fn() -> View + 'static>,
+	) {
+		(self.condition, self.then_view, self.else_view)
+	}
+}
+
 /// A unified representation of renderable content.
 ///
 /// View is the core abstraction for all UI elements in the component system.
@@ -85,6 +219,18 @@ pub enum View {
 		/// The actual view content.
 		view: Box<View>,
 	},
+	/// A reactive conditional view.
+	///
+	/// This variant enables automatic DOM updates when the condition's
+	/// Signal dependencies change. The condition is re-evaluated and
+	/// the appropriate branch is rendered.
+	ReactiveIf(ReactiveIf),
+	/// A reactive view that re-renders when Signal dependencies change.
+	///
+	/// This variant wraps any expression in a reactive context, enabling
+	/// automatic DOM updates when Signal values accessed within the
+	/// closure change.
+	Reactive(Reactive),
 }
 
 /// Represents a DOM element in the view tree.
@@ -144,6 +290,29 @@ impl ElementView {
 	) -> Self {
 		self.attrs.push((name.into(), value.into()));
 		self
+	}
+
+	/// Adds a boolean attribute.
+	///
+	/// Boolean attributes in HTML are either present (true) or absent (false).
+	/// When true, the attribute is added with the attribute name as its value
+	/// (e.g., `disabled="disabled"`). When false, the attribute is not added.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// ElementView::new("button")
+	///     .bool_attr("disabled", is_disabled)
+	///     .child("Click me")
+	/// ```
+	pub fn bool_attr(self, name: impl Into<Cow<'static, str>>, value: bool) -> Self {
+		if value {
+			let name = name.into();
+			// Boolean attributes use the attribute name as value (e.g., disabled="disabled")
+			self.attr(name.clone(), name)
+		} else {
+			self
+		}
 	}
 
 	/// Adds a child view.
@@ -237,6 +406,38 @@ impl ElementView {
 	pub fn event_handlers(&self) -> &[(EventType, ViewEventHandler)] {
 		&self.event_handlers
 	}
+
+	/// Consumes the element view and returns the children.
+	pub fn into_children(self) -> Vec<View> {
+		self.children
+	}
+
+	/// Consumes the element view and returns the event handlers.
+	pub fn into_event_handlers(self) -> Vec<(EventType, ViewEventHandler)> {
+		self.event_handlers
+	}
+
+	/// Consumes the element view and returns all parts.
+	///
+	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers).
+	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
+	pub fn into_parts(
+		self,
+	) -> (
+		Cow<'static, str>,
+		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<View>,
+		bool,
+		Vec<(EventType, ViewEventHandler)>,
+	) {
+		(
+			self.tag,
+			self.attrs,
+			self.children,
+			self.is_void,
+			self.event_handlers,
+		)
+	}
 }
 
 impl View {
@@ -279,6 +480,78 @@ impl View {
 			head,
 			view: Box::new(self),
 		}
+	}
+
+	/// Creates a reactive conditional view.
+	///
+	/// The condition is re-evaluated whenever its Signal dependencies change,
+	/// and the DOM is automatically updated to show the appropriate branch.
+	///
+	/// # Arguments
+	///
+	/// * `condition` - A closure that returns `true` or `false`. This closure
+	///   should call `.get()` on Signals to establish reactive dependencies.
+	/// * `then_view` - A closure that returns the View to render when condition is true.
+	/// * `else_view` - A closure that returns the View to render when condition is false.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reinhardt_pages::component::View;
+	/// use reinhardt_pages::reactive::hooks::use_state;
+	///
+	/// let (show_error, set_show_error) = use_state(false);
+	///
+	/// let view = View::reactive_if(
+	///     move || show_error.get(),
+	///     move || View::text("Error occurred!"),
+	///     move || View::text("All good!"),
+	/// );
+	/// ```
+	pub fn reactive_if<C, T, E>(condition: C, then_view: T, else_view: E) -> Self
+	where
+		C: Fn() -> bool + 'static,
+		T: Fn() -> View + 'static,
+		E: Fn() -> View + 'static,
+	{
+		View::ReactiveIf(ReactiveIf {
+			condition: Box::new(condition),
+			then_view: Box::new(then_view),
+			else_view: Box::new(else_view),
+		})
+	}
+
+	/// Creates a reactive view that re-renders when Signal dependencies change.
+	///
+	/// This wraps any view-generating closure in a reactive context. When any
+	/// Signal accessed within the closure changes, the closure is re-evaluated
+	/// and the DOM is updated accordingly.
+	///
+	/// # Arguments
+	///
+	/// * `render` - A closure that returns a `View`. This closure will be
+	///   re-evaluated whenever its Signal dependencies change.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// let (count, set_count) = use_state(0);
+	///
+	/// View::reactive(move || {
+	///     if count.get() > 0 {
+	///         View::text(format!("Count: {}", count.get()))
+	///     } else {
+	///         View::text("No count yet")
+	///     }
+	/// })
+	/// ```
+	pub fn reactive<F>(render: F) -> Self
+	where
+		F: Fn() -> View + 'static,
+	{
+		View::Reactive(Reactive {
+			render: Box::new(render),
+		})
 	}
 
 	/// Extracts the head section from this view if it has one.
@@ -327,6 +600,12 @@ impl View {
 				output.push_str(el.tag_name());
 
 				for (name, value) in el.attrs() {
+					// Skip boolean attributes with falsy values (empty, "false", "0")
+					let name_str: &str = name.as_ref();
+					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+						continue;
+					}
+
 					output.push(' ');
 					output.push_str(name);
 					output.push_str("=\"");
@@ -359,6 +638,21 @@ impl View {
 				// The head is extracted separately during SSR; here we just render the content
 				view.render_to_string_inner(output);
 			}
+			View::ReactiveIf(reactive_if) => {
+				// For SSR, evaluate condition once and render the appropriate branch
+				let condition_result = (reactive_if.condition)();
+				let view = if condition_result {
+					(reactive_if.then_view)()
+				} else {
+					(reactive_if.else_view)()
+				};
+				view.render_to_string_inner(output);
+			}
+			View::Reactive(reactive) => {
+				// For SSR, evaluate render once and render the result
+				let view = reactive.render();
+				view.render_to_string_inner(output);
+			}
 		}
 	}
 
@@ -380,6 +674,17 @@ impl View {
 					.map_err(|_| MountError::CreateElementFailed)?;
 
 				for (name, value) in el.attrs {
+					// Skip boolean attributes with falsy values (empty, "false", "0")
+					// This ensures `disabled: ""` doesn't set the attribute
+					let name_str: &str = name.as_ref();
+					let value_str: &str = value.as_ref();
+					let is_boolean = BOOLEAN_ATTRS.contains(&name_str);
+					let is_falsy = !is_boolean_attr_truthy(value_str);
+
+					if is_boolean && is_falsy {
+						continue;
+					}
+
 					element
 						.set_attribute(&name, &value)
 						.map_err(|err_str: String| {
@@ -447,6 +752,33 @@ impl View {
 			View::WithHead { view, .. } => {
 				// On client-side, head is handled separately; just mount the content
 				view.mount_inner(parent)?;
+			}
+			View::ReactiveIf(reactive_if) => {
+				// Decompose the ReactiveIf to get the closures
+				let (condition, then_view, else_view) = reactive_if.into_parts();
+
+				// Create a ReactiveIfNode that manages DOM updates reactively.
+				// The node uses an Effect to monitor condition changes and swaps
+				// DOM nodes when the condition value changes.
+				let node = ReactiveIfNode::new(
+					parent,
+					move || condition(),
+					move || then_view(),
+					move || else_view(),
+				);
+				// Store the node to keep it alive for the lifetime of the DOM element
+				store_reactive_node(node);
+			}
+			View::Reactive(reactive) => {
+				// Get the render closure from the Reactive
+				let render = reactive.into_render();
+
+				// Create a ReactiveNode that manages DOM updates reactively.
+				// The node uses an Effect to monitor dependency changes and
+				// re-renders when they change.
+				let node = ReactiveNode::new(parent, move || render());
+				// Store the node to keep it alive for the lifetime of the DOM element
+				store_reactive_node(node);
 			}
 		}
 
@@ -731,5 +1063,122 @@ mod tests {
 		assert!(html.contains("<title>Test Page</title>"));
 		assert!(html.contains("<h1>Hello</h1>"));
 		assert!(html.ends_with("</html>"));
+	}
+
+	// Boolean attribute handling tests
+
+	#[test]
+	fn test_is_boolean_attr_truthy() {
+		// Truthy values
+		assert!(is_boolean_attr_truthy("true"));
+		assert!(is_boolean_attr_truthy("1"));
+		assert!(is_boolean_attr_truthy("disabled"));
+		assert!(is_boolean_attr_truthy("yes"));
+
+		// Falsy values
+		assert!(!is_boolean_attr_truthy(""));
+		assert!(!is_boolean_attr_truthy("false"));
+		assert!(!is_boolean_attr_truthy("0"));
+	}
+
+	#[test]
+	fn test_boolean_attr_disabled_empty_string_not_rendered() {
+		// Empty string should NOT render the disabled attribute
+		let view = ElementView::new("button").attr("disabled", "").into_view();
+		let html = view.render_to_string();
+		assert_eq!(html, "<button></button>");
+		assert!(!html.contains("disabled"));
+	}
+
+	#[test]
+	fn test_boolean_attr_disabled_false_not_rendered() {
+		// "false" should NOT render the disabled attribute
+		let view = ElementView::new("button")
+			.attr("disabled", "false")
+			.into_view();
+		let html = view.render_to_string();
+		assert_eq!(html, "<button></button>");
+		assert!(!html.contains("disabled"));
+	}
+
+	#[test]
+	fn test_boolean_attr_disabled_zero_not_rendered() {
+		// "0" should NOT render the disabled attribute
+		let view = ElementView::new("button").attr("disabled", "0").into_view();
+		let html = view.render_to_string();
+		assert_eq!(html, "<button></button>");
+		assert!(!html.contains("disabled"));
+	}
+
+	#[test]
+	fn test_boolean_attr_disabled_true_rendered() {
+		// "true" should render the disabled attribute
+		let view = ElementView::new("button")
+			.attr("disabled", "true")
+			.into_view();
+		let html = view.render_to_string();
+		assert!(html.contains("disabled=\"true\""));
+	}
+
+	#[test]
+	fn test_boolean_attr_checked_empty_not_rendered() {
+		// Empty string should NOT render the checked attribute
+		let view = ElementView::new("input")
+			.attr("type", "checkbox")
+			.attr("checked", "")
+			.into_view();
+		let html = view.render_to_string();
+		assert!(html.contains("type=\"checkbox\""));
+		assert!(!html.contains("checked"));
+	}
+
+	#[test]
+	fn test_boolean_attr_checked_true_rendered() {
+		// "true" should render the checked attribute
+		let view = ElementView::new("input")
+			.attr("type", "checkbox")
+			.attr("checked", "true")
+			.into_view();
+		let html = view.render_to_string();
+		assert!(html.contains("checked=\"true\""));
+	}
+
+	#[test]
+	fn test_non_boolean_attr_empty_string_rendered() {
+		// Non-boolean attributes with empty string SHOULD be rendered
+		let view = ElementView::new("input")
+			.attr("placeholder", "")
+			.into_view();
+		let html = view.render_to_string();
+		assert!(html.contains("placeholder=\"\""));
+	}
+
+	#[test]
+	fn test_non_boolean_attr_false_rendered() {
+		// Non-boolean attributes with "false" SHOULD be rendered as-is
+		let view = ElementView::new("div")
+			.attr("data-active", "false")
+			.into_view();
+		let html = view.render_to_string();
+		assert!(html.contains("data-active=\"false\""));
+	}
+
+	#[test]
+	fn test_multiple_boolean_attrs_mixed() {
+		// Mix of boolean and non-boolean attributes
+		let view = ElementView::new("input")
+			.attr("type", "text")
+			.attr("disabled", "")      // Should NOT be rendered
+			.attr("readonly", "true")  // Should be rendered
+			.attr("required", "false") // Should NOT be rendered
+			.attr("placeholder", "")   // Should be rendered (non-boolean)
+			.into_view();
+		let html = view.render_to_string();
+
+		assert!(html.contains("type=\"text\""));
+		assert!(!html.contains("disabled"));
+		assert!(html.contains("readonly=\"true\""));
+		assert!(!html.contains("required"));
+		assert!(html.contains("placeholder=\"\""));
 	}
 }
