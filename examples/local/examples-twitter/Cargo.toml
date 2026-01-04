@@ -38,10 +38,10 @@ features = ["v4", "serde"]
 # WASM-specific dependencies
 # ═══════════════════════════════════════════════════════════════════════════
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reinhardt-pages = { workspace = true }
+reinhardt = { workspace = true, features = ["pages"] }
 gloo-net = "0.6"
-wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = [
+wasm-bindgen = "0.2.106"
+web-sys = { version = "0.3.83", features = [
 	"Window",
 	"Document",
 	"Element",
@@ -52,9 +52,9 @@ web-sys = { version = "0.3", features = [
 	"Location",
 	"History",
 ] }
-js-sys = "0.3"
+js-sys = "0.3.83"
 console_error_panic_hook = "0.1"
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures = "0.4.56"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Server-specific dependencies
@@ -99,7 +99,7 @@ optional = true
 # WASM-specific dev dependencies
 # ═══════════════════════════════════════════════════════════════════════════
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = "0.3.56"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Server-specific dev dependencies

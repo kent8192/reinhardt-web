@@ -1,20 +1,461 @@
-/* Sample stylesheet for examples-twitter */
+/* Reinhardt Twitter Clone - Modern SNS Styles */
+/* Threads/Bluesky-inspired design with UnoCSS */
+
+/* ===== CSS Custom Properties ===== */
+:root {
+	/* Light mode (default) */
+	--bg-primary: #FFFFFF;
+	--bg-secondary: #F5F5F5;
+	--bg-tertiary: #EBEBEB;
+	--text-primary: #000000;
+	--text-secondary: #666666;
+	--text-tertiary: #999999;
+	--border-color: #DBDBDB;
+	--border-secondary: #C7C7C7;
+
+	/* Brand colors */
+	--brand-primary: #0095F6;
+	--brand-hover: #0081D6;
+	--brand-light: #E8F5FE;
+
+	/* Semantic colors */
+	--success: #00BA7C;
+	--danger: #ED4956;
+	--warning: #FFCC00;
+
+	/* Shadows */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+	/* Transitions */
+	--transition-fast: 150ms ease;
+	--transition-normal: 200ms ease;
+	--transition-slow: 300ms ease;
+}
+
+/* Dark mode */
+[data-theme="dark"],
+.dark {
+	--bg-primary: #000000;
+	--bg-secondary: #0A0A0A;
+	--bg-tertiary: #1A1A1A;
+	--text-primary: #F5F5F5;
+	--text-secondary: #A8A8A8;
+	--text-tertiary: #737373;
+	--border-color: #262626;
+	--border-secondary: #363636;
+
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== Base Styles ===== */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	scroll-behavior: smooth;
+}
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 	margin: 0;
 	padding: 0;
-	background-color: #f5f8fa;
+	background-color: var(--bg-secondary);
+	color: var(--text-primary);
+	line-height: 1.5;
+	transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
-.container {
-	max-width: 1200px;
-	margin: 0 auto;
-	padding: 20px;
+/* Prevent FOUC (Flash of Unstyled Content) */
+[un-cloak] {
+	display: block !important;
 }
 
-.header {
-	background-color: #1da1f2;
-	color: white;
-	padding: 15px 0;
+/* ===== Typography ===== */
+h1, h2, h3, h4, h5, h6 {
+	margin: 0;
+	font-weight: 700;
+	line-height: 1.25;
+	color: var(--text-primary);
+}
+
+a {
+	color: var(--brand-primary);
+	text-decoration: none;
+	transition: color var(--transition-fast);
+}
+
+a:hover {
+	color: var(--brand-hover);
+}
+
+/* ===== Focus States (Accessibility) ===== */
+:focus-visible {
+	outline: 2px solid var(--brand-primary);
+	outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+	outline: 2px solid var(--brand-primary);
+	outline-offset: 2px;
+}
+
+/* ===== Scrollbar Styling ===== */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border-secondary);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-tertiary);
+}
+
+/* Firefox scrollbar */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-secondary) var(--bg-secondary);
+}
+
+/* ===== Animations ===== */
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes slideUp {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes scaleIn {
+	from {
+		opacity: 0;
+		transform: scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes heartBeat {
+	0% {
+		transform: scale(1);
+	}
+	25% {
+		transform: scale(1.3);
+	}
+	50% {
+		transform: scale(1);
+	}
+	75% {
+		transform: scale(1.3);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+/* Animation utilities */
+.animate-spin {
+	animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-fade-in {
+	animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+	animation: slideUp 0.3s ease-out;
+}
+
+.animate-scale-in {
+	animation: scaleIn 0.2s ease-out;
+}
+
+.animate-heart {
+	animation: heartBeat 0.3s ease-in-out;
+}
+
+/* ===== Skeleton Loading ===== */
+.skeleton {
+	background: linear-gradient(
+		90deg,
+		var(--bg-tertiary) 25%,
+		var(--bg-secondary) 50%,
+		var(--bg-tertiary) 75%
+	);
+	background-size: 200% 100%;
+	animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+.skeleton-text {
+	height: 1em;
+	border-radius: 4px;
+}
+
+.skeleton-circle {
+	border-radius: 50%;
+}
+
+/* ===== Theme Toggle Button ===== */
+.theme-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	transition: background-color var(--transition-fast);
+}
+
+.theme-toggle:hover {
+	background-color: var(--bg-tertiary);
+}
+
+.theme-toggle svg {
+	width: 20px;
+	height: 20px;
+	color: var(--text-primary);
+	transition: color var(--transition-fast);
+}
+
+/* Hide sun icon in dark mode, show moon */
+.dark .theme-toggle .icon-sun {
+	display: none;
+}
+
+.dark .theme-toggle .icon-moon {
+	display: block;
+}
+
+/* Hide moon icon in light mode, show sun */
+:not(.dark) .theme-toggle .icon-moon {
+	display: none;
+}
+
+:not(.dark) .theme-toggle .icon-sun {
+	display: block;
+}
+
+/* ===== Mobile Bottom Navigation Padding ===== */
+@media (max-width: 768px) {
+	body {
+		padding-bottom: 70px;
+	}
+
+	main {
+		padding-bottom: 80px;
+	}
+}
+
+/* ===== Selection Styling ===== */
+::selection {
+	background-color: var(--brand-light);
+	color: var(--brand-primary);
+}
+
+.dark ::selection {
+	background-color: rgba(0, 149, 246, 0.3);
+	color: var(--text-primary);
+}
+
+/* ===== Image Handling ===== */
+img {
+	max-width: 100%;
+	height: auto;
+	vertical-align: middle;
+}
+
+/* ===== Responsive Text ===== */
+@media (max-width: 640px) {
+	html {
+		font-size: 14px;
+	}
+}
+
+/* ===== Print Styles ===== */
+@media print {
+	body {
+		background: white;
+		color: black;
+	}
+
+	.no-print,
+	.bottom-nav,
+	.fab {
+		display: none !important;
+	}
+}
+
+/* ===== Utility Classes ===== */
+.line-clamp-1 {
+	display: -webkit-box;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.line-clamp-2 {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.line-clamp-3 {
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* Text gradient (for brand elements) */
+.text-gradient {
+	background: linear-gradient(135deg, var(--brand-primary), var(--brand-dark, #1877F2));
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+}
+
+/* Glass effect */
+.glass {
+	background: rgba(255, 255, 255, 0.8);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+}
+
+.dark .glass {
+	background: rgba(0, 0, 0, 0.8);
+}
+
+/* ===== Hover Effects ===== */
+.hover-lift {
+	transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.hover-lift:hover {
+	transform: translateY(-2px);
+	box-shadow: var(--shadow-md);
+}
+
+/* ===== Placeholder Styles ===== */
+::placeholder {
+	color: var(--text-tertiary);
+	opacity: 1;
+}
+
+:-ms-input-placeholder {
+	color: var(--text-tertiary);
+}
+
+::-ms-input-placeholder {
+	color: var(--text-tertiary);
+}
+
+/* ===== Tweet Specific Styles ===== */
+.tweet-text-link {
+	color: var(--brand-primary);
+}
+
+.tweet-text-link:hover {
+	text-decoration: underline;
+}
+
+.tweet-text-hashtag {
+	color: var(--brand-primary);
+	cursor: pointer;
+}
+
+.tweet-text-hashtag:hover {
+	text-decoration: underline;
+}
+
+.tweet-text-mention {
+	color: var(--brand-primary);
+	cursor: pointer;
+}
+
+.tweet-text-mention:hover {
+	text-decoration: underline;
+}
+
+/* Like button animation */
+.like-button.liked {
+	color: var(--danger);
+}
+
+.like-button.liked .heart-icon {
+	animation: heartBeat 0.3s ease-in-out;
+}
+
+/* Retweet button active state */
+.retweet-button.retweeted {
+	color: var(--success);
 }

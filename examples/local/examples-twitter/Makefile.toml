@@ -183,12 +183,14 @@ args = ["run", "--bin", "examples-twitter", "collectstatic", "--no-input"]
 dependencies = ["wasm-compile-dev"]
 
 [tasks.wasm-bindgen-dev]
-description = "Generate WASM bindings (debug mode)"
-command = "wasm-bindgen"
+description = "Generate WASM bindings using wasm-pack (debug mode)"
+command = "wasm-pack"
 args = [
+	"build",
 	"--target", "web",
 	"--out-dir", "dist",
-	"target/wasm32-unknown-unknown/debug/examples_twitter.wasm"
+	"--dev",
+	"--no-typescript"
 ]
 dependencies = ["collectstatic-wasm"]
 
@@ -210,12 +212,13 @@ command = "cargo"
 args = ["build", "--target", "wasm32-unknown-unknown", "--release"]
 
 [tasks.wasm-bindgen-release]
-description = "Generate WASM bindings (release mode)"
-command = "wasm-bindgen"
+description = "Generate WASM bindings using wasm-pack (release mode)"
+command = "wasm-pack"
 args = [
+	"build",
 	"--target", "web",
 	"--out-dir", "dist",
-	"target/wasm32-unknown-unknown/release/examples_twitter.wasm"
+	"--release"
 ]
 dependencies = ["collectstatic-wasm"]
 

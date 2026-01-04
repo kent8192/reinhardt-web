@@ -4,20 +4,186 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Twitter Clone - Reinhardt Pages</title>
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+	<!-- UnoCSS Reset -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+
+	<!-- UnoCSS Runtime -->
+	<script>
+	// Theme detection and toggle support
+	(function() {
+		const stored = localStorage.getItem('theme');
+		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		const theme = stored || (prefersDark ? 'dark' : 'light');
+		document.documentElement.setAttribute('data-theme', theme);
+		if (theme === 'dark') {
+			document.documentElement.classList.add('dark');
+		}
+	})();
+
+	// UnoCSS configuration
+	window.__unocss = {
+		theme: {
+			colors: {
+				// Threads/Bluesky-inspired palette
+				brand: {
+					DEFAULT: '#0095F6',
+					hover: '#0081D6',
+					light: '#E8F5FE',
+					dark: '#1877F2',
+				},
+				surface: {
+					primary: 'var(--bg-primary)',
+					secondary: 'var(--bg-secondary)',
+					tertiary: 'var(--bg-tertiary)',
+				},
+				content: {
+					primary: 'var(--text-primary)',
+					secondary: 'var(--text-secondary)',
+					tertiary: 'var(--text-tertiary)',
+				},
+				success: '#00BA7C',
+				danger: '#ED4956',
+				warning: '#FFCC00',
+				info: '#0095F6',
+				border: {
+					DEFAULT: 'var(--border-color)',
+					secondary: 'var(--border-secondary)',
+				},
+			},
+		},
+		shortcuts: [
+			// Layout
+			['layout-container', 'max-w-7xl mx-auto px-4'],
+			['layout-main', 'flex flex-col min-h-screen'],
+
+			// Card
+			['card', 'bg-surface-primary rounded-2xl border border-border'],
+			['card-body', 'p-4'],
+			['card-header', 'px-4 py-3 border-b border-border font-semibold text-lg'],
+
+			// Button base
+			['btn', 'inline-flex items-center justify-center px-4 py-2 rounded-full font-semibold text-sm transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2'],
+			['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover active:scale-95'],
+			['btn-secondary', 'btn bg-surface-tertiary text-content-primary hover:bg-border-secondary'],
+			['btn-outline', 'btn border border-border-secondary text-content-primary hover:bg-surface-secondary'],
+			['btn-danger', 'btn bg-danger text-white hover:opacity-90 active:scale-95'],
+			['btn-success', 'btn bg-success text-white hover:opacity-90 active:scale-95'],
+			['btn-ghost', 'btn bg-transparent text-content-secondary hover:bg-surface-secondary'],
+			['btn-sm', 'px-3 py-1.5 text-xs'],
+			['btn-lg', 'px-6 py-3 text-base'],
+			['btn-icon', 'p-2 rounded-full hover:bg-surface-secondary transition-colors'],
+
+			// Form
+			['form-input', 'w-full px-4 py-3 bg-surface-primary border border-border rounded-xl text-content-primary placeholder-content-tertiary focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all'],
+			['form-label', 'block text-sm font-medium text-content-primary mb-2'],
+			['form-textarea', 'form-input resize-none min-h-24'],
+
+			// Alert
+			['alert', 'p-4 rounded-xl text-sm flex items-start gap-3'],
+			['alert-danger', 'alert bg-red-50 text-danger border border-red-200 dark:bg-red-900/20 dark:border-red-800'],
+			['alert-success', 'alert bg-green-50 text-success border border-green-200 dark:bg-green-900/20 dark:border-green-800'],
+			['alert-warning', 'alert bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'],
+
+			// Navigation
+			['nav-container', 'sticky top-0 z-50 bg-surface-primary/80 backdrop-blur-md border-b border-border'],
+			['nav-link', 'flex items-center gap-3 px-4 py-3 text-content-primary hover:bg-surface-secondary rounded-full transition-colors'],
+			['nav-link-active', 'nav-link font-bold'],
+
+			// Tweet card
+			['tweet-card', 'card p-4 hover:bg-surface-secondary/50 transition-colors cursor-pointer border-b border-border rounded-none first:rounded-t-2xl last:rounded-b-2xl last:border-b-0'],
+			['tweet-avatar', 'w-12 h-12 rounded-full object-cover flex-shrink-0'],
+			['tweet-username', 'font-bold text-content-primary hover:underline'],
+			['tweet-handle', 'text-content-secondary text-sm'],
+			['tweet-content', 'text-content-primary mt-1 leading-relaxed whitespace-pre-wrap'],
+			['tweet-time', 'text-content-tertiary text-sm'],
+			['tweet-actions', 'flex items-center gap-1 mt-3 -ml-2'],
+			['tweet-action-btn', 'flex items-center gap-2 px-3 py-2 rounded-full text-content-secondary hover:bg-surface-secondary transition-colors text-sm'],
+
+			// User card
+			['user-card', 'flex items-center gap-3 p-3 hover:bg-surface-secondary rounded-xl transition-colors cursor-pointer'],
+			['user-avatar', 'w-10 h-10 rounded-full object-cover flex-shrink-0'],
+
+			// Sidebar
+			['sidebar', 'sticky top-20'],
+			['sidebar-card', 'card mb-4 overflow-hidden'],
+			['sidebar-header', 'px-4 py-3 font-bold text-xl text-content-primary'],
+			['sidebar-item', 'px-4 py-3 hover:bg-surface-secondary transition-colors cursor-pointer border-b border-border last:border-b-0'],
+
+			// Floating action button
+			['fab', 'fixed bottom-20 right-4 w-14 h-14 rounded-full bg-brand text-white shadow-lg hover:bg-brand-hover hover:shadow-xl transition-all flex items-center justify-center md:hidden z-40'],
+
+			// Bottom navigation (mobile)
+			['bottom-nav', 'fixed bottom-0 left-0 right-0 bg-surface-primary/95 backdrop-blur-md border-t border-border flex justify-around items-center py-2 md:hidden z-50'],
+			['bottom-nav-item', 'flex flex-col items-center justify-center p-2 text-content-secondary hover:text-brand transition-colors'],
+			['bottom-nav-item-active', 'bottom-nav-item text-brand'],
+
+			// Spinner
+			['spinner', 'animate-spin rounded-full border-2 border-surface-tertiary border-t-brand'],
+			['spinner-sm', 'spinner w-4 h-4'],
+			['spinner-md', 'spinner w-8 h-8'],
+			['spinner-lg', 'spinner w-12 h-12'],
+
+			// Badge
+			['badge', 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium'],
+			['badge-primary', 'badge bg-brand-light text-brand'],
+			['badge-secondary', 'badge bg-surface-tertiary text-content-secondary'],
+
+			// Divider
+			['divider', 'border-t border-border my-4'],
+
+			// Avatar sizes
+			['avatar-sm', 'w-8 h-8 rounded-full object-cover'],
+			['avatar-md', 'w-12 h-12 rounded-full object-cover'],
+			['avatar-lg', 'w-16 h-16 rounded-full object-cover'],
+			['avatar-xl', 'w-24 h-24 rounded-full object-cover'],
+		],
+	};
+	</script>
+	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
+
+	<!-- Custom styles -->
+	<link rel="stylesheet" href="/static/css/style.css">
+
+	<!-- Theme toggle script -->
+	<script>
+	function toggleTheme() {
+		const html = document.documentElement;
+		const current = html.getAttribute('data-theme');
+		const next = current === 'dark' ? 'light' : 'dark';
+		html.setAttribute('data-theme', next);
+		html.classList.toggle('dark', next === 'dark');
+		localStorage.setItem('theme', next);
+	}
+
+	// Attach click event to theme toggle button (using MutationObserver for dynamic content)
+	document.addEventListener('DOMContentLoaded', function() {
+		const observer = new MutationObserver(function(mutations) {
+			const btn = document.getElementById('theme-toggle-btn');
+			if (btn && !btn.hasAttribute('data-theme-attached')) {
+				btn.setAttribute('data-theme-attached', 'true');
+				btn.addEventListener('click', toggleTheme);
+			}
+		});
+		observer.observe(document.body, { childList: true, subtree: true });
+	});
+	</script>
 </head>
-<body>
+<body class="bg-surface-secondary text-content-primary antialiased" un-cloak>
 	<div id="root">
-		<div class="loading">
-			<div class="spinner-border text-primary" role="status">
-				<span class="visually-hidden">Loading...</span>
+		<div class="flex items-center justify-center min-h-screen bg-surface-secondary">
+			<div class="text-center">
+				<div class="spinner-lg mx-auto mb-4"></div>
+				<p class="text-content-secondary text-sm">Loading...</p>
 			</div>
 		</div>
 	</div>
 	<script type="module">
 		// wasm-bindgen generated module
+		// Cache-busting for development
 		import init from './examples_twitter.js';
-		init();
+		const wasmUrl = './examples_twitter_bg.wasm?v=' + Date.now();
+		init(wasmUrl);
 	</script>
 </body>
 </html>
