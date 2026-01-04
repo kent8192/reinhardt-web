@@ -547,6 +547,7 @@ impl AstPageFormatter {
 			PageNode::If(if_node) => self.format_if(output, if_node, indent),
 			PageNode::For(for_node) => self.format_for(output, for_node, indent),
 			PageNode::Component(comp) => self.format_component(output, comp, indent),
+			PageNode::Watch(watch_node) => self.format_watch(output, watch_node, indent),
 		}
 	}
 
@@ -965,6 +966,24 @@ impl AstPageFormatter {
 		for node in &for_node.body {
 			self.format_node(output, node, indent + 1);
 		}
+
+		output.push_str(&ind);
+		output.push_str("}\n");
+	}
+
+	/// Format a watch node.
+	fn format_watch(
+		&self,
+		output: &mut String,
+		watch_node: &reinhardt_pages_ast::PageWatch,
+		indent: usize,
+	) {
+		let ind = self.make_indent(indent);
+
+		output.push_str(&ind);
+		output.push_str("watch {\n");
+
+		self.format_node(output, &watch_node.expr, indent + 1);
 
 		output.push_str(&ind);
 		output.push_str("}\n");
