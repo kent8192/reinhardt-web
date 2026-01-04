@@ -19,21 +19,21 @@ use syn::{
 
 use crate::{
 	PageAttr, PageBody, PageComponent, PageComponentArg, PageElement, PageElse, PageEvent,
-	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText,
+	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
 };
 
 impl Parse for PageMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
 
-		// Parse optional @head directive: @head: expr,
-		let head = if input.peek(Token![@]) {
-			input.parse::<Token![@]>()?;
+		// Parse optional #head directive: #head: expr,
+		let head = if input.peek(Token![#]) {
+			input.parse::<Token![#]>()?;
 			let directive_name: Ident = input.parse()?;
 			if directive_name != "head" {
 				return Err(syn::Error::new(
 					directive_name.span(),
-					format!("Unknown directive '@{}'. Expected '@head'.", directive_name),
+					format!("Unknown directive '#{}'. Expected '#head'.", directive_name),
 				));
 			}
 			input.parse::<Token![:]>()?;
@@ -152,11 +152,16 @@ fn parse_node(input: ParseStream) -> Result<PageNode> {
 		return parse_braced_expression(input);
 	}
 
-	// Check for identifier - could be element, component, macro call, or expression
+	// Check for identifier - could be watch, element, component, macro call, or expression
 	if input.peek(Ident) {
-		// Look ahead to see if it's an element, component, or expression
+		// Look ahead to see if it's watch, an element, component, or expression
 		let fork = input.fork();
-		let _ident: Ident = fork.parse()?;
+		let ident: Ident = fork.parse()?;
+
+		// Check for watch keyword: watch { ... }
+		if ident == "watch" && fork.peek(token::Brace) {
+			return parse_watch_node(input);
+		}
 
 		if fork.peek(token::Brace) {
 			// It's an element: tag { ... }
@@ -374,6 +379,36 @@ fn parse_for_node(input: ParseStream) -> Result<PageNode> {
 		pat,
 		iter,
 		body,
+		span,
+	}))
+}
+
+/// Parses a watch node: `watch { expr }`
+///
+/// The watch block wraps an expression in a reactive context,
+/// allowing Signal dependencies to be automatically tracked.
+fn parse_watch_node(input: ParseStream) -> Result<PageNode> {
+	let span = input.span();
+
+	// Consume the "watch" identifier
+	let watch_ident: Ident = input.parse()?;
+	debug_assert_eq!(watch_ident, "watch");
+
+	// Parse the braced content
+	let content;
+	braced!(content in input);
+
+	// Parse the inner expression as a single node
+	// The watch block must contain exactly one expression (if, match, etc.)
+	let inner_node = parse_node(&content)?;
+
+	// Ensure there's nothing else in the block
+	if !content.is_empty() {
+		return Err(content.error("watch block must contain exactly one expression"));
+	}
+
+	Ok(PageNode::Watch(PageWatch {
+		expr: Box::new(inner_node),
 		span,
 	}))
 }
@@ -757,5 +792,49 @@ mod tests {
 			}
 			_ => panic!("expected Element"),
 		}
+	}
+
+	#[test]
+	fn test_parse_with_head_directive() {
+		use proc_macro2::{Punct, Spacing};
+		// Build: # head : my_head , || { div { "hello" } }
+		let pound = Punct::new('#', Spacing::Alone);
+		let input = quote! {
+			#pound head: my_head,
+			|| { div { "hello" } }
+		};
+		let result: PageMacro = syn::parse2(input).unwrap();
+		assert!(result.head.is_some());
+		assert!(result.params.is_empty());
+		assert_eq!(result.body.nodes.len(), 1);
+	}
+
+	#[test]
+	fn test_parse_with_head_directive_and_params() {
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let input = quote! {
+			#pound head: create_head(),
+			|name: String| { div { name } }
+		};
+		let result: PageMacro = syn::parse2(input).unwrap();
+		assert!(result.head.is_some());
+		assert_eq!(result.params.len(), 1);
+		assert_eq!(result.params[0].name.to_string(), "name");
+	}
+
+	#[test]
+	fn test_parse_unknown_directive_error() {
+		use proc_macro2::{Punct, Spacing};
+		let pound = Punct::new('#', Spacing::Alone);
+		let input = quote! {
+			#pound unknown: value,
+			|| { div { "hello" } }
+		};
+		let result: syn::Result<PageMacro> = syn::parse2(input);
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(err_msg.contains("#unknown"));
+		assert!(err_msg.contains("#head"));
 	}
 }

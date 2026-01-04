@@ -7,6 +7,7 @@
 //! ## DSL Structure
 //!
 //! ```text
+//! // Basic structure
 //! page!(|props| {
 //!     element {
 //!         attr: value,
@@ -16,6 +17,14 @@
 //!         { expression }
 //!     }
 //! })
+//!
+//! // With head directive (for SSR)
+//! page! {
+//!     #head: head_expr,
+//!     |props| {
+//!         element { ... }
+//!     }
+//! }
 //! ```
 //!
 //! ## Main Types
@@ -29,6 +38,7 @@
 //! - [`PageEvent`] - An event handler on an element
 //! - [`PageIf`] - Conditional rendering
 //! - [`PageFor`] - List rendering
+//! - [`PageWatch`] - Reactive watch block for Signal-dependent expressions
 //! - [`PageComponent`] - A component call
 //!
 //! ### Typed AST (from validator)
@@ -37,6 +47,7 @@
 //! - [`TypedPageNode`] - Typed nodes with validated attribute values
 //! - [`TypedPageElement`] - Element with typed attributes
 //! - [`TypedPageAttr`] - Attribute with typed value
+//! - [`TypedPageWatch`] - Reactive watch block for Signal-dependent expressions
 //! - [`AttrValue`] - Typed representation of attribute values
 //!
 //! ## Usage
@@ -65,9 +76,10 @@ pub mod types;
 
 pub use node::{
 	PageAttr, PageBody, PageComponent, PageComponentArg, PageElement, PageElse, PageEvent,
-	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, debug_tokens,
+	PageExpression, PageFor, PageIf, PageMacro, PageNode, PageParam, PageText, PageWatch,
+	debug_tokens,
 };
 pub use typed_node::{
 	TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch,
 };

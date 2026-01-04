@@ -38,7 +38,7 @@ use syn::{Expr, FnArg, Ident, Pat, Type};
 ///
 /// ```text
 /// page! {
-///     @head: my_head,
+///     #head: my_head,
 ///     |initial: i32| {
 ///         div { "content" }
 ///     }
@@ -117,6 +117,7 @@ pub struct PageBody {
 /// - Expressions (e.g., `{ some_variable }` or `format!(...)`)
 /// - Control flow (e.g., `if condition { ... }` or `for item in items { ... }`)
 /// - Components (e.g., `MyButton(label: "Click")`)
+/// - Reactive blocks (e.g., `watch { if signal.get() { ... } }`)
 #[derive(Debug, Clone)]
 pub enum PageNode {
 	/// An HTML element (e.g., `div { class: "x", ... }`)
@@ -131,6 +132,8 @@ pub enum PageNode {
 	For(PageFor),
 	/// A component call (e.g., `MyButton(label: "Click")`)
 	Component(PageComponent),
+	/// Reactive watch block (e.g., `watch { if signal.get() { ... } }`)
+	Watch(PageWatch),
 }
 
 /// An HTML element node.
@@ -327,6 +330,31 @@ pub struct PageFor {
 	pub iter: Expr,
 	/// Body nodes (rendered for each item)
 	pub body: Vec<PageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
+/// Reactive watch block node.
+///
+/// Wraps an expression in a reactive context, allowing Signal dependencies
+/// to be automatically tracked and the view to be re-rendered when they change.
+///
+/// # Example
+///
+/// ```text
+/// watch {
+///     if error.get().is_some() {
+///         div { "Error occurred!" }
+///     } else {
+///         div { "All good" }
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct PageWatch {
+	/// The expression inside the watch block (must return a View).
+	/// This is typically an if/else or match expression that depends on Signals.
+	pub expr: Box<PageNode>,
 	/// Span for error reporting
 	pub span: Span,
 }

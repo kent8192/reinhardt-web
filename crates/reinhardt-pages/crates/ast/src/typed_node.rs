@@ -55,6 +55,8 @@ pub enum TypedPageNode {
 	For(TypedPageFor),
 	/// A component call with typed children
 	Component(TypedPageComponent),
+	/// Reactive watch block
+	Watch(TypedPageWatch),
 }
 
 /// A typed HTML element node.
@@ -167,6 +169,31 @@ pub struct TypedPageFor {
 	pub iter: Expr,
 	/// Validated body nodes (rendered for each item)
 	pub body: Vec<TypedPageNode>,
+	/// Span for error reporting
+	pub span: Span,
+}
+
+/// Typed reactive watch block node.
+///
+/// Wraps an expression in a reactive context, allowing Signal dependencies
+/// to be automatically tracked and the view to be re-rendered when they change.
+///
+/// # Example
+///
+/// ```text
+/// watch {
+///     if error.get().is_some() {
+///         div { "Error occurred!" }
+///     } else {
+///         div { "All good" }
+///     }
+/// }
+/// ```
+#[derive(Debug)]
+pub struct TypedPageWatch {
+	/// The expression inside the watch block (must return a View).
+	/// This is typically an if/else or match expression that depends on Signals.
+	pub expr: Box<TypedPageNode>,
 	/// Span for error reporting
 	pub span: Span,
 }
