@@ -209,21 +209,25 @@ middleware-rate-limit = [
 ]
 
 [dependencies]
-# Core dependencies (always included)
+# WASM-compatible dependencies (always included)
+reinhardt-types = { workspace = true }
+reinhardt-pages = { workspace = true, optional = true }
+
+# Server-side dependencies (NOT for WASM)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Core dependencies
 reinhardt-urls = { workspace = true }
 reinhardt-utils = { workspace = true }
 reinhardt-views = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-params = { workspace = true }
 reinhardt-macros = { workspace = true }
-reinhardt-types = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 hyper = { workspace = true }
 linkme = { workspace = true, optional = true }
 
 # Parent crate dependencies (new module structure)
-# These parent crates expose their subcrates via features
 reinhardt-apps = { workspace = true, optional = true }
 reinhardt-conf = { workspace = true, optional = true }
 reinhardt-core = { workspace = true, optional = true }
@@ -231,7 +235,6 @@ reinhardt-db = { workspace = true, optional = true }
 
 # External crates re-exported for macros
 inventory = { workspace = true, optional = true }
-reinhardt-pages = { workspace = true, optional = true }
 reinhardt-test = { workspace = true, optional = true }
 reinhardt-rest = { workspace = true, optional = true }
 reinhardt-auth = { workspace = true, optional = true }
@@ -258,7 +261,7 @@ reinhardt-websockets = { workspace = true, optional = true }
 thiserror = { workspace = true }
 toml = "0.9.8"
 
-[build-dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.build-dependencies]
 tonic-prost-build = { workspace = true }
 
 [workspace]

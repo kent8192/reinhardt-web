@@ -27,9 +27,9 @@ reinhardt-admin-types = { workspace = true }
 reinhardt-pages = { workspace = true }
 
 # WASM dependencies
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.106"
 console_error_panic_hook = { version = "0.1", optional = true }
-web-sys = { version = "0.3", features = [
+web-sys = { version = "0.3.83", features = [
 	"Window",
 	"Document",
 	"Element",
@@ -46,7 +46,7 @@ web-sys = { version = "0.3", features = [
 	"Location",
 	"Storage",
 ] }
-js-sys = "0.3"
+js-sys = "0.3.83"
 
 # Core dependencies
 serde = { workspace = true, features = ["derive"] }
@@ -55,7 +55,7 @@ serde-wasm-bindgen = "0.6"
 
 # WASM-specific dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures = "0.4.56"
 gloo-net = "0.6"
 getrandom = { workspace = true }
 reinhardt-admin-server = { workspace = true }
@@ -65,6 +65,6 @@ reinhardt-admin-server = { workspace = true }
 reinhardt-admin-server = { workspace = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = "0.3.56"
 
 # Note: Profile configuration for WASM optimization is defined in workspace root Cargo.toml
