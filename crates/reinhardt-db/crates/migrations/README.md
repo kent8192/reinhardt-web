@@ -404,9 +404,6 @@ cargo test --package reinhardt-migrations --all-features
 
 # Run specific test suite
 cargo test --package reinhardt-migrations --test migration_integration_tests
-
-# Run with custom database URL
-TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test
 ```
 
 ### TestContainers Usage

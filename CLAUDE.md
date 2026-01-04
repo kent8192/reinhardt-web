@@ -207,7 +207,8 @@ cargo make clippy-fix  # Automatically fix code based on lint rules
 
 **Database Tests:**
 ```bash
-TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test
+# Database tests use TestContainers automatically (no external database needed)
+cargo nextest run --package reinhardt-integration-tests
 ```
 
 **Container Runtime:**

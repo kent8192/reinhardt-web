@@ -750,9 +750,6 @@ cargo test --package reinhardt-orm --all-features
 
 # Run specific test suite
 cargo test --package reinhardt-orm --test orm_integration_tests
-
-# Run with custom database URL
-TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test
 ```
 
 ### TestContainers Usage
