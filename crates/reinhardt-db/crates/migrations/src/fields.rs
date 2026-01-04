@@ -129,10 +129,15 @@ impl FieldType {
 				SqlDialect::Mysql => "DATETIME".to_string(), // MySQL doesn't have TIMESTAMPTZ
 				SqlDialect::Sqlite => "DATETIME".to_string(), // SQLite doesn't have TIMESTAMPTZ
 			},
+			// Use "BOOLEAN" for SQLite instead of "INTEGER" to ensure sqlx's
+			// type_info().name() returns "BOOLEAN". This allows our convert_row
+			// function to properly detect boolean columns and convert integer 0/1
+			// values to bool. SQLite will still store values as integers due to
+			// type affinity, but the declared type name will be "BOOLEAN".
 			FieldType::Boolean => match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "BOOLEAN".to_string(),
 				SqlDialect::Mysql => "TINYINT(1)".to_string(), // MySQL uses TINYINT for boolean
-				SqlDialect::Sqlite => "INTEGER".to_string(),   // SQLite uses INTEGER for boolean
+				SqlDialect::Sqlite => "BOOLEAN".to_string(),   // SQLite - use BOOLEAN for type detection
 			},
 			FieldType::Uuid => match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "UUID".to_string(),

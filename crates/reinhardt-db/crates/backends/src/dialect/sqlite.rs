@@ -1,7 +1,7 @@
 //! SQLite dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, Row as SqlxRow, Sqlite, SqlitePool, Transaction, sqlite::SqliteRow};
+use sqlx::{Column, Row as SqlxRow, Sqlite, SqlitePool, Transaction, TypeInfo, sqlite::SqliteRow};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -53,9 +53,52 @@ impl SqliteBackend {
 		let mut row = Row::new();
 		for column in sqlite_row.columns() {
 			let column_name = column.name();
-			// Note: i64/i32 must be tried before bool because SQLite stores booleans as integers
-			// and try_get::<bool, _> would incorrectly interpret any non-zero integer as true
-			if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
+			let type_name = column.type_info().name().to_uppercase();
+
+			// First, check if the value is NULL by using Option<T>.
+			// This is crucial because try_get::<i64> may return 0 for NULL values
+			// in SQLite's RETURNING clause, causing incorrect type inference.
+			// We check multiple Option types to ensure we detect NULL properly.
+			let is_null = sqlite_row
+				.try_get::<Option<String>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<i64>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<f64>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<Vec<u8>>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none();
+
+			if is_null {
+				// All Option types returned None, so this is a NULL value
+				row.insert(column_name.to_string(), QueryValue::Null);
+				continue;
+			}
+
+			// Check declared column type first to handle BOOLEAN columns properly.
+			// SQLite stores booleans as integers (0/1), so we need to check the declared type
+			// before trying to read as integer, otherwise boolean columns get incorrectly
+			// converted to QueryValue::Int instead of QueryValue::Bool.
+			if type_name.contains("BOOL") {
+				// Column is declared as BOOLEAN - convert integer 0/1 to boolean
+				if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value != 0));
+				} else if let Ok(value) = sqlite_row.try_get::<i32, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value != 0));
+				} else if let Ok(value) = sqlite_row.try_get::<bool, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value));
+				} else {
+					row.insert(column_name.to_string(), QueryValue::Null);
+				}
+			} else if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value));
 			} else if let Ok(value) = sqlite_row.try_get::<i32, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
@@ -80,7 +123,8 @@ impl SqliteBackend {
 				sqlite_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
 			{
 				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if sqlite_row.try_get::<Option<i32>, _>(column_name).is_ok() {
+			} else {
+				// If we couldn't read the value, treat as NULL
 				row.insert(column_name.to_string(), QueryValue::Null);
 			}
 		}
@@ -241,9 +285,52 @@ impl SqliteTransactionExecutor {
 		let mut row = Row::new();
 		for column in sqlite_row.columns() {
 			let column_name = column.name();
-			// Note: i64/i32 must be tried before bool because SQLite stores booleans as integers
-			// and try_get::<bool, _> would incorrectly interpret any non-zero integer as true
-			if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
+			let type_name = column.type_info().name().to_uppercase();
+
+			// First, check if the value is NULL by using Option<T>.
+			// This is crucial because try_get::<i64> may return 0 for NULL values
+			// in SQLite's RETURNING clause, causing incorrect type inference.
+			// We check multiple Option types to ensure we detect NULL properly.
+			let is_null = sqlite_row
+				.try_get::<Option<String>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<i64>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<f64>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none() && sqlite_row
+				.try_get::<Option<Vec<u8>>, _>(column_name)
+				.ok()
+				.flatten()
+				.is_none();
+
+			if is_null {
+				// All Option types returned None, so this is a NULL value
+				row.insert(column_name.to_string(), QueryValue::Null);
+				continue;
+			}
+
+			// Check declared column type first to handle BOOLEAN columns properly.
+			// SQLite stores booleans as integers (0/1), so we need to check the declared type
+			// before trying to read as integer, otherwise boolean columns get incorrectly
+			// converted to QueryValue::Int instead of QueryValue::Bool.
+			if type_name.contains("BOOL") {
+				// Column is declared as BOOLEAN - convert integer 0/1 to boolean
+				if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value != 0));
+				} else if let Ok(value) = sqlite_row.try_get::<i32, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value != 0));
+				} else if let Ok(value) = sqlite_row.try_get::<bool, _>(column_name) {
+					row.insert(column_name.to_string(), QueryValue::Bool(value));
+				} else {
+					row.insert(column_name.to_string(), QueryValue::Null);
+				}
+			} else if let Ok(value) = sqlite_row.try_get::<i64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value));
 			} else if let Ok(value) = sqlite_row.try_get::<i32, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
@@ -256,6 +343,7 @@ impl SqliteTransactionExecutor {
 			} else if let Ok(value) = sqlite_row.try_get::<Vec<u8>, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Bytes(value));
 			} else if let Ok(value) = sqlite_row.try_get::<chrono::NaiveDateTime, _>(column_name) {
+				// SQLite stores timestamps as strings/integers, convert to DateTime<Utc>
 				row.insert(
 					column_name.to_string(),
 					QueryValue::Timestamp(chrono::DateTime::from_naive_utc_and_offset(
@@ -267,7 +355,8 @@ impl SqliteTransactionExecutor {
 				sqlite_row.try_get::<chrono::DateTime<chrono::Utc>, _>(column_name)
 			{
 				row.insert(column_name.to_string(), QueryValue::Timestamp(value));
-			} else if sqlite_row.try_get::<Option<i32>, _>(column_name).is_ok() {
+			} else {
+				// If we couldn't read the value, treat as NULL
 				row.insert(column_name.to_string(), QueryValue::Null);
 			}
 		}
