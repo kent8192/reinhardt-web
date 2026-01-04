@@ -601,10 +601,15 @@ impl AstPageFormatter {
 	}
 
 	/// Format an event handler.
+	///
+	/// Uses rustfmt to format complex closures for better readability.
+	/// Empty closures (e.g., `|_| {}`) are kept as-is.
 	fn format_event(&self, output: &mut String, event: &PageEvent, indent: usize) {
 		let ind = self.make_indent(indent);
-		let handler_str =
-			Self::clean_expression_spaces(&event.handler.to_token_stream().to_string());
+
+		// Format handler with rustfmt (empty closures are kept as-is)
+		let handler_str = self.format_handler_expression(&event.handler, indent + 1);
+
 		output.push_str(&ind);
 		output.push('@');
 		output.push_str(&event.event_type.to_string());
@@ -708,6 +713,144 @@ impl AstPageFormatter {
 		});
 
 		s.into_owned()
+	}
+
+	/// Check if the expression is an empty closure (e.g., `|_| {}`, `|| {}`)
+	///
+	/// Empty closures are kept as-is without rustfmt formatting.
+	fn is_empty_closure(expr: &syn::Expr) -> bool {
+		if let syn::Expr::Closure(closure) = expr
+			&& let syn::Expr::Block(block) = closure.body.as_ref()
+		{
+			return block.block.stmts.is_empty();
+		}
+		false
+	}
+
+	/// Format Rust code with rustfmt
+	///
+	/// Falls back to the input code if rustfmt is not available or fails.
+	fn format_with_rustfmt(code: &str) -> String {
+		use std::io::Write;
+		use std::process::{Command, Stdio};
+
+		let child = Command::new("rustfmt")
+			.arg("--edition=2024")
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn();
+
+		match child {
+			Ok(mut child_process) => {
+				if let Some(stdin) = child_process.stdin.as_mut() {
+					let _ = stdin.write_all(code.as_bytes());
+				}
+				match child_process.wait_with_output() {
+					Ok(output) if output.status.success() => {
+						String::from_utf8(output.stdout).unwrap_or_else(|_| code.to_string())
+					}
+					_ => code.to_string(),
+				}
+			}
+			Err(_) => code.to_string(),
+		}
+	}
+
+	/// Find the end of an expression considering nested braces
+	fn find_expression_end(s: &str) -> Option<usize> {
+		let mut brace_depth = 0;
+		let mut paren_depth = 0;
+		let mut in_string = false;
+		let mut escape_next = false;
+
+		for (i, c) in s.chars().enumerate() {
+			if escape_next {
+				escape_next = false;
+				continue;
+			}
+
+			match c {
+				'\\' if in_string => escape_next = true,
+				'"' if !in_string => in_string = true,
+				'"' if in_string => in_string = false,
+				'{' if !in_string => brace_depth += 1,
+				'}' if !in_string => brace_depth -= 1,
+				'(' if !in_string => paren_depth += 1,
+				')' if !in_string => paren_depth -= 1,
+				';' if !in_string && brace_depth == 0 && paren_depth == 0 => return Some(i),
+				_ => {}
+			}
+		}
+		None
+	}
+
+	/// Extract the handler expression from the wrapper code
+	///
+	/// Pattern: "let _handler = <expr>;"
+	fn extract_handler_from_wrapper(formatted: &str) -> Option<String> {
+		let start_marker = "let _handler = ";
+		let start = formatted.find(start_marker)? + start_marker.len();
+		let handler_part = &formatted[start..];
+		let end = Self::find_expression_end(handler_part)?;
+		Some(handler_part[..end].trim().to_string())
+	}
+
+	/// Apply base indentation to each line of a multi-line handler
+	fn apply_base_indent(&self, handler: &str, base_indent: usize) -> String {
+		let lines: Vec<&str> = handler.lines().collect();
+
+		if lines.len() == 1 {
+			return handler.to_string();
+		}
+
+		// First line has no additional indent (format_event adds the base indent)
+		// Subsequent lines get the base indent applied
+		let indent_str = self.make_indent(base_indent);
+		let mut result = lines[0].to_string();
+
+		for line in &lines[1..] {
+			result.push('\n');
+			if !line.trim().is_empty() {
+				result.push_str(&indent_str);
+			}
+			result.push_str(line);
+		}
+
+		result
+	}
+
+	/// Format an event handler expression with rustfmt
+	///
+	/// Empty closures are kept as-is, complex closures are formatted with rustfmt.
+	fn format_handler_expression(&self, expr: &syn::Expr, base_indent: usize) -> String {
+		// Empty closures are kept as-is
+		if Self::is_empty_closure(expr) {
+			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+		}
+
+		// Wrap the expression in a valid Rust file
+		let wrapper_code = format!(
+			"fn _wrapper() {{ let _handler = {}; }}",
+			expr.to_token_stream()
+		);
+
+		// Parse with syn
+		let Ok(file) = syn::parse_file(&wrapper_code) else {
+			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+		};
+
+		// Format with prettyplease + rustfmt
+		let prettyplease_output = prettyplease::unparse(&file);
+		let formatted = Self::format_with_rustfmt(&prettyplease_output);
+
+		// Extract the formatted handler
+		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {
+			return Self::clean_expression_spaces(&expr.to_token_stream().to_string());
+		};
+
+		// Apply base indentation
+		self.apply_base_indent(&handler_str, base_indent)
 	}
 
 	/// Format an expression node.
