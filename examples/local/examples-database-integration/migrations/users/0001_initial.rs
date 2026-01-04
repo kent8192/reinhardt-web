@@ -1,4 +1,4 @@
-use reinhardt_migrations::prelude::*;
+use reinhardt::db::migrations::prelude::*;
 pub fn migration() -> Migration {
 	Migration {
 		app_label: "users",
