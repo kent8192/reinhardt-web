@@ -1,10 +1,76 @@
-use crate::connection::DatabaseConnection;
+use crate::connection::{DatabaseBackend, DatabaseConnection};
 use crate::{Model, QuerySet};
-use sea_query::{Alias, Expr, ExprTrait, InsertStatement, Query, SelectStatement, UpdateStatement};
+use sea_query::{
+	Alias, DeleteStatement, Expr, ExprTrait, InsertStatement, MysqlQueryBuilder,
+	PostgresQueryBuilder, Query, SelectStatement, SqliteQueryBuilder, UpdateStatement, Values,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Build SQL with values from an INSERT statement based on database backend
+fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.build(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
+	}
+}
+
+/// Build SQL with values from an UPDATE statement based on database backend
+fn build_update_sql(stmt: &UpdateStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.build(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
+	}
+}
+
+/// Build SQL with values from a SELECT statement based on database backend
+fn build_select_sql(stmt: &SelectStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.build(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
+	}
+}
+
+/// Convert a SELECT statement to SQL string based on database backend
+fn select_to_string(stmt: &SelectStatement, backend: DatabaseBackend) -> String {
+	match backend {
+		DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+	}
+}
+
+/// Convert an INSERT statement to SQL string based on database backend
+fn insert_to_string(stmt: &InsertStatement, backend: DatabaseBackend) -> String {
+	match backend {
+		DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+	}
+}
+
+/// Build SQL with values from a DELETE statement based on database backend
+fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.build(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
+	}
+}
+
+/// Convert an UPDATE statement to SQL string based on database backend
+fn update_to_string(stmt: &UpdateStatement, backend: DatabaseBackend) -> String {
+	match backend {
+		DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
+		DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+		DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+	}
+}
 
 /// Global database connection state
 static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
@@ -699,8 +765,7 @@ impl<M: Model> Manager<M> {
 		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
 		stmt.returning(Query::returning().columns(all_columns));
 
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let (sql, values) = build_insert_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
 			.0
 			.into_iter()
@@ -898,8 +963,7 @@ impl<M: Model> Manager<M> {
 		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
 		stmt.returning(Query::returning().columns(all_columns));
 
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
 			.0
 			.into_iter()
@@ -964,8 +1028,7 @@ impl<M: Model> Manager<M> {
 		stmt.from_table(Alias::new(M::table_name()))
 			.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
 
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let (sql, values) = build_delete_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
 			.0
 			.into_iter()
@@ -1021,8 +1084,7 @@ impl<M: Model> Manager<M> {
 			)
 			.to_owned();
 
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let (sql, values) = build_select_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
 			.0
 			.into_iter()
@@ -1079,10 +1141,14 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Generate bulk create SQL (convenience method)
-	pub fn bulk_create_sql(&self, models: &[M]) -> String {
+	///
+	/// # Arguments
+	///
+	/// * `models` - Models to insert
+	/// * `backend` - Database backend to generate SQL for
+	pub fn bulk_create_sql(&self, models: &[M], backend: DatabaseBackend) -> String {
 		if let Some(stmt) = self.bulk_create_query(models) {
-			use sea_query::PostgresQueryBuilder;
-			stmt.to_string(PostgresQueryBuilder)
+			insert_to_string(&stmt, backend)
 		} else {
 			String::new()
 		}
@@ -1129,8 +1195,11 @@ impl<M: Model> Manager<M> {
 		let conn = get_connection().await?;
 
 		// Try to find existing record
-		let (select_sql, _) =
-			self.get_or_create_sql(&lookup_fields, &defaults.clone().unwrap_or_default());
+		let (select_sql, _) = self.get_or_create_sql(
+			&lookup_fields,
+			&defaults.clone().unwrap_or_default(),
+			conn.backend(),
+		);
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
@@ -1293,7 +1362,7 @@ impl<M: Model> Manager<M> {
 				.collect();
 
 			if !updates.is_empty() {
-				let sql = self.bulk_update_sql_detailed(&updates, &fields);
+				let sql = self.bulk_update_sql_detailed(&updates, &fields, conn.backend());
 				let rows_affected = conn.execute(&sql, vec![]).await?;
 				total_updated += rows_affected as usize;
 			}
@@ -1341,16 +1410,22 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Get or create - SQL generation (convenience method for testing)
+	///
+	/// # Arguments
+	///
+	/// * `lookup_fields` - Fields to lookup
+	/// * `defaults` - Default values for creation
+	/// * `backend` - Database backend to generate SQL for
 	pub fn get_or_create_sql(
 		&self,
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
+		backend: DatabaseBackend,
 	) -> (String, String) {
 		let (select_stmt, insert_stmt) = self.get_or_create_queries(lookup_fields, defaults);
-		use sea_query::PostgresQueryBuilder;
 		(
-			select_stmt.to_string(PostgresQueryBuilder),
-			insert_stmt.to_string(PostgresQueryBuilder),
+			select_to_string(&select_stmt, backend),
+			insert_to_string(&insert_stmt, backend),
 		)
 	}
 
@@ -1467,17 +1542,23 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Bulk update - SQL generation (convenience method for testing)
+	///
+	/// # Arguments
+	///
+	/// * `updates` - List of (primary_key, field_values) tuples
+	/// * `fields` - Fields to update
+	/// * `backend` - Database backend to generate SQL for
 	pub fn bulk_update_sql_detailed(
 		&self,
 		updates: &[(M::PrimaryKey, HashMap<String, serde_json::Value>)],
 		fields: &[String],
+		backend: DatabaseBackend,
 	) -> String
 	where
 		M::PrimaryKey: std::fmt::Display + Clone,
 	{
 		if let Some(stmt) = self.bulk_update_query_detailed(updates, fields) {
-			use sea_query::PostgresQueryBuilder;
-			stmt.to_string(PostgresQueryBuilder)
+			update_to_string(&stmt, backend)
 		} else {
 			String::new()
 		}
@@ -1493,6 +1574,7 @@ impl<M: Model> Default for Manager<M> {
 #[cfg(test)]
 mod tests {
 	use crate::Model;
+	use crate::connection::DatabaseBackend;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -1557,7 +1639,8 @@ mod tests {
 		let mut defaults = HashMap::new();
 		defaults.insert("name".to_string(), "Test User".to_string());
 
-		let (select_sql, insert_sql) = manager.get_or_create_sql(&lookup, &defaults);
+		let (select_sql, insert_sql) =
+			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
 
 		// SeaQuery uses quoted identifiers and TestUser table is "test_user"
 		assert!(select_sql.contains("SELECT") && select_sql.contains("FROM"));
@@ -1622,7 +1705,7 @@ mod tests {
 		updates.push((2i64, user2_fields));
 
 		let fields = vec!["name".to_string(), "email".to_string()];
-		let sql = manager.bulk_update_sql_detailed(&updates, &fields);
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
 
 		// SeaQuery uses quoted identifiers and TestUser table is "test_user"
 		assert!(sql.contains("UPDATE"));
@@ -1654,7 +1737,7 @@ mod tests {
 		let updates: Vec<(i64, HashMap<String, Value>)> = vec![];
 		let fields = vec!["name".to_string()];
 
-		let sql = manager.bulk_update_sql_detailed(&updates, &fields);
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
 		assert!(sql.is_empty());
 	}
 
@@ -1682,7 +1765,8 @@ mod tests {
 		let lookup: HashMap<String, String> = HashMap::new();
 		let defaults: HashMap<String, String> = HashMap::new();
 
-		let (select_sql, insert_sql) = manager.get_or_create_sql(&lookup, &defaults);
+		let (select_sql, insert_sql) =
+			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
 
 		// Empty lookup still produces valid SQL structure
 		assert!(select_sql.contains("SELECT") || select_sql.contains("select"));
@@ -1698,7 +1782,8 @@ mod tests {
 
 		let defaults: HashMap<String, String> = HashMap::new();
 
-		let (select_sql, _insert_sql) = manager.get_or_create_sql(&lookup, &defaults);
+		let (select_sql, _insert_sql) =
+			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
 
 		// Should have both conditions in WHERE clause
 		assert!(select_sql.contains("email"));
@@ -1730,7 +1815,7 @@ mod tests {
 		updates.push((1i64, user1_fields));
 
 		let fields = vec!["name".to_string()];
-		let sql = manager.bulk_update_sql_detailed(&updates, &fields);
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
 
 		assert!(sql.contains("UPDATE"));
 		assert!(sql.contains("name"));
