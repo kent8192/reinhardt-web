@@ -67,14 +67,23 @@ impl FilesystemSource {
 
 	/// Extract app_label and migration name from file path
 	///
-	/// Expected format: .../<app_label>/migrations/<name>.rs
+	/// Supports two formats:
+	/// 1. `<root_dir>/<app_label>/<name>.rs` (Django-style, preferred)
+	/// 2. `<root_dir>/<app_label>/migrations/<name>.rs` (legacy)
 	///
-	/// This implementation is flexible and works with any directory structure,
-	/// as long as the path contains a 'migrations' directory with the app_label
-	/// as the parent directory.
+	/// The app_label is the directory immediately under root_dir.
 	fn extract_app_and_name(&self, path: &Path) -> Result<(String, String)> {
+		// Get the path relative to root_dir
+		let relative_path = path.strip_prefix(&self.root_dir).map_err(|_| {
+			MigrationError::InvalidMigration(format!(
+				"Path {} is not under root_dir {}",
+				path.display(),
+				self.root_dir.display()
+			))
+		})?;
+
 		// Collect path components
-		let components: Vec<_> = path
+		let components: Vec<_> = relative_path
 			.components()
 			.filter_map(|c| match c {
 				std::path::Component::Normal(s) => s.to_str(),
@@ -82,24 +91,16 @@ impl FilesystemSource {
 			})
 			.collect();
 
-		// Find 'migrations' directory in the path
-		let migrations_idx = components
-			.iter()
-			.rposition(|&c| c == "migrations")
-			.ok_or_else(|| {
-				MigrationError::InvalidMigration(
-					"Path does not contain 'migrations' directory".to_string(),
-				)
-			})?;
+		// Need at least 2 components: <app_label>/<name>.rs
+		if components.len() < 2 {
+			return Err(MigrationError::InvalidMigration(format!(
+				"Path {} does not have enough components (expected <app_label>/<name>.rs)",
+				path.display()
+			)));
+		}
 
-		// The app_label is the directory immediately before 'migrations'
-		let app_label = if migrations_idx > 0 {
-			components[migrations_idx - 1].to_string()
-		} else {
-			return Err(MigrationError::InvalidMigration(
-				"Cannot determine app_label: 'migrations' is at the root".to_string(),
-			));
-		};
+		// The app_label is always the first component under root_dir
+		let app_label = components[0].to_string();
 
 		// Extract migration name from file name (without extension)
 		let file_name = path
@@ -129,14 +130,15 @@ impl MigrationSource for FilesystemSource {
 				continue;
 			}
 
-			// Skip if not in a migrations/ directory
-			if !path
-				.parent()
-				.and_then(|p| p.file_name())
-				.and_then(|n| n.to_str())
-				.map(|n| n == "migrations")
-				.unwrap_or(false)
-			{
+			// Skip files directly in root_dir (need at least one subdirectory for app_label)
+			let relative_path = match path.strip_prefix(&self.root_dir) {
+				Ok(p) => p,
+				Err(_) => continue,
+			};
+
+			// Need at least 2 components: <app_label>/<name>.rs
+			let component_count = relative_path.components().count();
+			if component_count < 2 {
 				continue;
 			}
 
@@ -162,10 +164,12 @@ mod tests {
 	use tempfile::TempDir;
 
 	/// Helper to create a test migration file
+	///
+	/// Creates file at: `<dir>/<app>/<name>.rs` (Django-style)
 	fn create_migration_file(dir: &Path, app: &str, name: &str, content: &str) {
-		let migrations_dir = dir.join(app).join("migrations");
-		fs::create_dir_all(&migrations_dir).unwrap();
-		let file_path = migrations_dir.join(format!("{}.rs", name));
+		let app_dir = dir.join(app);
+		fs::create_dir_all(&app_dir).unwrap();
+		let file_path = app_dir.join(format!("{}.rs", name));
 		fs::write(file_path, content).unwrap();
 	}
 
