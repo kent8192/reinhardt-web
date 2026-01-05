@@ -5,7 +5,7 @@
 
 use reinhardt_commands::{CommandContext, MigrateCommand};
 use reinhardt_migrations::{Migration, Operation};
-use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
+use reinhardt_test::fixtures::{TestMigrationSource, postgres_container};
 use rstest::*;
 use sea_query::{Alias, ColumnDef, PostgresQueryBuilder, Table};
 use sqlx::PgPool;
@@ -201,7 +201,7 @@ impl PostgresWithSchema {
 
 		// Add foreign key constraint
 		sqlx::query(
-			"ALTER TABLE posts ADD CONSTRAINT fk_author FOREIGN KEY (author_id) REFERENCES users(id)"
+			"ALTER TABLE posts ADD CONSTRAINT fk_author FOREIGN KEY (author_id) REFERENCES users(id)",
 		)
 		.execute(pool)
 		.await?;
@@ -225,13 +225,13 @@ impl PostgresWithSchema {
 
 		// Add foreign keys for comments
 		sqlx::query(
-			"ALTER TABLE comments ADD CONSTRAINT fk_post FOREIGN KEY (post_id) REFERENCES posts(id)"
+			"ALTER TABLE comments ADD CONSTRAINT fk_post FOREIGN KEY (post_id) REFERENCES posts(id)",
 		)
 		.execute(pool)
 		.await?;
 
 		sqlx::query(
-			"ALTER TABLE comments ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id)"
+			"ALTER TABLE comments ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id)",
 		)
 		.execute(pool)
 		.await?;
