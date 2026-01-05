@@ -16,7 +16,11 @@ struct TestValue {
 #[tokio::test]
 async fn provider_fn_executes() {
 	// Arrange
-	let provider = || async { Ok(TestValue { data: "test".to_string() }) };
+	let provider = || async {
+		Ok(TestValue {
+			data: "test".to_string(),
+		})
+	};
 
 	// Act
 	let future = provider.provide();

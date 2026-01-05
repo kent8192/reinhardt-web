@@ -1,6 +1,6 @@
 //! Unit tests for cycle detection mechanism
 
-use reinhardt_di::cycle_detection::{begin_resolution, register_type_name, CycleError};
+use reinhardt_di::cycle_detection::{CycleError, begin_resolution, register_type_name};
 use rstest::*;
 use std::any::TypeId;
 

@@ -35,14 +35,11 @@ async fn register_stores_factory(singleton_scope: Arc<reinhardt_di::SingletonSco
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Act
-	registry.register_async::<TestService, _, _>(
-		DependencyScope::Singleton,
-		|_ctx| async {
-			Ok(TestService {
-				name: "test_service".to_string(),
-			})
-		},
-	);
+	registry.register_async::<TestService, _, _>(DependencyScope::Singleton, |_ctx| async {
+		Ok(TestService {
+			name: "test_service".to_string(),
+		})
+	});
 
 	// Assert
 	assert!(registry.is_registered::<TestService>());
@@ -64,12 +61,9 @@ fn register_with_scope_stores_scope_info() {
 		})
 	});
 
-	registry.register_async::<AnotherService, _, _>(
-		DependencyScope::Singleton,
-		|_ctx| async {
-			Ok(AnotherService { id: 42 })
-		},
-	);
+	registry.register_async::<AnotherService, _, _>(DependencyScope::Singleton, |_ctx| async {
+		Ok(AnotherService { id: 42 })
+	});
 
 	// Assert
 	assert_eq!(
@@ -84,7 +78,9 @@ fn register_with_scope_stores_scope_info() {
 
 #[rstest]
 #[tokio::test]
-async fn get_factory_retrieves_registered_factory(singleton_scope: Arc<reinhardt_di::SingletonScope>) {
+async fn get_factory_retrieves_registered_factory(
+	singleton_scope: Arc<reinhardt_di::SingletonScope>,
+) {
 	// Arrange
 	let registry = DependencyRegistry::new();
 	let ctx = InjectionContext::builder(singleton_scope).build();

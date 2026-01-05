@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `NonInjectableService: Injectable` is not satisfied
   --> tests/di/macro_compile_tests/fail/invalid_inject_type.rs:14:16
    |
-14 |     let service = Depends::<NonInjectableService>::resolve(&ctx).await.unwrap();
+14 |     let service = Depends::<NonInjectableService>::resolve(&ctx)
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
 help: the trait `Injectable` is not implemented for `NonInjectableService`
@@ -22,7 +22,7 @@ error[E0599]: the function or associated item `resolve` exists for struct `Depen
  4 | struct NonInjectableService {
    | --------------------------- doesn't satisfy `NonInjectableService: Clone` or `NonInjectableService: Injectable`
 ...
-14 |     let service = Depends::<NonInjectableService>::resolve(&ctx).await.unwrap();
+14 |     let service = Depends::<NonInjectableService>::resolve(&ctx)
    |                                                    ^^^^^^^ function or associated item cannot be called on `Depends<NonInjectableService>` due to unsatisfied trait bounds
    |
    = note: the following trait bounds were not satisfied:

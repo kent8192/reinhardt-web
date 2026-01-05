@@ -3,8 +3,8 @@
 //! Tests for #[injectable] and #[injectable_factory] macros
 
 use reinhardt_di::{
-	injectable, injectable_factory, global_registry, DependencyScope, InjectionContext,
-	SingletonScope,
+	DependencyScope, InjectionContext, SingletonScope, global_registry, injectable,
+	injectable_factory,
 };
 use std::sync::Arc;
 
@@ -34,7 +34,10 @@ struct DatabaseConnection {
 
 #[injectable_factory(scope = "singleton")]
 async fn create_database(#[inject] config: Arc<AppConfig>) -> DatabaseConnection {
-	DatabaseConnection { url: config.database_url.clone(), connected: true }
+	DatabaseConnection {
+		url: config.database_url.clone(),
+		connected: true,
+	}
 }
 
 #[tokio::test]

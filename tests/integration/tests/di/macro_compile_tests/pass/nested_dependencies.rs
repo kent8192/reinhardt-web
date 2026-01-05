@@ -34,8 +34,5 @@ async fn main() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	let user_service = UserService::inject(&ctx).await.unwrap();
-	assert_eq!(
-		user_service.db.connection_string,
-		"postgres://localhost"
-	);
+	assert_eq!(user_service.db.connection_string, "postgres://localhost");
 }

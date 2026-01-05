@@ -5,7 +5,7 @@
 //! circular dependency detection.
 
 use reinhardt_di::{
-	begin_resolution, register_type_name, DiError, DiResult, Injectable, InjectionContext,
+	DiError, DiResult, Injectable, InjectionContext, begin_resolution, register_type_name,
 };
 use std::any::TypeId;
 use std::sync::Arc;
