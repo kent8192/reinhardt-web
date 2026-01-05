@@ -154,7 +154,7 @@ async fn test_auth_middleware_with_anonymous_user(
 		"#,
 	)
 	.execute(pool.as_ref())
-		.await
+	.await
 	.expect("Failed to create users table");
 
 	// Query non-existent user (simulates anonymous request)
@@ -164,7 +164,10 @@ async fn test_auth_middleware_with_anonymous_user(
 		.await
 		.expect("Failed to query");
 
-	assert!(result.is_none(), "Anonymous user should not exist in database");
+	assert!(
+		result.is_none(),
+		"Anonymous user should not exist in database"
+	);
 }
 
 // ============================================================================
@@ -357,10 +360,11 @@ async fn test_session_expiration_with_auth(
 		.expect("Failed to insert session");
 
 	// Query expired sessions
-	let expired_sessions: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at < NOW()")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to query expired sessions");
+	let expired_sessions: Vec<String> =
+		sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at < NOW()")
+			.fetch_all(pool.as_ref())
+			.await
+			.expect("Failed to query expired sessions");
 
 	assert!(
 		expired_sessions.contains(&session_id.to_string()),
@@ -437,26 +441,32 @@ async fn test_permission_checking_in_middleware(
 		.expect("Failed to insert permission 2");
 
 	// Check permissions
-	let has_read: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)")
-		.bind(user_id)
-		.bind("read:articles")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to check permission");
+	let has_read: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)",
+	)
+	.bind(user_id)
+	.bind("read:articles")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to check permission");
 
-	let has_write: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)")
-		.bind(user_id)
-		.bind("write:articles")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to check permission");
+	let has_write: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)",
+	)
+	.bind(user_id)
+	.bind("write:articles")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to check permission");
 
-	let has_delete: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)")
-		.bind(user_id)
-		.bind("delete:articles")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to check permission");
+	let has_delete: bool = sqlx::query_scalar(
+		"SELECT EXISTS(SELECT 1 FROM permissions WHERE user_id = $1 AND permission = $2)",
+	)
+	.bind(user_id)
+	.bind("delete:articles")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to check permission");
 
 	assert!(has_read, "User should have read permission");
 	assert!(has_write, "User should have write permission");
@@ -622,11 +632,13 @@ async fn test_authentication_failure_logging(
 		.expect("Failed to log auth failure");
 
 	// Query failed attempts
-	let failed_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM auth_logs WHERE username = $1 AND success = false")
-		.bind("faileduser")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count failures");
+	let failed_count: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM auth_logs WHERE username = $1 AND success = false",
+	)
+	.bind("faileduser")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to count failures");
 
 	assert_eq!(failed_count, 1, "Failed auth should be logged");
 }
@@ -749,7 +761,10 @@ async fn test_middleware_order_session_before_auth(
 		.expect("Failed to query session");
 
 	let data: serde_json::Value = result.get("data");
-	assert_eq!(data["user_id"], 1, "Session should have auth state from auth middleware");
+	assert_eq!(
+		data["user_id"], 1,
+		"Session should have auth state from auth middleware"
+	);
 }
 
 /// Test middleware order: CSRF before auth

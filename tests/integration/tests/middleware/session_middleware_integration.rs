@@ -380,19 +380,23 @@ async fn test_session_retrieval_by_cookie(
 	let cookie_session_id = session_id;
 
 	// Track lookup
-	sqlx::query("INSERT INTO request_tracking (cookie_session_id, retrieved_session_id) VALUES ($1, $2)")
-		.bind(cookie_session_id)
-		.bind(session_id)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to track request");
+	sqlx::query(
+		"INSERT INTO request_tracking (cookie_session_id, retrieved_session_id) VALUES ($1, $2)",
+	)
+	.bind(cookie_session_id)
+	.bind(session_id)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to track request");
 
 	// Verify session found via cookie
-	let result = sqlx::query("SELECT retrieved_session_id FROM request_tracking WHERE cookie_session_id = $1")
-		.bind(cookie_session_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query tracking");
+	let result = sqlx::query(
+		"SELECT retrieved_session_id FROM request_tracking WHERE cookie_session_id = $1",
+	)
+	.bind(cookie_session_id)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query tracking");
 
 	let retrieved_id: String = result.get("retrieved_session_id");
 	assert_eq!(retrieved_id, session_id);
@@ -454,19 +458,21 @@ async fn test_session_expiration_detection(
 	.expect("Failed to create valid session");
 
 	// Detect expired sessions
-	let expired_ids: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at < NOW()")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to query expired sessions");
+	let expired_ids: Vec<String> =
+		sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at < NOW()")
+			.fetch_all(pool.as_ref())
+			.await
+			.expect("Failed to query expired sessions");
 
 	assert_eq!(expired_ids.len(), 1);
 	assert_eq!(expired_ids[0], expired_session);
 
 	// Verify valid sessions not included
-	let valid_ids: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at >= NOW()")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to query valid sessions");
+	let valid_ids: Vec<String> =
+		sqlx::query_scalar("SELECT id FROM sessions WHERE expires_at >= NOW()")
+			.fetch_all(pool.as_ref())
+			.await
+			.expect("Failed to query valid sessions");
 
 	assert_eq!(valid_ids.len(), 1);
 	assert_eq!(valid_ids[0], valid_session);
@@ -750,7 +756,10 @@ async fn test_expired_session_cleanup(
 		.await
 		.expect("Failed to count remaining sessions");
 
-	assert_eq!(remaining_count, 2, "Should have 2 active sessions remaining");
+	assert_eq!(
+		remaining_count, 2,
+		"Should have 2 active sessions remaining"
+	);
 }
 
 /// Test session cleanup by max age
@@ -807,11 +816,12 @@ async fn test_session_cleanup_by_max_age(
 	.expect("Failed to create recent session");
 
 	// Cleanup sessions older than 7 days (max age policy)
-	let deleted_count = sqlx::query("DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '7 days'")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to cleanup old sessions")
-		.rows_affected();
+	let deleted_count =
+		sqlx::query("DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '7 days'")
+			.execute(pool.as_ref())
+			.await
+			.expect("Failed to cleanup old sessions")
+			.rows_affected();
 
 	assert_eq!(deleted_count, 1, "Should delete 1 old session");
 
@@ -899,10 +909,12 @@ async fn test_session_cleanup_statistics(
 		.expect("Failed to record stats");
 
 	// Verify statistics
-	let result = sqlx::query("SELECT deleted_count, duration_ms FROM cleanup_stats ORDER BY id DESC LIMIT 1")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query stats");
+	let result = sqlx::query(
+		"SELECT deleted_count, duration_ms FROM cleanup_stats ORDER BY id DESC LIMIT 1",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query stats");
 
 	let recorded_count: i64 = result.get("deleted_count");
 	let recorded_duration: i64 = result.get("duration_ms");

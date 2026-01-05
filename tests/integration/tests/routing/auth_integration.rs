@@ -201,8 +201,7 @@ async fn test_route_requires_authentication_with_anonymous_user(
 	create_users_table(&pool).await;
 
 	// Simulate anonymous access (no user ID)
-	let result =
-		sqlx::query("SELECT COUNT(*) as count FROM users WHERE id = $1")
+	let result = sqlx::query("SELECT COUNT(*) as count FROM users WHERE id = $1")
 			.bind(0) // Non-existent user ID
 			.fetch_one(pool.as_ref())
 			.await
@@ -276,10 +275,7 @@ async fn test_route_requires_permission_with_granted_permission(
 	// Verify permission
 	let has_permission = user_has_permission(&pool, user_id, "view_posts").await;
 
-	assert!(
-		has_permission,
-		"User should have view_posts permission"
-	);
+	assert!(has_permission, "User should have view_posts permission");
 }
 
 /// Test route requiring specific permission - user without permission

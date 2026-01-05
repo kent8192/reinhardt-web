@@ -15,8 +15,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_core::exception::Result;
 use reinhardt_core::types::{Handler, Middleware, Request, Response};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // =============================================================================
 // Test Fixtures
@@ -177,7 +177,9 @@ async fn test_etag_generates_unique_tags() {
 #[tokio::test]
 async fn test_ratelimit_and_circuit_breaker_cascade() {
 	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
-	use reinhardt_middleware::rate_limit::{RateLimitConfig, RateLimitMiddleware, RateLimitStrategy};
+	use reinhardt_middleware::rate_limit::{
+		RateLimitConfig, RateLimitMiddleware, RateLimitStrategy,
+	};
 	use std::time::Duration;
 
 	let rate_limit_config = RateLimitConfig {
@@ -352,8 +354,11 @@ async fn test_locale_middleware_standalone() {
 	let handler = Arc::new(TestHandler::success());
 
 	// Request with Accept-Language header
-	let request =
-		create_request_with_headers("GET", "/", &[("Accept-Language", "ja,en-US;q=0.9,en;q=0.8")]);
+	let request = create_request_with_headers(
+		"GET",
+		"/",
+		&[("Accept-Language", "ja,en-US;q=0.9,en;q=0.8")],
+	);
 
 	let response = locale.process(request, handler).await.unwrap();
 
@@ -418,7 +423,11 @@ async fn test_metrics_middleware_collection() {
 	}
 
 	// All requests should succeed
-	assert_eq!(handler.count(), 5, "Handler should have been called 5 times");
+	assert_eq!(
+		handler.count(),
+		5,
+		"Handler should have been called 5 times"
+	);
 }
 
 // =============================================================================
@@ -481,8 +490,7 @@ async fn test_cors_middleware_origin_handling() {
 	let cors = Arc::new(CorsMiddleware::new(config));
 	let handler = Arc::new(TestHandler::success());
 
-	let request =
-		create_request_with_headers("GET", "/", &[("Origin", "https://example.com")]);
+	let request = create_request_with_headers("GET", "/", &[("Origin", "https://example.com")]);
 
 	let response = cors.process(request, handler).await.unwrap();
 
@@ -522,7 +530,9 @@ async fn test_cors_preflight_handling() {
 
 	// Preflight should include allowed methods
 	assert!(
-		response.headers.contains_key("access-control-allow-methods"),
+		response
+			.headers
+			.contains_key("access-control-allow-methods"),
 		"Preflight should have Access-Control-Allow-Methods header"
 	);
 }

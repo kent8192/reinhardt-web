@@ -281,12 +281,11 @@ async fn test_request_middleware_modifies_request(
 	log_middleware_execution(&pool, "GET", "/test", "AddHeaderMiddleware", 1).await;
 
 	// Verify middleware executed
-	let result =
-		sqlx::query("SELECT middleware_name FROM request_logs WHERE middleware_name = $1")
-			.bind("AddHeaderMiddleware")
-			.fetch_one(pool.as_ref())
-			.await
-			.expect("Failed to query");
+	let result = sqlx::query("SELECT middleware_name FROM request_logs WHERE middleware_name = $1")
+		.bind("AddHeaderMiddleware")
+		.fetch_one(pool.as_ref())
+		.await
+		.expect("Failed to query");
 
 	let name: String = result.get("middleware_name");
 
@@ -316,12 +315,11 @@ async fn test_request_middleware_validates_data(
 	log_middleware_execution(&pool, "POST", "/api/data", "ValidationMiddleware", 1).await;
 
 	// Query execution
-	let result =
-		sqlx::query("SELECT middleware_name FROM request_logs WHERE middleware_name = $1")
-			.bind("ValidationMiddleware")
-			.fetch_one(pool.as_ref())
-			.await
-			.expect("Failed to query");
+	let result = sqlx::query("SELECT middleware_name FROM request_logs WHERE middleware_name = $1")
+		.bind("ValidationMiddleware")
+		.fetch_one(pool.as_ref())
+		.await
+		.expect("Failed to query");
 
 	let name: String = result.get("middleware_name");
 
@@ -429,11 +427,12 @@ async fn test_error_middleware_catches_route_errors(
 	log_middleware_error(&pool, "ErrorHandlerMiddleware", "Route handler exception").await;
 
 	// Verify error was logged
-	let result = sqlx::query("SELECT error_message FROM middleware_errors WHERE middleware_name = $1")
-		.bind("ErrorHandlerMiddleware")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query");
+	let result =
+		sqlx::query("SELECT error_message FROM middleware_errors WHERE middleware_name = $1")
+			.bind("ErrorHandlerMiddleware")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to query");
 
 	let error_msg: String = result.get("error_message");
 
@@ -565,14 +564,13 @@ async fn test_route_specific_middleware_single_route(
 	log_middleware_execution(&pool, "GET", "/admin", "AdminOnlyMiddleware", 1).await;
 
 	// Verify middleware executed for correct path
-	let result = sqlx::query(
-		"SELECT path FROM request_logs WHERE middleware_name = $1 AND path = $2",
-	)
-	.bind("AdminOnlyMiddleware")
-	.bind("/admin")
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to query");
+	let result =
+		sqlx::query("SELECT path FROM request_logs WHERE middleware_name = $1 AND path = $2")
+			.bind("AdminOnlyMiddleware")
+			.bind("/admin")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to query");
 
 	let path: String = result.get("path");
 
@@ -649,18 +647,14 @@ async fn test_middleware_early_termination_returns_response(
 	log_response_middleware(&pool, 403, "EarlyTerminationMiddleware", 1).await;
 
 	// Verify only first middleware executed
-	let request_count =
-		sqlx::query("SELECT COUNT(*) as count FROM request_logs")
-			.fetch_one(pool.as_ref())
-			.await
-			.expect("Failed to count requests");
+	let request_count = sqlx::query("SELECT COUNT(*) as count FROM request_logs")
+		.fetch_one(pool.as_ref())
+		.await
+		.expect("Failed to count requests");
 
 	let count: i64 = request_count.get("count");
 
-	assert_eq!(
-		count, 1,
-		"Only early termination middleware should execute"
-	);
+	assert_eq!(count, 1, "Only early termination middleware should execute");
 
 	// Verify response was returned
 	let response_result =
@@ -703,10 +697,7 @@ async fn test_middleware_early_termination_auth_failure(
 
 	let status: i32 = result.get("status_code");
 
-	assert_eq!(
-		status, 401,
-		"Auth middleware should return 401 on failure"
-	);
+	assert_eq!(status, 401, "Auth middleware should return 401 on failure");
 }
 
 // ============================================================================

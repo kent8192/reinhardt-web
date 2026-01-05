@@ -68,11 +68,13 @@ async fn test_request_logging_middleware_success(
 	.expect("Failed to insert request log");
 
 	// Verify log entry
-	let result = sqlx::query("SELECT method, path, status_code, duration_ms FROM request_logs WHERE path = $1")
-		.bind("/api/users")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query request log");
+	let result = sqlx::query(
+		"SELECT method, path, status_code, duration_ms FROM request_logs WHERE path = $1",
+	)
+	.bind("/api/users")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query request log");
 
 	let method: String = result.get("method");
 	let path: String = result.get("path");
@@ -189,11 +191,13 @@ async fn test_response_logging_middleware(
 	.expect("Failed to insert response log");
 
 	// Verify response log
-	let result = sqlx::query("SELECT status_code, response_size, duration_ms FROM response_logs WHERE request_id = $1")
-		.bind(1)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query response log");
+	let result = sqlx::query(
+		"SELECT status_code, response_size, duration_ms FROM response_logs WHERE request_id = $1",
+	)
+	.bind(1)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query response log");
 
 	let status_code: i32 = result.get("status_code");
 	let response_size: i64 = result.get("response_size");
@@ -244,21 +248,24 @@ async fn test_database_query_logging(
 	let query_sql = "SELECT * FROM users WHERE id = $1";
 	let params = serde_json::json!({"id": 123});
 
-	sqlx::query("INSERT INTO query_logs (request_id, query_sql, params, duration_ms) VALUES ($1, $2, $3, $4)")
-		.bind(1)
-		.bind(query_sql)
-		.bind(&params)
-		.bind(45)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to insert query log");
+	sqlx::query(
+		"INSERT INTO query_logs (request_id, query_sql, params, duration_ms) VALUES ($1, $2, $3, $4)",
+	)
+	.bind(1)
+	.bind(query_sql)
+	.bind(&params)
+	.bind(45)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to insert query log");
 
 	// Verify query log
-	let result = sqlx::query("SELECT query_sql, params, duration_ms FROM query_logs WHERE request_id = $1")
-		.bind(1)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query query log");
+	let result =
+		sqlx::query("SELECT query_sql, params, duration_ms FROM query_logs WHERE request_id = $1")
+			.bind(1)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to query query log");
 
 	let stored_sql: String = result.get("query_sql");
 	let stored_params: serde_json::Value = result.get("params");
@@ -391,11 +398,13 @@ async fn test_error_logging_with_stack_trace(
 	.expect("Failed to insert error log");
 
 	// Verify error log
-	let result = sqlx::query("SELECT error_type, error_message, stack_trace FROM error_logs WHERE request_id = $1")
-		.bind(1)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query error log");
+	let result = sqlx::query(
+		"SELECT error_type, error_message, stack_trace FROM error_logs WHERE request_id = $1",
+	)
+	.bind(1)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query error log");
 
 	let stored_type: String = result.get("error_type");
 	let stored_message: String = result.get("error_message");
@@ -463,11 +472,12 @@ async fn test_error_logging_with_context(
 		.expect("Failed to insert error log");
 
 	// Verify context captured
-	let result = sqlx::query("SELECT error_message, context FROM error_logs WHERE error_message = $1")
-		.bind(error_message)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query error log");
+	let result =
+		sqlx::query("SELECT error_message, context FROM error_logs WHERE error_message = $1")
+			.bind(error_message)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to query error log");
 
 	let stored_message: String = result.get("error_message");
 	let stored_context: serde_json::Value = result.get("context");
@@ -608,13 +618,12 @@ async fn test_structured_logging_with_fields(
 		.expect("Failed to insert structured log");
 
 	// Query by field
-	let logs_by_user: Vec<serde_json::Value> = sqlx::query_scalar(
-		"SELECT fields FROM structured_logs WHERE fields->>'user_id' = $1",
-	)
-	.bind("789")
-	.fetch_all(pool.as_ref())
-	.await
-	.expect("Failed to query by field");
+	let logs_by_user: Vec<serde_json::Value> =
+		sqlx::query_scalar("SELECT fields FROM structured_logs WHERE fields->>'user_id' = $1")
+			.bind("789")
+			.fetch_all(pool.as_ref())
+			.await
+			.expect("Failed to query by field");
 
 	assert_eq!(logs_by_user.len(), 1);
 	assert_eq!(logs_by_user[0]["action"], "login");
@@ -744,12 +753,11 @@ async fn test_log_rotation_by_age(
 		.expect("Failed to insert recent log");
 
 	// Find logs older than 7 days for rotation
-	let old_logs_count: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM logs WHERE timestamp < NOW() - INTERVAL '7 days'",
-	)
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to count old logs");
+	let old_logs_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE timestamp < NOW() - INTERVAL '7 days'")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count old logs");
 
 	assert_eq!(old_logs_count, 1, "Should identify 1 old log for rotation");
 
@@ -796,12 +804,10 @@ async fn test_log_cleanup(
 
 	// Insert logs with different ages
 	for days_ago in [60, 45, 30, 15, 7, 1] {
-		sqlx::query(
-			&format!(
-				"INSERT INTO logs (level, message, timestamp) VALUES ($1, $2, NOW() - INTERVAL '{} days')",
-				days_ago
-			),
-		)
+		sqlx::query(&format!(
+			"INSERT INTO logs (level, message, timestamp) VALUES ($1, $2, NOW() - INTERVAL '{} days')",
+			days_ago
+		))
 		.bind("INFO")
 		.bind(format!("Log from {} days ago", days_ago))
 		.execute(pool.as_ref())
@@ -810,11 +816,12 @@ async fn test_log_cleanup(
 	}
 
 	// Delete logs older than 30 days
-	let deleted_count = sqlx::query("DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '30 days'")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to delete old logs")
-		.rows_affected();
+	let deleted_count =
+		sqlx::query("DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '30 days'")
+			.execute(pool.as_ref())
+			.await
+			.expect("Failed to delete old logs")
+			.rows_affected();
 
 	assert_eq!(deleted_count, 3, "Should delete 3 logs older than 30 days");
 

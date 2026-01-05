@@ -59,21 +59,25 @@ async fn test_cors_preflight_request(
 	let origin = "https://example.com";
 	let method = "OPTIONS";
 
-	sqlx::query("INSERT INTO cors_requests (method, origin, is_preflight, allowed) VALUES ($1, $2, $3, $4)")
-		.bind(method)
-		.bind(origin)
-		.bind(true)
-		.bind(true)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to log preflight request");
+	sqlx::query(
+		"INSERT INTO cors_requests (method, origin, is_preflight, allowed) VALUES ($1, $2, $3, $4)",
+	)
+	.bind(method)
+	.bind(origin)
+	.bind(true)
+	.bind(true)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to log preflight request");
 
 	// Verify preflight request logged
-	let result = sqlx::query("SELECT method, origin, is_preflight, allowed FROM cors_requests WHERE origin = $1")
-		.bind(origin)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query preflight request");
+	let result = sqlx::query(
+		"SELECT method, origin, is_preflight, allowed FROM cors_requests WHERE origin = $1",
+	)
+	.bind(origin)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query preflight request");
 
 	let stored_method: String = result.get("method");
 	let stored_origin: String = result.get("origin");
@@ -118,22 +122,26 @@ async fn test_cors_preflight_with_request_method(
 	.expect("Failed to create preflight_requests table");
 
 	// Simulate preflight with allowed method
-	sqlx::query("INSERT INTO preflight_requests (origin, requested_method, method_allowed) VALUES ($1, $2, $3)")
-		.bind("https://example.com")
-		.bind("POST")
-		.bind(true)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to log preflight");
+	sqlx::query(
+		"INSERT INTO preflight_requests (origin, requested_method, method_allowed) VALUES ($1, $2, $3)",
+	)
+	.bind("https://example.com")
+	.bind("POST")
+	.bind(true)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to log preflight");
 
 	// Simulate preflight with disallowed method
-	sqlx::query("INSERT INTO preflight_requests (origin, requested_method, method_allowed) VALUES ($1, $2, $3)")
-		.bind("https://example.com")
-		.bind("DELETE")
-		.bind(false)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to log preflight");
+	sqlx::query(
+		"INSERT INTO preflight_requests (origin, requested_method, method_allowed) VALUES ($1, $2, $3)",
+	)
+	.bind("https://example.com")
+	.bind("DELETE")
+	.bind(false)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to log preflight");
 
 	// Verify method validation
 	let allowed_methods: Vec<String> = sqlx::query_scalar(
@@ -212,11 +220,12 @@ async fn test_cors_with_single_allowed_origin(
 		.expect("Failed to insert allowed origin");
 
 	// Check allowed origin
-	let is_allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
-		.bind(allowed_origin)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to check origin");
+	let is_allowed: bool =
+		sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
+			.bind(allowed_origin)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to check origin");
 
 	sqlx::query("INSERT INTO origin_checks (origin, is_allowed) VALUES ($1, $2)")
 		.bind(allowed_origin)
@@ -242,15 +251,17 @@ async fn test_cors_with_single_allowed_origin(
 		.expect("Failed to log check");
 
 	// Verify checks
-	let allowed_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM origin_checks WHERE is_allowed = true")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count allowed");
+	let allowed_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM origin_checks WHERE is_allowed = true")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count allowed");
 
-	let disallowed_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM origin_checks WHERE is_allowed = false")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count disallowed");
+	let disallowed_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM origin_checks WHERE is_allowed = false")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count disallowed");
 
 	assert_eq!(allowed_count, 1);
 	assert_eq!(disallowed_count, 1);
@@ -301,22 +312,24 @@ async fn test_cors_with_multiple_allowed_origins(
 
 	// Verify all origins allowed
 	for origin in &allowed_origins {
-		let is_allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
-			.bind(origin)
-			.fetch_one(pool.as_ref())
-			.await
-			.expect("Failed to check origin");
+		let is_allowed: bool =
+			sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
+				.bind(origin)
+				.fetch_one(pool.as_ref())
+				.await
+				.expect("Failed to check origin");
 
 		assert!(is_allowed, "Origin {} should be allowed", origin);
 	}
 
 	// Verify unauthorized origin rejected
 	let unauthorized = "https://hacker.com";
-	let is_allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
-		.bind(unauthorized)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to check origin");
+	let is_allowed: bool =
+		sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM allowed_origins WHERE origin = $1)")
+			.bind(unauthorized)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to check origin");
 
 	assert!(!is_allowed, "Unauthorized origin should be rejected");
 }
@@ -365,11 +378,19 @@ async fn test_cors_with_wildcard_origin(
 	assert!(allow_all, "Wildcard should allow all origins");
 
 	// Simulate checks for various origins
-	let origins = vec!["https://example1.com", "https://example2.com", "https://random.org"];
+	let origins = vec![
+		"https://example1.com",
+		"https://example2.com",
+		"https://random.org",
+	];
 
 	for origin in origins {
 		// If allow_all is true, all origins pass
-		assert!(allow_all, "Origin {} should be allowed with wildcard", origin);
+		assert!(
+			allow_all,
+			"Origin {} should be allowed with wildcard",
+			origin
+		);
 	}
 }
 
@@ -503,7 +524,10 @@ async fn test_cors_credentials_wildcard_restriction(
 	.await
 	.expect("Failed to count valid configs");
 
-	assert_eq!(valid_count, 1, "Should accept credentials with specific origin");
+	assert_eq!(
+		valid_count, 1,
+		"Should accept credentials with specific origin"
+	);
 }
 
 // ============================================================================
@@ -545,26 +569,32 @@ async fn test_cors_response_headers(
 	let headers = vec![
 		("Access-Control-Allow-Origin", "https://example.com"),
 		("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE"),
-		("Access-Control-Allow-Headers", "Content-Type, Authorization"),
+		(
+			"Access-Control-Allow-Headers",
+			"Content-Type, Authorization",
+		),
 		("Access-Control-Max-Age", "3600"),
 	];
 
 	for (name, value) in headers {
-		sqlx::query("INSERT INTO cors_headers (request_id, header_name, header_value) VALUES ($1, $2, $3)")
-			.bind(request_id)
-			.bind(name)
-			.bind(value)
-			.execute(pool.as_ref())
-			.await
-			.expect("Failed to insert header");
+		sqlx::query(
+			"INSERT INTO cors_headers (request_id, header_name, header_value) VALUES ($1, $2, $3)",
+		)
+		.bind(request_id)
+		.bind(name)
+		.bind(value)
+		.execute(pool.as_ref())
+		.await
+		.expect("Failed to insert header");
 	}
 
 	// Verify headers set
-	let header_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cors_headers WHERE request_id = $1")
-		.bind(request_id)
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to count headers");
+	let header_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM cors_headers WHERE request_id = $1")
+			.bind(request_id)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to count headers");
 
 	assert_eq!(header_count, 4, "Should have 4 CORS headers");
 
@@ -677,7 +707,11 @@ async fn test_cors_with_exposed_headers(
 	.expect("Failed to create exposed_headers table");
 
 	// Configure exposed headers
-	let exposed_headers = vec!["X-Total-Count", "X-Rate-Limit-Remaining", "X-Pagination-Token"];
+	let exposed_headers = vec![
+		"X-Total-Count",
+		"X-Rate-Limit-Remaining",
+		"X-Pagination-Token",
+	];
 
 	for header in &exposed_headers {
 		sqlx::query("INSERT INTO exposed_headers (header_name) VALUES ($1)")
@@ -688,10 +722,11 @@ async fn test_cors_with_exposed_headers(
 	}
 
 	// Retrieve exposed headers list
-	let headers_list: Vec<String> = sqlx::query_scalar("SELECT header_name FROM exposed_headers ORDER BY id")
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Failed to get exposed headers");
+	let headers_list: Vec<String> =
+		sqlx::query_scalar("SELECT header_name FROM exposed_headers ORDER BY id")
+			.fetch_all(pool.as_ref())
+			.await
+			.expect("Failed to get exposed headers");
 
 	assert_eq!(headers_list.len(), 3);
 	assert!(headers_list.contains(&"X-Total-Count".to_string()));
@@ -799,11 +834,13 @@ async fn test_cors_error_missing_origin(
 		.expect("Failed to log error");
 
 	// Verify error logged
-	let result = sqlx::query("SELECT error_type, error_message, origin FROM cors_errors WHERE error_type = $1")
-		.bind("MissingOrigin")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Failed to query error");
+	let result = sqlx::query(
+		"SELECT error_type, error_message, origin FROM cors_errors WHERE error_type = $1",
+	)
+	.bind("MissingOrigin")
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Failed to query error");
 
 	let error_type: String = result.get("error_type");
 	let error_message: String = result.get("error_message");
