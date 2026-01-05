@@ -458,22 +458,22 @@ async fn test_integer_range_field(
 	.await
 	.expect("Failed to create table");
 
-	// Insert range data (using text representation for portability)
-	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2)")
+	// Insert range data (using text representation with explicit type cast)
+	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2::int4range)")
 		.bind("Budget")
 		.bind("[0,100)")
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert budget");
 
-	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2)")
+	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2::int4range)")
 		.bind("Mid-range")
 		.bind("[100,500)")
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert mid-range");
 
-	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2)")
+	sqlx::query("INSERT INTO price_ranges (name, range) VALUES ($1, $2::int4range)")
 		.bind("Premium")
 		.bind("[500,2000)")
 		.execute(pool.as_ref())
@@ -519,15 +519,15 @@ async fn test_date_range_field(
 	.await
 	.expect("Failed to create table");
 
-	// Insert date range data
-	sqlx::query("INSERT INTO events (name, period) VALUES ($1, $2)")
+	// Insert date range data (using text representation with explicit type cast)
+	sqlx::query("INSERT INTO events (name, period) VALUES ($1, $2::daterange)")
 		.bind("Summer Camp")
 		.bind("[2025-06-01,2025-08-31]")
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert summer");
 
-	sqlx::query("INSERT INTO events (name, period) VALUES ($1, $2)")
+	sqlx::query("INSERT INTO events (name, period) VALUES ($1, $2::daterange)")
 		.bind("Winter Workshop")
 		.bind("[2025-12-01,2026-02-28]")
 		.execute(pool.as_ref())
@@ -634,16 +634,17 @@ async fn test_multidimensional_array_field(
 	.await
 	.expect("Failed to create table");
 
-	// Insert 2D array using text representation
+	// Insert 2D array using text representation with explicit type cast
 	// PostgreSQL represents 2D arrays as '{{1,2,3},{4,5,6}}'
-	sqlx::query("INSERT INTO matrices (matrix) VALUES ($1)")
+	sqlx::query("INSERT INTO matrices (matrix) VALUES ($1::int[][])")
 		.bind("{{1,2,3},{4,5,6}}")
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to insert");
 
 	// Retrieve and verify (PostgreSQL returns 2D arrays as nested arrays in some drivers)
-	let result = sqlx::query("SELECT matrix FROM matrices WHERE id = 1")
+	// Use ::text cast to get string representation for verification
+	let result = sqlx::query("SELECT matrix::text as matrix FROM matrices WHERE id = 1")
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to query");

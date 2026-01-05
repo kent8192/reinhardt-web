@@ -185,12 +185,12 @@ async fn test_automatic_timestamps_on_insert(
 	create_articles_table(pool.as_ref()).await;
 
 	// Insert article without specifying timestamps
-	let (insert, _) = Query::insert()
+	let insert = Query::insert()
 		.into_table(Articles::Table)
 		.columns([Articles::Title, Articles::Content])
 		.values_panic(["First Article".into(), "This is the content".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let result = sqlx::query(&insert)
 		.fetch_one(pool.as_ref())
@@ -239,12 +239,12 @@ async fn test_different_timestamps_for_different_inserts(
 	create_users_table(pool.as_ref()).await;
 
 	// Insert first user
-	let (insert1, _) = Query::insert()
+	let insert1 = Query::insert()
 		.into_table(Users::Table)
 		.columns([Users::Username, Users::Email])
 		.values_panic(["alice".into(), "alice@example.com".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let result1 = sqlx::query(&insert1)
 		.fetch_one(pool.as_ref())
@@ -257,12 +257,12 @@ async fn test_different_timestamps_for_different_inserts(
 	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
 	// Insert second user
-	let (insert2, _) = Query::insert()
+	let insert2 = Query::insert()
 		.into_table(Users::Table)
 		.columns([Users::Username, Users::Email])
 		.values_panic(["bob".into(), "bob@example.com".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let result2 = sqlx::query(&insert2)
 		.fetch_one(pool.as_ref())
@@ -303,12 +303,12 @@ async fn test_updated_at_changes_on_update(
 	create_articles_table(pool.as_ref()).await;
 
 	// Insert article
-	let (insert, _) = Query::insert()
+	let insert = Query::insert()
 		.into_table(Articles::Table)
 		.columns([Articles::Title, Articles::Content])
 		.values_panic(["Original Title".into(), "Original Content".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let insert_result = sqlx::query(&insert)
 		.fetch_one(pool.as_ref())
@@ -323,11 +323,11 @@ async fn test_updated_at_changes_on_update(
 	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
 	// Update article
-	let (update, _) = Query::update()
+	let update = Query::update()
 		.table(Articles::Table)
 		.values([(Articles::Title, "Updated Title".into())])
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	sqlx::query(&update)
 		.execute(pool.as_ref())
@@ -335,11 +335,11 @@ async fn test_updated_at_changes_on_update(
 		.expect("Failed to update article");
 
 	// Manually update updated_at since SeaQuery doesn't have automatic trigger support
-	let (update_timestamp, _) = Query::update()
+	let update_timestamp = Query::update()
 		.table(Articles::Table)
 		.values([(Articles::UpdatedAt, Expr::current_timestamp().into())])
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	sqlx::query(&update_timestamp)
 		.execute(pool.as_ref())
@@ -347,7 +347,7 @@ async fn test_updated_at_changes_on_update(
 		.expect("Failed to update timestamp");
 
 	// Fetch updated article
-	let (select, _) = Query::select()
+	let select = Query::select()
 		.columns([
 			Articles::Id,
 			Articles::Title,
@@ -356,7 +356,7 @@ async fn test_updated_at_changes_on_update(
 		])
 		.from(Articles::Table)
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let updated_result = sqlx::query(&select)
 		.fetch_one(pool.as_ref())
@@ -404,12 +404,12 @@ async fn test_updated_at_always_gte_created_at_after_updates(
 	create_users_table(pool.as_ref()).await;
 
 	// Insert user
-	let (insert, _) = Query::insert()
+	let insert = Query::insert()
 		.into_table(Users::Table)
 		.columns([Users::Username, Users::Email])
 		.values_panic(["charlie".into(), "charlie@example.com".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let insert_result = sqlx::query(&insert)
 		.fetch_one(pool.as_ref())
@@ -424,11 +424,11 @@ async fn test_updated_at_always_gte_created_at_after_updates(
 
 		let new_email = format!("charlie{}@example.com", i);
 
-		let (update, _) = Query::update()
+		let update = Query::update()
 			.table(Users::Table)
 			.values([(Users::Email, new_email.into())])
 			.and_where(Expr::col(Users::Id).eq(user_id).into())
-			.build(PostgresQueryBuilder);
+			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&update)
 			.execute(pool.as_ref())
@@ -436,11 +436,11 @@ async fn test_updated_at_always_gte_created_at_after_updates(
 			.expect("Failed to update user");
 
 		// Update timestamp
-		let (update_timestamp, _) = Query::update()
+		let update_timestamp = Query::update()
 			.table(Users::Table)
 			.values([(Users::UpdatedAt, Expr::current_timestamp().into())])
 			.and_where(Expr::col(Users::Id).eq(user_id).into())
-			.build(PostgresQueryBuilder);
+			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&update_timestamp)
 			.execute(pool.as_ref())
@@ -448,11 +448,11 @@ async fn test_updated_at_always_gte_created_at_after_updates(
 			.expect("Failed to update timestamp");
 
 		// Verify invariant after each update
-		let (select, _) = Query::select()
+		let select = Query::select()
 			.columns([Users::CreatedAt, Users::UpdatedAt])
 			.from(Users::Table)
 			.and_where(Expr::col(Users::Id).eq(user_id).into())
-			.build(PostgresQueryBuilder);
+			.to_string(PostgresQueryBuilder);
 
 		let result = sqlx::query(&select)
 			.fetch_one(pool.as_ref())
@@ -499,12 +499,12 @@ proptest! {
 			create_articles_table(pool.as_ref()).await;
 
 			// Insert initial article
-			let (insert, _) = Query::insert()
+			let insert = Query::insert()
 				.into_table(Articles::Table)
 				.columns([Articles::Title, Articles::Content])
 				.values_panic(["Test Article".into(), "Initial Content".into()])
 				.returning_all()
-				.build(PostgresQueryBuilder);
+				.to_string(PostgresQueryBuilder);
 
 			let insert_result = sqlx::query(&insert)
 				.fetch_one(pool.as_ref())
@@ -517,11 +517,11 @@ proptest! {
 			for update_content in updates {
 				tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
 
-				let (update, _) = Query::update()
+				let update = Query::update()
 					.table(Articles::Table)
 					.values([(Articles::Content, update_content.into())])
 					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.build(PostgresQueryBuilder);
+					.to_string(PostgresQueryBuilder);
 
 				sqlx::query(&update)
 					.execute(pool.as_ref())
@@ -529,11 +529,11 @@ proptest! {
 					.expect("Failed to update article");
 
 				// Update timestamp
-				let (update_timestamp, _) = Query::update()
+				let update_timestamp = Query::update()
 					.table(Articles::Table)
 					.values([(Articles::UpdatedAt, Expr::current_timestamp().into())])
 					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.build(PostgresQueryBuilder);
+					.to_string(PostgresQueryBuilder);
 
 				sqlx::query(&update_timestamp)
 					.execute(pool.as_ref())
@@ -541,11 +541,11 @@ proptest! {
 					.expect("Failed to update timestamp");
 
 				// Verify invariant
-				let (select, _) = Query::select()
+				let select = Query::select()
 					.columns([Articles::CreatedAt, Articles::UpdatedAt])
 					.from(Articles::Table)
 					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.build(PostgresQueryBuilder);
+					.to_string(PostgresQueryBuilder);
 
 				let result = sqlx::query(&select)
 					.fetch_one(pool.as_ref())
@@ -593,12 +593,12 @@ async fn test_updated_at_changes_on_same_value_update(
 	create_articles_table(pool.as_ref()).await;
 
 	// Insert article
-	let (insert, _) = Query::insert()
+	let insert = Query::insert()
 		.into_table(Articles::Table)
 		.columns([Articles::Title, Articles::Content])
 		.values_panic(["Stable Title".into(), "Stable Content".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let insert_result = sqlx::query(&insert)
 		.fetch_one(pool.as_ref())
@@ -612,11 +612,11 @@ async fn test_updated_at_changes_on_same_value_update(
 	tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
 	// Update with same value
-	let (update, _) = Query::update()
+	let update = Query::update()
 		.table(Articles::Table)
 		.values([(Articles::Title, "Stable Title".into())])
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	sqlx::query(&update)
 		.execute(pool.as_ref())
@@ -624,11 +624,11 @@ async fn test_updated_at_changes_on_same_value_update(
 		.expect("Failed to update article");
 
 	// Update timestamp
-	let (update_timestamp, _) = Query::update()
+	let update_timestamp = Query::update()
 		.table(Articles::Table)
 		.values([(Articles::UpdatedAt, Expr::current_timestamp().into())])
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	sqlx::query(&update_timestamp)
 		.execute(pool.as_ref())
@@ -636,11 +636,11 @@ async fn test_updated_at_changes_on_same_value_update(
 		.expect("Failed to update timestamp");
 
 	// Fetch updated article
-	let (select, _) = Query::select()
+	let select = Query::select()
 		.columns([Articles::Title, Articles::UpdatedAt])
 		.from(Articles::Table)
 		.and_where(Expr::col(Articles::Id).eq(article_id).into())
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let updated_result = sqlx::query(&select)
 		.fetch_one(pool.as_ref())
@@ -692,12 +692,12 @@ async fn test_timestamp_ordering_with_rapid_updates(
 		let username = format!("user{}", i);
 		let email = format!("user{}@example.com", i);
 
-		let (insert, _) = Query::insert()
+		let insert = Query::insert()
 			.into_table(Users::Table)
 			.columns([Users::Username, Users::Email])
 			.values_panic([username.into(), email.into()])
 			.returning_all()
-			.build(PostgresQueryBuilder);
+			.to_string(PostgresQueryBuilder);
 
 		let result = sqlx::query(&insert)
 			.fetch_one(pool.as_ref())
@@ -725,11 +725,11 @@ async fn test_timestamp_ordering_with_rapid_updates(
 	}
 
 	// Query all users ordered by created_at
-	let (select, _) = Query::select()
+	let select = Query::select()
 		.columns([Users::Id, Users::CreatedAt])
 		.from(Users::Table)
 		.order_by(Users::CreatedAt, Order::Asc)
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let results = sqlx::query(&select)
 		.fetch_all(pool.as_ref())
@@ -767,12 +767,12 @@ async fn test_timestamp_microsecond_precision(
 	create_articles_table(pool.as_ref()).await;
 
 	// Insert article
-	let (insert, _) = Query::insert()
+	let insert = Query::insert()
 		.into_table(Articles::Table)
 		.columns([Articles::Title, Articles::Content])
 		.values_panic(["Precision Test".into(), "Testing microseconds".into()])
 		.returning_all()
-		.build(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder);
 
 	let insert_result = sqlx::query(&insert)
 		.fetch_one(pool.as_ref())

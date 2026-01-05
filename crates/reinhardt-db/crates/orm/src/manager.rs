@@ -793,7 +793,34 @@ impl<M: Model> Manager<M> {
 					sea_query::Value::Int(None)
 				}
 			}
-			serde_json::Value::String(s) => sea_query::Value::String(Some(s.clone())),
+			serde_json::Value::String(s) => {
+				// Try to parse as ISO 8601 datetime (chrono::DateTime<Utc>)
+				// This handles timestamps serialized by serde_json from chrono::DateTime
+
+				// 1. Try RFC3339 strict format first (e.g., "2024-01-01T00:00:00+00:00")
+				if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+					return sea_query::Value::ChronoDateTimeUtc(Some(
+						dt.with_timezone(&chrono::Utc),
+					));
+				}
+
+				// 2. Try chrono's FromStr trait for DateTime<Utc>
+				//    This handles formats like "2024-01-01T00:00:00Z" with optional subseconds
+				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::Utc>>() {
+					return sea_query::Value::ChronoDateTimeUtc(Some(dt));
+				}
+
+				// 3. Try parsing with FixedOffset timezone then convert to UTC
+				//    Handles formats like "2024-01-01T00:00:00.123456789+00:00"
+				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::FixedOffset>>() {
+					return sea_query::Value::ChronoDateTimeUtc(Some(
+						dt.with_timezone(&chrono::Utc),
+					));
+				}
+
+				// Fallback: treat as regular string (non-datetime values)
+				sea_query::Value::String(Some(s.clone()))
+			}
 			serde_json::Value::Array(arr) => {
 				// Convert JSON array to sea_query::Value array
 				// For sea-query 1.0.0-rc.29+: Array(ArrayType, Option<Box<Vec<Value>>>)
@@ -945,7 +972,13 @@ impl<M: Model> Manager<M> {
 			.iter()
 			.filter(|(k, _)| k.as_str() != M::primary_key_field())
 		{
-			stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+			if v.is_null() {
+				// Use untyped NULL to avoid PostgreSQL type mismatch errors
+				// (e.g., setting timestamp column to NULL would fail with Int(None))
+				stmt.value(Alias::new(k.as_str()), Expr::cust("NULL"));
+			} else {
+				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+			}
 		}
 
 		// Add WHERE clause for primary key
@@ -1125,12 +1158,20 @@ impl<M: Model> Manager<M> {
 		// Add value rows for each model
 		for val in &json_values {
 			if let Some(obj) = val.as_object() {
-				let values: Vec<sea_query::Expr> = first_obj
+				let values: Vec<sea_query::SimpleExpr> = first_obj
 					.keys()
 					.map(|field| {
 						obj.get(field)
-							.map(|v| Expr::value(Self::json_to_sea_value(v)))
-							.unwrap_or(Expr::value(sea_query::Value::Int(None)))
+							.map(|v| {
+								if v.is_null() {
+									// Use untyped NULL to avoid PostgreSQL type mismatch errors
+									Expr::cust("NULL")
+								} else {
+									Expr::value(Self::json_to_sea_value(v))
+								}
+							})
+							// Use untyped NULL for missing fields
+							.unwrap_or_else(|| Expr::cust("NULL"))
 					})
 					.collect();
 				stmt.values_panic(values);

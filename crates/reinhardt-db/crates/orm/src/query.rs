@@ -9,8 +9,8 @@ use crate::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::query_fields::comparison::FieldComparison;
 use crate::query_fields::compiler::QueryFieldCompiler;
 use sea_query::{
-	Alias, Asterisk, Condition, Expr, ExprTrait, JoinType as SeaJoinType, Order,
-	PostgresQueryBuilder, Query as SeaQuery, SelectStatement,
+	Alias, Asterisk, ColumnName, Condition, Expr, ExprTrait, JoinType as SeaJoinType, Order,
+	PostgresQueryBuilder, Query as SeaQuery, SelectStatement, TableName,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -2389,7 +2389,8 @@ where
 
 	/// Build WHERE condition using SeaQuery from accumulated filters
 	fn build_where_condition(&self) -> Option<Condition> {
-		if self.filters.is_empty() {
+		// Early return only if both filters and subquery_conditions are empty
+		if self.filters.is_empty() && self.subquery_conditions.is_empty() {
 			return None;
 		}
 
@@ -3393,8 +3394,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					let col_ref = parse_column_reference(field);
-					stmt.column(col_ref);
+					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
+					if field.contains('(') && field.contains(')') {
+						// Use expr() for raw SQL expressions - clone to satisfy lifetime
+						stmt.expr(Expr::cust(field.clone()));
+					} else {
+						// Regular column reference
+						let col_ref = parse_column_reference(field);
+						stmt.column(col_ref);
+					}
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
@@ -3601,8 +3609,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					let col_ref = parse_column_reference(field);
-					stmt.column(col_ref);
+					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
+					if field.contains('(') && field.contains(')') {
+						// Use expr() for raw SQL expressions - clone to satisfy lifetime
+						stmt.expr(Expr::cust(field.clone()));
+					} else {
+						// Regular column reference
+						let col_ref = parse_column_reference(field);
+						stmt.column(col_ref);
+					}
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
@@ -4444,8 +4459,15 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					let col_ref = parse_column_reference(field);
-					stmt.column(col_ref);
+					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
+					if field.contains('(') && field.contains(')') {
+						// Use expr() for raw SQL expressions - clone to satisfy lifetime
+						stmt.expr(Expr::cust(field.clone()));
+					} else {
+						// Regular column reference
+						let col_ref = parse_column_reference(field);
+						stmt.column(col_ref);
+					}
 				}
 			} else if !self.deferred_fields.is_empty() {
 				let all_fields = T::field_metadata();
@@ -5361,10 +5383,34 @@ impl FilterValue {
 ///
 /// Note: For SeaQuery v1.0.0-rc.29+, we use the full qualified name as a column identifier.
 /// This works for most databases that support qualified column references.
+///
+/// This function also detects raw SQL expressions (containing parentheses, like `COUNT(*)`,
+/// `AVG(price)`) and returns them wrapped in `Expr::cust()` instead of as column references.
 fn parse_column_reference(field: &str) -> sea_query::ColumnRef {
-	// For now, use the field name as-is (qualified or not)
-	// SeaQuery will handle the qualified name in the SQL generation
-	sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+	// Detect raw SQL expressions by checking for parentheses
+	// Examples: COUNT(*), AVG(price), SUM(amount), MAX(value)
+	if field.contains('(') && field.contains(')') {
+		// Use SimpleExpr wrapped in ColumnRef for raw SQL expressions
+		sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+	} else if field.contains('.') {
+		// Qualified column reference (table.column format)
+		let parts: Vec<&str> = field.split('.').collect();
+		if parts.len() == 2 {
+			// Produces: "table"."column" instead of "table.column"
+			let table_name = TableName(None, sea_query::SeaRc::new(Alias::new(parts[0])));
+			let column_name = ColumnName(
+				Some(table_name),
+				sea_query::SeaRc::new(Alias::new(parts[1])),
+			);
+			sea_query::ColumnRef::Column(column_name)
+		} else {
+			// Fallback for unexpected formats (e.g., schema.table.column)
+			sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+		}
+	} else {
+		// Simple column reference
+		sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+	}
 }
 
 #[cfg(test)]

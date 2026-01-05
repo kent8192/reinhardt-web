@@ -309,10 +309,10 @@ async fn test_array_agg_numeric(
 	.await
 	.expect("Failed to insert sales data");
 
-	// Query with array_agg for numeric values
+	// Query with array_agg for numeric values (cast to double precision for sqlx compatibility)
 	let results: Vec<(i32, Vec<f64>)> = sqlx::query_as(
 		r#"
-		SELECT product_id, array_agg(amount ORDER BY amount) as amounts
+		SELECT product_id, array_agg(amount::double precision ORDER BY amount) as amounts
 		FROM sales
 		GROUP BY product_id
 		ORDER BY product_id

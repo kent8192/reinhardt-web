@@ -501,17 +501,17 @@ async fn test_lateral_join_aggregation_execution(
 	// Alice: 3 books, max price 2000
 	assert_eq!(rows[0].get::<String, _>("name"), "Alice");
 	assert_eq!(rows[0].get::<i64, _>("book_count"), 3);
-	assert_eq!(rows[0].get::<i64, _>("max_price"), 2000);
+	assert_eq!(rows[0].get::<i32, _>("max_price"), 2000);
 
 	// Bob: 2 books, max price 2500
 	assert_eq!(rows[1].get::<String, _>("name"), "Bob");
 	assert_eq!(rows[1].get::<i64, _>("book_count"), 2);
-	assert_eq!(rows[1].get::<i64, _>("max_price"), 2500);
+	assert_eq!(rows[1].get::<i32, _>("max_price"), 2500);
 
 	// Charlie: 1 book, max price 3000
 	assert_eq!(rows[2].get::<String, _>("name"), "Charlie");
 	assert_eq!(rows[2].get::<i64, _>("book_count"), 1);
-	assert_eq!(rows[2].get::<i64, _>("max_price"), 3000);
+	assert_eq!(rows[2].get::<i32, _>("max_price"), 3000);
 }
 
 /// Test LATERAL JOIN with top N per group execution
