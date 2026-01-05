@@ -14,7 +14,11 @@ struct Article {
 	#[field(primary_key = true)]
 	id: Option<i32>,
 
-	#[field(max_length = 200, character_set = "utf8mb4", collate = "utf8mb4_unicode_ci")]
+	#[field(
+		max_length = 200,
+		character_set = "utf8mb4",
+		collate = "utf8mb4_unicode_ci"
+	)]
 	title: String,
 }
 

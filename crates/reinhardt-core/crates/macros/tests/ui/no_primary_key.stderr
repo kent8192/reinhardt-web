@@ -1,0 +1,13 @@
+error: expected attribute arguments in parentheses: #[field(...)]
+ --> tests/ui/model/fail/no_primary_key.rs:9:7
+  |
+9 |     #[field]
+  |       ^^^^^
+
+error[E0432]: unresolved import `serde`
+ --> tests/ui/model/fail/no_primary_key.rs:4:5
+  |
+4 | use serde::{Deserialize, Serialize};
+  |     ^^^^^ use of unresolved module or unlinked crate `serde`
+  |
+  = help: if you wanted to use a crate named `serde`, use `cargo add serde` to add it to your `Cargo.toml`

@@ -9,9 +9,7 @@ struct Database;
 
 #[async_trait::async_trait]
 impl reinhardt_di::Injectable for Database {
-	async fn inject(
-		_ctx: &reinhardt_di::InjectionContext,
-	) -> reinhardt_di::DiResult<Self> {
+	async fn inject(_ctx: &reinhardt_di::InjectionContext) -> reinhardt_di::DiResult<Self> {
 		Ok(Database)
 	}
 }
@@ -25,7 +23,7 @@ struct MyService {
 	#[inject]
 	db: Database,
 
-	#[no_inject]  // Error: must be Option<T>
+	#[no_inject] // Error: must be Option<T>
 	cache: Cache,
 }
 

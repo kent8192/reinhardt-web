@@ -17,7 +17,11 @@ struct User {
 	#[field(max_length = 100)]
 	last_name: String,
 
-	#[field(max_length = 201, generated = "first_name || ' ' || last_name", generated_stored = true)]
+	#[field(
+		max_length = 201,
+		generated = "first_name || ' ' || last_name",
+		generated_stored = true
+	)]
 	full_name: String,
 }
 

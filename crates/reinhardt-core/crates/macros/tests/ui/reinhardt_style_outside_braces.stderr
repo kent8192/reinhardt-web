@@ -1,0 +1,5 @@
+error: Django-style parameters must be inside braces at position 6. Use '{<type:name>}' instead of '<type:name>'
+ --> tests/ui/path/fail/reinhardt_style_outside_braces.rs:6:25
+  |
+6 |     let pattern = path!("polls/<int:id>/");
+  |                         ^^^^^^^^^^^^^^^^^

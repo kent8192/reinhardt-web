@@ -1,0 +1,5 @@
+error: table_name attribute is required in #[model(...)]
+ --> tests/ui/rel/fail/missing_to.rs:6:12
+  |
+6 | pub struct Post {
+  |            ^^^^

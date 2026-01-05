@@ -1,0 +1,11 @@
+error: table_name attribute is required in #[model(...)]
+ --> tests/ui/rel/fail/unknown_attribute.rs:6:12
+  |
+6 | pub struct User {
+  |            ^^^^
+
+error: table_name attribute is required in #[model(...)]
+  --> tests/ui/rel/fail/unknown_attribute.rs:12:12
+   |
+12 | pub struct Post {
+   |            ^^^^

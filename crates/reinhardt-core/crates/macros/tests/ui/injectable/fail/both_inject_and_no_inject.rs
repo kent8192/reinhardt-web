@@ -9,9 +9,7 @@ struct Database;
 
 #[async_trait::async_trait]
 impl reinhardt_di::Injectable for Database {
-	async fn inject(
-		_ctx: &reinhardt_di::InjectionContext,
-	) -> reinhardt_di::DiResult<Self> {
+	async fn inject(_ctx: &reinhardt_di::InjectionContext) -> reinhardt_di::DiResult<Self> {
 		Ok(Database)
 	}
 }
@@ -20,7 +18,7 @@ impl reinhardt_di::Injectable for Database {
 #[derive(Clone)]
 struct MyService {
 	#[inject]
-	#[no_inject]  // Error: cannot have both
+	#[no_inject] // Error: cannot have both
 	db: Database,
 }
 

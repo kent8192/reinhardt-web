@@ -1,0 +1,13 @@
+error: table_name attribute is required in #[model(...)]
+ --> tests/ui/model/fail/missing_table_name.rs:8:8
+  |
+8 | struct User {
+  |        ^^^^
+
+error[E0432]: unresolved import `serde`
+ --> tests/ui/model/fail/missing_table_name.rs:4:5
+  |
+4 | use serde::{Deserialize, Serialize};
+  |     ^^^^^ use of unresolved module or unlinked crate `serde`
+  |
+  = help: if you wanted to use a crate named `serde`, use `cargo add serde` to add it to your `Cargo.toml`
