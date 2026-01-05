@@ -2,7 +2,7 @@
 //!
 //! Common utilities for auth endpoint tests
 
-use reinhardt::core::serde::json::{json, Value};
+use reinhardt::core::serde::json::{Value, json};
 
 /// Create a valid registration request body
 pub fn valid_register_request() -> Value {

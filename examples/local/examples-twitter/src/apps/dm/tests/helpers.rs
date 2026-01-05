@@ -2,7 +2,7 @@
 //!
 //! Common utilities for DM endpoint tests
 
-use reinhardt::core::serde::json::{json, Value};
+use reinhardt::core::serde::json::{Value, json};
 use uuid::Uuid;
 
 /// Create a valid create room request body

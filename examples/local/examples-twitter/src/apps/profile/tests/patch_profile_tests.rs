@@ -6,17 +6,17 @@
 
 #[cfg(test)]
 mod patch_profile_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
+	use reinhardt::db::DatabaseConnection;
 	use reinhardt::db::associations::OneToOneField;
 	use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
-	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 	use validator::Validate;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use super::super::helpers::{partial_update_profile_request, valid_update_profile_request};
@@ -40,9 +40,9 @@ mod patch_profile_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -135,7 +135,11 @@ mod patch_profile_tests {
 		let result = call_patch_profile(&db, Some(&auth_header), &user.id.to_string(), body).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Patch profile should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Patch profile should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert updated data
@@ -176,7 +180,11 @@ mod patch_profile_tests {
 		let result = call_patch_profile(&db, Some(&auth_header), &user.id.to_string(), body).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Partial patch should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Partial patch should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert bio is updated but location remains

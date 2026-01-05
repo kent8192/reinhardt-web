@@ -4,6 +4,6 @@
 
 pub mod helpers;
 
-mod follow_tests;
 mod block_tests;
+mod follow_tests;
 mod list_tests;

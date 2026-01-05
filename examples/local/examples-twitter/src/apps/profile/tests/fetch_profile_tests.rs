@@ -6,23 +6,19 @@
 
 #[cfg(test)]
 mod fetch_profile_tests {
-	use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
-	use reinhardt::db::DatabaseConnection;
 	use reinhardt::StatusCode;
+	use reinhardt::db::DatabaseConnection;
+	use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
 	use rstest::rstest;
 	use uuid::Uuid;
 
-	use crate::test_utils::{create_test_user, setup_test_database, TestUserParams};
+	use crate::test_utils::{TestUserParams, create_test_user, setup_test_database};
 
 	use crate::apps::profile::models::Profile;
 	use crate::apps::profile::serializers::ProfileResponse;
 
 	/// Helper to create a profile directly in the database
-	async fn create_test_profile(
-		db: &DatabaseConnection,
-		user_id: Uuid,
-		bio: &str,
-	) -> Profile {
+	async fn create_test_profile(db: &DatabaseConnection, user_id: Uuid, bio: &str) -> Profile {
 		// Create profile using generated new() function
 		let profile = Profile::new(user_id, bio.to_string(), None, None, None);
 
@@ -89,7 +85,11 @@ mod fetch_profile_tests {
 		let result = call_fetch_profile(&db, &user.id.to_string()).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch profile should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch profile should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert profile data matches

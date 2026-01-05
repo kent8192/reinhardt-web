@@ -2,7 +2,7 @@
 //!
 //! Common utilities for profile endpoint tests
 
-use reinhardt::core::serde::json::{json, Value};
+use reinhardt::core::serde::json::{Value, json};
 
 /// Create a valid create profile request body
 pub fn valid_create_profile_request() -> Value {

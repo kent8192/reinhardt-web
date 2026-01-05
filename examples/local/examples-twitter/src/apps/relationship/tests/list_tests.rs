@@ -6,14 +6,14 @@
 
 #[cfg(test)]
 mod list_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
 	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use crate::apps::relationship::serializers::{
@@ -24,10 +24,7 @@ mod list_tests {
 	use reinhardt_test::fixtures::{create_block_relationship, create_follow_relationship};
 
 	/// Helper to get followers for a user
-	async fn get_followers(
-		db: &DatabaseConnection,
-		user_id: Uuid,
-	) -> Vec<UserSummary> {
+	async fn get_followers(db: &DatabaseConnection, user_id: Uuid) -> Vec<UserSummary> {
 		use crate::apps::auth::models::User;
 
 		// Get user
@@ -37,12 +34,7 @@ mod list_tests {
 		};
 
 		// Get all followers using ORM API (via reverse relationship)
-		let followers = user
-			.following
-			.all()
-			.with_conn(db)
-			.await
-			.unwrap_or_default();
+		let followers = user.following.all().with_conn(db).await.unwrap_or_default();
 
 		// Convert to UserSummary
 		followers
@@ -56,10 +48,7 @@ mod list_tests {
 	}
 
 	/// Helper to get followings for a user
-	async fn get_followings(
-		db: &DatabaseConnection,
-		user_id: Uuid,
-	) -> Vec<UserSummary> {
+	async fn get_followings(db: &DatabaseConnection, user_id: Uuid) -> Vec<UserSummary> {
 		use crate::apps::auth::models::User;
 
 		// Get user
@@ -69,12 +58,7 @@ mod list_tests {
 		};
 
 		// Get all followings using ORM API
-		let followings = user
-			.following
-			.all()
-			.with_conn(db)
-			.await
-			.unwrap_or_default();
+		let followings = user.following.all().with_conn(db).await.unwrap_or_default();
 
 		// Convert to UserSummary
 		followings
@@ -88,10 +72,7 @@ mod list_tests {
 	}
 
 	/// Helper to get blocked users for a user
-	async fn get_blockings(
-		db: &DatabaseConnection,
-		user_id: Uuid,
-	) -> Vec<UserSummary> {
+	async fn get_blockings(db: &DatabaseConnection, user_id: Uuid) -> Vec<UserSummary> {
 		use crate::apps::auth::models::User;
 
 		// Get user
@@ -132,9 +113,9 @@ mod list_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -184,9 +165,9 @@ mod list_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -236,9 +217,9 @@ mod list_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -326,7 +307,11 @@ mod list_tests {
 		let result = call_fetch_followers(&db, Some(&auth_header), user.id, 1, 20).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followers should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followers should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert data
@@ -380,7 +365,11 @@ mod list_tests {
 		let result = call_fetch_followers(&db, Some(&auth_header), user.id, 1, 20).await;
 
 		// Assert success with empty list
-		assert!(result.is_ok(), "Fetch empty followers should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch empty followers should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		assert_eq!(response.count, 0, "Should have 0 followers");
@@ -438,7 +427,11 @@ mod list_tests {
 		let result = call_fetch_followings(&db, Some(&auth_header), user.id, 1, 20).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followings should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followings should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert data
@@ -518,7 +511,11 @@ mod list_tests {
 		let result = call_fetch_blockings(&db, Some(&auth_header), user.id, 1, 20).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch blockings should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch blockings should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert data
@@ -586,14 +583,21 @@ mod list_tests {
 		let result = call_fetch_followers(&db, Some(&auth_header), user.id, 1, 2).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followers page 1 should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followers page 1 should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert pagination
 		assert_eq!(response.count, 5, "Total count should be 5");
 		assert_eq!(response.results.len(), 2, "Page 1 should have 2 items");
 		assert!(response.next.is_some(), "Should have next page");
-		assert!(response.previous.is_none(), "Should not have previous page on page 1");
+		assert!(
+			response.previous.is_none(),
+			"Should not have previous page on page 1"
+		);
 	}
 
 	/// Test 9: Success - Followers pagination (middle page)
@@ -631,14 +635,21 @@ mod list_tests {
 		let result = call_fetch_followers(&db, Some(&auth_header), user.id, 2, 2).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followers page 2 should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followers page 2 should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert pagination
 		assert_eq!(response.count, 6, "Total count should be 6");
 		assert_eq!(response.results.len(), 2, "Page 2 should have 2 items");
 		assert!(response.next.is_some(), "Should have next page");
-		assert!(response.previous.is_some(), "Should have previous page on page 2");
+		assert!(
+			response.previous.is_some(),
+			"Should have previous page on page 2"
+		);
 	}
 
 	/// Test 10: Success - Followers pagination (last page)
@@ -676,14 +687,24 @@ mod list_tests {
 		let result = call_fetch_followers(&db, Some(&auth_header), user.id, 3, 2).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followers page 3 should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followers page 3 should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert pagination
 		assert_eq!(response.count, 5, "Total count should be 5");
 		assert_eq!(response.results.len(), 1, "Last page should have 1 item");
-		assert!(response.next.is_none(), "Should not have next page on last page");
-		assert!(response.previous.is_some(), "Should have previous page on last page");
+		assert!(
+			response.next.is_none(),
+			"Should not have next page on last page"
+		);
+		assert!(
+			response.previous.is_some(),
+			"Should have previous page on last page"
+		);
 	}
 
 	/// Test 11: Success - Followings pagination
@@ -721,7 +742,11 @@ mod list_tests {
 		let result = call_fetch_followings(&db, Some(&auth_header), user.id, 1, 2).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch followings page 1 should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch followings page 1 should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert pagination
@@ -765,7 +790,11 @@ mod list_tests {
 		let result = call_fetch_blockings(&db, Some(&auth_header), user.id, 1, 2).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Fetch blockings page 1 should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Fetch blockings page 1 should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert pagination

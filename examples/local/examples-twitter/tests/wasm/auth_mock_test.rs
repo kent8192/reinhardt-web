@@ -452,6 +452,9 @@ fn test_register_request_passwords_mismatch() {
 	};
 
 	let result = request.validate_passwords_match();
-	assert!(result.is_err(), "Mismatched passwords should fail validation");
+	assert!(
+		result.is_err(),
+		"Mismatched passwords should fail validation"
+	);
 	assert_eq!(result.unwrap_err(), "Passwords do not match");
 }

@@ -6,25 +6,21 @@
 
 #[cfg(test)]
 mod room_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
 	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 	use validator::Validate;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use crate::apps::dm::serializers::{CreateRoomRequest, RoomResponse};
 
 	/// Helper to create a DM room directly in the database
-	async fn create_test_room(
-		db: &DatabaseConnection,
-		name: Option<&str>,
-		is_group: bool,
-	) -> Uuid {
+	async fn create_test_room(db: &DatabaseConnection, name: Option<&str>, is_group: bool) -> Uuid {
 		use crate::apps::dm::models::DMRoom;
 		use reinhardt::db::orm::Manager;
 
@@ -94,11 +90,7 @@ mod room_tests {
 	async fn room_exists(db: &DatabaseConnection, room_id: Uuid) -> bool {
 		use crate::apps::dm::models::DMRoom;
 
-		DMRoom::objects()
-			.get(room_id)
-			.with_conn(db)
-			.await
-			.is_ok()
+		DMRoom::objects().get(room_id).with_conn(db).await.is_ok()
 	}
 
 	/// Helper to call list_rooms endpoint directly
@@ -112,9 +104,9 @@ mod room_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -178,9 +170,9 @@ mod room_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -232,9 +224,9 @@ mod room_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -251,7 +243,9 @@ mod room_tests {
 			name: name.map(|s| s.to_string()),
 			member_ids: member_ids.clone(),
 		};
-		request.validate().map_err(|e| Error::Validation(format!("Validation failed: {}", e)))?;
+		request
+			.validate()
+			.map_err(|e| Error::Validation(format!("Validation failed: {}", e)))?;
 
 		use crate::apps::auth::models::User;
 		use crate::apps::dm::models::DMRoom;
@@ -304,9 +298,9 @@ mod room_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -405,7 +399,11 @@ mod room_tests {
 		let result = call_list_rooms(&db, Some(&auth_header), user.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "List rooms should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"List rooms should succeed: {:?}",
+			result.err()
+		);
 		let rooms = result.unwrap();
 
 		assert_eq!(rooms.len(), 2, "Should have 2 rooms");
@@ -455,7 +453,11 @@ mod room_tests {
 		let result = call_list_rooms(&db, Some(&auth_header), user.id).await;
 
 		// Assert success with empty list
-		assert!(result.is_ok(), "List rooms should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"List rooms should succeed: {:?}",
+			result.err()
+		);
 		let rooms = result.unwrap();
 		assert!(rooms.is_empty(), "Should have no rooms");
 	}
@@ -491,10 +493,18 @@ mod room_tests {
 		let result = call_get_room(&db, Some(&auth_header), room_id, user.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Get room should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Get room should succeed: {:?}",
+			result.err()
+		);
 		let room = result.unwrap();
 		assert_eq!(room.id, room_id, "Room ID should match");
-		assert_eq!(room.name, Some("Test Room".to_string()), "Room name should match");
+		assert_eq!(
+			room.name,
+			Some("Test Room".to_string()),
+			"Room name should match"
+		);
 	}
 
 	/// Test 5: Failure - Get room without authentication
@@ -628,23 +638,27 @@ mod room_tests {
 		let auth_header = format!("Bearer {}", token);
 
 		// Create room
-		let result = call_create_room(
-			&db,
-			Some(&auth_header),
-			user1.id,
-			None,
-			vec![user2.id],
-		)
-		.await;
+		let result =
+			call_create_room(&db, Some(&auth_header), user1.id, None, vec![user2.id]).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Create room should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Create room should succeed: {:?}",
+			result.err()
+		);
 		let room = result.unwrap();
 		assert!(!room.is_group, "1-on-1 room should not be group");
 
 		// Verify both users are members
-		assert!(is_room_member(&db, room.id, user1.id).await, "Creator should be a member");
-		assert!(is_room_member(&db, room.id, user2.id).await, "Target should be a member");
+		assert!(
+			is_room_member(&db, room.id, user1.id).await,
+			"Creator should be a member"
+		);
+		assert!(
+			is_room_member(&db, room.id, user2.id).await,
+			"Target should be a member"
+		);
 	}
 
 	/// Test 9: Success - Create a group room
@@ -693,15 +707,32 @@ mod room_tests {
 		.await;
 
 		// Assert success
-		assert!(result.is_ok(), "Create group room should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Create group room should succeed: {:?}",
+			result.err()
+		);
 		let room = result.unwrap();
 		assert!(room.is_group, "Room with >1 members should be group");
-		assert_eq!(room.name, Some("My Group".to_string()), "Room name should match");
+		assert_eq!(
+			room.name,
+			Some("My Group".to_string()),
+			"Room name should match"
+		);
 
 		// Verify all users are members
-		assert!(is_room_member(&db, room.id, user1.id).await, "Creator should be a member");
-		assert!(is_room_member(&db, room.id, user2.id).await, "Member 2 should be a member");
-		assert!(is_room_member(&db, room.id, user3.id).await, "Member 3 should be a member");
+		assert!(
+			is_room_member(&db, room.id, user1.id).await,
+			"Creator should be a member"
+		);
+		assert!(
+			is_room_member(&db, room.id, user2.id).await,
+			"Member 2 should be a member"
+		);
+		assert!(
+			is_room_member(&db, room.id, user3.id).await,
+			"Member 3 should be a member"
+		);
 	}
 
 	/// Test 10: Failure - Create room without authentication
@@ -747,17 +778,14 @@ mod room_tests {
 
 		// Try to create room with non-existent member
 		let nonexistent_id = Uuid::new_v4();
-		let result = call_create_room(
-			&db,
-			Some(&auth_header),
-			user.id,
-			None,
-			vec![nonexistent_id],
-		)
-		.await;
+		let result =
+			call_create_room(&db, Some(&auth_header), user.id, None, vec![nonexistent_id]).await;
 
 		// Assert error
-		assert!(result.is_err(), "Create room with non-existent member should fail");
+		assert!(
+			result.is_err(),
+			"Create room with non-existent member should fail"
+		);
 	}
 
 	// ============================================
@@ -784,7 +812,10 @@ mod room_tests {
 		add_room_member(&db, room_id, user.id).await;
 
 		// Verify room exists
-		assert!(room_exists(&db, room_id).await, "Room should exist before delete");
+		assert!(
+			room_exists(&db, room_id).await,
+			"Room should exist before delete"
+		);
 
 		// Generate token
 		let token = generate_test_token(&user);
@@ -794,10 +825,17 @@ mod room_tests {
 		let result = call_delete_room(&db, Some(&auth_header), room_id, user.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Delete room should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Delete room should succeed: {:?}",
+			result.err()
+		);
 
 		// Verify room no longer exists
-		assert!(!room_exists(&db, room_id).await, "Room should not exist after delete");
+		assert!(
+			!room_exists(&db, room_id).await,
+			"Room should not exist after delete"
+		);
 	}
 
 	/// Test 13: Failure - Delete room without authentication

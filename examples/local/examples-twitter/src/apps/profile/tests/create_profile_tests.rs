@@ -6,17 +6,17 @@
 
 #[cfg(test)]
 mod create_profile_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
+	use reinhardt::db::DatabaseConnection;
 	use reinhardt::db::associations::OneToOneField;
 	use reinhardt::db::orm::{FilterOperator, FilterValue, Manager};
-	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 	use validator::Validate;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use super::super::helpers::valid_create_profile_request;
@@ -41,9 +41,9 @@ mod create_profile_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -93,7 +93,9 @@ mod create_profile_tests {
 			.map_err(|e| Error::Database(format!("Database error: {}", e)))?;
 
 		if existing_profile.is_some() {
-			return Err(Error::Validation("Profile already exists for this user".into()));
+			return Err(Error::Validation(
+				"Profile already exists for this user".into(),
+			));
 		}
 
 		// Create new profile using generated new() function
@@ -143,7 +145,11 @@ mod create_profile_tests {
 		let result = call_create_profile(&db, Some(&auth_header), &user.id.to_string(), body).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Create profile should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Create profile should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert profile data
@@ -190,7 +196,11 @@ mod create_profile_tests {
 		let result = call_create_profile(&db, Some(&auth_header), &user.id.to_string(), body).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Create profile with minimal data should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Create profile with minimal data should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert default values
@@ -252,10 +262,14 @@ mod create_profile_tests {
 		// Try to create profile for non-existent user
 		let nonexistent_id = Uuid::new_v4();
 		let body = valid_create_profile_request();
-		let result = call_create_profile(&db, Some(&auth_header), &nonexistent_id.to_string(), body).await;
+		let result =
+			call_create_profile(&db, Some(&auth_header), &nonexistent_id.to_string(), body).await;
 
 		// Assert error
-		assert!(result.is_err(), "Create profile for non-existent user should fail");
+		assert!(
+			result.is_err(),
+			"Create profile for non-existent user should fail"
+		);
 		let err = result.unwrap_err();
 		assert!(
 			matches!(err, reinhardt::Error::Http(_)),
@@ -327,7 +341,10 @@ mod create_profile_tests {
 		let result = call_create_profile(&db, Some(&auth_header), &user.id.to_string(), body).await;
 
 		// Assert validation error
-		assert!(result.is_err(), "Create profile with invalid URL should fail");
+		assert!(
+			result.is_err(),
+			"Create profile with invalid URL should fail"
+		);
 		let err = result.unwrap_err();
 		assert!(
 			matches!(err, reinhardt::Error::Validation(_)),

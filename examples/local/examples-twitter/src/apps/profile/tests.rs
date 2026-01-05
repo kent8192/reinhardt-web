@@ -4,6 +4,6 @@
 
 pub mod helpers;
 
-mod fetch_profile_tests;
 mod create_profile_tests;
+mod fetch_profile_tests;
 mod patch_profile_tests;

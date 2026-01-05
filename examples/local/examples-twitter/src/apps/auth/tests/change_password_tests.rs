@@ -7,9 +7,9 @@
 
 #[cfg(test)]
 mod change_password_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
 	use reinhardt::db::orm::{FilterOperator, FilterValue, Model};
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 
 	use crate::apps::auth::models::User;

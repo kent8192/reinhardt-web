@@ -7,8 +7,8 @@
 
 #[cfg(test)]
 mod verify_password_tests {
-	use reinhardt::core::serde::json::json;
 	use reinhardt::StatusCode;
+	use reinhardt::core::serde::json::json;
 	use rstest::rstest;
 
 	use crate::test_utils::fixtures::*;
@@ -19,7 +19,9 @@ mod verify_password_tests {
 	/// Expected: 200 OK with { "valid": true }
 	#[rstest]
 	#[tokio::test]
-	async fn test_success_verify_password(#[future] authenticated_context: (TestContext, crate::apps::auth::models::User)) {
+	async fn test_success_verify_password(
+		#[future] authenticated_context: (TestContext, crate::apps::auth::models::User),
+	) {
 		let (context, user) = authenticated_context.await;
 
 		// Build request body with the correct password
@@ -41,15 +43,11 @@ mod verify_password_tests {
 			.expect("Request should succeed");
 
 		// Assert response status
-		assert_eq!(
-			response.status(),
-			StatusCode::OK,
-			"Status should be 200 OK"
-		);
+		assert_eq!(response.status(), StatusCode::OK, "Status should be 200 OK");
 
 		// Assert response body
-		let response_body: serde_json::Value = serde_json::from_slice(response.body())
-			.expect("Response should be valid JSON");
+		let response_body: serde_json::Value =
+			serde_json::from_slice(response.body()).expect("Response should be valid JSON");
 
 		assert_eq!(
 			response_body.get("valid").and_then(|v| v.as_bool()),
@@ -64,7 +62,9 @@ mod verify_password_tests {
 	/// Expected: 200 OK with { "valid": false }
 	#[rstest]
 	#[tokio::test]
-	async fn test_success_verify_wrong_password(#[future] authenticated_context: (TestContext, crate::apps::auth::models::User)) {
+	async fn test_success_verify_wrong_password(
+		#[future] authenticated_context: (TestContext, crate::apps::auth::models::User),
+	) {
 		let (context, _user) = authenticated_context.await;
 
 		// Build request body with wrong password
@@ -86,15 +86,11 @@ mod verify_password_tests {
 			.expect("Request should succeed");
 
 		// Assert response status
-		assert_eq!(
-			response.status(),
-			StatusCode::OK,
-			"Status should be 200 OK"
-		);
+		assert_eq!(response.status(), StatusCode::OK, "Status should be 200 OK");
 
 		// Assert response body
-		let response_body: serde_json::Value = serde_json::from_slice(response.body())
-			.expect("Response should be valid JSON");
+		let response_body: serde_json::Value =
+			serde_json::from_slice(response.body()).expect("Response should be valid JSON");
 
 		assert_eq!(
 			response_body.get("valid").and_then(|v| v.as_bool()),
@@ -144,7 +140,9 @@ mod verify_password_tests {
 	/// Expected: 400 Bad Request or 422 Unprocessable Entity
 	#[rstest]
 	#[tokio::test]
-	async fn test_failure_verify_with_empty_password(#[future] authenticated_context: (TestContext, crate::apps::auth::models::User)) {
+	async fn test_failure_verify_with_empty_password(
+		#[future] authenticated_context: (TestContext, crate::apps::auth::models::User),
+	) {
 		let (context, _user) = authenticated_context.await;
 
 		// Build request body with empty password

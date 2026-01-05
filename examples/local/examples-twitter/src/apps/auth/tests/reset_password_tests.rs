@@ -6,8 +6,8 @@
 
 #[cfg(test)]
 mod reset_password_tests {
-	use reinhardt::core::serde::json::json;
 	use reinhardt::StatusCode;
+	use reinhardt::core::serde::json::json;
 	use rstest::rstest;
 
 	use crate::test_utils::fixtures::*;
@@ -49,17 +49,13 @@ mod reset_password_tests {
 			.expect("Request should succeed");
 
 		// Assert response status
-		assert_eq!(
-			response.status(),
-			StatusCode::OK,
-			"Status should be 200 OK"
-		);
+		assert_eq!(response.status(), StatusCode::OK, "Status should be 200 OK");
 
 		// Parse response to verify reset token format
-		let response_text = String::from_utf8(response.body().to_vec())
-			.expect("Response should be valid UTF-8");
-		let response_json: serde_json::Value = serde_json::from_str(&response_text)
-			.expect("Response should be valid JSON");
+		let response_text =
+			String::from_utf8(response.body().to_vec()).expect("Response should be valid UTF-8");
+		let response_json: serde_json::Value =
+			serde_json::from_str(&response_text).expect("Response should be valid JSON");
 
 		// Verify reset_token field exists and is not empty
 		let reset_token = response_json
@@ -68,10 +64,7 @@ mod reset_password_tests {
 			.as_str()
 			.expect("reset_token should be a string");
 
-		assert!(
-			!reset_token.is_empty(),
-			"Reset token should not be empty"
-		);
+		assert!(!reset_token.is_empty(), "Reset token should not be empty");
 	}
 
 	/// Test 2: Success - Request reset for non-existent user (security)
@@ -109,10 +102,10 @@ mod reset_password_tests {
 		);
 
 		// Parse response to verify reset token format
-		let response_text = String::from_utf8(response.body().to_vec())
-			.expect("Response should be valid UTF-8");
-		let response_json: serde_json::Value = serde_json::from_str(&response_text)
-			.expect("Response should be valid JSON");
+		let response_text =
+			String::from_utf8(response.body().to_vec()).expect("Response should be valid UTF-8");
+		let response_json: serde_json::Value =
+			serde_json::from_str(&response_text).expect("Response should be valid JSON");
 
 		// Verify reset_token field exists and is not empty
 		let reset_token = response_json

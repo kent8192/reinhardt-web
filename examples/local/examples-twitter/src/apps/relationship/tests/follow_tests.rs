@@ -6,14 +6,14 @@
 
 #[cfg(test)]
 mod follow_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
 	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use crate::apps::relationship::serializers::FollowResponse;
@@ -34,9 +34,9 @@ mod follow_tests {
 		// Check authentication
 		let claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -89,9 +89,9 @@ mod follow_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -182,11 +182,18 @@ mod follow_tests {
 		let result = call_follow_user(&db, Some(&auth_header), target.id, follower.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Follow user should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Follow user should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert response data
-		assert_eq!(response.follower_id, follower.id, "Follower ID should match");
+		assert_eq!(
+			response.follower_id, follower.id,
+			"Follower ID should match"
+		);
 		assert_eq!(response.followed_id, target.id, "Followed ID should match");
 
 		// Verify relationship exists in database
@@ -374,7 +381,11 @@ mod follow_tests {
 		let result = call_unfollow_user(&db, Some(&auth_header), target.id, follower.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Unfollow user should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Unfollow user should succeed: {:?}",
+			result.err()
+		);
 
 		// Verify relationship no longer exists
 		assert!(

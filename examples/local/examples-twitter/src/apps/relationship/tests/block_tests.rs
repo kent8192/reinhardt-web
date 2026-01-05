@@ -6,14 +6,14 @@
 
 #[cfg(test)]
 mod block_tests {
+	use reinhardt::StatusCode;
 	use reinhardt::core::serde::json::json;
 	use reinhardt::db::DatabaseConnection;
-	use reinhardt::StatusCode;
 	use rstest::rstest;
 	use uuid::Uuid;
 
 	use crate::test_utils::{
-		create_test_user, generate_test_token, setup_test_database, TestUserParams,
+		TestUserParams, create_test_user, generate_test_token, setup_test_database,
 	};
 
 	use crate::apps::relationship::serializers::BlockResponse;
@@ -37,9 +37,9 @@ mod block_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -89,10 +89,18 @@ mod block_tests {
 			.expect("Failed to get target user");
 
 		// Remove follow from current_user -> target_user
-		let _ = current_user.following.remove(&target_user).with_conn(db).await;
+		let _ = current_user
+			.following
+			.remove(&target_user)
+			.with_conn(db)
+			.await;
 
 		// Remove follow from target_user -> current_user
-		let _ = target_user.following.remove(&current_user).with_conn(db).await;
+		let _ = target_user
+			.following
+			.remove(&current_user)
+			.with_conn(db)
+			.await;
 
 		// Create block relationship
 		create_block_relationship(db, current_user_id, target_user_id).await;
@@ -112,9 +120,9 @@ mod block_tests {
 		// Check authentication
 		let _claims = match auth_header {
 			Some(header) => {
-				let token = header
-					.strip_prefix("Bearer ")
-					.ok_or_else(|| Error::Authentication("Invalid Authorization header format".into()))?;
+				let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+					Error::Authentication("Invalid Authorization header format".into())
+				})?;
 
 				let jwt_auth = JwtAuth::new(b"test-secret-key-for-testing-only");
 				jwt_auth
@@ -205,7 +213,11 @@ mod block_tests {
 		let result = call_block_user(&db, Some(&auth_header), target.id, blocker.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Block user should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Block user should succeed: {:?}",
+			result.err()
+		);
 		let response = result.unwrap();
 
 		// Assert response data
@@ -266,7 +278,11 @@ mod block_tests {
 		let result = call_block_user(&db, Some(&auth_header), target.id, blocker.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Block user should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Block user should succeed: {:?}",
+			result.err()
+		);
 
 		// Verify block relationship exists
 		assert!(
@@ -430,7 +446,11 @@ mod block_tests {
 		let result = call_unblock_user(&db, Some(&auth_header), target.id, blocker.id).await;
 
 		// Assert success
-		assert!(result.is_ok(), "Unblock user should succeed: {:?}", result.err());
+		assert!(
+			result.is_ok(),
+			"Unblock user should succeed: {:?}",
+			result.err()
+		);
 
 		// Verify relationship no longer exists
 		assert!(

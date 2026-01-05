@@ -235,43 +235,49 @@ pub fn sidebar(trending_topics: &[TrendingTopic], suggested_users: &[SuggestedUs
 			let has_bio = user.bio.is_some();
 			let bio_text = user.bio.clone().unwrap_or_default();
 			let avatar_initial = user
-			.username
-			.chars()
-			.next()
-			.unwrap_or('U')
-			.to_uppercase()
-			.to_string();
+				.username
+				.chars()
+				.next()
+				.unwrap_or('U')
+				.to_uppercase()
+				.to_string();
 
-		page!(|profile_href: String, username: String, has_bio: bool, bio_text: String, avatar_initial: String| {
-			div {
-				class: "sidebar-item",
+			page!(|profile_href: String, username: String, has_bio: bool, bio_text: String, avatar_initial: String| {
 				div {
-					class: "flex items-center gap-3",
+					class: "sidebar-item",
 					div {
-						class: "w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold text-sm",
-						{ avatar_initial }
-					}
-					div {
-						class: "flex-1 min-w-0",
-						a {
-							href: profile_href,
-							class: "font-semibold text-content-primary hover:underline block truncate",
-							{ username }
+						class: "flex items-center gap-3",
+						div {
+							class: "w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary font-semibold text-sm",
+							{ avatar_initial }
 						}
-						if has_bio {
-							p {
-								class: "text-content-tertiary text-xs truncate",
-								{ bio_text }
+						div {
+							class: "flex-1 min-w-0",
+							a {
+								href: profile_href,
+								class: "font-semibold text-content-primary hover:underline block truncate",
+								{ username }
+							}
+							if has_bio {
+								p {
+									class: "text-content-tertiary text-xs truncate",
+									{ bio_text }
+								}
 							}
 						}
-					}
-					button {
-						class: "btn-outline btn-sm flex-shrink-0",
-						"Follow"
+						button {
+							class: "btn-outline btn-sm flex-shrink-0",
+							"Follow"
+						}
 					}
 				}
-			}
-		})(profile_href, username, has_bio, bio_text, avatar_initial)
+			})(
+				profile_href,
+				username,
+				has_bio,
+				bio_text,
+				avatar_initial,
+			)
 		})
 		.collect();
 

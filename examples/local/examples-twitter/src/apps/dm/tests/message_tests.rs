@@ -4,11 +4,11 @@
 
 use super::helpers::endpoints;
 use crate::migrations::TwitterMigrations;
-use crate::test_utils::{create_test_user, generate_test_token, TestUserParams};
-use reinhardt::db::DatabaseConnection;
-use reinhardt::test::fixtures::{injection_context_with_overrides, postgres_with_migrations_from};
-use reinhardt::test::SingletonScope;
+use crate::test_utils::{TestUserParams, create_test_user, generate_test_token};
 use reinhardt::Response;
+use reinhardt::db::DatabaseConnection;
+use reinhardt::test::SingletonScope;
+use reinhardt::test::fixtures::{injection_context_with_overrides, postgres_with_migrations_from};
 use rstest::rstest;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -18,11 +18,7 @@ use uuid::Uuid;
 // ============================================================================
 
 /// Create a test room in the database
-async fn create_test_room(
-	db: &DatabaseConnection,
-	name: Option<&str>,
-	is_group: bool,
-) -> Uuid {
+async fn create_test_room(db: &DatabaseConnection, name: Option<&str>, is_group: bool) -> Uuid {
 	use crate::apps::dm::models::DMRoom;
 	use chrono::Utc;
 	use reinhardt::db::orm::Manager;
@@ -99,7 +95,11 @@ async fn count_messages(db: &DatabaseConnection, room_id: Uuid) -> i64 {
 
 	// Filter by room_id using ORM API
 	let messages = DMMessage::objects()
-		.filter(DMMessage::field_room(), reinhardt::db::orm::FilterOperator::Eq, reinhardt::db::orm::FilterValue::Uuid(room_id))
+		.filter(
+			DMMessage::field_room(),
+			reinhardt::db::orm::FilterOperator::Eq,
+			reinhardt::db::orm::FilterValue::Uuid(room_id),
+		)
 		.all_with_conn(db)
 		.await
 		.unwrap_or_default();
@@ -488,11 +488,15 @@ async fn test_failure_get_message_not_member() {
 
 	// Create two users
 	let member = create_test_user(&db, TestUserParams::default()).await;
-	let non_member = create_test_user(&db, TestUserParams {
-		username: "nonmember".to_string(),
-		email: "nonmember@example.com".to_string(),
-		..Default::default()
-	}).await;
+	let non_member = create_test_user(
+		&db,
+		TestUserParams {
+			username: "nonmember".to_string(),
+			email: "nonmember@example.com".to_string(),
+			..Default::default()
+		},
+	)
+	.await;
 	let token = generate_test_token(&non_member);
 
 	// Create room and add only member

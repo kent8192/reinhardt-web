@@ -269,7 +269,14 @@ fn test_text_input_renders() {
 #[wasm_bindgen_test]
 fn test_text_input_required() {
 	let value = Signal::new(String::new());
-	let view = text_input("username", "Username", "Enter username", "text", value, true);
+	let view = text_input(
+		"username",
+		"Username",
+		"Enter username",
+		"text",
+		value,
+		true,
+	);
 
 	if let View::Element(element) = view {
 		let html = element.to_html();
