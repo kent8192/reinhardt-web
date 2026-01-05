@@ -23,8 +23,8 @@
 //! - admin_user: Pre-configured admin user fixture
 
 use reinhardt_auth::{
-	token_storage::{InMemoryTokenStorage, TokenStorage},
 	AuthenticationBackend, AuthenticationError, DefaultUser,
+	token_storage::{InMemoryTokenStorage, TokenStorage},
 };
 use reinhardt_test::fixtures::{auth::*, postgres_container};
 use rstest::*;
@@ -84,17 +84,12 @@ impl AuthenticationBackend for MockAuthBackend {
 		.bind(username)
 		.fetch_optional(self.pool.as_ref())
 		.await
-		.map_err(|e| {
-			AuthenticationError::BackendError(format!("Database query failed: {}", e))
-		})?;
+		.map_err(|e| AuthenticationError::BackendError(format!("Database query failed: {}", e)))?;
 
 		Ok(user)
 	}
 
-	async fn get_user(
-		&self,
-		user_id: &str,
-	) -> Result<Option<Self::User>, AuthenticationError> {
+	async fn get_user(&self, user_id: &str) -> Result<Option<Self::User>, AuthenticationError> {
 		let uuid = Uuid::parse_str(user_id).map_err(|e| {
 			AuthenticationError::BackendError(format!("Invalid UUID format: {}", e))
 		})?;
@@ -106,9 +101,7 @@ impl AuthenticationBackend for MockAuthBackend {
 		.bind(uuid)
 		.fetch_optional(self.pool.as_ref())
 		.await
-		.map_err(|e| {
-			AuthenticationError::BackendError(format!("Database query failed: {}", e))
-		})?;
+		.map_err(|e| AuthenticationError::BackendError(format!("Database query failed: {}", e)))?;
 
 		Ok(user)
 	}

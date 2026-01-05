@@ -21,8 +21,8 @@
 //! - postgres_container: PostgreSQL database container from reinhardt-test
 
 use reinhardt_core::pagination::{
-	cursor::{CursorPaginator, DatabaseCursor, Direction, HasTimestamp},
 	LimitOffsetPagination, PageNumberPagination, Paginator,
+	cursor::{CursorPaginator, DatabaseCursor, Direction, HasTimestamp},
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -110,11 +110,7 @@ async fn insert_articles(pool: &PgPool, count: usize) -> Vec<Article> {
 	articles
 }
 
-async fn query_articles(
-	pool: &PgPool,
-	limit: i64,
-	offset: i64,
-) -> Vec<Article> {
+async fn query_articles(pool: &PgPool, limit: i64, offset: i64) -> Vec<Article> {
 	sqlx::query_as::<_, Article>(
 		"SELECT id, title, content, author_id, published, created_at
 		 FROM articles
@@ -302,7 +298,11 @@ async fn test_limit_offset_pagination_with_database(
 	// Fetch with limit=10, offset=0
 	let page1_data = query_articles(&pool, 10, 0).await;
 	let page1 = paginator
-		.paginate(&page1_data, Some("limit=10&offset=0"), "http://example.com/articles")
+		.paginate(
+			&page1_data,
+			Some("limit=10&offset=0"),
+			"http://example.com/articles",
+		)
 		.expect("Pagination failed");
 
 	assert_eq!(page1.results.len(), 10);
@@ -310,7 +310,11 @@ async fn test_limit_offset_pagination_with_database(
 	// Fetch with limit=10, offset=10
 	let page2_data = query_articles(&pool, 10, 10).await;
 	let page2 = paginator
-		.paginate(&page2_data, Some("limit=10&offset=10"), "http://example.com/articles")
+		.paginate(
+			&page2_data,
+			Some("limit=10&offset=10"),
+			"http://example.com/articles",
+		)
 		.expect("Pagination failed");
 
 	assert_eq!(page2.results.len(), 10);
@@ -338,9 +342,7 @@ async fn test_limit_offset_pagination_custom_limit(
 	insert_articles(&pool, 50).await;
 
 	// Create paginator with max_limit
-	let paginator = LimitOffsetPagination::new()
-		.default_limit(10)
-		.max_limit(20);
+	let paginator = LimitOffsetPagination::new().default_limit(10).max_limit(20);
 
 	// Query with limit=5
 	let results = query_articles(&pool, 5, 0).await;
@@ -409,7 +411,9 @@ async fn test_cursor_pagination_with_database(
 	let paginator = CursorPaginator::new(10);
 
 	// Get first page
-	let page1 = paginator.paginate(&articles, None).expect("Pagination failed");
+	let page1 = paginator
+		.paginate(&articles, None)
+		.expect("Pagination failed");
 	assert_eq!(page1.results.len(), 10);
 	assert!(page1.next_cursor.is_some());
 
@@ -445,7 +449,9 @@ async fn test_cursor_pagination_bidirectional(
 	let paginator = CursorPaginator::new(10);
 
 	// Forward navigation
-	let page1 = paginator.paginate(&articles, None).expect("Pagination failed");
+	let page1 = paginator
+		.paginate(&articles, None)
+		.expect("Pagination failed");
 	let page2 = paginator
 		.paginate(&articles, page1.next_cursor)
 		.expect("Pagination failed");
@@ -523,7 +529,9 @@ async fn test_cursor_pagination_with_ordering(
 	let paginator = CursorPaginator::new(10);
 
 	// Get page (articles are ordered by created_at DESC, id DESC)
-	let page = paginator.paginate(&articles, None).expect("Pagination failed");
+	let page = paginator
+		.paginate(&articles, None)
+		.expect("Pagination failed");
 
 	// Verify ordering (newer articles first)
 	for i in 0..page.results.len() - 1 {
@@ -816,13 +824,12 @@ async fn test_pagination_count_query_accuracy(
 	assert_eq!(total_count, 25);
 
 	// Count with WHERE clause
-	let filtered_count: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM articles WHERE published = $1",
-	)
-	.bind(true)
-	.fetch_one(&pool)
-	.await
-	.expect("Count failed");
+	let filtered_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE published = $1")
+			.bind(true)
+			.fetch_one(&pool)
+			.await
+			.expect("Count failed");
 
 	assert_eq!(filtered_count, 25); // All inserted articles are published
 }

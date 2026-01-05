@@ -23,8 +23,8 @@ use reinhardt_macros::get;
 use reinhardt_params::Path;
 use reinhardt_rest::versioning::{AcceptHeaderVersioning, BaseVersioning, URLPathVersioning};
 use reinhardt_routers::UnifiedRouter;
-use reinhardt_test::fixtures::server::test_server_guard;
 use reinhardt_test::APIClient;
+use reinhardt_test::fixtures::server::test_server_guard;
 
 // ============================================================================
 // Helper Functions - Test Handlers

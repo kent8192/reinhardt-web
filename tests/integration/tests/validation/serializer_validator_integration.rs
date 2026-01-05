@@ -282,7 +282,13 @@ impl UserProfile {
 #[test]
 fn test_username_validation() {
 	// Valid username
-	let valid = UserRegistration::new("valid_user123", "user@example.com", "password1", "password1", None);
+	let valid = UserRegistration::new(
+		"valid_user123",
+		"user@example.com",
+		"password1",
+		"password1",
+		None,
+	);
 	assert!(valid.validate_username().is_ok());
 
 	// Too short
@@ -310,7 +316,13 @@ fn test_username_validation() {
 	);
 
 	// Invalid characters
-	let invalid_chars = UserRegistration::new("user@name", "user@example.com", "password1", "password1", None);
+	let invalid_chars = UserRegistration::new(
+		"user@name",
+		"user@example.com",
+		"password1",
+		"password1",
+		None,
+	);
 	let result = invalid_chars.validate_username();
 	assert!(result.is_err());
 	assert_eq!(
@@ -332,7 +344,8 @@ fn test_email_validation() {
 	assert!(valid.validate_email().is_ok());
 
 	// Missing @
-	let missing_at = UserRegistration::new("user", "userexample.com", "password1", "password1", None);
+	let missing_at =
+		UserRegistration::new("user", "userexample.com", "password1", "password1", None);
 	let result = missing_at.validate_email();
 	assert!(result.is_err());
 	assert_eq!(result.unwrap_err(), "Email must contain @");
@@ -350,7 +363,8 @@ fn test_email_validation() {
 	assert_eq!(result.unwrap_err(), "Email local part cannot be empty");
 
 	// Multiple @
-	let multiple_at = UserRegistration::new("user", "user@@example.com", "password1", "password1", None);
+	let multiple_at =
+		UserRegistration::new("user", "user@@example.com", "password1", "password1", None);
 	let result = multiple_at.validate_email();
 	assert!(result.is_err());
 	assert_eq!(result.unwrap_err(), "Email must have exactly one @");
@@ -365,7 +379,13 @@ fn test_email_validation() {
 #[test]
 fn test_password_validation() {
 	// Valid password
-	let valid = UserRegistration::new("user", "user@example.com", "password123", "password123", None);
+	let valid = UserRegistration::new(
+		"user",
+		"user@example.com",
+		"password123",
+		"password123",
+		None,
+	);
 	assert!(valid.validate_password().is_ok());
 
 	// Too short
@@ -396,7 +416,13 @@ fn test_password_validation() {
 #[test]
 fn test_age_validation() {
 	// Valid age
-	let valid = UserRegistration::new("user", "user@example.com", "password1", "password1", Some(25));
+	let valid = UserRegistration::new(
+		"user",
+		"user@example.com",
+		"password1",
+		"password1",
+		Some(25),
+	);
 	assert!(valid.validate_age().is_ok());
 
 	// No age (optional)
@@ -404,16 +430,25 @@ fn test_age_validation() {
 	assert!(no_age.validate_age().is_ok());
 
 	// Too young
-	let too_young = UserRegistration::new("user", "user@example.com", "password1", "password1", Some(10));
+	let too_young = UserRegistration::new(
+		"user",
+		"user@example.com",
+		"password1",
+		"password1",
+		Some(10),
+	);
 	let result = too_young.validate_age();
 	assert!(result.is_err());
-	assert_eq!(
-		result.unwrap_err(),
-		"User must be at least 13 years old"
-	);
+	assert_eq!(result.unwrap_err(), "User must be at least 13 years old");
 
 	// Unrealistic age
-	let unrealistic = UserRegistration::new("user", "user@example.com", "password1", "password1", Some(150));
+	let unrealistic = UserRegistration::new(
+		"user",
+		"user@example.com",
+		"password1",
+		"password1",
+		Some(150),
+	);
 	let result = unrealistic.validate_age();
 	assert!(result.is_err());
 	assert_eq!(result.unwrap_err(), "Age must be realistic");
@@ -434,13 +469,8 @@ fn test_password_match_validation() {
 	assert!(matching.validate_password_match().is_ok());
 
 	// Non-matching passwords
-	let non_matching = UserRegistration::new(
-		"user",
-		"user@example.com",
-		"password1",
-		"different1",
-		None,
-	);
+	let non_matching =
+		UserRegistration::new("user", "user@example.com", "password1", "different1", None);
 	let result = non_matching.validate_password_match();
 	assert!(result.is_err());
 	assert_eq!(result.unwrap_err(), "Passwords do not match");
@@ -466,11 +496,11 @@ fn test_all_validations_error_aggregation() {
 
 	// Multiple errors
 	let multiple_errors = UserRegistration::new(
-		"ab",              // Too short username
-		"invalid-email",   // No @ in email
-		"short",           // Password too short and no number
-		"different",       // Passwords don't match
-		Some(10),          // Age too young
+		"ab",            // Too short username
+		"invalid-email", // No @ in email
+		"short",         // Password too short and no number
+		"different",     // Passwords don't match
+		Some(10),        // Age too young
 	);
 
 	let result = multiple_errors.validate_all();
@@ -576,8 +606,8 @@ fn test_nested_profile_validation() {
 
 	// Multiple errors across levels
 	let multiple_errors = UserProfile::new(
-		"ab",          // Invalid username
-		"invalid",     // Invalid email
+		"ab",                                    // Invalid username
+		"invalid",                               // Invalid email
 		Address::new("", "New York", "", "USA"), // Invalid address
 	);
 	let result = multiple_errors.validate();
@@ -629,13 +659,12 @@ async fn test_unique_constraint_validation(
 		.expect("Failed to insert first user");
 
 	// Check username uniqueness
-	let username_exists: bool = sqlx::query_scalar(
-		"SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
-	)
-	.bind("existing_user")
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to check username");
+	let username_exists: bool =
+		sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+			.bind("existing_user")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to check username");
 
 	assert!(username_exists, "Username should exist in database");
 
@@ -650,13 +679,12 @@ async fn test_unique_constraint_validation(
 	assert!(email_exists, "Email should exist in database");
 
 	// Verify new username doesn't exist
-	let new_username_exists: bool = sqlx::query_scalar(
-		"SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
-	)
-	.bind("new_user")
-	.fetch_one(pool.as_ref())
-	.await
-	.expect("Failed to check new username");
+	let new_username_exists: bool =
+		sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+			.bind("new_user")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to check new username");
 
 	assert!(
 		!new_username_exists,

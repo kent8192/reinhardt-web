@@ -122,13 +122,7 @@ async fn insert_author(pool: &PgPool, name: &str, email: &str) -> Author {
 	.expect("Failed to insert author")
 }
 
-async fn insert_book(
-	pool: &PgPool,
-	title: &str,
-	isbn: &str,
-	author_id: i64,
-	pages: i32,
-) -> Book {
+async fn insert_book(pool: &PgPool, title: &str, isbn: &str, author_id: i64, pages: i32) -> Book {
 	sqlx::query_as::<_, Book>(
 		"INSERT INTO books (title, isbn, author_id, published_date, pages)
 		 VALUES ($1, $2, $3, $4, $5)
@@ -305,7 +299,14 @@ async fn test_nested_serializer_with_relationships(
 	// Setup database
 	setup_tables(&pool).await;
 	let author = insert_author(&pool, "Author Name", "author@example.com").await;
-	let book = insert_book(&pool, "Book Title", "1234567890123", author.id.unwrap(), 300).await;
+	let book = insert_book(
+		&pool,
+		"Book Title",
+		"1234567890123",
+		author.id.unwrap(),
+		300,
+	)
+	.await;
 
 	// Get book with nested author
 	let book_with_author = get_book_with_author(&pool, book.id.unwrap()).await;
@@ -657,13 +658,11 @@ async fn test_serializer_method_field_with_aggregation(
 	insert_book(&pool, "Book 3", "3333333333333", author.id.unwrap(), 300).await;
 
 	// Query with aggregation (total pages)
-	let total_pages: i64 = sqlx::query_scalar(
-		"SELECT SUM(pages) FROM books WHERE author_id = $1",
-	)
-	.bind(author.id.unwrap())
-	.fetch_one(&pool)
-	.await
-	.expect("Query failed");
+	let total_pages: i64 = sqlx::query_scalar("SELECT SUM(pages) FROM books WHERE author_id = $1")
+		.bind(author.id.unwrap())
+		.fetch_one(&pool)
+		.await
+		.expect("Query failed");
 
 	assert_eq!(total_pages, 600); // 100 + 200 + 300
 }
@@ -691,8 +690,12 @@ async fn test_serializer_bulk_serialization_performance(
 
 	// Insert many authors
 	for i in 1..=100 {
-		insert_author(&pool, &format!("Author {}", i), &format!("author{}@example.com", i))
-			.await;
+		insert_author(
+			&pool,
+			&format!("Author {}", i),
+			&format!("author{}@example.com", i),
+		)
+		.await;
 	}
 
 	// Query all authors

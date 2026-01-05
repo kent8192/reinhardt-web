@@ -39,8 +39,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::AnyPool;
 use std::sync::Arc;
-use testcontainers::core::ContainerAsync;
 use testcontainers::GenericImage;
+use testcontainers::core::ContainerAsync;
 
 // ============================================================================
 // Test Data Structures
@@ -104,26 +104,186 @@ async fn setup_products_table(pool: Arc<AnyPool>) {
 
 	// Seed test data (20 products)
 	let products = vec![
-		Product::new(1, "Laptop Pro", "High-performance laptop", "Electronics", 1299.99, 50, true),
-		Product::new(2, "Laptop Air", "Lightweight laptop", "Electronics", 999.99, 100, true),
-		Product::new(3, "Desktop PC", "Powerful desktop computer", "Electronics", 1499.99, 30, true),
-		Product::new(4, "Tablet Pro", "Professional tablet", "Electronics", 799.99, 75, true),
-		Product::new(5, "Smartphone X", "Latest smartphone", "Electronics", 899.99, 200, true),
-		Product::new(6, "Office Chair", "Ergonomic office chair", "Furniture", 299.99, 150, true),
-		Product::new(7, "Standing Desk", "Adjustable standing desk", "Furniture", 599.99, 80, true),
-		Product::new(8, "Monitor 27\"", "4K monitor", "Electronics", 399.99, 120, true),
-		Product::new(9, "Keyboard Mechanical", "RGB mechanical keyboard", "Electronics", 149.99, 300, true),
-		Product::new(10, "Mouse Wireless", "Ergonomic wireless mouse", "Electronics", 59.99, 500, true),
-		Product::new(11, "Headphones Pro", "Noise-canceling headphones", "Electronics", 249.99, 180, true),
-		Product::new(12, "Webcam HD", "1080p webcam", "Electronics", 79.99, 250, true),
-		Product::new(13, "Bookshelf", "Wooden bookshelf", "Furniture", 199.99, 60, true),
-		Product::new(14, "Lamp Desk", "LED desk lamp", "Furniture", 49.99, 400, true),
-		Product::new(15, "Laptop Stand", "Aluminum laptop stand", "Accessories", 39.99, 350, true),
-		Product::new(16, "USB Hub", "7-port USB hub", "Accessories", 29.99, 600, true),
-		Product::new(17, "Cable Organizer", "Cable management set", "Accessories", 19.99, 800, true),
-		Product::new(18, "Laptop Bag", "Professional laptop bag", "Accessories", 69.99, 220, true),
-		Product::new(19, "Monitor Arm", "Adjustable monitor arm", "Accessories", 89.99, 140, true),
-		Product::new(20, "Tablet Case", "Protective tablet case", "Accessories", 34.99, 320, false),
+		Product::new(
+			1,
+			"Laptop Pro",
+			"High-performance laptop",
+			"Electronics",
+			1299.99,
+			50,
+			true,
+		),
+		Product::new(
+			2,
+			"Laptop Air",
+			"Lightweight laptop",
+			"Electronics",
+			999.99,
+			100,
+			true,
+		),
+		Product::new(
+			3,
+			"Desktop PC",
+			"Powerful desktop computer",
+			"Electronics",
+			1499.99,
+			30,
+			true,
+		),
+		Product::new(
+			4,
+			"Tablet Pro",
+			"Professional tablet",
+			"Electronics",
+			799.99,
+			75,
+			true,
+		),
+		Product::new(
+			5,
+			"Smartphone X",
+			"Latest smartphone",
+			"Electronics",
+			899.99,
+			200,
+			true,
+		),
+		Product::new(
+			6,
+			"Office Chair",
+			"Ergonomic office chair",
+			"Furniture",
+			299.99,
+			150,
+			true,
+		),
+		Product::new(
+			7,
+			"Standing Desk",
+			"Adjustable standing desk",
+			"Furniture",
+			599.99,
+			80,
+			true,
+		),
+		Product::new(
+			8,
+			"Monitor 27\"",
+			"4K monitor",
+			"Electronics",
+			399.99,
+			120,
+			true,
+		),
+		Product::new(
+			9,
+			"Keyboard Mechanical",
+			"RGB mechanical keyboard",
+			"Electronics",
+			149.99,
+			300,
+			true,
+		),
+		Product::new(
+			10,
+			"Mouse Wireless",
+			"Ergonomic wireless mouse",
+			"Electronics",
+			59.99,
+			500,
+			true,
+		),
+		Product::new(
+			11,
+			"Headphones Pro",
+			"Noise-canceling headphones",
+			"Electronics",
+			249.99,
+			180,
+			true,
+		),
+		Product::new(
+			12,
+			"Webcam HD",
+			"1080p webcam",
+			"Electronics",
+			79.99,
+			250,
+			true,
+		),
+		Product::new(
+			13,
+			"Bookshelf",
+			"Wooden bookshelf",
+			"Furniture",
+			199.99,
+			60,
+			true,
+		),
+		Product::new(
+			14,
+			"Lamp Desk",
+			"LED desk lamp",
+			"Furniture",
+			49.99,
+			400,
+			true,
+		),
+		Product::new(
+			15,
+			"Laptop Stand",
+			"Aluminum laptop stand",
+			"Accessories",
+			39.99,
+			350,
+			true,
+		),
+		Product::new(
+			16,
+			"USB Hub",
+			"7-port USB hub",
+			"Accessories",
+			29.99,
+			600,
+			true,
+		),
+		Product::new(
+			17,
+			"Cable Organizer",
+			"Cable management set",
+			"Accessories",
+			19.99,
+			800,
+			true,
+		),
+		Product::new(
+			18,
+			"Laptop Bag",
+			"Professional laptop bag",
+			"Accessories",
+			69.99,
+			220,
+			true,
+		),
+		Product::new(
+			19,
+			"Monitor Arm",
+			"Adjustable monitor arm",
+			"Accessories",
+			89.99,
+			140,
+			true,
+		),
+		Product::new(
+			20,
+			"Tablet Case",
+			"Protective tablet case",
+			"Accessories",
+			34.99,
+			320,
+			false,
+		),
 	];
 
 	for product in products {
@@ -147,10 +307,7 @@ async fn setup_products_table(pool: Arc<AnyPool>) {
 }
 
 /// Apply filter to products query
-async fn filter_products(
-	pool: Arc<AnyPool>,
-	filters: &[(&str, &str)],
-) -> Vec<Product> {
+async fn filter_products(pool: Arc<AnyPool>, filters: &[(&str, &str)]) -> Vec<Product> {
 	let mut where_clauses = Vec::new();
 	let mut bind_values: Vec<Box<dyn sqlx::Encode<'_, sqlx::Any> + Send>> = Vec::new();
 	let mut param_index = 1;
@@ -274,10 +431,7 @@ async fn search_products(
 }
 
 /// Apply ordering to products query
-async fn order_products(
-	pool: Arc<AnyPool>,
-	order_fields: &[&str],
-) -> Vec<Product> {
+async fn order_products(pool: Arc<AnyPool>, order_fields: &[&str]) -> Vec<Product> {
 	let order_clause = order_fields
 		.iter()
 		.map(|field| {
@@ -341,9 +495,11 @@ async fn test_filter_by_category(
 
 	// Expected: 11 electronics products (IDs 1-5, 8-12)
 	assert_eq!(electronics_products.len(), 11);
-	assert!(electronics_products
-		.iter()
-		.all(|(_, _, _, category, _, _, _)| category == "Electronics"));
+	assert!(
+		electronics_products
+			.iter()
+			.all(|(_, _, _, category, _, _, _)| category == "Electronics")
+	);
 }
 
 /// Test: Filter products by name contains (case-insensitive)
@@ -370,9 +526,11 @@ async fn test_filter_by_name_contains(
 
 	// Expected: 4 products (Laptop Pro, Laptop Air, Laptop Stand, Laptop Bag)
 	assert_eq!(laptop_products.len(), 4);
-	assert!(laptop_products.iter().all(|(_, name, _, _, _, _, _)| {
-		name.to_lowercase().contains("laptop")
-	}));
+	assert!(
+		laptop_products
+			.iter()
+			.all(|(_, name, _, _, _, _, _)| { name.to_lowercase().contains("laptop") })
+	);
 }
 
 /// Test: Filter products by price range
@@ -400,9 +558,11 @@ async fn test_filter_by_price_range(
 
 	// Verify all prices are in range
 	assert!(!mid_range_products.is_empty());
-	assert!(mid_range_products
-		.iter()
-		.all(|(_, _, _, _, price, _, _)| *price >= 100.0 && *price <= 500.0));
+	assert!(
+		mid_range_products
+			.iter()
+			.all(|(_, _, _, _, price, _, _)| *price >= 100.0 && *price <= 500.0)
+	);
 }
 
 /// Test: Filter products by boolean field (is_active)
@@ -460,8 +620,16 @@ async fn test_search_multiple_fields(
 
 	// Expected: 2 products (Tablet Pro "Professional tablet", Laptop Bag "Professional laptop bag")
 	assert_eq!(search_results.len(), 2);
-	assert!(search_results.iter().any(|(_, name, _, _, _, _, _)| name == "Tablet Pro"));
-	assert!(search_results.iter().any(|(_, name, _, _, _, _, _)| name == "Laptop Bag"));
+	assert!(
+		search_results
+			.iter()
+			.any(|(_, name, _, _, _, _, _)| name == "Tablet Pro")
+	);
+	assert!(
+		search_results
+			.iter()
+			.any(|(_, name, _, _, _, _, _)| name == "Laptop Bag")
+	);
 }
 
 /// Test: Case-insensitive search
@@ -529,7 +697,10 @@ async fn test_order_by_price_asc(
 	assert_eq!(ordered_products.len(), 20);
 
 	// Verify prices are in ascending order
-	let prices: Vec<f64> = ordered_products.iter().map(|(_, _, _, _, price, _, _)| *price).collect();
+	let prices: Vec<f64> = ordered_products
+		.iter()
+		.map(|(_, _, _, _, price, _, _)| *price)
+		.collect();
 	let mut sorted_prices = prices.clone();
 	sorted_prices.sort_by(|a, b| a.partial_cmp(b).unwrap());
 	assert_eq!(prices, sorted_prices);
@@ -563,7 +734,10 @@ async fn test_order_by_price_desc(
 	assert_eq!(ordered_products.len(), 20);
 
 	// Verify prices are in descending order
-	let prices: Vec<f64> = ordered_products.iter().map(|(_, _, _, _, price, _, _)| *price).collect();
+	let prices: Vec<f64> = ordered_products
+		.iter()
+		.map(|(_, _, _, _, price, _, _)| *price)
+		.collect();
 	let mut sorted_prices = prices.clone();
 	sorted_prices.sort_by(|a, b| b.partial_cmp(a).unwrap());
 	assert_eq!(prices, sorted_prices);
@@ -605,7 +779,10 @@ async fn test_order_by_multiple_fields(
 			prev_category = category.clone();
 			prev_price = f64::MAX;
 		}
-		assert!(*price <= prev_price, "Prices within category should be descending");
+		assert!(
+			*price <= prev_price,
+			"Prices within category should be descending"
+		);
 		prev_price = *price;
 	}
 }
@@ -691,6 +868,10 @@ async fn test_filtering_performance(
 	let elapsed = start.elapsed();
 
 	// Query should complete quickly (< 100ms)
-	assert!(elapsed.as_millis() < 100, "Query took too long: {:?}", elapsed);
+	assert!(
+		elapsed.as_millis() < 100,
+		"Query took too long: {:?}",
+		elapsed
+	);
 	assert!(!results.is_empty());
 }
