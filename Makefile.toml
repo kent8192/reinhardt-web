@@ -47,12 +47,17 @@ args = ["clean"]
 # ============================================================================
 
 [tasks.fmt-check]
-description = "Check code formatting (CI mode)"
+description = "Check all code formatting (Rust + page! DSL)"
 command = "cargo"
-args = ["fmt", "--check", "--all"]
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt-all", "--check", "."]
 
 [tasks.fmt-fix]
-description = "Auto-fix code formatting"
+description = "Auto-fix all code formatting (Rust + page! DSL)"
+command = "cargo"
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt-all", "."]
+
+[tasks.fmt-rust-only]
+description = "Format Rust code only (without page! macro protection)"
 command = "cargo"
 args = ["fmt", "--all"]
 
@@ -84,19 +89,14 @@ args = [
   "warnings",
 ]
 
-[tasks.fmt-page]
-description = "Format page! macro DSL in source files"
+[tasks.fmt-page-only]
+description = "Format page! macro DSL only (without rustfmt)"
 command = "cargo"
 args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
 
-[tasks.fmt-page-check]
-description = "Check page! macro DSL formatting (CI mode)"
-command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "--check", "."]
-
 [tasks.auto-fix]
 description = "Run all auto-fixes"
-dependencies = ["clippy-fix", "fmt-fix", "fmt-page"]
+dependencies = ["clippy-fix", "fmt-fix"]
 
 # ============================================================================
 # Testing Tasks
@@ -133,7 +133,6 @@ args = [
   "reinhardt-integration-tests",
   "--all-features",
   "--no-fail-fast",
-  "--show-progress=none",
   "--status-level=none",
   "--final-status-level=none",
 ]
@@ -160,7 +159,6 @@ args = [
   "reinhardt-integration-tests",
   "--all-features",
   "--no-fail-fast",
-  "--show-progress=none",
   "--status-level=none",
   "--final-status-level=none"
 ]
@@ -184,7 +182,6 @@ args = [
   "reinhardt-integration-tests",
   "--all-features",
   "--no-fail-fast",
-  "--show-progress=none",
   "--status-level=none",
   "--final-status-level=none"
 ]
@@ -243,7 +240,7 @@ dependencies = [
 
 [tasks.ci]
 description = "Run all CI checks (check, fmt, clippy, examples-build, tests)"
-dependencies = ["check", "fmt-check", "clippy-check", "fmt-page-check", "examples-build", "test"]
+dependencies = ["check", "fmt-check", "clippy-check", "examples-build", "test"]
 
 # ============================================================================
 # Documentation Tasks

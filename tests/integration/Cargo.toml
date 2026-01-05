@@ -81,7 +81,7 @@ reinhardt-rest = { workspace = true }
 reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-pagination = { workspace = true }
 reinhardt-filters = { workspace = true }
-reinhardt-forms = { workspace = true, features = ["macros"] }
+reinhardt-forms = { workspace = true }
 reinhardt-throttling = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache", "logging"] }
 reinhardt-static = { workspace = true }
@@ -177,7 +177,6 @@ websocket = ["reinhardt-server/websocket"]
 graphql = ["reinhardt-server/graphql"]
 msgpack = ["reinhardt-pages/msgpack"]
 proptest = []
-form-macros = ["reinhardt-forms/macros"]
 
 [dev-dependencies]
 # Test utilities

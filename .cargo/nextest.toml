@@ -40,11 +40,20 @@ threads-required = 1
 filter = 'test(database_backend_integration)'
 threads-required = 1
 
-# Trybuild compile-fail tests need longer timeout
+# Two-phase commit tests require serial execution
+# These tests coordinate transactions across multiple connections
+[[profile.default.overrides]]
+filter = 'test(two_phase_commit)'
+threads-required = 1
+slow-timeout = "120s"
+
+# Trybuild compile-fail tests need serial execution and longer timeout
+# Parallel trybuild tests cause file lock contention on build directory
 # The compiler takes significant time to produce error messages
 [[profile.default.overrides]]
-filter = 'test(compile_fail) | test(trybuild)'
-slow-timeout = "300s"
+filter = 'test(compile_fail) | test(compile_pass) | test(trybuild) | test(test_model_derive) | test(test_path_macro) | test(test_permission_macro) | test(test_routes_macro) | test(test_action_macro) | test(test_rel_attribute) | test(test_admin_macro) | test(test_injectable_macro) | test(test_field_attributes)'
+threads-required = 1
+slow-timeout = "600s"
 
 # JUnit output for CI/CD integration
 [profile.default.junit]
