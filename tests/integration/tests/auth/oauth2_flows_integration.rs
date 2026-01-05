@@ -13,11 +13,11 @@
 //! - Decision table: Various grant conditions
 //! - Use case: SSO scenarios, multiple scopes
 
+use reinhardt_auth::AuthenticationBackend;
 use reinhardt_auth::oauth2::{
 	AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
 	OAuth2Authentication, OAuth2TokenStore,
 };
-use reinhardt_auth::AuthenticationBackend;
 use rstest::*;
 use std::sync::Arc;
 

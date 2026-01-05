@@ -18,7 +18,7 @@ use reinhardt_auth::{
 	SessionAuthentication, SimpleUser, TokenAuthentication, User,
 };
 use reinhardt_http::Request;
-use reinhardt_sessions::{backends::InMemorySessionBackend, Session};
+use reinhardt_sessions::{Session, backends::InMemorySessionBackend};
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
