@@ -40,8 +40,8 @@
 //! ❌ Cache stampede prevention (covered by cache-specific tests)
 //! ❌ Session serialization formats (covered by session tests)
 
-use reinhardt_utils;
 use reinhardt_test::fixtures::*;
+use reinhardt_utils;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -148,7 +148,9 @@ async fn test_session_storage_with_cache(_temp_dir: tempfile::TempDir) {
 	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
 
 	// Store in cache
-	cache.set(session_key, &serialized, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(session_key, &serialized, Some(Duration::from_secs(3600)))
+		.await;
 
 	// Retrieve from cache
 	let cached = cache.get(session_key).await;
@@ -177,12 +179,19 @@ async fn test_session_update_invalidates_cache(_temp_dir: tempfile::TempDir) {
 	// Initial session
 	let initial_data = SessionData::new(1, "testuser");
 	let serialized_initial = serde_json::to_string(&initial_data).expect("Failed to serialize");
-	cache.set(session_key, &serialized_initial, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(
+			session_key,
+			&serialized_initial,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
 
 	// Verify initial data is cached
 	let cached = cache.get(session_key).await;
 	assert!(cached.is_some());
-	let initial: SessionData = serde_json::from_str(&cached.unwrap()).expect("Failed to deserialize");
+	let initial: SessionData =
+		serde_json::from_str(&cached.unwrap()).expect("Failed to deserialize");
 	assert_eq!(initial.metadata.len(), 0);
 
 	// Update session (invalidate cache + set new data)
@@ -190,7 +199,13 @@ async fn test_session_update_invalidates_cache(_temp_dir: tempfile::TempDir) {
 
 	let updated_data = SessionData::new(1, "testuser").with_metadata("last_page", "/dashboard");
 	let serialized_updated = serde_json::to_string(&updated_data).expect("Failed to serialize");
-	cache.set(session_key, &serialized_updated, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(
+			session_key,
+			&serialized_updated,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
 
 	// Verify updated data is in cache
 	let cached_updated = cache.get(session_key).await;
@@ -200,7 +215,10 @@ async fn test_session_update_invalidates_cache(_temp_dir: tempfile::TempDir) {
 		serde_json::from_str(&cached_updated.unwrap()).expect("Failed to deserialize");
 
 	assert_eq!(updated.metadata.len(), 1);
-	assert_eq!(updated.metadata.get("last_page"), Some(&"/dashboard".to_string()));
+	assert_eq!(
+		updated.metadata.get("last_page"),
+		Some(&"/dashboard".to_string())
+	);
 }
 
 /// Test session deletion removes cache entry
@@ -219,7 +237,9 @@ async fn test_session_deletion_removes_cache(_temp_dir: tempfile::TempDir) {
 	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
 
 	// Store in cache
-	cache.set(session_key, &serialized, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(session_key, &serialized, Some(Duration::from_secs(3600)))
+		.await;
 
 	// Verify cached
 	assert!(cache.exists(session_key).await);
@@ -250,7 +270,9 @@ async fn test_session_ttl_synchronization(_temp_dir: tempfile::TempDir) {
 	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
 
 	// Set short TTL (1 second)
-	cache.set(session_key, &serialized, Some(Duration::from_secs(1))).await;
+	cache
+		.set(session_key, &serialized, Some(Duration::from_secs(1)))
+		.await;
 
 	// Verify cached immediately
 	assert!(cache.exists(session_key).await);
@@ -279,7 +301,9 @@ async fn test_session_renewal_extends_ttl(_temp_dir: tempfile::TempDir) {
 	let serialized = serde_json::to_string(&session_data).expect("Failed to serialize");
 
 	// Set 2-second TTL
-	cache.set(session_key, &serialized, Some(Duration::from_secs(2))).await;
+	cache
+		.set(session_key, &serialized, Some(Duration::from_secs(2)))
+		.await;
 
 	// Wait 1 second
 	sleep(Duration::from_millis(1000)).await;
@@ -287,7 +311,9 @@ async fn test_session_renewal_extends_ttl(_temp_dir: tempfile::TempDir) {
 	// Access and renew (simulate session touch)
 	if cache.exists(session_key).await {
 		let value = cache.get(session_key).await.unwrap();
-		cache.set(session_key, &value, Some(Duration::from_secs(2))).await; // Renew TTL
+		cache
+			.set(session_key, &value, Some(Duration::from_secs(2)))
+			.await; // Renew TTL
 	}
 
 	// Wait another 1.5 seconds (total 2.5s from initial, but only 1.5s from renewal)
@@ -339,16 +365,20 @@ async fn test_session_database_cache_integration(
 	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
 
 	// Store in database
-	sqlx::query("INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)")
-		.bind(session_key)
-		.bind(&serialized)
-		.bind(expire_date.timestamp())
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to insert session");
+	sqlx::query(
+		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
+	)
+	.bind(session_key)
+	.bind(&serialized)
+	.bind(expire_date.timestamp())
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to insert session");
 
 	// Store in cache
-	cache.set(session_key, &serialized, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(session_key, &serialized, Some(Duration::from_secs(3600)))
+		.await;
 
 	// Retrieve from cache (fast path)
 	let from_cache = cache.get(session_key).await;
@@ -366,8 +396,7 @@ async fn test_session_database_cache_integration(
 	// Verify both sources match
 	let cached_data: SessionData =
 		serde_json::from_str(&from_cache.unwrap()).expect("Failed to deserialize cache");
-	let db_data: SessionData =
-		serde_json::from_str(&from_db).expect("Failed to deserialize db");
+	let db_data: SessionData = serde_json::from_str(&from_db).expect("Failed to deserialize db");
 
 	assert_eq!(cached_data, db_data);
 }
@@ -406,13 +435,15 @@ async fn test_cache_miss_fallback_to_database(
 	let expire_date = chrono::Utc::now() + chrono::Duration::hours(1);
 
 	// Store ONLY in database (not in cache)
-	sqlx::query("INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)")
-		.bind(session_key)
-		.bind(&serialized)
-		.bind(expire_date.timestamp())
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to insert session");
+	sqlx::query(
+		"INSERT INTO sessions (session_key, session_data, expire_date) VALUES ($1, $2, $3)",
+	)
+	.bind(session_key)
+	.bind(&serialized)
+	.bind(expire_date.timestamp())
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to insert session");
 
 	// Simulate session access:
 	// 1. Check cache (miss)
@@ -428,7 +459,9 @@ async fn test_cache_miss_fallback_to_database(
 			.expect("Failed to fetch from database");
 
 	// 3. Warm cache with database result
-	cache.set(session_key, &from_db, Some(Duration::from_secs(3600))).await;
+	cache
+		.set(session_key, &from_db, Some(Duration::from_secs(3600)))
+		.await;
 
 	// 4. Subsequent access hits cache
 	let from_cache_after_warm = cache.get(session_key).await;
@@ -490,7 +523,9 @@ async fn test_cache_performance_improvement(
 
 		// Cache only sessions 1-5 (50% cache hit rate)
 		if i <= 5 {
-			cache.set(&session_key, &serialized, Some(Duration::from_secs(3600))).await;
+			cache
+				.set(&session_key, &serialized, Some(Duration::from_secs(3600)))
+				.await;
 		}
 	}
 
@@ -514,7 +549,9 @@ async fn test_cache_performance_improvement(
 					.await
 					.expect("Failed to fetch from db");
 			// Warm cache
-			cache.set(&session_key, &from_db, Some(Duration::from_secs(3600))).await;
+			cache
+				.set(&session_key, &from_db, Some(Duration::from_secs(3600)))
+				.await;
 		}
 
 		// Second access (should hit cache now)
@@ -596,14 +633,20 @@ async fn test_cache_warming_for_active_sessions(
 	for row in top_sessions {
 		let key: String = row.get("session_key");
 		let data: String = row.get("session_data");
-		cache.set(&key, &data, Some(Duration::from_secs(3600))).await;
+		cache
+			.set(&key, &data, Some(Duration::from_secs(3600)))
+			.await;
 	}
 
 	// Verify top sessions are cached
 	for i in (11..=20).rev() {
 		// Top 10 by access_count (higher ID = higher count with i % 5 pattern)
 		let session_key = format!("session:user{}", i);
-		assert!(cache.exists(&session_key).await, "Top session {} should be cached", i);
+		assert!(
+			cache.exists(&session_key).await,
+			"Top session {} should be cached",
+			i
+		);
 	}
 
 	// Verify bottom sessions are NOT cached
@@ -635,8 +678,20 @@ async fn test_distributed_cache_invalidation(_temp_dir: tempfile::TempDir) {
 	let serialized_initial = serde_json::to_string(&initial_data).expect("Failed to serialize");
 
 	// Store in both instances
-	cache_instance1.set(session_key, &serialized_initial, Some(Duration::from_secs(3600))).await;
-	cache_instance2.set(session_key, &serialized_initial, Some(Duration::from_secs(3600))).await;
+	cache_instance1
+		.set(
+			session_key,
+			&serialized_initial,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
+	cache_instance2
+		.set(
+			session_key,
+			&serialized_initial,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
 
 	// Verify both have the session
 	assert!(cache_instance1.exists(session_key).await);
@@ -649,8 +704,20 @@ async fn test_distributed_cache_invalidation(_temp_dir: tempfile::TempDir) {
 	let updated_data = SessionData::new(1, "testuser").with_metadata("role", "admin");
 	let serialized_updated = serde_json::to_string(&updated_data).expect("Failed to serialize");
 
-	cache_instance1.set(session_key, &serialized_updated, Some(Duration::from_secs(3600))).await;
-	cache_instance2.set(session_key, &serialized_updated, Some(Duration::from_secs(3600))).await;
+	cache_instance1
+		.set(
+			session_key,
+			&serialized_updated,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
+	cache_instance2
+		.set(
+			session_key,
+			&serialized_updated,
+			Some(Duration::from_secs(3600)),
+		)
+		.await;
 
 	// Verify both instances have updated data
 	let data1 = cache_instance1.get(session_key).await.unwrap();

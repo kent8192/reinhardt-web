@@ -9,11 +9,7 @@ use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig};
 use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority};
 use serial_test::serial;
-use testcontainers::{
-	core::{ContainerPort, WaitFor},
-	runners::AsyncRunner,
-	GenericImage,
-};
+use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 struct TestTask {
 	id: TaskId,
@@ -35,9 +31,13 @@ impl Task for TestTask {
 }
 
 async fn setup_rabbitmq() -> testcontainers::ContainerAsync<GenericImage> {
+	use testcontainers::core::IntoContainerPort;
+
 	let rabbitmq_image = GenericImage::new("rabbitmq", "3-management-alpine")
-		.with_exposed_port(ContainerPort::Tcp(5672))
-		.with_wait_for(WaitFor::message_on_stdout("Server startup complete"));
+		.with_exposed_port(5672.tcp())
+		.with_exposed_port(15672.tcp()) // Management UI port
+		.with_wait_for(WaitFor::message_on_stdout("Server startup complete"))
+		.with_startup_timeout(std::time::Duration::from_secs(120));
 
 	rabbitmq_image
 		.start()
