@@ -12,7 +12,7 @@
 //! 5. **Memory Usage** - Resource consumption under load
 
 use reinhardt_migrations::{
-	autodetector::MigrationAutodetector, FieldState, FieldType, ModelState, ProjectState,
+	FieldState, FieldType, ModelState, ProjectState, autodetector::MigrationAutodetector,
 };
 use std::time::{Duration, Instant};
 

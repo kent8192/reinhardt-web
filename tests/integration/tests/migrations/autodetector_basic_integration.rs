@@ -58,7 +58,12 @@ fn add_field_to_model(
 ) {
 	model.fields.insert(
 		field_name.to_string(),
-		FieldState::new(field_name.to_string(), field_type, nullable, BTreeMap::new()),
+		FieldState::new(
+			field_name.to_string(),
+			field_type,
+			nullable,
+			BTreeMap::new(),
+		),
 	);
 }
 
@@ -250,7 +255,11 @@ fn test_detect_add_field_to_model() {
 	let detected = autodetector.detect_changes();
 
 	// Verify
-	assert_eq!(detected.added_fields.len(), 1, "Should detect 1 added field");
+	assert_eq!(
+		detected.added_fields.len(),
+		1,
+		"Should detect 1 added field"
+	);
 	assert_eq!(detected.added_fields[0].0, "testapp");
 	assert_eq!(detected.added_fields[0].1, "User");
 	assert_eq!(detected.added_fields[0].2, "email");
@@ -631,12 +640,7 @@ fn test_detect_add_field_with_default() {
 	params.insert("default".to_string(), "NOW()".to_string());
 	user_model.fields.insert(
 		"created_at".to_string(),
-		FieldState::new(
-			"created_at".to_string(),
-			FieldType::DateTime,
-			false,
-			params,
-		),
+		FieldState::new("created_at".to_string(), FieldType::DateTime, false, params),
 	);
 	to_state.add_model(user_model);
 

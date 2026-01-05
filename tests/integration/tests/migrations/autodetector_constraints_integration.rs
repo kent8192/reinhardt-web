@@ -17,8 +17,8 @@
 //! - None (pure ProjectState manipulation)
 
 use reinhardt_migrations::{
-	ConstraintDefinition, FieldState, FieldType, IndexDefinition, MigrationAutodetector, ModelState,
-	ProjectState,
+	ConstraintDefinition, FieldState, FieldType, IndexDefinition, MigrationAutodetector,
+	ModelState, ProjectState,
 };
 use rstest::*;
 use std::collections::BTreeMap;
@@ -120,14 +120,24 @@ fn test_detect_add_composite_index() {
 	// from_state: User without composite index
 	let mut from_state = ProjectState::new();
 	let mut user_model = create_basic_model("testapp", "User", "testapp_user");
-	add_field(&mut user_model, "first_name", FieldType::VarChar(100), false);
+	add_field(
+		&mut user_model,
+		"first_name",
+		FieldType::VarChar(100),
+		false,
+	);
 	add_field(&mut user_model, "last_name", FieldType::VarChar(100), false);
 	from_state.add_model(user_model);
 
 	// to_state: User with composite index on (first_name, last_name)
 	let mut to_state = ProjectState::new();
 	let mut user_model = create_basic_model("testapp", "User", "testapp_user");
-	add_field(&mut user_model, "first_name", FieldType::VarChar(100), false);
+	add_field(
+		&mut user_model,
+		"first_name",
+		FieldType::VarChar(100),
+		false,
+	);
 	add_field(&mut user_model, "last_name", FieldType::VarChar(100), false);
 	user_model.indexes.push(IndexDefinition {
 		name: "idx_user_name".to_string(),

@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -216,12 +215,11 @@ async fn test_least_privilege_principle_adherence(
 	// ============================================================================
 
 	// Check that migration_user is not a superuser
-	let is_superuser: bool = sqlx::query_scalar(
-		"SELECT usesuper FROM pg_user WHERE usename = 'migration_user'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to check superuser status");
+	let is_superuser: bool =
+		sqlx::query_scalar("SELECT usesuper FROM pg_user WHERE usename = 'migration_user'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to check superuser status");
 
 	assert!(
 		!is_superuser,
@@ -229,12 +227,11 @@ async fn test_least_privilege_principle_adherence(
 	);
 
 	// Verify user has only necessary privileges
-	let has_createdb: bool = sqlx::query_scalar(
-		"SELECT usecreatedb FROM pg_user WHERE usename = 'migration_user'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to check createdb privilege");
+	let has_createdb: bool =
+		sqlx::query_scalar("SELECT usecreatedb FROM pg_user WHERE usename = 'migration_user'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to check createdb privilege");
 
 	assert!(
 		!has_createdb,
@@ -242,9 +239,7 @@ async fn test_least_privilege_principle_adherence(
 	);
 
 	// Test insufficient privilege: Attempt database-wide operation (should fail)
-	let create_db_result = sqlx::query("CREATE DATABASE test_db")
-		.execute(&*pool)
-		.await;
+	let create_db_result = sqlx::query("CREATE DATABASE test_db").execute(&*pool).await;
 
 	// Note: This test uses superuser connection, so it would succeed
 	// To properly test, we'd need to connect as migration_user
@@ -413,19 +408,21 @@ async fn test_sensitive_data_handling(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query api_token_v2 column");
-	assert_eq!(token_v2_column_exists, 1, "api_token_v2 column should exist");
+	assert_eq!(
+		token_v2_column_exists, 1,
+		"api_token_v2 column should exist"
+	);
 
 	// ============================================================================
 	// Assert: Verify sensitive data protection
 	// ============================================================================
 
 	// Verify original sensitive data still exists (not lost during migration)
-	let alice_token: String = sqlx::query_scalar(
-		"SELECT api_token FROM users WHERE username = 'alice'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch alice's token");
+	let alice_token: String =
+		sqlx::query_scalar("SELECT api_token FROM users WHERE username = 'alice'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch alice's token");
 
 	assert_eq!(
 		alice_token, "secret_api_token_12345",
@@ -457,24 +454,29 @@ async fn test_sensitive_data_handling(
 	.await
 	.expect("Failed to query sensitive columns");
 
-	assert_eq!(sensitive_columns.len(), 4, "Should have 4 sensitive columns");
+	assert_eq!(
+		sensitive_columns.len(),
+		4,
+		"Should have 4 sensitive columns"
+	);
 	assert_eq!(sensitive_columns[0], "api_token");
 	assert_eq!(sensitive_columns[1], "api_token_v2");
 	assert_eq!(sensitive_columns[2], "bcrypt_hash");
 	assert_eq!(sensitive_columns[3], "password_hash");
 
 	// Verify no sensitive data in table comments (best practice)
-	let table_comment: Option<String> = sqlx::query_scalar(
-		"SELECT obj_description('users'::regclass, 'pg_class')",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to query table comment");
+	let table_comment: Option<String> =
+		sqlx::query_scalar("SELECT obj_description('users'::regclass, 'pg_class')")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to query table comment");
 
 	// Should be None or not contain sensitive data
 	if let Some(comment) = table_comment {
 		assert!(
-			!comment.contains("password") && !comment.contains("token") && !comment.contains("secret"),
+			!comment.contains("password")
+				&& !comment.contains("token")
+				&& !comment.contains("secret"),
 			"Table comment should not expose sensitive field details: {}",
 			comment
 		);
@@ -666,11 +668,10 @@ async fn test_audit_logging_completeness(
 	// ============================================================================
 
 	// Verify all operations logged
-	let total_logs: i64 =
-		sqlx::query_scalar("SELECT COUNT(*) FROM migration_audit_log")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to count audit logs");
+	let total_logs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM migration_audit_log")
+		.fetch_one(&*pool)
+		.await
+		.expect("Failed to count audit logs");
 	assert_eq!(total_logs, 3, "Should have 3 audit log entries");
 
 	// Verify log entries have required fields
@@ -702,12 +703,11 @@ async fn test_audit_logging_completeness(
 	assert!(logs[2].4, "Third operation should be successful");
 
 	// Verify timestamps are present and sequential
-	let timestamps: Vec<chrono::NaiveDateTime> = sqlx::query_scalar(
-		"SELECT executed_at FROM migration_audit_log ORDER BY id",
-	)
-	.fetch_all(&*pool)
-	.await
-	.expect("Failed to fetch timestamps");
+	let timestamps: Vec<chrono::NaiveDateTime> =
+		sqlx::query_scalar("SELECT executed_at FROM migration_audit_log ORDER BY id")
+			.fetch_all(&*pool)
+			.await
+			.expect("Failed to fetch timestamps");
 
 	assert_eq!(timestamps.len(), 3, "Should have 3 timestamps");
 	assert!(
@@ -835,11 +835,10 @@ async fn test_permission_escalation_prevention(
 	// ============================================================================
 
 	// Attempt 1: Try to GRANT privileges to self (should fail)
-	let escalation_attempt_1 = sqlx::query(
-		"GRANT SELECT ON sensitive_data TO restricted_migration",
-	)
-	.execute(&*pool)
-	.await;
+	let escalation_attempt_1 =
+		sqlx::query("GRANT SELECT ON sensitive_data TO restricted_migration")
+			.execute(&*pool)
+			.await;
 
 	// This succeeds when run as superuser, but in production would fail for restricted user
 	// To properly test, we'd need to connect as restricted_migration
@@ -874,9 +873,10 @@ async fn test_permission_escalation_prevention(
 	}
 
 	// Attempt 3: Try to create superuser (should fail)
-	let superuser_creation = sqlx::query("CREATE USER malicious_super WITH SUPERUSER PASSWORD 'malicious'")
-		.execute(&restricted_pool)
-		.await;
+	let superuser_creation =
+		sqlx::query("CREATE USER malicious_super WITH SUPERUSER PASSWORD 'malicious'")
+			.execute(&restricted_pool)
+			.await;
 
 	assert!(
 		superuser_creation.is_err(),
@@ -897,12 +897,11 @@ async fn test_permission_escalation_prevention(
 	// ============================================================================
 
 	// Verify restricted user is not superuser
-	let is_superuser: bool = sqlx::query_scalar(
-		"SELECT usesuper FROM pg_user WHERE usename = 'restricted_migration'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to check superuser status");
+	let is_superuser: bool =
+		sqlx::query_scalar("SELECT usesuper FROM pg_user WHERE usename = 'restricted_migration'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to check superuser status");
 
 	assert!(
 		!is_superuser,
@@ -923,12 +922,11 @@ async fn test_permission_escalation_prevention(
 	);
 
 	// Verify no malicious superuser was created
-	let malicious_user_exists: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM pg_user WHERE usename = 'malicious_super'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to check malicious user");
+	let malicious_user_exists: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM pg_user WHERE usename = 'malicious_super'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to check malicious user");
 
 	assert_eq!(
 		malicious_user_exists, 0,
@@ -936,9 +934,10 @@ async fn test_permission_escalation_prevention(
 	);
 
 	// Test: Verify migrations cannot alter pg_catalog or system tables
-	let system_table_modification = sqlx::query("INSERT INTO pg_catalog.pg_database (datname) VALUES ('hacked_db')")
-		.execute(&restricted_pool)
-		.await;
+	let system_table_modification =
+		sqlx::query("INSERT INTO pg_catalog.pg_database (datname) VALUES ('hacked_db')")
+			.execute(&restricted_pool)
+			.await;
 
 	assert!(
 		system_table_modification.is_err(),
@@ -1115,7 +1114,10 @@ async fn test_sql_injection_prevention(
 		.fetch_all(&*pool)
 		.await;
 
-	assert!(like_result.is_ok(), "LIKE query with injection should be safe");
+	assert!(
+		like_result.is_ok(),
+		"LIKE query with injection should be safe"
+	);
 
 	// Table should still exist
 	let table_exists_after_like: i64 = sqlx::query_scalar(

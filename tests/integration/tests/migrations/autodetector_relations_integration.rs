@@ -228,7 +228,10 @@ fn test_detect_add_one_to_one_field() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: Field and UNIQUE constraint are detected
-	assert!(detected.added_fields.len() > 0, "Should detect user_id field");
+	assert!(
+		detected.added_fields.len() > 0,
+		"Should detect user_id field"
+	);
 	assert!(
 		detected.added_constraints.len() > 0,
 		"Should detect UNIQUE constraint for 1:1"
@@ -310,12 +313,7 @@ fn test_detect_many_to_many_custom_through() {
 		FieldType::Integer,
 		false,
 	);
-	add_field(
-		&mut book_author_model,
-		"role",
-		FieldType::VarChar(50),
-		true,
-	); // Additional field
+	add_field(&mut book_author_model, "role", FieldType::VarChar(50), true); // Additional field
 	to_state.add_model(book_author_model);
 
 	let mut book_model = create_basic_model("testapp", "Book", "testapp_book");
@@ -478,7 +476,12 @@ fn test_detect_joined_table_inheritance() {
 		ForeignKeyAction::Cascade,
 		ForeignKeyAction::NoAction,
 	);
-	add_field(&mut manager_model, "department", FieldType::VarChar(100), true);
+	add_field(
+		&mut manager_model,
+		"department",
+		FieldType::VarChar(100),
+		true,
+	);
 	to_state.add_model(manager_model);
 
 	// Execute Autodetector

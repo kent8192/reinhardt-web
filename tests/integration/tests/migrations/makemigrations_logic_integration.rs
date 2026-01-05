@@ -483,22 +483,17 @@ async fn nc_05_field_rename_creates_rename_column_migration() {
 		.columns
 		.remove("completed");
 
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"is_done".to_string(),
-			ColumnSchema {
-				name: "is_done".to_string(),
-				data_type: FieldType::Boolean,
-				nullable: false,
-				default: Some("false".to_string()),
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"is_done".to_string(),
+		ColumnSchema {
+			name: "is_done".to_string(),
+			data_type: FieldType::Boolean,
+			nullable: false,
+			default: Some("false".to_string()),
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(to_schema.clone(), repository.clone());
@@ -581,22 +576,17 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 
 	// Add user_id foreign key column
 	use reinhardt_migrations::schema_diff::ConstraintSchema;
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"user_id".to_string(),
-			ColumnSchema {
-				name: "user_id".to_string(),
-				data_type: FieldType::Integer,
-				nullable: true,
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"user_id".to_string(),
+		ColumnSchema {
+			name: "user_id".to_string(),
+			data_type: FieldType::Integer,
+			nullable: true,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	// Add foreign key constraint
 	to_schema
@@ -630,9 +620,10 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 	});
 
 	// Verify: AddConstraint operation (may or may not be generated depending on implementation)
-	let has_add_constraint = result.operations.iter().any(|op| {
-		matches!(op, Operation::AddConstraint { table, .. } if table == &"todos")
-	});
+	let has_add_constraint = result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::AddConstraint { table, .. } if table == &"todos"));
 
 	assert!(has_add_column, "Should add user_id column");
 	// Note: AddConstraint may be implicit in AddColumn or explicit
@@ -722,7 +713,9 @@ async fn nc_08_many_to_many_creates_junction_table() {
 			auto_increment: false,
 		},
 	);
-	to_schema.tables.insert("todos_tags".to_string(), junction_table);
+	to_schema
+		.tables
+		.insert("todos_tags".to_string(), junction_table);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(to_schema.clone(), repository.clone());
@@ -733,18 +726,21 @@ async fn nc_08_many_to_many_creates_junction_table() {
 		.expect("ManyToMany generation should succeed");
 
 	// Verify: CreateTable operations for tags and junction table
-	let create_table_count = result.operations.iter().filter(|op| {
-		matches!(op, Operation::CreateTable { .. })
-	}).count();
+	let create_table_count = result
+		.operations
+		.iter()
+		.filter(|op| matches!(op, Operation::CreateTable { .. }))
+		.count();
 
 	assert!(
 		create_table_count >= 2,
 		"Should create at least tags and todos_tags tables"
 	);
 
-	let has_junction_table = result.operations.iter().any(|op| {
-		matches!(op, Operation::CreateTable { name, .. } if name == &"todos_tags")
-	});
+	let has_junction_table = result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::CreateTable { name, .. } if name == &"todos_tags"));
 
 	assert!(
 		has_junction_table,
@@ -794,8 +790,12 @@ async fn nc_09_initial_migration_correctness() {
 	// Add todos table
 	let todos_table = create_todos_schema().tables.get("todos").unwrap().clone();
 
-	target_schema.tables.insert("users".to_string(), users_table);
-	target_schema.tables.insert("todos".to_string(), todos_table);
+	target_schema
+		.tables
+		.insert("users".to_string(), users_table);
+	target_schema
+		.tables
+		.insert("todos".to_string(), todos_table);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(target_schema.clone(), repository.clone());
@@ -806,7 +806,11 @@ async fn nc_09_initial_migration_correctness() {
 		.expect("Initial migration should succeed");
 
 	// Verify: Multiple CreateTable operations
-	let create_table_count = result.operations.iter().filter(|op| matches!(op, Operation::CreateTable { .. })).count();
+	let create_table_count = result
+		.operations
+		.iter()
+		.filter(|op| matches!(op, Operation::CreateTable { .. }))
+		.count();
 
 	assert!(
 		create_table_count >= 2,
@@ -814,12 +818,14 @@ async fn nc_09_initial_migration_correctness() {
 	);
 
 	// Verify: Contains both tables
-	let has_users = result.operations.iter().any(|op| {
-		matches!(op, Operation::CreateTable { name, .. } if name == &"users")
-	});
-	let has_todos = result.operations.iter().any(|op| {
-		matches!(op, Operation::CreateTable { name, .. } if name == &"todos")
-	});
+	let has_users = result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::CreateTable { name, .. } if name == &"users"));
+	let has_todos = result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::CreateTable { name, .. } if name == &"todos"));
 
 	assert!(has_users, "Should create users table");
 	assert!(has_todos, "Should create todos table");
@@ -855,7 +861,9 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 	};
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration1).await.expect("Should save first migration");
+		repo.save(&migration1)
+			.await
+			.expect("Should save first migration");
 	}
 
 	// Step 2: Generate second migration (todos → todos + description)
@@ -868,7 +876,10 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 		.expect("Second migration should succeed");
 
 	// Verify: Second migration generates operations
-	assert!(result2.operation_count > 0, "Second migration should have operations");
+	assert!(
+		result2.operation_count > 0,
+		"Second migration should have operations"
+	);
 
 	// Save second migration
 	let migration2 = Migration {
@@ -882,7 +893,9 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 	};
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration2).await.expect("Should save second migration");
+		repo.save(&migration2)
+			.await
+			.expect("Should save second migration");
 	}
 
 	// Step 3: Verify both migrations exist in repository
@@ -945,22 +958,17 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 	let mut to_schema = create_todos_schema();
 
 	// Add profile_id column (OneToOne relationship)
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"profile_id".to_string(),
-			ColumnSchema {
-				name: "profile_id".to_string(),
-				data_type: FieldType::Integer,
-				nullable: true,
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"profile_id".to_string(),
+		ColumnSchema {
+			name: "profile_id".to_string(),
+			data_type: FieldType::Integer,
+			nullable: true,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	// Add UNIQUE index on profile_id
 	use reinhardt_migrations::schema_diff::IndexSchema;
@@ -1013,22 +1021,17 @@ async fn nc_13_default_value_addition_creates_alter_column() {
 	let mut to_schema = create_todos_schema();
 
 	// Add priority column with default value
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"priority".to_string(),
-			ColumnSchema {
-				name: "priority".to_string(),
-				data_type: FieldType::Integer,
-				nullable: false,
-				default: Some("0".to_string()),
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"priority".to_string(),
+		ColumnSchema {
+			name: "priority".to_string(),
+			data_type: FieldType::Integer,
+			nullable: false,
+			default: Some("0".to_string()),
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(to_schema.clone(), repository.clone());
@@ -1062,40 +1065,30 @@ async fn nc_14_null_constraint_change_creates_alter_column() {
 
 	// Change description from nullable to NOT NULL
 	// First add description as nullable
-	from_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"description".to_string(),
-			ColumnSchema {
-				name: "description".to_string(),
-				data_type: FieldType::Text,
-				nullable: true,
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	from_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"description".to_string(),
+		ColumnSchema {
+			name: "description".to_string(),
+			data_type: FieldType::Text,
+			nullable: true,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	// Then make it NOT NULL in target
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"description".to_string(),
-			ColumnSchema {
-				name: "description".to_string(),
-				data_type: FieldType::Text,
-				nullable: false, // Changed to NOT NULL
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"description".to_string(),
+		ColumnSchema {
+			name: "description".to_string(),
+			data_type: FieldType::Text,
+			nullable: false, // Changed to NOT NULL
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(to_schema.clone(), repository.clone());
@@ -1157,9 +1150,10 @@ async fn nc_15_unique_constraint_addition_creates_add_constraint() {
 		)
 	});
 
-	let has_add_constraint = result.operations.iter().any(|op| {
-		matches!(op, Operation::AddConstraint { table, .. } if table == &"todos")
-	});
+	let has_add_constraint = result
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::AddConstraint { table, .. } if table == &"todos"));
 
 	assert!(
 		has_unique_index || has_add_constraint,
@@ -1268,22 +1262,17 @@ async fn nc_18_multiple_changes_in_single_migration() {
 
 	// Make multiple changes:
 	// 1. Add 'description' column
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"description".to_string(),
-			ColumnSchema {
-				name: "description".to_string(),
-				data_type: FieldType::Text,
-				nullable: true,
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"description".to_string(),
+		ColumnSchema {
+			name: "description".to_string(),
+			data_type: FieldType::Text,
+			nullable: true,
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	// 2. Remove 'completed' column
 	to_schema
@@ -1372,7 +1361,9 @@ async fn nc_19_multi_app_migrations_generation() {
 
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration1).await.expect("Should save todos migration");
+		repo.save(&migration1)
+			.await
+			.expect("Should save todos migration");
 	}
 
 	// App 2: users
@@ -1396,7 +1387,9 @@ async fn nc_19_multi_app_migrations_generation() {
 
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration2).await.expect("Should save users migration");
+		repo.save(&migration2)
+			.await
+			.expect("Should save users migration");
 	}
 
 	// Verify: Both migrations exist
@@ -1423,22 +1416,17 @@ async fn nc_20_data_preservation_verification() {
 	let mut to_schema = create_todos_schema();
 
 	// Add new column (should not affect existing data)
-	to_schema
-		.tables
-		.get_mut("todos")
-		.unwrap()
-		.columns
-		.insert(
-			"description".to_string(),
-			ColumnSchema {
-				name: "description".to_string(),
-				data_type: FieldType::Text,
-				nullable: true, // Nullable to preserve existing rows
-				default: None,
-				primary_key: false,
-				auto_increment: false,
-			},
-		);
+	to_schema.tables.get_mut("todos").unwrap().columns.insert(
+		"description".to_string(),
+		ColumnSchema {
+			name: "description".to_string(),
+			data_type: FieldType::Text,
+			nullable: true, // Nullable to preserve existing rows
+			default: None,
+			primary_key: false,
+			auto_increment: false,
+		},
+	);
 
 	let repository = Arc::new(Mutex::new(TestRepository::new()));
 	let generator = AutoMigrationGenerator::new(to_schema.clone(), repository.clone());
@@ -1684,13 +1672,18 @@ async fn edg_01_empty_migration_generation() {
 	// Save empty migration
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&empty_migration).await.expect("Should save empty migration");
+		repo.save(&empty_migration)
+			.await
+			.expect("Should save empty migration");
 	}
 
 	// Verify: Migration exists with empty operations
 	{
 		let repo = repository.lock().await;
-		let migration = repo.get(app_label, "0001_custom").await.expect("Should retrieve migration");
+		let migration = repo
+			.get(app_label, "0001_custom")
+			.await
+			.expect("Should retrieve migration");
 		assert_eq!(migration.operations.len(), 0, "Should have zero operations");
 		assert_eq!(migration.name, "0001_custom", "Should have custom name");
 	}
@@ -2053,7 +2046,10 @@ async fn edg_11_unicode_in_names() {
 	assert_eq!(result.operation_count, 1);
 
 	if let Operation::CreateTable { name, columns, .. } = &result.operations[0] {
-		assert_eq!(name, table_name, "Table name should contain Unicode characters");
+		assert_eq!(
+			name, table_name,
+			"Table name should contain Unicode characters"
+		);
 
 		// Verify Japanese field exists
 		assert!(
@@ -2237,7 +2233,9 @@ async fn edg_13_same_name_different_apps() {
 	};
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration_app1).await.expect("Should save app1 migration");
+		repo.save(&migration_app1)
+			.await
+			.expect("Should save app1 migration");
 	}
 
 	// Create same users table in app2 (independent as different app)
@@ -2261,13 +2259,21 @@ async fn edg_13_same_name_different_apps() {
 	};
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration_app2).await.expect("Should save app2 migration");
+		repo.save(&migration_app2)
+			.await
+			.expect("Should save app2 migration");
 	}
 
 	// Verify migrations were created independently for both apps
 	let repo = repository.lock().await;
-	let app1_migrations = repo.list("app1").await.expect("Should list app1 migrations");
-	let app2_migrations = repo.list("app2").await.expect("Should list app2 migrations");
+	let app1_migrations = repo
+		.list("app1")
+		.await
+		.expect("Should list app1 migrations");
+	let app2_migrations = repo
+		.list("app2")
+		.await
+		.expect("Should list app2 migrations");
 
 	assert_eq!(app1_migrations.len(), 1, "app1 should have 1 migration");
 	assert_eq!(app2_migrations.len(), 1, "app2 should have 1 migration");
@@ -2342,7 +2348,9 @@ async fn edg_14_cross_app_dependencies() {
 	};
 	{
 		let mut repo = repository.lock().await;
-		repo.save(&migration_app1).await.expect("Should save app1 migration");
+		repo.save(&migration_app1)
+			.await
+			.expect("Should save app1 migration");
 	}
 
 	// app2: posts table (with FK to users)
@@ -2419,20 +2427,25 @@ async fn edg_14_cross_app_dependencies() {
 	);
 
 	// Verify CreateTable operation exists
-	let has_create_table = result_app2.operations.iter().any(|op| {
-		matches!(op, Operation::CreateTable { name, .. } if name == "posts")
-	});
-	assert!(has_create_table, "Should have CreateTable operation for posts");
+	let has_create_table = result_app2
+		.operations
+		.iter()
+		.any(|op| matches!(op, Operation::CreateTable { name, .. } if name == "posts"));
+	assert!(
+		has_create_table,
+		"Should have CreateTable operation for posts"
+	);
 
 	// Verify FK constraint exists (in AddConstraint or CreateTable constraints)
-	let has_fk_constraint = result_app2.operations.iter().any(|op| {
-		match op {
-			Operation::CreateTable { constraints, .. } => {
-				constraints.iter().any(|c| c.name == "fk_posts_user_id")
-			},
-			Operation::AddConstraint { name, .. } => name == "fk_posts_user_id",
-			_ => false,
+	let has_fk_constraint = result_app2.operations.iter().any(|op| match op {
+		Operation::CreateTable { constraints, .. } => {
+			constraints.iter().any(|c| c.name == "fk_posts_user_id")
 		}
+		Operation::AddConstraint { name, .. } => name == "fk_posts_user_id",
+		_ => false,
 	});
-	assert!(has_fk_constraint, "Should have FK constraint to users table");
+	assert!(
+		has_fk_constraint,
+		"Should have FK constraint to users table"
+	);
 }

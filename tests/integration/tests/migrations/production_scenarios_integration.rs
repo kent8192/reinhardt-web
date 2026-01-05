@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -263,7 +262,10 @@ async fn test_zero_downtime_deployment_scenario(
 		.fetch_one(&*pool)
 		.await
 		.expect("Failed to fetch Alice's name");
-	assert_eq!(alice_name, "Alice Johnson", "Old column should be populated");
+	assert_eq!(
+		alice_name, "Alice Johnson",
+		"Old column should be populated"
+	);
 
 	let alice_first: String = sqlx::query_scalar("SELECT first_name FROM users WHERE email = $1")
 		.bind("alice@example.com")
@@ -297,12 +299,11 @@ async fn test_zero_downtime_deployment_scenario(
 	.expect("Failed to migrate name data");
 
 	// Verify data migration succeeded
-	let john_first: String = sqlx::query_scalar(
-		"SELECT first_name FROM users WHERE email = 'john@example.com'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch John's first_name");
+	let john_first: String =
+		sqlx::query_scalar("SELECT first_name FROM users WHERE email = 'john@example.com'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch John's first_name");
 	assert_eq!(john_first, "John", "John's first_name should be migrated");
 
 	let john_last: String =
@@ -312,12 +313,11 @@ async fn test_zero_downtime_deployment_scenario(
 			.expect("Failed to fetch John's last_name");
 	assert_eq!(john_last, "Doe", "John's last_name should be migrated");
 
-	let jane_first: String = sqlx::query_scalar(
-		"SELECT first_name FROM users WHERE email = 'jane@example.com'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch Jane's first_name");
+	let jane_first: String =
+		sqlx::query_scalar("SELECT first_name FROM users WHERE email = 'jane@example.com'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch Jane's first_name");
 	assert_eq!(jane_first, "Jane", "Jane's first_name should be migrated");
 
 	let jane_last: String =
@@ -400,14 +400,13 @@ async fn test_zero_downtime_deployment_scenario(
 	);
 
 	// Verify new code can insert records
-	let new_code_insert_result = sqlx::query(
-		"INSERT INTO users (first_name, last_name, email) VALUES ($1, $2, $3)",
-	)
-	.bind("New")
-	.bind("User")
-	.bind("newuser@example.com")
-	.execute(&*pool)
-	.await;
+	let new_code_insert_result =
+		sqlx::query("INSERT INTO users (first_name, last_name, email) VALUES ($1, $2, $3)")
+			.bind("New")
+			.bind("User")
+			.bind("newuser@example.com")
+			.execute(&*pool)
+			.await;
 	assert!(
 		new_code_insert_result.is_ok(),
 		"New code should work after Phase 3"
@@ -813,10 +812,7 @@ async fn test_migration_rollforward_on_failure(
 		.fetch_one(&*pool)
 		.await
 		.expect("Failed to count new_users");
-	assert_eq!(
-		new_users_count, 1,
-		"Data in new_users should be preserved"
-	);
+	assert_eq!(new_users_count, 1, "Data in new_users should be preserved");
 
 	// ============================================================================
 	// Forward-fix strategy: Create new migration to restore functionality
@@ -970,11 +966,10 @@ async fn test_hot_schema_changes(
 
 	// Create index CONCURRENTLY (should not block the active transaction)
 	// Note: CONCURRENTLY requires non-transactional context
-	let index_creation_result = sqlx::query(
-		"CREATE INDEX CONCURRENTLY idx_events_user_id ON events(user_id)",
-	)
-	.execute(&*pool)
-	.await;
+	let index_creation_result =
+		sqlx::query("CREATE INDEX CONCURRENTLY idx_events_user_id ON events(user_id)")
+			.execute(&*pool)
+			.await;
 
 	assert!(
 		index_creation_result.is_ok(),
@@ -1009,10 +1004,7 @@ async fn test_hot_schema_changes(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query index");
-	assert_eq!(
-		index_exists, 1,
-		"Index idx_events_user_id should exist"
-	);
+	assert_eq!(index_exists, 1, "Index idx_events_user_id should exist");
 
 	// Verify index is valid (not corrupted)
 	let index_valid: bool = sqlx::query_scalar(
@@ -1025,12 +1017,11 @@ async fn test_hot_schema_changes(
 	assert!(index_valid, "Index should be valid");
 
 	// Verify index is being used (query plan check)
-	let explain_result: String = sqlx::query_scalar(
-		"EXPLAIN (FORMAT TEXT) SELECT * FROM events WHERE user_id = 1",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to get query plan");
+	let explain_result: String =
+		sqlx::query_scalar("EXPLAIN (FORMAT TEXT) SELECT * FROM events WHERE user_id = 1")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to get query plan");
 
 	// Index should be used in query plan (contains "Index Scan")
 	assert!(
@@ -1277,7 +1268,10 @@ async fn test_disaster_recovery_migration(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query status column");
-	assert_eq!(status_exists, 1, "status column should exist after catch-up");
+	assert_eq!(
+		status_exists, 1,
+		"status column should exist after catch-up"
+	);
 
 	// Apply pending migration 0003
 	executor
@@ -1337,14 +1331,13 @@ async fn test_disaster_recovery_migration(
 	);
 
 	// Verify new schema is functional
-	let insert_result = sqlx::query(
-		"INSERT INTO orders (customer_name, total, status) VALUES ($1, $2, $3)",
-	)
-	.bind("Customer C")
-	.bind(3000.00)
-	.bind("completed")
-	.execute(&*pool)
-	.await;
+	let insert_result =
+		sqlx::query("INSERT INTO orders (customer_name, total, status) VALUES ($1, $2, $3)")
+			.bind("Customer C")
+			.bind(3000.00)
+			.bind("completed")
+			.execute(&*pool)
+			.await;
 	assert!(
 		insert_result.is_ok(),
 		"Should be able to insert with new schema after recovery"

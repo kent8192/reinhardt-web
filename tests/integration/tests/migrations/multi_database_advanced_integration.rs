@@ -19,8 +19,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 	recorder::DatabaseMigrationRecorder,
 };
 use reinhardt_test::fixtures::postgres_container;
@@ -208,13 +207,12 @@ async fn test_cross_database_foreign_key_handling(
 		.expect("Failed to fetch user id");
 
 	// Insert order referencing the user (valid FK)
-	let valid_order_result = sqlx::query(
-		"INSERT INTO db_orders.orders (user_id, total) VALUES ($1, $2)",
-	)
-	.bind(user_id)
-	.bind(99.99)
-	.execute(&*pool)
-	.await;
+	let valid_order_result =
+		sqlx::query("INSERT INTO db_orders.orders (user_id, total) VALUES ($1, $2)")
+			.bind(user_id)
+			.bind(99.99)
+			.execute(&*pool)
+			.await;
 	assert!(
 		valid_order_result.is_ok(),
 		"Should be able to insert order with valid user_id"
@@ -341,10 +339,7 @@ async fn test_multi_db_transaction_coordination(
 	// ============================================================================
 
 	// Begin transaction
-	let mut tx = pool
-		.begin()
-		.await
-		.expect("Failed to begin transaction");
+	let mut tx = pool.begin().await.expect("Failed to begin transaction");
 
 	// Migration 1: Create table in db1
 	let db1_result = sqlx::query(
@@ -374,7 +369,10 @@ async fn test_multi_db_transaction_coordination(
 
 	// Commit both migrations atomically
 	let commit_result = tx.commit().await;
-	assert!(commit_result.is_ok(), "Transaction should commit successfully");
+	assert!(
+		commit_result.is_ok(),
+		"Transaction should commit successfully"
+	);
 
 	// ============================================================================
 	// Assert: Verify both migrations applied successfully
@@ -438,7 +436,10 @@ async fn test_multi_db_transaction_coordination(
 
 	// Rollback both migrations due to failure
 	let rollback_result = tx2.rollback().await;
-	assert!(rollback_result.is_ok(), "Transaction should rollback successfully");
+	assert!(
+		rollback_result.is_ok(),
+		"Transaction should rollback successfully"
+	);
 
 	// ============================================================================
 	// Assert: Verify rollback - neither migration applied
@@ -510,10 +511,7 @@ async fn test_multi_db_transaction_coordination(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query db2 warehouse column");
-	assert_eq!(
-		db2_warehouse_exists, 1,
-		"db2 warehouse column should exist"
-	);
+	assert_eq!(db2_warehouse_exists, 1, "db2 warehouse column should exist");
 
 	// Cleanup schemas
 	sqlx::query("DROP SCHEMA db1 CASCADE")
@@ -641,10 +639,7 @@ async fn test_migration_routing_with_custom_strategies(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query tenant_acme.users");
-	assert_eq!(
-		acme_users_exists, 1,
-		"tenant_acme.users should exist"
-	);
+	assert_eq!(acme_users_exists, 1, "tenant_acme.users should exist");
 
 	// Verify tenant_globex.users table exists
 	let globex_users_exists: i64 = sqlx::query_scalar(
@@ -654,10 +649,7 @@ async fn test_migration_routing_with_custom_strategies(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query tenant_globex.users");
-	assert_eq!(
-		globex_users_exists, 1,
-		"tenant_globex.users should exist"
-	);
+	assert_eq!(globex_users_exists, 1, "tenant_globex.users should exist");
 
 	// Insert tenant-specific data
 	sqlx::query("INSERT INTO tenant_acme.users (username, email) VALUES ($1, $2)")
@@ -693,7 +685,10 @@ async fn test_migration_routing_with_custom_strategies(
 			.fetch_one(&*pool)
 			.await
 			.expect("Failed to fetch acme username");
-	assert_eq!(acme_username, "acme_user1", "Acme user should be 'acme_user1'");
+	assert_eq!(
+		acme_username, "acme_user1",
+		"Acme user should be 'acme_user1'"
+	);
 
 	let globex_username: String =
 		sqlx::query_scalar("SELECT username FROM tenant_globex.users LIMIT 1")
@@ -714,7 +709,8 @@ async fn test_migration_routing_with_custom_strategies(
 		"app",
 		"0002_add_acme_feature",
 		vec![Operation::RunSQL {
-			sql: leak_str("ALTER TABLE tenant_acme.users ADD COLUMN premium BOOLEAN DEFAULT FALSE").to_string(),
+			sql: leak_str("ALTER TABLE tenant_acme.users ADD COLUMN premium BOOLEAN DEFAULT FALSE")
+				.to_string(),
 			reverse_sql: Some("ALTER TABLE tenant_acme.users DROP COLUMN premium"),
 		}],
 	);
@@ -957,7 +953,10 @@ async fn test_heterogeneous_database_synchronization(
 		master_column_count, replica_column_count,
 		"Master and replica should have same number of columns"
 	);
-	assert_eq!(master_column_count, 3, "Both should have 3 columns (id, name, price)");
+	assert_eq!(
+		master_column_count, 3,
+		"Both should have 3 columns (id, name, price)"
+	);
 
 	// Verify column names match
 	let master_columns: Vec<String> = sqlx::query_scalar(
@@ -992,7 +991,8 @@ async fn test_heterogeneous_database_synchronization(
 		"sync",
 		"0002_add_stock",
 		vec![Operation::RunSQL {
-			sql: leak_str("ALTER TABLE primary_db.products ADD COLUMN stock INTEGER DEFAULT 0").to_string(),
+			sql: leak_str("ALTER TABLE primary_db.products ADD COLUMN stock INTEGER DEFAULT 0")
+				.to_string(),
 			reverse_sql: Some("ALTER TABLE primary_db.products DROP COLUMN stock"),
 		}],
 	);
@@ -1020,14 +1020,18 @@ async fn test_heterogeneous_database_synchronization(
 	.expect("Failed to count replica columns after master evolution");
 
 	assert_eq!(master_columns_after, 4, "Master should have 4 columns now");
-	assert_eq!(replica_columns_after, 3, "Replica should still have 3 columns (drift detected)");
+	assert_eq!(
+		replica_columns_after, 3,
+		"Replica should still have 3 columns (drift detected)"
+	);
 
 	// Synchronize replica with master
 	let replica_migration_2 = create_test_migration(
 		"sync",
 		"0002_add_stock",
 		vec![Operation::RunSQL {
-			sql: leak_str("ALTER TABLE replica_db.products ADD COLUMN stock INTEGER DEFAULT 0").to_string(),
+			sql: leak_str("ALTER TABLE replica_db.products ADD COLUMN stock INTEGER DEFAULT 0")
+				.to_string(),
 			reverse_sql: Some("ALTER TABLE replica_db.products DROP COLUMN stock"),
 		}],
 	);
@@ -1077,18 +1081,16 @@ async fn test_heterogeneous_database_synchronization(
 		.expect("Failed to insert into replica");
 
 	// Verify data can be inserted to both schemas
-	let master_product_count: i64 =
-		sqlx::query_scalar("SELECT COUNT(*) FROM primary_db.products")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to count master products");
+	let master_product_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM primary_db.products")
+		.fetch_one(&*pool)
+		.await
+		.expect("Failed to count master products");
 	assert_eq!(master_product_count, 1, "Master should have 1 product");
 
-	let replica_product_count: i64 =
-		sqlx::query_scalar("SELECT COUNT(*) FROM replica_db.products")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to count replica products");
+	let replica_product_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM replica_db.products")
+		.fetch_one(&*pool)
+		.await
+		.expect("Failed to count replica products");
 	assert_eq!(replica_product_count, 1, "Replica should have 1 product");
 
 	// ============================================================================

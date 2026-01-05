@@ -17,8 +17,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -153,7 +152,10 @@ async fn test_incremental_migration_performance(
 	let total_records = 100000; // Using 100K for reasonable test duration
 	let num_batches = total_records / batch_size;
 
-	println!("Inserting {} test records in {} batches...", total_records, num_batches);
+	println!(
+		"Inserting {} test records in {} batches...",
+		total_records, num_batches
+	);
 
 	let insert_start = Instant::now();
 	for batch_num in 0..num_batches {
@@ -175,7 +177,11 @@ async fn test_incremental_migration_performance(
 			.expect("Failed to insert batch");
 
 		if (batch_num + 1) % 5 == 0 {
-			println!("  Inserted {} / {} records", (batch_num + 1) * batch_size, total_records);
+			println!(
+				"  Inserted {} / {} records",
+				(batch_num + 1) * batch_size,
+				total_records
+			);
 		}
 	}
 
@@ -249,10 +255,11 @@ async fn test_incremental_migration_performance(
 	assert_eq!(status_column_exists, 1, "status column should exist");
 
 	// Verify default value was applied to all existing rows
-	let active_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE status = 'active'")
-		.fetch_one(&*pool)
-		.await
-		.expect("Failed to count active users");
+	let active_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE status = 'active'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count active users");
 	assert_eq!(
 		active_count, total_records as i64,
 		"All users should have 'active' status"
@@ -283,7 +290,10 @@ async fn test_incremental_migration_performance(
 			.fetch_one(&*pool)
 			.await
 			.expect("Failed to fetch new user status");
-	assert_eq!(new_user_status, "active", "New user should have default status");
+	assert_eq!(
+		new_user_status, "active",
+		"New user should have default status"
+	);
 
 	// ============================================================================
 	// Performance Metrics Summary
@@ -344,7 +354,10 @@ async fn test_memory_usage_with_large_state(
 	let num_models = 100;
 	let fields_per_model = 10;
 
-	println!("Creating schema with {} models, {} fields each...", num_models, fields_per_model);
+	println!(
+		"Creating schema with {} models, {} fields each...",
+		num_models, fields_per_model
+	);
 
 	let create_start = Instant::now();
 
@@ -365,7 +378,10 @@ async fn test_memory_usage_with_large_state(
 		// Add fields
 		for field_idx in 0..fields_per_model {
 			let field_name = leak_str(format!("field_{}", field_idx));
-			columns.push(create_basic_column(field_name, FieldType::VarChar(Some(100))));
+			columns.push(create_basic_column(
+				field_name,
+				FieldType::VarChar(Some(100)),
+			));
 		}
 
 		let migration = create_test_migration(
@@ -377,10 +393,10 @@ async fn test_memory_usage_with_large_state(
 			}],
 		);
 
-		executor
-			.apply_migration(&migration)
-			.await
-			.expect(&format!("Failed to apply migration for model_{}", model_idx));
+		executor.apply_migration(&migration).await.expect(&format!(
+			"Failed to apply migration for model_{}",
+			model_idx
+		));
 
 		if (model_idx + 1) % 20 == 0 {
 			println!("  Created {} / {} models", model_idx + 1, num_models);
@@ -420,7 +436,8 @@ async fn test_memory_usage_with_large_state(
 
 	let expected_columns = num_models * (fields_per_model + 1); // +1 for id column
 	assert_eq!(
-		column_count, expected_columns as i64,
+		column_count,
+		expected_columns as i64,
 		"Should have {} total columns ({} models × {} fields)",
 		expected_columns,
 		num_models,
@@ -452,7 +469,10 @@ async fn test_memory_usage_with_large_state(
 
 	let migration_duration = migration_start.elapsed();
 
-	println!("Migration on large state completed in {:?}", migration_duration);
+	println!(
+		"Migration on large state completed in {:?}",
+		migration_duration
+	);
 
 	// ============================================================================
 	// Assert: Verify performance with large state
@@ -536,8 +556,12 @@ async fn test_concurrent_migration_throughput(
 	let num_apps = 10;
 	let migrations_per_app = 10;
 
-	println!("Preparing {} apps × {} migrations = {} total migrations...",
-		num_apps, migrations_per_app, num_apps * migrations_per_app);
+	println!(
+		"Preparing {} apps × {} migrations = {} total migrations...",
+		num_apps,
+		migrations_per_app,
+		num_apps * migrations_per_app
+	);
 
 	// ============================================================================
 	// Execute: Sequential baseline measurement
@@ -558,7 +582,11 @@ async fn test_concurrent_migration_throughput(
 
 			let migration = create_test_migration(
 				app_name,
-				leak_str(format!("{:04}_create_table{}", migration_idx + 1, migration_idx)),
+				leak_str(format!(
+					"{:04}_create_table{}",
+					migration_idx + 1,
+					migration_idx
+				)),
 				vec![Operation::CreateTable {
 					name: table_name,
 					columns: vec![
@@ -579,12 +607,18 @@ async fn test_concurrent_migration_throughput(
 			sequential_executor
 				.apply_migration(&migration)
 				.await
-				.expect(&format!("Failed to apply migration {}.{}", app_name, migration_idx));
+				.expect(&format!(
+					"Failed to apply migration {}.{}",
+					app_name, migration_idx
+				));
 		}
 	}
 
 	let sequential_duration = sequential_start.elapsed();
-	println!("Sequential execution completed in {:?}", sequential_duration);
+	println!(
+		"Sequential execution completed in {:?}",
+		sequential_duration
+	);
 
 	// Clean up tables for parallel test
 	for app_idx in 0..num_apps {
@@ -626,13 +660,19 @@ async fn test_concurrent_migration_throughput(
 
 				let migration = create_test_migration(
 					app_name,
-					leak_str(format!("{:04}_create_table{}", migration_idx + 1, migration_idx)),
+					leak_str(format!(
+						"{:04}_create_table{}",
+						migration_idx + 1,
+						migration_idx
+					)),
 					vec![Operation::CreateTable {
 						name: table_name,
 						columns: vec![
 							ColumnDefinition {
 								name: "id".to_string(),
-								type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
+								type_definition: FieldType::Custom(
+									"SERIAL PRIMARY KEY".to_string(),
+								),
 								not_null: true,
 								unique: false,
 								primary_key: true,
@@ -644,10 +684,10 @@ async fn test_concurrent_migration_throughput(
 					}],
 				);
 
-				executor
-					.apply_migration(&migration)
-					.await
-					.expect(&format!("Failed to apply migration {}.{}", app_name, migration_idx));
+				executor.apply_migration(&migration).await.expect(&format!(
+					"Failed to apply migration {}.{}",
+					app_name, migration_idx
+				));
 			}
 
 			app_idx
@@ -715,8 +755,11 @@ async fn test_concurrent_migration_throughput(
 	);
 
 	let speedup_ratio = parallel_duration.as_secs_f64() / sequential_duration.as_secs_f64();
-	println!("Speedup ratio: {:.2}x (parallel is {:.1}% of sequential time)",
-		1.0 / speedup_ratio, speedup_ratio * 100.0);
+	println!(
+		"Speedup ratio: {:.2}x (parallel is {:.1}% of sequential time)",
+		1.0 / speedup_ratio,
+		speedup_ratio * 100.0
+	);
 
 	// ============================================================================
 	// Concurrent Execution Summary
@@ -880,10 +923,8 @@ async fn test_migration_plan_generation_scalability(
 	// 3. Batching independent migrations
 
 	// Simulate complex plan generation work
-	let mut dependency_graph: std::collections::HashMap<
-		String,
-		Vec<String>,
-	> = std::collections::HashMap::new();
+	let mut dependency_graph: std::collections::HashMap<String, Vec<String>> =
+		std::collections::HashMap::new();
 
 	for migration in &all_migrations {
 		let key = format!("{}.{}", migration.app_label, migration.name);
@@ -896,8 +937,7 @@ async fn test_migration_plan_generation_scalability(
 	}
 
 	// Perform topological sort (Kahn's algorithm)
-	let mut in_degree: std::collections::HashMap<String, usize> =
-		std::collections::HashMap::new();
+	let mut in_degree: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 	let mut adj_list: std::collections::HashMap<String, Vec<String>> =
 		std::collections::HashMap::new();
 
@@ -911,7 +951,10 @@ async fn test_migration_plan_generation_scalability(
 	// Build adjacency list and in-degree
 	for (node, deps) in &dependency_graph {
 		for dep in deps {
-			adj_list.entry(dep.clone()).or_insert_with(Vec::new).push(node.clone());
+			adj_list
+				.entry(dep.clone())
+				.or_insert_with(Vec::new)
+				.push(node.clone());
 			*in_degree.entry(node.clone()).or_insert(0) += 1;
 		}
 	}
@@ -1007,7 +1050,10 @@ async fn test_migration_plan_generation_scalability(
 	println!("\n=== Plan Generation Summary ===");
 	println!("Total migrations: {}", all_migrations.len());
 	println!("Plan generation time: {:?}", plan_duration);
-	println!("Average time per migration: {:?}", plan_duration / all_migrations.len() as u32);
+	println!(
+		"Average time per migration: {:?}",
+		plan_duration / all_migrations.len() as u32
+	);
 	println!("================================\n");
 }
 
@@ -1115,13 +1161,34 @@ async fn test_index_management_performance(
 
 		// Create 10 indexes per table (various types)
 		let index_sqls = vec![
-			format!("CREATE INDEX idx_{}_{} ON {} (col1)", table_name, "col1", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col2)", table_name, "col2", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col3)", table_name, "col3", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col4)", table_name, "col4", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col5)", table_name, "col5", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col7)", table_name, "col7", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col8)", table_name, "col8", table_name),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col1)",
+				table_name, "col1", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col2)",
+				table_name, "col2", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col3)",
+				table_name, "col3", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col4)",
+				table_name, "col4", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col5)",
+				table_name, "col5", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col7)",
+				table_name, "col7", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col8)",
+				table_name, "col8", table_name
+			),
 			format!(
 				"CREATE INDEX idx_{}_{} ON {} (col1, col2)",
 				table_name, "col1_col2", table_name
@@ -1198,13 +1265,34 @@ async fn test_index_management_performance(
 		let table_name = format!("perf_table_{}", i);
 
 		let index_sqls = vec![
-			format!("CREATE INDEX idx_{}_{} ON {} (col1)", table_name, "col1", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col2)", table_name, "col2", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col3)", table_name, "col3", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col4)", table_name, "col4", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col5)", table_name, "col5", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col7)", table_name, "col7", table_name),
-			format!("CREATE INDEX idx_{}_{} ON {} (col8)", table_name, "col8", table_name),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col1)",
+				table_name, "col1", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col2)",
+				table_name, "col2", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col3)",
+				table_name, "col3", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col4)",
+				table_name, "col4", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col5)",
+				table_name, "col5", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col7)",
+				table_name, "col7", table_name
+			),
+			format!(
+				"CREATE INDEX idx_{}_{} ON {} (col8)",
+				table_name, "col8", table_name
+			),
 			format!(
 				"CREATE INDEX idx_{}_{} ON {} (col1, col2)",
 				table_name, "col1_col2", table_name
@@ -1301,6 +1389,9 @@ async fn test_index_management_performance(
 	println!("Drop time: {:?}", drop_duration);
 	println!("Recreate time: {:?}", recreate_duration);
 	println!("Total time: {:?}", total_duration);
-	println!("Average time per index: {:?}", total_duration / total_indexes as u32);
+	println!(
+		"Average time per index: {:?}",
+		total_duration / total_indexes as u32
+	);
 	println!("=================================\n");
 }

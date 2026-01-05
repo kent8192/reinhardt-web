@@ -204,7 +204,12 @@ fn test_deep_dependency_chain_10_levels() {
 		let mut model = create_basic_model("testapp", &model_name, &table_name);
 		let fk_field_name = format!("prev_model_id");
 		add_field(&mut model, &fk_field_name, FieldType::Integer);
-		add_fk_constraint(&mut model, &fk_field_name, &prev_table_name, ForeignKeyAction::Cascade);
+		add_fk_constraint(
+			&mut model,
+			&fk_field_name,
+			&prev_table_name,
+			ForeignKeyAction::Cascade,
+		);
 
 		to_state.add_model(model);
 	}
@@ -214,7 +219,11 @@ fn test_deep_dependency_chain_10_levels() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: Dependencies detected, no circular dependencies
-	assert_eq!(detected.created_models.len(), 10, "Should detect all 10 models");
+	assert_eq!(
+		detected.created_models.len(),
+		10,
+		"Should detect all 10 models"
+	);
 	assert!(
 		!detected.check_circular_dependencies(),
 		"Should not detect circular dependency in linear chain"
@@ -251,25 +260,45 @@ fn test_complex_dependency_graph() {
 	// ModelD → E
 	let mut model_d = create_basic_model("testapp", "ModelD", "testapp_modeld");
 	add_field(&mut model_d, "e_id", FieldType::Integer);
-	add_fk_constraint(&mut model_d, "e_id", "testapp_modele", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_d,
+		"e_id",
+		"testapp_modele",
+		ForeignKeyAction::Cascade,
+	);
 	to_state.add_model(model_d);
 
 	// ModelC → D
 	let mut model_c = create_basic_model("testapp", "ModelC", "testapp_modelc");
 	add_field(&mut model_c, "d_id", FieldType::Integer);
-	add_fk_constraint(&mut model_c, "d_id", "testapp_modeld", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_c,
+		"d_id",
+		"testapp_modeld",
+		ForeignKeyAction::Cascade,
+	);
 	to_state.add_model(model_c);
 
 	// ModelA → C
 	let mut model_a = create_basic_model("testapp", "ModelA", "testapp_modela");
 	add_field(&mut model_a, "c_id", FieldType::Integer);
-	add_fk_constraint(&mut model_a, "c_id", "testapp_modelc", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_a,
+		"c_id",
+		"testapp_modelc",
+		ForeignKeyAction::Cascade,
+	);
 	to_state.add_model(model_a);
 
 	// ModelB → C
 	let mut model_b = create_basic_model("testapp", "ModelB", "testapp_modelb");
 	add_field(&mut model_b, "c_id", FieldType::Integer);
-	add_fk_constraint(&mut model_b, "c_id", "testapp_modelc", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_b,
+		"c_id",
+		"testapp_modelc",
+		ForeignKeyAction::Cascade,
+	);
 	to_state.add_model(model_b);
 
 	// Execute autodetector
@@ -277,7 +306,11 @@ fn test_complex_dependency_graph() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: All models detected, no circular dependencies
-	assert_eq!(detected.created_models.len(), 5, "Should detect all 5 models");
+	assert_eq!(
+		detected.created_models.len(),
+		5,
+		"Should detect all 5 models"
+	);
 	assert!(
 		!detected.check_circular_dependencies(),
 		"Should not detect circular dependency in DAG"
@@ -285,7 +318,10 @@ fn test_complex_dependency_graph() {
 
 	// Verify dependency ordering is correct
 	let ordered = detected.order_models_by_dependency();
-	assert!(ordered.is_ok(), "Should successfully order models by dependency");
+	assert!(
+		ordered.is_ok(),
+		"Should successfully order models by dependency"
+	);
 }
 
 // ============================================================================
@@ -313,28 +349,58 @@ fn test_multiple_circular_dependencies() {
 	// Group 1: Cycle A → B → C → A
 	let mut model_a = create_basic_model("testapp", "ModelA", "testapp_modela");
 	add_field(&mut model_a, "b_id", FieldType::Integer);
-	add_fk_constraint(&mut model_a, "b_id", "testapp_modelb", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_a,
+		"b_id",
+		"testapp_modelb",
+		ForeignKeyAction::Cascade,
+	);
 
 	let mut model_b = create_basic_model("testapp", "ModelB", "testapp_modelb");
 	add_field(&mut model_b, "c_id", FieldType::Integer);
-	add_fk_constraint(&mut model_b, "c_id", "testapp_modelc", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_b,
+		"c_id",
+		"testapp_modelc",
+		ForeignKeyAction::Cascade,
+	);
 
 	let mut model_c = create_basic_model("testapp", "ModelC", "testapp_modelc");
 	add_field(&mut model_c, "a_id", FieldType::Integer);
-	add_fk_constraint(&mut model_c, "a_id", "testapp_modela", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_c,
+		"a_id",
+		"testapp_modela",
+		ForeignKeyAction::Cascade,
+	);
 
 	// Group 2: Cycle X → Y → Z → X
 	let mut model_x = create_basic_model("testapp", "ModelX", "testapp_modelx");
 	add_field(&mut model_x, "y_id", FieldType::Integer);
-	add_fk_constraint(&mut model_x, "y_id", "testapp_modely", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_x,
+		"y_id",
+		"testapp_modely",
+		ForeignKeyAction::Cascade,
+	);
 
 	let mut model_y = create_basic_model("testapp", "ModelY", "testapp_modely");
 	add_field(&mut model_y, "z_id", FieldType::Integer);
-	add_fk_constraint(&mut model_y, "z_id", "testapp_modelz", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_y,
+		"z_id",
+		"testapp_modelz",
+		ForeignKeyAction::Cascade,
+	);
 
 	let mut model_z = create_basic_model("testapp", "ModelZ", "testapp_modelz");
 	add_field(&mut model_z, "x_id", FieldType::Integer);
-	add_fk_constraint(&mut model_z, "x_id", "testapp_modelx", ForeignKeyAction::Cascade);
+	add_fk_constraint(
+		&mut model_z,
+		"x_id",
+		"testapp_modelx",
+		ForeignKeyAction::Cascade,
+	);
 
 	to_state.add_model(model_a);
 	to_state.add_model(model_b);
@@ -435,10 +501,13 @@ fn test_mysql_specific_types() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: Model creation and field addition detected
-	assert_eq!(detected.created_models.len(), 1, "Should detect model creation");
 	assert_eq!(
-		detected.created_models[0].1,
-		"Status",
+		detected.created_models.len(),
+		1,
+		"Should detect model creation"
+	);
+	assert_eq!(
+		detected.created_models[0].1, "Status",
 		"Should detect Status model"
 	);
 
@@ -692,16 +761,16 @@ fn test_sql_reserved_word_table_name() {
 
 	// Common SQL reserved words
 	let reserved_words = vec![
-		("Select", "select"),      // SELECT
-		("Table", "table"),        // TABLE
-		("Where", "where"),        // WHERE
-		("Join", "join"),          // JOIN
-		("Order", "order"),        // ORDER
-		("Group", "group"),        // GROUP
-		("Insert", "insert"),      // INSERT
-		("Update", "update"),      // UPDATE
-		("Delete", "delete"),      // DELETE
-		("Create", "create"),      // CREATE
+		("Select", "select"), // SELECT
+		("Table", "table"),   // TABLE
+		("Where", "where"),   // WHERE
+		("Join", "join"),     // JOIN
+		("Order", "order"),   // ORDER
+		("Group", "group"),   // GROUP
+		("Insert", "insert"), // INSERT
+		("Update", "update"), // UPDATE
+		("Delete", "delete"), // DELETE
+		("Create", "create"), // CREATE
 	];
 
 	for (model_name, table_name) in reserved_words {
@@ -763,11 +832,31 @@ fn test_special_characters_in_names() {
 
 	// Field names with special characters
 	// Note: Some databases have restrictions on allowed characters
-	add_field(&mut special_model, "field_with_underscore", FieldType::VarChar(100));
-	add_field(&mut special_model, "field-with-dash", FieldType::VarChar(100));
-	add_field(&mut special_model, "field.with.dot", FieldType::VarChar(100));
-	add_field(&mut special_model, "field with space", FieldType::VarChar(100));
-	add_field(&mut special_model, "field$with$dollar", FieldType::VarChar(100));
+	add_field(
+		&mut special_model,
+		"field_with_underscore",
+		FieldType::VarChar(100),
+	);
+	add_field(
+		&mut special_model,
+		"field-with-dash",
+		FieldType::VarChar(100),
+	);
+	add_field(
+		&mut special_model,
+		"field.with.dot",
+		FieldType::VarChar(100),
+	);
+	add_field(
+		&mut special_model,
+		"field with space",
+		FieldType::VarChar(100),
+	);
+	add_field(
+		&mut special_model,
+		"field$with$dollar",
+		FieldType::VarChar(100),
+	);
 
 	to_state.add_model(special_model);
 
@@ -923,7 +1012,9 @@ fn test_abstract_base_model_change() {
 
 	// Abstract base model (not a table)
 	let mut timestamped_model = create_basic_model("testapp", "Timestamped", "");
-	timestamped_model.options.insert("abstract".to_string(), "true".to_string());
+	timestamped_model
+		.options
+		.insert("abstract".to_string(), "true".to_string());
 	add_field(&mut timestamped_model, "created_at", FieldType::Timestamp);
 	add_field(&mut timestamped_model, "updated_at", FieldType::Timestamp);
 	to_state.add_model(timestamped_model);
@@ -973,7 +1064,9 @@ fn test_abstract_base_model_change() {
 	let mut from_state_2 = ProjectState::new();
 
 	let mut timestamped_model = create_basic_model("testapp", "Timestamped", "");
-	timestamped_model.options.insert("abstract".to_string(), "true".to_string());
+	timestamped_model
+		.options
+		.insert("abstract".to_string(), "true".to_string());
 	add_field(&mut timestamped_model, "created_at", FieldType::Timestamp);
 	add_field(&mut timestamped_model, "updated_at", FieldType::Timestamp);
 	from_state_2.add_model(timestamped_model);

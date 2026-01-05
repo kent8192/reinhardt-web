@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -117,7 +116,10 @@ async fn test_large_scale_schema_changes(
 	let num_tables = 100;
 	let fields_per_table = 5;
 
-	println!("Creating {} tables with {} fields each...", num_tables, fields_per_table);
+	println!(
+		"Creating {} tables with {} fields each...",
+		num_tables, fields_per_table
+	);
 
 	let conn = DatabaseConnection::connect(&url, DatabaseType::Postgres)
 		.await
@@ -197,7 +199,11 @@ async fn test_large_scale_schema_changes(
 
 		let add_column_migration = create_test_migration(
 			"testapp",
-			leak_str(format!("{:04}_add_created_at_{}", num_tables + table_idx + 1, table_idx)),
+			leak_str(format!(
+				"{:04}_add_created_at_{}",
+				num_tables + table_idx + 1,
+				table_idx
+			)),
 			vec![Operation::AddColumn {
 				table: table_name,
 				column: ColumnDefinition {
@@ -220,7 +226,10 @@ async fn test_large_scale_schema_changes(
 	}
 
 	let bulk_change_duration = bulk_change_start.elapsed();
-	println!("Bulk column addition completed in {:?}", bulk_change_duration);
+	println!(
+		"Bulk column addition completed in {:?}",
+		bulk_change_duration
+	);
 
 	// ============================================================================
 	// Assert: Verify bulk changes
@@ -332,7 +341,10 @@ async fn test_composite_foreign_keys_migration(
 			columns: vec![
 				create_not_null_column("order_id", FieldType::Integer),
 				create_not_null_column("customer_id", FieldType::Integer),
-				create_basic_column("total_amount", FieldType::Custom("DECIMAL(10, 2)".to_string())),
+				create_basic_column(
+					"total_amount",
+					FieldType::Custom("DECIMAL(10, 2)".to_string()),
+				),
 				create_basic_column("status", FieldType::VarChar(Some(20))),
 			],
 		}],
@@ -418,14 +430,16 @@ async fn test_composite_foreign_keys_migration(
 	assert_eq!(fk_constraint_count, 1, "Composite FK should exist");
 
 	// Test referential integrity: Insert valid order
-	sqlx::query("INSERT INTO orders (order_id, customer_id, total_amount, status) VALUES ($1, $2, $3, $4)")
-		.bind(1001)
-		.bind(5001)
-		.bind(199.99)
-		.bind("pending")
-		.execute(&*pool)
-		.await
-		.expect("Failed to insert order");
+	sqlx::query(
+		"INSERT INTO orders (order_id, customer_id, total_amount, status) VALUES ($1, $2, $3, $4)",
+	)
+	.bind(1001)
+	.bind(5001)
+	.bind(199.99)
+	.bind("pending")
+	.execute(&*pool)
+	.await
+	.expect("Failed to insert order");
 
 	// Test referential integrity: Insert valid order item (matching FK)
 	let valid_item_result = sqlx::query(
@@ -471,15 +485,13 @@ async fn test_composite_foreign_keys_migration(
 	);
 
 	// Verify data integrity
-	let order_items_count: i64 =
-		sqlx::query_scalar("SELECT COUNT(*) FROM order_items WHERE order_id = 1001 AND customer_id = 5001")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to count order items");
-	assert_eq!(
-		order_items_count, 1,
-		"Should have 1 valid order item"
-	);
+	let order_items_count: i64 = sqlx::query_scalar(
+		"SELECT COUNT(*) FROM order_items WHERE order_id = 1001 AND customer_id = 5001",
+	)
+	.fetch_one(&*pool)
+	.await
+	.expect("Failed to count order items");
+	assert_eq!(order_items_count, 1, "Should have 1 valid order item");
 
 	// Test composite key uniqueness: Attempt duplicate order
 	let duplicate_order_result = sqlx::query(
@@ -517,7 +529,10 @@ async fn test_composite_foreign_keys_migration(
 		.fetch_one(&*pool)
 		.await
 		.expect("Failed to count orders");
-	assert_eq!(total_orders, 2, "Should have 2 orders with different composite keys");
+	assert_eq!(
+		total_orders, 2,
+		"Should have 2 orders with different composite keys"
+	);
 }
 
 // ============================================================================
@@ -728,7 +743,10 @@ async fn test_circular_dependencies_with_data(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to count department FK constraints");
-	assert_eq!(dept_fk_count, 1, "departments table should have 1 FK constraint");
+	assert_eq!(
+		dept_fk_count, 1,
+		"departments table should have 1 FK constraint"
+	);
 
 	// Verify data integrity: All users have valid department_id
 	let users_with_valid_dept: i64 = sqlx::query_scalar(
@@ -1087,7 +1105,10 @@ async fn test_spatial_data_types_migration(
 					default: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
-				create_basic_column("point", FieldType::Custom("GEOMETRY(Point, 4326)".to_string())),
+				create_basic_column(
+					"point",
+					FieldType::Custom("GEOMETRY(Point, 4326)".to_string()),
+				),
 			],
 		}],
 	);
@@ -1513,11 +1534,12 @@ async fn test_composite_primary_key_creation(
 	);
 
 	// Verify CASCADE DELETE: Delete order item should cascade to notes
-	let delete_item = sqlx::query("DELETE FROM order_items WHERE order_id = $1 AND line_number = $2")
-		.bind(1)
-		.bind(1)
-		.execute(&*pool)
-		.await;
+	let delete_item =
+		sqlx::query("DELETE FROM order_items WHERE order_id = $1 AND line_number = $2")
+			.bind(1)
+			.bind(1)
+			.execute(&*pool)
+			.await;
 	assert!(delete_item.is_ok(), "Should delete order item successfully");
 
 	// Verify note was cascaded
@@ -1609,11 +1631,12 @@ async fn test_composite_primary_key_creation(
 		.expect("Failed to tag product 2 with tag 2");
 
 	// Attempt duplicate (product_id=1, tag_id=1) - should FAIL
-	let duplicate_tag = sqlx::query("INSERT INTO product_tags (product_id, tag_id) VALUES ($1, $2)")
-		.bind(1)
-		.bind(1)
-		.execute(&*pool)
-		.await;
+	let duplicate_tag =
+		sqlx::query("INSERT INTO product_tags (product_id, tag_id) VALUES ($1, $2)")
+			.bind(1)
+			.bind(1)
+			.execute(&*pool)
+			.await;
 	assert!(
 		duplicate_tag.is_err(),
 		"Should FAIL to create duplicate product-tag association"
@@ -1630,23 +1653,21 @@ async fn test_composite_primary_key_creation(
 	);
 
 	// Verify many-to-many query: Product 1 has 2 tags
-	let product1_tags: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM product_tags WHERE product_id = $1",
-	)
-	.bind(1)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to count product 1 tags");
+	let product1_tags: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM product_tags WHERE product_id = $1")
+			.bind(1)
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count product 1 tags");
 	assert_eq!(product1_tags, 2, "Product 1 should have 2 tags");
 
 	// Verify many-to-many query: Tag 2 is used by 2 products
-	let tag2_products: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM product_tags WHERE tag_id = $1",
-	)
-	.bind(2)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to count tag 2 products");
+	let tag2_products: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM product_tags WHERE tag_id = $1")
+			.bind(2)
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count tag 2 products");
 	assert_eq!(tag2_products, 2, "Tag 2 should be used by 2 products");
 
 	// ============================================================================
@@ -1752,7 +1773,9 @@ async fn test_composite_primary_key_creation(
 
 	println!("\n=== Composite Primary Key Test Summary ===");
 	println!("✓ 2-column composite PK (order_id, line_number): created and enforced");
-	println!("✓ Uniqueness constraint: individual columns can duplicate, combination must be unique");
+	println!(
+		"✓ Uniqueness constraint: individual columns can duplicate, combination must be unique"
+	);
 	println!("✓ Foreign key referencing composite PK: functional");
 	println!("✓ CASCADE DELETE through composite FK: functional");
 	println!("✓ Many-to-many with composite PK: functional");

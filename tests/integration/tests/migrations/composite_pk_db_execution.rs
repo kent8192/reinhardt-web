@@ -3,9 +3,9 @@
 //! Tests actual DDL execution on PostgreSQL for composite primary key tables.
 
 use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-use reinhardt_migrations::operations::models::CreateModel;
-use reinhardt_migrations::operations::FieldDefinition;
 use reinhardt_migrations::FieldType;
+use reinhardt_migrations::operations::FieldDefinition;
+use reinhardt_migrations::operations::models::CreateModel;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;

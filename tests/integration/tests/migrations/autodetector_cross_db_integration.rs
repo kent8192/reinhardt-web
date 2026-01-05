@@ -197,7 +197,11 @@ fn test_detect_add_composite_primary_key() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: id field deletion, new field addition, and composite PK constraint addition are detected
-	assert_eq!(detected.removed_fields.len(), 1, "Should detect id field removal");
+	assert_eq!(
+		detected.removed_fields.len(),
+		1,
+		"Should detect id field removal"
+	);
 	assert_eq!(
 		detected.added_fields.len(),
 		2,
@@ -208,7 +212,10 @@ fn test_detect_add_composite_primary_key() {
 		1,
 		"Should detect composite PK constraint addition"
 	);
-	assert_eq!(detected.added_constraints[0].2.constraint_type, "PrimaryKey");
+	assert_eq!(
+		detected.added_constraints[0].2.constraint_type,
+		"PrimaryKey"
+	);
 	assert_eq!(detected.added_constraints[0].2.fields.len(), 2);
 }
 
@@ -284,7 +291,12 @@ fn test_detect_modify_composite_primary_key() {
 
 	// New PK contains 3 fields
 	assert_eq!(detected.added_constraints[0].2.fields.len(), 3);
-	assert!(detected.added_constraints[0].2.fields.contains(&"line_number".to_string()));
+	assert!(
+		detected.added_constraints[0]
+			.2
+			.fields
+			.contains(&"line_number".to_string())
+	);
 }
 
 // ============================================================================
@@ -328,13 +340,20 @@ fn test_cross_db_composite_pk_behavior() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: Model creation and composite PK constraint are detected
-	assert_eq!(detected.created_models.len(), 1, "Should detect model creation");
+	assert_eq!(
+		detected.created_models.len(),
+		1,
+		"Should detect model creation"
+	);
 	assert_eq!(
 		detected.added_constraints.len(),
 		1,
 		"Should detect composite PK constraint"
 	);
-	assert_eq!(detected.added_constraints[0].2.constraint_type, "PrimaryKey");
+	assert_eq!(
+		detected.added_constraints[0].2.constraint_type,
+		"PrimaryKey"
+	);
 	assert_eq!(
 		detected.added_constraints[0].2.fields,
 		vec!["user_id".to_string(), "role_id".to_string()]
@@ -410,7 +429,11 @@ fn test_composite_pk_with_other_constraints() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: All constraints are detected
-	assert_eq!(detected.created_models.len(), 1, "Should detect model creation");
+	assert_eq!(
+		detected.created_models.len(),
+		1,
+		"Should detect model creation"
+	);
 	assert_eq!(
 		detected.added_constraints.len(),
 		3,

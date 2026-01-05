@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -186,10 +185,7 @@ async fn test_custom_operation_integration(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query function existence");
-	assert_eq!(
-		function_exists, 1,
-		"Custom partition function should exist"
-	);
+	assert_eq!(function_exists, 1, "Custom partition function should exist");
 
 	// Verify trigger exists
 	let trigger_exists: i64 = sqlx::query_scalar(
@@ -201,14 +197,12 @@ async fn test_custom_operation_integration(
 	assert_eq!(trigger_exists, 1, "Custom trigger should exist");
 
 	// Test trigger functionality: Insert test data
-	sqlx::query(
-		"INSERT INTO events (event_type, event_data, created_at) VALUES ($1, $2, NOW())",
-	)
-	.bind("user.login")
-	.bind("{\"user_id\": 123}")
-	.execute(&*pool)
-	.await
-	.expect("Failed to insert event");
+	sqlx::query("INSERT INTO events (event_type, event_data, created_at) VALUES ($1, $2, NOW())")
+		.bind("user.login")
+		.bind("{\"user_id\": 123}")
+		.execute(&*pool)
+		.await
+		.expect("Failed to insert event");
 
 	let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
 		.fetch_one(&*pool)
@@ -415,7 +409,10 @@ async fn test_data_migration_patterns(
 		}
 	}
 
-	println!("Data migration completed: {} batches processed", num_batches);
+	println!(
+		"Data migration completed: {} batches processed",
+		num_batches
+	);
 
 	// ============================================================================
 	// Assert: Verify data migration correctness
@@ -435,12 +432,11 @@ async fn test_data_migration_patterns(
 	);
 
 	// Verify sample data correctness
-	let sample_user: (String, String, String) = sqlx::query_as(
-		"SELECT full_name, first_name, last_name FROM users WHERE id = 1",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch sample user");
+	let sample_user: (String, String, String) =
+		sqlx::query_as("SELECT full_name, first_name, last_name FROM users WHERE id = 1")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch sample user");
 
 	assert_eq!(sample_user.0, "FirstName1 LastName1");
 	assert_eq!(sample_user.1, "FirstName1");
@@ -544,7 +540,10 @@ async fn test_complex_data_transformation(
 				},
 				create_basic_column("item_name", FieldType::VarChar(Some(200))),
 				create_basic_column("item_category", FieldType::VarChar(Some(50))),
-				create_basic_column("item_price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
+				create_basic_column(
+					"item_price",
+					FieldType::Custom("DECIMAL(10, 2)".to_string()),
+				),
 				create_basic_column("quantity", FieldType::Integer),
 			],
 		}],
@@ -557,11 +556,11 @@ async fn test_complex_data_transformation(
 
 	// Insert test orders with different categories
 	let test_orders = vec![
-		("Widget", "electronics", 99.99, 2), // 10% tax
-		("Book", "books", 29.99, 3),         // 5% tax
-		("Food", "groceries", 15.50, 5),     // 8% tax
+		("Widget", "electronics", 99.99, 2),   // 10% tax
+		("Book", "books", 29.99, 3),           // 5% tax
+		("Food", "groceries", 15.50, 5),       // 8% tax
 		("Laptop", "electronics", 1299.99, 1), // 10% tax
-		("Magazine", "books", 9.99, 2),      // 5% tax
+		("Magazine", "books", 9.99, 2),        // 5% tax
 	];
 
 	for (name, category, price, qty) in test_orders {
@@ -588,12 +587,18 @@ async fn test_complex_data_transformation(
 		vec![
 			Operation::AddColumn {
 				table: leak_str("orders").to_string(),
-				column: create_basic_column("tax_rate", FieldType::Custom("DECIMAL(5, 4)".to_string())),
+				column: create_basic_column(
+					"tax_rate",
+					FieldType::Custom("DECIMAL(5, 4)".to_string()),
+				),
 				mysql_options: None,
 			},
 			Operation::AddColumn {
 				table: leak_str("orders").to_string(),
-				column: create_basic_column("total_price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
+				column: create_basic_column(
+					"total_price",
+					FieldType::Custom("DECIMAL(10, 2)".to_string()),
+				),
 				mysql_options: None,
 			},
 		],
@@ -618,12 +623,10 @@ async fn test_complex_data_transformation(
 	.expect("Failed to set tax rates");
 
 	// Calculate total price: (item_price * quantity) * (1 + tax_rate)
-	sqlx::query(
-		"UPDATE orders SET total_price = (item_price * quantity) * (1 + tax_rate)",
-	)
-	.execute(&*pool)
-	.await
-	.expect("Failed to calculate total prices");
+	sqlx::query("UPDATE orders SET total_price = (item_price * quantity) * (1 + tax_rate)")
+		.execute(&*pool)
+		.await
+		.expect("Failed to calculate total prices");
 
 	// ============================================================================
 	// Assert: Verify complex transformation results
@@ -636,7 +639,10 @@ async fn test_complex_data_transformation(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to count completed orders");
-	assert_eq!(completed_orders, 5, "All 5 orders should have calculated prices");
+	assert_eq!(
+		completed_orders, 5,
+		"All 5 orders should have calculated prices"
+	);
 
 	// Verify specific calculations
 	// Widget: 99.99 * 2 * 1.10 = 219.978 ≈ 219.98
@@ -664,11 +670,12 @@ async fn test_complex_data_transformation(
 	);
 
 	// Verify tax rates by category
-	let electronics_tax: f64 =
-		sqlx::query_scalar("SELECT tax_rate FROM orders WHERE item_category = 'electronics' LIMIT 1")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to fetch electronics tax rate");
+	let electronics_tax: f64 = sqlx::query_scalar(
+		"SELECT tax_rate FROM orders WHERE item_category = 'electronics' LIMIT 1",
+	)
+	.fetch_one(&*pool)
+	.await
+	.expect("Failed to fetch electronics tax rate");
 	assert!(
 		(electronics_tax - 0.10).abs() < 0.0001,
 		"Electronics tax should be 0.10"
@@ -685,11 +692,10 @@ async fn test_complex_data_transformation(
 	);
 
 	// Verify total revenue calculation
-	let total_revenue: f64 =
-		sqlx::query_scalar("SELECT SUM(total_price) FROM orders")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to calculate total revenue");
+	let total_revenue: f64 = sqlx::query_scalar("SELECT SUM(total_price) FROM orders")
+		.fetch_one(&*pool)
+		.await
+		.expect("Failed to calculate total revenue");
 
 	// Expected: 219.978 + 94.4685 + 83.7 + 1429.989 + 20.9790 = 1849.1145
 	assert!(
@@ -831,34 +837,31 @@ async fn test_external_configuration_integration(
 	// ============================================================================
 
 	// Verify each tenant has correct retention policy
-	let tenant_a_retention: i32 = sqlx::query_scalar(
-		"SELECT data_retention_days FROM tenants WHERE name = 'Tenant A'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch Tenant A retention");
+	let tenant_a_retention: i32 =
+		sqlx::query_scalar("SELECT data_retention_days FROM tenants WHERE name = 'Tenant A'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch Tenant A retention");
 	assert_eq!(
 		tenant_a_retention, 90,
 		"Tenant A (premium) should have 90 days retention"
 	);
 
-	let tenant_b_retention: i32 = sqlx::query_scalar(
-		"SELECT data_retention_days FROM tenants WHERE name = 'Tenant B'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch Tenant B retention");
+	let tenant_b_retention: i32 =
+		sqlx::query_scalar("SELECT data_retention_days FROM tenants WHERE name = 'Tenant B'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch Tenant B retention");
 	assert_eq!(
 		tenant_b_retention, 30,
 		"Tenant B (free) should have 30 days retention"
 	);
 
-	let tenant_c_retention: i32 = sqlx::query_scalar(
-		"SELECT data_retention_days FROM tenants WHERE name = 'Tenant C'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch Tenant C retention");
+	let tenant_c_retention: i32 =
+		sqlx::query_scalar("SELECT data_retention_days FROM tenants WHERE name = 'Tenant C'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch Tenant C retention");
 	assert_eq!(
 		tenant_c_retention, 365,
 		"Tenant C (enterprise) should have 365 days retention"
@@ -885,12 +888,11 @@ async fn test_external_configuration_integration(
 	.await
 	.expect("Failed to set Tenant D retention");
 
-	let tenant_d_retention: i32 = sqlx::query_scalar(
-		"SELECT data_retention_days FROM tenants WHERE name = 'Tenant D'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch Tenant D retention");
+	let tenant_d_retention: i32 =
+		sqlx::query_scalar("SELECT data_retention_days FROM tenants WHERE name = 'Tenant D'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch Tenant D retention");
 	assert_eq!(
 		tenant_d_retention, 30,
 		"Tenant D (unknown tier) should have 30 days retention (default)"
@@ -976,10 +978,26 @@ async fn test_future_extensibility_patterns(
 
 	// Store metadata for various migration scenarios
 	let metadata_entries = vec![
-		("0001_initial_schema", "1.0.0", r#"{"type": "schema", "critical": true}"#),
-		("0002_add_users", "1.1.0", r#"{"type": "feature", "reversible": true}"#),
-		("0003_add_indexes", "1.1.1", r#"{"type": "performance", "async": true}"#),
-		("0004_data_migration", "1.2.0", r#"{"type": "data", "batch_size": 1000}"#),
+		(
+			"0001_initial_schema",
+			"1.0.0",
+			r#"{"type": "schema", "critical": true}"#,
+		),
+		(
+			"0002_add_users",
+			"1.1.0",
+			r#"{"type": "feature", "reversible": true}"#,
+		),
+		(
+			"0003_add_indexes",
+			"1.1.1",
+			r#"{"type": "performance", "async": true}"#,
+		),
+		(
+			"0004_data_migration",
+			"1.2.0",
+			r#"{"type": "data", "batch_size": 1000}"#,
+		),
 	];
 
 	for (name, version, metadata) in metadata_entries {
@@ -1000,11 +1018,10 @@ async fn test_future_extensibility_patterns(
 	// ============================================================================
 
 	// Verify all metadata entries stored
-	let metadata_count: i64 =
-		sqlx::query_scalar("SELECT COUNT(*) FROM migration_metadata")
-			.fetch_one(&*pool)
-			.await
-			.expect("Failed to count metadata entries");
+	let metadata_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM migration_metadata")
+		.fetch_one(&*pool)
+		.await
+		.expect("Failed to count metadata entries");
 	assert_eq!(metadata_count, 4, "Should have 4 metadata entries");
 
 	// Query by schema version
@@ -1038,16 +1055,20 @@ async fn test_future_extensibility_patterns(
 	);
 
 	// Test future extension: Add new metadata field without breaking existing
-	sqlx::query("ALTER TABLE migration_metadata ADD COLUMN IF NOT EXISTS execution_time_ms INTEGER")
-		.execute(&*pool)
-		.await
-		.expect("Failed to add execution_time_ms column");
+	sqlx::query(
+		"ALTER TABLE migration_metadata ADD COLUMN IF NOT EXISTS execution_time_ms INTEGER",
+	)
+	.execute(&*pool)
+	.await
+	.expect("Failed to add execution_time_ms column");
 
 	// Update existing records with new field (backward compatible)
-	sqlx::query("UPDATE migration_metadata SET execution_time_ms = 100 WHERE execution_time_ms IS NULL")
-		.execute(&*pool)
-		.await
-		.expect("Failed to set default execution times");
+	sqlx::query(
+		"UPDATE migration_metadata SET execution_time_ms = 100 WHERE execution_time_ms IS NULL",
+	)
+	.execute(&*pool)
+	.await
+	.expect("Failed to set default execution times");
 
 	// Verify new field added without breaking existing data
 	let migrations_with_timing: i64 = sqlx::query_scalar(

@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 	recorder::DatabaseMigrationRecorder,
 };
 use reinhardt_test::fixtures::postgres_container;
@@ -743,10 +742,7 @@ async fn test_database_connection_loss_recovery(
 	);
 
 	// Stop the container to simulate connection loss
-	container
-		.stop()
-		.await
-		.expect("Failed to stop container");
+	container.stop().await.expect("Failed to stop container");
 
 	// Attempt to apply migration (should fail with connection error)
 	let result = executor.apply_migration(&migration_during_loss).await;
@@ -957,7 +953,10 @@ async fn test_irreversible_operation_error_handling(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query logs table");
-	assert_eq!(logs_table_exists, 1, "logs table should exist after migration");
+	assert_eq!(
+		logs_table_exists, 1,
+		"logs table should exist after migration"
+	);
 
 	// Insert test log
 	sqlx::query("INSERT INTO logs (message) VALUES ($1)")
@@ -1021,10 +1020,7 @@ async fn test_irreversible_operation_error_handling(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query users table");
-	assert_eq!(
-		users_still_exists, 1,
-		"users table should still exist"
-	);
+	assert_eq!(users_still_exists, 1, "users table should still exist");
 
 	let user_count_after_rollback: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
 		.fetch_one(&*pool)
@@ -1110,10 +1106,7 @@ async fn test_irreversible_operation_error_handling(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query index after rollback");
-	assert_eq!(
-		index_removed, 0,
-		"Index should be removed after rollback"
-	);
+	assert_eq!(index_removed, 0, "Index should be removed after rollback");
 
 	// ============================================================================
 	// Irreversible operation error handling verification summary

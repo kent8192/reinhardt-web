@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -338,10 +337,12 @@ async fn test_complex_constraint_detection(
 		.expect("Failed to add deleted_at column");
 
 	// Add conditional UNIQUE index: UNIQUE(sku) WHERE deleted_at IS NULL
-	sqlx::query("CREATE UNIQUE INDEX idx_products_sku_active ON products(sku) WHERE deleted_at IS NULL")
-		.execute(&*pool)
-		.await
-		.expect("Failed to create conditional UNIQUE index");
+	sqlx::query(
+		"CREATE UNIQUE INDEX idx_products_sku_active ON products(sku) WHERE deleted_at IS NULL",
+	)
+	.execute(&*pool)
+	.await
+	.expect("Failed to create conditional UNIQUE index");
 
 	// ============================================================================
 	// Assert: Verify constraint detection
@@ -355,10 +356,7 @@ async fn test_complex_constraint_detection(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to count CHECK constraints");
-	assert_eq!(
-		check_constraint_count, 1,
-		"CHECK constraint should exist"
-	);
+	assert_eq!(check_constraint_count, 1, "CHECK constraint should exist");
 
 	// Verify CHECK constraint definition
 	let check_definition: String = sqlx::query_scalar(
@@ -407,33 +405,24 @@ async fn test_complex_constraint_detection(
 	// ============================================================================
 
 	// Test CHECK constraint: positive price allowed
-	let valid_insert = sqlx::query(
-		"INSERT INTO products (price, sku) VALUES ($1, $2)",
-	)
-	.bind(19.99)
-	.bind("SKU001")
-	.execute(&*pool)
-	.await;
-	assert!(
-		valid_insert.is_ok(),
-		"Should allow positive price"
-	);
+	let valid_insert = sqlx::query("INSERT INTO products (price, sku) VALUES ($1, $2)")
+		.bind(19.99)
+		.bind("SKU001")
+		.execute(&*pool)
+		.await;
+	assert!(valid_insert.is_ok(), "Should allow positive price");
 
 	// Test CHECK constraint: negative price rejected
-	let invalid_insert = sqlx::query(
-		"INSERT INTO products (price, sku) VALUES ($1, $2)",
-	)
-	.bind(-10.00)
-	.bind("SKU002")
-	.execute(&*pool)
-	.await;
-	assert!(
-		invalid_insert.is_err(),
-		"Should reject negative price"
-	);
+	let invalid_insert = sqlx::query("INSERT INTO products (price, sku) VALUES ($1, $2)")
+		.bind(-10.00)
+		.bind("SKU002")
+		.execute(&*pool)
+		.await;
+	assert!(invalid_insert.is_err(), "Should reject negative price");
 	let error_msg = invalid_insert.unwrap_err().to_string();
 	assert!(
-		error_msg.contains("check_price_positive") || error_msg.contains("violates check constraint"),
+		error_msg.contains("check_price_positive")
+			|| error_msg.contains("violates check constraint"),
 		"Error should reference CHECK constraint: {}",
 		error_msg
 	);
@@ -466,12 +455,11 @@ async fn test_complex_constraint_detection(
 	);
 
 	// Verify we have 2 products with same SKU (1 active, 1 deleted)
-	let sku001_count: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM products WHERE sku = 'SKU001'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to count SKU001 products");
+	let sku001_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE sku = 'SKU001'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count SKU001 products");
 	assert_eq!(
 		sku001_count, 2,
 		"Should have 2 products with SKU001 (1 active, 1 deleted)"
@@ -649,12 +637,11 @@ async fn test_custom_type_handling(
 		.expect("Failed to insert user with 'suspended' status");
 
 	// Verify all statuses work
-	let status_counts: Vec<(String, i64)> = sqlx::query_as(
-		"SELECT status::text, COUNT(*) FROM users GROUP BY status ORDER BY status",
-	)
-	.fetch_all(&*pool)
-	.await
-	.expect("Failed to count statuses");
+	let status_counts: Vec<(String, i64)> =
+		sqlx::query_as("SELECT status::text, COUNT(*) FROM users GROUP BY status ORDER BY status")
+			.fetch_all(&*pool)
+			.await
+			.expect("Failed to count statuses");
 
 	assert_eq!(status_counts.len(), 4, "Should have 4 different statuses");
 	assert_eq!(status_counts[0].0, "active");
@@ -813,12 +800,11 @@ async fn test_implicit_dependency_detection(
 	// ============================================================================
 
 	// Verify function exists
-	let function_exists: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM pg_proc WHERE proname = 'update_timestamp'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to query function");
+	let function_exists: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM pg_proc WHERE proname = 'update_timestamp'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to query function");
 	assert_eq!(function_exists, 1, "Function should exist");
 
 	// Verify trigger exists
@@ -831,12 +817,11 @@ async fn test_implicit_dependency_detection(
 	assert_eq!(trigger_exists, 1, "Trigger should exist");
 
 	// Verify view exists
-	let view_exists: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM pg_views WHERE viewname = 'active_users'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to query view");
+	let view_exists: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM pg_views WHERE viewname = 'active_users'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to query view");
 	assert_eq!(view_exists, 1, "View should exist");
 
 	// ============================================================================
@@ -889,7 +874,10 @@ async fn test_implicit_dependency_detection(
 		.fetch_one(&*pool)
 		.await
 		.expect("Failed to count active users");
-	assert_eq!(active_count, 0, "Should have 0 active users after alice deactivation");
+	assert_eq!(
+		active_count, 0,
+		"Should have 0 active users after alice deactivation"
+	);
 
 	// ============================================================================
 	// Assert: Verify dependency detection would work
@@ -914,9 +902,7 @@ async fn test_implicit_dependency_detection(
 	// 4. Generate operations in correct order: drop view, drop trigger, drop function, drop table
 
 	// Test breaking change: Attempt to drop users table (should fail due to view dependency)
-	let drop_table_result = sqlx::query("DROP TABLE users")
-		.execute(&*pool)
-		.await;
+	let drop_table_result = sqlx::query("DROP TABLE users").execute(&*pool).await;
 
 	assert!(
 		drop_table_result.is_err(),
@@ -1062,7 +1048,11 @@ async fn test_schema_snapshot_isolation(
 	.await
 	.expect("Failed to query snapshot1 columns");
 
-	assert_eq!(snapshot1_columns.len(), 2, "Snapshot1: Should have 2 columns");
+	assert_eq!(
+		snapshot1_columns.len(),
+		2,
+		"Snapshot1: Should have 2 columns"
+	);
 	assert_eq!(snapshot1_columns[0], "id");
 	assert_eq!(snapshot1_columns[1], "username");
 
@@ -1091,7 +1081,11 @@ async fn test_schema_snapshot_isolation(
 	.await
 	.expect("Failed to query snapshot2 columns");
 
-	assert_eq!(snapshot2_columns.len(), 3, "Snapshot2: Should have 3 columns");
+	assert_eq!(
+		snapshot2_columns.len(),
+		3,
+		"Snapshot2: Should have 3 columns"
+	);
 
 	// Thread 2: Add phone column (concurrent with Thread 1)
 	let add_phone_migration = create_test_migration(
@@ -1118,7 +1112,11 @@ async fn test_schema_snapshot_isolation(
 	.await
 	.expect("Failed to query snapshot3 columns");
 
-	assert_eq!(snapshot3_columns.len(), 4, "Snapshot3: Should have 4 columns");
+	assert_eq!(
+		snapshot3_columns.len(),
+		4,
+		"Snapshot3: Should have 4 columns"
+	);
 	assert_eq!(snapshot3_columns[0], "id");
 	assert_eq!(snapshot3_columns[1], "username");
 	assert_eq!(snapshot3_columns[2], "email");
@@ -1135,12 +1133,11 @@ async fn test_schema_snapshot_isolation(
 	// - Conflict resolution happens at migration application time, not detection time
 
 	// Check migration history shows both migrations
-	let migration_count: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM django_migrations WHERE app = 'auth'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to count migrations");
+	let migration_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM django_migrations WHERE app = 'auth'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count migrations");
 
 	assert_eq!(
 		migration_count, 3,
@@ -1167,12 +1164,11 @@ async fn test_schema_snapshot_isolation(
 		.await
 		.expect("Failed to insert test user");
 
-	let user: (String, String, String) = sqlx::query_as(
-		"SELECT username, email, phone FROM users WHERE username = 'alice'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.expect("Failed to fetch alice");
+	let user: (String, String, String) =
+		sqlx::query_as("SELECT username, email, phone FROM users WHERE username = 'alice'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch alice");
 
 	assert_eq!(user.0, "alice");
 	assert_eq!(user.1, "alice@example.com");

@@ -15,12 +15,12 @@
 //! - Tests migration executability on real databases
 
 use reinhardt_backends::DatabaseConnection;
+use reinhardt_migrations::schema_diff::{ColumnSchema, DatabaseSchema, TableSchema};
 use reinhardt_migrations::{
-	AutoMigrationGenerator, ColumnDefinition, FieldType, FilesystemRepository,
-	FilesystemSource, Migration, MigrationNamer, MigrationNumbering, MigrationService, Operation,
+	AutoMigrationGenerator, ColumnDefinition, FieldType, FilesystemRepository, FilesystemSource,
+	Migration, MigrationNamer, MigrationNumbering, MigrationService, Operation,
 	autodetector::ProjectState,
 };
-use reinhardt_migrations::schema_diff::{ColumnSchema, DatabaseSchema, TableSchema};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;
@@ -29,8 +29,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use testcontainers::ContainerAsync;
-use testcontainers::core::WaitFor;
 use testcontainers::GenericImage;
+use testcontainers::core::WaitFor;
 use tokio::sync::Mutex;
 
 // ============================================================================
@@ -88,7 +88,11 @@ fn create_todos_schema() -> DatabaseSchema {
 }
 
 /// Verify that a migration file exists at the specified path
-fn verify_migration_file_exists(migrations_dir: &Path, app_label: &str, expected_number: &str) -> bool {
+fn verify_migration_file_exists(
+	migrations_dir: &Path,
+	app_label: &str,
+	expected_number: &str,
+) -> bool {
 	let app_dir = migrations_dir.join(app_label);
 	if !app_dir.exists() {
 		return false;
@@ -97,15 +101,13 @@ fn verify_migration_file_exists(migrations_dir: &Path, app_label: &str, expected
 	std::fs::read_dir(&app_dir)
 		.ok()
 		.and_then(|entries| {
-			entries
-				.filter_map(Result::ok)
-				.find(|entry| {
-					entry
-						.file_name()
-						.to_str()
-						.map(|name| name.starts_with(expected_number) && name.ends_with(".rs"))
-						.unwrap_or(false)
-				})
+			entries.filter_map(Result::ok).find(|entry| {
+				entry
+					.file_name()
+					.to_str()
+					.map(|name| name.starts_with(expected_number) && name.ends_with(".rs"))
+					.unwrap_or(false)
+			})
 		})
 		.is_some()
 }
@@ -180,8 +182,8 @@ async fn nc_01_new_model_creates_create_table_migration() {
 		.join(app_label)
 		.join(format!("{}.rs", migration_name));
 
-	let file_content = read_migration_file(&migration_file_path)
-		.expect("Failed to read migration file");
+	let file_content =
+		read_migration_file(&migration_file_path).expect("Failed to read migration file");
 
 	assert!(
 		file_content.contains("CreateTable"),
@@ -411,10 +413,7 @@ async fn ec_05_file_write_permission_error() {
 
 	#[cfg(unix)]
 	{
-		assert!(
-			save_result.is_err(),
-			"Should fail with permission error"
-		);
+		assert!(save_result.is_err(), "Should fail with permission error");
 		// Cleanup: restore permissions
 		let metadata = std::fs::metadata(&app_dir).unwrap();
 		let mut permissions = metadata.permissions();

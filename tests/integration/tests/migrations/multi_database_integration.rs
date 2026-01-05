@@ -18,8 +18,8 @@
 
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
-	FieldType, Migration, Operation,
+	ColumnDefinition, Constraint, FieldType, Migration, Operation,
+	executor::DatabaseMigrationExecutor, operations::SqlDialect,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -304,10 +304,12 @@ async fn test_postgres_array_type(
 	);
 
 	// Test array operations
-	sqlx::query("INSERT INTO array_table (tags, scores) VALUES (ARRAY['rust', 'django'], ARRAY[95, 88, 92])")
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to insert arrays");
+	sqlx::query(
+		"INSERT INTO array_table (tags, scores) VALUES (ARRAY['rust', 'django'], ARRAY[95, 88, 92])",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to insert arrays");
 
 	// Verify array contains operation
 	let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM array_table WHERE 'rust' = ANY(tags)")

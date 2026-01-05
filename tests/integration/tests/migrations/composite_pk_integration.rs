@@ -1,9 +1,9 @@
 //! Tests for composite primary key support in migrations
 
 use reinhardt_backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
-use reinhardt_migrations::operations::models::CreateModel;
-use reinhardt_migrations::operations::FieldDefinition;
 use reinhardt_migrations::FieldType;
+use reinhardt_migrations::operations::FieldDefinition;
+use reinhardt_migrations::operations::models::CreateModel;
 
 /// Mock schema editor for testing SQL generation
 struct MockSchemaEditor;

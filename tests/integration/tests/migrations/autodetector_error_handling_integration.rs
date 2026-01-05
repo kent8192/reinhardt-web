@@ -15,7 +15,7 @@
 //! - postgres_container: PostgreSQL database container (for DB-level validation)
 
 use reinhardt_migrations::{
-	ConstraintDefinition, FieldState, FieldType, ForeignKeyConstraintInfo, ForeignKeyAction,
+	ConstraintDefinition, FieldState, FieldType, ForeignKeyAction, ForeignKeyConstraintInfo,
 	MigrationAutodetector, ModelState, ProjectState,
 };
 use rstest::*;
@@ -58,8 +58,7 @@ fn add_fk_field(
 	let mut fk_info = BTreeMap::new();
 	fk_info.insert("referenced_table".to_string(), referenced_table.to_string());
 
-	let field_state =
-		FieldState::new(field_name.to_string(), FieldType::Integer, true, fk_info);
+	let field_state = FieldState::new(field_name.to_string(), FieldType::Integer, true, fk_info);
 
 	model.fields.insert(field_name.to_string(), field_state);
 
@@ -105,15 +104,30 @@ fn test_detect_circular_dependency_abc() {
 
 	// ModelA with FK to ModelB
 	let mut model_a = create_basic_model("testapp", "ModelA", "testapp_modela");
-	add_fk_field(&mut model_a, "b_id", "testapp_modelb", ForeignKeyAction::Cascade);
+	add_fk_field(
+		&mut model_a,
+		"b_id",
+		"testapp_modelb",
+		ForeignKeyAction::Cascade,
+	);
 
 	// ModelB with FK to ModelC
 	let mut model_b = create_basic_model("testapp", "ModelB", "testapp_modelb");
-	add_fk_field(&mut model_b, "c_id", "testapp_modelc", ForeignKeyAction::Cascade);
+	add_fk_field(
+		&mut model_b,
+		"c_id",
+		"testapp_modelc",
+		ForeignKeyAction::Cascade,
+	);
 
 	// ModelC with FK to ModelA (completing the cycle)
 	let mut model_c = create_basic_model("testapp", "ModelC", "testapp_modelc");
-	add_fk_field(&mut model_c, "a_id", "testapp_modela", ForeignKeyAction::Cascade);
+	add_fk_field(
+		&mut model_c,
+		"a_id",
+		"testapp_modela",
+		ForeignKeyAction::Cascade,
+	);
 
 	to_state.add_model(model_a);
 	to_state.add_model(model_b);
@@ -127,10 +141,7 @@ fn test_detect_circular_dependency_abc() {
 	let has_circular = detected.check_circular_dependencies();
 
 	// Verify: Circular dependency should be detected
-	assert!(
-		has_circular,
-		"Should detect circular dependency in A→B→C→A"
-	);
+	assert!(has_circular, "Should detect circular dependency in A→B→C→A");
 }
 
 // ============================================================================
@@ -400,12 +411,7 @@ fn test_incompatible_type_conversion() {
 	let mut user_model = create_basic_model("testapp", "User", "testapp_user");
 	user_model.fields.insert(
 		"bio".to_string(),
-		FieldState::new(
-			"bio".to_string(),
-			FieldType::Integer,
-			true,
-			BTreeMap::new(),
-		),
+		FieldState::new("bio".to_string(), FieldType::Integer, true, BTreeMap::new()),
 	);
 	to_state.add_model(user_model);
 
@@ -580,21 +586,25 @@ fn test_foreign_key_to_nonexistent_model() {
 	let detected = autodetector.detect_changes();
 
 	// Verify: Model creation and FK constraint addition are detected
-	assert_eq!(detected.created_models.len(), 1, "Should detect Post model creation");
+	assert_eq!(
+		detected.created_models.len(),
+		1,
+		"Should detect Post model creation"
+	);
 	assert!(
 		detected.added_constraints.len() > 0,
 		"Should detect FK constraint addition"
 	);
 
 	// Verify that FK constraint references a non-existent table
-	let has_fk_to_user = detected
-		.added_constraints
-		.iter()
-		.any(|c| c.2.constraint_type == "ForeignKey" && c.2
-			.foreign_key_info
-			.as_ref()
-			.map(|fk| fk.referenced_table == "testapp_user")
-			.unwrap_or(false));
+	let has_fk_to_user = detected.added_constraints.iter().any(|c| {
+		c.2.constraint_type == "ForeignKey"
+			&& c.2
+				.foreign_key_info
+				.as_ref()
+				.map(|fk| fk.referenced_table == "testapp_user")
+				.unwrap_or(false)
+	});
 
 	assert!(
 		has_fk_to_user,
@@ -682,7 +692,10 @@ fn test_duplicate_index_name_error() {
 		.map(|c| c.2.name.as_str())
 		.collect();
 	assert!(
-		index_names.iter().filter(|&&name| name == "idx_duplicate").count() == 2,
+		index_names
+			.iter()
+			.filter(|&&name| name == "idx_duplicate")
+			.count() == 2,
 		"Should detect duplicate index name"
 	);
 
@@ -843,7 +856,12 @@ fn test_timezone_aware_datetime_warning() {
 	options.insert("timezone".to_string(), "aware".to_string());
 	event_model.fields.insert(
 		"scheduled_at".to_string(),
-		FieldState::new("scheduled_at".to_string(), FieldType::DateTime, false, options),
+		FieldState::new(
+			"scheduled_at".to_string(),
+			FieldType::DateTime,
+			false,
+			options,
+		),
 	);
 	to_state.add_model(event_model);
 

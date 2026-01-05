@@ -18,8 +18,8 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor, recorder::DatabaseMigrationRecorder,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
+	recorder::DatabaseMigrationRecorder,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -55,7 +55,8 @@ fn create_test_migration(
 }
 
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition { name: name.to_string(),
+	ColumnDefinition {
+		name: name.to_string(),
 		type_definition: type_def,
 		not_null: false,
 		unique: false,
@@ -154,10 +155,7 @@ async fn test_unicode_and_special_character_handling(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query column count");
-	assert_eq!(
-		column_count, 4,
-		"All Unicode columns should be created"
-	);
+	assert_eq!(column_count, 4, "All Unicode columns should be created");
 
 	// Insert test data with Unicode values
 	let insert_result = sqlx::query(
@@ -698,23 +696,21 @@ async fn test_locale_specific_collation(
 	}
 
 	// Verify default sort order (UTF-8 binary)
-	let default_order: Vec<String> =
-		sqlx::query_scalar("SELECT name FROM products ORDER BY name")
-			.fetch_all(&*pool)
-			.await
-			.expect("Failed to fetch default order");
+	let default_order: Vec<String> = sqlx::query_scalar("SELECT name FROM products ORDER BY name")
+		.fetch_all(&*pool)
+		.await
+		.expect("Failed to fetch default order");
 
 	// ============================================================================
 	// Execute: Change collation to ja_JP (Japanese)
 	// ============================================================================
 
 	// Check if ja_JP collation is available
-	let ja_collation_exists: i64 = sqlx::query_scalar(
-		"SELECT COUNT(*) FROM pg_collation WHERE collname LIKE 'ja_%'",
-	)
-	.fetch_one(&*pool)
-	.await
-	.unwrap_or(0);
+	let ja_collation_exists: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM pg_collation WHERE collname LIKE 'ja_%'")
+			.fetch_one(&*pool)
+			.await
+			.unwrap_or(0);
 
 	if ja_collation_exists > 0 {
 		// Apply collation change
@@ -782,12 +778,11 @@ async fn test_locale_specific_collation(
 			.expect("Failed to fetch binary order");
 
 	// Verify case-insensitive sort
-	let case_insensitive_order: Vec<String> = sqlx::query_scalar(
-		"SELECT name FROM products ORDER BY LOWER(name), name",
-	)
-	.fetch_all(&*pool)
-	.await
-	.expect("Failed to fetch case-insensitive order");
+	let case_insensitive_order: Vec<String> =
+		sqlx::query_scalar("SELECT name FROM products ORDER BY LOWER(name), name")
+			.fetch_all(&*pool)
+			.await
+			.expect("Failed to fetch case-insensitive order");
 
 	// Binary sort: APPLE, Apple, Banana, apple, banana (uppercase first)
 	// Case-insensitive: apple/Apple/APPLE, banana/Banana (grouped by lowercase)

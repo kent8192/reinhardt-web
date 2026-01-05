@@ -8,8 +8,8 @@
 //! 5. Directory structure correctness (migrations/{app}/NNNN_name.rs)
 
 use reinhardt_migrations::{
-	migration_numbering::MigrationNumbering, repository::filesystem::FilesystemRepository,
-	Migration, MigrationRepository,
+	Migration, MigrationRepository, migration_numbering::MigrationNumbering,
+	repository::filesystem::FilesystemRepository,
 };
 use serial_test::serial;
 use tempfile::TempDir;

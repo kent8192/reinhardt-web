@@ -279,8 +279,9 @@ fn test_rename_model_with_field_changes() {
 
 	// Verify: Model changes are detected
 	// Detected as rename or delete + create
-	let model_changes =
-		detected.renamed_models.len() + detected.created_models.len() + detected.deleted_models.len();
+	let model_changes = detected.renamed_models.len()
+		+ detected.created_models.len()
+		+ detected.deleted_models.len();
 	assert!(model_changes > 0, "Should detect model changes");
 
 	// Field addition may also be detected

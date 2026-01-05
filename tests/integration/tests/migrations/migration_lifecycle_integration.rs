@@ -20,8 +20,7 @@
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_backends::types::DatabaseType;
 use reinhardt_migrations::{
-	ColumnDefinition, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 	recorder::DatabaseMigrationRecorder,
 };
 use reinhardt_test::fixtures::postgres_container;
@@ -188,7 +187,10 @@ async fn test_migration_reversible_full_cycle(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query users table");
-	assert_eq!(users_count, 1, "Users table should exist after initial migration");
+	assert_eq!(
+		users_count, 1,
+		"Users table should exist after initial migration"
+	);
 
 	let posts_count: i64 = sqlx::query_scalar(
 		"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'posts'",
@@ -196,7 +198,10 @@ async fn test_migration_reversible_full_cycle(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query posts table");
-	assert_eq!(posts_count, 1, "Posts table should exist after initial migration");
+	assert_eq!(
+		posts_count, 1,
+		"Posts table should exist after initial migration"
+	);
 
 	// ============================================================================
 	// Execute: Apply complex migration (AddColumn, AddIndex, AddForeignKey)
@@ -208,7 +213,12 @@ async fn test_migration_reversible_full_cycle(
 		vec![
 			Operation::AddColumn {
 				table: leak_str("users").to_string(),
-				column: create_column_with_constraints("email", FieldType::VarChar(Some(255)), false, true),
+				column: create_column_with_constraints(
+					"email",
+					FieldType::VarChar(Some(255)),
+					false,
+					true,
+				),
 				mysql_options: None,
 			},
 			Operation::AddColumn {
@@ -237,7 +247,10 @@ async fn test_migration_reversible_full_cycle(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query email column");
-	assert_eq!(email_column_count, 1, "Email column should exist after migration");
+	assert_eq!(
+		email_column_count, 1,
+		"Email column should exist after migration"
+	);
 
 	// Verify index exists
 	let index_count: i64 = sqlx::query_scalar(
@@ -313,7 +326,10 @@ async fn test_migration_reversible_full_cycle(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query index after re-apply");
-	assert_eq!(index_count_final, 1, "Email index should exist after re-apply");
+	assert_eq!(
+		index_count_final, 1,
+		"Email index should exist after re-apply"
+	);
 
 	// Verify user_id column in posts table
 	let user_id_column_count: i64 = sqlx::query_scalar(
@@ -322,7 +338,10 @@ async fn test_migration_reversible_full_cycle(
 	.fetch_one(&*pool)
 	.await
 	.expect("Failed to query user_id column");
-	assert_eq!(user_id_column_count, 1, "user_id column should exist in posts table");
+	assert_eq!(
+		user_id_column_count, 1,
+		"user_id column should exist in posts table"
+	);
 }
 
 // ============================================================================
@@ -526,7 +545,11 @@ async fn test_migration_dependency_ordering_complex(
 		.await
 		.expect("Failed to list applied migrations");
 
-	assert_eq!(applied_migrations.len(), 4, "Should have 4 applied migrations");
+	assert_eq!(
+		applied_migrations.len(),
+		4,
+		"Should have 4 applied migrations"
+	);
 
 	// Verify auth.0001 was applied first
 	assert_eq!(applied_migrations[0].0, "auth");
@@ -535,8 +558,14 @@ async fn test_migration_dependency_ordering_complex(
 	// Verify profile.0001 and blog.0001 were applied after auth
 	// (order between profile and blog may vary as they're independent)
 	let middle_apps: Vec<&str> = vec![&applied_migrations[1].0, &applied_migrations[2].0];
-	assert!(middle_apps.contains(&"profile"), "Profile migration should be applied");
-	assert!(middle_apps.contains(&"blog"), "Blog migration should be applied");
+	assert!(
+		middle_apps.contains(&"profile"),
+		"Profile migration should be applied"
+	);
+	assert!(
+		middle_apps.contains(&"blog"),
+		"Blog migration should be applied"
+	);
 
 	// Verify comment.0001 was applied last
 	assert_eq!(applied_migrations[3].0, "comment");
@@ -645,7 +674,10 @@ async fn test_migration_state_consistency_after_rollback(
 		vec![
 			Operation::AddColumn {
 				table: leak_str("users").to_string(),
-				column: create_basic_column("created_at", FieldType::Custom("TIMESTAMP DEFAULT CURRENT_TIMESTAMP".to_string())),
+				column: create_basic_column(
+					"created_at",
+					FieldType::Custom("TIMESTAMP DEFAULT CURRENT_TIMESTAMP".to_string()),
+				),
 				mysql_options: None,
 			},
 			Operation::AddColumn {
@@ -890,13 +922,17 @@ async fn test_migration_with_data_preservation(
 		.fetch_one(&*pool)
 		.await
 		.expect("Failed to count users after migration");
-	assert_eq!(final_count, 100, "Should still have 100 users after migration");
+	assert_eq!(
+		final_count, 100,
+		"Should still have 100 users after migration"
+	);
 
 	// Verify valid data was converted correctly
-	let valid_ages_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE age IS NOT NULL")
-		.fetch_one(&*pool)
-		.await
-		.expect("Failed to count users with valid ages");
+	let valid_ages_count: i64 =
+		sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE age IS NOT NULL")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to count users with valid ages");
 	assert_eq!(
 		valid_ages_count, 90,
 		"Should have 90 users with valid integer ages"
@@ -910,17 +946,22 @@ async fn test_migration_with_data_preservation(
 	assert_eq!(null_ages_count, 10, "Should have 10 users with NULL ages");
 
 	// Verify a sample of converted values
-	let sample_age: Option<i32> = sqlx::query_scalar("SELECT age FROM users WHERE username = 'user1'")
-		.fetch_one(&*pool)
-		.await
-		.expect("Failed to fetch sample age");
+	let sample_age: Option<i32> =
+		sqlx::query_scalar("SELECT age FROM users WHERE username = 'user1'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch sample age");
 	assert_eq!(sample_age, Some(21), "user1 should have age 21");
 
-	let invalid_age: Option<i32> = sqlx::query_scalar("SELECT age FROM users WHERE username = 'user10'")
-		.fetch_one(&*pool)
-		.await
-		.expect("Failed to fetch invalid age");
-	assert_eq!(invalid_age, None, "user10 should have NULL age (was 'invalid')");
+	let invalid_age: Option<i32> =
+		sqlx::query_scalar("SELECT age FROM users WHERE username = 'user10'")
+			.fetch_one(&*pool)
+			.await
+			.expect("Failed to fetch invalid age");
+	assert_eq!(
+		invalid_age, None,
+		"user10 should have NULL age (was 'invalid')"
+	);
 }
 
 // ============================================================================
