@@ -107,6 +107,8 @@ pub fn sanitize_identifier(name: &str) -> String {
 
 /// Convert a string to PascalCase.
 ///
+/// Handles multiple separators: `_`, `.`, `-`, space
+///
 /// # Examples
 ///
 /// ```rust
@@ -116,6 +118,7 @@ pub fn sanitize_identifier(name: &str) -> String {
 /// assert_eq!(to_pascal_case("users"), "Users");
 /// assert_eq!(to_pascal_case("USER_PROFILES"), "UserProfiles");
 /// assert_eq!(to_pascal_case("userProfiles"), "UserProfiles");
+/// assert_eq!(to_pascal_case("public.users"), "PublicUsers");
 /// ```
 pub fn to_pascal_case(s: &str) -> String {
 	if s.is_empty() {
@@ -127,7 +130,7 @@ pub fn to_pascal_case(s: &str) -> String {
 	let mut prev_was_upper = false;
 
 	for ch in s.chars() {
-		if ch == '_' || ch == '-' || ch == ' ' {
+		if ch == '_' || ch == '-' || ch == ' ' || ch == '.' {
 			capitalize_next = true;
 			prev_was_upper = false;
 		} else if ch.is_ascii_uppercase() {

@@ -67,27 +67,63 @@ impl From<sea_query::ForeignKeyAction> for ForeignKeyAction {
 
 /// Convert a name to snake_case
 ///
+/// Handles:
+/// - Acronyms: inserts underscores at acronym-word boundaries
+/// - Multiple separators: collapses consecutive `_`, `-`, ` `, `.` to single `_`
+/// - Mixed case: properly handles camelCase and PascalCase
+///
 /// # Examples
 ///
 /// ```rust,ignore
 /// # use reinhardt_migrations::to_snake_case;
 /// assert_eq!(to_snake_case("User"), "user");
 /// assert_eq!(to_snake_case("BlogPost"), "blog_post");
-/// assert_eq!(to_snake_case("HTTPResponse"), "h_t_t_p_response");
+/// assert_eq!(to_snake_case("HTTPResponse"), "http_response");
+/// assert_eq!(to_snake_case("APIKey"), "api_key");
+/// assert_eq!(to_snake_case("XMLParser"), "xml_parser");
+/// assert_eq!(to_snake_case("User__Profile"), "user_profile");
+/// assert_eq!(to_snake_case("public.users"), "public_users");
 /// ```
 pub fn to_snake_case(name: &str) -> String {
-	let mut result = String::new();
-	let chars = name.chars().peekable();
+	if name.is_empty() {
+		return String::new();
+	}
 
-	for ch in chars {
-		if ch.is_uppercase() {
-			// Add underscore before uppercase if not at start and previous char is lowercase
-			if !result.is_empty() && result.chars().last().is_some_and(|c| c.is_lowercase()) {
+	let mut result = String::with_capacity(name.len() + 4);
+	let chars: Vec<char> = name.chars().collect();
+	let mut prev_was_separator = true; // Treat start as separator to avoid leading underscore
+
+	for i in 0..chars.len() {
+		let ch = chars[i];
+
+		// Handle separators: _, -, space, .
+		if ch == '_' || ch == '-' || ch == ' ' || ch == '.' {
+			// Only add underscore if previous char was not a separator
+			if !prev_was_separator && !result.is_empty() {
 				result.push('_');
 			}
-			result.push(ch.to_lowercase().next().unwrap());
+			prev_was_separator = true;
+		} else if ch.is_ascii_uppercase() {
+			if !prev_was_separator && i > 0 {
+				let prev = chars[i - 1];
+				let next = chars.get(i + 1);
+
+				// Add underscore if:
+				// 1. Previous char is lowercase (normal camelCase boundary)
+				// OR
+				// 2. Previous char is uppercase AND next char exists AND is lowercase
+				//    (this handles acronyms like HTTPRequest → http_request)
+				if prev.is_ascii_lowercase()
+					|| (prev.is_ascii_uppercase() && next.is_some_and(|&n| n.is_ascii_lowercase()))
+				{
+					result.push('_');
+				}
+			}
+			result.push(ch.to_ascii_lowercase());
+			prev_was_separator = false;
 		} else {
-			result.push(ch);
+			result.push(ch.to_ascii_lowercase());
+			prev_was_separator = false;
 		}
 	}
 
@@ -95,6 +131,8 @@ pub fn to_snake_case(name: &str) -> String {
 }
 
 /// Convert a snake_case name to PascalCase
+///
+/// Handles multiple separators: `_`, `.`, `-`, space
 ///
 /// # Examples
 ///
@@ -106,9 +144,11 @@ pub fn to_snake_case(name: &str) -> String {
 /// assert_eq!(to_pascal_case("http_response"), "HttpResponse");
 /// assert_eq!(to_pascal_case("following"), "Following");
 /// assert_eq!(to_pascal_case("blocked_users"), "BlockedUsers");
+/// assert_eq!(to_pascal_case("public.users"), "PublicUsers");
 /// ```
 pub fn to_pascal_case(name: &str) -> String {
-	name.split('_')
+	name.split(['_', '.', '-', ' '])
+		.filter(|word| !word.is_empty())
 		.map(|word| {
 			let mut chars = word.chars();
 			match chars.next() {
@@ -1281,10 +1321,10 @@ impl ProjectState {
 /// ```
 #[derive(Debug, Clone)]
 pub struct SimilarityConfig {
-	/// Threshold for model similarity (0.5 - 0.95)
+	/// Threshold for model similarity (0.45 - 0.95)
 	/// Higher values mean stricter matching (fewer false positives)
 	model_threshold: f64,
-	/// Threshold for field similarity (0.5 - 0.95)
+	/// Threshold for field similarity (0.45 - 0.95)
 	/// Higher values mean stricter matching
 	field_threshold: f64,
 	/// Weight for Jaro-Winkler component (0.0 - 1.0, default 0.7)
@@ -1301,13 +1341,13 @@ impl SimilarityConfig {
 	///
 	/// # Arguments
 	///
-	/// * `model_threshold` - Similarity threshold for model matching (0.5 - 0.95)
-	/// * `field_threshold` - Similarity threshold for field matching (0.5 - 0.95)
+	/// * `model_threshold` - Similarity threshold for model matching (0.45 - 0.95)
+	/// * `field_threshold` - Similarity threshold for field matching (0.45 - 0.95)
 	///
 	/// # Errors
 	///
-	/// Returns an error if thresholds are outside the valid range (0.5 - 0.95).
-	/// Values below 0.5 would produce too many false positives.
+	/// Returns an error if thresholds are outside the valid range (0.45 - 0.95).
+	/// Values below 0.45 would produce too many false positives.
 	/// Values above 0.95 would make matching nearly impossible.
 	///
 	/// # Examples
@@ -1333,15 +1373,15 @@ impl SimilarityConfig {
 	///
 	/// # Arguments
 	///
-	/// * `model_threshold` - Similarity threshold for model matching (0.5 - 0.95)
-	/// * `field_threshold` - Similarity threshold for field matching (0.5 - 0.95)
+	/// * `model_threshold` - Similarity threshold for model matching (0.45 - 0.95)
+	/// * `field_threshold` - Similarity threshold for field matching (0.45 - 0.95)
 	/// * `jaro_winkler_weight` - Weight for Jaro-Winkler component (0.0 - 1.0)
 	/// * `levenshtein_weight` - Weight for Levenshtein component (0.0 - 1.0)
 	///
 	/// # Errors
 	///
 	/// Returns an error if:
-	/// - Thresholds are outside the valid range (0.5 - 0.95)
+	/// - Thresholds are outside the valid range (0.45 - 0.95)
 	/// - Weights are outside the valid range (0.0 - 1.0)
 	/// - Weights don't sum to approximately 1.0 (within 0.01 tolerance)
 	///
@@ -1366,15 +1406,17 @@ impl SimilarityConfig {
 		levenshtein_weight: f64,
 	) -> Result<Self, String> {
 		// Validate thresholds are in reasonable range
-		if !(0.5..=0.95).contains(&model_threshold) {
+		// Minimum 0.45: below this produces too many false positives
+		// Maximum 0.95: above this makes matching nearly impossible
+		if !(0.45..=0.95).contains(&model_threshold) {
 			return Err(format!(
-				"model_threshold must be between 0.5 and 0.95, got {}",
+				"model_threshold must be between 0.45 and 0.95, got {}",
 				model_threshold
 			));
 		}
-		if !(0.5..=0.95).contains(&field_threshold) {
+		if !(0.45..=0.95).contains(&field_threshold) {
 			return Err(format!(
-				"field_threshold must be between 0.5 and 0.95, got {}",
+				"field_threshold must be between 0.45 and 0.95, got {}",
 				field_threshold
 			));
 		}
@@ -5203,17 +5245,45 @@ impl MigrationAutodetector {
 
 			// Check each field for foreign key relationships
 			for field in model.fields.values() {
-				// Detect ForeignKey fields by checking field type
-				// Format: "ForeignKey(app.Model)" or "ManyToManyField(app.Model)"
-				// Extract string representation from FieldType::Custom
-				let field_type_str = match &field.field_type {
-					crate::FieldType::Custom(s) => s.as_str(),
-					_ => continue, // Skip non-custom types as they cannot be ForeignKey
-				};
-				if let Some(referenced_model) =
-					self.extract_related_model(field_type_str, app_label)
-				{
-					dependencies.push(referenced_model);
+				match &field.field_type {
+					// Handle structured ForeignKey variant
+					crate::FieldType::ForeignKey { to_table, .. } => {
+						// Find model by table name in the project state
+						if let Some(dep) = self.find_model_by_table_name(to_table) {
+							// Avoid self-reference unless intentional
+							if dep != (app_label.clone(), model_name.clone()) {
+								dependencies.push(dep);
+							}
+						}
+					}
+					// Handle structured OneToOne variant
+					crate::FieldType::OneToOne { to, .. } => {
+						// Format: "app.Model" or "Model"
+						if let Some(dep) = self.parse_model_reference(to, app_label)
+							&& dep != (app_label.clone(), model_name.clone())
+						{
+							dependencies.push(dep);
+						}
+					}
+					// Handle structured ManyToMany variant
+					crate::FieldType::ManyToMany { to, .. } => {
+						// Format: "app.Model" or "Model"
+						if let Some(dep) = self.parse_model_reference(to, app_label)
+							&& dep != (app_label.clone(), model_name.clone())
+						{
+							dependencies.push(dep);
+						}
+					}
+					// Handle legacy Custom string format
+					crate::FieldType::Custom(s) => {
+						if let Some(referenced_model) = self.extract_related_model(s, app_label)
+							&& referenced_model != (app_label.clone(), model_name.clone())
+						{
+							dependencies.push(referenced_model);
+						}
+					}
+					// Skip other field types
+					_ => {}
 				}
 			}
 
@@ -5303,6 +5373,51 @@ impl MigrationAutodetector {
 			// Invalid format
 			_ => None,
 		}
+	}
+
+	/// Find a model in the project state by its table name
+	///
+	/// This method searches through all models in both from_state and to_state
+	/// to find a model whose table name matches the given table name.
+	///
+	/// Table name matching supports:
+	/// - Django-style table names: "app_modelname" (e.g., "auth_user")
+	/// - Simple model name match: "modelname" (lowercase, e.g., "user")
+	///
+	/// # Arguments
+	/// * `table_name` - The table name to search for
+	///
+	/// # Returns
+	/// * `Some((app_label, model_name))` if found
+	/// * `None` if no matching model is found
+	fn find_model_by_table_name(&self, table_name: &str) -> Option<(String, String)> {
+		// Search in to_state (target state has priority)
+		for (app_label, model_name) in self.to_state.models.keys() {
+			// Check Django-style table name: app_modelname
+			let django_table = format!("{}_{}", app_label, model_name.to_lowercase());
+			if django_table == table_name {
+				return Some((app_label.clone(), model_name.clone()));
+			}
+
+			// Check simple lowercase model name
+			if model_name.to_lowercase() == table_name {
+				return Some((app_label.clone(), model_name.clone()));
+			}
+		}
+
+		// Fallback: search in from_state
+		for (app_label, model_name) in self.from_state.models.keys() {
+			let django_table = format!("{}_{}", app_label, model_name.to_lowercase());
+			if django_table == table_name {
+				return Some((app_label.clone(), model_name.clone()));
+			}
+
+			if model_name.to_lowercase() == table_name {
+				return Some((app_label.clone(), model_name.clone()));
+			}
+		}
+
+		None
 	}
 }
 

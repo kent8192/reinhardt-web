@@ -230,9 +230,10 @@ fn test_generation_config_defaults() {
 		generation.struct_naming_convention(),
 		NamingConvention::PascalCase
 	);
+	// Rust convention: struct fields should be snake_case
 	assert_eq!(
 		generation.field_naming_convention(),
-		NamingConvention::PascalCase
+		NamingConvention::SnakeCase
 	);
 }
 
