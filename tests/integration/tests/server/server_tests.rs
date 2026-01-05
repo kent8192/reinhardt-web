@@ -6,8 +6,8 @@ use reinhardt_http::{Request, Response, ViewResult};
 use reinhardt_macros::{get, post};
 use reinhardt_params::Path;
 use reinhardt_routers::UnifiedRouter as Router;
-use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
+use reinhardt_test::fixtures::*;
 
 // Handler for basic request test
 #[get("/test", name = "test")]

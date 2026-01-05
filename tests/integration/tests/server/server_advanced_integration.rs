@@ -2,7 +2,7 @@
 // Tests HTTP server functionality, WebSocket support, and server lifecycle
 
 use reinhardt_http::{Request, Response};
-use reinhardt_server::{serve, HttpServer};
+use reinhardt_server::{HttpServer, serve};
 use reinhardt_types::Handler;
 use std::net::SocketAddr;
 use std::sync::Arc;

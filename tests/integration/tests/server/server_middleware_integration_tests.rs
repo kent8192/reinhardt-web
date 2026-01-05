@@ -6,8 +6,8 @@
 
 use http::StatusCode;
 use reinhardt_middleware::{LoggingMiddleware, MiddlewareChain};
-use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 use reinhardt_test::APIClient;
+use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 use reinhardt_types::{Handler, Middleware};
 use std::sync::{Arc, Mutex};
 
