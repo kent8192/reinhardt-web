@@ -19,7 +19,7 @@
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
 //! - [`component`]: Component system with IntoView trait, Head management
-//! - [`form`]: Django Form integration
+//! - [`form`](mod@form): Django Form integration
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -100,6 +100,8 @@ pub mod component;
 // Form and security
 pub mod auth;
 pub mod csrf;
+// Static form metadata types for form! macro (WASM-compatible)
+pub mod form_generated;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet
 // For now, client-side forms should use ElementView
 #[cfg(not(target_arch = "wasm32"))]
@@ -149,6 +151,8 @@ pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};
 #[cfg(not(target_arch = "wasm32"))]
 pub use form::{FormBinding, FormComponent};
+// Static form metadata types (always available, used by form! macro)
+pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use reactive::{Effect, Memo, Resource, ResourceState, Signal};
 #[cfg(target_arch = "wasm32")]

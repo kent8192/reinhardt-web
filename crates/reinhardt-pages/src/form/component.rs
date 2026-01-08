@@ -413,7 +413,7 @@ impl FormComponent {
 	///
 	/// # Returns
 	///
-	/// HashMap<field_name, current_value>
+	/// `HashMap<field_name, current_value>`
 	#[allow(dead_code)] // May be used in future validation features
 	fn collect_field_values(&self) -> HashMap<String, String> {
 		self.values

@@ -69,7 +69,7 @@ pub struct FormBinding {
 	/// Underlying FormComponent
 	form_component: FormComponent,
 
-	/// Field name → Signal<String> bindings
+	/// Field name → `Signal<String>` bindings
 	bindings: HashMap<String, Signal<String>>,
 
 	/// Active effects for automatic sync (kept alive)
