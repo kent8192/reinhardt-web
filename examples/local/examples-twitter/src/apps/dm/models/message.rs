@@ -17,7 +17,7 @@ use crate::apps::auth::models::User;
 /// DMMessage model representing a message within a room
 ///
 /// Each message belongs to a specific room and is sent by a user.
-/// ForeignKeyField<T> automatically generates the `_id` column.
+/// `ForeignKeyField<T>` automatically generates the `_id` column.
 #[model(app_label = "dm", table_name = "dm_message")]
 #[derive(Serialize, Deserialize)]
 pub struct DMMessage {

@@ -3,13 +3,13 @@
 //! Server functions for user authentication and session management.
 //! These are accessible from both WASM (client stubs) and server (handlers).
 
-use crate::shared::types::{RegisterRequest, UserInfo};
+use crate::shared::types::UserInfo;
 
 // Server-only imports - only needed for server build
 #[cfg(not(target_arch = "wasm32"))]
 use {
 	crate::apps::auth::models::User,
-	crate::shared::types::LoginRequest,
+	crate::shared::types::{LoginRequest, RegisterRequest},
 	reinhardt::db::orm::{FilterOperator, FilterValue, Model},
 	reinhardt::middleware::session::{SessionData, SessionStoreRef},
 	reinhardt::pages::server_fn::{ServerFnError, server_fn},
@@ -84,9 +84,20 @@ pub async fn login(
 #[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn register(
-	request: RegisterRequest,
+	username: String,
+	email: String,
+	password: String,
+	password_confirmation: String,
 	#[inject] db: DatabaseConnection,
 ) -> std::result::Result<(), ServerFnError> {
+	// Construct request from parameters
+	let request = RegisterRequest {
+		username,
+		email,
+		password,
+		password_confirmation,
+	};
+
 	// Validate request
 	request
 		.validate()
@@ -140,7 +151,12 @@ pub async fn register(
 /// Register - WASM client stub
 #[cfg(target_arch = "wasm32")]
 #[server_fn]
-pub async fn register(request: RegisterRequest) -> std::result::Result<(), ServerFnError> {
+pub async fn register(
+	username: String,
+	email: String,
+	password: String,
+	password_confirmation: String,
+) -> std::result::Result<(), ServerFnError> {
 	// This body is replaced by the macro with HTTP request code
 	unreachable!("This function body should be replaced by the server_fn macro")
 }

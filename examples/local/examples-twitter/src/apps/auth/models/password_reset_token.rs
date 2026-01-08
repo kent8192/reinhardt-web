@@ -18,7 +18,7 @@ use super::user::User;
 /// Password reset token for user authentication recovery
 ///
 /// Represents a password reset token with expiration.
-/// ForeignKeyField<User> automatically generates the `user_id` column.
+/// `ForeignKeyField<User>` automatically generates the `user_id` column.
 #[model(app_label = "auth", table_name = "auth_password_reset_token")]
 #[derive(Serialize, Deserialize)]
 pub struct PasswordResetToken {
