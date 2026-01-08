@@ -13,21 +13,18 @@
 //! **Test Category**: Happy Path + Error Path
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - books(id SERIAL PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL,
 //!   price INT NOT NULL, stock INT NOT NULL)
 
 use reinhardt_core::macros::model;
-use reinhardt_db::orm::init_database;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_viewsets::{BatchOperation, BatchRequest, BatchResponse};
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 
@@ -69,18 +66,12 @@ enum Books {
 // ============================================================================
 
 /// Fixture: Initialize database connection
+///
+/// Dependencies: shared_db_pool (shared PostgreSQL with ORM initialized)
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, connection_url) = postgres_container.await;
-
-	// Initialize database connection for reinhardt-orm
-	init_database(&connection_url)
-		.await
-		.expect("Failed to initialize database");
-
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup books table
@@ -154,7 +145,6 @@ async fn books_with_data(#[future] books_table: Arc<PgPool>) -> (Arc<PgPool>, Ve
 /// Test: Batch create - multiple successful creates
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_create_multiple(#[future] books_table: Arc<PgPool>) {
 	let pool = books_table.await;
 
@@ -211,7 +201,6 @@ async fn test_batch_create_multiple(#[future] books_table: Arc<PgPool>) {
 /// Test: Batch update - multiple successful updates
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_update_multiple(#[future] books_with_data: (Arc<PgPool>, Vec<i64>)) {
 	let (pool, book_ids) = books_with_data.await;
 
@@ -273,7 +262,6 @@ async fn test_batch_update_multiple(#[future] books_with_data: (Arc<PgPool>, Vec
 /// Test: Batch delete - multiple successful deletes
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_delete_multiple(#[future] books_with_data: (Arc<PgPool>, Vec<i64>)) {
 	let (pool, book_ids) = books_with_data.await;
 
@@ -317,7 +305,6 @@ async fn test_batch_delete_multiple(#[future] books_with_data: (Arc<PgPool>, Vec
 /// Test: Mixed operations - create + update + delete
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_mixed_operations(#[future] books_with_data: (Arc<PgPool>, Vec<i64>)) {
 	let (_pool, book_ids) = books_with_data.await;
 
@@ -365,7 +352,6 @@ async fn test_batch_mixed_operations(#[future] books_with_data: (Arc<PgPool>, Ve
 /// Test: Partial update batch operation
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_partial_update(#[future] books_with_data: (Arc<PgPool>, Vec<i64>)) {
 	let (_pool, book_ids) = books_with_data.await;
 
@@ -392,7 +378,6 @@ async fn test_batch_partial_update(#[future] books_with_data: (Arc<PgPool>, Vec<
 /// Test: Atomic mode - stop on first error
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_atomic_mode(#[future] books_table: Arc<PgPool>) {
 	let _pool = books_table.await;
 
@@ -420,7 +405,6 @@ async fn test_batch_atomic_mode(#[future] books_table: Arc<PgPool>) {
 /// Test: Non-atomic mode - continue on errors
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_non_atomic_mode(#[future] books_table: Arc<PgPool>) {
 	let _pool = books_table.await;
 
@@ -446,7 +430,6 @@ async fn test_batch_non_atomic_mode(#[future] books_table: Arc<PgPool>) {
 /// Test: Empty batch request
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_empty_request(#[future] books_table: Arc<PgPool>) {
 	let _pool = books_table.await;
 
@@ -464,7 +447,6 @@ async fn test_batch_empty_request(#[future] books_table: Arc<PgPool>) {
 /// Test: Single operation in batch
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_single_operation(#[future] books_table: Arc<PgPool>) {
 	let pool = books_table.await;
 
@@ -502,7 +484,6 @@ async fn test_batch_single_operation(#[future] books_table: Arc<PgPool>) {
 /// Test: Batch with duplicate IDs (update/delete)
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_duplicate_ids(#[future] books_with_data: (Arc<PgPool>, Vec<i64>)) {
 	let (_pool, book_ids) = books_with_data.await;
 
@@ -527,7 +508,6 @@ async fn test_batch_duplicate_ids(#[future] books_with_data: (Arc<PgPool>, Vec<i
 /// Test: Batch operation failure handling with BatchResponse
 #[rstest]
 #[tokio::test]
-#[serial(viewset_batch)]
 async fn test_batch_response_structure(#[future] books_table: Arc<PgPool>) {
 	let _pool = books_table.await;
 

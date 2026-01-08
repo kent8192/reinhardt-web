@@ -9,7 +9,7 @@
 //! **Test Category**: Boundary Value Analysis + Equivalence Partitioning
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - posts(id SERIAL PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
@@ -20,15 +20,13 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
-use reinhardt_db::orm::init_database;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{ListAPIView, View};
+use reinhardt_viewsets::PaginationConfig;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -74,18 +72,12 @@ enum Posts {
 // ============================================================================
 
 /// Fixture: Initialize database connection
+///
+/// Dependencies: shared_db_pool (shared PostgreSQL with ORM initialized)
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, connection_url) = postgres_container.await;
-
-	// Initialize database connection for reinhardt-orm
-	init_database(&connection_url)
-		.await
-		.expect("Failed to initialize database");
-
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup posts table
@@ -178,7 +170,6 @@ fn create_get_request(uri: &str) -> Request {
 /// Test: PageNumber pagination - first page
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_first_page(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -203,7 +194,6 @@ async fn test_page_number_first_page(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: PageNumber pagination - middle page
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_middle_page(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -227,7 +217,6 @@ async fn test_page_number_middle_page(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: PageNumber pagination - last page
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_last_page(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -252,7 +241,6 @@ async fn test_page_number_last_page(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: PageNumber pagination - page beyond limit
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_beyond_limit(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -278,7 +266,6 @@ async fn test_page_number_beyond_limit(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: PageNumber pagination - invalid page number (0)
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_invalid_zero(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -305,7 +292,6 @@ async fn test_page_number_invalid_zero(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: PageNumber pagination - negative page number
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_page_number_negative(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -332,7 +318,6 @@ async fn test_page_number_negative(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: LimitOffset pagination - basic operation
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_limit_offset_basic(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -353,11 +338,12 @@ async fn test_limit_offset_basic(#[future] posts_with_data: Arc<PgPool>) {
 /// Test: LimitOffset pagination - offset beyond total
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_limit_offset_beyond_total(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
-	let view = ListAPIView::<Post, JsonSerializer<Post>>::new().with_paginate_by(10);
+	// Use LimitOffset pagination for limit/offset query params
+	let view = ListAPIView::<Post, JsonSerializer<Post>>::new()
+		.with_pagination(PaginationConfig::limit_offset(10, Some(100)));
 
 	// Request offset=100 (beyond 25 available posts)
 	let request = create_get_request("/posts/?limit=10&offset=100");
@@ -378,11 +364,12 @@ async fn test_limit_offset_beyond_total(#[future] posts_with_data: Arc<PgPool>) 
 /// Test: LimitOffset pagination - max_limit enforcement
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_limit_offset_max_limit_enforcement(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
-	let view = ListAPIView::<Post, JsonSerializer<Post>>::new().with_paginate_by(10);
+	// Use LimitOffset pagination with max_limit=20 for enforcement test
+	let view = ListAPIView::<Post, JsonSerializer<Post>>::new()
+		.with_pagination(PaginationConfig::limit_offset(10, Some(20)));
 
 	// Request limit=100, but max_limit=20 should be enforced
 	let request = create_get_request("/posts/?limit=100&offset=0");
@@ -403,7 +390,6 @@ async fn test_limit_offset_max_limit_enforcement(#[future] posts_with_data: Arc<
 /// Test: Cursor pagination - forward navigation
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_cursor_pagination_forward(#[future] posts_with_data: Arc<PgPool>) {
 	let _pool = posts_with_data.await;
 
@@ -427,7 +413,6 @@ async fn test_cursor_pagination_forward(#[future] posts_with_data: Arc<PgPool>) 
 /// Test: Pagination with empty dataset
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_pagination_empty_dataset(#[future] posts_table: Arc<PgPool>) {
 	let _pool = posts_table.await;
 
@@ -451,7 +436,6 @@ async fn test_pagination_empty_dataset(#[future] posts_table: Arc<PgPool>) {
 /// Test: Pagination with single item
 #[rstest]
 #[tokio::test]
-#[serial(views_pagination)]
 async fn test_pagination_single_item(#[future] posts_table: Arc<PgPool>) {
 	let pool = posts_table.await;
 

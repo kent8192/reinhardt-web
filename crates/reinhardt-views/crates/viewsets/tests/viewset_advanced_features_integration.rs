@@ -14,6 +14,9 @@
 //!
 //! **Test Category**: Combination Testing
 //!
+//! **Fixtures Used:**
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
+//!
 //! **Note**: These tests verify that multiple advanced features work correctly
 //! when used together, not just in isolation.
 
@@ -23,7 +26,7 @@ use hyper::{HeaderMap, Method, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::postgres_container;
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_viewsets::{
 	FilterConfig, FilterableViewSet, ModelViewSet, OrderingConfig, PaginatedViewSet,
 	PaginationConfig,
@@ -31,8 +34,8 @@ use reinhardt_viewsets::{
 use rstest::*;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::{PgPool, Row};
+use std::sync::Arc;
 
 // ============================================================================
 // Test Structures
@@ -82,10 +85,12 @@ enum AdvancedItems {
 // Fixtures
 // ============================================================================
 
-/// Setup: PostgreSQL container and schema
+/// Setup: Shared PostgreSQL database pool and schema
+///
+/// Dependencies: shared_db_pool (shared PostgreSQL with ORM initialized)
 #[fixture]
-async fn setup_advanced() -> PgPool {
-	let (_container, pool, _port, _url) = postgres_container().await;
+async fn setup_advanced(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
 
 	// Create advanced_items table
 	let create_table_sql = Table::create()
@@ -133,10 +138,7 @@ async fn setup_advanced() -> PgPool {
 		.col(sea_query::ColumnDef::new(AdvancedItems::UpdatedAt).timestamp())
 		.to_string(PostgresQueryBuilder);
 
-	sqlx::query(&create_table_sql)
-		.execute(&*pool)
-		.await
-		.unwrap();
+	sqlx::query(&create_table_sql).execute(&pool).await.unwrap();
 
 	// Insert test data with varied attributes
 	for i in 1..=20 {
@@ -191,10 +193,10 @@ async fn setup_advanced() -> PgPool {
 			])
 			.to_string(PostgresQueryBuilder);
 
-		sqlx::query(&insert_sql).execute(&*pool).await.unwrap();
+		sqlx::query(&insert_sql).execute(&pool).await.unwrap();
 	}
 
-	(*pool).clone()
+	Arc::new(pool)
 }
 
 // ============================================================================
@@ -220,8 +222,7 @@ fn create_get_request(uri: &str) -> Request {
 /// Test: Pagination + Filtering + Ordering combined
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_pagination_filtering_ordering_combined(#[future] setup_advanced: PgPool) {
+async fn test_pagination_filtering_ordering_combined(#[future] setup_advanced: Arc<PgPool>) {
 	let _pool = setup_advanced.await;
 
 	// Create ViewSet with all three features
@@ -267,8 +268,7 @@ async fn test_pagination_filtering_ordering_combined(#[future] setup_advanced: P
 /// Test: Multiple filter backends
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_multiple_filter_backends(#[future] setup_advanced: PgPool) {
+async fn test_multiple_filter_backends(#[future] setup_advanced: Arc<PgPool>) {
 	let _pool = setup_advanced.await;
 
 	// Create filter config with multiple filterable fields
@@ -298,8 +298,7 @@ async fn test_multiple_filter_backends(#[future] setup_advanced: PgPool) {
 /// Test: Custom queryset with pagination
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_custom_queryset_with_pagination(#[future] setup_advanced: PgPool) {
+async fn test_custom_queryset_with_pagination(#[future] setup_advanced: Arc<PgPool>) {
 	let _pool = setup_advanced.await;
 
 	let pagination_config = PaginationConfig::LimitOffset {
@@ -326,8 +325,7 @@ async fn test_custom_queryset_with_pagination(#[future] setup_advanced: PgPool) 
 /// Test: Complex filtering with multiple fields
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_complex_multi_field_filtering(#[future] setup_advanced: PgPool) {
+async fn test_complex_multi_field_filtering(#[future] setup_advanced: Arc<PgPool>) {
 	let pool = setup_advanced.await;
 
 	// Query: category=Books AND status=published AND published=true
@@ -345,7 +343,10 @@ async fn test_complex_multi_field_filtering(#[future] setup_advanced: PgPool) {
 		.and_where(Expr::col(AdvancedItems::Published).eq(true))
 		.to_string(PostgresQueryBuilder);
 
-	let rows = sqlx::query(&filter_sql).fetch_all(&pool).await.unwrap();
+	let rows = sqlx::query(&filter_sql)
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
 
 	// Verify all results match the filter criteria
 	for row in rows {
@@ -362,8 +363,7 @@ async fn test_complex_multi_field_filtering(#[future] setup_advanced: PgPool) {
 /// Test: Custom ordering with multiple fields
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_custom_multi_field_ordering(#[future] setup_advanced: PgPool) {
+async fn test_custom_multi_field_ordering(#[future] setup_advanced: Arc<PgPool>) {
 	let _pool = setup_advanced.await;
 
 	let ordering_config = OrderingConfig {
@@ -389,8 +389,7 @@ async fn test_custom_multi_field_ordering(#[future] setup_advanced: PgPool) {
 /// Test: Pagination with custom page size
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_pagination_custom_page_size(#[future] setup_advanced: PgPool) {
+async fn test_pagination_custom_page_size(#[future] setup_advanced: Arc<PgPool>) {
 	let _pool = setup_advanced.await;
 
 	// Test various page sizes
@@ -422,8 +421,7 @@ async fn test_pagination_custom_page_size(#[future] setup_advanced: PgPool) {
 /// Test: Filter by multiple values for same field
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_filter_multiple_values_same_field(#[future] setup_advanced: PgPool) {
+async fn test_filter_multiple_values_same_field(#[future] setup_advanced: Arc<PgPool>) {
 	let pool = setup_advanced.await;
 
 	// Query: category IN ('Books', 'Electronics')
@@ -437,7 +435,10 @@ async fn test_filter_multiple_values_same_field(#[future] setup_advanced: PgPool
 		.and_where(Expr::col(AdvancedItems::Category).is_in(vec!["Books", "Electronics"]))
 		.to_string(PostgresQueryBuilder);
 
-	let rows = sqlx::query(&filter_sql).fetch_all(&pool).await.unwrap();
+	let rows = sqlx::query(&filter_sql)
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
 
 	// Verify all results are either Books or Electronics
 	assert!(rows.len() > 0, "Should find items in Books or Electronics");
@@ -455,8 +456,7 @@ async fn test_filter_multiple_values_same_field(#[future] setup_advanced: PgPool
 /// Test: Range filtering (priority between 2 and 4)
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_range_filtering(#[future] setup_advanced: PgPool) {
+async fn test_range_filtering(#[future] setup_advanced: Arc<PgPool>) {
 	let pool = setup_advanced.await;
 
 	// Query: priority >= 2 AND priority <= 4
@@ -467,7 +467,10 @@ async fn test_range_filtering(#[future] setup_advanced: PgPool) {
 		.and_where(Expr::col(AdvancedItems::Priority).lte(4))
 		.to_string(PostgresQueryBuilder);
 
-	let rows = sqlx::query(&filter_sql).fetch_all(&pool).await.unwrap();
+	let rows = sqlx::query(&filter_sql)
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
 
 	// Verify all results are within range
 	for row in rows {
@@ -483,8 +486,7 @@ async fn test_range_filtering(#[future] setup_advanced: PgPool) {
 /// Test: Ordering with null values handling
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_ordering_null_values(#[future] setup_advanced: PgPool) {
+async fn test_ordering_null_values(#[future] setup_advanced: Arc<PgPool>) {
 	let pool = setup_advanced.await;
 
 	// Insert item with null author_id
@@ -526,7 +528,10 @@ async fn test_ordering_null_values(#[future] setup_advanced: PgPool) {
 		])
 		.to_string(PostgresQueryBuilder);
 
-	sqlx::query(&insert_sql).execute(&pool).await.unwrap();
+	sqlx::query(&insert_sql)
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
 
 	// Query with ordering by author_id (nulls should be handled)
 	let order_sql = Query::select()
@@ -539,7 +544,10 @@ async fn test_ordering_null_values(#[future] setup_advanced: PgPool) {
 		.order_by(AdvancedItems::AuthorId, sea_query::Order::Asc)
 		.to_string(PostgresQueryBuilder);
 
-	let rows = sqlx::query(&order_sql).fetch_all(&pool).await.unwrap();
+	let rows = sqlx::query(&order_sql)
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
 
 	// Verify results are returned (null handling doesn't cause errors)
 	assert!(rows.len() > 0, "Should return results with null author_ids");
@@ -548,8 +556,7 @@ async fn test_ordering_null_values(#[future] setup_advanced: PgPool) {
 /// Test: Combined search and filter
 #[rstest]
 #[tokio::test]
-#[serial(viewset_advanced)]
-async fn test_combined_search_and_filter(#[future] setup_advanced: PgPool) {
+async fn test_combined_search_and_filter(#[future] setup_advanced: Arc<PgPool>) {
 	let pool = setup_advanced.await;
 
 	// Query: title ILIKE '%Item%' AND category='Books'
@@ -565,7 +572,7 @@ async fn test_combined_search_and_filter(#[future] setup_advanced: PgPool) {
 		.to_string(PostgresQueryBuilder);
 
 	let rows = sqlx::query(&search_filter_sql)
-		.fetch_all(&pool)
+		.fetch_all(pool.as_ref())
 		.await
 		.unwrap();
 

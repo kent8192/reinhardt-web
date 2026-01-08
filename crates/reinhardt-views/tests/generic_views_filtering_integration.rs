@@ -13,7 +13,7 @@
 //! **Test Category**: Combination Testing
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - products(id SERIAL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
@@ -25,14 +25,12 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{ListAPIView, View};
 use reinhardt_viewsets::FilterConfig;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -78,11 +76,9 @@ enum Products {
 
 /// Fixture: Initialize database connection
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, _connection_url) = postgres_container.await;
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup products table
@@ -187,7 +183,6 @@ fn create_get_request(uri: &str) -> Request {
 /// Test: Single field exact match filtering
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_single_field_exact_match(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -219,7 +214,6 @@ async fn test_single_field_exact_match(#[future] products_with_data: Arc<PgPool>
 /// Test: Multiple field filtering (AND condition)
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_multiple_field_filtering(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -247,7 +241,6 @@ async fn test_multiple_field_filtering(#[future] products_with_data: Arc<PgPool>
 /// Test: Case-insensitive search
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_case_insensitive_search(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -276,7 +269,6 @@ async fn test_case_insensitive_search(#[future] products_with_data: Arc<PgPool>)
 /// Test: Contains/search filtering
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_contains_search(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -302,7 +294,6 @@ async fn test_contains_search(#[future] products_with_data: Arc<PgPool>) {
 /// Test: Ordering ascending
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_ordering_ascending(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -320,7 +311,7 @@ async fn test_ordering_ascending(#[future] products_with_data: Arc<PgPool>) {
 	// Should return products ordered by price (lowest first)
 	// USB Cable (1000) should appear before higher-priced items
 	assert!(
-		body_str.contains("Product"),
+		body_str.contains("Laptop") || body_str.contains("USB") || body_str.contains("Desktop"),
 		"Response should contain ordered products"
 	);
 }
@@ -328,7 +319,6 @@ async fn test_ordering_ascending(#[future] products_with_data: Arc<PgPool>) {
 /// Test: Ordering descending
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_ordering_descending(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -346,7 +336,7 @@ async fn test_ordering_descending(#[future] products_with_data: Arc<PgPool>) {
 	// Should return products ordered by price (highest first)
 	// Desktop PC (200000) should appear before lower-priced items
 	assert!(
-		body_str.contains("Product"),
+		body_str.contains("Laptop") || body_str.contains("Desktop") || body_str.contains("USB"),
 		"Response should contain reverse ordered products"
 	);
 }
@@ -354,7 +344,6 @@ async fn test_ordering_descending(#[future] products_with_data: Arc<PgPool>) {
 /// Test: Multiple field ordering
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_multiple_field_ordering(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -371,7 +360,9 @@ async fn test_multiple_field_ordering(#[future] products_with_data: Arc<PgPool>)
 	let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 	// Should order by category first (ascending), then by price (descending) within each category
 	assert!(
-		body_str.contains("Product"),
+		body_str.contains("Accessories")
+			|| body_str.contains("Electronics")
+			|| body_str.contains("Furniture"),
 		"Response should contain multi-field ordered products"
 	);
 }
@@ -379,7 +370,6 @@ async fn test_multiple_field_ordering(#[future] products_with_data: Arc<PgPool>)
 /// Test: Combined filtering + ordering
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_combined_filtering_ordering(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -412,7 +402,6 @@ async fn test_combined_filtering_ordering(#[future] products_with_data: Arc<PgPo
 /// Test: Filtering with no results
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_filtering_no_results(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -439,7 +428,6 @@ async fn test_filtering_no_results(#[future] products_with_data: Arc<PgPool>) {
 /// Test: Invalid filter field handling
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_invalid_filter_field(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 
@@ -462,7 +450,7 @@ async fn test_invalid_filter_field(#[future] products_with_data: Arc<PgPool>) {
 	// Invalid filters should be ignored, returning all products
 	let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 	assert!(
-		body_str.contains("Product"),
+		body_str.contains("Laptop") || body_str.contains("Desktop") || body_str.contains("USB"),
 		"Invalid filter should be ignored, returning all products"
 	);
 }
@@ -470,7 +458,6 @@ async fn test_invalid_filter_field(#[future] products_with_data: Arc<PgPool>) {
 /// Test: Range filtering simulation (using multiple exact matches)
 #[rstest]
 #[tokio::test]
-#[serial(views_filtering)]
 async fn test_range_filtering_simulation(#[future] products_with_data: Arc<PgPool>) {
 	let _pool = products_with_data.await;
 

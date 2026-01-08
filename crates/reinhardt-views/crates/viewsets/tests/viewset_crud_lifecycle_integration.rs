@@ -24,16 +24,13 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
-use reinhardt_db::orm::init_database;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_viewsets::{ModelViewSetHandler, ReadOnlyModelViewSet};
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
+use sea_query::{ColumnDef, Expr, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Row, any::install_default_drivers};
 use std::sync::Arc;
 
 // ============================================================================
@@ -53,7 +50,7 @@ struct Article {
 	content: String,
 	published: bool,
 	view_count: i32,
-	#[field(null = true)]
+	#[field(auto_now_add = true)]
 	created_at: Option<DateTime<Utc>>,
 }
 
@@ -77,16 +74,14 @@ enum Articles {
 // ============================================================================
 
 /// Fixture: Initialize database connection
+///
+/// Dependencies: shared_db_pool (shared PostgreSQL with ORM initialized)
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> (Arc<PgPool>, Arc<sqlx::AnyPool>) {
-	let (_container, pool, _port, connection_url) = postgres_container.await;
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> (Arc<PgPool>, Arc<sqlx::AnyPool>) {
+	let (pool, connection_url) = shared_db_pool.await;
 
-	// Initialize database connection for reinhardt-orm
-	init_database(&connection_url)
-		.await
-		.expect("Failed to initialize database");
+	// Install SQLx Any drivers before using AnyPool
+	install_default_drivers();
 
 	// Create AnyPool for ModelViewSetHandler
 	let any_pool = Arc::new(
@@ -95,7 +90,7 @@ async fn db_pool(
 			.expect("Failed to connect AnyPool"),
 	);
 
-	(pool, any_pool)
+	(Arc::new(pool), any_pool)
 }
 
 /// Fixture: Setup articles table
@@ -130,7 +125,11 @@ async fn articles_table(
 				.not_null()
 				.default(0),
 		)
-		.col(ColumnDef::new(Articles::CreatedAt).timestamp())
+		.col(
+			ColumnDef::new(Articles::CreatedAt)
+				.timestamp()
+				.default(Expr::current_timestamp()),
+		)
 		.to_owned();
 
 	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
@@ -213,7 +212,6 @@ fn create_delete_request(uri: &str) -> Request {
 /// Test: Full CRUD lifecycle - create → list → retrieve → update → partial_update → destroy → verify
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_full_crud_lifecycle(#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>)) {
 	let (_pool, any_pool) = articles_table.await;
 	let handler = ModelViewSetHandler::<Article>::new().with_pool(any_pool);
@@ -294,7 +292,6 @@ async fn test_full_crud_lifecycle(#[future] articles_table: (Arc<PgPool>, Arc<sq
 /// Test: Multiple resources parallel management
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_multiple_resources_parallel_management(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -358,7 +355,6 @@ async fn test_multiple_resources_parallel_management(
 /// Test: ReadOnlyViewSet write operation restrictions
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_readonly_viewset_write_restrictions(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -399,7 +395,6 @@ async fn test_readonly_viewset_write_restrictions(
 /// Test: State consistency across operations
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_state_consistency_across_operations(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -434,7 +429,6 @@ async fn test_state_consistency_across_operations(
 /// Test: PUT operation idempotency
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_put_operation_idempotency(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -482,7 +476,6 @@ async fn test_put_operation_idempotency(
 /// Test: Incremental updates with multiple PATCH operations
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_incremental_patch_updates(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -543,7 +536,6 @@ async fn test_incremental_patch_updates(
 /// Test: Resource deletion state verification
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_resource_deletion_state_verification(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {
@@ -615,7 +607,6 @@ async fn test_resource_deletion_state_verification(
 /// Test: Create-retrieve data consistency
 #[rstest]
 #[tokio::test]
-#[serial(viewset_lifecycle)]
 async fn test_create_retrieve_data_consistency(
 	#[future] articles_table: (Arc<PgPool>, Arc<sqlx::AnyPool>),
 ) {

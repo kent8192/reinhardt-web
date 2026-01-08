@@ -12,7 +12,7 @@
 //! **Test Category**: Happy Path
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - articles(id SERIAL PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
@@ -24,8 +24,7 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::{Request, Response};
 use reinhardt_core::macros::model;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{
 	CreateAPIView, DestroyAPIView, ListAPIView, ListCreateAPIView, RetrieveAPIView,
 	RetrieveUpdateDestroyAPIView, UpdateAPIView, View,
@@ -34,8 +33,8 @@ use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serial_test::serial;
 use sqlx::{PgPool, Row};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 // ============================================================================
@@ -80,13 +79,11 @@ enum Articles {
 
 /// Fixture: Initialize database connection
 ///
-/// Dependencies: postgres_container (testcontainers)
+/// Dependencies: shared_db_pool (shared PostgreSQL with ORM initialized)
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, _connection_url) = postgres_container.await;
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup articles table
@@ -192,38 +189,68 @@ fn create_post_request(uri: &str, json_body: &str) -> Request {
 		.expect("Failed to build request")
 }
 
-/// Helper: Create HTTP PUT request with JSON body
-fn create_put_request(uri: &str, json_body: &str) -> Request {
+/// Helper: Create path_params with id for detail views
+///
+/// The lookup_field in Generic API Views is used for both:
+/// 1. The key in path_params to extract the ID from
+/// 2. The database column name to filter by
+///
+/// Since our Article model uses "id" as the primary key column,
+/// we need to use "id" as the path_params key and set with_lookup_field("id") on views.
+fn id_params(id: i64) -> HashMap<String, String> {
+	let mut params = HashMap::new();
+	params.insert("id".to_string(), id.to_string());
+	params
+}
+
+/// Helper: Create HTTP GET request with path parameters (for detail views)
+fn create_get_request_with_id(uri: &str, id: i64) -> Request {
+	Request::builder()
+		.method(Method::GET)
+		.uri(uri)
+		.version(Version::HTTP_11)
+		.headers(HeaderMap::new())
+		.body(Bytes::new())
+		.path_params(id_params(id))
+		.build()
+		.expect("Failed to build request")
+}
+
+/// Helper: Create HTTP PUT request with path parameters (for detail views)
+fn create_put_request_with_id(uri: &str, json_body: &str, id: i64) -> Request {
 	Request::builder()
 		.method(Method::PUT)
 		.uri(uri)
 		.version(Version::HTTP_11)
 		.headers(HeaderMap::new())
 		.body(Bytes::from(json_body.to_string()))
+		.path_params(id_params(id))
 		.build()
 		.expect("Failed to build request")
 }
 
-/// Helper: Create HTTP PATCH request with JSON body
-fn create_patch_request(uri: &str, json_body: &str) -> Request {
+/// Helper: Create HTTP PATCH request with path parameters (for detail views)
+fn create_patch_request_with_id(uri: &str, json_body: &str, id: i64) -> Request {
 	Request::builder()
 		.method(Method::PATCH)
 		.uri(uri)
 		.version(Version::HTTP_11)
 		.headers(HeaderMap::new())
 		.body(Bytes::from(json_body.to_string()))
+		.path_params(id_params(id))
 		.build()
 		.expect("Failed to build request")
 }
 
-/// Helper: Create HTTP DELETE request
-fn create_delete_request(uri: &str) -> Request {
+/// Helper: Create HTTP DELETE request with path parameters (for detail views)
+fn create_delete_request_with_id(uri: &str, id: i64) -> Request {
 	Request::builder()
 		.method(Method::DELETE)
 		.uri(uri)
 		.version(Version::HTTP_11)
 		.headers(HeaderMap::new())
 		.body(Bytes::new())
+		.path_params(id_params(id))
 		.build()
 		.expect("Failed to build request")
 }
@@ -241,7 +268,6 @@ fn parse_json_response(response: &Response) -> Value {
 /// Test: ListAPIView returns empty list when no data exists
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_list_api_view_empty_list(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -260,7 +286,6 @@ async fn test_list_api_view_empty_list(#[future] articles_table: Arc<PgPool>) {
 /// Test: ListAPIView returns list with multiple items
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_list_api_view_with_items(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -287,7 +312,6 @@ async fn test_list_api_view_with_items(#[future] articles_table: Arc<PgPool>) {
 /// Test: CreateAPIView creates new article with valid data
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_create_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -316,7 +340,6 @@ async fn test_create_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: RetrieveAPIView retrieves article by ID
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_retrieve_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -324,8 +347,9 @@ async fn test_retrieve_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let inserted = insert_test_articles(&pool, 1).await;
 	let article_id = inserted[0].id.unwrap();
 
-	let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new();
-	let request = create_get_request(&format!("/articles/{}/", article_id));
+	let view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new()
+		.with_lookup_field("id".to_string());
+	let request = create_get_request_with_id(&format!("/articles/{}/", article_id), article_id);
 
 	let response = view.dispatch(request).await.expect("Failed to dispatch");
 
@@ -340,7 +364,6 @@ async fn test_retrieve_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView performs full update with PUT
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_update_api_view_put(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -348,9 +371,11 @@ async fn test_update_api_view_put(#[future] articles_table: Arc<PgPool>) {
 	let inserted = insert_test_articles(&pool, 1).await;
 	let article_id = inserted[0].id.unwrap();
 
-	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new();
+	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new()
+		.with_lookup_field("id".to_string());
 	let json_body = r#"{"title":"Updated Title","content":"Updated content","published":false,"view_count":100}"#;
-	let request = create_put_request(&format!("/articles/{}/", article_id), json_body);
+	let request =
+		create_put_request_with_id(&format!("/articles/{}/", article_id), json_body, article_id);
 
 	let response = view.dispatch(request).await.expect("Failed to dispatch");
 
@@ -373,7 +398,6 @@ async fn test_update_api_view_put(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView performs partial update with PATCH
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_update_api_view_patch(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -382,9 +406,12 @@ async fn test_update_api_view_patch(#[future] articles_table: Arc<PgPool>) {
 	let article_id = inserted[0].id.unwrap();
 	let original_content = inserted[0].content.clone();
 
-	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new().with_partial(true);
+	let view = UpdateAPIView::<Article, JsonSerializer<Article>>::new()
+		.with_lookup_field("id".to_string())
+		.with_partial(true);
 	let json_body = r#"{"title":"Patched Title"}"#; // Only update title
-	let request = create_patch_request(&format!("/articles/{}/", article_id), json_body);
+	let request =
+		create_patch_request_with_id(&format!("/articles/{}/", article_id), json_body, article_id);
 
 	let response = view.dispatch(request).await.expect("Failed to dispatch");
 
@@ -405,7 +432,6 @@ async fn test_update_api_view_patch(#[future] articles_table: Arc<PgPool>) {
 /// Test: DestroyAPIView deletes article successfully
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -413,8 +439,8 @@ async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let inserted = insert_test_articles(&pool, 1).await;
 	let article_id = inserted[0].id.unwrap();
 
-	let view = DestroyAPIView::<Article>::new();
-	let request = create_delete_request(&format!("/articles/{}/", article_id));
+	let view = DestroyAPIView::<Article>::new().with_lookup_field("id".to_string());
+	let request = create_delete_request_with_id(&format!("/articles/{}/", article_id), article_id);
 
 	let response = view.dispatch(request).await.expect("Failed to dispatch");
 
@@ -429,8 +455,10 @@ async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	assert_eq!(count, 0);
 
 	// Verify subsequent retrieve returns 404
-	let retrieve_view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new();
-	let retrieve_request = create_get_request(&format!("/articles/{}/", article_id));
+	let retrieve_view = RetrieveAPIView::<Article, JsonSerializer<Article>>::new()
+		.with_lookup_field("id".to_string());
+	let retrieve_request =
+		create_get_request_with_id(&format!("/articles/{}/", article_id), article_id);
 	let retrieve_response = retrieve_view.dispatch(retrieve_request).await;
 	assert!(
 		retrieve_response.is_err() || retrieve_response.unwrap().status == StatusCode::NOT_FOUND
@@ -440,7 +468,6 @@ async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: ListCreateAPIView supports both GET and POST
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_list_create_composite(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -475,7 +502,6 @@ async fn test_list_create_composite(#[future] articles_table: Arc<PgPool>) {
 /// Test: RetrieveUpdateDestroyAPIView supports GET, PUT, and DELETE
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -483,10 +509,11 @@ async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<Pg
 	let inserted = insert_test_articles(&pool, 1).await;
 	let article_id = inserted[0].id.unwrap();
 
-	let view = RetrieveUpdateDestroyAPIView::<Article, JsonSerializer<Article>>::new();
+	let view = RetrieveUpdateDestroyAPIView::<Article, JsonSerializer<Article>>::new()
+		.with_lookup_field("id".to_string());
 
 	// Test GET (retrieve)
-	let get_request = create_get_request(&format!("/articles/{}/", article_id));
+	let get_request = create_get_request_with_id(&format!("/articles/{}/", article_id), article_id);
 	let get_response = view
 		.dispatch(get_request)
 		.await
@@ -495,7 +522,8 @@ async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<Pg
 
 	// Test PUT (update)
 	let json_body = r#"{"title":"Updated via RUD","content":"Updated content","published":true,"view_count":50}"#;
-	let put_request = create_put_request(&format!("/articles/{}/", article_id), json_body);
+	let put_request =
+		create_put_request_with_id(&format!("/articles/{}/", article_id), json_body, article_id);
 	let put_response = view
 		.dispatch(put_request)
 		.await
@@ -503,7 +531,8 @@ async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<Pg
 	assert_eq!(put_response.status, StatusCode::OK);
 
 	// Test DELETE (destroy)
-	let delete_request = create_delete_request(&format!("/articles/{}/", article_id));
+	let delete_request =
+		create_delete_request_with_id(&format!("/articles/{}/", article_id), article_id);
 	let delete_response = view
 		.dispatch(delete_request)
 		.await
@@ -522,7 +551,6 @@ async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<Pg
 /// Test: ListAPIView applies default ordering (by -created_at)
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_crud)]
 async fn test_default_ordering(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 

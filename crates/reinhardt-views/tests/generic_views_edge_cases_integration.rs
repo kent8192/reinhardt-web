@@ -16,7 +16,7 @@
 //! **Test Category**: Edge Cases
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - edge_test_items(id SERIAL PRIMARY KEY, name TEXT, description TEXT,
@@ -29,13 +29,11 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{CreateAPIView, ListAPIView, View};
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::task;
@@ -84,11 +82,9 @@ enum EdgeTestItems {
 
 /// Fixture: Initialize database connection
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, _connection_url) = postgres_container.await;
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup edge_test_items table
@@ -158,7 +154,6 @@ fn create_get_request(uri: &str) -> Request {
 /// Test: Large payload handling (5000 character string)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_large_payload_handling(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -193,7 +188,6 @@ async fn test_large_payload_handling(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Concurrent request handling
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_concurrent_requests(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -237,7 +231,6 @@ async fn test_concurrent_requests(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Serialization error handling (malformed JSON)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_serialization_error(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -267,7 +260,6 @@ async fn test_serialization_error(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Unicode and special characters
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_unicode_special_characters(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -302,7 +294,6 @@ async fn test_unicode_special_characters(#[future] edge_items_table: Arc<PgPool>
 /// Test: Very long string (boundary testing)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_very_long_string_boundary(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -336,7 +327,6 @@ async fn test_very_long_string_boundary(#[future] edge_items_table: Arc<PgPool>)
 /// Test: Null/None field handling
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_null_field_handling(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -367,7 +357,6 @@ async fn test_null_field_handling(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Empty string vs null distinction
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_empty_string_vs_null(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -403,7 +392,6 @@ async fn test_empty_string_vs_null(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Integer boundary values (i64 min/max)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_integer_boundary_values(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -459,7 +447,6 @@ async fn test_integer_boundary_values(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Boolean edge cases (true/false/null)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_boolean_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -495,7 +482,6 @@ async fn test_boolean_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: Timestamp edge cases (far past, far future, timezones)
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_timestamp_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
 	let _pool = edge_items_table.await;
 
@@ -554,7 +540,6 @@ async fn test_timestamp_edge_cases(#[future] edge_items_table: Arc<PgPool>) {
 /// Test: List operation with edge case data
 #[rstest]
 #[tokio::test]
-#[serial(views_edge_cases)]
 async fn test_list_with_edge_case_data(#[future] edge_items_table: Arc<PgPool>) {
 	let pool = edge_items_table.await;
 

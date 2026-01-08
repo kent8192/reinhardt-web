@@ -12,7 +12,7 @@
 //! **Test Category**: Error Path
 //!
 //! **Fixtures Used:**
-//! - postgres_container: PostgreSQL database container
+//! - shared_db_pool: Shared PostgreSQL database pool with ORM initialized
 //!
 //! **Test Data Schema:**
 //! - articles(id SERIAL PRIMARY KEY, title TEXT NOT NULL UNIQUE, content TEXT NOT NULL,
@@ -23,17 +23,14 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::http::Request;
 use reinhardt_core::macros::model;
-use reinhardt_db::orm::init_database;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::testcontainers::{ContainerAsync, GenericImage};
+use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{
 	CreateAPIView, DestroyAPIView, ListAPIView, RetrieveAPIView, UpdateAPIView, View,
 };
 use rstest::*;
 use sea_query::{ColumnDef, Iden, Index, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
-use serial_test::serial;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 
@@ -79,17 +76,9 @@ enum Articles {
 
 /// Fixture: Initialize database connection
 #[fixture]
-async fn db_pool(
-	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, connection_url) = postgres_container.await;
-
-	// Initialize database connection for reinhardt-orm
-	init_database(&connection_url)
-		.await
-		.expect("Failed to initialize database");
-
-	pool
+async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
+	let (pool, _url) = shared_db_pool.await;
+	Arc::new(pool)
 }
 
 /// Fixture: Setup articles table with UNIQUE constraint on title
@@ -250,7 +239,6 @@ fn create_delete_request(uri: &str) -> Request {
 /// Test: CreateAPIView returns 400 when required field is missing
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_create_missing_required_field(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -271,7 +259,6 @@ async fn test_create_missing_required_field(#[future] articles_table: Arc<PgPool
 /// Test: CreateAPIView returns 400 when field type is invalid
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_create_invalid_type(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -293,7 +280,6 @@ async fn test_create_invalid_type(#[future] articles_table: Arc<PgPool>) {
 /// Test: CreateAPIView returns 400 for malformed JSON
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_create_invalid_json(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -314,7 +300,6 @@ async fn test_create_invalid_json(#[future] articles_table: Arc<PgPool>) {
 /// Test: RetrieveAPIView returns 404 for non-existent resource
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_retrieve_not_found(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -333,7 +318,6 @@ async fn test_retrieve_not_found(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView returns 404 for non-existent resource
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_update_not_found(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -354,7 +338,6 @@ async fn test_update_not_found(#[future] articles_table: Arc<PgPool>) {
 /// Test: DestroyAPIView returns 404 for non-existent resource
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_destroy_not_found(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -373,7 +356,6 @@ async fn test_destroy_not_found(#[future] articles_table: Arc<PgPool>) {
 /// Test: ListAPIView returns 405 for disallowed HTTP method (POST)
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_list_disallowed_method(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -390,7 +372,6 @@ async fn test_list_disallowed_method(#[future] articles_table: Arc<PgPool>) {
 /// Test: CreateAPIView returns 400 for empty request body
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_create_empty_body(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -409,7 +390,6 @@ async fn test_create_empty_body(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView with PATCH returns 400 for invalid field
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_update_partial_invalid_field(#[future] existing_article: (Arc<PgPool>, Article)) {
 	let (_pool, article) = existing_article.await;
 	let article_id = article.id.unwrap();
@@ -439,7 +419,6 @@ async fn test_update_partial_invalid_field(#[future] existing_article: (Arc<PgPo
 /// Test: CreateAPIView returns 409 for UNIQUE constraint violation
 #[rstest]
 #[tokio::test]
-#[serial(generic_views_validation)]
 async fn test_create_constraint_violation(#[future] existing_article: (Arc<PgPool>, Article)) {
 	let (_pool, existing) = existing_article.await;
 
