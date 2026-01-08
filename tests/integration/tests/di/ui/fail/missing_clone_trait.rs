@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-/// Service without Clone trait - demonstrates the Arc<T> Injectable requirement
+/// Service without Clone trait - demonstrates the `Arc<T>` Injectable requirement
 struct ServiceWithoutClone {
 	value: String,
 }
 
-/// This function requires T: Clone, mirroring the Arc<T> Injectable impl bound
+/// This function requires T: Clone, mirroring the `Arc<T>` Injectable impl bound
 fn wrap_in_arc<T: Clone>(value: T) -> Arc<T> {
 	Arc::new(value)
 }

@@ -13,10 +13,10 @@ fn test_compile_fail_cases() {
 	let t = trybuild::TestCases::new();
 
 	// Test: Non-Injectable type resolution should fail
-	t.compile_fail("tests/di/macro_compile_tests/fail/invalid_inject_type.rs");
+	t.compile_fail("tests/di/ui/fail/invalid_inject_type.rs");
 
 	// Test: Missing Clone trait should fail
-	t.compile_fail("tests/di/macro_compile_tests/fail/missing_clone_trait.rs");
+	t.compile_fail("tests/di/ui/fail/missing_clone_trait.rs");
 
 	// Note: circular_dependency compiles but fails at runtime (tested in core_error_handling.rs)
 }
@@ -30,11 +30,11 @@ fn test_compile_pass_cases() {
 	let t = trybuild::TestCases::new();
 
 	// Test: Basic Injectable implementation
-	t.pass("tests/di/macro_compile_tests/pass/basic_injectable.rs");
+	t.pass("tests/di/ui/pass/basic_injectable.rs");
 
 	// Test: Nested dependencies
-	t.pass("tests/di/macro_compile_tests/pass/nested_dependencies.rs");
+	t.pass("tests/di/ui/pass/nested_dependencies.rs");
 
 	// Test: Complex types (Vec, HashMap, Option)
-	t.pass("tests/di/macro_compile_tests/pass/complex_types.rs");
+	t.pass("tests/di/ui/pass/complex_types.rs");
 }

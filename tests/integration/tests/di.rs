@@ -18,9 +18,6 @@ mod core_error_handling;
 // #[path = "di/macros_advanced.rs"]
 // mod macros_advanced;
 
-#[path = "di/macro_compile_tests.rs"]
-mod macro_compile_tests;
-
 // #[path = "di/auto_injection_basic.rs"]
 // mod auto_injection_basic;
 
