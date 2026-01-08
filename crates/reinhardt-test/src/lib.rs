@@ -119,7 +119,7 @@
 //! - [`mock`]: Mock objects and spies
 //! - [`server`]: Test server utilities
 //! - [`testcase`]: [`APITestCase`] base class
-//! - [`containers`]: TestContainers integration (requires feature)
+//! - `containers`: TestContainers integration (requires feature)
 //!
 //! ## Feature Flags
 //!

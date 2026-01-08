@@ -181,7 +181,7 @@ pub fn singleton_scope() -> Arc<SingletonScope> {
 /// }
 /// ```
 ///
-/// ## With Depends<T>
+/// ## With `Depends<T>`
 ///
 /// ```rust,no_run
 /// use reinhardt_di::{Depends, Injectable, InjectionContext, DiResult};

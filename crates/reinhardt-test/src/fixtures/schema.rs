@@ -384,7 +384,7 @@ pub fn relation_info_to_constraint(
 ///
 /// # Arguments
 ///
-/// * `models` - List of (model_name, Vec<dependency_names>)
+/// * `models` - List of (model_name, `Vec<dependency_names>`)
 ///
 /// # Returns
 ///

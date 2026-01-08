@@ -385,7 +385,7 @@ impl<T> Default for Spy<T> {
 /// Simple handler wrapper for testing
 ///
 /// Provides a convenient way to create handlers from closures for testing purposes.
-/// The handler function can be any closure that takes a [`Request`] and returns a
+/// The handler function can be any closure that takes a `Request` and returns a
 /// [`Result<Response>`].
 ///
 /// # Examples

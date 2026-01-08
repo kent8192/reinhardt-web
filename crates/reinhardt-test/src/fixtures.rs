@@ -163,7 +163,7 @@ pub use testcontainers::{
 #[cfg(feature = "testcontainers")]
 pub use shared_postgres::{
 	SharedPostgres, cleanup_shared_postgres, get_shared_postgres, get_test_pool,
-	get_test_pool_with_orm, get_test_pool_with_table,
+	get_test_pool_with_orm, get_test_pool_with_table, shared_db_pool,
 };
 
 // From resources module (conditional on feature)
