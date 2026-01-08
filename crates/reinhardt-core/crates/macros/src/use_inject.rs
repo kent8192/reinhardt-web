@@ -13,7 +13,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type};
 
-/// Check if an attribute is #[inject]
+/// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
@@ -86,7 +86,7 @@ impl ProcessedArg {
 /// Generates a wrapper function that:
 /// 1. Has signature `Fn(Request) -> impl Future<Output = Result>` (router-compatible)
 /// 2. Extracts `InjectionContext` from `Request.get_di_context()`
-/// 3. Resolves #[inject] dependencies from the context
+/// 3. Resolves `#[inject]` dependencies from the context
 /// 4. Calls the original function
 ///
 /// For methods (with &self), the wrapper also takes &self and calls self.original_fn.

@@ -7,7 +7,7 @@ use crate::{ValidationError, ValidationResult, Validator};
 
 /// Phone number validator for international phone numbers
 ///
-/// Validates phone numbers in E.164 format: +[country code][number]
+/// Validates phone numbers in E.164 format: `+[country code][number]`
 pub struct PhoneNumberValidator {
 	/// Optional list of allowed country codes (e.g., ["1", "81", "44"])
 	pub country_codes: Option<Vec<String>>,

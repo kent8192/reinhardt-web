@@ -1,14 +1,14 @@
 //! Endpoint metadata trait for HTTP Method Macros
 //!
 //! This module provides the `EndpointInfo` trait that HTTP Method Macros
-//! (#[get], #[post], etc.) implement to provide route metadata.
+//! (`#[get]`, `#[post]`, etc.) implement to provide route metadata.
 
 use hyper::Method;
 
 /// Endpoint metadata for OpenAPI generation
 ///
 /// This struct is automatically submitted to the global inventory
-/// by HTTP method decorator macros (#[get], #[post], etc.) at compile time.
+/// by HTTP method decorator macros (`#[get]`, `#[post]`, etc.) at compile time.
 /// It can be collected at runtime using `inventory::iter::<EndpointMetadata>()`.
 ///
 /// # Example
@@ -30,7 +30,7 @@ pub struct EndpointMetadata {
 	pub module_path: &'static str,
 
 	/// Type name of the request body (e.g., "CreateUserRequest")
-	/// Extracted from parameter extractors like Json<T>, Form<T>, Body<T>
+	/// Extracted from parameter extractors like `Json<T>`, `Form<T>`, `Body<T>`
 	pub request_body_type: Option<&'static str>,
 
 	/// Content-Type of the request body (e.g., "application/json", "application/x-www-form-urlencoded")
@@ -42,7 +42,7 @@ inventory::collect!(EndpointMetadata);
 
 /// Trait for endpoint metadata used by HTTP Method Macros
 ///
-/// This trait is automatically implemented by HTTP Method Macros (#[get], #[post], etc.)
+/// This trait is automatically implemented by HTTP Method Macros (`#[get]`, `#[post]`, etc.)
 /// for the generated View types. It provides the route path, HTTP method, and name
 /// for URL reversal.
 ///

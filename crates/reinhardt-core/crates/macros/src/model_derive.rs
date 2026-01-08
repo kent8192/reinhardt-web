@@ -7,9 +7,9 @@
 //! The `#[model(...)]` attribute macro automatically detects relationship fields and registers
 //! them in the global `RELATIONSHIPS` registry for reverse relation construction:
 //!
-//! - **ForeignKeyField<T>** → Registered as `RelationshipType::ForeignKey`
-//! - **OneToOneField<T>** → Registered as `RelationshipType::OneToOne`
-//! - **ManyToManyField<T, U>** → Registered as `RelationshipType::ManyToMany`
+//! - **`ForeignKeyField<T>`** → Registered as `RelationshipType::ForeignKey`
+//! - **`OneToOneField<T>`** → Registered as `RelationshipType::OneToOne`
+//! - **`ManyToManyField<T, U>`** → Registered as `RelationshipType::ManyToMany`
 //!
 //! # Type-Safe ManyToMany Accessor Methods
 //!
@@ -37,7 +37,7 @@ use crate::crate_paths::{
 };
 use crate::rel::RelAttribute;
 
-/// Constraint specification from #[model(constraints = [...])]
+/// Constraint specification from `#[model(constraints = [...])]`
 #[derive(Debug, Clone)]
 enum ConstraintSpec {
 	/// unique(fields = [...], name = "...", condition = "...")
@@ -56,7 +56,7 @@ struct ModelAttributesParsed {
 	unique_together: Vec<Vec<String>>, // Multiple Django-style unique_together constraints
 }
 
-/// Model configuration from #[model(...)] attribute
+/// Model configuration from `#[model(...)]` attribute
 #[derive(Debug, Clone)]
 struct ModelConfig {
 	app_label: String,
@@ -65,7 +65,7 @@ struct ModelConfig {
 }
 
 impl ModelConfig {
-	/// Parse #[model(...)] attribute
+	/// Parse `#[model(...)]` attribute
 	fn from_attrs(attrs: &[syn::Attribute], struct_name: &syn::Ident) -> Result<Self> {
 		let mut app_label = None;
 		let mut table_name = None;
@@ -267,9 +267,9 @@ impl ModelConfig {
 /// Foreign key specification
 #[derive(Debug, Clone)]
 enum ForeignKeySpec {
-	/// Type directly: #[field(foreign_key = User)]
+	/// Type directly: `#[field(foreign_key = User)]`
 	Type(syn::Type),
-	/// app_label.model_name format: #[field(foreign_key = "users.User")]
+	/// app_label.model_name format: `#[field(foreign_key = "users.User")]`
 	AppModel {
 		app_label: String,
 		model_name: String,
@@ -294,7 +294,7 @@ enum CompressionMethod {
 	Lz4,
 }
 
-/// Field configuration from #[field(...)] attribute
+/// Field configuration from `#[field(...)]` attribute
 #[derive(Debug, Clone, Default)]
 struct FieldConfig {
 	primary_key: bool,
@@ -384,13 +384,13 @@ struct FieldConfig {
 	#[cfg(feature = "db-postgres")]
 	field_type: Option<String>,
 	/// Base type for array elements (e.g., "VARCHAR(50)", "INTEGER")
-	/// Used when the Rust type is Vec<T> but the element type cannot be inferred
+	/// Used when the Rust type is `Vec<T>` but the element type cannot be inferred
 	#[cfg(feature = "db-postgres")]
 	array_base_type: Option<String>,
 }
 
 impl FieldConfig {
-	/// Parse #[field(...)] attribute
+	/// Parse `#[field(...)]` attribute
 	fn from_attrs(attrs: &[syn::Attribute]) -> Result<Self> {
 		let mut config = Self::default();
 
@@ -856,7 +856,7 @@ struct FieldInfo {
 	/// - Relationship traversal API design
 	#[allow(dead_code)]
 	rel: Option<RelAttribute>,
-	/// Whether this is an auto-generated FK _id field (marked with #[fk_id_field])
+	/// Whether this is an auto-generated FK _id field (marked with `#[fk_id_field]`)
 	/// These fields should have getters but not setters
 	is_fk_id_field: bool,
 }
@@ -1039,7 +1039,7 @@ fn map_explicit_field_type(
 	Ok(field_type)
 }
 
-/// Map Vec<T> to PostgreSQL Array type
+/// Map `Vec<T>` to PostgreSQL Array type
 #[cfg(feature = "db-postgres")]
 fn map_vec_to_array_type(
 	ty: &Type,
@@ -1156,7 +1156,7 @@ fn parse_base_type_string(
 	Ok(field_type)
 }
 
-/// Extract Option<T> and return (is_option, inner_type)
+/// Extract `Option<T>` and return (is_option, inner_type)
 fn extract_option_type(ty: &Type) -> (bool, &Type) {
 	if let Type::Path(type_path) = ty
 		&& let Some(last_segment) = type_path.path.segments.last()
@@ -3155,7 +3155,7 @@ fn generate_relationship_metadata(
 	}
 }
 
-/// Check if a type is Uuid or Option<Uuid>
+/// Check if a type is Uuid or `Option<Uuid>`
 fn is_uuid_type(ty: &Type) -> bool {
 	let (_, inner_ty) = extract_option_type(ty);
 	if let Type::Path(type_path) = inner_ty
@@ -3166,7 +3166,7 @@ fn is_uuid_type(ty: &Type) -> bool {
 	false
 }
 
-/// Check if a type is String or Option<String>
+/// Check if a type is String or `Option<String>`
 fn is_string_type(ty: &Type) -> bool {
 	let (_, inner_ty) = extract_option_type(ty);
 	if let Type::Path(type_path) = inner_ty
@@ -3193,7 +3193,7 @@ fn is_integer_primary_key_type(ty: &Type) -> bool {
 	false
 }
 
-/// Check if a type is DateTime<Utc> or Option<DateTime<Utc>>
+/// Check if a type is DateTime<Utc> or `Option<DateTime<Utc>>`
 fn is_datetime_utc_type(ty: &Type) -> bool {
 	let (_, inner_ty) = extract_option_type(ty);
 	if let Type::Path(type_path) = inner_ty
@@ -3317,7 +3317,7 @@ fn extract_foreign_key_target_type(ty: &Type) -> Type {
 	ty.clone()
 }
 
-/// Check if a type is Option<T>
+/// Check if a type is `Option<T>`
 fn is_option_type(ty: &syn::Type) -> bool {
 	if let syn::Type::Path(type_path) = ty
 		&& let Some(segment) = type_path.path.segments.last()

@@ -1,7 +1,7 @@
 //! Common utilities for injectable macros
 //!
-//! This module contains shared logic for both function-based (#[injectable] on functions)
-//! and struct-based (#[injectable] on structs) dependency injection.
+//! This module contains shared logic for both function-based (`#[injectable]` on functions)
+//! and struct-based (`#[injectable]` on structs) dependency injection.
 
 use crate::crate_paths::{
 	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_signals_crate,
@@ -18,7 +18,7 @@ pub(crate) enum InjectionScope {
 	Singleton,
 }
 
-/// Parsed options from #[inject(...)] attribute
+/// Parsed options from `#[inject(...)]` attribute
 #[derive(Debug, Clone)]
 pub(crate) struct InjectOptions {
 	/// Whether to use caching for dependency resolution
@@ -36,36 +36,36 @@ impl Default for InjectOptions {
 	}
 }
 
-/// Default value specification for #[no_inject] fields
+/// Default value specification for `#[no_inject]` fields
 #[derive(Debug, Clone)]
 pub(crate) enum DefaultValue {
 	/// Use Default::default()
 	DefaultTrait,
 	/// Use a specific expression
 	Expression(Expr),
-	/// No default value specified - field must be Option<T>
+	/// No default value specified - field must be `Option<T>`
 	None,
 }
 
-/// Parsed options from #[no_inject(...)] attribute
+/// Parsed options from `#[no_inject(...)]` attribute
 #[derive(Debug, Clone)]
 pub(crate) struct NoInjectOptions {
 	pub default: DefaultValue,
 }
 
-/// Check if an attribute is #[inject]
+/// Check if an attribute is `#[inject]`
 pub(crate) fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
 
-/// Check if an attribute is #[no_inject]
+/// Check if an attribute is `#[no_inject]`
 pub(crate) fn is_no_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("no_inject")
 }
 
-/// Parse #[inject] or #[inject(cache = false, scope = Singleton)] attributes
+/// Parse `#[inject]` or `#[inject(cache = false, scope = Singleton)]` attributes
 ///
-/// Returns `InjectOptions` with parsed settings. If no #[inject] attribute is found,
+/// Returns `InjectOptions` with parsed settings. If no `#[inject]` attribute is found,
 /// returns default options.
 pub(crate) fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
 	let mut options = InjectOptions::default();
@@ -107,7 +107,7 @@ pub(crate) fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
 	options
 }
 
-/// Parse #[no_inject] or #[no_inject(default = ...)] attributes
+/// Parse `#[no_inject]` or `#[no_inject(default = ...)]` attributes
 ///
 /// Returns `Some(NoInjectOptions)` if `#[no_inject]` attribute is found, `None` otherwise.
 pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInjectOptions> {
@@ -164,10 +164,10 @@ pub(crate) fn parse_no_inject_options(attrs: &[syn::Attribute]) -> Option<NoInje
 
 use proc_macro2::TokenStream;
 
-/// Information about #[inject] parameters (for code generation)
+/// Information about `#[inject]` parameters (for code generation)
 ///
 /// This struct is part of the DI code generation infrastructure and will be used
-/// by macro extensions like #[action] and #[receiver] with use_inject support.
+/// by macro extensions like `#[action]` and `#[receiver]` with use_inject support.
 #[derive(Clone)]
 pub(crate) struct InjectParamInfo {
 	/// Parameter pattern (variable name)
@@ -178,15 +178,15 @@ pub(crate) struct InjectParamInfo {
 	pub options: InjectOptions,
 }
 
-/// Detects parameters with #[inject] attribute from function arguments.
+/// Detects parameters with `#[inject]` attribute from function arguments.
 ///
 /// This function is part of the DI code generation infrastructure and is used
-/// by macro extensions like #[action] and #[receiver] with use_inject support.
+/// by macro extensions like `#[action]` and `#[receiver]` with use_inject support.
 ///
 /// # Integration
 ///
-/// - #[action] macro: Controller action methods with automatic DI
-/// - #[receiver] macro: Signal receiver functions with injected dependencies
+/// - `#[action]` macro: Controller action methods with automatic DI
+/// - `#[receiver]` macro: Signal receiver functions with injected dependencies
 /// - use_inject flag: Enable DI for custom macros
 pub(crate) fn detect_inject_params(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
@@ -213,7 +213,7 @@ pub(crate) fn detect_inject_params(
 
 /// Generates DI context extraction code from a Request.
 ///
-/// This function is used by #[action] and #[receiver] macros to extract
+/// This function is used by `#[action]` and `#[receiver]` macros to extract
 /// the DI context from request objects for dependency resolution.
 pub(crate) fn generate_di_context_extraction(request_ident: &syn::Ident) -> TokenStream {
 	let di_crate = get_reinhardt_di_crate();
@@ -227,10 +227,10 @@ pub(crate) fn generate_di_context_extraction(request_ident: &syn::Ident) -> Toke
 	}
 }
 
-/// Generates DI context extraction code from an optional Arc<InjectionContext>.
+/// Generates DI context extraction code from an optional `Arc<InjectionContext>`.
 ///
 /// Used for Signal receivers where DI context is passed as an Option.
-/// This function enables #[receiver] macros to handle optional DI contexts
+/// This function enables `#[receiver]` macros to handle optional DI contexts
 /// in signal dispatch scenarios.
 pub(crate) fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident) -> TokenStream {
 	let signals_crate = get_reinhardt_signals_crate();
@@ -246,8 +246,8 @@ pub(crate) fn generate_di_context_extraction_from_option(ctx_ident: &syn::Ident)
 
 /// Generates injection resolution calls for a list of inject parameters.
 ///
-/// This function is used by #[action] and #[receiver] macros to generate
-/// dependency injection code for parameters marked with #[inject].
+/// This function is used by `#[action]` and `#[receiver]` macros to generate
+/// dependency injection code for parameters marked with `#[inject]`.
 pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec<TokenStream> {
 	let di_crate = get_reinhardt_di_crate();
 	let core_crate = get_reinhardt_core_crate();
@@ -285,7 +285,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 /// Generates injection resolution calls with a custom error type.
 ///
 /// Used for WebSocket handlers and Signal receivers that use different error types.
-/// This function enables #[action] and #[receiver] macros to generate error
+/// This function enables `#[action]` and `#[receiver]` macros to generate error
 /// handling code compatible with their specific error types.
 pub(crate) fn generate_injection_calls_with_error<F>(
 	inject_params: &[InjectParamInfo],
@@ -323,11 +323,11 @@ where
 		.collect()
 }
 
-/// Removes #[inject] attributes from function arguments.
+/// Removes `#[inject]` attributes from function arguments.
 ///
-/// Returns a new list of FnArg with #[inject] attributes stripped.
-/// This function is used by #[action] and #[receiver] macros to clean up
-/// function signatures after processing #[inject] attributes for code generation.
+/// Returns a new list of FnArg with `#[inject]` attributes stripped.
+/// This function is used by `#[action]` and `#[receiver]` macros to clean up
+/// function signatures after processing `#[inject]` attributes for code generation.
 pub(crate) fn strip_inject_attrs(
 	inputs: &syn::punctuated::Punctuated<syn::FnArg, Token![,]>,
 ) -> Vec<syn::FnArg> {

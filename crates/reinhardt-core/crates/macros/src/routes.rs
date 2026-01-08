@@ -30,7 +30,7 @@ struct ExtractorInfo {
 	extractor_name: String,
 }
 
-/// Information about #[inject] parameters
+/// Information about `#[inject]` parameters
 #[derive(Clone)]
 struct InjectInfo {
 	pat: Box<Pat>,
@@ -143,7 +143,7 @@ fn extract_request_body_info(inputs: &Punctuated<FnArg, Token![,]>) -> Option<(S
 	None
 }
 
-/// Detect parameters with #[inject] attribute
+/// Detect parameters with `#[inject]` attribute
 fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo> {
 	let mut inject_params = Vec::new();
 
@@ -190,7 +190,7 @@ fn validate_extractors(extractors: &[ExtractorInfo]) -> Result<()> {
 	Ok(())
 }
 
-/// Convert Option<String> to TokenStream for Option<&'static str> literal
+/// Convert `Option<String>` to TokenStream for `Option<&'static str>` literal
 fn option_to_lit(opt: &Option<String>) -> TokenStream {
 	match opt {
 		Some(s) => quote! { Some(#s) },

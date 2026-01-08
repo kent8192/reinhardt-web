@@ -3,7 +3,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Result, parse_macro_input};
 
-/// Configuration from #[app_config(...)] attribute
+/// Configuration from `#[app_config(...)]` attribute
 #[derive(Debug, Clone)]
 struct AppConfigAttr {
 	name: String,
@@ -12,7 +12,7 @@ struct AppConfigAttr {
 }
 
 impl AppConfigAttr {
-	/// Parse #[app_config(...)] attribute
+	/// Parse `#[app_config(...)]` attribute
 	fn from_attrs(attrs: &[syn::Attribute], struct_name: &syn::Ident) -> Result<Self> {
 		let mut name = None;
 		let mut label = None;

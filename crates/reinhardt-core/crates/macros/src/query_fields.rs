@@ -65,9 +65,9 @@ pub(crate) fn derive_query_fields_impl(input: DeriveInput) -> TokenStream {
 /// Handles sophisticated type mapping including:
 /// - Primitive types (String, i32, i64, f32, f64, bool)
 /// - DateTime types (DateTime, Date)
-/// - Generic types (Option<T>, Vec<T>, HashMap<K,V>, HashSet<T>)
+/// - Generic types (`Option<T>`, `Vec<T>`, `HashMap<K,V>`, `HashSet<T>`)
 /// - ORM relationship types (ForeignKey, OneToOneField, ManyToManyField)
-/// - Complex nested structures (Option<Vec<T>>, Result<T, E>)
+/// - Complex nested structures (`Option<Vec<T>>`, `Result<T, E>`)
 /// - Custom types with full path qualification
 fn map_type_to_lookup_type(ty: &Type, orm_crate: &TokenStream) -> TokenStream {
 	match ty {
@@ -154,7 +154,7 @@ fn map_type_to_lookup_type(ty: &Type, orm_crate: &TokenStream) -> TokenStream {
 	}
 }
 
-/// Handle Option<T> type mapping
+/// Handle `Option<T>` type mapping
 fn handle_option_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
@@ -165,7 +165,7 @@ fn handle_option_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> To
 	quote! { Option<()> }
 }
 
-/// Handle Vec<T> type mapping
+/// Handle `Vec<T>` type mapping
 fn handle_vec_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
@@ -176,7 +176,7 @@ fn handle_vec_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> Token
 	quote! { Vec<()> }
 }
 
-/// Handle HashMap<K, V> type mapping
+/// Handle `HashMap<K, V>` type mapping
 fn handle_hashmap_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
 		let mut args_iter = args.args.iter();
@@ -193,7 +193,7 @@ fn handle_hashmap_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> T
 	quote! { ::std::collections::HashMap<(), ()> }
 }
 
-/// Handle HashSet<T> type mapping
+/// Handle `HashSet<T>` type mapping
 fn handle_hashset_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
@@ -204,7 +204,7 @@ fn handle_hashset_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> T
 	quote! { ::std::collections::HashSet<()> }
 }
 
-/// Handle BTreeMap<K, V> type mapping
+/// Handle `BTreeMap<K, V>` type mapping
 fn handle_btreemap_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
 		let mut args_iter = args.args.iter();
@@ -221,7 +221,7 @@ fn handle_btreemap_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> 
 	quote! { ::std::collections::BTreeMap<(), ()> }
 }
 
-/// Handle BTreeSet<T> type mapping
+/// Handle `BTreeSet<T>` type mapping
 fn handle_btreeset_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
@@ -232,7 +232,7 @@ fn handle_btreeset_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> 
 	quote! { ::std::collections::BTreeSet<()> }
 }
 
-/// Handle Result<T, E> type mapping
+/// Handle `Result<T, E>` type mapping
 fn handle_result_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
 		let mut args_iter = args.args.iter();
@@ -249,7 +249,7 @@ fn handle_result_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> To
 	quote! { Result<(), ()> }
 }
 
-/// Handle Box<T>, Arc<T>, Rc<T> type mapping
+/// Handle `Box<T>`, `Arc<T>`, `Rc<T>` type mapping
 fn handle_pointer_type(segment: &syn::PathSegment, orm_crate: &TokenStream) -> TokenStream {
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()

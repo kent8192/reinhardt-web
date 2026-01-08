@@ -10,7 +10,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{FnArg, Ident, ItemFn, Pat, PatType, Result, ReturnType, Type};
 
-/// Information about an #[inject] parameter
+/// Information about an `#[inject]` parameter
 struct InjectParamInfo {
 	name: Ident,
 	ty: Type,

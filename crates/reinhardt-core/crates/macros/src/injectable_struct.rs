@@ -233,7 +233,7 @@ pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStre
 	Ok(expanded)
 }
 
-/// Validate that a type is Option<T>
+/// Validate that a type is `Option<T>`
 fn validate_option_type(ty: &Type, field: &syn::Field) -> Result<()> {
 	if let Type::Path(type_path) = ty
 		&& let Some(segment) = type_path.path.segments.last()

@@ -42,7 +42,7 @@ pub(crate) fn model_attribute_impl(
 		return Ok(quote! { #input });
 	}
 
-	/// Check if a specific trait is already in #[derive(...)] attributes
+	/// Check if a specific trait is already in `#[derive(...)]` attributes
 	fn has_derive_trait(attrs: &[Attribute], trait_name: &str) -> bool {
 		attrs.iter().any(|attr| {
 			if attr.path().is_ident("derive")
@@ -59,7 +59,7 @@ pub(crate) fn model_attribute_impl(
 		})
 	}
 
-	/// Check if field has #[rel(foreign_key, ...)] or #[rel(one_to_one, ...)] attribute
+	/// Check if field has `#[rel(foreign_key, ...)]` or `#[rel(one_to_one, ...)]` attribute
 	fn has_fk_or_one_to_one_rel(attrs: &[Attribute]) -> bool {
 		attrs.iter().any(|attr| {
 			if attr.path().is_ident("rel")

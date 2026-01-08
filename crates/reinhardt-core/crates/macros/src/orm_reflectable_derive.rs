@@ -15,9 +15,9 @@ enum FieldInfo {
 		name: syn::Ident,
 		field_type: String,
 	},
-	/// Collection relationship (Vec<T>)
+	/// Collection relationship (`Vec<T>`)
 	CollectionRelationship { name: syn::Ident },
-	/// Scalar relationship (Option<T>)
+	/// Scalar relationship (`Option<T>`)
 	ScalarRelationship { name: syn::Ident },
 	/// Field to ignore
 	Ignored,
@@ -177,7 +177,7 @@ fn has_attribute(attrs: &[syn::Attribute], name: &str) -> bool {
 	attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
-/// Get field type from #[orm_field(type = "Integer")] attribute
+/// Get field type from `#[orm_field(type = "Integer")]` attribute
 fn get_orm_field_type(attrs: &[syn::Attribute]) -> Option<String> {
 	for attr in attrs {
 		if attr.path().is_ident("orm_field")
@@ -193,7 +193,7 @@ fn get_orm_field_type(attrs: &[syn::Attribute]) -> Option<String> {
 	None
 }
 
-/// Get relationship type from #[orm_relationship(type = "collection")] attribute
+/// Get relationship type from `#[orm_relationship(type = "collection")]` attribute
 fn get_orm_relationship_type(attrs: &[syn::Attribute]) -> Option<String> {
 	for attr in attrs {
 		if attr.path().is_ident("orm_relationship")
