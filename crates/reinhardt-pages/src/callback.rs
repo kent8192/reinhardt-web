@@ -6,7 +6,7 @@
 //! ## Features
 //!
 //! - **Callback<Args, Ret>**: A type-safe, cloneable wrapper for event handlers
-//! - **IntoEventHandler**: Trait for converting closures, Callbacks, and Arc<Fn> to ViewEventHandler
+//! - **IntoEventHandler**: Trait for converting closures, Callbacks, and `Arc<Fn>` to ViewEventHandler
 //!
 //! ## Example
 //!

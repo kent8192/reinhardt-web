@@ -47,7 +47,7 @@
 //! - [`Event`] (platform-agnostic event type)
 //!
 //! ## DOM
-//! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`]
+//! - [`Document`], [`Element`], [`EventHandle`], [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
 //! - [`Link`], [`Router`], [`Route`], [`RouterOutlet`], [`PathPattern`]

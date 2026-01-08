@@ -44,7 +44,7 @@ fn to_pascal_case_ident(ident: &proc_macro2::Ident) -> proc_macro2::Ident {
 	quote::format_ident!("{}", pascal_name)
 }
 
-/// Options for #[server_fn] macro
+/// Options for `#[server_fn]` macro
 ///
 /// These options are parsed from the attribute arguments.
 #[derive(Debug, Clone, FromMeta)]
@@ -131,7 +131,7 @@ impl Default for ServerFnOptions {
 	}
 }
 
-/// Information about #[inject] parameters
+/// Information about `#[inject]` parameters
 ///
 /// This struct holds metadata about parameters that should be resolved
 /// via dependency injection on the server side.
@@ -143,7 +143,7 @@ struct InjectInfo {
 	ty: Box<syn::Type>,
 }
 
-/// Check if an attribute is #[inject] or #[reinhardt::inject]
+/// Check if an attribute is `#[inject]` or #[reinhardt::inject]
 ///
 /// # Examples
 ///
@@ -172,7 +172,7 @@ fn is_inject_attr(attr: &syn::Attribute) -> bool {
 ///
 /// This function scans function parameters and identifies those that should be
 /// injected by the DI system. Detection is based on:
-/// - Parameters with #[inject] attribute
+/// - Parameters with `#[inject]` attribute
 ///
 /// # Examples
 ///
@@ -203,7 +203,7 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo
 	inject_params
 }
 
-/// Remove #[inject] attributes from function parameters
+/// Remove `#[inject]` attributes from function parameters
 ///
 /// This creates a clean version of the function for server-side compilation.
 /// Pattern copied from reinhardt-core/crates/macros/src/routes.rs.
@@ -292,7 +292,7 @@ impl ServerFnInfo {
 	}
 }
 
-/// Main entry point for #[server_fn] macro
+/// Main entry point for `#[server_fn]` macro
 pub(crate) fn server_fn_impl(args: TokenStream, input: TokenStream) -> TokenStream {
 	// Parse attribute arguments
 	let attr_args = match syn::parse::Parser::parse(

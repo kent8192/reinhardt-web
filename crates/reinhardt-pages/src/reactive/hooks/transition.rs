@@ -45,7 +45,7 @@ impl TransitionState {
 /// # Returns
 ///
 /// A `TransitionState` containing:
-/// - `is_pending`: A Signal<bool> indicating if a transition is in progress
+/// - `is_pending`: A `Signal<bool>` indicating if a transition is in progress
 /// - `start_transition`: A method to wrap state updates as transitions
 ///
 /// # Example

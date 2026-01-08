@@ -31,7 +31,7 @@
 /// Common DOM event types
 ///
 /// This enum represents the most commonly used DOM event types.
-/// For a complete list, see: https://developer.mozilla.org/en-US/docs/Web/Events
+/// For a complete list, see: <https://developer.mozilla.org/en-US/docs/Web/Events>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EventType {
 	// Mouse events

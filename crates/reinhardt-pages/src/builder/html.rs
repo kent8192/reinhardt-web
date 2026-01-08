@@ -6,7 +6,7 @@
 //!
 //! - **Fluent API**: Method chaining for readable construction
 //! - **RAII Integration**: EventHandle management for automatic cleanup
-//! - **Reactive Binding**: Seamless integration with Signal<T>
+//! - **Reactive Binding**: Seamless integration with `Signal<T>`
 
 use crate::Signal;
 use crate::dom::{Document, Element, EventHandle};

@@ -17,7 +17,7 @@ use reinhardt_pages_ast::TypedPageElement;
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
-pub(super) struct ElementSpec {
+pub(crate) struct ElementSpec {
 	/// Element tag name
 	pub tag: &'static str,
 	/// Required attributes (must be present)
@@ -25,10 +25,10 @@ pub(super) struct ElementSpec {
 	/// Allowed attributes (None = all attributes allowed)
 	pub allowed_attrs: Option<&'static [&'static str]>,
 	/// Whether this is a void element (no children allowed)
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	pub is_void: bool,
 	/// Whether this is an interactive element (cannot nest)
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	pub is_interactive: bool,
 	/// Content model constraints
 	pub content_model: Option<ContentModel>,
@@ -36,11 +36,11 @@ pub(super) struct ElementSpec {
 
 /// Attribute specification.
 #[derive(Debug, Clone)]
-pub(super) struct AttrSpec {
+pub(crate) struct AttrSpec {
 	/// Attribute name
 	pub name: &'static str,
 	/// Expected type of attribute value
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	pub expected_type: AttrType,
 	/// Whether this attribute is required
 	pub required: bool,
@@ -48,25 +48,25 @@ pub(super) struct AttrSpec {
 
 /// Expected type for attribute values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AttrType {
+pub(crate) enum AttrType {
 	/// String value (any string)
 	String,
 	/// URL value (should be string literal for static validation)
 	Url,
 	/// Boolean value (true/false)
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	Boolean,
 	/// Numeric value (integer or float)
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	Number,
 	/// Any type (no validation)
-	#[allow(dead_code)] // Phase 3で使用予定
+	#[allow(dead_code)] // Reserved for Phase 3
 	Any,
 }
 
 /// Content model constraints.
 #[derive(Debug, Clone)]
-pub(super) enum ContentModel {
+pub(crate) enum ContentModel {
 	/// Only specific child tags are allowed
 	OnlyTags(&'static [&'static str]),
 	/// Only text content (no elements)
@@ -79,7 +79,7 @@ pub(super) enum ContentModel {
 ///
 /// Defines valid values for attributes that accept a limited set of string values.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct EnumAttrSpec {
+pub(crate) struct EnumAttrSpec {
 	/// Attribute name
 	pub name: &'static str,
 	/// List of valid values for this attribute
@@ -90,7 +90,7 @@ pub(super) struct EnumAttrSpec {
 ///
 /// Maps an element tag to its enumerated attributes.
 #[derive(Debug, Clone)]
-pub(super) struct ElementEnumAttrs {
+pub(crate) struct ElementEnumAttrs {
 	/// Element tag name
 	/// Allow dead_code: Field reserved for future debugging/validation features
 	#[allow(dead_code)]
@@ -101,8 +101,8 @@ pub(super) struct ElementEnumAttrs {
 
 /// Global HTML attributes (allowed on all elements).
 ///
-/// Based on: https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes
-pub(super) static GLOBAL_ATTRS: &[&str] = &[
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes>
+pub(crate) static GLOBAL_ATTRS: &[&str] = &[
 	// Core attributes
 	"id",
 	"class",
@@ -131,7 +131,7 @@ pub(super) static GLOBAL_ATTRS: &[&str] = &[
 
 /// Specification for `<img>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img>
 pub(super) static IMG_SPEC: ElementSpec = ElementSpec {
 	tag: "img",
 	required_attrs: &[
@@ -169,7 +169,7 @@ pub(super) static IMG_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<a>` (anchor) element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a>
 pub(super) static A_SPEC: ElementSpec = ElementSpec {
 	tag: "a",
 	required_attrs: &[],
@@ -190,7 +190,7 @@ pub(super) static A_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<button>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button>
 pub(super) static BUTTON_SPEC: ElementSpec = ElementSpec {
 	tag: "button",
 	required_attrs: &[],
@@ -216,7 +216,7 @@ pub(super) static BUTTON_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<input>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input>
 pub(super) static INPUT_SPEC: ElementSpec = ElementSpec {
 	tag: "input",
 	required_attrs: &[],
@@ -259,7 +259,7 @@ pub(super) static INPUT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<form>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form>
 pub(super) static FORM_SPEC: ElementSpec = ElementSpec {
 	tag: "form",
 	required_attrs: &[],
@@ -281,7 +281,7 @@ pub(super) static FORM_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<label>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label>
 pub(super) static LABEL_SPEC: ElementSpec = ElementSpec {
 	tag: "label",
 	required_attrs: &[],
@@ -293,7 +293,7 @@ pub(super) static LABEL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<select>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select>
 pub(super) static SELECT_SPEC: ElementSpec = ElementSpec {
 	tag: "select",
 	required_attrs: &[],
@@ -313,7 +313,7 @@ pub(super) static SELECT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<textarea>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea>
 pub(super) static TEXTAREA_SPEC: ElementSpec = ElementSpec {
 	tag: "textarea",
 	required_attrs: &[],
@@ -340,7 +340,7 @@ pub(super) static TEXTAREA_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<option>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option>
 pub(super) static OPTION_SPEC: ElementSpec = ElementSpec {
 	tag: "option",
 	required_attrs: &[],
@@ -356,7 +356,7 @@ pub(super) static OPTION_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<div>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div>
 pub(super) static DIV_SPEC: ElementSpec = ElementSpec {
 	tag: "div",
 	required_attrs: &[],
@@ -368,7 +368,7 @@ pub(super) static DIV_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<span>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/span
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/span>
 pub(super) static SPAN_SPEC: ElementSpec = ElementSpec {
 	tag: "span",
 	required_attrs: &[],
@@ -380,7 +380,7 @@ pub(super) static SPAN_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<p>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/p
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/p>
 pub(super) static P_SPEC: ElementSpec = ElementSpec {
 	tag: "p",
 	required_attrs: &[],
@@ -392,7 +392,7 @@ pub(super) static P_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h1>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h1
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h1>
 pub(super) static H1_SPEC: ElementSpec = ElementSpec {
 	tag: "h1",
 	required_attrs: &[],
@@ -404,7 +404,7 @@ pub(super) static H1_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h2>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h2
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h2>
 pub(super) static H2_SPEC: ElementSpec = ElementSpec {
 	tag: "h2",
 	required_attrs: &[],
@@ -416,7 +416,7 @@ pub(super) static H2_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h3>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h3
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h3>
 pub(super) static H3_SPEC: ElementSpec = ElementSpec {
 	tag: "h3",
 	required_attrs: &[],
@@ -428,7 +428,7 @@ pub(super) static H3_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h4>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h4
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h4>
 pub(super) static H4_SPEC: ElementSpec = ElementSpec {
 	tag: "h4",
 	required_attrs: &[],
@@ -440,7 +440,7 @@ pub(super) static H4_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h5>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h5
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h5>
 pub(super) static H5_SPEC: ElementSpec = ElementSpec {
 	tag: "h5",
 	required_attrs: &[],
@@ -452,7 +452,7 @@ pub(super) static H5_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<h6>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h6
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h6>
 pub(super) static H6_SPEC: ElementSpec = ElementSpec {
 	tag: "h6",
 	required_attrs: &[],
@@ -464,7 +464,7 @@ pub(super) static H6_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<header>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/header
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/header>
 pub(super) static HEADER_SPEC: ElementSpec = ElementSpec {
 	tag: "header",
 	required_attrs: &[],
@@ -476,7 +476,7 @@ pub(super) static HEADER_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<footer>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/footer
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/footer>
 pub(super) static FOOTER_SPEC: ElementSpec = ElementSpec {
 	tag: "footer",
 	required_attrs: &[],
@@ -488,7 +488,7 @@ pub(super) static FOOTER_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<main>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/main
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/main>
 pub(super) static MAIN_SPEC: ElementSpec = ElementSpec {
 	tag: "main",
 	required_attrs: &[],
@@ -500,7 +500,7 @@ pub(super) static MAIN_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<nav>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/nav
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/nav>
 pub(super) static NAV_SPEC: ElementSpec = ElementSpec {
 	tag: "nav",
 	required_attrs: &[],
@@ -512,7 +512,7 @@ pub(super) static NAV_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<section>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/section
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/section>
 pub(super) static SECTION_SPEC: ElementSpec = ElementSpec {
 	tag: "section",
 	required_attrs: &[],
@@ -524,7 +524,7 @@ pub(super) static SECTION_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<article>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/article
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/article>
 pub(super) static ARTICLE_SPEC: ElementSpec = ElementSpec {
 	tag: "article",
 	required_attrs: &[],
@@ -540,7 +540,7 @@ pub(super) static ARTICLE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<em>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/em
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/em>
 pub(super) static EM_SPEC: ElementSpec = ElementSpec {
 	tag: "em",
 	required_attrs: &[],
@@ -552,7 +552,7 @@ pub(super) static EM_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<strong>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/strong
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/strong>
 pub(super) static STRONG_SPEC: ElementSpec = ElementSpec {
 	tag: "strong",
 	required_attrs: &[],
@@ -564,7 +564,7 @@ pub(super) static STRONG_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<small>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/small
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/small>
 pub(super) static SMALL_SPEC: ElementSpec = ElementSpec {
 	tag: "small",
 	required_attrs: &[],
@@ -576,7 +576,7 @@ pub(super) static SMALL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<code>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code>
 pub(super) static CODE_SPEC: ElementSpec = ElementSpec {
 	tag: "code",
 	required_attrs: &[],
@@ -588,7 +588,7 @@ pub(super) static CODE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<kbd>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/kbd
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/kbd>
 pub(super) static KBD_SPEC: ElementSpec = ElementSpec {
 	tag: "kbd",
 	required_attrs: &[],
@@ -600,7 +600,7 @@ pub(super) static KBD_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<samp>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/samp
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/samp>
 pub(super) static SAMP_SPEC: ElementSpec = ElementSpec {
 	tag: "samp",
 	required_attrs: &[],
@@ -612,7 +612,7 @@ pub(super) static SAMP_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<var>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/var
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/var>
 pub(super) static VAR_SPEC: ElementSpec = ElementSpec {
 	tag: "var",
 	required_attrs: &[],
@@ -624,7 +624,7 @@ pub(super) static VAR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<i>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/i
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/i>
 pub(super) static I_SPEC: ElementSpec = ElementSpec {
 	tag: "i",
 	required_attrs: &[],
@@ -636,7 +636,7 @@ pub(super) static I_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<b>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/b
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/b>
 pub(super) static B_SPEC: ElementSpec = ElementSpec {
 	tag: "b",
 	required_attrs: &[],
@@ -648,7 +648,7 @@ pub(super) static B_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<u>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/u
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/u>
 pub(super) static U_SPEC: ElementSpec = ElementSpec {
 	tag: "u",
 	required_attrs: &[],
@@ -660,7 +660,7 @@ pub(super) static U_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<mark>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/mark
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/mark>
 pub(super) static MARK_SPEC: ElementSpec = ElementSpec {
 	tag: "mark",
 	required_attrs: &[],
@@ -672,7 +672,7 @@ pub(super) static MARK_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<s>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/s
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/s>
 pub(super) static S_SPEC: ElementSpec = ElementSpec {
 	tag: "s",
 	required_attrs: &[],
@@ -684,7 +684,7 @@ pub(super) static S_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<sub>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sub
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sub>
 pub(super) static SUB_SPEC: ElementSpec = ElementSpec {
 	tag: "sub",
 	required_attrs: &[],
@@ -696,7 +696,7 @@ pub(super) static SUB_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<sup>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sup
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sup>
 pub(super) static SUP_SPEC: ElementSpec = ElementSpec {
 	tag: "sup",
 	required_attrs: &[],
@@ -708,7 +708,7 @@ pub(super) static SUP_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<br>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br>
 pub(super) static BR_SPEC: ElementSpec = ElementSpec {
 	tag: "br",
 	required_attrs: &[],
@@ -720,7 +720,7 @@ pub(super) static BR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<wbr>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/wbr
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/wbr>
 pub(super) static WBR_SPEC: ElementSpec = ElementSpec {
 	tag: "wbr",
 	required_attrs: &[],
@@ -736,7 +736,7 @@ pub(super) static WBR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<ul>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul>
 pub(super) static UL_SPEC: ElementSpec = ElementSpec {
 	tag: "ul",
 	required_attrs: &[],
@@ -748,7 +748,7 @@ pub(super) static UL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<ol>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ol
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ol>
 pub(super) static OL_SPEC: ElementSpec = ElementSpec {
 	tag: "ol",
 	required_attrs: &[],
@@ -760,7 +760,7 @@ pub(super) static OL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<li>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/li
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/li>
 pub(super) static LI_SPEC: ElementSpec = ElementSpec {
 	tag: "li",
 	required_attrs: &[],
@@ -772,7 +772,7 @@ pub(super) static LI_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<dl>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dl
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dl>
 pub(super) static DL_SPEC: ElementSpec = ElementSpec {
 	tag: "dl",
 	required_attrs: &[],
@@ -784,7 +784,7 @@ pub(super) static DL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<dt>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dt
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dt>
 pub(super) static DT_SPEC: ElementSpec = ElementSpec {
 	tag: "dt",
 	required_attrs: &[],
@@ -796,7 +796,7 @@ pub(super) static DT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<dd>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dd
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dd>
 pub(super) static DD_SPEC: ElementSpec = ElementSpec {
 	tag: "dd",
 	required_attrs: &[],
@@ -812,7 +812,7 @@ pub(super) static DD_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<table>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table>
 pub(super) static TABLE_SPEC: ElementSpec = ElementSpec {
 	tag: "table",
 	required_attrs: &[],
@@ -826,7 +826,7 @@ pub(super) static TABLE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<thead>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/thead
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/thead>
 pub(super) static THEAD_SPEC: ElementSpec = ElementSpec {
 	tag: "thead",
 	required_attrs: &[],
@@ -838,7 +838,7 @@ pub(super) static THEAD_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<tbody>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tbody
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tbody>
 pub(super) static TBODY_SPEC: ElementSpec = ElementSpec {
 	tag: "tbody",
 	required_attrs: &[],
@@ -850,7 +850,7 @@ pub(super) static TBODY_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<tfoot>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tfoot
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tfoot>
 pub(super) static TFOOT_SPEC: ElementSpec = ElementSpec {
 	tag: "tfoot",
 	required_attrs: &[],
@@ -862,7 +862,7 @@ pub(super) static TFOOT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<tr>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tr
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tr>
 pub(super) static TR_SPEC: ElementSpec = ElementSpec {
 	tag: "tr",
 	required_attrs: &[],
@@ -874,7 +874,7 @@ pub(super) static TR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<th>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/th
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/th>
 pub(super) static TH_SPEC: ElementSpec = ElementSpec {
 	tag: "th",
 	required_attrs: &[],
@@ -886,7 +886,7 @@ pub(super) static TH_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<td>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/td
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/td>
 pub(super) static TD_SPEC: ElementSpec = ElementSpec {
 	tag: "td",
 	required_attrs: &[],
@@ -898,7 +898,7 @@ pub(super) static TD_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<caption>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/caption
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/caption>
 pub(super) static CAPTION_SPEC: ElementSpec = ElementSpec {
 	tag: "caption",
 	required_attrs: &[],
@@ -910,7 +910,7 @@ pub(super) static CAPTION_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<colgroup>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/colgroup
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/colgroup>
 pub(super) static COLGROUP_SPEC: ElementSpec = ElementSpec {
 	tag: "colgroup",
 	required_attrs: &[],
@@ -922,7 +922,7 @@ pub(super) static COLGROUP_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<col>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/col
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/col>
 pub(super) static COL_SPEC: ElementSpec = ElementSpec {
 	tag: "col",
 	required_attrs: &[],
@@ -938,7 +938,7 @@ pub(super) static COL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<iframe>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe>
 pub(super) static IFRAME_SPEC: ElementSpec = ElementSpec {
 	tag: "iframe",
 	required_attrs: &[],
@@ -961,7 +961,7 @@ pub(super) static IFRAME_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<video>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video>
 pub(super) static VIDEO_SPEC: ElementSpec = ElementSpec {
 	tag: "video",
 	required_attrs: &[],
@@ -985,7 +985,7 @@ pub(super) static VIDEO_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<audio>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio>
 pub(super) static AUDIO_SPEC: ElementSpec = ElementSpec {
 	tag: "audio",
 	required_attrs: &[],
@@ -1005,7 +1005,7 @@ pub(super) static AUDIO_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<source>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source>
 pub(super) static SOURCE_SPEC: ElementSpec = ElementSpec {
 	tag: "source",
 	required_attrs: &[],
@@ -1017,7 +1017,7 @@ pub(super) static SOURCE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<track>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/track
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/track>
 pub(super) static TRACK_SPEC: ElementSpec = ElementSpec {
 	tag: "track",
 	required_attrs: &[AttrSpec {
@@ -1033,7 +1033,7 @@ pub(super) static TRACK_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<canvas>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas>
 pub(super) static CANVAS_SPEC: ElementSpec = ElementSpec {
 	tag: "canvas",
 	required_attrs: &[],
@@ -1045,7 +1045,7 @@ pub(super) static CANVAS_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<script>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script>
 pub(super) static SCRIPT_SPEC: ElementSpec = ElementSpec {
 	tag: "script",
 	required_attrs: &[],
@@ -1066,7 +1066,7 @@ pub(super) static SCRIPT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<noscript>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/noscript
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/noscript>
 pub(super) static NOSCRIPT_SPEC: ElementSpec = ElementSpec {
 	tag: "noscript",
 	required_attrs: &[],
@@ -1078,7 +1078,7 @@ pub(super) static NOSCRIPT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<embed>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/embed
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/embed>
 pub(super) static EMBED_SPEC: ElementSpec = ElementSpec {
 	tag: "embed",
 	required_attrs: &[],
@@ -1090,7 +1090,7 @@ pub(super) static EMBED_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<object>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/object
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/object>
 pub(super) static OBJECT_SPEC: ElementSpec = ElementSpec {
 	tag: "object",
 	required_attrs: &[],
@@ -1102,7 +1102,7 @@ pub(super) static OBJECT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<param>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/param
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/param>
 pub(super) static PARAM_SPEC: ElementSpec = ElementSpec {
 	tag: "param",
 	required_attrs: &[AttrSpec {
@@ -1118,7 +1118,7 @@ pub(super) static PARAM_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<picture>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/picture
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/picture>
 pub(super) static PICTURE_SPEC: ElementSpec = ElementSpec {
 	tag: "picture",
 	required_attrs: &[],
@@ -1134,7 +1134,7 @@ pub(super) static PICTURE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<hr>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/hr
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/hr>
 pub(super) static HR_SPEC: ElementSpec = ElementSpec {
 	tag: "hr",
 	required_attrs: &[],
@@ -1146,7 +1146,7 @@ pub(super) static HR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<pre>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/pre
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/pre>
 pub(super) static PRE_SPEC: ElementSpec = ElementSpec {
 	tag: "pre",
 	required_attrs: &[],
@@ -1158,7 +1158,7 @@ pub(super) static PRE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<blockquote>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote>
 pub(super) static BLOCKQUOTE_SPEC: ElementSpec = ElementSpec {
 	tag: "blockquote",
 	required_attrs: &[],
@@ -1170,7 +1170,7 @@ pub(super) static BLOCKQUOTE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<q>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/q
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/q>
 pub(super) static Q_SPEC: ElementSpec = ElementSpec {
 	tag: "q",
 	required_attrs: &[],
@@ -1182,7 +1182,7 @@ pub(super) static Q_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<cite>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/cite
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/cite>
 pub(super) static CITE_SPEC: ElementSpec = ElementSpec {
 	tag: "cite",
 	required_attrs: &[],
@@ -1194,7 +1194,7 @@ pub(super) static CITE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<abbr>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/abbr
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/abbr>
 pub(super) static ABBR_SPEC: ElementSpec = ElementSpec {
 	tag: "abbr",
 	required_attrs: &[],
@@ -1206,7 +1206,7 @@ pub(super) static ABBR_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<time>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time>
 pub(super) static TIME_SPEC: ElementSpec = ElementSpec {
 	tag: "time",
 	required_attrs: &[],
@@ -1218,7 +1218,7 @@ pub(super) static TIME_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<data>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/data
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/data>
 pub(super) static DATA_SPEC: ElementSpec = ElementSpec {
 	tag: "data",
 	required_attrs: &[AttrSpec {
@@ -1234,7 +1234,7 @@ pub(super) static DATA_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<dfn>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dfn
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dfn>
 pub(super) static DFN_SPEC: ElementSpec = ElementSpec {
 	tag: "dfn",
 	required_attrs: &[],
@@ -1246,7 +1246,7 @@ pub(super) static DFN_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<ins>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ins
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ins>
 pub(super) static INS_SPEC: ElementSpec = ElementSpec {
 	tag: "ins",
 	required_attrs: &[],
@@ -1258,7 +1258,7 @@ pub(super) static INS_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<del>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/del
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/del>
 pub(super) static DEL_SPEC: ElementSpec = ElementSpec {
 	tag: "del",
 	required_attrs: &[],
@@ -1270,7 +1270,7 @@ pub(super) static DEL_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<ruby>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ruby
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ruby>
 pub(super) static RUBY_SPEC: ElementSpec = ElementSpec {
 	tag: "ruby",
 	required_attrs: &[],
@@ -1282,7 +1282,7 @@ pub(super) static RUBY_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<rt>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rt
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rt>
 pub(super) static RT_SPEC: ElementSpec = ElementSpec {
 	tag: "rt",
 	required_attrs: &[],
@@ -1294,7 +1294,7 @@ pub(super) static RT_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<rp>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rp
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rp>
 pub(super) static RP_SPEC: ElementSpec = ElementSpec {
 	tag: "rp",
 	required_attrs: &[],
@@ -1306,7 +1306,7 @@ pub(super) static RP_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<bdi>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdi
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdi>
 pub(super) static BDI_SPEC: ElementSpec = ElementSpec {
 	tag: "bdi",
 	required_attrs: &[],
@@ -1318,7 +1318,7 @@ pub(super) static BDI_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<bdo>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdo
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdo>
 pub(super) static BDO_SPEC: ElementSpec = ElementSpec {
 	tag: "bdo",
 	required_attrs: &[],
@@ -1330,7 +1330,7 @@ pub(super) static BDO_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<address>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/address
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/address>
 pub(super) static ADDRESS_SPEC: ElementSpec = ElementSpec {
 	tag: "address",
 	required_attrs: &[],
@@ -1342,7 +1342,7 @@ pub(super) static ADDRESS_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<figure>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figure
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figure>
 pub(super) static FIGURE_SPEC: ElementSpec = ElementSpec {
 	tag: "figure",
 	required_attrs: &[],
@@ -1354,7 +1354,7 @@ pub(super) static FIGURE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<figcaption>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figcaption
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figcaption>
 pub(super) static FIGCAPTION_SPEC: ElementSpec = ElementSpec {
 	tag: "figcaption",
 	required_attrs: &[],
@@ -1366,7 +1366,7 @@ pub(super) static FIGCAPTION_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<details>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details>
 pub(super) static DETAILS_SPEC: ElementSpec = ElementSpec {
 	tag: "details",
 	required_attrs: &[],
@@ -1378,7 +1378,7 @@ pub(super) static DETAILS_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<summary>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/summary
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/summary>
 pub(super) static SUMMARY_SPEC: ElementSpec = ElementSpec {
 	tag: "summary",
 	required_attrs: &[],
@@ -1390,7 +1390,7 @@ pub(super) static SUMMARY_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<dialog>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog>
 pub(super) static DIALOG_SPEC: ElementSpec = ElementSpec {
 	tag: "dialog",
 	required_attrs: &[],
@@ -1402,7 +1402,7 @@ pub(super) static DIALOG_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<template>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template>
 pub(super) static TEMPLATE_SPEC: ElementSpec = ElementSpec {
 	tag: "template",
 	required_attrs: &[],
@@ -1414,7 +1414,7 @@ pub(super) static TEMPLATE_SPEC: ElementSpec = ElementSpec {
 
 /// Specification for `<slot>` element.
 ///
-/// Reference: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/slot
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/slot>
 pub(super) static SLOT_SPEC: ElementSpec = ElementSpec {
 	tag: "slot",
 	required_attrs: &[],
@@ -1434,7 +1434,7 @@ pub(super) static SLOT_SPEC: ElementSpec = ElementSpec {
 ///
 /// An optional reference to the element specification. Returns `None` if the
 /// element is not in the high-priority list.
-pub(super) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
+pub(crate) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
 	match tag {
 		// High priority elements
 		"img" => Some(&IMG_SPEC),
@@ -1535,6 +1535,32 @@ pub(super) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
 		"dialog" => Some(&DIALOG_SPEC),
 		"template" => Some(&TEMPLATE_SPEC),
 		"slot" => Some(&SLOT_SPEC),
+		// SVG elements
+		"svg" => Some(&SVG_SPEC),
+		"path" => Some(&PATH_SPEC),
+		"circle" => Some(&CIRCLE_SPEC),
+		"rect" => Some(&RECT_SPEC),
+		"line" => Some(&LINE_SPEC),
+		"polyline" => Some(&POLYLINE_SPEC),
+		"polygon" => Some(&POLYGON_SPEC),
+		"ellipse" => Some(&ELLIPSE_SPEC),
+		"g" => Some(&G_SPEC),
+		"defs" => Some(&DEFS_SPEC),
+		"use" => Some(&USE_SPEC),
+		"symbol" => Some(&SYMBOL_SPEC),
+		"text" => Some(&TEXT_SVG_SPEC),
+		"tspan" => Some(&TSPAN_SPEC),
+		"clipPath" => Some(&CLIPPATH_SPEC),
+		"mask" => Some(&MASK_SPEC),
+		"linearGradient" => Some(&LINEAR_GRADIENT_SPEC),
+		"radialGradient" => Some(&RADIAL_GRADIENT_SPEC),
+		"stop" => Some(&STOP_SPEC),
+		"pattern" => Some(&PATTERN_SPEC),
+		"image" => Some(&IMAGE_SVG_SPEC),
+		"foreignObject" => Some(&FOREIGN_OBJECT_SPEC),
+		"marker" => Some(&MARKER_SPEC),
+		"desc" => Some(&DESC_SPEC),
+		// Note: "title" is handled by HTML TITLE_SVG_SPEC in SVG context
 		// Other elements not yet implemented
 		_ => None,
 	}
@@ -1554,7 +1580,7 @@ pub(super) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
 /// # Errors
 ///
 /// Returns a compile error if any validation rule is violated.
-pub(super) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
+pub(crate) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
 	let tag = element.tag.to_string();
 
 	// Get specification for this element (if it exists)
@@ -1712,7 +1738,7 @@ fn is_global_attribute(attr: &str) -> bool {
 
 /// Enumerated attributes for input element.
 ///
-/// Based on: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#type
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#type>
 pub(super) static INPUT_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 	tag: "input",
 	attrs: &[EnumAttrSpec {
@@ -1745,7 +1771,7 @@ pub(super) static INPUT_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 
 /// Enumerated attributes for button element.
 ///
-/// Based on: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#type
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#type>
 pub(super) static BUTTON_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 	tag: "button",
 	attrs: &[EnumAttrSpec {
@@ -1756,7 +1782,7 @@ pub(super) static BUTTON_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 
 /// Enumerated attributes for form element.
 ///
-/// Based on: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form>
 pub(super) static FORM_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 	tag: "form",
 	attrs: &[
@@ -1777,7 +1803,7 @@ pub(super) static FORM_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 
 /// Enumerated attributes for script element.
 ///
-/// Based on: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#type
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#type>
 pub(super) static SCRIPT_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 	tag: "script",
 	attrs: &[EnumAttrSpec {
@@ -1799,7 +1825,7 @@ pub(super) static SCRIPT_ENUM_ATTRS: ElementEnumAttrs = ElementEnumAttrs {
 /// # Returns
 ///
 /// The enumerated attribute specification if found, otherwise `None`.
-pub(super) fn get_enum_attr_spec(tag: &str, attr: &str) -> Option<&'static EnumAttrSpec> {
+pub(crate) fn get_enum_attr_spec(tag: &str, attr: &str) -> Option<&'static EnumAttrSpec> {
 	let element_attrs = match tag {
 		"input" => &INPUT_ENUM_ATTRS,
 		"button" => &BUTTON_ENUM_ATTRS,
@@ -1809,6 +1835,740 @@ pub(super) fn get_enum_attr_spec(tag: &str, attr: &str) -> Option<&'static EnumA
 	};
 
 	element_attrs.attrs.iter().find(|spec| spec.name == attr)
+}
+
+// ============================================================================
+// SVG Element Specifications
+// ============================================================================
+//
+// SVG (Scalable Vector Graphics) elements for inline vector graphics support.
+// These specifications enable form! and page! macros to include SVG icons
+// and graphics with compile-time validation.
+//
+// Reference: https://developer.mozilla.org/en-US/docs/Web/SVG/Element
+
+/// SVG presentation attributes (allowed on most SVG elements).
+///
+/// Based on: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/Presentation>
+#[allow(dead_code)] // Will be used by form! macro SVG icon validation
+pub(crate) static SVG_PRESENTATION_ATTRS: &[&str] = &[
+	// Fill and stroke
+	"fill",
+	"fill-opacity",
+	"fill-rule",
+	"stroke",
+	"stroke-dasharray",
+	"stroke-dashoffset",
+	"stroke-linecap",
+	"stroke-linejoin",
+	"stroke-miterlimit",
+	"stroke-opacity",
+	"stroke-width",
+	// Color and paint
+	"color",
+	"opacity",
+	"paint-order",
+	// Transform
+	"transform",
+	"transform-origin",
+	// Text
+	"font-family",
+	"font-size",
+	"font-style",
+	"font-weight",
+	"text-anchor",
+	"text-decoration",
+	// Visibility
+	"visibility",
+	"display",
+	// Clipping and masking
+	"clip-path",
+	"clip-rule",
+	"mask",
+	// Filter
+	"filter",
+	// Markers
+	"marker-start",
+	"marker-mid",
+	"marker-end",
+];
+
+/// Specification for `<svg>` element (SVG root container).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/svg>
+pub(super) static SVG_SPEC: ElementSpec = ElementSpec {
+	tag: "svg",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Sizing and viewport
+		"width",
+		"height",
+		"viewBox",
+		"preserveAspectRatio",
+		// Namespace (usually implicit in HTML5)
+		"xmlns",
+		"xmlns:xlink",
+		// Common presentation attributes (subset)
+		"fill",
+		"stroke",
+		"stroke-width",
+		"transform",
+		"opacity",
+		// Other
+		"x",
+		"y",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // SVG content
+};
+
+/// Specification for `<path>` element (SVG path).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path>
+pub(super) static PATH_SPEC: ElementSpec = ElementSpec {
+	tag: "path",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Path data (required for rendering)
+		"d",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"fill-rule",
+		"stroke",
+		"stroke-width",
+		"stroke-linecap",
+		"stroke-linejoin",
+		"stroke-dasharray",
+		"stroke-dashoffset",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Markers
+		"marker-start",
+		"marker-mid",
+		"marker-end",
+		// Clip and mask
+		"clip-path",
+		"mask",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true, // path has no children
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<circle>` element (SVG circle).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/circle>
+pub(super) static CIRCLE_SPEC: ElementSpec = ElementSpec {
+	tag: "circle",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Geometry
+		"cx",
+		"cy",
+		"r",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"stroke",
+		"stroke-width",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<rect>` element (SVG rectangle).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/rect>
+pub(super) static RECT_SPEC: ElementSpec = ElementSpec {
+	tag: "rect",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Geometry
+		"x",
+		"y",
+		"width",
+		"height",
+		"rx",
+		"ry",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"stroke",
+		"stroke-width",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<line>` element (SVG line).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/line>
+pub(super) static LINE_SPEC: ElementSpec = ElementSpec {
+	tag: "line",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Geometry
+		"x1",
+		"y1",
+		"x2",
+		"y2",
+		// Stroke (fill doesn't apply to lines)
+		"stroke",
+		"stroke-width",
+		"stroke-linecap",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Markers
+		"marker-start",
+		"marker-end",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<polyline>` element (SVG polyline).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/polyline>
+pub(super) static POLYLINE_SPEC: ElementSpec = ElementSpec {
+	tag: "polyline",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Points (required for rendering)
+		"points",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"fill-rule",
+		"stroke",
+		"stroke-width",
+		"stroke-linecap",
+		"stroke-linejoin",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Markers
+		"marker-start",
+		"marker-mid",
+		"marker-end",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<polygon>` element (SVG polygon).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/polygon>
+pub(super) static POLYGON_SPEC: ElementSpec = ElementSpec {
+	tag: "polygon",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Points (required for rendering)
+		"points",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"fill-rule",
+		"stroke",
+		"stroke-width",
+		"stroke-linecap",
+		"stroke-linejoin",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Markers
+		"marker-start",
+		"marker-mid",
+		"marker-end",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<ellipse>` element (SVG ellipse).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/ellipse>
+pub(super) static ELLIPSE_SPEC: ElementSpec = ElementSpec {
+	tag: "ellipse",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Geometry
+		"cx",
+		"cy",
+		"rx",
+		"ry",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"stroke",
+		"stroke-width",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+		"pathLength",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<g>` element (SVG group container).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g>
+pub(super) static G_SPEC: ElementSpec = ElementSpec {
+	tag: "g",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Fill and stroke (inherited by children)
+		"fill",
+		"fill-opacity",
+		"fill-rule",
+		"stroke",
+		"stroke-width",
+		"stroke-linecap",
+		"stroke-linejoin",
+		"stroke-dasharray",
+		"stroke-opacity",
+		// Transform
+		"transform",
+		// Clip and mask
+		"clip-path",
+		"mask",
+		// Filter
+		"filter",
+		// Other
+		"opacity",
+		"visibility",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // SVG content
+};
+
+/// Specification for `<defs>` element (SVG definitions container).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/defs>
+pub(super) static DEFS_SPEC: ElementSpec = ElementSpec {
+	tag: "defs",
+	required_attrs: &[],
+	allowed_attrs: None, // All attributes allowed (it's a container)
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // SVG content (gradients, patterns, symbols, etc.)
+};
+
+/// Specification for `<use>` element (SVG use/reference).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use>
+pub(super) static USE_SPEC: ElementSpec = ElementSpec {
+	tag: "use",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Reference
+		"href",
+		"xlink:href", // Deprecated but still used
+		// Position and size
+		"x",
+		"y",
+		"width",
+		"height",
+		// Fill and stroke
+		"fill",
+		"stroke",
+		"stroke-width",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<symbol>` element (SVG symbol definition).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/symbol>
+pub(super) static SYMBOL_SPEC: ElementSpec = ElementSpec {
+	tag: "symbol",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Viewport
+		"viewBox",
+		"preserveAspectRatio",
+		// Sizing
+		"x",
+		"y",
+		"width",
+		"height",
+		// Reference (for identification)
+		"refX",
+		"refY",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // SVG content
+};
+
+/// Specification for `<text>` element (SVG text).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text>
+pub(super) static TEXT_SVG_SPEC: ElementSpec = ElementSpec {
+	tag: "text",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Position
+		"x",
+		"y",
+		"dx",
+		"dy",
+		// Text layout
+		"textLength",
+		"lengthAdjust",
+		"rotate",
+		// Font
+		"font-family",
+		"font-size",
+		"font-style",
+		"font-weight",
+		"text-anchor",
+		"text-decoration",
+		"dominant-baseline",
+		// Fill and stroke
+		"fill",
+		"fill-opacity",
+		"stroke",
+		"stroke-width",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // Text content and tspan elements
+};
+
+/// Specification for `<tspan>` element (SVG text span).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/tspan>
+pub(super) static TSPAN_SPEC: ElementSpec = ElementSpec {
+	tag: "tspan",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		// Position
+		"x",
+		"y",
+		"dx",
+		"dy",
+		// Text layout
+		"textLength",
+		"lengthAdjust",
+		"rotate",
+		// Font
+		"font-family",
+		"font-size",
+		"font-style",
+		"font-weight",
+		// Fill and stroke
+		"fill",
+		"stroke",
+		// Other
+		"baseline-shift",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // Text content
+};
+
+/// Specification for `<clipPath>` element (SVG clip path).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/clipPath>
+pub(super) static CLIPPATH_SPEC: ElementSpec = ElementSpec {
+	tag: "clipPath",
+	required_attrs: &[],
+	allowed_attrs: Some(&["clipPathUnits", "transform"]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // Shape elements
+};
+
+/// Specification for `<mask>` element (SVG mask).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/mask>
+pub(super) static MASK_SPEC: ElementSpec = ElementSpec {
+	tag: "mask",
+	required_attrs: &[],
+	allowed_attrs: Some(&["x", "y", "width", "height", "maskUnits", "maskContentUnits"]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // Any SVG content
+};
+
+/// Specification for `<linearGradient>` element (SVG linear gradient).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/linearGradient>
+pub(super) static LINEAR_GRADIENT_SPEC: ElementSpec = ElementSpec {
+	tag: "linearGradient",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"x1",
+		"y1",
+		"x2",
+		"y2",
+		"gradientUnits",
+		"gradientTransform",
+		"spreadMethod",
+		"href",
+		"xlink:href",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: Some(ContentModel::OnlyTags(&["stop"])),
+};
+
+/// Specification for `<radialGradient>` element (SVG radial gradient).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/radialGradient>
+pub(super) static RADIAL_GRADIENT_SPEC: ElementSpec = ElementSpec {
+	tag: "radialGradient",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"cx",
+		"cy",
+		"r",
+		"fx",
+		"fy",
+		"fr",
+		"gradientUnits",
+		"gradientTransform",
+		"spreadMethod",
+		"href",
+		"xlink:href",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: Some(ContentModel::OnlyTags(&["stop"])),
+};
+
+/// Specification for `<stop>` element (SVG gradient stop).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/stop>
+pub(super) static STOP_SPEC: ElementSpec = ElementSpec {
+	tag: "stop",
+	required_attrs: &[],
+	allowed_attrs: Some(&["offset", "stop-color", "stop-opacity"]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<pattern>` element (SVG pattern).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/pattern>
+pub(super) static PATTERN_SPEC: ElementSpec = ElementSpec {
+	tag: "pattern",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"x",
+		"y",
+		"width",
+		"height",
+		"patternUnits",
+		"patternContentUnits",
+		"patternTransform",
+		"viewBox",
+		"preserveAspectRatio",
+		"href",
+		"xlink:href",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // Any SVG content
+};
+
+/// Specification for `<image>` element (SVG image).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image>
+pub(super) static IMAGE_SVG_SPEC: ElementSpec = ElementSpec {
+	tag: "image",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"href",
+		"xlink:href",
+		"x",
+		"y",
+		"width",
+		"height",
+		"preserveAspectRatio",
+		"crossorigin",
+		"decoding",
+		// Transform
+		"transform",
+		// Clip
+		"clip-path",
+		// Other
+		"opacity",
+		"visibility",
+	]),
+	is_void: true,
+	is_interactive: false,
+	content_model: Some(ContentModel::Empty),
+};
+
+/// Specification for `<foreignObject>` element (SVG foreign object for embedding HTML).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/foreignObject>
+pub(super) static FOREIGN_OBJECT_SPEC: ElementSpec = ElementSpec {
+	tag: "foreignObject",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"x",
+		"y",
+		"width",
+		"height",
+		// Transform
+		"transform",
+		// Other
+		"opacity",
+		"visibility",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // HTML content
+};
+
+/// Specification for `<marker>` element (SVG marker).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/marker>
+pub(super) static MARKER_SPEC: ElementSpec = ElementSpec {
+	tag: "marker",
+	required_attrs: &[],
+	allowed_attrs: Some(&[
+		"markerWidth",
+		"markerHeight",
+		"refX",
+		"refY",
+		"orient",
+		"markerUnits",
+		"viewBox",
+		"preserveAspectRatio",
+		// Fill and stroke (for marker contents)
+		"fill",
+		"stroke",
+		"stroke-width",
+	]),
+	is_void: false,
+	is_interactive: false,
+	content_model: None, // SVG content
+};
+
+/// Specification for `<title>` element in SVG context (accessible title).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/title>
+#[allow(dead_code)] // Will be used by form! macro SVG icon validation
+pub(super) static TITLE_SVG_SPEC: ElementSpec = ElementSpec {
+	tag: "title",
+	required_attrs: &[],
+	allowed_attrs: None,
+	is_void: false,
+	is_interactive: false,
+	content_model: Some(ContentModel::TextOnly),
+};
+
+/// Specification for `<desc>` element (SVG description for accessibility).
+///
+/// Reference: <https://developer.mozilla.org/en-US/docs/Web/SVG/Element/desc>
+pub(super) static DESC_SPEC: ElementSpec = ElementSpec {
+	tag: "desc",
+	required_attrs: &[],
+	allowed_attrs: None,
+	is_void: false,
+	is_interactive: false,
+	content_model: Some(ContentModel::TextOnly),
+};
+
+/// Checks if a tag is an SVG element.
+///
+/// This is used to determine if SVG-specific validation rules should apply.
+#[allow(dead_code)] // Will be used by form! macro SVG icon validation
+pub(crate) fn is_svg_element(tag: &str) -> bool {
+	matches!(
+		tag,
+		"svg"
+			| "path" | "circle"
+			| "rect" | "line"
+			| "polyline"
+			| "polygon"
+			| "ellipse"
+			| "g" | "defs"
+			| "use" | "symbol"
+			| "text" | "tspan"
+			| "clipPath"
+			| "mask" | "linearGradient"
+			| "radialGradient"
+			| "stop" | "pattern"
+			| "image" | "foreignObject"
+			| "marker"
+			| "title" | "desc"
+	)
+}
+
+/// Checks if an attribute is a valid SVG presentation attribute.
+///
+/// Presentation attributes can be used on most SVG elements.
+#[allow(dead_code)] // Will be used by form! macro SVG icon validation
+pub(crate) fn is_svg_presentation_attr(attr: &str) -> bool {
+	SVG_PRESENTATION_ATTRS.contains(&attr)
 }
 
 #[cfg(test)]
@@ -1850,5 +2610,131 @@ mod tests {
 			}
 			_ => panic!("Expected OnlyTags content model"),
 		}
+	}
+
+	// SVG Element Tests
+
+	#[test]
+	fn test_get_svg_element_spec() {
+		// Basic SVG elements
+		assert!(get_element_spec("svg").is_some());
+		assert!(get_element_spec("path").is_some());
+		assert!(get_element_spec("circle").is_some());
+		assert!(get_element_spec("rect").is_some());
+		assert!(get_element_spec("line").is_some());
+		assert!(get_element_spec("polyline").is_some());
+		assert!(get_element_spec("polygon").is_some());
+		assert!(get_element_spec("ellipse").is_some());
+
+		// Container elements
+		assert!(get_element_spec("g").is_some());
+		assert!(get_element_spec("defs").is_some());
+		assert!(get_element_spec("symbol").is_some());
+		assert!(get_element_spec("use").is_some());
+
+		// Text elements
+		assert!(get_element_spec("text").is_some());
+		assert!(get_element_spec("tspan").is_some());
+
+		// Gradient elements
+		assert!(get_element_spec("linearGradient").is_some());
+		assert!(get_element_spec("radialGradient").is_some());
+		assert!(get_element_spec("stop").is_some());
+
+		// Other SVG elements
+		assert!(get_element_spec("clipPath").is_some());
+		assert!(get_element_spec("mask").is_some());
+		assert!(get_element_spec("pattern").is_some());
+		assert!(get_element_spec("marker").is_some());
+		assert!(get_element_spec("foreignObject").is_some());
+		assert!(get_element_spec("desc").is_some());
+	}
+
+	#[test]
+	fn test_is_svg_element() {
+		// Should return true for SVG elements
+		assert!(is_svg_element("svg"));
+		assert!(is_svg_element("path"));
+		assert!(is_svg_element("circle"));
+		assert!(is_svg_element("g"));
+		assert!(is_svg_element("linearGradient"));
+
+		// Should return false for HTML elements
+		assert!(!is_svg_element("div"));
+		assert!(!is_svg_element("span"));
+		assert!(!is_svg_element("img"));
+	}
+
+	#[test]
+	fn test_svg_spec() {
+		let spec = get_element_spec("svg").unwrap();
+		assert_eq!(spec.tag, "svg");
+		assert!(!spec.is_void);
+		assert!(!spec.is_interactive);
+
+		// Check allowed attributes
+		if let Some(allowed) = spec.allowed_attrs {
+			assert!(allowed.contains(&"viewBox"));
+			assert!(allowed.contains(&"width"));
+			assert!(allowed.contains(&"height"));
+			assert!(allowed.contains(&"fill"));
+		}
+	}
+
+	#[test]
+	fn test_path_spec_void() {
+		let spec = get_element_spec("path").unwrap();
+		assert_eq!(spec.tag, "path");
+		assert!(spec.is_void);
+		assert!(matches!(spec.content_model, Some(ContentModel::Empty)));
+
+		// Check d attribute is allowed
+		if let Some(allowed) = spec.allowed_attrs {
+			assert!(allowed.contains(&"d"));
+			assert!(allowed.contains(&"fill"));
+			assert!(allowed.contains(&"stroke"));
+		}
+	}
+
+	#[test]
+	fn test_gradient_content_model() {
+		let linear_spec = get_element_spec("linearGradient").unwrap();
+		match &linear_spec.content_model {
+			Some(ContentModel::OnlyTags(tags)) => {
+				assert!(tags.contains(&"stop"));
+				assert_eq!(tags.len(), 1);
+			}
+			_ => panic!("Expected OnlyTags content model for linearGradient"),
+		}
+
+		let radial_spec = get_element_spec("radialGradient").unwrap();
+		match &radial_spec.content_model {
+			Some(ContentModel::OnlyTags(tags)) => {
+				assert!(tags.contains(&"stop"));
+				assert_eq!(tags.len(), 1);
+			}
+			_ => panic!("Expected OnlyTags content model for radialGradient"),
+		}
+	}
+
+	#[test]
+	fn test_svg_presentation_attrs() {
+		// Check common presentation attributes
+		assert!(is_svg_presentation_attr("fill"));
+		assert!(is_svg_presentation_attr("stroke"));
+		assert!(is_svg_presentation_attr("stroke-width"));
+		assert!(is_svg_presentation_attr("transform"));
+		assert!(is_svg_presentation_attr("opacity"));
+
+		// Should return false for non-presentation attributes
+		assert!(!is_svg_presentation_attr("viewBox"));
+		assert!(!is_svg_presentation_attr("d"));
+		assert!(!is_svg_presentation_attr("cx"));
+	}
+
+	#[test]
+	fn test_desc_text_only() {
+		let spec = get_element_spec("desc").unwrap();
+		assert!(matches!(spec.content_model, Some(ContentModel::TextOnly)));
 	}
 }

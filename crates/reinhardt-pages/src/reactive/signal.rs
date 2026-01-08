@@ -9,7 +9,7 @@
 //!   the dependency is automatically recorded.
 //! - **Change Notification**: When `set()` or `update()` is called, all dependent Effects
 //!   are automatically scheduled for re-execution.
-//! - **Lightweight**: Signal<T> is just a NodeId wrapper, making it cheap to clone and pass around.
+//! - **Lightweight**: `Signal<T>` is just a NodeId wrapper, making it cheap to clone and pass around.
 //! - **Type-safe**: The value type is enforced at compile time.
 //!
 //! ## Example
@@ -52,7 +52,7 @@ use super::runtime::{NodeId, try_with_runtime, with_runtime};
 ///
 /// ## Cloning
 ///
-/// Signal<T> implements `Clone` and shares the value via `Rc<RefCell<T>>`.
+/// `Signal<T>` implements `Clone` and shares the value via `Rc<RefCell<T>>`.
 /// All clones of the same Signal share the same underlying value and reference count.
 #[derive(Clone)]
 pub struct Signal<T: 'static> {

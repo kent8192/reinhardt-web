@@ -285,7 +285,7 @@ fn is_url_attribute(attr_name: &str, element_tag: &str, url_attrs: &[(&str, &str
 /// Validates enumerated attribute values.
 ///
 /// Checks if a string literal attribute value is one of the allowed values
-/// for enumerated attributes (like input[type], button[type], etc.).
+/// for enumerated attributes (like `input[type]`, `button[type]`, etc.).
 ///
 /// # Parameters
 ///
@@ -425,7 +425,7 @@ fn validate_accessibility(
 /// - Boolean attributes must have dynamic expressions only (no literals)
 /// - Numeric attributes must have integer literals or dynamic expressions (no strings/floats/booleans)
 /// - URL attributes are checked for dangerous schemes (javascript:, data:, vbscript:) for XSS prevention
-/// - Enumerated attributes are validated against allowed values (input[type], button[type], etc.)
+/// - Enumerated attributes are validated against allowed values (`input[type]`, `button[type]`, etc.)
 /// - `img` element `src` attribute must be a string literal and non-empty
 ///
 /// Future phases will add accessibility checks.

@@ -10,7 +10,7 @@ use quote::quote;
 pub(crate) struct CratePathInfo {
 	/// Whether conditional compilation is needed (both reinhardt and reinhardt-pages are dependencies)
 	pub needs_conditional: bool,
-	/// The use statement(s) to emit (may include #[cfg(...)] attributes)
+	/// The use statement(s) to emit (may include `#[cfg(...)]` attributes)
 	pub use_statement: TokenStream,
 	/// The identifier to use when referencing the crate (e.g., `__reinhardt_pages`)
 	pub ident: TokenStream,

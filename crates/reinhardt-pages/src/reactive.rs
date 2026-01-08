@@ -4,7 +4,7 @@
 //! The core primitives are:
 //!
 //! - [`Signal<T>`](signal::Signal): A reactive value that can change over time
-//! - [`Effect`](effect::Effect): A side effect that automatically reruns when dependencies change
+//! - [`Effect`]: A side effect that automatically reruns when dependencies change
 //! - [`Memo<T>`](memo::Memo): A cached computation that automatically updates when dependencies change
 //!
 //! ## Architecture

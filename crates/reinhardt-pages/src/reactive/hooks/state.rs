@@ -5,12 +5,12 @@
 //! ## Choosing Between use_state and use_shared_state
 //!
 //! - **use_state**: For single-threaded, WASM-only contexts
-//!   - Lighter weight (uses Rc<RefCell<T>>)
+//!   - Lighter weight (uses `Rc<RefCell<T>>`)
 //!   - Not Send + Sync
 //!   - Best for client-side UI state
 //!
 //! - **use_shared_state**: For multi-threaded contexts
-//!   - Thread-safe (uses Arc<Mutex<T>>)
+//!   - Thread-safe (uses `Arc<Mutex<T>>`)
 //!   - Implements Send + Sync
 //!   - Required for server-side event handlers
 //!   - Slightly higher overhead due to mutex locking
@@ -138,9 +138,9 @@ where
 // Thread-safe state hooks (Send + Sync)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// Thread-safe reactive signal using Arc<Mutex<T>>.
+/// Thread-safe reactive signal using `Arc<Mutex<T>>`.
 ///
-/// This is a Send + Sync version of Signal<T> for use in multi-threaded
+/// This is a Send + Sync version of `Signal<T>` for use in multi-threaded
 /// contexts (e.g., server-side event handlers).
 ///
 /// # Type Parameter
@@ -149,13 +149,13 @@ where
 ///
 /// # Cloning
 ///
-/// SharedSignal<T> implements `Clone` and shares the value via `Arc<Mutex<T>>`.
+/// `SharedSignal<T>` implements `Clone` and shares the value via `Arc<Mutex<T>>`.
 /// All clones of the same SharedSignal share the same underlying value and reference count.
 #[derive(Clone)]
 pub struct SharedSignal<T: 'static> {
 	/// Unique identifier for this signal
 	id: NodeId,
-	/// The actual value, shared via Arc<Mutex<T>>
+	/// The actual value, shared via `Arc<Mutex<T>>`
 	value: Arc<Mutex<T>>,
 }
 
