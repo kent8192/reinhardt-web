@@ -274,7 +274,7 @@ fn extract_bool_field(
 	None
 }
 
-/// Extract an optional string field (Option<&'static str>)
+/// Extract an optional string field (`Option<&'static str>`)
 fn extract_optional_str_field(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 	field_name: &str,
@@ -302,7 +302,7 @@ fn extract_optional_str_field(
 	None
 }
 
-/// Extract a Vec<&'static str> field
+/// Extract a `Vec<&'static str>` field
 fn extract_string_vec_field(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 	field_name: &str,
@@ -317,7 +317,7 @@ fn extract_string_vec_field(
 	Vec::new()
 }
 
-/// Extract Vec<String> from expression
+/// Extract `Vec<String>` from expression
 fn extract_string_vec(expr: &Expr) -> Vec<String> {
 	let mut result = Vec::new();
 
@@ -345,7 +345,7 @@ fn extract_string_vec(expr: &Expr) -> Vec<String> {
 	result
 }
 
-/// Extract columns (Vec<ColumnDefinition>) field from struct
+/// Extract columns (`Vec<ColumnDefinition>`) field from struct
 fn extract_columns_field(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 ) -> Option<Vec<crate::ColumnDefinition>> {
@@ -451,7 +451,7 @@ fn extract_index_type_field(
 	None
 }
 
-/// Extract Vec<String> from vec!["str".to_string(), ...] pattern
+/// Extract `Vec<String>` from vec!["str".to_string(), ...] pattern
 fn extract_string_vec_from_to_string(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 	field_name: &str,
@@ -466,7 +466,7 @@ fn extract_string_vec_from_to_string(
 	Vec::new()
 }
 
-/// Parse Vec<String> from expression with .to_string() calls
+/// Parse `Vec<String>` from expression with .to_string() calls
 fn parse_string_vec_with_to_string(expr: &Expr) -> Vec<String> {
 	let mut result = Vec::new();
 
@@ -657,7 +657,7 @@ fn extract_column_definition_field(
 	None
 }
 
-/// Parse Vec<ColumnDefinition> from expression
+/// Parse `Vec<ColumnDefinition>` from expression
 fn parse_columns_vec(expr: &Expr) -> Vec<crate::ColumnDefinition> {
 	let mut columns = Vec::new();
 

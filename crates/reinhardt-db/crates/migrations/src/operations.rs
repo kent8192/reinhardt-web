@@ -799,7 +799,7 @@ pub enum Operation {
 		/// ```rust,ignore
 		/// // Index on lowercase email for case-insensitive lookups
 		/// expressions: Some(vec!["LOWER(email)"]),
-		/// ```rust,ignore
+		/// ```
 		///
 		/// **Note**: When `expressions` is Some, `columns` is ignored for SQL generation.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -958,7 +958,7 @@ pub enum Operation {
 	///         .with_local(true)
 	///         .with_delimiter(','),
 	/// };
-	/// ```rust,ignore
+	/// ```
 	BulkLoad {
 		/// Target table name
 		table: String,

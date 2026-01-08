@@ -11,7 +11,7 @@
 //!
 //! **Test Categories:**
 //! - Equivalence partitioning: Type groups
-//! - Decision table: nullable × auto_increment → Option<T>
+//! - Decision table: nullable × auto_increment → `Option<T>`
 //! - Boundary values: VARCHAR lengths, DECIMAL precision
 
 use reinhardt_migrations::{FieldType, ForeignKeyAction, TypeMapper, TypeMappingError};
@@ -101,7 +101,7 @@ fn test_numeric_type_mapping(#[case] field_type: FieldType, #[case] expected: &s
 
 /// Test binary type partition
 ///
-/// **Test Intent**: Verify all binary types map to Vec<u8>
+/// **Test Intent**: Verify all binary types map to `Vec<u8>`
 #[rstest]
 #[case(FieldType::Binary, "Vec<u8>")]
 #[case(FieldType::Blob, "Vec<u8>")]
@@ -227,7 +227,7 @@ fn test_many_to_many_returns_error() {
 /// | nullable | auto_increment | expected |
 /// |----------|----------------|----------|
 /// | false    | false          | i32      |
-/// | true     | false          | Option<i32> |
+/// | true     | false          | `Option<i32>` |
 /// | false    | true           | i32      |
 /// | true     | true           | i32 (auto_increment overrides nullable) |
 #[rstest]

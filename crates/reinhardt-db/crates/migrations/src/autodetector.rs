@@ -1545,7 +1545,7 @@ pub struct DetectedChanges {
 	/// Constraints that were removed: (app_label, model_name, constraint_name)
 	pub removed_constraints: Vec<(String, String, String)>,
 	/// Model dependencies for ordering operations
-	/// Maps (app_label, model_name) -> Vec<(dependent_app, dependent_model)>
+	/// Maps (app_label, model_name) -> `Vec<(dependent_app, dependent_model)>`
 	/// A model depends on another if it has ForeignKey or ManyToMany fields pointing to it
 	pub model_dependencies: std::collections::BTreeMap<(String, String), Vec<(String, String)>>,
 	/// ManyToMany intermediate tables that were created
@@ -2579,7 +2579,7 @@ pub struct InferenceEngine {
 	/// engine.record_field_addition("blog", "Post", "slug");
 	/// // Analyze co-occurrence within a 60-second window
 	/// let _cooccurrences = engine.analyze_cooccurrence(std::time::Duration::from_secs(60));
-	/// ```rust,ignore
+	/// ```
 	change_tracker: ChangeTracker,
 }
 

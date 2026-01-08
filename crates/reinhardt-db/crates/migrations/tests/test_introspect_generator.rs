@@ -777,7 +777,7 @@ fn test_all_files_have_struct() {
 
 /// Test all generated model files contain model attribute
 ///
-/// **Test Intent**: Verify all model files have #[model] attribute
+/// **Test Intent**: Verify all model files have `#[model]` attribute
 #[rstest]
 #[test]
 fn test_all_files_have_model_attribute() {

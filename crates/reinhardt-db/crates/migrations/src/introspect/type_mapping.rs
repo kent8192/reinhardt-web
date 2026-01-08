@@ -1,7 +1,7 @@
 //! SQL to Rust type mapping for code generation.
 //!
 //! Maps database column types to appropriate Rust types, handling:
-//! - Nullable fields (Option<T>)
+//! - Nullable fields (`Option<T>`)
 //! - Auto-increment primary keys
 //! - Database-specific types (PostgreSQL, MySQL, SQLite)
 //! - Custom type overrides
