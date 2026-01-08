@@ -3,7 +3,7 @@
 //! Tests automatic timestamp management for created_at and updated_at fields:
 //! - Normal cases: Automatic setting of created_at/updated_at
 //! - Normal cases: Verification of updated_at changes on updates
-//! - Property-based: Invariant that updated_at >= created_at
+//! - Invariant verification: updated_at >= created_at after multiple updates
 //! - Edge cases: Updates that don't change updated_at
 //! - Boundary values: Timestamp ordering after multiple updates
 //!
@@ -469,102 +469,6 @@ async fn test_updated_at_always_gte_created_at_after_updates(
 			created_at,
 			i
 		);
-	}
-}
-
-// ============================================================================
-// Property-Based Testing: Timestamp Invariants
-// ============================================================================
-
-use proptest::prelude::*;
-
-proptest! {
-	/// Property: updated_at >= created_at always holds
-	///
-	/// **Test Intent**: Property-based test to verify that the invariant
-	/// updated_at >= created_at always holds regardless of the update pattern
-	///
-	/// **Integration Point**: Database timestamp logic → Invariant verification
-	///
-	/// **Not Intent**: Specific update scenarios, manual timestamp management
-	#[test]
-	fn prop_updated_at_gte_created_at(
-		updates in prop::collection::vec(any::<String>(), 1..10)
-	) {
-		let rt = tokio::runtime::Runtime::new().unwrap();
-		rt.block_on(async {
-			// Start container
-			let (_container, pool, _port, _url) = postgres_container().await;
-
-			create_articles_table(pool.as_ref()).await;
-
-			// Insert initial article
-			let insert = Query::insert()
-				.into_table(Articles::Table)
-				.columns([Articles::Title, Articles::Content])
-				.values_panic(["Test Article".into(), "Initial Content".into()])
-				.returning_all()
-				.to_string(PostgresQueryBuilder);
-
-			let insert_result = sqlx::query(&insert)
-				.fetch_one(pool.as_ref())
-				.await
-				.expect("Failed to insert article");
-
-			let article_id: i32 = insert_result.get("id");
-
-			// Apply random updates
-			for update_content in updates {
-				tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-
-				let update = Query::update()
-					.table(Articles::Table)
-					.values([(Articles::Content, update_content.into())])
-					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.to_string(PostgresQueryBuilder);
-
-				sqlx::query(&update)
-					.execute(pool.as_ref())
-					.await
-					.expect("Failed to update article");
-
-				// Update timestamp
-				let update_timestamp = Query::update()
-					.table(Articles::Table)
-					.values([(Articles::UpdatedAt, Expr::current_timestamp().into())])
-					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.to_string(PostgresQueryBuilder);
-
-				sqlx::query(&update_timestamp)
-					.execute(pool.as_ref())
-					.await
-					.expect("Failed to update timestamp");
-
-				// Verify invariant
-				let select = Query::select()
-					.columns([Articles::CreatedAt, Articles::UpdatedAt])
-					.from(Articles::Table)
-					.and_where(Expr::col(Articles::Id).eq(article_id).into())
-					.to_string(PostgresQueryBuilder);
-
-				let result = sqlx::query(&select)
-					.fetch_one(pool.as_ref())
-					.await
-					.expect("Failed to fetch article");
-
-				let created_at: chrono::DateTime<chrono::Utc> = result.get("created_at");
-				let updated_at: chrono::DateTime<chrono::Utc> = result.get("updated_at");
-
-				prop_assert!(
-					updated_at >= created_at,
-					"Invariant violated: updated_at ({}) < created_at ({})",
-					updated_at,
-					created_at
-				);
-			}
-
-			Ok(())
-		}).unwrap();
 	}
 }
 

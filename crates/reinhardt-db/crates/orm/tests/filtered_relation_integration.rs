@@ -660,5 +660,6 @@ async fn test_conditional_data_fetching_in_operator(
 		.await
 		.unwrap();
 
-	assert_eq!(books.len(), 2);
+	// Expected: Book1 (published), Book3 (archived), Book4 (published) = 3 books
+	assert_eq!(books.len(), 3);
 }

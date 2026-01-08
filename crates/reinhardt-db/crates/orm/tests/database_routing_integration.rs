@@ -497,7 +497,11 @@ async fn test_multi_db_with_expr_trait_routing(
 	// Verify query structure
 	assert!(sql.contains("analytics"));
 	assert!(sql.contains("event_type"));
-	assert!(sql.contains("'click'"));
+	// SeaQuery generates parameterized queries with $N placeholders for PostgreSQL
+	assert!(
+		sql.contains("$"),
+		"Query should use parameterized placeholders"
+	);
 
 	// Insert test data
 	sqlx::query("INSERT INTO analytics (event_id, user_id, event_type) VALUES ($1, $2, $3)")

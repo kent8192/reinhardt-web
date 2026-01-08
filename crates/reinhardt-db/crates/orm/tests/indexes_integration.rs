@@ -8,7 +8,7 @@
 //!
 //! Note: Advanced index types (Hash, GIN, GiST) and partial indexes
 //! are PostgreSQL-specific features that may require manual DDL or
-//! migration system support beyond basic #[field(index)] attributes.
+//! migration system support beyond basic `#[field(index)]` attributes.
 
 use reinhardt_core::macros::model;
 use reinhardt_orm::Model;

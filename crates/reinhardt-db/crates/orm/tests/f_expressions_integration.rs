@@ -30,7 +30,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 /// Order model for F() expression testing
 ///
 /// Note: Using f64 for price fields instead of rust_decimal::Decimal because
-/// the #[model(...)] macro does not currently support Decimal type mapping.
+/// the `#[model(...)]` macro does not currently support Decimal type mapping.
 /// This is sufficient for F() expression testing purposes.
 #[model(app_label = "orm_test", table_name = "orders")]
 #[derive(Serialize, Deserialize)]

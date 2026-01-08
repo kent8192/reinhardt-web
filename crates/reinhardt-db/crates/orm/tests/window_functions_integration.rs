@@ -688,24 +688,26 @@ async fn test_window_with_order_by(
 
 	// Verify timestamp ordering within region
 	let mut current_region = String::new();
-	let mut last_timestamp = String::new();
+	let mut last_timestamp: Option<NaiveDateTime> = None;
 
 	for row in rows {
 		let region: String = row.get("region");
-		let timestamp: String = row.get("timestamp");
+		let timestamp: NaiveDateTime = row.get("timestamp");
 		let _amount: i64 = row.get("amount");
 		let _prev_amount: Option<i64> = row.get("prev_amount");
 
 		if region != current_region {
 			current_region = region.clone();
-			last_timestamp = timestamp.clone();
+			last_timestamp = Some(timestamp);
 		} else {
 			// Within partition, timestamps should be in ascending order
-			assert!(
-				timestamp >= last_timestamp,
-				"Timestamps should be in ascending order within partition"
-			);
-			last_timestamp = timestamp.clone();
+			if let Some(last) = last_timestamp {
+				assert!(
+					timestamp >= last,
+					"Timestamps should be in ascending order within partition"
+				);
+			}
+			last_timestamp = Some(timestamp);
 		}
 	}
 }
@@ -754,7 +756,7 @@ async fn test_time_series_lag_lead_analysis(
 
 	for row in rows {
 		let region: String = row.get("region");
-		let _timestamp: String = row.get("timestamp");
+		let _timestamp: NaiveDateTime = row.get("timestamp");
 		let amount: i64 = row.get("amount");
 		let prev_amount: Option<i64> = row.get("prev_amount");
 		let next_amount: Option<i64> = row.get("next_amount");
