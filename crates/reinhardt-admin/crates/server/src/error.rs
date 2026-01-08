@@ -31,7 +31,7 @@ impl IntoServerFnError for AdminError {
 	}
 }
 
-/// Convert Result<T, AdminError> to Result<T, ServerFnError>
+/// Convert `Result<T, AdminError>` to `Result<T, ServerFnError>`
 pub trait MapServerFnError<T> {
 	/// Map AdminError to ServerFnError
 	fn map_server_fn_error(self) -> Result<T, ServerFnError>;

@@ -929,7 +929,7 @@ impl AdminDatabase {
 /// Injectable trait implementation for AdminDatabase
 ///
 /// This allows AdminDatabase to be injected via the DI container.
-/// The implementation resolves Arc<AdminDatabase> from the container
+/// The implementation resolves `Arc<AdminDatabase>` from the container
 /// and clones the inner value.
 #[async_trait]
 impl Injectable for AdminDatabase {

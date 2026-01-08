@@ -809,7 +809,7 @@ impl AstPageFormatter {
 
 	/// Extract the handler expression from the wrapper code
 	///
-	/// Pattern: "let _handler = <expr>;"
+	/// Pattern: `let _handler = <expr>;`
 	fn extract_handler_from_wrapper(formatted: &str) -> Option<String> {
 		let start_marker = "let _handler = ";
 		let start = formatted.find(start_marker)? + start_marker.len();

@@ -406,7 +406,7 @@ impl AdminSite {
 /// Injectable trait implementation for AdminSite
 ///
 /// This allows AdminSite to be injected via the DI container.
-/// The implementation resolves Arc<AdminSite> from the container
+/// The implementation resolves `Arc<AdminSite>` from the container
 /// and clones the inner value.
 #[async_trait]
 impl Injectable for AdminSite {
