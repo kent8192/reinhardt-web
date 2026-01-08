@@ -1,4 +1,4 @@
-//! Test that #[model] generates new() function correctly with ManyToMany fields
+//! Test that `#[model]` generates new() function correctly with ManyToMany fields
 //!
 //! ManyToManyField should be automatically excluded from new() function arguments
 //! and initialized with Default::default()

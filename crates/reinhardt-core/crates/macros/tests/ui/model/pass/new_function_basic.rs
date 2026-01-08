@@ -1,9 +1,9 @@
-//! Test that #[model] generates new() function with correct parameters
+//! Test that `#[model]` generates new() function with correct parameters
 
 use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-/// Basic model with Option<i32> primary key and optional field with default
+/// Basic model with `Option<i32>` primary key and optional field with default
 #[model(app_label = "test", table_name = "test_user")]
 #[derive(Serialize, Deserialize)]
 pub struct TestUser {

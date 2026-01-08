@@ -113,6 +113,19 @@ fn test_rel_attribute_fail() {
 	t.compile_fail("tests/ui/rel/fail/*.rs");
 }
 
+// api_view macro tests
+#[test]
+fn test_api_view_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/api_view/pass/*.rs");
+}
+
+#[test]
+fn test_api_view_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/api_view/fail/*.rs");
+}
+
 // Admin macro tests
 #[test]
 fn test_admin_macro_pass() {
@@ -217,7 +230,7 @@ async fn test_injectable_macro_expansion_inject_method() {
 /// Test Injectable with nested generic types
 ///
 /// Verifies:
-/// - Injectable handles Arc<T> and other wrapper types
+/// - Injectable handles `Arc<T>` and other wrapper types
 /// - Nested generic resolution works
 /// - Type parameters are correctly preserved
 #[tokio::test]

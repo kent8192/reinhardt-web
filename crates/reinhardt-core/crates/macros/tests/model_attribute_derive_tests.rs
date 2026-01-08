@@ -1,4 +1,4 @@
-//! Tests for automatic derive trait addition in #[model(...)] attribute macro
+//! Tests for automatic derive trait addition in `#[model(...)]` attribute macro
 
 use reinhardt::model;
 use serde::{Deserialize, Serialize};

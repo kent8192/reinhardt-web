@@ -1,4 +1,4 @@
-//! Test that #[field(include_in_new = ...)] controls new() function parameter inclusion
+//! Test that `#[field(include_in_new = ...)]` controls new() function parameter inclusion
 
 use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};

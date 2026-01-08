@@ -1,4 +1,4 @@
-//! Test that a field cannot have both #[inject] and #[no_inject]
+//! Test that a field cannot have both `#[inject]` and `#[no_inject]`
 //!
 //! This should fail to compile with an error message
 

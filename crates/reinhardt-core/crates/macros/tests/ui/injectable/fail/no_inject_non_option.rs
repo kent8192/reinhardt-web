@@ -1,6 +1,6 @@
-//! Test that #[no_inject] without default requires Option<T>
+//! Test that `#[no_inject]` without default requires `Option<T>`
 //!
-//! This should fail to compile because the field type is not Option<T>
+//! This should fail to compile because the field type is not `Option<T>`
 
 use reinhardt_macros::injectable;
 
