@@ -1,4 +1,4 @@
-//! Tests for #[derive(Schema)] macro
+//! Tests for `#[derive(Schema)]` macro
 
 use reinhardt_openapi::{Schema, ToSchema};
 use utoipa::openapi::{

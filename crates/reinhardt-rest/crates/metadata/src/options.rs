@@ -9,7 +9,7 @@ pub struct SerializerFieldInfo {
 	pub name: String,
 	/// Rust type name
 	pub type_name: String,
-	/// Whether the field is optional (Option<T>)
+	/// Whether the field is optional (`Option<T>`)
 	pub is_optional: bool,
 	/// Whether the field is read-only
 	pub is_read_only: bool,

@@ -432,7 +432,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 ///
 /// ## Basic Usage with Manual ORM Integration
 ///
-/// ```rust,no_run,ignore
+/// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
 /// use reinhardt_serializers::WritableNestedSerializer;
@@ -470,11 +470,13 @@ impl<M: Model> Serializer for ListSerializer<M> {
 ///
 ///     tx.commit()?;
 /// }
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # }
 /// ```
 ///
 /// ## Advanced: Handling Both Create and Update
 ///
-/// ```rust,no_run,ignore
+/// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # use serde_json::json;

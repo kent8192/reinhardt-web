@@ -55,7 +55,7 @@ impl<B: ThrottleBackend> TieredRateThrottle<B> {
 	///
 	/// # Arguments
 	///
-	/// * `backend` - Throttle backend wrapped in Arc<Mutex>
+	/// * `backend` - Throttle backend wrapped in `Arc<Mutex>`
 	/// * `default_tier` - Default tier used when no specific tier matches
 	///
 	/// # Examples

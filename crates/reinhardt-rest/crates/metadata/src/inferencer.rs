@@ -136,7 +136,7 @@ impl SchemaInferencer {
 		self.type_mappings.insert(type_name.into(), field_type);
 	}
 
-	/// Extracts the inner type from Vec<T>
+	/// Extracts the inner type from `Vec<T>`
 	fn extract_vec_type<'a>(&self, type_name: &'a str) -> Option<&'a str> {
 		if type_name.starts_with("Vec<") && type_name.ends_with('>') {
 			Some(&type_name[4..type_name.len() - 1])
@@ -145,7 +145,7 @@ impl SchemaInferencer {
 		}
 	}
 
-	/// Extracts the inner type from Option<T>
+	/// Extracts the inner type from `Option<T>`
 	fn extract_option_type<'a>(&self, type_name: &'a str) -> Option<&'a str> {
 		if type_name.starts_with("Option<") && type_name.ends_with('>') {
 			Some(&type_name[7..type_name.len() - 1])

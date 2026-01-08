@@ -12,9 +12,9 @@ pub struct FieldInfo {
 	pub name: String,
 	/// Rust type name
 	pub type_name: String,
-	/// Whether the field is optional (Option<T>)
+	/// Whether the field is optional (`Option<T>`)
 	pub is_optional: bool,
-	/// Whether the field is a collection (Vec<T>)
+	/// Whether the field is a collection (`Vec<T>`)
 	pub is_collection: bool,
 	/// Whether this is the primary key
 	pub is_primary_key: bool,
@@ -194,7 +194,7 @@ impl TypeMapper {
 		Self::is_integer_type(type_name) || Self::is_float_type(type_name)
 	}
 
-	/// Extract inner type from Option<T>
+	/// Extract inner type from `Option<T>`
 	pub fn extract_option_type(type_name: &str) -> Option<String> {
 		if type_name.starts_with("Option<") && type_name.ends_with('>') {
 			let inner = &type_name[7..type_name.len() - 1];
@@ -204,7 +204,7 @@ impl TypeMapper {
 		}
 	}
 
-	/// Extract inner type from Vec<T>
+	/// Extract inner type from `Vec<T>`
 	pub fn extract_vec_type(type_name: &str) -> Option<String> {
 		if type_name.starts_with("Vec<") && type_name.ends_with('>') {
 			let inner = &type_name[4..type_name.len() - 1];
@@ -214,12 +214,12 @@ impl TypeMapper {
 		}
 	}
 
-	/// Check if type is Option<T>
+	/// Check if type is `Option<T>`
 	pub fn is_option_type(type_name: &str) -> bool {
 		type_name.starts_with("Option<")
 	}
 
-	/// Check if type is Vec<T>
+	/// Check if type is `Vec<T>`
 	pub fn is_vec_type(type_name: &str) -> bool {
 		type_name.starts_with("Vec<")
 	}

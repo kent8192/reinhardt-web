@@ -17,7 +17,7 @@ pub(crate) struct FieldAttributes {
 	pub min_length: Option<usize>,
 	pub max_length: Option<usize>,
 	pub pattern: Option<String>,
-	/// Property name override from #[serde(rename = "...")] or #[schema(rename = "...")]
+	/// Property name override from `#[serde(rename = "...")]` or `#[schema(rename = "...")]`
 	pub rename: Option<String>,
 }
 

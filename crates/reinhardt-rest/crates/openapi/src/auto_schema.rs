@@ -233,7 +233,7 @@ impl<T: ToSchema> ToSchema for Vec<T> {
 	}
 }
 
-/// HashMap<String, V> support for OpenAPI schema generation
+/// `HashMap<String, V>` support for OpenAPI schema generation
 ///
 /// Generates an OpenAPI schema with `additionalProperties` for dictionary-like structures.
 /// Keys are restricted to `String` type as per OpenAPI specification.

@@ -1,7 +1,7 @@
 //! Endpoint Inspector for Function-Based Routes
 //!
 //! Extracts endpoint metadata from HTTP method decorator macros
-//! (#[get], #[post], etc.) using the inventory crate.
+//! (`#[get]`, `#[post]`, etc.) using the inventory crate.
 
 use crate::SchemaError;
 use indexmap::IndexMap;

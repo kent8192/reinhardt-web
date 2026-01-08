@@ -468,7 +468,7 @@ fn to_snake_case(s: &str) -> String {
 	result
 }
 
-/// Helper function to check if a type is Option<T>
+/// Helper function to check if a type is `Option<T>`
 fn is_option_type(ty: &syn::Type) -> bool {
 	if let syn::Type::Path(type_path) = ty
 		&& let Some(segment) = type_path.path.segments.last()

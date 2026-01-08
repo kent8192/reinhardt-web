@@ -68,7 +68,7 @@ impl SwaggerUI {
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
-	/// ```ignore
+	/// ```
 	pub fn new(schema: OpenApiSchema) -> Self {
 		// OpenApiSchema is already utoipa's OpenApi, no conversion needed
 		Self {
@@ -85,7 +85,7 @@ impl SwaggerUI {
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
 	/// let html = swagger_ui.render_html().unwrap();
-	/// ```ignore
+	/// ```
 	pub fn render_html(&self) -> SchemaResult<String> {
 		// Render Swagger UI HTML using Tera template
 		let context = SwaggerUITemplate {
@@ -120,7 +120,7 @@ impl SwaggerUI {
 	/// let response = swagger_ui.handle(request).await?;
 	/// # Ok(())
 	/// # }
-	/// ```ignore
+	/// ```
 	pub async fn handle(&self, request: Request) -> Result<Response> {
 		let path = request.uri.path();
 
@@ -146,7 +146,7 @@ impl SwaggerUI {
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
 	/// let json = swagger_ui.schema_json().unwrap();
-	/// ```ignore
+	/// ```
 	pub fn schema_json(&self) -> SchemaResult<String> {
 		Ok(serde_json::to_string_pretty(&*self.openapi_spec)?)
 	}
@@ -189,7 +189,7 @@ impl RedocUI {
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
-	/// ```ignore
+	/// ```
 	pub fn new(schema: OpenApiSchema) -> Self {
 		// OpenApiSchema is already utoipa's OpenApi, no conversion needed
 		Self {
@@ -207,7 +207,7 @@ impl RedocUI {
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
 	/// let html = redoc_ui.render_html().unwrap();
-	/// ```ignore
+	/// ```
 	pub fn render_html(&self) -> SchemaResult<String> {
 		// Render Redoc UI HTML using Tera template
 		let context = RedocUITemplate {
@@ -243,7 +243,7 @@ impl RedocUI {
 	/// let response = redoc_ui.handle(request).await?;
 	/// # Ok(())
 	/// # }
-	/// ```ignore
+	/// ```
 	pub async fn handle(&self, _request: Request) -> Result<Response> {
 		let html = self.render_html().map_err(|e| {
 			reinhardt_core::exception::Error::Serialization(format!("Schema error: {}", e))

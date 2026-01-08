@@ -13,7 +13,7 @@ use serde_json::json;
 /// POSTing a list of data to a regular view should not cause the browsable
 /// API to fail during rendering.
 ///
-/// Regression test for https://github.com/encode/django-rest-framework/issues/5637
+/// Regression test for <https://github.com/encode/django-rest-framework/issues/5637>
 mod posting_list_data_tests {
 	use super::*;
 
@@ -251,7 +251,7 @@ mod posting_list_data_tests {
 
 /// Tests for views that return lists with many=True serializers
 ///
-/// Regression test for https://github.com/encode/django-rest-framework/pull/3164
+/// Regression test for <https://github.com/encode/django-rest-framework/pull/3164>
 mod many_post_view_tests {
 	use super::*;
 
