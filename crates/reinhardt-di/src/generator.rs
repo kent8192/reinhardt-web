@@ -14,7 +14,7 @@
 //! When Rust's native async generators become stable, this implementation should be
 //! migrated to use the native syntax for better performance and ergonomics.
 //!
-//! Tracking issue: https://github.com/rust-lang/rust/issues/79024
+//! Tracking issue: <https://github.com/rust-lang/rust/issues/79024>
 //!
 //! # Examples
 //!

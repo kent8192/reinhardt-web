@@ -67,7 +67,7 @@ pub trait Injectable: Sized + Send + Sync + 'static {
 	}
 }
 
-/// Blanket implementation of Injectable for Arc<T>
+/// Blanket implementation of Injectable for `Arc<T>`
 ///
 /// This allows using `Arc<T>` directly in endpoint handlers with `#[inject]`:
 ///

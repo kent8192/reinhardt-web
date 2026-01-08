@@ -26,7 +26,7 @@ impl Scope {
 	}
 }
 
-/// Check if an attribute is #[inject]
+/// Check if an attribute is `#[inject]`
 pub(crate) fn is_inject_attr(attr: &Attribute) -> bool {
 	attr.path().is_ident("inject")
 }

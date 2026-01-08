@@ -6,7 +6,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Fields, GenericArgument, PathArguments, Result, Type};
 
-/// Check if a field has #[inject] attribute
+/// Check if a field has `#[inject]` attribute
 fn has_inject_attr(field: &syn::Field) -> bool {
 	field
 		.attrs
@@ -14,7 +14,7 @@ fn has_inject_attr(field: &syn::Field) -> bool {
 		.any(|attr| attr.path().is_ident("inject"))
 }
 
-/// Check if a field has #[no_inject] attribute
+/// Check if a field has `#[no_inject]` attribute
 fn has_no_inject_attr(field: &syn::Field) -> bool {
 	field
 		.attrs

@@ -8,7 +8,7 @@
 //!
 //! Usage:
 //!   cargo run --bin check-di                 # Show basic info
-//!   cargo run --bin check-di -- --tree <type>    # Show dependency tree
+//!   cargo run --bin check-di -- --tree `<type>`    # Show dependency tree
 //!   cargo run --bin check-di -- --dot            # Generate DOT format
 //!   cargo run --bin check-di -- --check-cycles   # Check for cycles
 

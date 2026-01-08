@@ -26,7 +26,7 @@ pub enum DependencyScope {
 /// Factory trait for creating dependencies
 ///
 /// Factories are async functions that can resolve dependencies from an InjectionContext
-/// and return a type-erased Arc<dyn Any>.
+/// and return a type-erased `Arc<dyn Any>`.
 #[async_trait]
 pub trait FactoryTrait: Send + Sync {
 	/// Create an instance of the dependency

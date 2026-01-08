@@ -424,7 +424,7 @@ pub trait WithValidation: Sized {
 
 /// Type alias for validated path parameters
 ///
-/// This is a convenience type that wraps a Path<T> with validation constraints.
+/// This is a convenience type that wraps a `Path<T>` with validation constraints.
 ///
 /// # Examples
 ///
@@ -458,13 +458,13 @@ pub type ValidatedPath<T> = ValidationConstraints<crate::Path<T>>;
 
 /// Type alias for validated query parameters
 ///
-/// This is a convenience type that wraps a Query<T> with validation constraints.
+/// This is a convenience type that wraps a `Query<T>` with validation constraints.
 #[cfg(feature = "validation")]
 pub type ValidatedQuery<T> = ValidationConstraints<crate::Query<T>>;
 
 /// Type alias for validated form parameters
 ///
-/// This is a convenience type that wraps a Form<T> with validation constraints.
+/// This is a convenience type that wraps a `Form<T>` with validation constraints.
 #[cfg(feature = "validation")]
 pub type ValidatedForm<T> = ValidationConstraints<crate::Form<T>>;
 
