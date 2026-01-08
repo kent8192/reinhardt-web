@@ -147,7 +147,7 @@ cargo nextest run $args --lib --all-features --no-fail-fast --show-progress=none
 '''
 
 [tasks.intra-crate-integration-test]
-description = "Run intra-crate integration tests (tests/)"
+description = "Run intra-crate integration tests (tests/) excluding UI tests"
 command = "cargo"
 args = [
   "nextest",
@@ -157,6 +157,7 @@ args = [
   "*",
   "--exclude",
   "reinhardt-integration-tests",
+  "-E", "not binary(/ui/)",
   "--all-features",
   "--no-fail-fast",
   "--status-level=none",
@@ -220,6 +221,20 @@ description = "Test remote examples (uses crates.io published versions)"
 cwd = "examples/remote"
 command = "cargo"
 args = ["nextest", "run", "--workspace", "--verbose"]
+
+[tasks.ui-test]
+description = "Run UI tests (trybuild) separately with serial execution"
+command = "cargo"
+args = [
+  "nextest",
+  "run",
+  "--profile", "ui-test",
+  "--workspace",
+  "-E", "binary(/ui/)",
+  "--no-fail-fast",
+  "--status-level=none",
+  "--final-status-level=none"
+]
 
 [tasks.examples-test]
 description = "Test all examples (local + remote)"
