@@ -303,6 +303,7 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		.with_wait_for(WaitFor::message_on_stderr(
 			"database system is ready to accept connections",
 		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
 
 	let postgres = image
@@ -311,7 +312,8 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		.expect("Failed to start PostgreSQL container");
 
 	// Wait briefly before first port query to ensure container networking is ready
-	tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+	// Increased from 200ms to 500ms for better reliability under heavy load
+	tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
 	// Retry getting port with exponential backoff
 	let mut port_retry = 0;
@@ -1416,6 +1418,7 @@ pub async fn mysql_container() -> (
 		.with_wait_for(WaitFor::message_on_stderr(
 			"port: 3306  MySQL Community Server",
 		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.with_env_var("MYSQL_ROOT_PASSWORD", "test")
 		.with_env_var("MYSQL_DATABASE", "test_db")
 		.start()
@@ -1423,7 +1426,8 @@ pub async fn mysql_container() -> (
 		.expect("Failed to start MySQL container");
 
 	// Wait briefly before first port query to ensure container networking is ready
-	tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+	// Increased from 200ms to 500ms for better reliability under heavy load
+	tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
 	// Retry getting port with exponential backoff
 	let mut port_retry = 0;
@@ -1678,13 +1682,13 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_migrations::MigrationProvi
 ///
 /// Your app must register migrations using `collect_migrations!`:
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// // In your app's migrations.rs
-/// // reinhardt::collect_migrations!(
-/// //     app_label = "polls",
-/// //     _0001_initial,
-/// //     _0002_add_fields,
-/// // );
+/// reinhardt::collect_migrations!(
+///     app_label = "polls",
+///     _0001_initial,
+///     _0002_add_fields,
+/// );
 /// ```
 #[cfg(feature = "testcontainers")]
 #[rstest::fixture]
