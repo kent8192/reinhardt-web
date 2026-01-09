@@ -62,8 +62,8 @@ pub fn register_page() -> View {
 ///
 /// # Arguments
 ///
-/// * `user_id` - The UUID of the user as a string
-pub fn profile_page(user_id: String) -> View {
+/// * `user_id` - The UUID of the user
+pub fn profile_page(user_id: uuid::Uuid) -> View {
 	crate::client::router::profile_page_view(user_id)
 }
 
@@ -73,8 +73,8 @@ pub fn profile_page(user_id: String) -> View {
 ///
 /// # Arguments
 ///
-/// * `user_id` - The UUID of the user as a string
-pub fn profile_edit_page(user_id: String) -> View {
+/// * `user_id` - The UUID of the user
+pub fn profile_edit_page(user_id: uuid::Uuid) -> View {
 	crate::client::router::profile_edit_page_view(user_id)
 }
 
@@ -83,6 +83,17 @@ pub fn profile_edit_page(user_id: String) -> View {
 /// Displays the tweet timeline with a compose form.
 pub fn timeline_page() -> View {
 	crate::client::router::timeline_page_view()
+}
+
+/// DM chat page
+///
+/// Displays the DM chat interface for a specific room.
+///
+/// # Arguments
+///
+/// * `room_id` - The ID of the chat room
+pub fn dm_chat_page(room_id: String) -> View {
+	crate::client::router::dm_chat_page_view(room_id)
 }
 
 /// 404 Not Found page

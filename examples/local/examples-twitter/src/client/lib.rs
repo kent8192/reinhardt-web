@@ -40,6 +40,15 @@ pub fn main() -> Result<(), JsValue> {
 	router::with_router(|router| {
 		let root_element = Element::new(root.clone());
 
+		// Initialize route params by navigating to current path
+		let current_path = window
+			.location()
+			.pathname()
+			.unwrap_or_else(|_| "/".to_string());
+		if let Err(e) = router.replace(&current_path) {
+			web_sys::console::error_1(&format!("Failed to navigate: {:?}", e).into());
+		}
+
 		// Render and mount the view (events are attached during mount)
 		let view = router.render_current();
 		if let Err(e) = view.mount(&root_element) {
