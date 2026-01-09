@@ -27,6 +27,7 @@ subscription = [
 di = ["dep:reinhardt-di", "dep:reinhardt-graphql-macros"]
 # All features enabled
 full = ["graphql-grpc", "subscription", "di"]
+test-database = ["reinhardt-test/testcontainers"]
 
 [dependencies]
 # Core dependencies (merged from graphql-core)
@@ -56,3 +57,6 @@ reinhardt-graphql-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+rstest = { workspace = true }
+trybuild = { workspace = true }

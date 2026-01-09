@@ -32,3 +32,4 @@ tonic-prost-build = "0.14.2"
 
 [dev-dependencies]
 tokio-test = { workspace = true }
+rstest = { workspace = true }

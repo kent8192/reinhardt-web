@@ -38,7 +38,8 @@ reinhardt-routers = { workspace = true }
 reinhardt-proxy = { workspace = true }
 reinhardt-viewsets = { workspace = true }
 reinhardt-openapi = { workspace = true }
-reinhardt-graphql = { workspace = true }
+reinhardt-graphql = { workspace = true, features = ["full"] }
+reinhardt-grpc = { workspace = true }
 reinhardt-db = { workspace = true }
 reinhardt-orm = { workspace = true }
 reinhardt-migrations = { workspace = true }

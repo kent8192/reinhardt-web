@@ -41,7 +41,7 @@ redis = { version = "0.32.7", features = [
   "tokio-comp",
   "connection-manager",
 ], optional = true }
-sqlx = { workspace = true, features = ["any"], optional = true }
+sqlx = { workspace = true, features = ["any", "runtime-tokio", "tls-rustls", "postgres", "mysql"], optional = true }
 sea-query = { version = "1.0.0-rc.29", features = [
   "backend-postgres",
   "backend-mysql",
@@ -115,3 +115,5 @@ mockall = "0.13"
 rstest = "0.26.1"
 wiremock = "0.6"
 serial_test = { workspace = true }
+quickcheck = "1.0"
+quickcheck_macros = "1.0"

@@ -22,7 +22,14 @@ websockets = ["dep:reinhardt-websockets", "reinhardt-server/websocket"]
 graphql = ["reinhardt-server/graphql", "dep:async-graphql"]
 property-based = ["dep:proptest"]
 tasks = ["dep:reinhardt-tasks"]
-full = ["testcontainers", "static", "websockets", "graphql", "property-based", "tasks"]
+admin = [
+  "dep:reinhardt-admin",
+  "dep:reinhardt-admin-core",
+  "dep:reinhardt-admin-server",
+  "dep:reinhardt-admin-types",
+  "dep:reinhardt-admin-adapters",
+]
+full = ["testcontainers", "static", "websockets", "graphql", "property-based", "tasks", "admin"]
 
 [dependencies]
 reinhardt-db = { workspace = true, features = ["orm", "backends", "postgres", "mysql", "sqlite"] }
@@ -102,6 +109,13 @@ tempfile = "3.8"
 # Testing framework dependencies
 rstest = "0.26.1"
 mockall = { workspace = true }
+
+# Optional dependencies for admin feature
+reinhardt-admin = { workspace = true, optional = true }
+reinhardt-admin-core = { workspace = true, optional = true }
+reinhardt-admin-server = { workspace = true, optional = true }
+reinhardt-admin-types = { workspace = true, optional = true }
+reinhardt-admin-adapters = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
