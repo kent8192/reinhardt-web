@@ -9,7 +9,10 @@
 //! - Static files
 //! - Admin panel customization
 
+// Server-side modules (non-WASM only)
+#[cfg(not(target_arch = "wasm32"))]
 pub mod apps;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod config;
 
 // Client-side modules (WASM only)

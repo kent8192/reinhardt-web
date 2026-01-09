@@ -33,6 +33,7 @@ web-sys = { version = "0.3.83", features = [
 	"EventTarget",
 ] }
 console_error_panic_hook = "0.1"
+gloo-net = "0.6"
 # WASM-compatible chrono and uuid
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 uuid = { version = "1.11.0", features = ["serde", "v4", "js"] }
@@ -56,6 +57,7 @@ sea-query = "1.0.0-rc.29"
 example-common = { path = "../../remote/common" }
 ctor = "0.6.1"
 inventory = "0.3"
+linkme = "0.3"
 
 [dev-dependencies]
 example-test-macros = { path = "../../remote/test-macros" }

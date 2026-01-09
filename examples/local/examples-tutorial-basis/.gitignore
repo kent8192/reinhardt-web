@@ -48,3 +48,9 @@ staticfiles/
 # Admin panel build artifacts (WASM, JS, CSS with hashes)
 static/admin/
 dist/
+dist-wasm/
+
+# WASM build artifacts in static/ (should be generated in dist-wasm/, not static/)
+static/*.js
+static/*.wasm
+static/*_bg.wasm
