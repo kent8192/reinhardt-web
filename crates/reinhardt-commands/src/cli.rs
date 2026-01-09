@@ -581,6 +581,8 @@ async fn execute_collectstatic(
 		link,
 		ignore_patterns: ignore,
 		verbosity,
+		enable_hashing: true,
+		fast_compare: false,
 	};
 
 	// Create and execute command in blocking context
