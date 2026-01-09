@@ -826,7 +826,7 @@ where
 fn init_router() -> Router {
 	Router::new()
 		.route("/", || index_page())
-		.route("/polls/:question_id/", || {
+		.route("/polls/{question_id}/", || {
 			with_router(|r| {
 				let params = r.current_params().get();
 				let question_id_str = params.get("question_id")
@@ -838,7 +838,7 @@ fn init_router() -> Router {
 				}
 			})
 		})
-		.route("/polls/:question_id/results/", || {
+		.route("/polls/{question_id}/results/", || {
 			with_router(|r| {
 				let params = r.current_params().get();
 				let question_id_str = params.get("question_id")
