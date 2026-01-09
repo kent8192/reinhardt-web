@@ -24,9 +24,9 @@ pub struct QuestionResponse {
 impl QuestionResponse {
 	pub fn from_model(model: &crate::apps::polls::models::Question) -> Self {
 		Self {
-			id: model.id,
-			question_text: model.question_text.clone(),
-			pub_date: model.pub_date,
+			id: model.id(),
+			question_text: model.question_text().to_string(),
+			pub_date: model.pub_date(),
 			was_published_recently: model.was_published_recently(),
 		}
 	}
@@ -57,10 +57,10 @@ pub struct ChoiceResponse {
 impl ChoiceResponse {
 	pub fn from_model(model: &crate::apps::polls::models::Choice) -> Self {
 		Self {
-			id: model.id,
-			question_id: model.question_id,
-			choice_text: model.choice_text.clone(),
-			votes: model.votes,
+			id: model.id(),
+			question_id: *model.question_id(),
+			choice_text: model.choice_text().to_string(),
+			votes: model.votes(),
 		}
 	}
 }

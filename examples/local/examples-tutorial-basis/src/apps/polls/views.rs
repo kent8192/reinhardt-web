@@ -89,7 +89,7 @@ pub async fn results(Path(question_id): Path<i64>) -> ViewResult<Response> {
 		.all()
 		.await?;
 
-	let total_votes: i32 = choices.iter().map(|c| c.votes).sum();
+	let total_votes: i32 = choices.iter().map(|c| c.votes()).sum();
 
 	let response_data = json!({
 		"question": question,
@@ -120,19 +120,19 @@ pub async fn vote(
 		.await?
 		.ok_or("Choice not found")?;
 
-	if choice.question_id != question_id {
+	if *choice.question_id() != question_id {
 		return Err("Choice does not belong to this question".into());
 	}
 
-	choice.votes += 1;
+	choice.vote();
 	let updated_choice = choice_manager.update(&choice).await?;
 
 	let response_data = json!({
 		"message": "Vote recorded successfully",
 		"question_id": question_id,
 		"choice_id": choice_id,
-		"choice_text": updated_choice.choice_text,
-		"new_vote_count": updated_choice.votes
+		"choice_text": updated_choice.choice_text(),
+		"new_vote_count": updated_choice.votes()
 	});
 
 	let json = json::to_string(&response_data)?;

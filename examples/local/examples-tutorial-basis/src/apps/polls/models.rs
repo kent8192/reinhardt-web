@@ -1,19 +1,20 @@
 use chrono::{DateTime, Utc};
+use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Question model representing a poll question
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "polls", table_name = "questions")]
+#[derive(Serialize, Deserialize)]
 pub struct Question {
 	#[field(primary_key = true)]
-	pub id: i64,
+	id: i64,
 
 	#[field(max_length = 200)]
-	pub question_text: String,
+	question_text: String,
 
 	#[field(auto_now_add = true)]
-	pub pub_date: DateTime<Utc>,
+	pub_date: DateTime<Utc>,
 }
 
 impl Question {
@@ -26,20 +27,21 @@ impl Question {
 }
 
 /// Choice model representing an answer option for a question
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "polls", table_name = "choices")]
+#[derive(Serialize, Deserialize)]
 pub struct Choice {
 	#[field(primary_key = true)]
-	pub id: i64,
+	id: i64,
 
-	#[field(foreign_key = Question)]
-	pub question_id: i64,
+	// ⚠️ IMPORTANT: related_name is REQUIRED for #[rel(foreign_key)]
+	#[rel(foreign_key, related_name = "choices")]
+	question: ForeignKeyField<Question>,
 
 	#[field(max_length = 200)]
-	pub choice_text: String,
+	choice_text: String,
 
 	#[field(default = 0)]
-	pub votes: i32,
+	votes: i32,
 }
 
 impl Choice {
@@ -55,18 +57,17 @@ mod tests {
 
 	#[test]
 	fn test_choice_vote() {
-		let mut choice = Choice {
-			id: 1,
-			question_id: 1,
-			choice_text: "Choice 1".to_string(),
-			votes: 0,
-		};
-		assert_eq!(choice.votes, 0);
+		let mut choice = Choice::new(
+			"Choice 1".to_string(), // choice_text
+			0,                      // votes
+			1,                      // question_id (ForeignKeyField is last)
+		);
+		assert_eq!(choice.votes(), 0);
 
 		choice.vote();
-		assert_eq!(choice.votes, 1);
+		assert_eq!(choice.votes(), 1);
 
 		choice.vote();
-		assert_eq!(choice.votes, 2);
+		assert_eq!(choice.votes(), 2);
 	}
 }
