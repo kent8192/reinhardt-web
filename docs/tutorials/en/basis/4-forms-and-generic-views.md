@@ -6,15 +6,119 @@ In this tutorial, we'll implement form handling in reinhardt-pages using client-
 
 Unlike traditional server-rendered forms (using templates like Tera), reinhardt-pages handles forms on the client side with WASM components that communicate with server functions.
 
+> **📌 Important Note**: This tutorial demonstrates two approaches to form handling:
+> 
+> 1. **`form!` Macro Approach (Recommended)**: The example implementation in `src/client/components/polls.rs` uses the declarative `form!` macro, which automatically handles:
+>    - Form state management with reactive `watch` blocks
+>    - Dynamic choices population
+>    - Automatic CSRF token injection for POST/PUT/PATCH/DELETE methods
+>    - Loading state management
+>    - Error display
+> 
+> 2. **Manual Form Handling (Alternative)**: The manual approach documented below provides fine-grained control but requires more boilerplate code.
+> 
+> For most use cases, **we recommend using the `form!` macro** as demonstrated in the actual implementation. See `src/client/components/polls.rs` for a complete example of the `form!` macro pattern with dynamic choices.
+
 **Key Concepts:**
 
-1. **Client-Side Form State**: Use `use_state()` to manage form data (selected choices, input values, etc.)
-2. **Event Handlers**: Attach event listeners to form elements for user interactions
+1. **Declarative Forms**: Use `form!` macro for automatic state management and CSRF protection
+2. **Manual Forms**: Use `use_state()` to manually manage form data when needed
 3. **Server Functions**: Call server functions for data persistence and validation
 4. **Error Handling**: Display validation errors and server errors to users
 5. **Navigation**: Client-side navigation after successful form submission
 
-## Writing a Client-Side Form
+## Example: Declarative Forms with form! Macro (Recommended)
+
+The voting form in `src/client/components/polls.rs` demonstrates the recommended approach:
+
+```rust
+// Example from src/client/components/polls.rs
+let voting_form = form! {
+	name: VotingForm,
+	server_fn: submit_vote,
+	method: Post,
+	state: { loading, error },
+
+	fields: {
+		question_id: HiddenField {
+			initial: question_id_str.clone(),
+		},
+		choice_id: ChoiceField {
+			widget: RadioSelect,
+			required,
+			label: "Select your choice",
+			class: "form-check poll-choice p-3 mb-2 border rounded",
+			choices_from: "choices",  // Dynamic choices
+			choice_value: "id",
+			choice_label: "choice_text",
+		},
+	},
+
+	watch: {
+		submit_button: |form| {
+			let is_loading = form.loading().get();
+			// Reactive UI updates when loading state changes
+			page!(|is_loading: bool| {
+				button {
+					r#type: "submit",
+					class: if is_loading { "btn btn-primary disabled" } else { "btn btn-primary" },
+					disabled: is_loading,
+					{ if is_loading { "Voting..." } else { "Vote" } }
+				}
+			})(is_loading)
+		},
+		error_display: |form| {
+			let err = form.error().get();
+			// Show error messages reactively
+			page!(|err: Option<String>| {
+				watch {
+					if let Some(e) = err.clone() {
+						div { class: "alert alert-danger mt-3", { e } }
+					}
+				}
+			})(err)
+		},
+	},
+
+	on_success: |_result| {
+		// Navigate after successful submission
+		#[cfg(target_arch = "wasm32")]
+		{
+			if let Some(window) = web_sys::window() {
+				let _ = window.location().set_href(&format!("/polls/{}/results/", question_id));
+			}
+		}
+	},
+};
+
+// Populate choices dynamically from server
+#[cfg(target_arch = "wasm32")]
+{
+	spawn_local(async move {
+		match get_question_detail(question_id).await {
+			Ok((q, choices)) => {
+				let choice_options: Vec<(String, String)> = choices
+					.iter()
+					.map(|c| (c.id.to_string(), c.choice_text.clone()))
+					.collect();
+				voting_form.choice_id_choices().set(choice_options);
+			}
+			Err(e) => { /* handle error */ }
+		}
+	});
+}
+```
+
+**Key Benefits:**
+- **Automatic CSRF Protection**: POST method automatically includes CSRF token
+- **Reactive State Management**: `watch` blocks update UI when form state changes
+- **Dynamic Choices**: `choices_from` populates select/radio options at runtime
+- **Built-in Loading States**: `form.loading()` and `form.error()` Signals
+- **Type-Safe**: Compiler ensures field names match form definition
+
+For complete implementation, see `examples/local/examples-tutorial-basis/src/client/components/polls.rs`.
+
+## Manual Form Handling (Alternative Approach)
 
 Let's implement the voting functionality. We already created the form structure in Part 3, but now we'll add proper state management and error handling.
 
@@ -375,60 +479,116 @@ In traditional server-rendered applications, CSRF protection uses tokens embedde
 
 In reinhardt-pages, CSRF protection is handled differently:
 
-### Future: Automatic CSRF Protection
+## CSRF Protection in reinhardt-pages
 
-reinhardt-pages will integrate with `reinhardt-middleware` for automatic CSRF token handling:
+### Automatic CSRF Protection
 
-```rust
-// Future implementation (not yet available)
-use reinhardt_pages::middleware::csrf;
+reinhardt-pages provides **automatic CSRF protection** for both forms and server functions. No manual token handling is required.
 
-// Server-side: Middleware automatically validates tokens
-#[server_fn(use_inject = true)]
-pub async fn vote(
-	request: VoteRequest,
-	#[inject] csrf_token: CsrfToken,  // Auto-injected and validated
-	#[inject] _db: reinhardt::DatabaseConnection,
-) -> Result<ChoiceInfo, ServerFnError> {
-	// CSRF validation happens automatically
-	// If token is invalid, request is rejected before this code runs
+#### For Forms
 
-	// ... business logic
-}
-
-// Client-side: Token automatically included in requests
-spawn_local(async move {
-	// CSRF token automatically added to request headers
-	let result = vote(VoteRequest { question_id, choice_id }).await;
-	// ... handle result
-});
-```
-
-### Current: Manual CSRF Handling
-
-Until automatic integration is available, implement CSRF protection manually:
+The `form!` macro automatically injects CSRF tokens for POST/PUT/PATCH/DELETE methods:
 
 ```rust
-// Server-side: Generate and validate tokens
-#[cfg(not(target_arch = "wasm32"))]
-use reinhardt::middleware::csrf::{CsrfProtection, CsrfToken};
+// POST form automatically includes CSRF token
+let contact_form = form! {
+	name: ContactForm,
+	action: "/api/contact",
+	method: Post,
 
-#[server_fn(use_inject = true)]
-pub async fn vote(
-	request: VoteRequest,
-	csrf_token: String,  // Client must provide token
-	#[inject] csrf_middleware: Arc<CsrfProtection>,
-	#[inject] _db: reinhardt::DatabaseConnection,
-) -> Result<ChoiceInfo, ServerFnError> {
-	// Validate CSRF token
-	csrf_middleware.verify_token(&csrf_token)
-		.map_err(|_| ServerFnError::ServerError("Invalid CSRF token".to_string()))?;
+	fields: {
+		message: CharField { required },
+	},
+};
+```
 
+The generated HTML includes a hidden CSRF token field:
+
+```html
+<form action="/api/contact" method="post">
+	<input type="hidden" name="csrfmiddlewaretoken" value="[token]">
+	<!-- field elements -->
+</form>
+```
+
+GET forms do NOT include CSRF tokens since they are safe methods that don't need CSRF protection:
+
+```rust
+// GET form does NOT include CSRF token (safe method)
+let search_form = form! {
+	name: SearchForm,
+	action: "/search",
+	method: Get,
+
+	fields: {
+		query: CharField { required },
+	},
+};
+```
+
+#### For Server Functions
+
+The `#[server_fn]` macro automatically includes CSRF headers in all requests by default:
+
+```rust
+#[server_fn]  // CSRF protection enabled by default
+async fn vote(request: VoteRequest) -> Result<ChoiceInfo, ServerFnError> {
+	// CSRF header automatically included: X-CSRFToken: [token]
+	// No manual CSRF handling needed
+	
 	// ... business logic
 }
 ```
 
-**Note**: Full CSRF integration with reinhardt-pages is planned for future releases. See [reinhardt-middleware documentation](../../../crates/reinhardt-middleware/README.md) for current CSRF capabilities.
+**Important**: The `vote` function we created earlier in this tutorial is already CSRF-protected by default. No additional code is needed.
+
+#### Disabling CSRF Protection (Optional)
+
+For public APIs that don't require CSRF protection, you can disable it:
+
+```rust
+#[server_fn(no_csrf = true)]  // Disable CSRF for public APIs
+async fn public_api() -> Result<Data, ServerFnError> {
+	// No CSRF header - useful for public endpoints
+	
+	// ... business logic
+}
+```
+
+### Token Retrieval
+
+CSRF tokens are automatically retrieved from multiple sources in the following order of priority:
+
+1. **Cookie**: `csrftoken`
+2. **Meta tag**: `<meta name="csrf-token">`
+3. **Hidden input**: `<input name="csrfmiddlewaretoken">`
+
+For advanced use cases where you need manual control over CSRF tokens:
+
+```rust
+use reinhardt_pages::csrf::{get_csrf_token, csrf_headers};
+
+// Get token (tries Cookie → Meta → Input in that order)
+if let Some(token) = get_csrf_token() {
+	// Use token for manual AJAX requests
+}
+
+// Get as HTTP header (for fetch API)
+if let Some((header_name, header_value)) = csrf_headers() {
+	// header_name: "X-CSRFToken"
+	// header_value: token from browser
+}
+```
+
+### Django Compatibility
+
+reinhardt-pages uses Django-compatible CSRF conventions:
+
+- **Cookie name**: `csrftoken`
+- **Header name**: `X-CSRFToken`
+- **Form field name**: `csrfmiddlewaretoken`
+
+This ensures compatibility with Django backends and existing Django infrastructure.
 
 ## Component Patterns: Reusability Instead of Generic Views
 
