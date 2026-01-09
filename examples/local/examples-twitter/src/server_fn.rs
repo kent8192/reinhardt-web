@@ -4,6 +4,8 @@
 //! and server (handlers). The `#[server_fn]` macro generates target-specific code.
 
 pub mod auth;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dm;
 pub mod profile;
 pub mod relationship;
 pub mod tweet;
