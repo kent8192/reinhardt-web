@@ -45,9 +45,9 @@ pub struct VoteRequest {
 impl From<crate::apps::polls::models::Question> for QuestionInfo {
 	fn from(question: crate::apps::polls::models::Question) -> Self {
 		QuestionInfo {
-			id: question.id,
-			question_text: question.question_text,
-			pub_date: question.pub_date,
+			id: question.id(),
+			question_text: question.question_text().to_string(),
+			pub_date: question.pub_date(),
 		}
 	}
 }
@@ -56,10 +56,10 @@ impl From<crate::apps::polls::models::Question> for QuestionInfo {
 impl From<crate::apps::polls::models::Choice> for ChoiceInfo {
 	fn from(choice: crate::apps::polls::models::Choice) -> Self {
 		ChoiceInfo {
-			id: choice.id,
-			question_id: choice.question_id,
-			choice_text: choice.choice_text,
-			votes: choice.votes,
+			id: choice.id(),
+			question_id: *choice.question_id(),
+			choice_text: choice.choice_text().to_string(),
+			votes: choice.votes(),
 		}
 	}
 }

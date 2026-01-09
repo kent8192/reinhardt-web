@@ -3,21 +3,23 @@
 //! Provides UI components for the polling application including
 //! the index page, detail page with voting form, and results page.
 
-use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
+use crate::shared::types::{ChoiceInfo, QuestionInfo};
 use reinhardt::pages::Signal;
 use reinhardt::pages::component::{ElementView, IntoView, View};
+use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_state;
 
 #[cfg(target_arch = "wasm32")]
 use {
 	crate::server_fn::polls::{
-		get_question_detail, get_question_results, get_questions, get_vote_form_metadata, vote,
+		get_question_detail, get_question_results, get_questions, submit_vote,
 	},
-	wasm_bindgen::JsCast,
 	wasm_bindgen_futures::spawn_local,
-	web_sys::HtmlInputElement,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::server_fn::polls::submit_vote;
 
 /// Polls index page - List all polls
 ///
@@ -100,104 +102,128 @@ pub fn polls_index() -> View {
 /// Poll detail page - Show question and voting form
 ///
 /// Displays a question with its choices and allows the user to vote.
-/// Includes CSRF protection for the voting form.
+/// Uses form! macro with Dynamic ChoiceField for declarative form handling.
+/// CSRF protection is automatically injected for POST method.
 pub fn polls_detail(question_id: i64) -> View {
+	// State for question data and loading status
 	let (question, set_question) = use_state(None::<QuestionInfo>);
-	let (choices, set_choices) = use_state(Vec::<ChoiceInfo>::new());
-	let (loading, set_loading) = use_state(true);
-	let (error, set_error) = use_state(None::<String>);
-	let (selected_choice, set_selected_choice) = use_state(None::<i64>);
-	let (submitting, set_submitting) = use_state(false);
-	#[cfg(target_arch = "wasm32")]
-	let (csrf_token, set_csrf_token) = use_state(None::<String>);
+	let (data_loading, set_data_loading) = use_state(true);
+	let (data_error, set_data_error) = use_state(None::<String>);
 
+	// Convert question_id to String for form field
+	let question_id_str = question_id.to_string();
+
+	// Create the voting form using form! macro
+	// - server_fn: submit_vote accepts (question_id: String, choice_id: String)
+	// - method: Post enables automatic CSRF token injection
+	// - state: loading/error signals for form submission feedback
+	// - watch blocks for reactive UI updates
+	let voting_form = form! {
+		name: VotingForm,
+		server_fn: submit_vote,
+		method: Post,
+		state: { loading, error },
+
+		fields: {
+			question_id: HiddenField {
+				initial: question_id_str.clone(),
+			},
+			choice_id: ChoiceField {
+				widget: RadioSelect,
+				required,
+				label: "Select your choice",
+				class: "form-check poll-choice p-3 mb-2 border rounded",
+				choices_from: "choices",
+				choice_value: "id",
+				choice_label: "choice_text",
+			},
+		},
+
+		watch: {
+			submit_button: |form| {
+				let is_loading = form.loading().get();
+				page!(|is_loading: bool| {
+					div {
+						class: "mt-3",
+						button {
+							r#type: "submit",
+							class: if is_loading { "btn btn-primary disabled" } else { "btn btn-primary" },
+							disabled: is_loading,
+							{ if is_loading { "Voting..." } else { "Vote" } }
+						}
+						a {
+							href: "/",
+							class: "btn btn-secondary ms-2",
+							"Back to Polls"
+						}
+					}
+				})(is_loading)
+			},
+			error_display: |form| {
+				let err = form.error().get();
+				page!(|err: Option<String>| {
+					watch {
+						if let Some(e) = err.clone() {
+							div {
+								class: "alert alert-danger mt-3",
+								{ e }
+							}
+						}
+					}
+				})(err)
+			},
+		},
+
+		on_success: |_result| {
+			#[cfg(target_arch = "wasm32")]
+			{
+				// Navigate to results page after successful vote
+				if let Some(window) = web_sys::window() {
+					let results_url = format!("/polls/{}/results/", question_id);
+					let _ = window.location().set_href(&results_url);
+				}
+			}
+		},
+	};
+
+	// Load question data and populate choice options
 	#[cfg(target_arch = "wasm32")]
 	{
 		let set_question = set_question.clone();
-		let set_choices = set_choices.clone();
-		let set_loading = set_loading.clone();
-		let set_error = set_error.clone();
-		let set_csrf_token = set_csrf_token.clone();
+		let set_data_loading = set_data_loading.clone();
+		let set_data_error = set_data_error.clone();
+		let voting_form_clone = voting_form.clone();
 
 		spawn_local(async move {
-			// Fetch question detail and CSRF token concurrently
-			let (detail_result, csrf_result) = (
-				get_question_detail(question_id).await,
-				get_vote_form_metadata().await,
-			);
-
-			match detail_result {
-				Ok((q, cs)) => {
+			match get_question_detail(question_id).await {
+				Ok((q, choices)) => {
 					set_question(Some(q));
-					set_choices(cs);
-					set_loading(false);
+
+					// Populate choice options in the form
+					// choice_id_choices Signal accepts Vec<(String, String)> as (value, label)
+					let choice_options: Vec<(String, String)> = choices
+						.iter()
+						.map(|c| (c.id.to_string(), c.choice_text.clone()))
+						.collect();
+					voting_form_clone.choice_id_choices().set(choice_options);
+
+					set_data_loading(false);
 				}
 				Err(e) => {
-					set_error(Some(e.to_string()));
-					set_loading(false);
+					set_data_error(Some(e.to_string()));
+					set_data_loading(false);
 				}
-			}
-
-			// Set CSRF token if available
-			if let Ok(metadata) = csrf_result {
-				set_csrf_token(metadata.csrf_token.clone());
 			}
 		});
 	}
 
-	#[cfg(target_arch = "wasm32")]
-	let on_submit = {
-		let set_error = set_error.clone();
-		let set_submitting = set_submitting.clone();
-		let selected_choice = selected_choice.clone();
+	// Clone signals for page! macro
+	let question_signal = question.clone();
+	let loading_signal = data_loading.clone();
+	let error_signal = data_error.clone();
 
-		move |event: web_sys::Event| {
-			event.prevent_default();
-
-			if let Some(choice_id) = selected_choice.get() {
-				let set_error = set_error.clone();
-				let set_submitting = set_submitting.clone();
-
-				spawn_local(async move {
-					set_submitting(true);
-					set_error(None);
-
-					let request = VoteRequest {
-						question_id,
-						choice_id,
-					};
-
-					match vote(request).await {
-						Ok(_) => {
-							// Navigate to results page
-							if let Some(window) = web_sys::window() {
-								let _ = window
-									.location()
-									.set_href(&format!("/polls/{}/results/", question_id));
-							}
-						}
-						Err(e) => {
-							set_error(Some(e.to_string()));
-							set_submitting(false);
-						}
-					}
-				});
-			} else {
-				set_error(Some("Please select a choice".to_string()));
-			}
-		}
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let on_submit = |_event: web_sys::Event| {};
-
-	let question_opt = question.get();
-	let choices_list = choices.get();
-	let loading_state = loading.get();
-	let error_state = error.get();
-	let submitting_state = submitting.get();
-
-	if loading_state {
+	// Loading state
+	if loading_signal.get() {
 		return page!(|| {
 			div {
 				class: "container mt-5 text-center",
@@ -213,7 +239,8 @@ pub fn polls_detail(question_id: i64) -> View {
 		})();
 	}
 
-	if let Some(err) = error_state.clone() {
+	// Error state
+	if let Some(err) = error_signal.get() {
 		return page!(|err: String, question_id: i64| {
 			div {
 				class: "container mt-5",
@@ -235,113 +262,23 @@ pub fn polls_detail(question_id: i64) -> View {
 		})(err, question_id);
 	}
 
-	// Build CSRF hidden input if available
-	#[cfg(target_arch = "wasm32")]
-	let csrf_input = if let Some(token) = csrf_token.get() {
-		ElementView::new("input")
-			.attr("type", "hidden")
-			.attr("name", "csrfmiddlewaretoken")
-			.attr("value", &token)
-			.into_view()
+	// Question found - render voting form
+	if let Some(q) = question_signal.get() {
+		let question_text = q.question_text.clone();
+		let form_view = voting_form.into_view();
+
+		page!(|question_text: String, form_view: View| {
+			div {
+				class: "container mt-5",
+				h1 {
+					class: "mb-4",
+					{ question_text }
+				}
+				{ form_view }
+			}
+		})(question_text, form_view)
 	} else {
-		ElementView::new("div").into_view()
-	};
-
-	#[cfg(not(target_arch = "wasm32"))]
-	let csrf_input = ElementView::new("div").into_view();
-
-	if let Some(q) = question_opt {
-		// Build choice radio buttons
-		let choice_radios: Vec<View> = choices_list
-			.iter()
-			.map(|choice| {
-				let choice_id = choice.id;
-				let choice_text = choice.choice_text.clone();
-
-				#[cfg(target_arch = "wasm32")]
-				let on_change = {
-					let set_selected_choice = set_selected_choice.clone();
-					move |_event: web_sys::Event| {
-						set_selected_choice(Some(choice_id));
-					}
-				};
-
-				#[cfg(not(target_arch = "wasm32"))]
-				let on_change = |_event: web_sys::Event| {};
-
-				ElementView::new("div")
-					.attr("class", "form-check poll-choice p-3 mb-2 border rounded")
-					.child(
-						ElementView::new("input")
-							.attr("type", "radio")
-							.attr("class", "form-check-input")
-							.attr("id", &format!("choice{}", choice_id))
-							.attr("name", "choice")
-							.listener("change", on_change),
-					)
-					.child(
-						ElementView::new("label")
-							.attr("class", "form-check-label")
-							.attr("for", &format!("choice{}", choice_id))
-							.child(choice_text),
-					)
-					.into_view()
-			})
-			.collect();
-
-		ElementView::new("div")
-			.attr("class", "container mt-5")
-			.child(
-				ElementView::new("h1")
-					.attr("class", "mb-4")
-					.child(&q.question_text),
-			)
-			.child(
-				ElementView::new("form")
-					.listener("submit", on_submit)
-					.child(csrf_input)
-					.child({
-						let mut form_content = ElementView::new("div");
-
-						// Add choice radio buttons
-						for choice_radio in choice_radios {
-							form_content = form_content.child(choice_radio);
-						}
-
-						// Add submit button
-						form_content = form_content.child(
-							ElementView::new("div")
-								.attr("class", "mt-3")
-								.child(
-									ElementView::new("button")
-										.attr("type", "submit")
-										.attr(
-											"class",
-											if submitting_state {
-												"btn btn-primary disabled"
-											} else {
-												"btn btn-primary"
-											},
-										)
-										.child(if submitting_state {
-											"Voting..."
-										} else {
-											"Vote"
-										}),
-								)
-								.child(
-									ElementView::new("a")
-										.attr("href", "/")
-										.attr("class", "btn btn-secondary ms-2")
-										.child("Back to Polls"),
-								),
-						);
-
-						form_content
-					}),
-			)
-			.into_view()
-	} else {
+		// Question not found
 		page!(|| {
 			div {
 				class: "container mt-5",
