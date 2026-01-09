@@ -17,6 +17,162 @@ Static files are assets like CSS, JavaScript, images, and fonts that don't chang
 2. **Local Assets**: Static files copied to `dist/` during build
 3. **Direct References**: Files referenced directly in `index.html`
 
+## Styling Options
+
+reinhardt-pages applications support multiple styling approaches. This tutorial covers two main options:
+
+### Option A: UnoCSS (Recommended)
+
+**UnoCSS** is a modern utility-first CSS engine with instant, on-demand styling. It's recommended for new projects due to:
+- **Zero build step**: Runtime-based CSS generation
+- **Atomic CSS**: Minimal CSS output
+- **Theme support**: Dark mode and custom themes out of the box
+- **Type-safe**: IntelliSense support with IDE plugins
+
+See [Setting Up UnoCSS](#setting-up-unocss-recommended) section below for implementation.
+
+### Option B: Bootstrap
+
+Traditional Bootstrap approach using CDN. Simpler for quick prototyping but larger bundle size.
+
+See [Current Setup: Bootstrap Integration](#current-setup-bootstrap-integration) section below.
+
+---
+
+## Setting Up UnoCSS (Recommended)
+
+UnoCSS provides instant, on-demand styling with zero build configuration. This is the recommended approach for production reinhardt-pages applications.
+
+### Step 1: Update index.html
+
+Replace Bootstrap CDN with UnoCSS runtime:
+
+```html
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+\t<meta charset=\"UTF-8\">
+\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+\t<title>Polls App - Reinhardt Tutorial</title>
+
+\t<!-- UnoCSS Reset -->
+\t<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css\">
+
+\t<!-- UnoCSS Runtime -->
+\t<script>
+\twindow.__unocss = {
+\t\ttheme: {
+\t\t\tcolors: {
+\t\t\t\tbrand: {
+\t\t\t\t\tDEFAULT: '#4a90e2',
+\t\t\t\t\thover: '#357abd',
+\t\t\t\t},
+\t\t\t\tsuccess: '#28a745',
+\t\t\t\tdanger: '#dc3545',
+\t\t\t\twarning: '#ffc107',
+\t\t\t},
+\t\t},
+\t\tshortcuts: [
+\t\t\t// Buttons
+\t\t\t['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all'],
+\t\t\t['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
+\t\t\t['btn-secondary', 'btn bg-gray-200 text-gray-800 hover:bg-gray-300'],
+
+\t\t\t// Cards
+\t\t\t['card', 'bg-white rounded-2xl border border-gray-200 shadow-sm'],
+\t\t\t['card-body', 'p-6'],
+
+\t\t\t// Form
+\t\t\t['form-input', 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand'],
+\t\t\t['form-check', 'p-4 border-2 border-gray-200 rounded-xl hover:border-brand hover:bg-blue-50 transition-all cursor-pointer'],
+
+\t\t\t// Spinner
+\t\t\t['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
+\t\t],
+\t};
+\t</script>
+\t<script src=\"https://cdn.jsdelivr.net/npm/@unocss/runtime\"></script>
+</head>
+<body class=\"bg-gray-50 text-gray-900 antialiased\">
+\t<div id=\"root\">
+\t\t<div class=\"flex items-center justify-center min-h-screen\">
+\t\t\t<div class=\"text-center\">
+\t\t\t\t<div class=\"spinner w-12 h-12 mx-auto mb-4\"></div>
+\t\t\t\t<p class=\"text-gray-600\">Loading...</p>
+\t\t\t</div>
+\t\t</div>
+\t</div>
+</body>
+</html>
+```
+
+### Step 2: Update Component Styles
+
+Replace Bootstrap classes with UnoCSS utilities:
+
+```rust
+// Before (Bootstrap)
+page!(|| {
+\tdiv { class: \"container mt-5\",
+\t\th1 { class: \"mb-4\", \"Polls\" }
+\t\tbutton { class: \"btn btn-primary\", \"Vote\" }
+\t}
+})()
+
+// After (UnoCSS)
+page!(|| {
+\tdiv { class: \"max-w-4xl mx-auto px-4 mt-12\",
+\t\th1 { class: \"text-3xl font-bold mb-6\", \"Polls\" }
+\t\tbutton { class: \"btn-primary\", \"Vote\" }
+\t}
+})()
+```
+
+### Step 3: Common UnoCSS Patterns
+
+Use shortcuts for consistent styling:
+
+```rust
+// Question card
+div {
+\tclass: \"card card-body\",
+\th1 { class: \"text-2xl font-bold mb-4\", \"Question text\" }
+}
+
+// Form with radio buttons
+div { class: \"space-y-3\",
+\tfor choice in &choices {
+\t\tlabel {
+\t\t\tclass: \"form-check\",
+\t\t\tinput { type: \"radio\", class: \"mr-3\" }
+\t\t\tspan { \"Choice text\" }
+\t\t}
+\t}
+}
+
+// Submit button
+button {
+\tclass: \"btn-primary mt-6 w-full\",
+\ttype: \"submit\",
+\t\"Vote\"
+}
+
+// Loading spinner
+div { class: \"flex justify-center py-12\",
+\tdiv { class: \"spinner w-8 h-8\" }
+}
+```
+
+**Benefits:**
+- **Smaller CSS**: Only generates used utilities
+- **Consistency**: Shortcuts ensure uniform styling
+- **Dark mode**: Built-in support with `dark:` prefix
+- **Responsive**: Easy breakpoints (`md:`, `lg:`, etc.)
+
+For complete UnoCSS configuration examples, see [examples/local/examples-twitter/index.html](../../../examples/local/examples-twitter/index.html).
+
+---
+
 ## Current Setup: Bootstrap Integration
 
 Our application already uses Bootstrap 5.3.0 from a CDN. Let's review the current `index.html`:
@@ -723,6 +879,158 @@ img {
 	alt: "Description"
 }
 ```
+
+## Collecting Static Files for Production
+
+For production deployments, the `collectstatic` command gathers all static files from your apps and copies them to a single directory for efficient serving.
+
+### What is collectstatic?
+
+The `collectstatic` command:
+- Scans all configured static file directories
+- Copies files to a central `STATIC_ROOT` directory
+- Resolves naming conflicts
+- Prepares files for production web servers or CDNs
+
+### Basic Usage
+
+```bash
+# Collect all static files to STATIC_ROOT
+cargo run --bin manage collectstatic
+
+# Options:
+# --clear: Clear existing files before collecting
+# --no-input: Skip confirmation prompts
+# --dry-run: Preview what would be collected without actually copying
+
+# Production workflow (non-interactive)
+cargo run --bin manage collectstatic --clear --no-input
+```
+
+### Configuration
+
+Configure static file settings in your `settings/production.toml`:
+
+```toml
+[static]
+# URL prefix for static files
+static_url = "/static/"
+
+# Directory where collectstatic outputs files
+static_root = "./staticfiles"
+
+# Directories to collect from
+staticfiles_dirs = [
+	"static",                        # Your custom static files
+	"node_modules/@unocss/reset",    # UnoCSS reset CSS
+]
+```
+
+**Configuration Options**:
+- `static_url`: URL prefix for accessing static files (default: `/static/`)
+- `static_root`: Absolute path to output directory (required for production)
+- `staticfiles_dirs`: List of directories to collect from (optional)
+
+### Production Workflow
+
+A typical production deployment workflow:
+
+**1. Development**: Serve static files directly
+
+```bash
+# WASM projects
+cargo make dev
+
+# Traditional projects
+cargo run --bin manage runserver
+```
+
+**2. Build for Production**:
+
+```bash
+# Build optimized WASM (for reinhardt-pages projects)
+cargo make dev-release
+
+# Collect static files
+cargo run --bin manage collectstatic --no-input
+
+# Output: All static files copied to ./staticfiles/
+```
+
+**3. Deploy**: Configure your web server to serve `staticfiles/` directory
+
+**Nginx Configuration Example**:
+```nginx
+server {
+	listen 80;
+	server_name example.com;
+
+	# Serve static files
+	location /static/ {
+		alias /path/to/your/app/staticfiles/;
+		expires 1y;
+		add_header Cache-Control "public, immutable";
+	}
+
+	# Proxy API requests to Reinhardt
+	location / {
+		proxy_pass http://127.0.0.1:8000;
+	}
+}
+```
+
+### Best Practices
+
+**For CDN Deployment**:
+- ✅ Use CDN for UnoCSS runtime in production (faster delivery, better caching)
+- ✅ Upload `staticfiles/` to your CDN after running collectstatic
+- ✅ Update `STATIC_URL` to point to CDN URL
+
+**For Performance**:
+- ✅ Version your static files (cache busting) - add version parameter to URLs
+- ✅ Compress static files (gzip/brotli) - reduce bandwidth
+- ✅ Set far-future cache headers for immutable files - reduce server requests
+- ✅ Use WebP images with fallback - better compression than PNG/JPEG
+
+**For Automation**:
+- ✅ Run collectstatic in CI/CD pipeline before deployment
+- ✅ Use `--no-input` flag in automated scripts
+- ✅ Verify file count after collection
+
+**Security**:
+- ❌ Never commit `staticfiles/` to version control (add to `.gitignore`)
+- ❌ Never serve `staticfiles/` from development server (use cargo make dev)
+
+### Troubleshooting
+
+**Issue**: "STATIC_ROOT setting is not configured"
+```toml
+# Solution: Add to settings/production.toml
+[static]
+static_root = "./staticfiles"
+```
+
+**Issue**: Files not found after collectstatic
+```bash
+# Check what was collected
+cargo run --bin manage collectstatic --dry-run
+
+# Verify STATIC_ROOT exists
+ls -la ./staticfiles/
+```
+
+**Issue**: Naming conflicts between files
+```bash
+# collectstatic will warn about duplicate file names
+# Resolution: Rename files or use namespaced directories
+static/
+├── app1/
+│   └── style.css
+└── app2/
+	└── style.css  # Different namespace, no conflict
+```
+
+---
 
 ## Summary
 
