@@ -114,6 +114,8 @@ fn test_collectstatic_options_all_set() {
 		verbosity: 3,
 		link: true,
 		ignore_patterns: vec!["*.map".to_string(), "*.log".to_string()],
+		enable_hashing: false,
+		fast_compare: true,
 	};
 
 	assert!(options.clear, "clear should be true");
@@ -143,6 +145,8 @@ fn test_collectstatic_options_clone() {
 		verbosity: 2,
 		link: true,
 		ignore_patterns: vec!["*.map".to_string()],
+		enable_hashing: false,
+		fast_compare: true,
 	};
 
 	let cloned = original.clone();
@@ -275,7 +279,7 @@ fn test_collectstatic_basic_copy(collectstatic_command: (TempDir, CollectStaticC
 	let (_temp_dir, mut command) = collectstatic_command;
 
 	let result = command.execute();
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	let stats = result.unwrap();
 	assert!(stats.copied > 0, "Should have copied at least one file");
@@ -305,7 +309,7 @@ fn test_collectstatic_dry_run(temp_with_static_files: (TempDir, PathBuf, PathBuf
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	// Destination directory should not exist or be empty
 	if dest_dir.exists() {
@@ -347,7 +351,7 @@ fn test_collectstatic_clear(temp_with_static_files: (TempDir, PathBuf, PathBuf))
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	let stats = result.unwrap();
 	assert!(stats.deleted > 0, "Should have deleted at least one file");
@@ -384,7 +388,7 @@ fn test_collectstatic_link(temp_with_static_files: (TempDir, PathBuf, PathBuf)) 
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	// Check if files are symlinks
 	let app_js = dest_dir.join("app.js");
@@ -425,7 +429,7 @@ fn test_collectstatic_ignore(temp_with_static_files: (TempDir, PathBuf, PathBuf)
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	let stats = result.unwrap();
 	assert!(stats.skipped > 0, "Should have skipped at least one file");
@@ -462,17 +466,18 @@ fn test_collectstatic_multiple_sources(temp_dir: TempDir) {
 
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	// Both files should be present
-	assert!(dest_dir.join("file1.js").exists(), "file1.js should exist");
-	assert!(dest_dir.join("file2.js").exists(), "file2.js should exist");
+	assert!(dest_dir.join("file1.js").exists(), "file1.js should exist ");
+	assert!(dest_dir.join("file2.js").exists(), "file2.js should exist ");
 }
 
 // ============================================================================
@@ -505,16 +510,17 @@ fn test_collectstatic_file_collision(temp_dir: TempDir) {
 
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	// File should exist (content depends on implementation - later or earlier wins)
-	let content = fs::read_to_string(dest_dir.join("app.js")).expect("Failed to read app.js");
+	let content = fs::read_to_string(dest_dir.join("app.js")).expect("Failed to read app.js ");
 	assert!(
 		content.contains("source"),
 		"app.js should have content from one source"
@@ -538,6 +544,7 @@ fn test_collectstatic_no_sources(temp_dir: TempDir) {
 
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
@@ -569,6 +576,7 @@ fn test_collectstatic_empty_root() {
 
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
@@ -667,7 +675,7 @@ fn test_collectstatic_stats_accuracy(temp_with_static_files: (TempDir, PathBuf, 
 	let mut command = CollectStaticCommand::new(config, options);
 	let result = command.execute();
 
-	assert!(result.is_ok(), "Execute should succeed");
+	assert!(result.is_ok(), "Execute should succeed ");
 
 	let stats = result.unwrap();
 
@@ -708,6 +716,7 @@ fn test_collectstatic_large_file(temp_dir: TempDir) {
 
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
@@ -794,6 +803,7 @@ fn test_collectstatic_sanity_workflow(temp_dir: TempDir) {
 	// 3. Create options
 	let options = CollectStaticOptions {
 		verbosity: 0,
+		enable_hashing: false,
 		..Default::default()
 	};
 
@@ -871,6 +881,7 @@ fn test_collectstatic_with_inventory_auto_discovery(
 	// Create options with verbosity to see auto-discovery logs
 	let options = CollectStaticOptions {
 		verbosity: 2, // Enable verbose logging
+		enable_hashing: false,
 		..Default::default()
 	};
 
