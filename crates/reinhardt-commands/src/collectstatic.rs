@@ -6,9 +6,10 @@ use crate::CommandResult;
 use crate::{BaseCommand, CommandContext};
 use async_trait::async_trait;
 use reinhardt_static::{StaticFilesConfig, StaticFilesFinder};
+use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct CollectStaticOptions {
@@ -19,6 +20,8 @@ pub struct CollectStaticOptions {
 	pub verbosity: u8,
 	pub link: bool,
 	pub ignore_patterns: Vec<String>,
+	pub enable_hashing: bool,
+	pub fast_compare: bool,
 }
 
 impl Default for CollectStaticOptions {
@@ -31,6 +34,8 @@ impl Default for CollectStaticOptions {
 			verbosity: 1,
 			link: false,
 			ignore_patterns: Vec::new(),
+			enable_hashing: true,
+			fast_compare: false,
 		}
 	}
 }
@@ -64,11 +69,16 @@ impl Default for CollectStaticStats {
 pub struct CollectStaticCommand {
 	config: StaticFilesConfig,
 	options: CollectStaticOptions,
+	manifest: HashMap<String, String>,
 }
 
 impl CollectStaticCommand {
 	pub fn new(config: StaticFilesConfig, options: CollectStaticOptions) -> Self {
-		Self { config, options }
+		Self {
+			config,
+			options,
+			manifest: HashMap::new(),
+		}
 	}
 
 	/// Execute the collectstatic command
@@ -112,7 +122,7 @@ impl CollectStaticCommand {
 			}
 		}
 
-		let finder = StaticFilesFinder::new(all_dirs);
+		let finder = StaticFilesFinder::new(all_dirs.clone());
 		let all_files = finder.find_all();
 
 		if self.options.verbosity > 0 {
@@ -139,10 +149,15 @@ impl CollectStaticCommand {
 				continue;
 			}
 
-			match self.copy_file(file_path)? {
+			match self.copy_file(file_path, &all_dirs)? {
 				CopyResult::Copied => stats.copied += 1,
 				CopyResult::Unmodified => stats.unmodified += 1,
 			}
+		}
+
+		// Save manifest if hashing is enabled
+		if self.options.enable_hashing && !self.options.dry_run {
+			self.save_manifest()?;
 		}
 
 		// Print summary
@@ -194,9 +209,10 @@ impl CollectStaticCommand {
 		Ok(())
 	}
 
-	fn find_in_reverse(&self, path: &str) -> Result<std::path::PathBuf, io::Error> {
+	fn find_in_reverse(&self, path: &str, all_dirs: &[PathBuf]) -> Result<PathBuf, io::Error> {
 		// Search directories in reverse order to prioritize later sources
-		for dir in self.config.staticfiles_dirs.iter().rev() {
+		// Now searches ALL directories (manual + auto-discovered from inventory)
+		for dir in all_dirs.iter().rev() {
 			let file_path = dir.join(path);
 			if file_path.exists() {
 				return Ok(file_path);
@@ -232,20 +248,60 @@ impl CollectStaticCommand {
 		false
 	}
 
-	fn copy_file(&self, relative_path: &str) -> Result<CopyResult, io::Error> {
+	fn copy_file(
+		&mut self,
+		relative_path: &str,
+		all_dirs: &[PathBuf],
+	) -> Result<CopyResult, io::Error> {
 		// Find source file - search directories in reverse order to prioritize later sources
-		let source_path = self.find_in_reverse(relative_path)?;
-		let dest_path = self.config.static_root.join(relative_path);
+		let source_path = self.find_in_reverse(relative_path, all_dirs)?;
 
-		// Check if file already exists and is identical
-		if dest_path.exists()
-			&& !self.options.clear
-			&& self.files_identical(&source_path, &dest_path)?
-		{
-			if self.options.verbosity > 1 {
-				println!("Unmodified: {}", relative_path);
+		// Special handling for index.html template processing
+		if relative_path.ends_with("index.html") && self.options.enable_hashing {
+			let dest_path = self.config.static_root.join(relative_path);
+
+			if !self.options.dry_run {
+				if let Some(parent) = dest_path.parent() {
+					fs::create_dir_all(parent)?;
+				}
+				self.process_html_template(&source_path, &dest_path)?;
 			}
-			return Ok(CopyResult::Unmodified);
+
+			return Ok(CopyResult::Copied);
+		}
+
+		// Generate hashed filename if hashing is enabled
+		let (_dest_filename, dest_path) = if self.options.enable_hashing {
+			let hash = self.calculate_hash(&source_path)?;
+			let hashed_name = self.get_hashed_filename(relative_path, &hash);
+
+			// Record in manifest
+			self.manifest
+				.insert(relative_path.to_string(), hashed_name.clone());
+
+			let dest = self.config.static_root.join(&hashed_name);
+			(hashed_name, dest)
+		} else {
+			let dest = self.config.static_root.join(relative_path);
+			(relative_path.to_string(), dest)
+		};
+
+		// Check if file exists and is identical
+		if dest_path.exists() && !self.options.clear {
+			let identical = if self.options.fast_compare {
+				self.files_identical_fast(&source_path, &dest_path)?
+			} else if self.options.enable_hashing {
+				self.files_identical_hash(&source_path, &dest_path)?
+			} else {
+				self.files_identical(&source_path, &dest_path)?
+			};
+
+			if identical {
+				if self.options.verbosity > 1 {
+					println!("Unmodified: {}", relative_path);
+				}
+				return Ok(CopyResult::Unmodified);
+			}
 		}
 
 		if self.options.verbosity > 1 {
@@ -319,6 +375,104 @@ impl CollectStaticCommand {
 		Ok(true)
 	}
 
+	fn calculate_hash(&self, path: &Path) -> Result<String, io::Error> {
+		use sha2::{Digest, Sha256};
+
+		// Handle symlinks: resolve to target
+		let canonical_path = fs::canonicalize(path)?;
+		let content = fs::read(&canonical_path)?;
+
+		let hash = Sha256::digest(&content);
+		// Use first 8 characters of SHA-256 hash
+		Ok(format!("{:x}", hash)[..8].to_string())
+	}
+
+	fn get_hashed_filename(&self, filename: &str, hash: &str) -> String {
+		if let Some(dot_pos) = filename.rfind('.') {
+			// Insert hash before extension
+			format!("{}.{}{}", &filename[..dot_pos], hash, &filename[dot_pos..])
+		} else {
+			// No extension: append hash to end
+			format!("{}.{}", filename, hash)
+		}
+	}
+
+	fn save_manifest(&self) -> Result<(), io::Error> {
+		let manifest_path = self.config.static_root.join("manifest.json");
+
+		let manifest_data = serde_json::json!({
+			"version": "1.0",
+			"files": self.manifest
+		});
+
+		let json = serde_json::to_string_pretty(&manifest_data)?;
+		fs::write(manifest_path, json)?;
+
+		if self.options.verbosity > 0 {
+			println!("✓ Manifest saved: manifest.json");
+		}
+
+		Ok(())
+	}
+
+	fn files_identical_hash(&self, path1: &Path, path2: &Path) -> Result<bool, io::Error> {
+		let hash1 = self.calculate_hash(path1)?;
+		let hash2 = self.calculate_hash(path2)?;
+		Ok(hash1 == hash2)
+	}
+
+	fn files_identical_fast(&self, path1: &Path, path2: &Path) -> Result<bool, io::Error> {
+		let meta1 = fs::metadata(path1)?;
+		let meta2 = fs::metadata(path2)?;
+
+		// Check size
+		if meta1.len() != meta2.len() {
+			return Ok(false);
+		}
+
+		// Files <= 1MB: content comparison
+		if meta1.len() < 1024 * 1024 {
+			let content1 = fs::read(path1)?;
+			let content2 = fs::read(path2)?;
+			return Ok(content1 == content2);
+		}
+
+		// Files > 1MB: size-only comparison
+		Ok(true)
+	}
+
+	fn process_html_template(&self, source: &Path, dest: &Path) -> Result<(), io::Error> {
+		let content = fs::read_to_string(source)?;
+
+		// Detect {{ static_url("path") }} pattern
+		let re = regex::Regex::new(r#"\{\{\s*static_url\("([^"]+)"\)\s*\}\}"#).unwrap();
+
+		let processed = re.replace_all(&content, |caps: &regex::Captures| {
+			let original_path = &caps[1];
+
+			// Resolve from manifest
+			if let Some(hashed_path) = self.manifest.get(original_path) {
+				format!("/{}", hashed_path)
+			} else {
+				if self.options.verbosity > 0 {
+					eprintln!(
+						"⚠️  Static file '{}' not in manifest, using original path",
+						original_path
+					);
+				}
+				format!("/{}", original_path)
+			}
+		});
+
+		fs::write(dest, processed.as_bytes())?;
+
+		if self.options.verbosity > 1 {
+			println!("✓ Processed HTML template: {}", source.display());
+		}
+
+		Ok(())
+	}
+
 	fn print_summary(&self, stats: &CollectStaticStats) {
 		println!("\n{} static files copied", stats.copied);
 
@@ -360,6 +514,7 @@ impl Clone for CollectStaticCommand {
 		Self {
 			config: self.config.clone(),
 			options: self.options.clone(),
+			manifest: HashMap::new(),
 		}
 	}
 }
