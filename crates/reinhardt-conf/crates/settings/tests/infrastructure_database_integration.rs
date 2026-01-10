@@ -22,6 +22,7 @@ mod database_integration_tests {
 	use reinhardt_settings::dynamic::DynamicSettings;
 	use rstest::*;
 	use serial_test::serial;
+	use sqlx::AnyPool;
 	use std::sync::{Arc, Once};
 	use std::time::Duration;
 	use testcontainers::runners::AsyncRunner;
@@ -75,6 +76,16 @@ mod database_integration_tests {
 
 		// Wait for PostgreSQL to be ready
 		sleep(Duration::from_secs(2)).await;
+
+		// Initialize the database schema
+		let backend = DatabaseBackend::new(&database_url)
+			.await
+			.expect("Failed to create PostgreSQL backend for initialization");
+
+		backend
+			.create_table()
+			.await
+			.expect("Failed to create settings table");
 
 		(container, database_url)
 	}
@@ -297,9 +308,50 @@ mod database_integration_tests {
 		let database_url = format!("mysql://root:test_password@127.0.0.1:{}/test_db", host_port);
 
 		// Wait for MySQL to be ready (MySQL takes longer to start)
-		sleep(Duration::from_secs(5)).await;
+		// Retry connection with exponential backoff
+		let mut retry_count = 0;
+		let max_retries = 10;
 
-		(container, database_url)
+		loop {
+			match DatabaseBackend::new(&database_url).await {
+				Ok(_backend) => {
+					// Create table using MySQL-specific SQL
+					let pool = AnyPool::connect(&database_url)
+						.await
+						.expect("Failed to connect for table creation");
+
+					sqlx::query(
+						"CREATE TABLE IF NOT EXISTS settings (
+							`key` VARCHAR(255) NOT NULL PRIMARY KEY,
+							`value` TEXT NOT NULL,
+							`expire_date` TEXT
+						) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+					)
+					.execute(&pool)
+					.await
+					.expect("Failed to create settings table");
+
+					sqlx::query(
+						"CREATE INDEX IF NOT EXISTS idx_settings_expire_date ON settings(`expire_date`)",
+					)
+					.execute(&pool)
+					.await
+					.expect("Failed to create expire_date index");
+
+					return (container, database_url);
+				}
+				Err(_e) if retry_count < max_retries => {
+					retry_count += 1;
+					sleep(Duration::from_millis(500 * 2_u64.pow(retry_count as u32))).await;
+				}
+				Err(e) => {
+					panic!(
+						"Failed to initialize MySQL after {} retries: {}",
+						max_retries, e
+					);
+				}
+			}
+		}
 	}
 
 	/// Test: MySQL backend basic connectivity

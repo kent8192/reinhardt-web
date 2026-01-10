@@ -13,6 +13,8 @@ categories = ["web-programming"]
 default = []
 # File upload handling
 file-uploads = ["reinhardt-utils"]
+# Admin panel features
+admin = []
 # All features
 full = ["file-uploads"]
 

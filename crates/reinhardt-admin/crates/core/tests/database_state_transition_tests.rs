@@ -6,16 +6,80 @@
 //! Tests in this file use high-level AdminDatabase API with rstest parameterization
 //! and reinhardt-test admin_panel fixtures.
 
-#![cfg(all(test, feature = "admin"))]
+#![cfg(test)]
 
-use reinhardt_admin_core::database::AdminDatabase;
-use reinhardt_admin_core::{Filter, FilterOperator, FilterValue};
-use reinhardt_db::Model;
-use reinhardt_test::fixtures::admin_panel::admin_database;
-use rstest::{fixture, rstest};
+use reinhardt_db::prelude::{Filter, FilterOperator, FilterValue};
+use reinhardt_test::fixtures::{AdminTableCreator, ColumnDefinition, FieldType, Operation, admin_table_creator};
+use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Arc;
+
+/// Create standard test schema for test_models table
+fn create_test_schema() -> Vec<Operation> {
+	vec![Operation::CreateTable {
+		name: "test_models".to_string(),
+		columns: vec![
+			ColumnDefinition {
+				name: "id".to_string(),
+				type_definition: FieldType::Integer,
+				not_null: true,
+				unique: false,
+				primary_key: true,
+				auto_increment: true,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "status".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "deleted_at".to_string(),
+				type_definition: FieldType::TimestampTz,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "batch".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+		],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	}]
+}
 
 /// Test complete CRUD lifecycle: Create → Read → Update → Delete
 ///
@@ -23,8 +87,11 @@ use std::sync::Arc;
 /// **Test Classification**: Normal path with state changes
 #[rstest]
 #[tokio::test]
-async fn test_crud_lifecycle_state_transitions(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 	let pk_field = "id";
 
@@ -144,8 +211,11 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_database: Arc<Adm
 /// **Test Classification**: Sequential state changes
 #[rstest]
 #[tokio::test]
-async fn test_multiple_sequential_updates(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_multiple_sequential_updates(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 	let pk_field = "id";
 
@@ -222,8 +292,13 @@ async fn test_multiple_sequential_updates(#[future] admin_database: Arc<AdminDat
 /// **Test Classification**: Interleaved operations
 #[rstest]
 #[tokio::test]
-async fn test_interleaved_create_update_operations(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_interleaved_create_update_operations(
+	#[future] admin_table_creator: AdminTableCreator,
+) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// Create first record
@@ -273,8 +348,11 @@ async fn test_interleaved_create_update_operations(#[future] admin_database: Arc
 /// **Test Classification**: Filter-based state changes
 #[rstest]
 #[tokio::test]
-async fn test_filter_based_state_transitions(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_filter_based_state_transitions(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// Create test records with different statuses
@@ -391,8 +469,11 @@ async fn test_filter_based_state_transitions(#[future] admin_database: Arc<Admin
 /// **Test Classification**: Bulk state changes
 #[rstest]
 #[tokio::test]
-async fn test_bulk_operations_state_transitions(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// Create multiple records
@@ -493,8 +574,11 @@ async fn test_bulk_operations_state_transitions(#[future] admin_database: Arc<Ad
 /// **Test Classification**: Error recovery state changes
 #[rstest]
 #[tokio::test]
-async fn test_partial_failure_state_transitions(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn test_partial_failure_state_transitions(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// Create initial record
@@ -512,7 +596,7 @@ async fn test_partial_failure_state_transitions(#[future] admin_database: Arc<Ad
 		("id".to_string(), json!("not_a_number")),
 	]);
 
-	let update_result = db
+	let _update_result = db
 		.update::<reinhardt_admin_core::database::AdminRecord>(
 			table_name,
 			"id",
@@ -556,9 +640,12 @@ async fn test_partial_failure_state_transitions(#[future] admin_database: Arc<Ad
 #[rstest]
 #[tokio::test]
 async fn test_concurrent_operations_state_consistency(
-	#[future] admin_database: Arc<AdminDatabase>,
+	#[future] admin_table_creator: AdminTableCreator,
 ) {
-	let db = admin_database.await;
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// Create a record

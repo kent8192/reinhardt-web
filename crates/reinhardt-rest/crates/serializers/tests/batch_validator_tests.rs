@@ -4,7 +4,9 @@
 //! for unique and unique_together validation checks.
 
 use reinhardt_serializers::BatchValidator;
+use reinhardt_test::fixtures::{ColumnDefinition, FieldType, Operation, SqlDialect};
 use sea_orm::{Database, DatabaseConnection};
+use sea_query::{Iden, PostgresQueryBuilder, Query};
 use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Set up test database and create test tables
@@ -48,50 +50,134 @@ async fn setup_test_db() -> (testcontainers::ContainerAsync<GenericImage>, Strin
 	(postgres, database_url)
 }
 
+// Table identifiers for SeaQuery
+#[derive(Iden)]
+enum Users {
+	Table,
+	Email,
+	Username,
+	FirstName,
+	LastName,
+}
+
+#[derive(Iden)]
+enum Products {
+	Table,
+	Sku,
+	Name,
+	Price,
+}
+
 /// Create test tables for BatchValidator tests
 async fn create_test_tables(conn: &DatabaseConnection) {
 	use sea_orm::ConnectionTrait;
 
-	// Create users table
-	conn.execute_unprepared(
-		"CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            email TEXT NOT NULL UNIQUE,
-            username TEXT NOT NULL UNIQUE,
-            first_name TEXT,
-            last_name TEXT
-        )",
-	)
-	.await
-	.expect("Failed to create users table");
+	// Create users table using Operation-based schema definition
+	let mut id_column = ColumnDefinition::new("id", FieldType::Integer);
+	id_column.primary_key = true;
+	id_column.auto_increment = true;
 
-	// Create products table
-	conn.execute_unprepared(
-		"CREATE TABLE IF NOT EXISTS products (
-            id SERIAL PRIMARY KEY,
-            sku TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            price DECIMAL(10, 2)
-        )",
-	)
-	.await
-	.expect("Failed to create products table");
+	let mut email_column = ColumnDefinition::new("email", FieldType::Text);
+	email_column.not_null = true;
+	email_column.unique = true;
 
-	// Insert test data
-	conn.execute_unprepared(
-		"INSERT INTO users (email, username, first_name, last_name) VALUES
-            ('existing@example.com', 'existing_user', 'Existing', 'User'),
-            ('alice@example.com', 'alice', 'Alice', 'Smith')",
-	)
-	.await
-	.expect("Failed to insert test users");
+	let mut username_column = ColumnDefinition::new("username", FieldType::Text);
+	username_column.not_null = true;
+	username_column.unique = true;
 
-	conn.execute_unprepared(
-		"INSERT INTO products (sku, name, price) VALUES
-            ('PROD-123', 'Test Product', 99.99)",
-	)
-	.await
-	.expect("Failed to insert test products");
+	let first_name_column = ColumnDefinition::new("first_name", FieldType::Text);
+	let last_name_column = ColumnDefinition::new("last_name", FieldType::Text);
+
+	let users_table_op = Operation::CreateTable {
+		name: "users".to_string(),
+		columns: vec![
+			id_column,
+			email_column,
+			username_column,
+			first_name_column,
+			last_name_column,
+		],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	};
+
+	let users_sql = users_table_op.to_sql(&SqlDialect::Postgres);
+	conn.execute_unprepared(&users_sql)
+		.await
+		.expect("Failed to create users table");
+
+	// Create products table using Operation-based schema definition
+	let mut product_id = ColumnDefinition::new("id", FieldType::Integer);
+	product_id.primary_key = true;
+	product_id.auto_increment = true;
+
+	let mut sku_column = ColumnDefinition::new("sku", FieldType::Text);
+	sku_column.not_null = true;
+	sku_column.unique = true;
+
+	let mut name_column = ColumnDefinition::new("name", FieldType::Text);
+	name_column.not_null = true;
+
+	let price_column = ColumnDefinition::new(
+		"price",
+		FieldType::Decimal {
+			precision: 10,
+			scale: 2,
+		},
+	);
+
+	let products_table_op = Operation::CreateTable {
+		name: "products".to_string(),
+		columns: vec![product_id, sku_column, name_column, price_column],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	};
+
+	let products_sql = products_table_op.to_sql(&SqlDialect::Postgres);
+	conn.execute_unprepared(&products_sql)
+		.await
+		.expect("Failed to create products table");
+
+	// Insert test data using SeaQuery
+	let insert_users = Query::insert()
+		.into_table(Users::Table)
+		.columns([
+			Users::Email,
+			Users::Username,
+			Users::FirstName,
+			Users::LastName,
+		])
+		.values_panic([
+			"existing@example.com".into(),
+			"existing_user".into(),
+			"Existing".into(),
+			"User".into(),
+		])
+		.values_panic([
+			"alice@example.com".into(),
+			"alice".into(),
+			"Alice".into(),
+			"Smith".into(),
+		])
+		.to_string(PostgresQueryBuilder);
+
+	conn.execute_unprepared(&insert_users)
+		.await
+		.expect("Failed to insert test users");
+
+	let insert_products = Query::insert()
+		.into_table(Products::Table)
+		.columns([Products::Sku, Products::Name, Products::Price])
+		.values_panic(["PROD-123".into(), "Test Product".into(), 99.99.into()])
+		.to_string(PostgresQueryBuilder);
+
+	conn.execute_unprepared(&insert_products)
+		.await
+		.expect("Failed to insert test products");
 }
 
 /// Test basic unique field validation with real database

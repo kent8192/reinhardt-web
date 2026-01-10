@@ -6,16 +6,210 @@
 //! Tests in this file use high-level AdminDatabase API with rstest parameterization
 //! and reinhardt-test admin_panel fixtures.
 
-#![cfg(all(test, feature = "admin"))]
+#![cfg(test)]
 
-use reinhardt_admin_core::database::AdminDatabase;
-use reinhardt_admin_core::{Filter, FilterOperator, FilterValue};
-use reinhardt_db::Model;
-use reinhardt_test::fixtures::admin_panel::admin_database;
-use rstest::{fixture, rstest};
+use reinhardt_db::prelude::{Filter, FilterOperator, FilterValue};
+use reinhardt_test::fixtures::{AdminTableCreator, ColumnDefinition, FieldType, Operation, admin_table_creator};
+use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Arc;
+
+/// Create standard test schema for test_models table
+fn create_test_schema() -> Vec<Operation> {
+	vec![Operation::CreateTable {
+		name: "test_models".to_string(),
+		columns: vec![
+			ColumnDefinition {
+				name: "id".to_string(),
+				type_definition: FieldType::Integer,
+				not_null: true,
+				unique: false,
+				primary_key: true,
+				auto_increment: true,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "name".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "role".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "status".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "active".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "deleted_at".to_string(),
+				type_definition: FieldType::TimestampTz,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			// User management fields
+			ColumnDefinition {
+				name: "email".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			// Product inventory fields
+			ColumnDefinition {
+				name: "category".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "stock".to_string(),
+				type_definition: FieldType::Integer,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "price".to_string(),
+				type_definition: FieldType::Double,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "in_stock".to_string(),
+				type_definition: FieldType::Boolean,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			// Content management fields
+			ColumnDefinition {
+				name: "title".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "type".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "created_date".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "views".to_string(),
+				type_definition: FieldType::Integer,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "published_date".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			// Audit log fields
+			ColumnDefinition {
+				name: "action".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "severity".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "timestamp".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+			ColumnDefinition {
+				name: "description".to_string(),
+				type_definition: FieldType::Text,
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+			},
+		],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	}]
+}
 
 /// Use case: User management system
 ///
@@ -29,8 +223,11 @@ use std::sync::Arc;
 /// **Test Classification**: Real-world scenario
 #[rstest]
 #[tokio::test]
-async fn use_case_user_management_system(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn use_case_user_management_system(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// 1. Create test users with different roles and statuses
@@ -196,8 +393,11 @@ async fn use_case_user_management_system(#[future] admin_database: Arc<AdminData
 /// **Test Classification**: Real-world scenario
 #[rstest]
 #[tokio::test]
-async fn use_case_product_inventory_management(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn use_case_product_inventory_management(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// 1. Create test products
@@ -338,12 +538,12 @@ async fn use_case_product_inventory_management(#[future] admin_database: Arc<Adm
 		Filter {
 			field: "price".to_string(),
 			operator: FilterOperator::Gte,
-			value: FilterValue::Number(100.into()),
+			value: FilterValue::Integer(100),
 		},
 		Filter {
 			field: "price".to_string(),
 			operator: FilterOperator::Lte,
-			value: FilterValue::Number(500.into()),
+			value: FilterValue::Integer(500),
 		},
 	];
 
@@ -361,13 +561,13 @@ async fn use_case_product_inventory_management(#[future] admin_database: Arc<Adm
 	let low_stock_filter = Filter {
 		field: "stock".to_string(),
 		operator: FilterOperator::Lt,
-		value: FilterValue::Number(5.into()),
+		value: FilterValue::Integer(5),
 	};
 
 	let low_stock_products = db
 		.list::<reinhardt_admin_core::database::AdminRecord>(
 			table_name,
-			vec![low_stock_filter],
+			vec![low_stock_filter.clone()],
 			0,
 			50,
 		)
@@ -434,8 +634,11 @@ async fn use_case_product_inventory_management(#[future] admin_database: Arc<Adm
 /// **Test Classification**: Real-world scenario
 #[rstest]
 #[tokio::test]
-async fn use_case_content_management_system(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn use_case_content_management_system(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// 1. Create test content items
@@ -677,8 +880,11 @@ async fn use_case_content_management_system(#[future] admin_database: Arc<AdminD
 /// **Test Classification**: Real-world scenario
 #[rstest]
 #[tokio::test]
-async fn use_case_audit_log_system(#[future] admin_database: Arc<AdminDatabase>) {
-	let db = admin_database.await;
+async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCreator) {
+	let mut creator = admin_table_creator.await;
+	creator.apply(create_test_schema()).await.unwrap();
+
+	let db = creator.admin_db();
 	let table_name = "test_models";
 
 	// 1. Create test audit entries

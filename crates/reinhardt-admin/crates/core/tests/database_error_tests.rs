@@ -6,14 +6,12 @@
 //! Tests in this file use high-level AdminDatabase API with rstest parameterization
 //! and reinhardt-test admin_panel fixtures.
 
-#![cfg(all(test, feature = "admin"))]
+#![cfg(test)]
 
 use reinhardt_admin_core::database::AdminDatabase;
-use reinhardt_admin_core::{Filter, FilterOperator, FilterValue};
-use reinhardt_admin_types::errors::AdminError;
-use reinhardt_db::Model;
+use reinhardt_db::prelude::{Filter, FilterOperator, FilterValue};
 use reinhardt_test::fixtures::admin_panel::admin_database;
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,7 +38,7 @@ async fn test_invalid_table_name_error(#[future] admin_database: Arc<AdminDataba
 	);
 
 	// The error should be a database-related error
-	let err = result.unwrap_err();
+	let _err = result.unwrap_err();
 	// Note: Actual error type may vary - this test ensures errors are propagated
 }
 
@@ -117,7 +115,7 @@ async fn test_invalid_data_type_error(#[future] admin_database: Arc<AdminDatabas
 	let mut invalid_data = HashMap::new();
 	invalid_data.insert("id".to_string(), json!("not_a_number")); // id should be integer
 
-	let result = db
+	let _result = db
 		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, invalid_data)
 		.await;
 

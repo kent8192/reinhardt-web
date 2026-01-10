@@ -4,6 +4,7 @@
 //! No manual setup required - the container is automatically created and destroyed.
 
 use reinhardt_backends::drivers::postgresql::two_phase::PostgresTwoPhaseParticipant;
+use reinhardt_test::fixtures::{ColumnDefinition, FieldType, Operation, SqlDialect};
 use rstest::*;
 use serial_test::serial;
 use sqlx::{PgPool, Row};
@@ -73,13 +74,30 @@ async fn create_test_table(pool: &PgPool) {
 		.execute(pool)
 		.await;
 
-	sqlx::query("CREATE TABLE test_2pc (id SERIAL PRIMARY KEY, value TEXT)")
+	// Use Operation-based schema definition for type-safe table creation
+	let mut id_column = ColumnDefinition::new("id", FieldType::Integer);
+	id_column.primary_key = true;
+	id_column.auto_increment = true;
+	let value_column = ColumnDefinition::new("value", FieldType::Text);
+
+	let operation = Operation::CreateTable {
+		name: "test_2pc".to_string(),
+		columns: vec![id_column, value_column],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	};
+
+	let sql = operation.to_sql(&SqlDialect::Postgres);
+	sqlx::query(&sql)
 		.execute(pool)
 		.await
 		.expect("Failed to create test table");
 }
 
 async fn drop_test_table(pool: &PgPool) {
+	// Keep raw SQL because Operation::DropTable doesn't support IF EXISTS
 	let _ = sqlx::query("DROP TABLE IF EXISTS test_2pc")
 		.execute(pool)
 		.await;

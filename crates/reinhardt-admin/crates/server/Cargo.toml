@@ -48,3 +48,5 @@ anyhow = { workspace = true }
 [dev-dependencies]
 tokio-test = { workspace = true }
 rstest = { workspace = true }
+reinhardt-test = { workspace = true, features = ["admin", "testcontainers"] }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio-native-tls"] }
