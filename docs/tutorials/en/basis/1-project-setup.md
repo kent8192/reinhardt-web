@@ -93,7 +93,7 @@ my-app/
 
 See [examples/local/examples-twitter](../../../examples/local/examples-twitter) for a complete implementation.
 
-**Note**: This tutorial creates a **RESTful API project** using Reinhardt's core features: models, views, serializers, and URL routing. For a WASM-based frontend with SSR (Server-Side Rendering), see the alternative project setup below.
+**Note**: This tutorial focuses on the **reinhardt-pages (WASM + SSR)** architecture with server functions. For building RESTful APIs instead, see the [REST API Tutorial](../rest/0-http-macros.md).
 
 ## Understanding the Project Structure
 
@@ -109,22 +109,22 @@ Let's understand the key elements of the generated project:
 - `src/bin/` - Executable files
   - `manage.rs` - Management commands (equivalent to Django's `manage.py`), includes `runserver` command for the development server
 
-### Architecture: RESTful API vs WASM + SSR
+### Architecture: WASM + SSR (reinhardt-pages)
 
-This tutorial uses the **RESTful API** approach, which is ideal for:
-- Backend APIs consumed by separate frontends (React, Vue, mobile apps)
-- Microservices and server-to-server communication
-- Traditional request-response patterns
+This tutorial uses the **WASM + SSR** architecture with **reinhardt-pages**, which is ideal for:
+- Full-stack web applications with integrated frontend and backend
+- Single Page Applications (SPAs) with server-side rendering
+- Type-safe client-server communication
+- Modern reactive user interfaces
 
-**Key characteristics of RESTful API projects:**
-- Server-side only (no WASM compilation)
-- JSON/XML serialization for data exchange
-- ViewSets and serializers for CRUD operations
-- Session or token-based authentication
+**Key characteristics of WASM + SSR projects:**
+- Unified codebase for frontend and backend
+- Type-safe RPC-style communication (`#[server_fn]` macro)
+- Client-side reactivity with server-side rendering
+- Single deployment artifact
+- WASM compilation for the client-side UI
 
-**Alternative: WASM + SSR Architecture**
-
-For projects requiring integrated frontend and backend, Reinhardt offers a **3-layer WASM + SSR architecture**:
+**Project structure:**
 
 ```
 my-app/
@@ -134,162 +134,459 @@ my-app/
 │   └── shared/      # Shared types (used by both)
 ```
 
-**Key characteristics of WASM + SSR projects:**
-- Unified codebase for frontend and backend
-- Type-safe RPC-style communication (`#[server_fn]` macro)
-- Client-side reactivity with server-side rendering
-- Single deployment artifact
+**Alternative: RESTful API Architecture**
+
+If you're building backend APIs for separate frontends (React, Vue, mobile apps), use the **RESTful API** approach instead:
+
+**Key characteristics of RESTful API projects:**
+- Server-side only (no WASM compilation)
+- HTTP method decorators (`#[get]`, `#[post]`, etc.)
+- JSON/XML serialization for data exchange
+- Traditional request-response patterns
+- Consumed by external clients
 
 **Which should you choose?**
-- **RESTful API** (this tutorial): When building APIs for multiple clients
-- **WASM + SSR**: When building full-stack applications with integrated UI
+- **WASM + SSR** (this tutorial): When building full-stack applications with integrated UI
+- **RESTful API**: When building APIs for multiple clients
+
+For RESTful API development, see the [REST API Tutorial](../rest/0-http-macros.md).
 
 See [examples/local/examples-twitter](../../../examples/local/examples-twitter) for a complete WASM + SSR implementation.
 
-## Understanding HTTP Method Decorators
+## Understanding reinhardt-pages Architecture
 
-Reinhardt provides FastAPI-inspired HTTP method decorators that make routing
-concise and type-safe. These decorators automatically handle HTTP method
-validation and route binding.
+This tutorial uses **reinhardt-pages**, a modern WASM-based framework for building full-stack applications with:
 
-**Available decorators:**
-- `#[get("/path")]` - Handle GET requests
-- `#[post("/path")]` - Handle POST requests
-- `#[put("/path")]`, `#[delete("/path")]`, `#[patch("/path")]` - Other HTTP methods
+- **Type-safe RPC** - Server functions (`#[server_fn]`) provide type-safe communication between client and server
+- **Reactive UI** - Signal-based reactivity for dynamic user interfaces
+- **Single codebase** - Share types and logic between frontend and backend
+- **Zero JavaScript** - Write everything in Rust, compile to WASM
+
+### Three-Layer Architecture
+
+```
+my-app/
+├── src/
+│   ├── client/      # WASM UI (runs in browser)
+│   ├── server_fn/   # Server functions (runs on server)
+│   └── shared/      # Shared types (used by both)
+```
+
+**Why this architecture?**
+
+- **Type safety** - The compiler catches mismatches between client and server
+- **Developer experience** - No need to write API endpoints manually
+- **Performance** - WASM runs at near-native speed in the browser
+- **Simplicity** - Single language for frontend and backend
+
+## Understanding Server Functions
+
+Server functions are the backbone of reinhardt-pages applications. They provide a type-safe RPC (Remote Procedure Call) mechanism between the client and server.
+
+### What is a Server Function?
+
+A server function is a Rust async function annotated with `#[server_fn]` that:
+
+1. **Runs on the server** - Executes server-side code with full access to databases, file systems, etc.
+2. **Called from the client** - WASM code can call it as if it were a local function
+3. **Type-safe** - The compiler ensures type correctness across the network boundary
+4. **Automatic serialization** - Arguments and return values are automatically serialized/deserialized
+
+### Basic Example
+
+```rust
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use crate::shared::types::QuestionInfo;
+
+#[server_fn(use_inject = true)]
+pub async fn get_questions(
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
+    // This code runs on the server only
+    let questions = Question::objects()
+        .all()
+        .all()
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    Ok(questions.into_iter()
+        .map(QuestionInfo::from)
+        .collect())
+}
+```
+
+**Key features:**
+
+- `#[server_fn(use_inject = true)]` - Enables dependency injection for this server function
+- `#[inject]` - Automatically injects the database connection
+- `Result<T, ServerFnError>` - Required return type for all server functions
+- Server-only code - Database queries, file operations, etc.
+
+### Calling from the Client
+
+On the client side (WASM), the same function becomes an async RPC call:
+
+```rust
+#[cfg(wasm)]
+use crate::server_fn::polls::get_questions;
+
+// In your component
+spawn_local(async move {
+    match get_questions().await {
+        Ok(questions) => {
+            // Handle successful response
+            set_questions(questions);
+        }
+        Err(e) => {
+            // Handle error
+            log::error!("Failed to load questions: {}", e);
+        }
+    }
+});
+```
+
+**What happens under the hood:**
+
+1. Client calls `get_questions()`
+2. Arguments are serialized to JSON
+3. HTTP POST request sent to server
+4. Server deserializes arguments
+5. Server executes the function with injected dependencies
+6. Result is serialized to JSON
+7. Response sent back to client
+8. Client deserializes the result
+
+### Dependency Injection in Server Functions
+
+The `use_inject = true` option enables FastAPI-style dependency injection:
+
+```rust
+#[server_fn(use_inject = true)]
+pub async fn create_question(
+    question_text: String,
+    #[inject] db: reinhardt::DatabaseConnection,
+    #[inject] user: CurrentUser,
+) -> Result<QuestionInfo, ServerFnError> {
+    // db and user are automatically injected by the framework
+    let question = Question::new(&question_text, user.id);
+    question.save(&db).await?;
+    Ok(QuestionInfo::from(question))
+}
+```
 
 **Benefits:**
-- **Concise syntax** - Less boilerplate code than traditional routing
-- **Compile-time validation** - Path patterns are checked at compile time
-- **Automatic method binding** - No manual HTTP method checks needed
-- **Named routes** - Optional `name` parameter for URL reversal
 
-**Without decorator (traditional approach):**
+- **No boilerplate** - No need to manually thread connections through your application
+- **Type-safe** - Compiler ensures the right dependencies are available
+- **Testable** - Easy to mock dependencies for testing
+- **Flexible** - Can inject any registered service
+
+## Creating Your First Component
+
+In reinhardt-pages, UI is built using **components** - Rust functions that return `View` objects. Components use the `page!` macro for JSX-like syntax and reactive `Signal`s for state management.
+
+### Component Structure
+
+A basic component follows this pattern:
 
 ```rust
-async fn index(req: Request) -> Result<Response> {
-    // Manual method check needed
-    if req.method() != Method::GET {
-        return Err("Method not allowed".into());
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
+use reinhardt::pages::reactive::hooks::use_state;
+
+pub fn my_component() -> View {
+    // 1. State management with hooks
+    let (message, set_message) = use_state("Hello, world!".to_string());
+
+    // 2. Clone signal for passing to page! macro
+    let message_signal = message.clone();
+
+    // 3. Render UI with page! macro
+    page!(|message_signal: Signal<String>| {
+        div {
+            class: "container",
+            h1 { { message_signal.get() } }
+        }
+    })(message_signal)
+}
+```
+
+### Creating Your First Component
+
+Let's create a simple polls index component. Create `src/client/components/polls.rs`:
+
+```rust
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
+use reinhardt::pages::reactive::hooks::use_state;
+use crate::shared::types::QuestionInfo;
+
+#[cfg(wasm)]
+use {
+    crate::server_fn::polls::get_questions,
+    wasm_bindgen_futures::spawn_local,
+};
+
+pub fn polls_index() -> View {
+    // State for questions list
+    let (questions, set_questions) = use_state(Vec::<QuestionInfo>::new());
+    let (loading, set_loading) = use_state(true);
+
+    // Load questions on component mount
+    #[cfg(wasm)]
+    {
+        let set_questions = set_questions.clone();
+        let set_loading = set_loading.clone();
+
+        spawn_local(async move {
+            match get_questions().await {
+                Ok(qs) => {
+                    set_questions(qs);
+                    set_loading(false);
+                }
+                Err(e) => {
+                    log::error!("Failed to load: {}", e);
+                    set_loading(false);
+                }
+            }
+        });
     }
 
-    // Handle the request
-    Response::ok().with_body("Hello")
+    // Clone signals for UI
+    let questions_signal = questions.clone();
+    let loading_signal = loading.clone();
+
+    // Render UI
+    page!(|questions_signal: Signal<Vec<QuestionInfo>>, loading_signal: Signal<bool>| {
+        div {
+            class: "max-w-4xl mx-auto px-4 mt-12",
+            h1 {
+                class: "text-3xl font-bold mb-6",
+                "Latest Polls"
+            }
+            watch {
+                if loading_signal.get() {
+                    div {
+                        class: "text-center",
+                        "Loading..."
+                    }
+                } else if questions_signal.get().is_empty() {
+                    p {
+                        class: "text-gray-500",
+                        "No polls are available."
+                    }
+                } else {
+                    div {
+                        class: "space-y-2",
+                        // Iterate over questions
+                        // (simplified - see examples-tutorial-basis for full implementation)
+                    }
+                }
+            }
+        }
+    })(questions_signal, loading_signal)
 }
 ```
 
-**With decorator (Reinhardt approach):**
+### Key Concepts
+
+**1. State Management with Hooks**
 
 ```rust
-#[get("/", name = "index")]
-async fn index() -> Result<Response> {
-    // Method check automatic!
-    Response::ok().with_body("Hello")
-}
+let (state, set_state) = use_state(initial_value);
 ```
 
-The decorator approach reduces boilerplate and makes your code more maintainable.
-For more advanced routing patterns, see [Part 3: Views and URLs](3-views-and-urls.md).
+- `state` - A `Signal<T>` that holds the current value
+- `set_state` - Function to update the state
+- Changes trigger UI re-renders automatically
 
-## Creating Your First View
-
-A view in Reinhardt is a function that takes an HTTP request and returns an HTTP
-response. With Reinhardt, you can use HTTP method decorators (`#[get]`, `#[post]`, etc.)
-for FastAPI-style routing and dependency injection.
-
-### View Return Types
-
-Reinhardt provides a convenient type alias `ViewResult<T>` for view function
-return types. This avoids repetitive error type annotations.
+**2. Signal Cloning**
 
 ```rust
-use reinhardt::ViewResult;  // Pre-defined: Result<T, Box<dyn std::error::Error>>
-
-#[get("/", name = "index")]
-async fn index() -> ViewResult<Response> {
-    Response::ok().with_body("Hello")
-}
+let signal_clone = signal.clone();
 ```
 
-**Why `ViewResult`?**
+Signals are cheaply cloneable references to shared state. Clone before passing to async closures or the `page!` macro.
 
-- **Concise** - Avoids repeating `Result<Response, Box<dyn std::error::Error>>`
-- **Flexible** - Works with the `?` operator for automatic error conversion
-- **Consistent** - Standard error handling pattern across all views
-
-**Alternative (explicit typing):**
+**3. Conditional Rendering with `watch`**
 
 ```rust
-async fn index() -> Result<Response, Box<dyn std::error::Error>> {
-    // Same as ViewResult<Response>
-    Response::ok().with_body("Hello")
+watch {
+    if loading_signal.get() {
+        // Show loading UI
+    } else {
+        // Show content
+    }
 }
 ```
 
-For this tutorial, we use the shorter `Result<Response>` form (which is an alias
-to `ViewResult<Response>`), but both forms are equivalent.
+The `watch` block re-evaluates whenever its dependencies (signals) change.
 
-Edit `src/main.rs`:
+**4. Async Data Loading**
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::get;
-
-// Our first view - returns a simple text response
-#[get("/", name = "index")]
-async fn index() -> Result<Response> {
-    Response::ok()
-        .with_body("Hello, world. You're at the polls index.")
-        .with_header("Content-Type", "text/plain")
-}
+spawn_local(async move {
+    match get_questions().await {
+        Ok(data) => set_questions(data),
+        Err(e) => log::error!("{}", e),
+    }
+});
 ```
 
-This is the simplest view possible in Reinhardt. The `#[get]` decorator handles
-the request parsing, routing, and dependency injection automatically.
+Use `spawn_local` to run async tasks in WASM. Server function calls return `Future`s that resolve with the result.
 
-## Mapping URLs to Views
+## Setting Up Client Routing
 
-To call this view, we need to map it to a URL. Reinhardt uses `UnifiedRouter`
-for efficient O(m) route matching.
+In reinhardt-pages, routing happens on the **client side** (in WASM). The router matches URL paths to component functions and handles navigation without full page reloads.
 
-Create `src/config/urls.rs`:
+### Router Configuration
+
+Create `src/client/router.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::routes;
+use reinhardt::pages::router::{Router, Route};
+use crate::client::pages::{index_page, polls_page, poll_detail_page};
 
-#[routes]
-pub fn routes() -> UnifiedRouter {
-    UnifiedRouter::new()
-        .function("/", Method::GET, crate::index)
+pub fn create_router() -> Router {
+    Router::new()
+        .route("/", Route::new(index_page))
+        .route("/polls/", Route::new(polls_page))
+        .route("/polls/:id/", Route::new(poll_detail_page))
 }
 ```
 
-The `#[routes]` attribute macro automatically registers this function with the
-framework for discovery via the `inventory` crate.
+### Page Functions
 
-**Note**: Reinhardt projects generated by `reinhardt-admin startproject` already
-include proper routing configuration accessible via `cargo run --bin manage runserver`. You don't need
-to manually create a `main.rs` with server setup code.
+Page functions connect routes to components. Create `src/client/pages.rs`:
+
+```rust
+use reinhardt::pages::component::View;
+use crate::client::components::polls::{polls_index, polls_detail};
+
+/// Home page
+pub fn index_page() -> View {
+    polls_index()
+}
+
+/// Polls list page
+pub fn polls_page() -> View {
+    polls_index()
+}
+
+/// Poll detail page (with dynamic :id parameter)
+pub fn poll_detail_page() -> View {
+    // Extract route parameter
+    let params = use_route_params();
+    let question_id = params.get("id")
+        .and_then(|id| id.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    polls_detail(question_id)
+}
+```
+
+### Client Entry Point
+
+The client entry point initializes the router. Create `src/client/lib.rs`:
+
+```rust
+use wasm_bindgen::prelude::*;
+use reinhardt::pages::router::Router;
+use crate::client::router::create_router;
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    // Initialize panic hook for better error messages
+    console_error_panic_hook::set_once();
+
+    // Create and mount router
+    let router = create_router();
+    router.mount("#root");
+}
+```
+
+### How Client Routing Works
+
+**1. URL Match**
+
+```
+/polls/5/ → Match route "/polls/:id/" → Extract id=5 → Call poll_detail_page()
+```
+
+**2. Component Rendering**
+
+```
+poll_detail_page() → polls_detail(5) → Render UI with question #5
+```
+
+**3. Navigation**
+
+```rust
+// Programmatic navigation
+use reinhardt::pages::router::navigate;
+
+navigate("/polls/5/");  // Changes URL and renders new component
+```
+
+**4. Link Elements**
+
+```rust
+a {
+    href: "/polls/5/",
+    "View Poll #5"
+}
+```
+
+Clicking the link triggers client-side navigation (no page reload).
+
+### Key Differences from Server Routing
+
+| Aspect | Server Routing (REST) | Client Routing (Pages) |
+|--------|----------------------|------------------------|
+| **Where** | Server (HTTP handlers) | Client (WASM) |
+| **Route Match** | Per HTTP request | Per URL change in browser |
+| **Page Load** | Full page reload | Single Page App (SPA) |
+| **URL Parameters** | `Request.path_params` | `use_route_params()` |
+| **Handler** | `async fn(Request) -> Response` | `fn() -> View` |
+
+**Note**: Reinhardt projects generated with `--with-pages` already include client routing configuration. You don't need to manually create routing files for development.
 
 ## Running the Development Server
 
-Now let's run the development server using the `runserver` command:
+For reinhardt-pages projects, use `cargo make dev` to build WASM and start the development server:
 
 ```bash
-cargo run --bin manage runserver
+# Build WASM and start development server
+cargo make dev
 ```
 
-**With auto-reload** (if you have `bacon` installed):
+This command:
+1. Compiles your Rust code to WASM
+2. Generates JavaScript glue code
+3. Starts the development server on port 8000
+4. Watches for file changes (auto-reload)
+
+**Alternative commands:**
 
 ```bash
-# Install bacon first (one-time setup)
-cargo install --locked bacon
+# Build WASM only (debug mode)
+cargo make wasm-build-dev
 
-# Run with auto-reload using cargo-make
-cargo make watch
+# Build WASM only (release mode with optimizations)
+cargo make wasm-build-release
 
-# Or run bacon directly for the runserver job
-bacon runserver
+# Development with watch mode
+cargo make dev-watch
+
+# Production build
+cargo make dev-release
+```
+
+**First-time setup:**
+
+```bash
+# Install WASM build tools (one-time)
+cargo make install-wasm-tools
 ```
 
 You should see output similar to:
@@ -315,39 +612,45 @@ Congratulations! Your Reinhardt project is now running!
 
 ## Understanding What Happened
 
-Let's review what we just did:
+Let's review the reinhardt-pages architecture:
 
-1. **Created a view function** (`index`) that returns an HTTP response
-2. **Created a URL pattern** that maps the root URL (`""`) to our view
-3. **Configured a router** to handle incoming requests
-4. **Started a development server** on port 8000
+1. **Created a server function** (`get_questions`) that runs on the server and returns data
+2. **Created a component** (`polls_index`) that renders UI in the browser (WASM)
+3. **Set up client routing** to map URLs to components
+4. **Started a development server** that serves both server functions and WASM
 
-This is the basic request-response cycle in Reinhardt:
+### The Request Flow
 
+**Traditional Server-Rendered:**
 ```
-Browser Request → Server → Router → URL Pattern → View → Response → Browser
-```
-
-## Route Creation Explained
-
-The `Route::from_handler()` function creates a route by taking two arguments:
-
-```rust
-Route::from_handler("", index)
+Browser → HTTP Request → Server → View Function → HTML → Browser
 ```
 
-- The first argument is the URL pattern (`""` means the root URL)
-- The second argument is the view handler to call
-
-You can create more complex patterns:
-
-```rust
-Route::from_handler("polls/", polls_index)
-Route::from_handler("polls/{id}/", poll_detail)
+**reinhardt-pages (WASM + Server Functions):**
+```
+Browser loads WASM → Router matches URL → Component renders
+                                        ↓
+Component needs data → Server Function call → Server executes → JSON response
+                                        ↓
+Component updates → UI re-renders with new data
 ```
 
-The `{id}` syntax creates a URL parameter that will be passed to your view
-handler.
+**Key Differences:**
+
+| Aspect | Traditional | reinhardt-pages |
+|--------|------------|-----------------|
+| **Initial Load** | Full HTML page | WASM app + index.html |
+| **Navigation** | Page reload | Client-side (SPA) |
+| **Data Fetching** | Server renders HTML | Server Functions return JSON |
+| **UI Updates** | New page load | Reactive signal updates |
+| **Routing** | Server-side | Client-side (WASM) |
+
+**Benefits of this approach:**
+
+- **Type safety** - Compiler checks client ↔ server communication
+- **Performance** - WASM runs near-native speed, no page reloads
+- **Developer experience** - Single language for everything
+- **Rich interactivity** - Signal-based reactivity for dynamic UIs
 
 ## Creating the Polls App
 
@@ -372,49 +675,142 @@ polls/
 └── tests.rs
 ```
 
-### Creating a View
+### Creating Server Functions
 
-Edit `polls/views.rs`:
+In reinhardt-pages apps, we define server functions instead of HTTP handlers. Create `src/server_fn/polls.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::get;
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use crate::shared::types::QuestionInfo;
 
-#[get("/", name = "index")]
-pub async fn index() -> Result<Response> {
-    Response::ok()
-        .with_body("Hello, world. You're at the polls index.")
-        .with_header("Content-Type", "text/plain")
+/// Get all questions
+#[server_fn(use_inject = true)]
+pub async fn get_questions(
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
+    use crate::apps::polls::models::Question;
+    use reinhardt::Model;
+
+    let questions = Question::objects()
+        .all()
+        .all()
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    Ok(questions.into_iter()
+        .take(5)
+        .map(QuestionInfo::from)
+        .collect())
 }
 ```
 
-### Setting Up URL Patterns
+### Creating Components
 
-Edit `polls/urls.rs`:
+Create `src/client/components/polls.rs`:
 
 ```rust
-use reinhardt::routers::UnifiedRouter;
-use hyper::Method;
-use crate::views;
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
+use reinhardt::pages::reactive::hooks::use_state;
+use crate::shared::types::QuestionInfo;
 
-pub fn url_patterns() -> UnifiedRouter {
-    UnifiedRouter::new()
-        .function("/", Method::GET, views::index)
+#[cfg(wasm)]
+use {
+    crate::server_fn::polls::get_questions,
+    wasm_bindgen_futures::spawn_local,
+};
+
+pub fn polls_index() -> View {
+    let (questions, set_questions) = use_state(Vec::<QuestionInfo>::new());
+    let (loading, set_loading) = use_state(true);
+
+    #[cfg(wasm)]
+    {
+        let set_questions = set_questions.clone();
+        let set_loading = set_loading.clone();
+
+        spawn_local(async move {
+            match get_questions().await {
+                Ok(qs) => {
+                    set_questions(qs);
+                    set_loading(false);
+                }
+                Err(e) => {
+                    log::error!("Failed to load: {}", e);
+                    set_loading(false);
+                }
+            }
+        });
+    }
+
+    let questions_signal = questions.clone();
+    let loading_signal = loading.clone();
+
+    page!(|questions_signal: Signal<Vec<QuestionInfo>>, loading_signal: Signal<bool>| {
+        div {
+            class: "max-w-4xl mx-auto px-4 mt-12",
+            h1 {
+                class: "text-3xl font-bold mb-6",
+                "Polls"
+            }
+            watch {
+                if loading_signal.get() {
+                    div { "Loading..." }
+                } else {
+                    div {
+                        // Render questions list
+                        "Hello, world. You're at the polls index."
+                    }
+                }
+            }
+        }
+    })(questions_signal, loading_signal)
 }
 ```
 
-### Registering with the Project
+### Setting Up Client Routing
 
-Edit `src/config/urls.rs` to include the polls app routes:
+Create `src/client/router.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::routes;
+use reinhardt::pages::router::{Router, Route};
+use crate::client::pages::polls_index_page;
 
-#[routes]
-pub fn routes() -> UnifiedRouter {
-    UnifiedRouter::new()
-        .mount("/polls/", polls::urls::url_patterns())
+pub fn create_router() -> Router {
+    Router::new()
+        .route("/", Route::new(polls_index_page))
+        .route("/polls/", Route::new(polls_index_page))
+}
+```
+
+Create `src/client/pages.rs`:
+
+```rust
+use reinhardt::pages::component::View;
+use crate::client::components::polls::polls_index;
+
+pub fn polls_index_page() -> View {
+    polls_index()
+}
+```
+
+### Integrating with the Project
+
+In `src/client/lib.rs`:
+
+```rust
+mod router;
+mod pages;
+mod components;
+
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    console_error_panic_hook::set_once();
+
+    let router = router::create_router();
+    router.mount("#root");
 }
 ```
 
@@ -466,34 +862,35 @@ installed_apps! {
 }
 ```
 
-**With contrib apps (authentication, sessions, admin):**
+**Equivalent to Django's INSTALLED_APPS:**
+
+Unlike Django, Reinhardt separates concerns:
+- **User apps**: Registered via `installed_apps!` macro
+- **Built-in features**: Enabled via Cargo feature flags
+
+Python (Django):
+```python
+INSTALLED_APPS = [
+    'django.contrib.auth',      # ← Framework feature
+    'django.contrib.admin',     # ← Framework feature
+    'polls',                    # ← User app
+]
+```
+
+Rust (Reinhardt):
+```toml
+# Cargo.toml - Enable framework features
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["auth", "admin"] }
+```
 
 ```rust
+// src/config/apps.rs - Register user apps only
 use reinhardt::installed_apps;
 
 installed_apps! {
-    // Built-in framework apps
-    auth: "reinhardt.contrib.auth",
-    contenttypes: "reinhardt.contrib.contenttypes",
-    sessions: "reinhardt.contrib.sessions",
-    admin: "reinhardt.contrib.admin",
-
-    // Your custom apps
     polls: "polls",
 }
-```
-
-**Equivalent to Django's `INSTALLED_APPS`:**
-
-```python
-# Django's settings.py
-INSTALLED_APPS = [
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.admin',
-    'polls',
-]
 ```
 
 **Why the two-part syntax?**
@@ -503,87 +900,231 @@ INSTALLED_APPS = [
 
 This allows flexibility in naming while keeping code references clean.
 
+### Built-in Framework Features
+
+Reinhardt's built-in features (auth, admin, sessions, etc.) are **NOT** registered
+via `installed_apps!`. Instead, they are enabled through Cargo feature flags.
+
+**Available Built-in Features**:
+
+| Feature | Cargo.toml | Import |
+|---------|------------|--------|
+| Authentication | `features = ["auth"]` | `use reinhardt::auth::*;` |
+| Admin Panel | `features = ["admin"]` | `use reinhardt::admin::*;` |
+| Sessions | `features = ["sessions"]` | `use reinhardt::auth::sessions::*;` |
+| REST API | `features = ["rest"]` | `use reinhardt::rest::*;` |
+| Database | `features = ["database"]` | `use reinhardt::db::*;` |
+
+**Example Configuration**:
+
+```toml
+# Cargo.toml
+[dependencies]
+reinhardt = {
+    version = "0.1.0-alpha.1",
+    package = "reinhardt-web",
+    default-features = false,
+    features = ["standard"]  # Includes auth, database, REST API
+}
+```
+
+For a complete list of available features, see the [Feature Flags Guide](../../FEATURE_FLAGS.md).
+
+**Why This Design?**
+
+Unlike Django's runtime registration, Reinhardt uses compile-time feature flags:
+- ✅ **Zero overhead**: Unused features are not compiled
+- ✅ **Faster builds**: Only compile what you need
+- ✅ **Type safety**: Features are validated at compile time
+- ✅ **Smaller binaries**: Exclude unnecessary code
+
 Restart your server (press Ctrl-C and run `cargo run --bin manage runserver` again) and
 visit `http://127.0.0.1:8000/polls/`. You should see the message.
 
-## Adding More Views
+## Adding More Components and Server Functions
 
-Let's add a few more views to make our URL configuration more interesting.
-Update `polls/views.rs`:
+Let's add components for viewing poll details and results. This demonstrates how to handle dynamic routing parameters and multiple server functions.
+
+### Additional Server Functions
+
+Add to `src/server_fn/polls.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::{get, post};
-use reinhardt::http::Request;
+/// Get question detail with choices
+#[server_fn(use_inject = true)]
+pub async fn get_question_detail(
+    question_id: i64,
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
+    use crate::apps::polls::models::{Question, Choice};
+    use reinhardt::Model;
 
-#[get("/", name = "index")]
-pub async fn index() -> Result<Response> {
-    Response::ok()
-        .with_body("Hello, world. You're at the polls index.")
-        .with_header("Content-Type", "text/plain")
+    // Get question
+    let question = Question::objects()
+        .get(question_id)
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    // Get choices for this question
+    let choices = Choice::objects()
+        .filter(Choice::field_question().eq(question_id))
+        .all()
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    Ok((
+        QuestionInfo::from(question),
+        choices.into_iter().map(ChoiceInfo::from).collect()
+    ))
 }
 
-#[get("/{question_id}", name = "detail")]
-pub async fn detail(request: Request) -> Result<Response> {
-    // Extract the question_id from path parameters
-    let question_id = request.path_params
-        .get("question_id")
-        .unwrap_or(&"0".to_string());
+/// Submit a vote
+#[server_fn(use_inject = true)]
+pub async fn vote(
+    question_id: i64,
+    choice_id: i64,
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<ChoiceInfo, ServerFnError> {
+    use crate::apps::polls::models::Choice;
+    use reinhardt::Model;
 
-    Response::ok()
-        .with_body(&format!("You're looking at question {}.", question_id))
-        .with_header("Content-Type", "text/plain")
-}
+    let mut choice = Choice::objects()
+        .get(choice_id)
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
 
-#[get("/{question_id}/results", name = "results")]
-pub async fn results(request: Request) -> Result<Response> {
-    let question_id = request.path_params
-        .get("question_id")
-        .unwrap_or(&"0".to_string());
+    choice.votes += 1;
+    choice.save(&_db).await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
 
-    Response::ok()
-        .with_body(&format!("You're looking at the results of question {}.", question_id))
-        .with_header("Content-Type", "text/plain")
-}
-
-#[post("/{question_id}/vote", name = "vote")]
-pub async fn vote(request: Request) -> Result<Response> {
-    let question_id = request.path_params
-        .get("question_id")
-        .unwrap_or(&"0".to_string());
-
-    Response::ok()
-        .with_body(&format!("You're voting on question {}.", question_id))
-        .with_header("Content-Type", "text/plain")
+    Ok(ChoiceInfo::from(choice))
 }
 ```
 
-Update `polls/urls.rs` to wire these views:
+### Detail Component
+
+Add to `src/client/components/polls.rs`:
 
 ```rust
-use reinhardt::routers::UnifiedRouter;
-use hyper::Method;
-use crate::views;
+/// Poll detail page with voting form
+pub fn polls_detail(question_id: i64) -> View {
+    let (question, set_question) = use_state(None::<QuestionInfo>);
+    let (choices, set_choices) = use_state(Vec::<ChoiceInfo>::new());
+    let (loading, set_loading) = use_state(true);
 
-pub fn url_patterns() -> UnifiedRouter {
-    UnifiedRouter::new()
-        // ex: /polls/
-        .function("/", Method::GET, views::index)
-        // ex: /polls/5/
-        .function("/{question_id}", Method::GET, views::detail)
-        // ex: /polls/5/results/
-        .function("/{question_id}/results", Method::GET, views::results)
-        // ex: /polls/5/vote/
-        .function("/{question_id}/vote", Method::POST, views::vote)
+    #[cfg(wasm)]
+    {
+        let set_question = set_question.clone();
+        let set_choices = set_choices.clone();
+        let set_loading = set_loading.clone();
+
+        spawn_local(async move {
+            match get_question_detail(question_id).await {
+                Ok((q, cs)) => {
+                    set_question(Some(q));
+                    set_choices(cs);
+                    set_loading(false);
+                }
+                Err(e) => {
+                    log::error!("Failed to load: {}", e);
+                    set_loading(false);
+                }
+            }
+        });
+    }
+
+    let question_signal = question.clone();
+    let choices_signal = choices.clone();
+    let loading_signal = loading.clone();
+
+    page!(|question_signal: Signal<Option<QuestionInfo>>, choices_signal: Signal<Vec<ChoiceInfo>>, loading_signal: Signal<bool>| {
+        div {
+            class: "max-w-4xl mx-auto px-4 mt-12",
+            watch {
+                if loading_signal.get() {
+                    div { "Loading..." }
+                } else if let Some(q) = question_signal.get() {
+                    div {
+                        h1 {
+                            class: "text-3xl font-bold mb-6",
+                            { q.question_text }
+                        }
+                        // Voting form (simplified)
+                        // See examples-tutorial-basis for full implementation
+                    }
+                }
+            }
+        }
+    })(question_signal, choices_signal, loading_signal)
 }
 ```
 
-Restart the server and try these URLs:
+### Update Router
 
-- `http://127.0.0.1:8000/polls/` - Shows the index
-- `http://127.0.0.1:8000/polls/34/` - Shows detail for question 34
-- `http://127.0.0.1:8000/polls/34/results/` - Shows results for question 34
-- `http://127.0.0.1:8000/polls/34/vote/` - Shows voting form for question 34
+Update `src/client/router.rs`:
+
+```rust
+use reinhardt::pages::router::{Router, Route};
+use crate::client::pages::{
+    polls_index_page,
+    poll_detail_page,
+    poll_results_page,
+};
+
+pub fn create_router() -> Router {
+    Router::new()
+        .route("/", Route::new(polls_index_page))
+        .route("/polls/", Route::new(polls_index_page))
+        .route("/polls/:id/", Route::new(poll_detail_page))
+        .route("/polls/:id/results/", Route::new(poll_results_page))
+}
+```
+
+Update `src/client/pages.rs`:
+
+```rust
+use reinhardt::pages::component::View;
+use reinhardt::pages::router::use_route_params;
+use crate::client::components::polls::{polls_index, polls_detail, polls_results};
+
+pub fn polls_index_page() -> View {
+    polls_index()
+}
+
+pub fn poll_detail_page() -> View {
+    let params = use_route_params();
+    let id = params.get("id")
+        .and_then(|id| id.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    polls_detail(id)
+}
+
+pub fn poll_results_page() -> View {
+    let params = use_route_params();
+    let id = params.get("id")
+        .and_then(|id| id.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    polls_results(id)
+}
+```
+
+### Try the Application
+
+Run the development server:
+
+```bash
+cargo make dev
+```
+
+Visit these URLs:
+
+- `http://127.0.0.1:8000/` - Shows the polls index
+- `http://127.0.0.1:8000/polls/1/` - Shows detail for question 1
+- `http://127.0.0.1:8000/polls/1/results/` - Shows results for question 1
+
+**Note**: Navigation happens client-side (no page reload) thanks to the WASM router
 
 ## What's Next?
 
@@ -598,11 +1139,36 @@ When you're ready, move on to
 
 In this tutorial, you learned:
 
-- How to create a new Reinhardt project
-- How to define views as async functions
-- How to map URLs to views using `Route::from_handler()`
-- How to run the development server
-- How to organize code into modules
-- How to extract parameters from URLs
+- How to create a new reinhardt-pages project with WASM support
+- How to use **server functions** (`#[server_fn]`) for type-safe RPC communication
+- How to create **components** with the `page!` macro
+- How to manage state with **signals** and `use_state()`
+- How to set up **client-side routing** with dynamic parameters
+- How to load data asynchronously with `spawn_local()`
+- The **three-layer architecture** (client, server_fn, shared)
 
-You now have a solid foundation for building Reinhardt applications!
+### Key Takeaways
+
+**Server Functions:**
+- Run on the server with full access to databases and services
+- Called from WASM as if they were local functions
+- Automatically handle serialization and network communication
+- Support dependency injection with `#[inject]`
+
+**Components:**
+- Pure Rust functions that return `View` objects
+- Use `page!` macro for JSX-like UI syntax
+- Manage state with Signal-based reactivity
+- Re-render automatically when state changes
+
+**Architecture:**
+- **Client** (`src/client/`) - WASM UI code
+- **Server Functions** (`src/server_fn/`) - Server-side business logic
+- **Shared** (`src/shared/`) - Types and logic used by both
+
+**Next Steps:**
+- Learn about **models and databases** in Part 2
+- Explore **forms** with the `form!` macro in Part 4
+- See **complete examples** in `examples/local/examples-tutorial-basis/`
+
+You now have a solid foundation for building full-stack Rust applications with reinhardt-pages!

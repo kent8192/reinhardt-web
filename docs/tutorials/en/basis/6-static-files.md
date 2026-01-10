@@ -6,16 +6,356 @@ In this tutorial, we'll add CSS stylesheets and images to make our polls applica
 
 Static files are assets like CSS, JavaScript, images, and fonts that don't change during runtime. In reinhardt-pages applications, static files are managed differently from traditional server-rendered frameworks:
 
-**Traditional Approach (Server-Side):**
+**Traditional Approach (Server-Side Rendering):**
 ```html
-<!-- Tera template -->
-<link rel="stylesheet" href="{{ 'polls/css/style.css'|static }}">
+<!-- Server-rendered template -->
+<link rel="stylesheet" href="{{ static('polls/css/style.css') }}">
 ```
 
 **reinhardt-pages Approach (WASM):**
-1. **CDN Resources**: External libraries loaded from CDNs (e.g., Bootstrap)
+1. **CDN Resources**: External libraries loaded from CDNs
 2. **Local Assets**: Static files copied to `dist/` during build
-3. **Direct References**: Files referenced directly in `index.html`
+3. **Direct References**: Files referenced using one of three methods (see below)
+
+## Static File Reference Methods
+
+Reinhardt provides three ways to reference static files, each optimized for different use cases:
+
+### 1. Compile-Time: `static_url!` Macro
+
+For static paths known at compile time:
+
+```rust
+use reinhardt::static_url;
+
+page!(|| {
+	link {
+		rel: "stylesheet",
+		href: static_url!("css/polls.css")
+		// Resolved at compile time to "/static/css/polls.css"
+	}
+})
+```
+
+**When to use**: Fixed asset paths that don't change at runtime
+
+**Benefits**:
+- Zero runtime overhead
+- Compile-time path validation
+- Optimal for CDN integration
+
+### 2. Runtime: `resolve_static()` Function
+
+For dynamic paths determined at runtime:
+
+```rust
+use reinhardt::pages::static_resolver::resolve_static;
+
+// Example: User-selectable theme
+let theme = user.get_theme(); // "dark" or "light"
+let css_path = format!("css/{}.css", theme);
+
+page!(|css_path: String| {
+	link {
+		rel: "stylesheet",
+		href: resolve_static(&css_path)
+		// Returns: "/static/css/dark.css"
+	}
+})(css_path)
+```
+
+**When to use**: Dynamic asset paths based on user input, state, or configuration
+
+**Benefits**:
+- Flexible runtime resolution
+- Integrates with settings configuration
+- Works with reactive state management
+
+### 3. Server Template: `{{ static_url() }}`
+
+For `index.html` and server-rendered templates:
+
+```html
+<!-- Template (pre-deployment) -->
+<script src="{{ static_url('app.js') }}"></script>
+<link rel="stylesheet" href="{{ static_url('css/main.css') }}">
+
+<!-- Rendered (post-collectstatic with content hashing) -->
+<script src="/static/app.abc123.js"></script>
+<link rel="stylesheet" href="/static/css/main.def456.css">
+```
+
+**When to use**: HTML templates processed on the server before deployment
+
+**Benefits**:
+- Cache busting with content hashing
+- Server-side path resolution
+- Works with `collectstatic` workflow
+
+### Choosing the Right Method
+
+Use this decision tree:
+
+| Question | Method |
+|----------|--------|
+| Path known at compile time? | `static_url!` macro |
+| Path depends on runtime state/user input? | `resolve_static()` function |
+| Reference in server-rendered HTML template? | `{{ static_url() }}` template function |
+
+**Example Scenarios:**
+
+```rust
+// ✅ GOOD: Compile-time static reference
+link {
+	rel: "icon",
+	href: static_url!("favicon.ico")
+}
+
+// ✅ GOOD: Runtime dynamic reference
+let avatar_url = format!("avatars/{}.png", user.id);
+img {
+	src: resolve_static(&avatar_url)
+}
+
+// ❌ BAD: Hard-coded path (breaks with CDN or STATIC_URL changes)
+link {
+	rel: "stylesheet",
+	href: "/static/css/polls.css"  // Don't do this!
+}
+```
+
+**Note**: For `index.html`, use the template function approach:
+```html
+<!-- index.html -->
+<script type="module">
+	const jsUrl = '{{ static_url("examples_tutorial_basis.js") }}';
+	const wasmUrl = '{{ static_url("examples_tutorial_basis_bg.wasm") }}';
+	const { default: init } = await import(jsUrl);
+	await init(wasmUrl);
+</script>
+```
+
+---
+
+## Using Static URLs in page! Macro
+
+Now that you understand the three methods for static URL resolution, let's see how to use them in practice within `page!` macros.
+
+### Basic Usage with resolve_static()
+
+The `resolve_static()` function is the recommended way to reference static files in `page!` macros. It works at runtime and integrates with the static files configuration:
+
+```rust
+use reinhardt::pages::static_resolver::resolve_static;
+
+page!(|| {
+	div { class: "container",
+		img {
+			src: resolve_static("images/logo.png"),
+			alt: "Polls App Logo",
+			class: "logo"
+		}
+	}
+})()
+```
+
+**Key Points:**
+- Import `resolve_static` from `reinhardt::pages::static_resolver`
+- Pass the relative path (without `/static/` prefix)
+- The function returns the full URL: `/static/images/logo.png`
+- With manifest, it returns cache-busted URLs: `/static/images/logo.abc123.png`
+
+### Practical Examples
+
+#### Displaying Images
+
+**Static Image Path:**
+
+For fixed images (like logos or icons), use a simple string:
+
+```rust
+page!(|| {
+	div { class: "poll-header",
+		img {
+			src: resolve_static("images/poll-icon.svg"),
+			alt: "Poll",
+			class: "poll-icon w-16 h-16"
+		}
+		h1 { "Latest Polls" }
+	}
+})()
+```
+
+**Dynamic Image Path:**
+
+For user-specific or data-driven images, construct the path at runtime:
+
+```rust
+page!(|user_id: i64| {
+	// Construct path based on user ID
+	let avatar_path = format!("images/avatars/user_{}.png", user_id);
+
+	div { class: "user-profile",
+		img {
+			src: resolve_static(&avatar_path),
+			alt: "User Avatar",
+			class: "avatar rounded-full w-12 h-12"
+		}
+	}
+})(user_id)
+```
+
+**Real-World Example - Poll Card:**
+
+```rust
+page!(|question: QuestionInfo| {
+	div { class: "poll-card p-4 border rounded",
+		// Poll icon
+		img {
+			src: resolve_static("images/poll-icon.svg"),
+			alt: "Poll",
+			class: "w-8 h-8 mb-2"
+		}
+
+		// Question text
+		h2 { class: "text-xl font-bold",
+			{ question.question_text }
+		}
+
+		// Vote button
+		a {
+			href: format!("/polls/{}/", question.id),
+			class: "btn-primary mt-3",
+			"Vote Now"
+		}
+	}
+})(question)
+```
+
+#### Loading Stylesheets and Scripts
+
+While stylesheets and scripts are typically loaded in `index.html`, you can also load them conditionally in `page!` macros:
+
+```rust
+page!(|enable_dark_mode: bool| {
+	div {
+		// Conditionally load dark mode stylesheet
+		if enable_dark_mode {
+			link {
+				rel: "stylesheet",
+				href: resolve_static("css/dark-theme.css")
+			}
+		}
+
+		// Page content
+		div { class: "content",
+			"Page content here"
+		}
+	}
+})(enable_dark_mode)
+```
+
+**Note:** For global stylesheets, prefer loading in `index.html` or using the `head!` macro (see below).
+
+#### Dynamic Asset Selection
+
+Select assets based on user state or application logic:
+
+```rust
+page!(|theme: String| {
+	// Select theme-specific CSS
+	let css_path = format!("css/{}.css", theme);
+
+	div {
+		link {
+			rel: "stylesheet",
+			href: resolve_static(&css_path)
+			// Returns: "/static/css/dark.css" or "/static/css/light.css"
+		}
+
+		div { class: "themed-content",
+			"Content styled by selected theme"
+		}
+	}
+})(theme)
+```
+
+### Integration with head! Macro
+
+For server-side rendering (SSR) and global assets, use `head!` macro with `resolve_static()`:
+
+```rust
+use reinhardt::pages::{head, page};
+use reinhardt::pages::static_resolver::resolve_static;
+
+let my_head = head!(|| {
+	// Stylesheet
+	link {
+		rel: "stylesheet",
+		href: resolve_static("css/polls.css")
+	}
+
+	// JavaScript
+	script {
+		src: resolve_static("js/analytics.js"),
+		defer
+	}
+
+	// Favicon
+	link {
+		rel: "icon",
+		href: resolve_static("images/favicon.ico")
+	}
+});
+
+// Use with view
+let view = page!(|| {
+	div { class: "app",
+		"App content"
+	}
+})();
+
+// Render with SSR
+let mut renderer = SsrRenderer::new();
+let html = renderer.render_page_with_view_head(view, my_head);
+```
+
+**Benefits of head! macro:**
+- SEO-friendly (assets loaded before page render)
+- Optimal performance (stylesheets load before content)
+- Clean separation of concerns
+
+### Choosing the Right Approach
+
+Use this decision guide to select the appropriate method:
+
+| Scenario | Method | Example | Reason |
+|----------|--------|---------|--------|
+| Fixed asset path in `page!` | `resolve_static("path")` | `img { src: resolve_static("logo.png") }` | Simple, runtime resolution |
+| Dynamic path based on state | `resolve_static(&format!(...))` | `resolve_static(&format!("user_{}.png", id))` | Flexible, data-driven |
+| Global assets (CSS/JS) | `head!` with `resolve_static()` | `head!(|| { link { href: resolve_static("app.css") } })` | SEO, performance |
+| Server template (index.html) | `{{ static_url("path") }}` | `<script src="{{ static_url('app.js') }}">` | Server-side processing |
+
+**Best Practices:**
+1. **Always use `resolve_static()`** - Never hardcode `/static/` URLs
+2. **Initialize early** - Call `init_static_resolver()` at app startup
+3. **Use manifest in production** - Enables cache busting with hashed filenames
+4. **Prefer static paths** - Use string literals when possible for future optimizations
+
+**Common Mistakes:**
+```rust
+// ❌ BAD: Hardcoded URL
+img { src: "/static/images/logo.png" }
+
+// ❌ BAD: Including /static/ prefix
+img { src: resolve_static("/static/images/logo.png") }	// Results in /static//static/...
+
+// ✅ GOOD: Relative path without prefix
+img { src: resolve_static("images/logo.png") }
+```
+
+---
+
 
 ## Styling Options
 
@@ -31,11 +371,7 @@ reinhardt-pages applications support multiple styling approaches. This tutorial 
 
 See [Setting Up UnoCSS](#setting-up-unocss-recommended) section below for implementation.
 
-### Option B: Bootstrap
 
-Traditional Bootstrap approach using CDN. Simpler for quick prototyping but larger bundle size.
-
-See [Current Setup: Bootstrap Integration](#current-setup-bootstrap-integration) section below.
 
 ---
 
@@ -49,59 +385,59 @@ Replace Bootstrap CDN with UnoCSS runtime:
 
 ```html
 <!DOCTYPE html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-\t<meta charset=\"UTF-8\">
-\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-\t<title>Polls App - Reinhardt Tutorial</title>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Polls App - Reinhardt Tutorial</title>
 
-\t<!-- UnoCSS Reset -->
-\t<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css\">
+	<!-- UnoCSS Reset -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
 
-\t<!-- UnoCSS Runtime -->
-\t<script>
-\twindow.__unocss = {
-\t\ttheme: {
-\t\t\tcolors: {
-\t\t\t\tbrand: {
-\t\t\t\t\tDEFAULT: '#4a90e2',
-\t\t\t\t\thover: '#357abd',
-\t\t\t\t},
-\t\t\t\tsuccess: '#28a745',
-\t\t\t\tdanger: '#dc3545',
-\t\t\t\twarning: '#ffc107',
-\t\t\t},
-\t\t},
-\t\tshortcuts: [
-\t\t\t// Buttons
-\t\t\t['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all'],
-\t\t\t['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
-\t\t\t['btn-secondary', 'btn bg-gray-200 text-gray-800 hover:bg-gray-300'],
+	<!-- UnoCSS Runtime -->
+	<script>
+	window.__unocss = {
+		theme: {
+			colors: {
+				brand: {
+					DEFAULT: '#4a90e2',
+					hover: '#357abd',
+				},
+				success: '#28a745',
+				danger: '#dc3545',
+				warning: '#ffc107',
+			},
+		},
+		shortcuts: [
+			// Buttons
+			['btn', 'inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all'],
+			['btn-primary', 'btn bg-brand text-white hover:bg-brand-hover'],
+			['btn-secondary', 'btn bg-gray-200 text-gray-800 hover:bg-gray-300'],
 
-\t\t\t// Cards
-\t\t\t['card', 'bg-white rounded-2xl border border-gray-200 shadow-sm'],
-\t\t\t['card-body', 'p-6'],
+			// Cards
+			['card', 'bg-white rounded-2xl border border-gray-200 shadow-sm'],
+			['card-body', 'p-6'],
 
-\t\t\t// Form
-\t\t\t['form-input', 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand'],
-\t\t\t['form-check', 'p-4 border-2 border-gray-200 rounded-xl hover:border-brand hover:bg-blue-50 transition-all cursor-pointer'],
+			// Form
+			['form-input', 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand'],
+			['form-check', 'p-4 border-2 border-gray-200 rounded-xl hover:border-brand hover:bg-blue-50 transition-all cursor-pointer'],
 
-\t\t\t// Spinner
-\t\t\t['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
-\t\t],
-\t};
-\t</script>
-\t<script src=\"https://cdn.jsdelivr.net/npm/@unocss/runtime\"></script>
+			// Spinner
+			['spinner', 'animate-spin rounded-full border-2 border-gray-200 border-t-brand'],
+		],
+	};
+	</script>
+	<script src="https://cdn.jsdelivr.net/npm/@unocss/runtime"></script>
 </head>
-<body class=\"bg-gray-50 text-gray-900 antialiased\">
-\t<div id=\"root\">
-\t\t<div class=\"flex items-center justify-center min-h-screen\">
-\t\t\t<div class=\"text-center\">
-\t\t\t\t<div class=\"spinner w-12 h-12 mx-auto mb-4\"></div>
-\t\t\t\t<p class=\"text-gray-600\">Loading...</p>
-\t\t\t</div>
-\t\t</div>
-\t</div>
+<body class="bg-gray-50 text-gray-900 antialiased">
+	<div id="root">
+		<div class="flex items-center justify-center min-h-screen">
+			<div class="text-center">
+				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
+				<p class="text-gray-600">Loading...</p>
+			</div>
+		</div>
+	</div>
 </body>
 </html>
 ```
@@ -111,20 +447,12 @@ Replace Bootstrap CDN with UnoCSS runtime:
 Replace Bootstrap classes with UnoCSS utilities:
 
 ```rust
-// Before (Bootstrap)
+// UnoCSS styling example
 page!(|| {
-\tdiv { class: \"container mt-5\",
-\t\th1 { class: \"mb-4\", \"Polls\" }
-\t\tbutton { class: \"btn btn-primary\", \"Vote\" }
-\t}
-})()
-
-// After (UnoCSS)
-page!(|| {
-\tdiv { class: \"max-w-4xl mx-auto px-4 mt-12\",
-\t\th1 { class: \"text-3xl font-bold mb-6\", \"Polls\" }
-\t\tbutton { class: \"btn-primary\", \"Vote\" }
-\t}
+	div { class: "max-w-4xl mx-auto px-4 mt-12",
+		h1 { class: "text-3xl font-bold mb-6", "Polls" }
+		button { class: "btn-primary", "Vote" }
+	}
 })()
 ```
 
@@ -135,31 +463,31 @@ Use shortcuts for consistent styling:
 ```rust
 // Question card
 div {
-\tclass: \"card card-body\",
-\th1 { class: \"text-2xl font-bold mb-4\", \"Question text\" }
+	class: "card card-body",
+	h1 { class: "text-2xl font-bold mb-4", "Question text" }
 }
 
 // Form with radio buttons
-div { class: \"space-y-3\",
-\tfor choice in &choices {
-\t\tlabel {
-\t\t\tclass: \"form-check\",
-\t\t\tinput { type: \"radio\", class: \"mr-3\" }
-\t\t\tspan { \"Choice text\" }
-\t\t}
-\t}
+div { class: "space-y-3",
+	for choice in &choices {
+		label {
+			class: "form-check",
+			input { type: "radio", class: "mr-3" }
+			span { "Choice text" }
+		}
+	}
 }
 
 // Submit button
 button {
-\tclass: \"btn-primary mt-6 w-full\",
-\ttype: \"submit\",
-\t\"Vote\"
+	class: "btn-primary mt-6 w-full",
+	type: "submit",
+	"Vote"
 }
 
 // Loading spinner
-div { class: \"flex justify-center py-12\",
-\tdiv { class: \"spinner w-8 h-8\" }
+div { class: "flex justify-center py-12",
+	div { class: "spinner w-8 h-8" }
 }
 ```
 
@@ -172,39 +500,6 @@ div { class: \"flex justify-center py-12\",
 For complete UnoCSS configuration examples, see [examples/local/examples-twitter/index.html](../../../examples/local/examples-twitter/index.html).
 
 ---
-
-## Current Setup: Bootstrap Integration
-
-Our application already uses Bootstrap 5.3.0 from a CDN. Let's review the current `index.html`:
-
-```html
-<!-- index.html -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Polls App - Reinhardt Tutorial</title>
-	<!-- Bootstrap CSS from CDN -->
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-	<div id="root">
-		<div class="container mt-5 text-center">
-			<div class="spinner-border text-primary" role="status">
-				<span class="visually-hidden">Loading...</span>
-			</div>
-		</div>
-	</div>
-</body>
-</html>
-```
-
-**Benefits of CDN Approach:**
-- No bundling overhead for common libraries
-- Faster initial load (browser caching)
-- Automatic updates (use versioned URLs in production)
-- Reduced WASM bundle size
 
 ## Adding Custom CSS
 
@@ -347,17 +642,15 @@ Update `index.html` to include the custom stylesheet:
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Polls App - Reinhardt Tutorial</title>
 
-	<!-- Bootstrap CSS from CDN -->
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-	<!-- Custom CSS -->
+	<!-- Custom CSS (if needed) -->
 	<link rel="stylesheet" href="/static/css/polls.css">
 </head>
 <body>
 	<div id="root">
-		<div class="container mt-5 text-center">
-			<div class="spinner-border text-primary spinner-custom" role="status">
-				<span class="visually-hidden">Loading...</span>
+		<div class="flex items-center justify-center min-h-screen">
+			<div class="text-center">
+				<div class="spinner w-12 h-12 mx-auto mb-4"></div>
+				<p class="text-gray-600">Loading...</p>
 			</div>
 		</div>
 	</div>
@@ -1048,11 +1341,11 @@ In this tutorial, you learned:
 
 **Key Differences from Traditional Approaches:**
 
-| Aspect | Traditional (Tera) | reinhardt-pages |
+| Aspect | Traditional (Server-Rendered) | reinhardt-pages |
 |--------|-------------------|-----------------|
 | Asset Reference | `{{ 'file.css'\|static }}` tag | Direct URL in `index.html` |
 | Build Tool | `collectstatic` command | `cargo make wasm-build-*` tasks |
-| Processing | Server-side collection | WASM bundling + wasm-bindgen |
+| Processing | Server-side collection | WASM bundling + wasm-pack |
 | Deployment | Separate static file server | Single `dist/` directory |
 | Optimization | Manual configuration | wasm-opt for WASM optimization |
 

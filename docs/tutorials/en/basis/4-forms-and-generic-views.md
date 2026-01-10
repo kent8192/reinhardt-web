@@ -6,18 +6,21 @@ In this tutorial, we'll implement form handling in reinhardt-pages using client-
 
 Unlike traditional server-rendered forms (using templates like Tera), reinhardt-pages handles forms on the client side with WASM components that communicate with server functions.
 
-> **📌 Important Note**: This tutorial demonstrates two approaches to form handling:
+> **📌 Recommended Approach**: This tutorial primarily demonstrates the **`form!` macro** for declarative form handling with automatic features:
 > 
-> 1. **`form!` Macro Approach (Recommended)**: The example implementation in `src/client/components/polls.rs` uses the declarative `form!` macro, which automatically handles:
->    - Form state management with reactive `watch` blocks
->    - Dynamic choices population
->    - Automatic CSRF token injection for POST/PUT/PATCH/DELETE methods
->    - Loading state management
->    - Error display
+> **Why `form!` Macro is Recommended:**
+> - ✅ **Automatic CSRF Protection**: Built-in token injection for POST/PUT/PATCH/DELETE
+> - ✅ **Reactive State Management**: `watch` blocks automatically update UI when form state changes
+> - ✅ **Dynamic Choices**: Runtime population of select/radio options
+> - ✅ **Zero Boilerplate**: Loading states, error handling, and validation built-in
+> - ✅ **Type-Safe**: Compiler ensures field names match form definition
+> - ✅ **Declarative**: Focus on what the form does, not how it works
 > 
-> 2. **Manual Form Handling (Alternative)**: The manual approach documented below provides fine-grained control but requires more boilerplate code.
+> **Alternative: Manual Form Handling**
 > 
-> For most use cases, **we recommend using the `form!` macro** as demonstrated in the actual implementation. See `src/client/components/polls.rs` for a complete example of the `form!` macro pattern with dynamic choices.
+> Manual form handling (using `use_state()` directly) is documented later in this tutorial for advanced use cases requiring fine-grained control. However, for 90% of forms, the `form!` macro provides everything you need with less code.
+> 
+> **Complete Example**: See `src/client/components/polls.rs` for the `form!` macro pattern with dynamic choices and reactive watch blocks.
 
 **Key Concepts:**
 
@@ -116,263 +119,359 @@ let voting_form = form! {
 - **Built-in Loading States**: `form.loading()` and `form.error()` Signals
 - **Type-Safe**: Compiler ensures field names match form definition
 
-For complete implementation, see `examples/local/examples-tutorial-basis/src/client/components/polls.rs`.
+**Callback Patterns:**
 
-## Manual Form Handling (Alternative Approach)
+The `form!` macro supports `on_success` and `on_error` callbacks for handling server function responses:
 
-Let's implement the voting functionality. We already created the form structure in Part 3, but now we'll add proper state management and error handling.
-
-### Update the Detail Page Component
-
-Update `src/client/components/polls.rs` to add comprehensive form handling:
+**on_success**: Invoked when the server function returns `Ok(T)`. Use it for:
+- Client-side navigation after successful submission
+- Displaying success messages
+- Updating related component state
+- Triggering analytics or logging events
 
 ```rust
-// src/client/components/polls.rs
-use reinhardt_pages::prelude::*;
-use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
-use crate::server_fn::polls::{get_question_detail, vote};
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
-
-pub fn polls_detail_page(question_id: i64) -> View {
-	// State management
-	let (question, set_question) = use_state(None::<QuestionInfo>);
-	let (choices, set_choices) = use_state(Vec::<ChoiceInfo>::new());
-	let (loading, set_loading) = use_state(true);
-	let (error, set_error) = use_state(None::<String>);
-
-	// Form state
-	let (selected_choice, set_selected_choice) = use_state(None::<i64>);
-	let (voting, set_voting) = use_state(false);
-	let (form_error, set_form_error) = use_state(None::<String>);
-
-	// Load question and choices on mount
+on_success: |result| {
+	// Navigate to results page
 	#[cfg(target_arch = "wasm32")]
 	{
-		let set_question = set_question.clone();
-		let set_choices = set_choices.clone();
-		let set_loading = set_loading.clone();
-		let set_error = set_error.clone();
-
-		spawn_local(async move {
-			match get_question_detail(question_id).await {
-				Ok((q, c)) => {
-					set_question(Some(q));
-					set_choices(c);
-					set_loading(false);
-				}
-				Err(e) => {
-					set_error(Some(e.to_string()));
-					set_loading(false);
-				}
-			}
-		});
+		if let Some(window) = web_sys::window() {
+			let _ = window.location().set_href(&format!("/polls/{}/results/", question_id));
+		}
 	}
+},
+```
 
-	// Handle choice selection
-	let handle_choice_change = {
-		let set_selected_choice = set_selected_choice.clone();
-		let set_form_error = set_form_error.clone();
+**on_error**: Invoked when the server function returns `Err(ServerFnError)`. Use it for:
+- Custom error logging
+- Analytics tracking for failures
+- Special error handling logic
 
-		move |e: web_sys::Event| {
-			if let Some(target) = e.target() {
-				if let Some(input) = target.dyn_ref::<web_sys::HtmlInputElement>() {
-					if let Ok(choice_id) = input.value().parse::<i64>() {
-						set_selected_choice(Some(choice_id));
-						set_form_error(None); // Clear error when user selects
-					}
+```rust
+on_error: |error| {
+	// Log error to console or analytics service
+	console_log!("Form submission failed: {:?}", error);
+	// Error is automatically set in form.error() Signal
+},
+```
+
+**Note**: If `on_error` is not specified, errors are automatically stored in `form.error()` Signal and can be displayed using `watch` blocks (see `error_display` in the example above).
+
+For complete implementation, see `examples/local/examples-tutorial-basis/src/client/components/polls.rs`.
+
+### Understanding watch Blocks
+
+The `watch` block in `form!` macro creates reactive UI components that automatically update when form state changes. This is similar to React's `useEffect` or Vue's `watch`.
+
+**Key Concepts:**
+
+1. **Reactive Updates**: UI re-renders automatically when referenced Signals change
+2. **Direct Signal Access**: Access form state via `form.loading()`, `form.error()`, `form.{field_name}()`
+3. **Type Safety**: Compiler ensures correct types in watch block closures
+
+**Common Patterns:**
+
+```rust
+watch: {
+	// Pattern 1: Submit button with loading state
+	submit_button: |form| {
+		let is_loading = form.loading().get();
+		page!(|is_loading: bool| {
+			button {
+				type: "submit",
+				class: if is_loading { "btn disabled" } else { "btn btn-primary" },
+				disabled: is_loading,
+				{ if is_loading { "Submitting..." } else { "Submit" } }
+			}
+		})(is_loading)
+	},
+
+	// Pattern 2: Field-specific error display
+	username_error: |form| {
+		let err = form.username_error().get();
+		page!(|err: Option<String>| {
+			watch {
+				if let Some(e) = err.clone() {
+					div { class: "text-danger small mt-1", { e } }
 				}
 			}
-		}
-	};
+		})(err)
+	},
 
-	// Handle form submission
-	let handle_submit = {
-		let selected_choice = selected_choice.clone();
-		let set_voting = set_voting.clone();
-		let set_form_error = set_form_error.clone();
-		let question_id = question_id;
-
-		move |e: web_sys::Event| {
-			e.prevent_default();
-
-			// Client-side validation
-			let selected = selected_choice.get().clone();
-			if selected.is_none() {
-				set_form_error(Some("Please select a choice.".to_string()));
-				return;
-			}
-
-			let choice_id = selected.unwrap();
-			let set_voting = set_voting.clone();
-			let set_form_error = set_form_error.clone();
-
-			// Submit to server
-			#[cfg(target_arch = "wasm32")]
-			spawn_local(async move {
-				set_voting(true);
-
-				match vote(VoteRequest { question_id, choice_id }).await {
-					Ok(_) => {
-						// Navigate to results page
-						if let Some(window) = web_sys::window() {
-							if let Ok(location) = window.location() {
-								let _ = location.set_href(&format!("/polls/{}/results/", question_id));
-							}
-						}
-					}
-					Err(e) => {
-						set_form_error(Some(format!("Vote failed: {}", e)));
-						set_voting(false);
-					}
-				}
-			});
-		}
-	};
-
-	// Get current state for rendering
-	let question_data = question.get();
-	let choices_data = choices.get();
-	let loading_state = loading.get();
-	let error_state = error.get();
-	let form_error_state = form_error.get();
-	let voting_state = voting.get();
-	let selected = selected_choice.get();
-
-	page!(|
-		question_data: Option<QuestionInfo>,
-		choices_data: Vec<ChoiceInfo>,
-		loading_state: bool,
-		error_state: Option<String>,
-		form_error_state: Option<String>,
-		voting_state: bool,
-		selected: Option<i64>,
-		handle_submit: impl Fn(web_sys::Event) + 'static,
-		handle_choice_change: impl Fn(web_sys::Event) + 'static
-	| {
-		div {
-			class: "container mt-5",
-
-			if let Some(ref err) = error_state {
-				div {
-					class: "alert alert-danger",
-					{err}
-				}
-			} else if loading_state {
-				div {
-					class: "spinner-border text-primary",
-					role: "status",
-					span {
-						class: "visually-hidden",
-						"Loading..."
-					}
-				}
-			} else if let Some(ref q) = question_data {
-				div {
-					h1 { class: "mb-4", {&q.question_text} }
-
-					if let Some(ref form_err) = form_error_state {
-						div {
-							class: "alert alert-warning",
-							{form_err}
-						}
-					}
-
-					form {
-						onsubmit: handle_submit,
-
-						div {
-							class: "mb-3",
-							for choice in &choices_data {
-								div {
-									class: "form-check",
-									input {
-										class: "form-check-input",
-										type: "radio",
-										name: "choice",
-										id: format!("choice{}", choice.id),
-										value: choice.id.to_string(),
-										onchange: handle_choice_change.clone(),
-										checked: selected == Some(choice.id)
-									}
-									label {
-										class: "form-check-label",
-										for: format!("choice{}", choice.id),
-										{&choice.choice_text}
-									}
-								}
-							}
-						}
-
-						button {
-							class: "btn btn-primary",
-							type: "submit",
-							disabled: voting_state,
-							if voting_state {
-								"Voting..."
-							} else {
-								"Vote"
-							}
-						}
-
-						" "
-						a {
-							href: format!("/polls/{}/results/", q.id),
-							class: "btn btn-secondary",
-							"View Results"
-						}
-					}
-				}
-			} else {
-				div {
-					class: "alert alert-info",
-					"Question not found"
-				}
-			}
-
+	// Pattern 3: Field validation feedback (real-time)
+	password_strength: |form| {
+		let password = form.password().get();
+		page!(|password: String| {
+			let strength = if password.len() >= 12 { "Strong" }
+				else if password.len() >= 8 { "Medium" }
+				else { "Weak" };
+			let color = if password.len() >= 12 { "text-success" }
+				else if password.len() >= 8 { "text-warning" }
+				else { "text-danger" };
 			div {
-				class: "mt-3",
-				a {
-					href: "/",
-					class: "btn btn-link",
-					"← Back to Polls"
+				class: format!("small mt-1 {}", color),
+				{ format!("Password Strength: {}", strength) }
+			}
+		})(password)
+	},
+
+	// Pattern 4: Conditional field visibility
+	billing_address: |form| {
+		let same_as_shipping = form.same_as_shipping().get();
+		page!(|same_as_shipping: bool| {
+			watch {
+				if !same_as_shipping {
+					div { class: "form-group",
+						label { "Billing Address" }
+						input { type: "text", class: "form-control" }
+					}
 				}
 			}
-		}
-	})(
-		question_data,
-		choices_data,
-		loading_state,
-		error_state,
-		form_error_state,
-		voting_state,
-		selected,
-		handle_submit,
-		handle_choice_change
-	)
+		})(same_as_shipping)
+	},
 }
 ```
 
-**Key Features:**
+**Benefits:**
+- ✅ **No manual DOM manipulation**: Framework handles updates
+- ✅ **Reactive by default**: Changes propagate automatically
+- ✅ **Type-safe**: Compiler catches type mismatches
+- ✅ **Performance**: Only re-renders affected components
 
-1. **Form State Management**:
-   - `selected_choice` - Currently selected radio button
-   - `voting` - Loading state during submission
-   - `form_error` - Client-side validation errors
+### Dynamic Choices Population
 
-2. **Event Handlers**:
-   - `handle_choice_change` - Updates selected choice when user clicks radio button
-   - `handle_submit` - Validates and submits form
+The `form!` macro supports runtime population of select/radio options via the `choices_from` field attribute.
 
-3. **Client-Side Validation**:
-   - Check if a choice is selected before submission
-   - Clear error messages when user interacts with form
+**Workflow:**
 
-4. **Error Display**:
-   - Show form validation errors
-   - Show server errors from failed submissions
-   - Different styling for different error types
+1. Define field with `choices_from` attribute
+2. Form macro generates a `{field_name}_choices()` Signal
+3. Populate choices at runtime using `set()` method
+
+**Complete Example:**
+
+```rust
+// Step 1: Define form with choices_from
+let voting_form = form! {
+	name: VotingForm,
+	server_fn: submit_vote,
+	method: Post,
+
+	fields: {
+		question_id: HiddenField {
+			initial: question_id_str.clone(),
+		},
+		choice_id: ChoiceField {
+			widget: RadioSelect,
+			required,
+			label: "Select your choice",
+			choices_from: "choices",  // Indicates dynamic choices
+			choice_value: "id",        // Which field is the value
+			choice_label: "choice_text", // Which field is the label
+		},
+	},
+
+	watch: {
+		// Display loading state while fetching choices
+		choices_loading: |form| {
+			let choices = form.choice_id_choices().get();
+			page!(|choices: Vec<(String, String)>| {
+				watch {
+					if choices.is_empty() {
+						div { class: "spinner", "Loading choices..." }
+					}
+				}
+			})(choices)
+		},
+	},
+};
+
+// Step 2: Fetch choices from server and populate
+#[cfg(target_arch = "wasm32")]
+{
+	let voting_form = voting_form.clone();
+	spawn_local(async move {
+		match get_question_detail(question_id).await {
+			Ok((question, choices)) => {
+				// Transform server data to (value, label) tuples
+				let choice_options: Vec<(String, String)> = choices
+					.iter()
+					.map(|c| (c.id.to_string(), c.choice_text.clone()))
+					.collect();
+
+				// Populate choices - triggers UI update
+				voting_form.choice_id_choices().set(choice_options);
+			}
+			Err(e) => {
+				// Handle error (e.g., set error Signal)
+				voting_form.error().set(Some(e.to_string()));
+			}
+		}
+	});
+}
+```
+
+**Key Points:**
+
+- **Type**: Choices are `Vec<(String, String)>` where first element is value, second is label
+- **Generated Method**: `{field_name}_choices()` returns a Signal
+- **Reactivity**: UI updates automatically when choices are set
+- **Use Cases**: 
+  - Country/state dropdowns based on user selection
+  - Category filters based on search results
+  - Dynamic form fields based on API responses
+
+**Common Mistake:**
+
+```rust
+// ❌ Don't access choices directly
+let choices = get_choices().await?;
+// This won't update the UI
+
+// ✅ Use the generated Signal setter
+voting_form.choice_id_choices().set(choices);
+// This triggers reactive UI update
+```
+
+## Event Handling Patterns
+
+reinhardt-pages provides two main approaches for handling user interactions and events:
+
+### @-Prefix Handlers (For Non-Form Interactions)
+
+Use @-handlers for direct event bindings outside of forms, such as button clicks, modal toggles, and navigation:
+
+#### Basic Button Click
+
+```rust
+use reinhardt::pages::prelude::*;
+
+page!(|| {
+	button {
+		@click: move |_| {
+			console_log!("Button clicked!");
+		},
+		"Click Me"
+	}
+})
+```
+
+#### Modal Toggle with State
+
+```rust
+use reinhardt::pages::prelude::*;
+use reinhardt::pages::reactive::hooks::use_state;
+
+let (show_modal, set_show_modal) = use_state(false);
+
+page!(|show_modal: Signal<bool>| {
+	button {
+		@click: move |_| {
+			set_show_modal(!show_modal.get());
+		},
+		"Toggle Modal"
+	}
+
+	watch {
+		if show_modal.get() {
+			div {
+				class: "modal",
+				@click: move |_| set_show_modal(false),
+				"Click to close"
+			}
+		}
+	}
+})(show_modal)
+```
+
+**Supported Events**:
+- `@click` - Mouse clicks
+- `@change` - Input value changes
+- `@input` - Input events (as user types)
+- `@submit` - Form submission
+- `@focus`, `@blur` - Focus events
+- `@keydown`, `@keyup` - Keyboard events
+
+### form! watch Blocks (For Form Interactions)
+
+For form-related state and validation, use `form!` watch blocks instead of @-handlers:
+
+```rust
+form! {
+	name: LoginForm,
+	server_fn: login,
+	method: Post,
+
+	fields: {
+		username: CharField { required },
+	},
+
+	watch: {
+		username_feedback: |form| {
+			let value = form.username().get();
+			page!(|value: String| {
+				watch {
+					if value.len() < 3 {
+						div {
+							class: "text-danger",
+							"Username must be at least 3 characters"
+						}
+					}
+				}
+			})(value)
+		},
+	},
+}
+```
+
+**When to Use Which**:
+- ✅ **@-handlers**: Buttons, modals, navigation, custom UI interactions (non-form)
+- ✅ **form! watch**: Input validation, field-dependent UI, form state management
+
+## Choosing Your Approach: form! vs Manual Form Handling
+
+While the `form!` macro is recommended for most use cases, manual form handling provides fine-grained control when you need it.
+
+### When to Use Manual Form Handling
+
+Use manual form handling when you need:
+- Custom state management beyond what `form!` macro provides
+- Integration with external state management libraries
+- Very complex validation logic not supported by standard validators
+- Fine-grained control over every aspect of form behavior
+- Learning how forms work under the hood
+
+### Comparison: form! Macro vs Manual Handling
+
+| Aspect | form! Macro | Manual Handling |
+|--------|-------------|-----------------|
+| **CSRF Protection** | Automatic (POST/PUT/PATCH/DELETE) | Manual implementation required |
+| **State Management** | Built-in `watch` blocks, reactive Signals | Manual `use_state()` for each field |
+| **Boilerplate** | Minimal (declarative) | Extensive (imperative) |
+| **Error Handling** | Built-in `form.error()` Signal | Manual error state management |
+| **Loading States** | Built-in `form.loading()` Signal | Manual loading state tracking |
+| **Validation** | Integrated with server_fn validation | Manual validation implementation |
+| **Type Safety** | Compiler-enforced field names | Manual typing |
+| **Reactivity** | Automatic UI updates | Manual Signal updates |
+| **Recommended for** | Most forms (90% of use cases) | Advanced customization (10% of use cases) |
+
+### Example Use Cases
+
+✅ **Use form! macro for:**
+- Login/registration forms
+- CRUD operations (create, update, delete)
+- Search forms with filters
+- Survey/poll forms
+- Contact forms
+- Any form with standard validation
+
+⚠️ **Consider manual handling for:**
+- Multi-step wizards with complex branching logic
+- Forms with real-time collaborative editing
+- Custom drag-and-drop form builders
+- Forms requiring third-party state management integration
+- Very unusual validation requirements
+
+**For this tutorial, we use the `form!` macro approach**, as it provides the best balance of simplicity and power for most forms. Manual form handling examples are available in the examples directory for advanced use cases.
 
 ## Server-Side Validation and Processing
 
@@ -385,7 +484,7 @@ use crate::shared::types::{ChoiceInfo, VoteRequest};
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::{server_fn, ServerFnError};
 #[cfg(target_arch = "wasm32")]
-use reinhardt_pages::server_fn::{server_fn, ServerFnError};
+use reinhardt::pages::server_fn::{server_fn, ServerFnError};
 
 /// Vote for a choice
 ///
@@ -566,7 +665,7 @@ CSRF tokens are automatically retrieved from multiple sources in the following o
 For advanced use cases where you need manual control over CSRF tokens:
 
 ```rust
-use reinhardt_pages::csrf::{get_csrf_token, csrf_headers};
+use reinhardt::pages::csrf::{get_csrf_token, csrf_headers};
 
 // Get token (tries Cookie → Meta → Input in that order)
 if let Some(token) = get_csrf_token() {
@@ -600,7 +699,7 @@ Extract common loading patterns:
 
 ```rust
 // src/client/components/common.rs
-use reinhardt_pages::prelude::*;
+use reinhardt::pages::prelude::*;
 
 pub fn loading_spinner() -> View {
 	page!(|| {
@@ -656,7 +755,7 @@ Create reusable form field components:
 
 ```rust
 // src/client/components/forms.rs
-use reinhardt_pages::prelude::*;
+use reinhardt::pages::prelude::*;
 
 pub fn radio_choice(
 	id: &str,
@@ -760,7 +859,7 @@ For complex forms, create custom hooks:
 
 ```rust
 // src/client/hooks/form.rs
-use reinhardt_pages::prelude::*;
+use reinhardt::pages::prelude::*;
 
 pub struct FormState<T> {
 	pub value: T,

@@ -98,7 +98,7 @@ Work through the tutorials in order, as each part builds on the previous ones. Y
 
 If you encounter issues while following this tutorial:
 
-- Check the [Reinhardt documentation](../../../README.md)
+- Check the [Reinhardt documentation](../../../../README.md)
 - Review the [Getting Started Guide](../../../GETTING_STARTED.md)
 - Look at the [Feature Flags Guide](../../../FEATURE_FLAGS.md)
 - Examine the individual crate READMEs for detailed information

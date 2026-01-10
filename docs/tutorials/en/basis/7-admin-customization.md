@@ -374,34 +374,110 @@ impl Question {
 }
 ```
 
-## Customizing Admin Templates
+## Customizing Admin with Components
 
-You can override admin templates to change the look and feel. Create custom templates:
+**Note**: reinhardt-pages uses a Component-based approach for admin customization, not Django-style templates.
 
-Create `templates/admin/base_site.html`:
+### Admin Configuration with Code
 
-```html
-{% extends "admin/base.html" %} {% block title %}{{ title }} | Polls Admin{%
-endblock %} {% block branding %}
-<h1 id="site-name">
-  <a href="{% url 'admin:index' %}"> Polls Administration </a>
-</h1>
-{% endblock %} {% block nav-global %}{% endblock %}
+Instead of template files, customize the admin panel using Rust code. Update your admin registration:
+
+```rust
+use reinhardt::admin::{AdminSite, ModelAdmin, AdminConfig};
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
+
+pub struct QuestionAdmin;
+
+impl ModelAdmin for QuestionAdmin {
+    type Model = Question;
+
+    fn list_display(&self) -> Vec<&str> {
+        vec!["question_text", "pub_date", "was_published_recently"]
+    }
+
+    fn list_filter(&self) -> Vec<&str> {
+        vec!["pub_date"]
+    }
+
+    fn search_fields(&self) -> Vec<&str> {
+        vec!["question_text"]
+    }
+
+    // Custom admin panel configuration
+    fn admin_config(&self) -> AdminConfig {
+        AdminConfig::new()
+            .site_title("Polls Administration")
+            .site_header("Polls Admin Panel")
+            .site_description("Manage your polls and choices")
+    }
+}
 ```
 
-This customizes the admin site header.
+### Custom Admin Components
 
-## Customizing the Index Page
+For advanced customization, create custom components:
 
-Create `templates/admin/index.html` to customize the admin home page:
+```rust
+use reinhardt::pages::admin::AdminPanel;
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
 
-```html
-{% extends "admin/index.html" %} {% block content %}
-<h2>Welcome to the Polls Administration</h2>
-<p>Use the sidebar to manage polls and choices.</p>
-
-{{ block.super }} {% endblock %}
+pub fn custom_admin_index() -> View {
+    page!(|| {
+        div {
+            class: "admin-dashboard",
+            div {
+                class: "welcome-banner bg-blue-50 p-6 rounded-lg mb-6",
+                h1 {
+                    class: "text-2xl font-bold mb-2",
+                    "Welcome to Polls Administration"
+                }
+                p {
+                    class: "text-gray-700",
+                    "Use the sidebar to manage polls and choices."
+                }
+            }
+            // Render default admin panel
+            { AdminPanel::default_view() }
+        }
+    })()
+}
 ```
+
+### Styling the Admin Panel
+
+Use UnoCSS classes to style admin components:
+
+```rust
+impl ModelAdmin for QuestionAdmin {
+    // ... other methods ...
+
+    fn custom_list_styles(&self) -> &str {
+        "card card-body shadow-lg"
+    }
+
+    fn custom_form_styles(&self) -> &str {
+        "space-y-4 p-6 bg-white rounded-xl"
+    }
+}
+```
+
+**Key Differences from Template-Based Customization:**
+
+| Aspect | Django Templates | reinhardt-pages |
+|--------|------------------|-----------------|
+| **Configuration** | HTML template files | Rust code with `AdminConfig` |
+| **Styling** | Template syntax (`{% block %}`) | Component functions with `page!` |
+| **Type Safety** | Runtime template errors | Compile-time type checking |
+| **Reusability** | Template inheritance | Component composition |
+
+### Why Component-Based?
+
+- **Type safety** - Compiler catches errors at build time
+- **Refactoring** - IDEs can help rename and restructure
+- **Composition** - Easy to build complex UIs from simple components
+- **Consistency** - Same patterns as the rest of your reinhardt-pages app
 
 ## Admin Actions
 

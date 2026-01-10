@@ -634,58 +634,222 @@ async fn index(
 - **Testable** - Easy to mock dependencies in tests
 - **Flexible** - Support for both cached and non-cached dependencies
 
-For more details on dependency injection, see the [Dependency Injection Guide](../../di/README.md).
+For HTTP method decorators with dependency injection, see the [REST API Tutorial - Dependency Injection](../rest/0-http-macros.md#dependency-injection-with-inject).
 
-## Using the ORM in Views
+## Using the ORM in Server Functions
 
-Now that we have models, let's use them in views. Update `polls/views.rs`:
+Now that we have models, let's use them in server functions to fetch data for our components.
+
+### Define Shared Types
+
+First, create data transfer objects (DTOs) in `src/shared/types.rs`:
 
 ```rust
-use reinhardt::prelude::*;
-use reinhardt::get;
-use reinhardt::di::Depends;
-use reinhardt::db::backends::DatabaseConnection;
-use std::sync::Arc;
-use crate::models::Question;
+use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
-#[get("/", name = "index")]
-pub async fn index(
-    #[inject] conn: Arc<DatabaseConnection>,
-) -> Result<Response> {
-    let questions = Question::all(&conn).await?;
-
-    Response::ok()
-        .with_json(&questions)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionInfo {
+    pub id: i64,
+    pub question_text: String,
+    pub pub_date: DateTime<Utc>,
 }
 
-#[get("/:id", name = "detail")]
-pub async fn detail(
-    request: Request,
-    #[inject] conn: Arc<DatabaseConnection>,
-) -> Result<Response> {
-    let question_id: i64 = request.path_params
-        .get("question_id")
-        .ok_or("Missing question_id")?
-        .parse()?;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChoiceInfo {
+    pub id: i64,
+    pub question_id: i64,
+    pub choice_text: String,
+    pub votes: i32,
+}
 
-    let question = Question::get(&conn, question_id)
-        .await?
-        .ok_or("Question not found")?;
+// Server-side conversion (NOT available in WASM)
+#[cfg(native)]
+impl From<crate::apps::polls::models::Question> for QuestionInfo {
+    fn from(q: crate::apps::polls::models::Question) -> Self {
+        Self {
+            id: q.id,
+            question_text: q.question_text,
+            pub_date: q.pub_date,
+        }
+    }
+}
 
-    let choices = question.choices(&conn).await?;
-
-    let data = serde_json::json!({
-        "question": question,
-        "choices": choices,
-    });
-
-    Response::ok()
-        .with_json(&data)
+#[cfg(native)]
+impl From<crate::apps::polls::models::Choice> for ChoiceInfo {
+    fn from(c: crate::apps::polls::models::Choice) -> Self {
+        Self {
+            id: c.id,
+            question_id: c.question_id(),
+            choice_text: c.choice_text,
+            votes: c.votes,
+        }
+    }
 }
 ```
 
-The `#[inject]` attribute automatically provides the database connection from
-the application's dependency injection container.
+**Why DTOs?**
+
+- **Separation** - Models contain database logic, DTOs are pure data
+- **Serialization** - DTOs are designed for JSON serialization
+- **WASM compatibility** - DTOs work in both server and client code
+- **Flexibility** - Can reshape data for specific use cases
+
+### Create Server Functions
+
+Create `src/server_fn/polls.rs`:
+
+```rust
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use crate::shared::types::{QuestionInfo, ChoiceInfo};
+
+/// Get all questions
+#[server_fn(use_inject = true)]
+pub async fn get_questions(
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
+    use crate::apps::polls::models::Question;
+    use reinhardt::Model;
+
+    let questions = Question::objects()
+        .all()
+        .all()
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    Ok(questions.into_iter()
+        .map(QuestionInfo::from)
+        .collect())
+}
+
+/// Get question detail with choices
+#[server_fn(use_inject = true)]
+pub async fn get_question_detail(
+    question_id: i64,
+    #[inject] _db: reinhardt::DatabaseConnection,
+) -> Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
+    use crate::apps::polls::models::{Question, Choice};
+    use reinhardt::Model;
+
+    // Get question
+    let question = Question::objects()
+        .get(question_id)
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    // Get choices for this question
+    let choices = Choice::objects()
+        .filter(Choice::field_question().eq(question_id))
+        .all()
+        .await
+        .map_err(|e| ServerFnError::application(e.to_string()))?;
+
+    Ok((
+        QuestionInfo::from(question),
+        choices.into_iter().map(ChoiceInfo::from).collect()
+    ))
+}
+```
+
+**Key features:**
+
+- `#[server_fn(use_inject = true)]` - Enables dependency injection
+- `#[inject] _db: reinhardt::DatabaseConnection` - Auto-injected database connection
+- `Result<T, ServerFnError>` - Required return type for server functions
+- Type conversion (`QuestionInfo::from(question)`) - Convert models to DTOs
+
+### Use in Components
+
+Now use these server functions in components. Update `src/client/components/polls.rs`:
+
+```rust
+use reinhardt::pages::component::View;
+use reinhardt::pages::page;
+use reinhardt::pages::reactive::hooks::use_state;
+use reinhardt::pages::Signal;
+use crate::shared::types::{QuestionInfo, ChoiceInfo};
+
+#[cfg(wasm)]
+use {
+    crate::server_fn::polls::{get_questions, get_question_detail},
+    wasm_bindgen_futures::spawn_local,
+};
+
+pub fn polls_index() -> View {
+    let (questions, set_questions) = use_state(Vec::<QuestionInfo>::new());
+    let (loading, set_loading) = use_state(true);
+
+    #[cfg(wasm)]
+    {
+        let set_questions = set_questions.clone();
+        let set_loading = set_loading.clone();
+
+        spawn_local(async move {
+            match get_questions().await {
+                Ok(qs) => {
+                    set_questions(qs);
+                    set_loading(false);
+                }
+                Err(e) => {
+                    log::error!("Failed to load questions: {}", e);
+                    set_loading(false);
+                }
+            }
+        });
+    }
+
+    let questions_signal = questions.clone();
+    let loading_signal = loading.clone();
+
+    page!(|questions_signal: Signal<Vec<QuestionInfo>>, loading_signal: Signal<bool>| {
+        div {
+            class: "max-w-4xl mx-auto px-4 mt-12",
+            h1 {
+                class: "text-3xl font-bold mb-6",
+                "Polls"
+            }
+            watch {
+                if loading_signal.get() {
+                    div { "Loading..." }
+                } else {
+                    div {
+                        class: "space-y-2",
+                        // Render questions list
+                        // (see examples-tutorial-basis for complete implementation)
+                    }
+                }
+            }
+        }
+    })(questions_signal, loading_signal)
+}
+```
+
+### How It Works
+
+**Data Flow:**
+
+```
+Component Mount
+    ↓
+spawn_local(async { get_questions().await })
+    ↓
+HTTP POST to server function endpoint
+    ↓
+Server executes with injected DB connection
+    ↓
+Query database → Convert to DTOs → Return JSON
+    ↓
+Client deserializes JSON → Update signal
+    ↓
+Component re-renders with new data
+```
+
+**Benefits:**
+
+- **Type safety** - Compiler checks types across client/server boundary
+- **No manual API** - Server functions generate endpoints automatically
+- **Automatic serialization** - No need to manually convert to/from JSON
+- **Dependency injection** - Database connection injected automatically
 
 ## Introduction to the Reinhardt Admin
 
