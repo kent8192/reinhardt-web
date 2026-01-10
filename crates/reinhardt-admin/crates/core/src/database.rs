@@ -232,8 +232,7 @@ fn build_composite_filter_condition_with_depth(
 			}
 			let mut and_condition = Condition::all();
 			for cond in conditions {
-				if let Some(sub_cond) =
-					build_composite_filter_condition_with_depth(cond, depth + 1)
+				if let Some(sub_cond) = build_composite_filter_condition_with_depth(cond, depth + 1)
 				{
 					and_condition = and_condition.add(sub_cond);
 				}
@@ -246,16 +245,17 @@ fn build_composite_filter_condition_with_depth(
 			}
 			let mut or_condition = Condition::any();
 			for cond in conditions {
-				if let Some(sub_cond) =
-					build_composite_filter_condition_with_depth(cond, depth + 1)
+				if let Some(sub_cond) = build_composite_filter_condition_with_depth(cond, depth + 1)
 				{
 					or_condition = or_condition.add(sub_cond);
 				}
 			}
 			Some(or_condition)
 		}
-		FilterCondition::Not(inner) => build_composite_filter_condition_with_depth(inner, depth + 1)
-			.map(|inner_cond| inner_cond.not()),
+		FilterCondition::Not(inner) => {
+			build_composite_filter_condition_with_depth(inner, depth + 1)
+				.map(|inner_cond| inner_cond.not())
+		}
 	}
 }
 
