@@ -214,16 +214,80 @@ cargo test test_snippet_model
 cargo test -- --nocapture
 ```
 
+## ViewSets (Tutorial 6)
+
+This example demonstrates both function-based views (Tutorial 1-5) and ViewSet-based views (Tutorial 6).
+
+### Switching Between Approaches
+
+You can switch between the two approaches using the `USE_VIEWSET` environment variable:
+
+```bash
+# Function-based views (default) - Tutorial 1-5 approach
+cargo run --bin manage runserver
+# Visit http://127.0.0.1:8000/api/snippets/
+
+# ViewSet-based views - Tutorial 6 approach
+USE_VIEWSET=1 cargo run --bin manage runserver
+# Visit http://127.0.0.1:8000/api/snippets-viewset/
+```
+
+### Comparison
+
+| Approach | Code Lines | Features |
+|----------|------------|----------|
+| Function-based (Tutorial 1-5) | ~200 lines | Full control, explicit implementation |
+| ViewSet-based (Tutorial 6) | ~15 lines | CRUD automation, pagination, filtering, ordering |
+
+### ViewSet Features
+
+The ViewSet implementation provides:
+
+- **Automatic CRUD operations**: list, create, retrieve, update, delete
+- **Pagination**: `?page=1&page_size=10` (10 items per page, max 100)
+- **Filtering**: `?language=rust&title=hello` (filter by language and title fields)
+- **Ordering**: `?ordering=created_at,-title` (order by created_at ascending, title descending)
+
+### Testing ViewSet Features
+
+```bash
+# List with pagination
+curl "http://127.0.0.1:8000/api/snippets-viewset/?page=1&page_size=10"
+
+# Filter by language
+curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust"
+
+# Order by created_at (descending)
+curl "http://127.0.0.1:8000/api/snippets-viewset/?ordering=-created_at"
+
+# Combine: Filter + Order + Paginate
+curl "http://127.0.0.1:8000/api/snippets-viewset/?language=rust&ordering=-title&page=1&page_size=5"
+```
+
+### When to Use Each Approach
+
+**Function-based views (Tutorial 1-5)**:
+- Simple endpoints with custom logic
+- Non-standard RESTful patterns
+- When you need fine-grained control
+- Learning HTTP handling basics
+
+**ViewSet-based views (Tutorial 6)**:
+- Standard RESTful CRUD APIs
+- When pagination, filtering, and ordering are needed
+- Rapid API development
+- When code conciseness is important
+
 ## Next Steps
 
 After understanding this example:
 
-1. **Add database integration**: Implement actual database storage
-2. **Add authentication**: Implement JWT/Token/Session auth
-3. **Create ViewSets**: Use ModelViewSet for automatic CRUD
-4. **Add permissions**: Implement permission classes
-5. **Add pagination**: Implement pagination for list views
-6. **Add filtering**: Implement SearchFilter and OrderingFilter
+1. **Compare both approaches**: Try switching between function-based and ViewSet-based
+2. **Understand the trade-offs**: When to use each approach (see above)
+3. **Add custom actions**: Extend ViewSets with `#[action]` decorator for non-CRUD endpoints
+4. **Add database integration**: Implement actual database storage instead of in-memory sample data
+5. **Add authentication**: Implement JWT/Token/Session auth for both approaches
+6. **Add permissions**: Implement permission classes to control access
 
 ## Related Documentation
 

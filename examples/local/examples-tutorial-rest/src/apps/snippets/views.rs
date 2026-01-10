@@ -200,3 +200,43 @@ pub async fn delete(Path(snippet_id): Path<i64>) -> ViewResult<Response> {
 	// Return 204 No Content for successful deletion
 	Ok(Response::new(StatusCode::NO_CONTENT))
 }
+
+// ============================================================================
+// ViewSet Implementation (Tutorial 6)
+// ============================================================================
+
+/// SnippetViewSet - ViewSet-based approach for managing snippets
+///
+/// This demonstrates the ViewSet pattern from Tutorial 6, which provides:
+/// - Automatic CRUD operations (list, create, retrieve, update, delete)
+/// - Built-in pagination support
+/// - Built-in filtering and ordering
+/// - Significantly less code compared to function-based views above
+///
+/// Compare this implementation (~15 lines) with the function-based views above (~200 lines)
+/// for the same functionality!
+pub struct SnippetViewSet;
+
+impl SnippetViewSet {
+	/// Create a new SnippetViewSet with full configuration
+	///
+	/// Features enabled:
+	/// - Pagination: 10 items per page (max 100)
+	/// - Filtering: by language and title fields
+	/// - Ordering: by created_at and title fields
+	pub fn new() -> reinhardt::ModelViewSet<Snippet, SnippetSerializer> {
+		use reinhardt::ModelViewSet;
+		use reinhardt::views::viewsets::{FilterConfig, OrderingConfig, PaginationConfig};
+
+		ModelViewSet::new("snippet")
+			.with_pagination(PaginationConfig::page_number(10, Some(100)))
+			.with_filters(
+				FilterConfig::new()
+					.with_filterable_fields(vec!["language".to_string(), "title".to_string()]),
+			)
+			.with_ordering(
+				OrderingConfig::new()
+					.with_ordering_fields(vec!["created_at".to_string(), "title".to_string()]),
+			)
+	}
+}
