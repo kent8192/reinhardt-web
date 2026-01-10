@@ -9,7 +9,9 @@
 #![cfg(test)]
 
 use reinhardt_db::prelude::{Filter, FilterOperator, FilterValue};
-use reinhardt_test::fixtures::{AdminTableCreator, ColumnDefinition, FieldType, Operation, admin_table_creator};
+use reinhardt_test::fixtures::{
+	AdminTableCreator, ColumnDefinition, FieldType, Operation, admin_table_creator,
+};
 use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
