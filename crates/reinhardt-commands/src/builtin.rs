@@ -166,7 +166,7 @@ impl BaseCommand for MigrateCommand {
 				migrations_to_apply.len()
 			));
 
-			// 6. Apply migrations (or fake them)
+			// 6. Apply migrations (or fake them
 			if is_fake {
 				ctx.info("Faking migrations (marking as applied without execution):");
 
