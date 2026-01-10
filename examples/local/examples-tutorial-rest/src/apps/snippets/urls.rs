@@ -28,8 +28,7 @@ pub fn url_patterns() -> UnifiedRouter {
 		// - ?page=1&page_size=10                  - Pagination
 		// - ?language=rust&title=hello            - Filtering
 		// - ?ordering=created_at,-title           - Ordering (- for descending)
-		UnifiedRouter::new()
-			.viewset("/snippets-viewset", views::SnippetViewSet::new())
+		UnifiedRouter::new().viewset("/snippets-viewset", views::SnippetViewSet::new())
 	} else {
 		// Option 1: Function-based approach (Tutorial 1-5)
 		// Explicitly register each endpoint
