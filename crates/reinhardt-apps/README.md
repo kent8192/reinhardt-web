@@ -10,17 +10,19 @@ Application configuration and registry for Reinhardt framework.
 - App-specific configuration
 - Integration with migrations, admin panel, and other framework features
 
+**Important Note:** Unlike Django, `installed_apps!` in Reinhardt is for **user applications only**. Built-in framework features (auth, sessions, admin, etc.) are enabled via Cargo feature flags, not through `installed_apps!`.
+
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["apps"] }
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["apps"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }      # All features
+# reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["full"] }      # All features
 ```
 
 Then import app features:
@@ -39,17 +41,29 @@ Define installed apps using the `installed_apps!` macro:
 use reinhardt::apps::installed_apps;
 
 installed_apps! {
-	auth: "reinhardt.contrib.auth",
-	contenttypes: "reinhardt.contrib.contenttypes",
-	sessions: "reinhardt.contrib.sessions",
-	myapp: "myapp",
+	users: "users",
+	posts: "posts",
 }
 ```
 
-This generates:
-- `InstalledApp` enum with variants for each app
-- Conversion traits (`From`, `Into`, `Display`)
-- App registry for framework integration
+**For built-in framework features, use Cargo feature flags:**
+
+```toml
+[dependencies]
+reinhardt = {
+	version = "0.1.0-alpha.1",
+	package = "reinhardt-web",
+	features = ["auth", "sessions", "admin"]
+}
+```
+
+Then import them directly in your code:
+
+```rust
+use reinhardt::auth::*;
+use reinhardt::auth::sessions::*;
+use reinhardt::admin::*;
+```
 
 ## What the Macro Generates
 
@@ -59,20 +73,16 @@ The `installed_apps!` macro automatically generates:
 // Generated enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InstalledApp {
-	Auth,
-	Contenttypes,
-	Sessions,
-	Myapp,
+	Users,
+	Posts,
 }
 
 // Display implementation
 impl std::fmt::Display for InstalledApp {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Auth => write!(f, "reinhardt.contrib.auth"),
-			Self::Contenttypes => write!(f, "reinhardt.contrib.contenttypes"),
-			Self::Sessions => write!(f, "reinhardt.contrib.sessions"),
-			Self::Myapp => write!(f, "myapp"),
+			Self::Users => write!(f, "users"),
+			Self::Posts => write!(f, "posts"),
 		}
 	}
 }
@@ -81,10 +91,8 @@ impl std::fmt::Display for InstalledApp {
 impl InstalledApp {
 	pub fn all_apps() -> Vec<String> {
 		vec![
-			"reinhardt.contrib.auth".to_string(),
-			"reinhardt.contrib.contenttypes".to_string(),
-			"reinhardt.contrib.sessions".to_string(),
-			"myapp".to_string(),
+			"users".to_string(),
+			"posts".to_string(),
 		]
 	}
 }
@@ -98,8 +106,8 @@ Use the generated enum for type-safe app references:
 
 ```rust
 // Type-safe reference
-let app = InstalledApp::Myapp;
-println!("App path: {}", app);  // "myapp"
+let app = InstalledApp::Users;
+println!("App path: {}", app);  // "users"
 
 // List all apps
 let all = InstalledApp::all_apps();
@@ -123,14 +131,6 @@ The `installed_apps!` macro integrates with:
 use reinhardt::apps::installed_apps;
 
 installed_apps! {
-	// Framework apps
-	auth: "reinhardt.contrib.auth",
-	contenttypes: "reinhardt.contrib.contenttypes",
-	sessions: "reinhardt.contrib.sessions",
-	messages: "reinhardt.contrib.messages",
-	static_files: "reinhardt.contrib.static",
-
-	// Your apps
 	users: "users",
 	posts: "posts",
 }
@@ -140,20 +140,18 @@ pub fn get_installed_apps() -> Vec<String> {
 }
 ```
 
-## App Naming Conventions
+**Framework features are enabled separately via Cargo.toml:**
 
-### Framework Apps
-
-Framework-provided apps use the `reinhardt.contrib.*` namespace:
-
-```rust
-auth: "reinhardt.contrib.auth",
-contenttypes: "reinhardt.contrib.contenttypes",
-sessions: "reinhardt.contrib.sessions",
-messages: "reinhardt.contrib.messages",
-static_files: "reinhardt.contrib.static",
-admin: "reinhardt.contrib.admin",
+```toml
+[dependencies]
+reinhardt = {
+	version = "0.1.0-alpha.1",
+	package = "reinhardt-web",
+	features = ["auth", "sessions", "admin", "static-files"]
+}
 ```
+
+## App Naming Conventions
 
 ### User Apps
 
@@ -165,25 +163,39 @@ blog: "blog",
 api: "api",
 ```
 
+### Framework Features (NOT via installed_apps!)
+
+Framework features are enabled via Cargo feature flags:
+
+| Feature | Cargo.toml | Import |
+|---------|------------|--------|
+| Authentication | `features = ["auth"]` | `use reinhardt::auth::*;` |
+| Admin Panel | `features = ["admin"]` | `use reinhardt::admin::*;` |
+| Sessions | `features = ["sessions"]` | `use reinhardt::auth::sessions::*;` |
+| Static Files | `features = ["static-files"]` | `use reinhardt::staticfiles::*;` |
+| Database | `features = ["database"]` | `use reinhardt::db::*;` |
+
 ## Compile-time Validation
 
 The macro performs compile-time validation:
 
-- **Path Format**: Validates `reinhardt.contrib.*` format for framework apps
-- **Module Existence**: Checks that `reinhardt.contrib.*` modules exist
+- **Path Format**: Validates module path format
+- **Module Existence**: Checks that `reinhardt.*` modules exist (for framework references)
 - **Unique Names**: Ensures app names are unique
 
 ```rust
-// Compile error: Invalid path format
+// Valid: User app
 installed_apps! {
-	bad: "invalid.path.format",  // ❌ Error
+	users: "users",  // ✅ OK
 }
 
-// Compile error: Non-existent framework module
+// Invalid: Non-existent framework module
 installed_apps! {
-	nonexistent: "reinhardt.contrib.nonexistent",  // ❌ Error
+	nonexistent: "reinhardt.nonexistent",  // ❌ Compile error
 }
 ```
+
+**Note:** If you see compile errors about missing `reinhardt.contrib.*` modules, this is because those modules don't exist. Use Cargo feature flags instead (see above).
 
 ## Example Project Structure
 
@@ -211,14 +223,22 @@ my-project/
 use reinhardt::apps::installed_apps;
 
 installed_apps! {
-	auth: "reinhardt.contrib.auth",
-	contenttypes: "reinhardt.contrib.contenttypes",
 	users: "users",
 	posts: "posts",
 }
 
 pub fn get_installed_apps() -> Vec<String> {
 	InstalledApp::all_apps()
+}
+```
+
+```toml
+# Cargo.toml
+[dependencies]
+reinhardt = {
+	version = "0.1.0-alpha.1",
+	package = "reinhardt-web",
+	features = ["auth", "sessions", "database"]
 }
 ```
 
@@ -257,6 +277,38 @@ pub fn get_settings() -> Settings {
 		.build()
 }
 ```
+
+## Migrating from Django
+
+If you're familiar with Django's `INSTALLED_APPS`, here are the key differences:
+
+**Django (Python):**
+```python
+INSTALLED_APPS = [
+	'django.contrib.auth',      # Framework feature
+	'django.contrib.admin',     # Framework feature
+	'users',                    # User app
+]
+```
+
+**Reinhardt (Rust):**
+```toml
+# Cargo.toml
+[dependencies]
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["auth", "admin"] }
+```
+
+```rust
+// src/config/apps.rs
+installed_apps! {
+	users: "users",  // User apps only
+}
+```
+
+**Why the difference?**
+- ✅ **Compile-time optimization**: Unused features are not compiled
+- ✅ **Smaller binaries**: Only include what you need
+- ✅ **Type safety**: Features are validated at compile time
 
 ## License
 

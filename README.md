@@ -559,14 +559,19 @@ use reinhardt::installed_apps;
 // - Implementation of conversion traits (From, Into, Display)
 // - A registry for app configuration and discovery
 //
-// This is equivalent to Django's INSTALLED_APPS setting and enables:
+// Note: Unlike Django's INSTALLED_APPS, this macro is for user apps only.
+// Built-in framework features (auth, sessions, admin, etc.) are enabled via
+// Cargo feature flags, not through installed_apps!.
+//
+// Example:
+// [dependencies]
+// reinhardt = { version = "0.1", features = ["auth", "sessions", "admin"] }
+//
+// This enables:
 // - Automatic app discovery for migrations, admin panel, etc.
 // - Type-safe app references throughout your code
 // - Centralized app configuration
 installed_apps! {
-	auth: "reinhardt.contrib.auth",
-	contenttypes: "reinhardt.contrib.contenttypes",
-	sessions: "reinhardt.contrib.sessions",
 	users: "users",
 }
 

@@ -136,16 +136,90 @@ pub fn permission_required(args: TokenStream, input: TokenStream) -> TokenStream
 		.into()
 }
 
-/// Define installed applications with compile-time validation
+/// Defines installed applications with compile-time validation.
 ///
-/// This macro creates a type-safe list of installed applications and validates
-/// that referenced applications exist at compile time.
+/// Generates an `InstalledApp` enum with variants for each application,
+/// along with `Display`, `FromStr` traits and helper methods.
+///
+/// **Important**: This macro is for **user applications only**. Built-in framework features
+/// (auth, sessions, admin, etc.) are enabled via Cargo feature flags, not through `installed_apps!`.
+///
+/// # Generated Code
+///
+/// The macro generates:
+///
+/// - `enum InstalledApp { ... }` - Type-safe app references with variants for each app
+/// - `impl Display` - Convert enum variants to path strings
+/// - `impl FromStr` - Parse path strings to enum variants
+/// - `fn all_apps() -> Vec<String>` - List all app paths as strings
+/// - `fn path(&self) -> &'static str` - Get app path without allocation
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt::installed_apps;
+///
+/// installed_apps! {
+///     users: "users",
+///     posts: "posts",
+/// }
+///
+/// // Use generated enum
+/// let app = InstalledApp::users;
+/// println!("{}", app);  // Output: "users"
+///
+/// // Get all apps
+/// let all = InstalledApp::all_apps();
+/// assert_eq!(all, vec!["users".to_string(), "posts".to_string()]);
+///
+/// // Parse from string
+/// use std::str::FromStr;
+/// let app = InstalledApp::from_str("users")?;
+/// assert_eq!(app, InstalledApp::users);
+///
+/// // Get path without allocation
+/// assert_eq!(app.path(), "users");
+/// ```
 ///
 /// # Compile-time Validation
 ///
-/// The macro will fail to compile if:
-/// - A referenced `reinhardt.contrib.*` module doesn't exist
-/// - The app path syntax is invalid
+/// Framework modules (starting with `reinhardt.`) are validated at compile time.
+/// Non-existent modules will cause compilation errors:
+///
+/// ```rust,ignore
+/// installed_apps! {
+///     nonexistent: "reinhardt.contrib.nonexistent",
+/// }
+/// // Compile error: cannot find module `nonexistent` in `contrib`
+/// ```
+///
+/// User apps (not starting with `reinhardt.`) skip compile-time validation,
+/// allowing flexible user-defined application names.
+///
+/// # Framework Features
+///
+/// **Do NOT use this macro for built-in framework features.** Instead, enable them
+/// via Cargo feature flags:
+///
+/// ```toml
+/// [dependencies]
+/// reinhardt = { version = "0.1.0-alpha.1", features = ["auth", "sessions", "admin"] }
+/// ```
+///
+/// Then import them directly:
+///
+/// ```rust,ignore
+/// use reinhardt::auth::*;
+/// use reinhardt::auth::sessions::*;
+/// use reinhardt::admin::*;
+/// ```
+///
+/// # See Also
+///
+/// - Module documentation in `installed_apps.rs` for detailed information about
+///   generated code structure, trait implementations, and advanced usage
+/// - `crates/reinhardt-apps/README.md` for comprehensive usage guide
+/// - Tutorial: `docs/tutorials/en/basis/1-project-setup.md`
 ///
 #[proc_macro]
 pub fn installed_apps(input: TokenStream) -> TokenStream {

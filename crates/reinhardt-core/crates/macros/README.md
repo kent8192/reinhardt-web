@@ -145,9 +145,10 @@ Provides compile-time code generation for common patterns.
 - **`installed_apps!`** - Define installed applications
   - Compile-time validation of application paths
   - Type-safe enum generation for all installed apps
-  - Validates `reinhardt.contrib.*` modules exist
+  - Validates `reinhardt.*` module paths at compile time
   - Generates `Display` and `FromStr` implementations
-  - Example: `installed_apps! { auth: "reinhardt.contrib.auth", }`
+  - Example: `installed_apps! { polls: "polls", }` (user apps only)
+  - Note: Built-in framework features are enabled via Cargo feature flags, not `installed_apps!`
 
 #### URL Pattern Validation
 
