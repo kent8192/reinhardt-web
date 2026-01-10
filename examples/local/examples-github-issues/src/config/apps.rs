@@ -5,19 +5,16 @@
 use reinhardt::installed_apps;
 
 // Define installed applications with compile-time validation
-// The macro will fail to compile if any referenced reinhardt.contrib.* app doesn't exist
+// Note: Framework features (auth, sessions, REST API) are enabled via Cargo.toml feature flags.
+// Only register application-specific apps here.
 installed_apps! {
-	// Reinhardt contrib apps
-	reinhardt_auth: "reinhardt.contrib.auth",
-	contenttypes: "reinhardt.contrib.contenttypes",
-	sessions: "reinhardt.contrib.sessions",
-	drf: "reinhardt.drf",
-
-	// Custom apps
 	auth: "auth",
 	projects: "projects",
 	issues: "issues",
 }
+
+// Framework features are enabled in Cargo.toml:
+// reinhardt = { features = ["auth", "sessions", "rest", ...] }
 
 /// Get the list of installed applications
 pub fn get_installed_apps() -> Vec<String> {
