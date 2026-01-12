@@ -109,6 +109,7 @@ pub mod reinhardt_pages {
 
 #[doc(hidden)]
 pub mod reinhardt_types {
+	#[allow(unused_imports, unreachable_pub)]
 	pub use reinhardt_types::*;
 }
 
