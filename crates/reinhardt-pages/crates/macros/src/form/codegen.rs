@@ -544,23 +544,22 @@ fn generate_metadata_function(
 	pages_crate: &TokenStream,
 ) -> TokenStream {
 	// Generate form ID from struct name (convert to kebab-case)
-	let form_id_str = format!(
-		"{}-form",
-		macro_ast
-			.name
-			.to_string()
-			.chars()
-			.enumerate()
-			.flat_map(|(i, c)| {
-				if c.is_uppercase() && i > 0 {
-					vec!['-', c.to_ascii_lowercase()]
-				} else {
-					vec![c.to_ascii_lowercase()]
-				}
-			})
-			.collect::<String>()
-			.replace('_', "-")
-	);
+	// Generate form ID from struct name (convert to kebab-case)
+	// Example: RegisterForm -> register-form, LoginForm -> login-form
+	let form_id_str = macro_ast
+		.name
+		.to_string()
+		.chars()
+		.enumerate()
+		.flat_map(|(i, c)| {
+			if c.is_uppercase() && i > 0 {
+				vec!['-', c.to_ascii_lowercase()]
+			} else {
+				vec![c.to_ascii_lowercase()]
+			}
+		})
+		.collect::<String>()
+		.replace('_', "-");
 
 	let action_str = match &macro_ast.action {
 		TypedFormAction::Url(url) => url.clone(),
@@ -671,23 +670,22 @@ fn generate_into_view(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) -> 
 /// When a form has a server_fn action, this generates an onsubmit event handler
 /// that prevents default form submission and calls the server function instead.
 fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStream) -> TokenStream {
-	let form_id_str = format!(
-		"{}-form",
-		macro_ast
-			.name
-			.to_string()
-			.chars()
-			.enumerate()
-			.flat_map(|(i, c)| {
-				if c.is_uppercase() && i > 0 {
-					vec!['-', c.to_ascii_lowercase()]
-				} else {
-					vec![c.to_ascii_lowercase()]
-				}
-			})
-			.collect::<String>()
-			.replace('_', "-")
-	);
+	// Generate form ID from struct name (convert to kebab-case)
+	// Example: RegisterForm -> register-form, LoginForm -> login-form
+	let form_id_str = macro_ast
+		.name
+		.to_string()
+		.chars()
+		.enumerate()
+		.flat_map(|(i, c)| {
+			if c.is_uppercase() && i > 0 {
+				vec!['-', c.to_ascii_lowercase()]
+			} else {
+				vec![c.to_ascii_lowercase()]
+			}
+		})
+		.collect::<String>()
+		.replace('_', "-");
 
 	let action_str = match &macro_ast.action {
 		TypedFormAction::Url(url) => url.clone(),
@@ -893,7 +891,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								// Clone loading/error signals for async block if they exist
 								#async_signal_clones
 
-								wasm_bindgen_futures::spawn_local(async move {
+								#pages_crate::spawn::spawn_task(async move {
 									match #server_fn_ident(#(#field_names),*).await {
 										Ok(_value) => {
 											#on_success_code
