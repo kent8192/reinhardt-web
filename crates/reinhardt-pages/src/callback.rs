@@ -27,9 +27,12 @@
 //! })
 //! ```
 
+use std::future::Future;
 use std::sync::Arc;
 
 use crate::component::ViewEventHandler;
+#[cfg(target_arch = "wasm32")]
+use crate::spawn::spawn_task;
 
 #[cfg(target_arch = "wasm32")]
 type EventArg = web_sys::Event;
@@ -273,6 +276,52 @@ pub fn event_handler(
 	f: impl Fn(crate::component::DummyEvent) + Send + Sync + 'static,
 ) -> ViewEventHandler {
 	Arc::new(f)
+}
+
+/// Creates an async event handler that automatically spawns the future.
+///
+/// This function wraps an async closure in a synchronous event handler that
+/// calls `spawn_task` to execute the async task. This eliminates the need
+/// for users to manually call `spawn_local` in their event handlers.
+///
+/// # Example (WASM)
+///
+/// ```ignore
+/// use reinhardt_pages::callback::async_handler;
+///
+/// let handler = async_handler(async move |event| {
+///     let data = fetch_data().await;
+///     process(data);
+/// });
+///
+/// button {
+///     @click: handler,
+///     "Click me"
+/// }
+/// ```
+#[cfg(target_arch = "wasm32")]
+pub fn async_handler<F, Fut>(f: F) -> ViewEventHandler
+where
+	F: Fn(web_sys::Event) -> Fut + 'static,
+	Fut: Future<Output = ()> + 'static,
+{
+	Arc::new(move |event| {
+		let fut = f(event);
+		spawn_task(fut);
+	})
+}
+
+/// Creates an async event handler stub for non-WASM targets.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn async_handler<F, Fut>(f: F) -> ViewEventHandler
+where
+	F: Fn(crate::component::DummyEvent) -> Fut + Send + Sync + 'static,
+	Fut: Future<Output = ()> + Send + 'static,
+{
+	Arc::new(move |event| {
+		// Non-WASM stub: drop the future without awaiting
+		std::mem::drop(f(event));
+	})
 }
 
 #[cfg(test)]
