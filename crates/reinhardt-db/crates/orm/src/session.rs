@@ -1684,19 +1684,19 @@ mod tests {
 	}
 
 	#[tokio::test]
-
-	async fn test_session_add_without_pk_fails() {
+	async fn test_session_add_without_pk_succeeds() {
 		let pool = create_test_pool().await;
 		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
 
 		let user = TestUser {
 			id: None,
-			name: "Invalid".to_string(),
-			email: "invalid@example.com".to_string(),
+			name: "NewUser".to_string(),
+			email: "newuser@example.com".to_string(),
 		};
 
+		// Objects without PK can be added (for INSERT operations)
 		let result = session.add(user).await;
-		assert!(result.is_err());
+		assert!(result.is_ok());
 	}
 
 	// ──────────────────────────────────────────────────────────────
