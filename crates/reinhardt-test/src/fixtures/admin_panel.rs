@@ -481,7 +481,7 @@ pub async fn export_import_test_context(
 mod tests {
 	use super::*;
 	use reinhardt_admin_core::ModelAdmin;
-	use rstest::*;
+	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]
