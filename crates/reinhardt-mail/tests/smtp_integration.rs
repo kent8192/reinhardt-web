@@ -1,43 +1,42 @@
 //! SMTP Backend integration tests
 //!
-//! Tests SMTP email sending with MailHog container, covering basic send, authentication,
+//! Tests SMTP email sending with Mailpit container, covering basic send, authentication,
 //! TLS, attachments, HTML email, encoding, error handling, retry, queue, and BCC/CC.
 
 use reinhardt_mail::{EmailBackend, EmailMessage, SmtpBackend, SmtpConfig, SmtpSecurity};
-use reinhardt_test::containers::MailHogContainer;
+use reinhardt_test::containers::MailpitContainer;
 use rstest::*;
 use std::time::Duration;
 
-/// MailHog API message representation
+/// Mailpit API message summary representation (from /api/v1/messages)
 #[derive(Debug, serde::Deserialize)]
-struct MailHogMessage {
-	#[serde(rename = "Content")]
-	content: MailHogContent,
+struct MailpitMessageSummary {
+	#[serde(rename = "ID")]
+	id: String,
 	#[serde(rename = "From")]
-	from: MailHogAddress,
+	from: MailpitAddress,
 	#[serde(rename = "To")]
-	to: Vec<MailHogAddress>,
+	to: Vec<MailpitAddress>,
+}
+
+/// Mailpit API full message representation (from /api/v1/message/{ID})
+#[derive(Debug, serde::Deserialize)]
+struct MailpitMessage {
+	#[serde(rename = "Text")]
+	text: String,
+	#[serde(rename = "HTML")]
+	html: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct MailHogContent {
-	#[serde(rename = "Headers")]
-	headers: std::collections::HashMap<String, Vec<String>>,
-	#[serde(rename = "Body")]
-	body: String,
+struct MailpitAddress {
+	#[serde(rename = "Address")]
+	address: String,
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct MailHogAddress {
-	#[serde(rename = "Mailbox")]
-	mailbox: String,
-	#[serde(rename = "Domain")]
-	domain: String,
-}
-
-impl MailHogAddress {
-	fn email(&self) -> String {
-		format!("{}@{}", self.mailbox, self.domain)
+impl MailpitAddress {
+	fn email(&self) -> &str {
+		&self.address
 	}
 }
 
@@ -45,27 +44,44 @@ impl MailHogAddress {
 #[allow(dead_code)]
 struct MessagesResponse {
 	total: usize,
-	count: usize,
+	messages_count: usize,
 	start: usize,
-	items: Vec<MailHogMessage>,
+	messages: Vec<MailpitMessageSummary>,
 }
 
-/// Fixture: MailHog container
+/// Fixture: Mailpit container
 #[fixture]
-async fn mailhog_container() -> MailHogContainer {
-	MailHogContainer::new().await
+async fn mailpit_container() -> MailpitContainer {
+	MailpitContainer::new().await
 }
 
-/// Helper: Fetch messages from MailHog HTTP API
-async fn fetch_mailhog_messages(container: &MailHogContainer) -> Vec<MailHogMessage> {
-	let url = format!("{}/api/v2/messages", container.http_url());
+/// Helper: Fetch message summaries from Mailpit HTTP API
+async fn fetch_mailpit_messages(container: &MailpitContainer) -> Vec<MailpitMessageSummary> {
+	let url = format!("{}/api/v1/messages", container.http_url());
 	let response = reqwest::get(&url).await.expect("Failed to fetch messages");
 	let messages: MessagesResponse = response.json().await.expect("Failed to parse messages");
-	messages.items
+	messages.messages
 }
 
-/// Helper: Delete all messages from MailHog
-async fn delete_all_messages(container: &MailHogContainer) {
+/// Helper: Fetch a single message with full details from Mailpit HTTP API
+async fn fetch_mailpit_message(container: &MailpitContainer, id: &str) -> MailpitMessage {
+	let url = format!("{}/api/v1/message/{}", container.http_url(), id);
+	let response = reqwest::get(&url).await.expect("Failed to fetch message");
+	response.json().await.expect("Failed to parse message")
+}
+
+/// Helper: Fetch message headers from Mailpit HTTP API
+async fn fetch_mailpit_headers(
+	container: &MailpitContainer,
+	id: &str,
+) -> std::collections::HashMap<String, Vec<String>> {
+	let url = format!("{}/api/v1/message/{}/headers", container.http_url(), id);
+	let response = reqwest::get(&url).await.expect("Failed to fetch headers");
+	response.json().await.expect("Failed to parse headers")
+}
+
+/// Helper: Delete all messages from Mailpit
+async fn delete_all_messages(container: &MailpitContainer) {
 	let url = format!("{}/api/v1/messages", container.http_url());
 	let client = reqwest::Client::new();
 	client.delete(&url).send().await.ok();
@@ -74,11 +90,11 @@ async fn delete_all_messages(container: &MailHogContainer) {
 /// Test: Basic SMTP send
 #[rstest]
 #[tokio::test]
-async fn test_smtp_basic_send(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_basic_send(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
-	let config = SmtpConfig::new("localhost", mailhog.smtp_port())
+	let config = SmtpConfig::new("localhost", mailpit.smtp_port())
 		.with_security(SmtpSecurity::None)
 		.with_timeout(Duration::from_secs(10));
 
@@ -97,30 +113,31 @@ async fn test_smtp_basic_send(#[future] mailhog_container: MailHogContainer) {
 		.expect("Failed to send email");
 	assert_eq!(sent, 1, "Should send 1 email");
 
-	// Wait for MailHog to receive the message
+	// Wait for Mailpit to receive the message
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
-	assert_eq!(messages.len(), 1, "MailHog should receive 1 message");
+	let messages = fetch_mailpit_messages(&mailpit).await;
+	assert_eq!(messages.len(), 1, "Mailpit should receive 1 message");
 	assert_eq!(messages[0].from.email(), "sender@example.com");
 	assert_eq!(messages[0].to.len(), 1);
 	assert_eq!(messages[0].to[0].email(), "recipient@example.com");
+
+	// Fetch full message to verify body
+	let full_message = fetch_mailpit_message(&mailpit, &messages[0].id).await;
 	assert!(
-		messages[0]
-			.content
-			.body
-			.contains("This is a test email body")
+		full_message.text.contains("This is a test email body"),
+		"Message body should contain expected text"
 	);
 }
 
 /// Test: SMTP authentication (PLAIN)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_auth_plain(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_auth_plain(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
-	let config = SmtpConfig::new("localhost", mailhog.smtp_port())
+	let config = SmtpConfig::new("localhost", mailpit.smtp_port())
 		.with_security(SmtpSecurity::None)
 		.with_credentials("testuser".to_string(), "testpass".to_string());
 
@@ -141,19 +158,19 @@ async fn test_smtp_auth_plain(#[future] mailhog_container: MailHogContainer) {
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 1);
 }
 
 /// Test: HTML email (multipart)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_html_email(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_html_email(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -173,11 +190,13 @@ async fn test_smtp_html_email(#[future] mailhog_container: MailHogContainer) {
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 1);
+
+	// Fetch full message to verify HTML content
+	let full_message = fetch_mailpit_message(&mailpit, &messages[0].id).await;
 	assert!(
-		messages[0].content.body.contains("HTML Body")
-			|| messages[0].content.body.contains("Plain text body"),
+		full_message.html.contains("HTML Body") || full_message.text.contains("Plain text body"),
 		"Should contain either HTML or plain text content"
 	);
 }
@@ -185,12 +204,12 @@ async fn test_smtp_html_email(#[future] mailhog_container: MailHogContainer) {
 /// Test: Multiple recipients (To, CC)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_multiple_recipients(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_multiple_recipients(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -213,11 +232,11 @@ async fn test_smtp_multiple_recipients(#[future] mailhog_container: MailHogConta
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert!(!messages.is_empty(), "Should receive at least 1 message");
 
 	// SMTP sends one message to multiple recipients (RCPT TO)
-	// MailHog may count this as one message with multiple recipients
+	// Mailpit may count this as one message with multiple recipients
 	// or multiple messages (one per recipient) depending on configuration
 	if messages.len() == 1 {
 		// Single message with multiple To recipients
@@ -231,12 +250,12 @@ async fn test_smtp_multiple_recipients(#[future] mailhog_container: MailHogConta
 /// Test: UTF-8 subject and body
 #[rstest]
 #[tokio::test]
-async fn test_smtp_utf8_subject(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_utf8_subject(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -255,9 +274,12 @@ async fn test_smtp_utf8_subject(#[future] mailhog_container: MailHogContainer) {
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 1);
-	assert!(messages[0].content.headers.contains_key("Subject"));
+
+	// Fetch headers to verify Subject is present
+	let headers = fetch_mailpit_headers(&mailpit, &messages[0].id).await;
+	assert!(headers.contains_key("Subject"));
 }
 
 /// Test: Custom headers
@@ -270,12 +292,12 @@ async fn test_smtp_utf8_subject(#[future] mailhog_container: MailHogContainer) {
 /// due to lettre API limitations (the Header trait's name() method is static).
 #[rstest]
 #[tokio::test]
-async fn test_smtp_custom_headers(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_custom_headers(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -304,13 +326,13 @@ async fn test_smtp_custom_headers(#[future] mailhog_container: MailHogContainer)
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 1);
 
-	// Verify X-Priority header is present (supported header)
+	// Fetch headers to verify X-Priority is present
+	let headers = fetch_mailpit_headers(&mailpit, &messages[0].id).await;
 	assert!(
-		messages[0].content.headers.contains_key("X-Priority")
-			|| messages[0].content.headers.contains_key("x-priority"),
+		headers.contains_key("X-Priority") || headers.contains_key("x-priority"),
 		"Should contain X-Priority header (case-insensitive)"
 	);
 
@@ -321,12 +343,12 @@ async fn test_smtp_custom_headers(#[future] mailhog_container: MailHogContainer)
 /// Test: Reply-To header
 #[rstest]
 #[tokio::test]
-async fn test_smtp_reply_to(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_reply_to(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -346,20 +368,23 @@ async fn test_smtp_reply_to(#[future] mailhog_container: MailHogContainer) {
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 1);
-	assert!(messages[0].content.headers.contains_key("Reply-To"));
+
+	// Fetch headers to verify Reply-To is present
+	let headers = fetch_mailpit_headers(&mailpit, &messages[0].id).await;
+	assert!(headers.contains_key("Reply-To"));
 }
 
 /// Test: Batch send (multiple messages)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_batch_send(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_batch_send(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -382,18 +407,18 @@ async fn test_smtp_batch_send(#[future] mailhog_container: MailHogContainer) {
 
 	tokio::time::sleep(Duration::from_secs(1)).await;
 
-	let received = fetch_mailhog_messages(&mailhog).await;
-	assert_eq!(received.len(), 5, "MailHog should receive 5 messages");
+	let received = fetch_mailpit_messages(&mailpit).await;
+	assert_eq!(received.len(), 5, "Mailpit should receive 5 messages");
 }
 
 /// Test: Send timeout (short timeout)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_send_timeout(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_send_timeout(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
-	let config = SmtpConfig::new("localhost", mailhog.smtp_port())
+	let config = SmtpConfig::new("localhost", mailpit.smtp_port())
 		.with_security(SmtpSecurity::None)
 		.with_timeout(Duration::from_millis(1)); // Very short timeout
 
@@ -415,8 +440,8 @@ async fn test_smtp_send_timeout(#[future] mailhog_container: MailHogContainer) {
 /// Test: Connection error (invalid port)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_connection_error(#[future] mailhog_container: MailHogContainer) {
-	let _mailhog = mailhog_container.await;
+async fn test_smtp_connection_error(#[future] mailpit_container: MailpitContainer) {
+	let _mailpit = mailpit_container.await;
 
 	let config = SmtpConfig::new(
 		"localhost",
@@ -436,12 +461,12 @@ async fn test_smtp_connection_error(#[future] mailhog_container: MailHogContaine
 /// Test: Concurrent sends
 #[rstest]
 #[tokio::test]
-async fn test_smtp_concurrent_sends(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_concurrent_sends(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend =
 		std::sync::Arc::new(SmtpBackend::new(config).expect("Failed to create SMTP backend"));
@@ -472,19 +497,19 @@ async fn test_smtp_concurrent_sends(#[future] mailhog_container: MailHogContaine
 
 	tokio::time::sleep(Duration::from_secs(1)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	assert_eq!(messages.len(), 3, "Should receive 3 concurrent messages");
 }
 
 /// Test: BCC recipients (not visible in To/CC)
 #[rstest]
 #[tokio::test]
-async fn test_smtp_bcc_recipients(#[future] mailhog_container: MailHogContainer) {
-	let mailhog = mailhog_container.await;
-	delete_all_messages(&mailhog).await;
+async fn test_smtp_bcc_recipients(#[future] mailpit_container: MailpitContainer) {
+	let mailpit = mailpit_container.await;
+	delete_all_messages(&mailpit).await;
 
 	let config =
-		SmtpConfig::new("localhost", mailhog.smtp_port()).with_security(SmtpSecurity::None);
+		SmtpConfig::new("localhost", mailpit.smtp_port()).with_security(SmtpSecurity::None);
 
 	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
 
@@ -504,7 +529,7 @@ async fn test_smtp_bcc_recipients(#[future] mailhog_container: MailHogContainer)
 
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
-	let messages = fetch_mailhog_messages(&mailhog).await;
+	let messages = fetch_mailpit_messages(&mailpit).await;
 	// BCC recipients receive the email but are not listed in headers
 	assert!(!messages.is_empty(), "Should receive at least 1 message");
 }

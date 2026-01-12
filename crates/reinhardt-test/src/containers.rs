@@ -799,8 +799,8 @@ where
 	f(container).await
 }
 
-/// MailHog test container for SMTP testing
-pub struct MailHogContainer {
+/// Mailpit test container for SMTP testing
+pub struct MailpitContainer {
 	#[allow(dead_code)]
 	container: ContainerAsync<GenericImage>,
 	host: String,
@@ -808,56 +808,59 @@ pub struct MailHogContainer {
 	http_port: u16,
 }
 
-/// Helper function to start a MailHog container
+/// Helper function to start a Mailpit container
 ///
 /// Returns a tuple of (container, smtp_url, http_url).
-pub async fn start_mailhog() -> (MailHogContainer, String, String) {
-	let container = MailHogContainer::new().await;
+pub async fn start_mailpit() -> (MailpitContainer, String, String) {
+	let container = MailpitContainer::new().await;
 	let smtp_url = container.smtp_url();
 	let http_url = container.http_url();
 	(container, smtp_url, http_url)
 }
 
-impl MailHogContainer {
-	/// Create a new MailHog container
+impl MailpitContainer {
+	/// Create a new Mailpit container
 	pub async fn new() -> Self {
 		use testcontainers::core::IntoContainerPort;
 
-		let image = GenericImage::new("mailhog/mailhog", "latest")
-			.with_exposed_port(1025.tcp())      // SMTP port
-			.with_exposed_port(8025.tcp()); // HTTP API/UI port
+		// Enable --smtp-auth-accept-any and --smtp-auth-allow-insecure for testing
+		// These options allow any authentication credentials and permit auth over plain text
+		let image = GenericImage::new("axllent/mailpit", "latest")
+			.with_exposed_port(1025.tcp()) // SMTP port
+			.with_exposed_port(8025.tcp()) // HTTP API/UI port
+			.with_cmd(["--smtp-auth-accept-any", "--smtp-auth-allow-insecure"]);
 
 		let container = AsyncRunner::start(image)
 			.await
-			.expect("Failed to start MailHog container");
+			.expect("Failed to start Mailpit container");
 
-		// MailHog SMTP port (1025) and HTTP API/UI port (8025)
+		// Mailpit SMTP port (1025) and HTTP API/UI port (8025)
 		let smtp_port = container.get_host_port_ipv4(1025).await.unwrap();
 		let http_port = container.get_host_port_ipv4(8025).await.unwrap();
 
-		let mailhog_container = Self {
+		let mailpit_container = Self {
 			container,
 			host: "localhost".to_string(),
 			smtp_port,
 			http_port,
 		};
 
-		// Wait for MailHog to be ready
-		mailhog_container
+		// Wait for Mailpit to be ready
+		mailpit_container
 			.wait_until_ready()
 			.await
-			.expect("MailHog container failed to become ready");
+			.expect("Mailpit container failed to become ready");
 
-		mailhog_container
+		mailpit_container
 	}
 
-	/// Wait for MailHog server to be ready
+	/// Wait for Mailpit server to be ready
 	async fn wait_until_ready(&self) -> Result<(), Box<dyn std::error::Error>> {
 		use tokio::time::{Duration, sleep};
 
-		let http_url = format!("{}/api/v2/messages", self.http_url());
+		let http_url = format!("{}/api/v1/messages", self.http_url());
 
-		// Try to access MailHog HTTP API with retries (max 30 attempts, ~15 seconds total)
+		// Try to access Mailpit HTTP API with retries (max 30 attempts, ~15 seconds total)
 		for attempt in 1..=30 {
 			match reqwest::get(&http_url).await {
 				Ok(response) if response.status().is_success() => {
@@ -865,7 +868,7 @@ impl MailHogContainer {
 				}
 				Ok(response) if attempt < 30 => {
 					eprintln!(
-						"MailHog HTTP check attempt {}/30 failed with status: {}",
+						"Mailpit HTTP check attempt {}/30 failed with status: {}",
 						attempt,
 						response.status()
 					);
@@ -873,19 +876,19 @@ impl MailHogContainer {
 				}
 				Ok(response) => {
 					return Err(format!(
-						"MailHog HTTP API not ready after 30 attempts, last status: {}",
+						"Mailpit HTTP API not ready after 30 attempts, last status: {}",
 						response.status()
 					)
 					.into());
 				}
 				Err(e) if attempt < 30 => {
-					eprintln!("MailHog HTTP check attempt {}/30 failed: {}", attempt, e);
+					eprintln!("Mailpit HTTP check attempt {}/30 failed: {}", attempt, e);
 					sleep(Duration::from_millis(500)).await;
 				}
 				Err(e) => {
 					return Err(Box::new(std::io::Error::new(
 						std::io::ErrorKind::ConnectionRefused,
-						format!("MailHog failed to become ready after 30 attempts: {}", e),
+						format!("Mailpit failed to become ready after 30 attempts: {}", e),
 					)));
 				}
 			}
@@ -894,12 +897,12 @@ impl MailHogContainer {
 		Ok(())
 	}
 
-	/// Get the SMTP URL for MailHog
+	/// Get the SMTP URL for Mailpit
 	pub fn smtp_url(&self) -> String {
 		format!("smtp://{}:{}", self.host, self.smtp_port)
 	}
 
-	/// Get the HTTP API/UI URL for MailHog
+	/// Get the HTTP API/UI URL for Mailpit
 	pub fn http_url(&self) -> String {
 		format!("http://{}:{}", self.host, self.http_port)
 	}
@@ -915,13 +918,13 @@ impl MailHogContainer {
 	}
 }
 
-/// Helper function to run a test with a MailHog container
-pub async fn with_mailhog<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
+/// Helper function to run a test with a Mailpit container
+pub async fn with_mailpit<F, Fut>(f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-	F: FnOnce(MailHogContainer) -> Fut,
+	F: FnOnce(MailpitContainer) -> Fut,
 	Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
 {
-	let container = MailHogContainer::new().await;
+	let container = MailpitContainer::new().await;
 	f(container).await
 }
 

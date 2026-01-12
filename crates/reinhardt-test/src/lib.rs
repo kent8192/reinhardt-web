@@ -209,8 +209,8 @@ pub use viewsets::{SimpleViewSet, TestViewSet};
 
 #[cfg(feature = "testcontainers")]
 pub use containers::{
-	MailHogContainer, MySqlContainer, PostgresContainer, RabbitMQContainer, RedisContainer,
-	TestDatabase, with_mailhog, with_mysql, with_postgres, with_rabbitmq, with_redis,
+	MailpitContainer, MySqlContainer, PostgresContainer, RabbitMQContainer, RedisContainer,
+	TestDatabase, with_mailpit, with_mysql, with_postgres, with_rabbitmq, with_redis,
 };
 
 #[cfg(feature = "static")]
