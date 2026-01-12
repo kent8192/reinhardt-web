@@ -1,6 +1,6 @@
 //! HTTP Basic Authentication
 
-use crate::drf_authentication::Authentication;
+use crate::rest_authentication::RestAuthentication;
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reinhardt_types::Request;
@@ -158,9 +158,9 @@ impl AuthenticationBackend for BasicAuthentication {
 	}
 }
 
-// Implement DRF-style Authentication trait by forwarding to AuthenticationBackend
+// Implement REST API Authentication trait by forwarding to AuthenticationBackend
 #[async_trait::async_trait]
-impl Authentication for BasicAuthentication {
+impl RestAuthentication for BasicAuthentication {
 	async fn authenticate(
 		&self,
 		request: &Request,
