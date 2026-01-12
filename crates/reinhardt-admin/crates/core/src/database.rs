@@ -505,7 +505,7 @@ impl AdminDatabase {
 	) -> AdminResult<u64> {
 		let mut query = SeaQuery::select()
 			.from(Alias::new(table_name))
-			.expr(Expr::cust("COUNT(*)"))
+			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
 
 		// Build combined condition
@@ -579,10 +579,17 @@ impl AdminDatabase {
 		pk_field: &str,
 		id: &str,
 	) -> AdminResult<Option<HashMap<String, serde_json::Value>>> {
+		// Convert id to appropriate type for WHERE clause
+		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
+			sea_query::Value::BigInt(Some(num_id))
+		} else {
+			sea_query::Value::String(Some(id.to_string()))
+		};
+
 		let query = SeaQuery::select()
 			.from(Alias::new(table_name))
 			.column(Asterisk)
-			.and_where(Expr::col(Alias::new(pk_field)).eq(id))
+			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
 		let sql = query.to_string(PostgresQueryBuilder);
@@ -675,14 +682,24 @@ impl AdminDatabase {
 			values.into_iter().map(|v| v.into()).collect();
 		query.columns(columns).values(expr_values).unwrap();
 
+		// Add RETURNING clause to get the inserted ID
+		query.returning_col(Alias::new("id"));
+
 		let sql = query.to_string(PostgresQueryBuilder);
-		let affected = self
+		let row = self
 			.connection
-			.execute(&sql, vec![])
+			.query_one(&sql, vec![])
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		Ok(affected)
+		// Extract the ID from the returned row
+		let id = if let Some(serde_json::Value::Number(n)) = row.data.get("id") {
+			n.as_u64().unwrap_or(0)
+		} else {
+			0
+		};
+
+		Ok(id)
 	}
 
 	/// Update an existing item
@@ -744,7 +761,13 @@ impl AdminDatabase {
 			query.value(Alias::new(&key), sea_value);
 		}
 
-		query.and_where(Expr::col(Alias::new(pk_field)).eq(id));
+		// Convert id to appropriate type for WHERE clause
+		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
+			sea_query::Value::BigInt(Some(num_id))
+		} else {
+			sea_query::Value::String(Some(id.to_string()))
+		};
+		query.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value));
 
 		let sql = query.to_string(PostgresQueryBuilder);
 		let affected = self
@@ -788,9 +811,16 @@ impl AdminDatabase {
 		pk_field: &str,
 		id: &str,
 	) -> AdminResult<u64> {
+		// Convert id to appropriate type for WHERE clause
+		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
+			sea_query::Value::BigInt(Some(num_id))
+		} else {
+			sea_query::Value::String(Some(id.to_string()))
+		};
+
 		let query = SeaQuery::delete()
 			.from_table(Alias::new(table_name))
-			.and_where(Expr::col(Alias::new(pk_field)).eq(id))
+			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
 		let sql = query.to_string(PostgresQueryBuilder);
@@ -870,9 +900,21 @@ impl AdminDatabase {
 			return Ok(0);
 		}
 
+		// Convert each id to appropriate type for WHERE clause
+		let pk_values: Vec<sea_query::Value> = ids
+			.iter()
+			.map(|id| {
+				if let Ok(num_id) = id.parse::<i64>() {
+					sea_query::Value::BigInt(Some(num_id))
+				} else {
+					sea_query::Value::String(Some(id.to_string()))
+				}
+			})
+			.collect();
+
 		let query = SeaQuery::delete()
 			.from_table(Alias::new(table_name))
-			.and_where(Expr::col(Alias::new(pk_field)).is_in(ids))
+			.and_where(Expr::col(Alias::new(pk_field)).is_in(pk_values))
 			.to_owned();
 
 		let sql = query.to_string(PostgresQueryBuilder);
@@ -922,7 +964,7 @@ impl AdminDatabase {
 	) -> AdminResult<u64> {
 		let mut query = SeaQuery::select()
 			.from(Alias::new(table_name))
-			.expr(Expr::cust("COUNT(*)"))
+			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
 
 		// Apply filters using build_filter_condition helper
