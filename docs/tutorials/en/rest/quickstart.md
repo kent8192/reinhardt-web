@@ -162,6 +162,7 @@ Edit `users/views.rs` to implement full CRUD operations:
 ```rust
 use reinhardt::prelude::*;
 use reinhardt::{get, post};
+use reinhardt::http::Path;
 use reinhardt::db::DatabaseConnection;
 use std::sync::Arc;
 use crate::models::User;
@@ -179,15 +180,11 @@ pub async fn list_users(
     Response::ok().with_json(&serialized)
 }
 
-#[get("/users/:id", name = "retrieve_user")]
+#[get("/users/{id}/", name = "retrieve_user")]
 pub async fn retrieve_user(
-    request: Request,
+    Path(id): Path<i64>,
     #[inject] conn: Arc<DatabaseConnection>,
 ) -> Result<Response> {
-    let id: i64 = request.path_params.get("id")
-        .ok_or("Missing id")?
-        .parse()?;
-
     let user = User::get(&conn, id).await?
         .ok_or_else(|| Response::not_found().with_body("User not found"))?;
 
@@ -221,9 +218,9 @@ use crate::views;
 pub fn url_patterns() -> UnifiedRouter {
     UnifiedRouter::new()
         .with_namespace("users")
-        .function("/users", Method::GET, views::list_users)
-        .function("/users/:id", Method::GET, views::retrieve_user)
-        .function("/users", Method::POST, views::create_user)
+        .endpoint(views::list_users)
+        .endpoint(views::retrieve_user)
+        .endpoint(views::create_user)
 }
 ```
 

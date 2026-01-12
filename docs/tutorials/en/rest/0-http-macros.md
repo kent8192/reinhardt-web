@@ -79,13 +79,13 @@ pub async fn read() -> Result<Response> { /* ... */ }
 #[post("/resource", name = "create")]
 pub async fn create() -> Result<Response> { /* ... */ }
 
-#[put("/resource/:id", name = "update")]
+#[put("/resource/{id}/", name = "update")]
 pub async fn update() -> Result<Response> { /* ... */ }
 
-#[patch("/resource/:id", name = "partial_update")]
+#[patch("/resource/{id}/", name = "partial_update")]
 pub async fn partial_update() -> Result<Response> { /* ... */ }
 
-#[delete("/resource/:id", name = "destroy")]
+#[delete("/resource/{id}/", name = "destroy")]
 pub async fn destroy() -> Result<Response> { /* ... */ }
 ```
 
@@ -101,7 +101,7 @@ Use the `Path` extractor to capture URL parameters:
 use reinhardt::get;
 use reinhardt::http::Path;
 
-#[get("/users/:id", name = "get_user")]
+#[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
     Path(user_id): Path<i64>,
 ) -> Result<Response> {
@@ -120,7 +120,7 @@ pub async fn get_user(
 ### Multiple Path Parameters
 
 ```rust
-#[get("/users/:user_id/posts/:post_id", name = "get_user_post")]
+#[get("/users/{user_id}/posts/{post_id}/", name = "get_user_post")]
 pub async fn get_user_post(
     Path((user_id, post_id)): Path<(i64, i64)>,
 ) -> Result<Response> {
@@ -140,22 +140,11 @@ pub async fn get_user_post(
 ```rust
 use std::collections::HashMap;
 
-#[get("/articles/:year/:month/:slug", name = "get_article")]
+#[get("/articles/{year}/{month}/{slug}/", name = "get_article")]
 pub async fn get_article(
-    request: Request,
+    Path((year, month, slug)): Path<(i32, i32, String)>,
 ) -> Result<Response> {
-    let params = &request.path_params;
-
-    let year: i32 = params.get("year")
-        .ok_or("Missing year")?
-        .parse()?;
-
-    let month: i32 = params.get("month")
-        .ok_or("Missing month")?
-        .parse()?;
-
-    let slug = params.get("slug")
-        .ok_or("Missing slug")?;
+    // year, month, slug are automatically parsed from the URL
 
     // ... use year, month, slug
 }
@@ -266,11 +255,11 @@ use crate::views;
 
 pub fn url_patterns() -> UnifiedRouter {
     UnifiedRouter::new()
-        .function("/users", Method::GET, views::list_users)
-        .function("/users/:id", Method::GET, views::get_user)
-        .function("/users", Method::POST, views::create_user)
-        .function("/users/:id", Method::PUT, views::update_user)
-        .function("/users/:id", Method::DELETE, views::delete_user)
+        .endpoint(views::list_users)
+        .endpoint(views::get_user)
+        .endpoint(views::create_user)
+        .endpoint(views::update_user)
+        .endpoint(views::delete_user)
 }
 ```
 

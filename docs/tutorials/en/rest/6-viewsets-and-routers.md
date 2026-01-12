@@ -15,9 +15,15 @@ use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[model(app_label = "snippets", table_name = "snippets")]
 struct Snippet {
+    #[field(primary_key = true)]
     id: i64,
+
+    #[field(max_length = 10000)]
     code: String,
+
+    #[field(max_length = 50)]
     language: String,
 }
 
