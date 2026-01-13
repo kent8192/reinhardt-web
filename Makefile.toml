@@ -102,10 +102,14 @@ dependencies = ["clippy-fix", "fmt-fix"]
 # Testing Tasks
 # ============================================================================
 
-[tasks.doc-test]
-description = "Run only documentation tests"
+[tasks.doc-test-only]
+description = "Run only documentation tests without Docker cleanup"
 command = "cargo"
 args = ["test", "--workspace", "--doc", "--quiet", "--all-features", "--no-fail-fast"]
+
+[tasks.doc-test]
+description = "Run only documentation tests (with Docker cleanup)"
+dependencies = ["docker-cleanup-force", "doc-test-only"]
 
 [tasks.doc-test-crate]
 description = "Run documentation tests for specific package(s). Usage: cargo make doc-test-crate -- -p package1 -p package2"
@@ -187,9 +191,13 @@ args = [
   "--final-status-level=none"
 ]
 
-[tasks.integration-test]
-description = "Run all integration tests"
+[tasks.integration-test-only]
+description = "Run all integration tests without Docker cleanup"
 dependencies = ["intra-crate-integration-test", "cross-crate-integration-test"]
+
+[tasks.integration-test]
+description = "Run all integration tests (with Docker cleanup)"
+dependencies = ["docker-cleanup-force", "integration-test-only"]
 
 [tasks.local-examples-test]
 description = "Test local examples (now part of workspace)"
@@ -222,8 +230,8 @@ cwd = "examples/remote"
 command = "cargo"
 args = ["nextest", "run", "--workspace", "--verbose"]
 
-[tasks.ui-test]
-description = "Run UI tests (trybuild) separately with serial execution"
+[tasks.ui-test-only]
+description = "Run UI tests (trybuild) separately with serial execution without Docker cleanup"
 command = "cargo"
 args = [
   "nextest",
@@ -236,12 +244,20 @@ args = [
   "--final-status-level=none"
 ]
 
-[tasks.examples-test]
-description = "Test all examples (local + remote)"
+[tasks.ui-test]
+description = "Run UI tests (trybuild) separately with serial execution (with Docker cleanup)"
+dependencies = ["docker-cleanup-force", "ui-test-only"]
+
+[tasks.examples-test-only]
+description = "Test all examples (local + remote) without Docker cleanup"
 dependencies = ["local-examples-test", "remote-examples-test"]
 
-[tasks.test]
-description = "Run all tests"
+[tasks.examples-test]
+description = "Test all examples (local + remote) (with Docker cleanup)"
+dependencies = ["docker-cleanup-force", "examples-test-only"]
+
+[tasks.test-only]
+description = "Run all tests without Docker cleanup"
 dependencies = [
   "unit-test",
   "integration-test",
@@ -249,6 +265,10 @@ dependencies = [
   "examples-test",
   "ui-test"
 ]
+
+[tasks.test]
+description = "Run all tests (with Docker cleanup)"
+dependencies = ["docker-cleanup-force", "test-only"]
 
 # ============================================================================
 # CI Tasks
@@ -295,6 +315,40 @@ args = ["tree", "--workspace"]
 description = "Analyze binary bloat"
 command = "cargo"
 args = ["bloat", "--release"]
+
+# ============================================================================
+# Docker Cleanup Tasks
+# ============================================================================
+
+[tasks.docker-cleanup-list]
+description = "List TestContainers resources (containers, volumes, networks)"
+command = "scripts/cleanup-docker.sh"
+args = ["list"]
+
+[tasks.docker-cleanup]
+description = "Remove TestContainers resources interactively"
+command = "scripts/cleanup-docker.sh"
+args = ["all"]
+
+[tasks.docker-cleanup-force]
+description = "Remove all TestContainers resources without confirmation"
+command = "scripts/cleanup-docker.sh"
+args = ["all", "--force"]
+
+[tasks.docker-cleanup-containers]
+description = "Remove TestContainers containers only"
+command = "scripts/cleanup-docker.sh"
+args = ["containers"]
+
+[tasks.docker-cleanup-volumes]
+description = "Remove TestContainers volumes only"
+command = "scripts/cleanup-docker.sh"
+args = ["volumes"]
+
+[tasks.docker-cleanup-networks]
+description = "Remove TestContainers networks only"
+command = "scripts/cleanup-docker.sh"
+args = ["networks"]
 
 # ============================================================================
 # Helper Tasks
