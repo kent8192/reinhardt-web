@@ -11,11 +11,15 @@ mod fixtures;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+#[cfg(feature = "compression")]
+use fixtures::assert_no_header;
 use fixtures::{
-	ConfigurableTestHandler, assert_has_header, assert_no_header, assert_status,
-	create_request_with_headers, create_test_request,
+	ConfigurableTestHandler, assert_has_header, assert_status, create_request_with_headers,
+	create_test_request,
 };
-use hyper::header::{ACCEPT_ENCODING, CONTENT_TYPE};
+#[cfg(feature = "compression")]
+use hyper::header::ACCEPT_ENCODING;
+use hyper::header::CONTENT_TYPE;
 use hyper::{HeaderMap, Method, Version};
 use reinhardt_core::exception::Result;
 use reinhardt_core::types::{Handler, Middleware, Request, Response};
