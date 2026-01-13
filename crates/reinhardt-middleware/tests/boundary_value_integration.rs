@@ -15,8 +15,8 @@ mod fixtures;
 use async_trait::async_trait;
 use bytes::Bytes;
 use fixtures::{
-	ConfigurableTestHandler, assert_has_header, assert_no_header, assert_status,
-	create_request_with_headers, create_test_request,
+	ConfigurableTestHandler, SizedResponseHandler, assert_has_header, assert_no_header,
+	assert_status, create_request_with_headers, create_test_request,
 };
 use reinhardt_core::exception::Result;
 use reinhardt_core::types::{Handler, Middleware, Request, Response};
@@ -38,31 +38,6 @@ use std::time::Duration;
 // ============================================================================
 // Helper Handlers
 // ============================================================================
-
-/// Handler that generates responses of a specific size.
-struct SizedResponseHandler {
-	size: usize,
-	content_type: &'static str,
-}
-
-impl SizedResponseHandler {
-	fn new(size: usize, content_type: &'static str) -> Self {
-		Self { size, content_type }
-	}
-}
-
-#[async_trait]
-impl Handler for SizedResponseHandler {
-	async fn handle(&self, _request: Request) -> Result<Response> {
-		let body = "x".repeat(self.size);
-		let mut response = Response::ok().with_body(Bytes::from(body));
-		response.headers.insert(
-			hyper::header::CONTENT_TYPE,
-			self.content_type.parse().unwrap(),
-		);
-		Ok(response)
-	}
-}
 
 /// Handler that takes a specified time to respond.
 struct DelayedHandler {

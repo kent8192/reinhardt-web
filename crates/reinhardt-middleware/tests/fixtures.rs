@@ -207,6 +207,51 @@ impl Handler for ConfigurableTestHandler {
 }
 
 // ============================================================================
+// Sized Response Handler
+// ============================================================================
+
+/// A handler that returns a response with a specific body size.
+///
+/// Useful for testing compression and body size-related middleware.
+pub struct SizedResponseHandler {
+	/// The size of the response body in bytes
+	body_size: usize,
+	/// The Content-Type of the response
+	content_type: String,
+}
+
+impl SizedResponseHandler {
+	/// Creates a new handler with the specified body size and content type.
+	pub fn new(body_size: usize, content_type: &str) -> Self {
+		Self {
+			body_size,
+			content_type: content_type.to_string(),
+		}
+	}
+}
+
+#[async_trait]
+impl Handler for SizedResponseHandler {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		// Create a body with repetitive content for better compression testing
+		let body = if self.body_size == 0 {
+			Bytes::new()
+		} else {
+			let pattern = "x".repeat(100);
+			let repeated = pattern.repeat(self.body_size / 100 + 1);
+			Bytes::from(repeated[..self.body_size].to_string())
+		};
+
+		let mut response = Response::ok().with_body(body);
+		response
+			.headers
+			.insert("Content-Type", self.content_type.parse().unwrap());
+
+		Ok(response)
+	}
+}
+
+// ============================================================================
 // Echo Handler
 // ============================================================================
 
