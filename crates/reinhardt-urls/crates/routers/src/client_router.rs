@@ -1,0 +1,76 @@
+//! Client-side routing for Single Page Applications.
+//!
+//! This module provides client-side routing functionality that works with
+//! the browser History API for SPA navigation.
+//!
+//! # Architecture
+//!
+//! `ClientRouter<V>` is generic over the view type `V` that handlers return.
+//! This allows integration with any view/component system.
+//!
+//! # Features
+//!
+//! - URL pattern matching with path parameters
+//! - Named routes for reverse URL generation
+//! - Route guards for access control
+//! - Browser History API integration
+//! - Reactive signals for current path, params, and route name
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use reinhardt_routers::client_router::{ClientRouter, Path};
+//!
+//! // Create a router with routes (V = your view type)
+//! let router: ClientRouter<View> = ClientRouter::new()
+//!     .route("/", || home_page())
+//!     .route_path("/users/{id}/", |Path(id): Path<u64>| {
+//!         user_page(id)
+//!     })
+//!     .named_route("settings", "/settings/", || settings_page())
+//!     .not_found(|| not_found_page());
+//!
+//! // Setup browser history listener
+//! router.setup_history_listener();
+//!
+//! // Navigate programmatically
+//! router.push("/users/42/");
+//!
+//! // Reverse URL generation
+//! let url = router.reverse("settings", &[]).unwrap();
+//! assert_eq!(url, "/settings/");
+//! ```
+//!
+//! # Path Parameter Extraction
+//!
+//! Path parameters can be extracted using the `Path<T>` extractor:
+//!
+//! ```rust,ignore
+//! // Single parameter
+//! .route_path("/posts/{id}/", |Path(id): Path<i64>| {
+//!     post_page(id)
+//! })
+//!
+//! // Multiple parameters
+//! .route_path2("/users/{user_id}/posts/{post_id}/",
+//!     |Path(user_id): Path<u64>, Path(post_id): Path<u64>| {
+//!         user_post_page(user_id, post_id)
+//!     })
+//! ```
+
+mod core;
+mod error;
+mod handler;
+mod history;
+mod params;
+mod pattern;
+
+// Public re-exports
+pub use core::{ClientRoute, ClientRouteMatch, ClientRouter};
+pub use error::{PathError, RouterError};
+pub use handler::RouteHandler;
+pub use history::{
+	HistoryState, NavigationType, current_path, go_back, go_forward, push_state, replace_state,
+};
+pub use params::{FromPath, ParamContext, Path, SingleFromPath};
+pub use pattern::ClientPathPattern;
