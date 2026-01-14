@@ -4,21 +4,6 @@
 //! - Server-side: REST API with server functions
 //! - Client-side: WASM frontend with reactive UI
 
-// Conditional compilation for WASM vs Server
-
-// ============================================================================
-// Shared modules (available on both WASM and server)
-// ============================================================================
-pub mod shared {
-	pub mod errors;
-	pub mod types;
-}
-
-// ============================================================================
-// Server functions (available on both WASM and server, target-specific code generated)
-// ============================================================================
-pub mod server_fn;
-
 // ============================================================================
 // Server-only modules (non-WASM)
 // ============================================================================
@@ -35,43 +20,31 @@ mod server_only {
 #[cfg(not(target_arch = "wasm32"))]
 pub use server_only::*;
 
-// Core server modules (non-WASM only)
-#[cfg(not(target_arch = "wasm32"))]
+// ============================================================================
+// Applications (shared between WASM and server with conditional modules)
+// ============================================================================
 pub mod apps;
+
+// ============================================================================
+// Server-only modules
+// ============================================================================
 #[cfg(not(target_arch = "wasm32"))]
 pub mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod migrations;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub mod server {
-	// New structure
-	pub mod middleware;
-	pub mod models;
-
-	// Re-export commonly used items
-	pub use crate::config::settings::get_settings;
-}
-
-#[cfg(all(not(target_arch = "wasm32"), any(test, feature = "e2e-tests")))]
-pub mod test_utils;
-
 // ============================================================================
 // Client-only modules (WASM)
 // ============================================================================
 #[cfg(target_arch = "wasm32")]
-pub mod client {
-	pub mod components;
-	pub mod pages;
-	pub mod router;
-	pub mod state;
-
-	// WASM entry point
-	pub mod lib;
-}
+pub mod core;
 
 // ============================================================================
 // Re-exports for convenience
 // ============================================================================
 #[cfg(not(target_arch = "wasm32"))]
-pub use server::get_settings;
+pub use config::settings::get_settings;
+
+// Test utilities (available for testing on server)
+#[cfg(not(target_arch = "wasm32"))]
+pub mod test_utils;
