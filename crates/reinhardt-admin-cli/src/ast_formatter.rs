@@ -26,6 +26,8 @@ use reinhardt_pages_ast::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageExpression, PageFor,
 	PageIf, PageMacro, PageNode, PageParam, PageText,
 };
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::LazyLock;
 use syn::visit::Visit;
 use syn::{ExprMacro, Macro, parse_file};
@@ -47,6 +49,45 @@ impl std::fmt::Display for SkipReason {
 			SkipReason::FileWideMarker => write!(f, "file-wide ignore marker"),
 			SkipReason::NoPageMacro => write!(f, "no page! macro"),
 			SkipReason::AllMacrosIgnored => write!(f, "all macros ignored"),
+		}
+	}
+}
+
+/// Options to pass to rustfmt.
+///
+/// These options mirror rustfmt's command-line arguments and allow
+/// customizing formatting behavior.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RustfmtOptions {
+	/// Path to rustfmt.toml configuration file
+	pub config_path: Option<PathBuf>,
+	/// Rust edition to use (e.g., "2021", "2024")
+	pub edition: Option<String>,
+	/// Style edition to use
+	pub style_edition: Option<String>,
+	/// Inline config options (e.g., "max_width=120,hard_tabs=false")
+	pub config: Option<String>,
+	/// Color output setting (e.g., "auto", "always", "never")
+	pub color: Option<String>,
+}
+
+impl RustfmtOptions {
+	/// Apply these options to a rustfmt Command.
+	pub(crate) fn apply_to_command(&self, cmd: &mut Command) {
+		if let Some(ref path) = self.config_path {
+			cmd.arg("--config-path").arg(path);
+		}
+		if let Some(ref edition) = self.edition {
+			cmd.arg("--edition").arg(edition);
+		}
+		if let Some(ref style_edition) = self.style_edition {
+			cmd.arg("--style-edition").arg(style_edition);
+		}
+		if let Some(ref config) = self.config {
+			cmd.arg("--config").arg(config);
+		}
+		if let Some(ref color) = self.color {
+			cmd.arg("--color").arg(color);
 		}
 	}
 }
@@ -225,6 +266,8 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 pub(crate) struct AstPageFormatter {
 	/// Indentation string (tab by default)
 	indent: String,
+	/// Options to pass to rustfmt
+	rustfmt_options: RustfmtOptions,
 }
 
 impl Default for AstPageFormatter {
@@ -238,6 +281,27 @@ impl AstPageFormatter {
 	pub(crate) fn new() -> Self {
 		Self {
 			indent: "\t".to_string(),
+			rustfmt_options: RustfmtOptions::default(),
+		}
+	}
+
+	/// Create a new formatter with the specified rustfmt options.
+	#[allow(dead_code)] // Reserved for future use when full options support is needed
+	pub(crate) fn with_options(rustfmt_options: RustfmtOptions) -> Self {
+		Self {
+			indent: "\t".to_string(),
+			rustfmt_options,
+		}
+	}
+
+	/// Create a new formatter with a specific config path.
+	pub(crate) fn with_config(config_path: PathBuf) -> Self {
+		Self {
+			indent: "\t".to_string(),
+			rustfmt_options: RustfmtOptions {
+				config_path: Some(config_path),
+				..Default::default()
+			},
 		}
 	}
 
@@ -752,12 +816,19 @@ impl AstPageFormatter {
 	/// Format Rust code with rustfmt
 	///
 	/// Falls back to the input code if rustfmt is not available or fails.
-	fn format_with_rustfmt(code: &str) -> String {
+	fn format_with_rustfmt(&self, code: &str) -> String {
 		use std::io::Write;
-		use std::process::{Command, Stdio};
+		use std::process::Stdio;
 
-		let child = Command::new("rustfmt")
-			.arg("--edition=2024")
+		let mut cmd = Command::new("rustfmt");
+		self.rustfmt_options.apply_to_command(&mut cmd);
+
+		// Fallback to default edition if no config is specified
+		if self.rustfmt_options.config_path.is_none() && self.rustfmt_options.edition.is_none() {
+			cmd.arg("--edition=2024");
+		}
+
+		let child = cmd
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
@@ -864,7 +935,7 @@ impl AstPageFormatter {
 
 		// Format with prettyplease + rustfmt
 		let prettyplease_output = prettyplease::unparse(&file);
-		let formatted = Self::format_with_rustfmt(&prettyplease_output);
+		let formatted = self.format_with_rustfmt(&prettyplease_output);
 
 		// Extract the formatted handler
 		let Some(handler_str) = Self::extract_handler_from_wrapper(&formatted) else {

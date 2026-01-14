@@ -21,7 +21,7 @@
 mod ast_formatter;
 mod formatter;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -92,6 +92,31 @@ enum Commands {
 		/// Check if files are formatted without modifying them
 		#[arg(long)]
 		check: bool,
+
+		/// Path to rustfmt.toml configuration file
+		#[arg(long, value_name = "PATH")]
+		config_path: Option<PathBuf>,
+
+		/// Rust edition to use (overrides rustfmt.toml)
+		#[arg(long, value_name = "EDITION")]
+		edition: Option<String>,
+
+		/// Style edition to use (overrides rustfmt.toml)
+		#[arg(long, value_name = "EDITION")]
+		style_edition: Option<String>,
+
+		/// Set options from command line (overrides rustfmt.toml)
+		/// Format: key1=val1,key2=val2
+		#[arg(long, value_name = "OPTIONS")]
+		config: Option<String>,
+
+		/// Use colored output
+		#[arg(long, value_name = "WHEN", default_value = "auto")]
+		color: String,
+
+		/// Backup any modified files
+		#[arg(long)]
+		backup: bool,
 	},
 
 	/// Format all code: Rust (via rustfmt) + page! DSL (via reinhardt-fmt)
@@ -99,14 +124,38 @@ enum Commands {
 	/// This command protects page! macros from rustfmt, runs rustfmt on the
 	/// surrounding Rust code, restores the macros, and then formats them with
 	/// the page! DSL formatter.
+	///
+	/// Formats all Rust files in the project (searches for Cargo.toml to find project root).
 	FmtAll {
-		/// Path to file or directory to format
-		#[arg(value_name = "PATH")]
-		path: PathBuf,
-
 		/// Check if files are formatted without modifying them
 		#[arg(long)]
 		check: bool,
+
+		/// Path to rustfmt.toml configuration file
+		/// If not specified, searches upward from current directory for rustfmt.toml
+		#[arg(long, value_name = "PATH")]
+		config_path: Option<PathBuf>,
+
+		/// Rust edition to use (overrides rustfmt.toml)
+		#[arg(long, value_name = "EDITION")]
+		edition: Option<String>,
+
+		/// Style edition to use (overrides rustfmt.toml)
+		#[arg(long, value_name = "EDITION")]
+		style_edition: Option<String>,
+
+		/// Set options from command line (overrides rustfmt.toml)
+		/// Format: key1=val1,key2=val2
+		#[arg(long, value_name = "OPTIONS")]
+		config: Option<String>,
+
+		/// Use colored output
+		#[arg(long, value_name = "WHEN", default_value = "auto")]
+		color: String,
+
+		/// Backup any modified files
+		#[arg(long)]
+		backup: bool,
 	},
 }
 
@@ -254,8 +303,44 @@ async fn main() {
 			template_type,
 		} => run_startapp(name, directory, template_type, cli.verbosity).await,
 		Commands::Plugin { subcommand } => run_plugin(subcommand, cli.verbosity).await,
-		Commands::Fmt { path, check } => run_fmt(path, check, cli.verbosity),
-		Commands::FmtAll { path, check } => run_fmt_all(path, check, cli.verbosity),
+		Commands::Fmt {
+			path,
+			check,
+			config_path,
+			edition,
+			style_edition,
+			config,
+			color,
+			backup,
+		} => run_fmt(
+			path,
+			check,
+			config_path,
+			edition,
+			style_edition,
+			config,
+			color,
+			backup,
+			cli.verbosity,
+		),
+		Commands::FmtAll {
+			check,
+			config_path,
+			edition,
+			style_edition,
+			config,
+			color,
+			backup,
+		} => run_fmt_all(
+			check,
+			config_path,
+			edition,
+			style_edition,
+			config,
+			color,
+			backup,
+			cli.verbosity,
+		),
 	};
 
 	if let Err(e) = result {
@@ -430,8 +515,19 @@ async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<
 	}
 }
 
-fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
-	use ast_formatter::AstPageFormatter;
+#[allow(clippy::too_many_arguments)] // CLI command handler with many options
+fn run_fmt(
+	path: PathBuf,
+	check: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> CommandResult<()> {
+	use ast_formatter::{AstPageFormatter, RustfmtOptions};
 	use formatter::collect_rust_files;
 
 	let files = collect_rust_files(&path).map_err(|e| {
@@ -445,7 +541,26 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 		return Ok(());
 	}
 
-	let formatter = AstPageFormatter::new();
+	// Resolve config path
+	let resolved_config_path = config_path.or_else(|| find_rustfmt_config(&path));
+
+	let _options = RustfmtOptions {
+		config_path: resolved_config_path.clone(),
+		edition,
+		style_edition,
+		config,
+		color: Some(color),
+	};
+
+	if verbosity > 0 && let Some(ref p) = resolved_config_path {
+		println!("Using rustfmt config: {}", p.display());
+	}
+
+	let formatter = if let Some(ref config) = resolved_config_path {
+		AstPageFormatter::with_config(config.clone())
+	} else {
+		AstPageFormatter::new()
+	};
 	let mut formatted_count = 0;
 	let mut unchanged_count = 0;
 	let mut ignored_count = 0;
@@ -494,6 +609,18 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 						println!("{} Would format: {}", progress, file_path.display());
 						formatted_count += 1;
 					} else {
+						// Backup if requested
+						if backup {
+							let backup_path = file_path.with_extension("rs.bak");
+							std::fs::copy(file_path, &backup_path).map_err(|e| {
+								reinhardt_commands::CommandError::ExecutionError(format!(
+									"Failed to backup {}: {}",
+									file_path.display(),
+									e
+								))
+							})?;
+						}
+
 						// Format mode: write changes
 						std::fs::write(file_path, &result.content).map_err(|e| {
 							reinhardt_commands::CommandError::ExecutionError(format!(
@@ -593,22 +720,63 @@ fn run_fmt(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 /// 2. rustfmt: Format Rust code (placeholders are not touched)
 /// 3. Restore: __reinhardt_placeholder__!(/*n*/) → page!(...)
 /// 4. reinhardt-fmt: Format page! macro contents
-fn run_fmt_all(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
-	use ast_formatter::AstPageFormatter;
+#[allow(clippy::too_many_arguments)] // CLI command handler with many options
+fn run_fmt_all(
+	check: bool,
+	config_path: Option<PathBuf>,
+	edition: Option<String>,
+	style_edition: Option<String>,
+	config: Option<String>,
+	color: String,
+	backup: bool,
+	verbosity: u8,
+) -> CommandResult<()> {
+	use ast_formatter::{AstPageFormatter, RustfmtOptions};
 	use formatter::collect_rust_files;
 
-	let files = collect_rust_files(&path).map_err(|e| {
+	// Find project root
+	let project_root = find_project_root().ok_or_else(|| {
+		reinhardt_commands::CommandError::ExecutionError(
+			"Could not find project root (no Cargo.toml found)".to_string(),
+		)
+	})?;
+
+	if verbosity > 0 {
+		println!("Project root: {}", project_root.display());
+	}
+
+	let files = collect_rust_files(&project_root).map_err(|e| {
 		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
 	})?;
 
 	if files.is_empty() {
 		if verbosity > 0 {
-			println!("No Rust files found in {:?}", path);
+			println!("No Rust files found in {:?}", project_root);
 		}
 		return Ok(());
 	}
 
-	let formatter = AstPageFormatter::new();
+	// Resolve config path
+	let resolved_config_path = config_path.or_else(|| find_rustfmt_config(&project_root));
+
+	let options = RustfmtOptions {
+		config_path: resolved_config_path.clone(),
+		edition,
+		style_edition,
+		config,
+		color: Some(color),
+	};
+
+	if verbosity > 0 && let Some(ref p) = options.config_path {
+		println!("Using rustfmt config: {}", p.display());
+	}
+
+	let formatter = if let Some(ref config) = resolved_config_path {
+		AstPageFormatter::with_config(config.clone())
+	} else {
+		AstPageFormatter::new()
+	};
+
 	let mut formatted_count = 0;
 	let mut unchanged_count = 0;
 	let mut error_count = 0;
@@ -643,7 +811,7 @@ fn run_fmt_all(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 		let protect_result = formatter.protect_page_macros(&original_content);
 
 		// Step 2: Run rustfmt on protected content
-		let rustfmt_result = run_rustfmt(&protect_result.protected_content);
+		let rustfmt_result = run_rustfmt(&protect_result.protected_content, &options);
 		let rustfmt_output = match rustfmt_result {
 			Ok(output) => output,
 			Err(e) => {
@@ -685,6 +853,18 @@ fn run_fmt_all(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 				println!("{} Would format: {}", progress, file_path.display());
 				formatted_count += 1;
 			} else {
+				// Backup if requested
+				if backup {
+					let backup_path = file_path.with_extension("rs.bak");
+					std::fs::copy(file_path, &backup_path).map_err(|e| {
+						reinhardt_commands::CommandError::ExecutionError(format!(
+							"Failed to backup {}: {}",
+							file_path.display(),
+							e
+						))
+					})?;
+				}
+
 				std::fs::write(file_path, &final_result).map_err(|e| {
 					reinhardt_commands::CommandError::ExecutionError(format!(
 						"Failed to write {}: {}",
@@ -761,13 +941,58 @@ fn run_fmt_all(path: PathBuf, check: bool, verbosity: u8) -> CommandResult<()> {
 	Ok(())
 }
 
+/// Find the project root by searching upward for Cargo.toml.
+fn find_project_root() -> Option<PathBuf> {
+	let current_dir = std::env::current_dir().ok()?;
+	let mut current = current_dir.as_path();
+
+	loop {
+		if current.join("Cargo.toml").exists() {
+			return Some(current.to_path_buf());
+		}
+		current = current.parent()?;
+	}
+}
+
+/// Find rustfmt.toml by searching upward from a path.
+fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
+	let mut current = if start_path.is_file() {
+		start_path.parent()
+	} else {
+		Some(start_path)
+	}?;
+
+	loop {
+		let config = current.join("rustfmt.toml");
+		if config.exists() {
+			return Some(config);
+		}
+		let hidden_config = current.join(".rustfmt.toml");
+		if hidden_config.exists() {
+			return Some(hidden_config);
+		}
+		if current.join("Cargo.toml").exists() {
+			break;
+		}
+		current = current.parent()?;
+	}
+	None
+}
+
 /// Run rustfmt on content and return formatted output.
-fn run_rustfmt(content: &str) -> Result<String, String> {
+fn run_rustfmt(content: &str, options: &ast_formatter::RustfmtOptions) -> Result<String, String> {
 	use std::io::Write;
 	use std::process::{Command, Stdio};
 
-	let mut child = Command::new("rustfmt")
-		.arg("--edition=2024")
+	let mut cmd = Command::new("rustfmt");
+	options.apply_to_command(&mut cmd);
+
+	// Fallback to default edition if no config is specified
+	if options.config_path.is_none() && options.edition.is_none() {
+		cmd.arg("--edition=2024");
+	}
+
+	let mut child = cmd
 		.stdin(Stdio::piped())
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
