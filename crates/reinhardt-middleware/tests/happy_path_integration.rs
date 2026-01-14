@@ -20,7 +20,8 @@ use fixtures::{
 	circuit_breaker_middleware, create_request_with_headers, create_test_request,
 	session_middleware, success_handler,
 };
-use reinhardt_core::types::{Middleware, Request};
+use reinhardt_core::Middleware;
+use reinhardt_core::http::Request;
 use reinhardt_middleware::cache::CacheMiddleware;
 use reinhardt_middleware::circuit_breaker::{CircuitBreakerMiddleware, CircuitState};
 #[cfg(feature = "cors")]

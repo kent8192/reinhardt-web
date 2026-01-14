@@ -19,7 +19,8 @@ use rstest::rstest;
 use serial_test::serial;
 use std::sync::Arc;
 
-use reinhardt_core::types::{Middleware, Request};
+use reinhardt_core::Middleware;
+use reinhardt_core::http::Request;
 use reinhardt_middleware::csrf::CsrfMiddleware;
 use reinhardt_middleware::locale::LocaleMiddleware;
 
@@ -420,15 +421,15 @@ async fn test_middleware_chain_error_handling() {
 	// Create a composite handler that applies inner middleware first
 	struct MiddlewareHandler {
 		middleware: Arc<dyn Middleware>,
-		handler: Arc<dyn reinhardt_core::types::Handler>,
+		handler: Arc<dyn reinhardt_core::Handler>,
 	}
 
 	#[async_trait::async_trait]
-	impl reinhardt_core::types::Handler for MiddlewareHandler {
+	impl reinhardt_core::Handler for MiddlewareHandler {
 		async fn handle(
 			&self,
 			request: Request,
-		) -> reinhardt_core::exception::Result<reinhardt_core::types::Response> {
+		) -> reinhardt_core::exception::Result<reinhardt_core::http::Response> {
 			self.middleware.process(request, self.handler.clone()).await
 		}
 	}
