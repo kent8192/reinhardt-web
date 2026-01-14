@@ -3,7 +3,7 @@
 use crate::rest_authentication::RestAuthentication;
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use reinhardt_types::Request;
+use reinhardt_http::Request;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ impl BasicAuthentication {
 	/// use reinhardt_auth::{HttpBasicAuth, AuthenticationBackend};
 	/// use bytes::Bytes;
 	/// use hyper::{HeaderMap, Method, Uri, Version};
-	/// use reinhardt_types::Request;
+	/// use reinhardt_http::Request;
 	///
 	/// # async fn example() {
 	/// let auth = HttpBasicAuth::new();
@@ -53,7 +53,7 @@ impl BasicAuthentication {
 	/// use reinhardt_auth::{HttpBasicAuth, AuthenticationBackend};
 	/// use bytes::Bytes;
 	/// use hyper::{HeaderMap, Method, Uri, Version};
-	/// use reinhardt_types::Request;
+	/// use reinhardt_http::Request;
 	///
 	/// # async fn example() {
 	/// let mut auth = HttpBasicAuth::new();

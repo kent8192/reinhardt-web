@@ -26,7 +26,7 @@ type PermissionMap = Arc<RwLock<HashMap<String, Vec<String>>>>;
 /// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{Method};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -154,7 +154,7 @@ impl Permission for DjangoModelPermissions {
 /// use reinhardt_auth::{Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{Method};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -303,7 +303,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::Method;
-	use reinhardt_types::Request;
+	use reinhardt_http::Request;
 
 	#[derive(Debug)]
 	struct TestModel;

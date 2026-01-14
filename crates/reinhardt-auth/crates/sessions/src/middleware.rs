@@ -39,7 +39,7 @@ use reinhardt_core::exception::Result;
 #[cfg(feature = "middleware")]
 use reinhardt_core::http::{Request, Response};
 #[cfg(feature = "middleware")]
-use reinhardt_core::types::{Handler, Middleware};
+use reinhardt_core::{Handler, Middleware};
 #[cfg(feature = "middleware")]
 use std::sync::Arc;
 #[cfg(feature = "middleware")]

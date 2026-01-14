@@ -11,7 +11,7 @@ use crate::core::user::User;
 ///
 /// ```
 /// use reinhardt_auth::{PermissionContext, AnonymousUser, User};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -35,7 +35,7 @@ use crate::core::user::User;
 /// ```
 pub struct PermissionContext<'a> {
 	/// The HTTP request
-	pub request: &'a reinhardt_types::Request,
+	pub request: &'a reinhardt_http::Request,
 	/// Whether the user is authenticated
 	pub is_authenticated: bool,
 	/// Whether the user is an admin
@@ -90,7 +90,7 @@ pub trait Permission: Send + Sync {
 ///
 /// ```
 /// use reinhardt_auth::{Permission, AllowAny, PermissionContext};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -131,7 +131,7 @@ impl Permission for AllowAny {
 ///
 /// ```
 /// use reinhardt_auth::{Permission, IsAuthenticated, PermissionContext, SimpleUser, User};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 /// use uuid::Uuid;
@@ -193,7 +193,7 @@ impl Permission for IsAuthenticated {
 ///
 /// ```
 /// use reinhardt_auth::{Permission, IsAdminUser, PermissionContext, SimpleUser, User};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 /// use uuid::Uuid;
@@ -263,7 +263,7 @@ impl Permission for IsAdminUser {
 ///
 /// ```
 /// use reinhardt_auth::{Permission, IsActiveUser, PermissionContext};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 ///
@@ -317,7 +317,7 @@ impl Permission for IsActiveUser {
 ///
 /// ```
 /// use reinhardt_auth::{Permission, IsAuthenticatedOrReadOnly, PermissionContext};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 /// use hyper::{Method, Uri, Version, header::HeaderMap};
 /// use bytes::Bytes;
 ///

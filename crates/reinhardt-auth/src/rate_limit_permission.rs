@@ -392,7 +392,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
 	use reinhardt_throttling::MemoryBackend;
-	use reinhardt_types::Request;
+	use reinhardt_http::Request;
 
 	fn create_test_request(headers: HeaderMap) -> Request {
 		Request::builder()

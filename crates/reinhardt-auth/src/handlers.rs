@@ -8,7 +8,7 @@ use crate::session::{SESSION_KEY_USER_ID, Session, SessionId, SessionStore};
 use async_trait::async_trait;
 use reinhardt_exception::Result;
 use reinhardt_http::{Request, Response};
-use reinhardt_types::Handler;
+use reinhardt_http::Handler;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

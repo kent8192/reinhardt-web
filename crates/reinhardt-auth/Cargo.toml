@@ -42,7 +42,7 @@ reinhardt-di = { workspace = true }
 reinhardt-sessions = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-throttling = { workspace = true }
-reinhardt-types = { workspace = true, features = ["http"] }
+reinhardt-types = { workspace = true }
 reinhardt-exception = { workspace = true }
 reinhardt-http = { workspace = true }
 hyper = { workspace = true }

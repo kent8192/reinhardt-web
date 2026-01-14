@@ -19,7 +19,7 @@ use std::ops::{BitAnd, BitOr, Not};
 /// use reinhardt_auth::{IsAuthenticated, IsAdminUser, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -97,7 +97,7 @@ where
 /// use reinhardt_auth::{IsAuthenticated, AllowAny, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -165,7 +165,7 @@ where
 /// use reinhardt_auth::{IsAuthenticated, Permission, PermissionContext};
 /// use bytes::Bytes;
 /// use hyper::{HeaderMap, Method, Version};
-/// use reinhardt_types::Request;
+/// use reinhardt_http::Request;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -406,7 +406,7 @@ mod tests {
 	use crate::core::{AllowAny, IsAdminUser, IsAuthenticated};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
-	use reinhardt_types::Request;
+	use reinhardt_http::Request;
 
 	#[tokio::test]
 	async fn test_and_permission_both_true() {

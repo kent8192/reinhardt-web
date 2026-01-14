@@ -179,7 +179,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::Method;
-	use reinhardt_types::Request;
+	use reinhardt_http::Request;
 
 	#[test]
 	fn test_object_permission_creation() {

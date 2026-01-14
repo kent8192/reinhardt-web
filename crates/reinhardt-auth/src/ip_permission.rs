@@ -420,7 +420,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
-	use reinhardt_types::Request;
+	use reinhardt_http::Request;
 
 	#[test]
 	fn test_cidr_range_from_str() {

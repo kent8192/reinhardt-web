@@ -207,7 +207,7 @@ mod tests {
 	async fn test_permission_allow_any() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = AllowAny;
 		let request = Request::builder()
@@ -232,7 +232,7 @@ mod tests {
 	async fn test_permission_is_authenticated_with_auth() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::builder()
@@ -257,7 +257,7 @@ mod tests {
 	async fn test_permission_is_authenticated_without_auth() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsAuthenticated;
 		let request = Request::builder()
@@ -282,7 +282,7 @@ mod tests {
 	async fn test_permission_is_admin_user() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsAdminUser;
 		let request = Request::builder()
@@ -317,7 +317,7 @@ mod tests {
 	async fn test_permission_is_active_user() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsActiveUser;
 		let request = Request::builder()
@@ -352,7 +352,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_get() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::builder()
@@ -377,7 +377,7 @@ mod tests {
 	async fn test_permission_is_authenticated_or_read_only_post() {
 		use bytes::Bytes;
 		use hyper::Method;
-		use reinhardt_types::Request;
+		use reinhardt_http::Request;
 
 		let permission = IsAuthenticatedOrReadOnly;
 		let request = Request::builder()

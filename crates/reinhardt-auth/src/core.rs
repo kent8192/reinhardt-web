@@ -88,7 +88,7 @@
 //!
 //! ```
 //! use reinhardt_auth::core::{Permission, IsAuthenticated, PermissionContext};
-//! use reinhardt_types::Request;
+//! use reinhardt_http::Request;
 //! use hyper::{Method, Uri, Version, header::HeaderMap};
 //! use bytes::Bytes;
 //!
