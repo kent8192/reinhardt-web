@@ -1,8 +1,5 @@
-//! DM endpoint tests
+//! DM app tests module
 //!
-//! Tests for DM room and message operations
+//! Contains tests for DM server functions and WebSocket handlers.
 
-pub mod helpers;
-
-mod message_tests;
-mod room_tests;
+pub mod server_fn;

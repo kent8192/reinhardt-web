@@ -1,9 +1,5 @@
-//! Profile endpoint tests
+//! Profile app tests module
 //!
-//! Tests for profile CRUD operations
+//! Contains tests for profile server functions and client components.
 
-pub mod helpers;
-
-mod create_profile_tests;
-mod fetch_profile_tests;
-mod patch_profile_tests;
+pub mod server_fn;
