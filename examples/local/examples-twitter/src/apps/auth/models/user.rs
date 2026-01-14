@@ -10,8 +10,13 @@ use reinhardt::{Argon2Hasher, BaseUser};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// Test-only dependency for sqlx::FromRow (server-side only)
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use sqlx::FromRow;
+
 #[model(app_label = "auth", table_name = "auth_user")]
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(all(test, not(target_arch = "wasm32")), derive(FromRow))]
 pub struct User {
 	#[field(primary_key = true)]
 	id: Uuid,
@@ -42,10 +47,12 @@ pub struct User {
 	// - auth_user_following (user_id -> user_id, following_id -> user_id)
 	// - auth_user_blocked_users (user_id -> user_id, blocked_user_id -> user_id)
 	#[serde(skip, default)]
+	#[cfg_attr(all(test, not(target_arch = "wasm32")), sqlx(skip))]
 	#[rel(many_to_many, related_name = "followers")]
 	following: ManyToManyField<User, User>,
 
 	#[serde(skip, default)]
+	#[cfg_attr(all(test, not(target_arch = "wasm32")), sqlx(skip))]
 	#[rel(many_to_many, related_name = "blocked_by")]
 	blocked_users: ManyToManyField<User, User>,
 }
