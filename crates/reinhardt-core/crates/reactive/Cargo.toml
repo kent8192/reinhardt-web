@@ -1,0 +1,23 @@
+[package]
+name = "reinhardt-reactive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Fine-grained reactive system for Reinhardt framework"
+
+[dependencies]
+serial_test = { workspace = true, optional = true }
+aquamarine = { workspace = true }
+
+[dev-dependencies]
+serial_test = { workspace = true }
+
+[features]
+default = ["std"]
+full = ["std"]
+std = []
+
+[lints]
+workspace = true
