@@ -5,10 +5,7 @@
 
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt_core::{
-	http::{Request, Response, Result},
-	types::{Handler, Middleware},
-};
+use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;

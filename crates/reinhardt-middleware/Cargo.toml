@@ -29,6 +29,7 @@ reinhardt-core = { workspace = true, features = [
     "http",
     "security",
 ] }
+reinhardt-http = { workspace = true }
 reinhardt-auth = { workspace = true, features = ["sessions"] }
 reinhardt-mail = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }

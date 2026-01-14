@@ -136,7 +136,7 @@ pub mod xframe;
 pub mod xss;
 
 // Re-export core middleware traits from reinhardt-types
-pub use reinhardt_core::types::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_core::{Handler, Middleware, MiddlewareChain};
 
 #[cfg(feature = "sessions")]
 pub use auth::AuthenticationMiddleware;
