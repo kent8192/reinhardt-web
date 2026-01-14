@@ -6,7 +6,7 @@
 //! - `Footer` - Footer component
 //! - `MainLayout` - Main layout wrapper
 
-use reinhardt_pages::component::{ElementView, IntoView, View};
+use reinhardt_pages::component::{Page, PageElement, IntoPage};
 
 /// Model information for navigation
 #[derive(Debug, Clone)]
@@ -28,27 +28,27 @@ pub struct ModelInfo {
 ///
 /// header("My Admin Panel", Some("john_doe"))
 /// ```
-pub fn header(site_name: &str, user_name: Option<&str>) -> View {
+pub fn header(site_name: &str, user_name: Option<&str>) -> Page {
 	let user_display = user_name.unwrap_or("Guest");
 
-	ElementView::new("nav")
+	PageElement::new("nav")
 		.attr("class", "navbar navbar-dark bg-dark")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "container-fluid")
 				.child(
-					ElementView::new("a")
+					PageElement::new("a")
 						.attr("class", "navbar-brand")
 						.attr("href", "/admin/")
 						.child(site_name.to_string()),
 				)
 				.child(
-					ElementView::new("span")
+					PageElement::new("span")
 						.attr("class", "navbar-text")
 						.child(format!("User: {}", user_display)),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Sidebar component
@@ -67,11 +67,11 @@ pub fn header(site_name: &str, user_name: Option<&str>) -> View {
 /// ];
 /// sidebar(&models, Some("/admin/users/"))
 /// ```
-pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> View {
+pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
-	let nav_items: Vec<View> = models
+	let nav_items: Vec<Page> = models
 		.iter()
 		.map(|model| {
 			let is_active = current_path.is_some_and(|path| path.starts_with(&model.url));
@@ -81,29 +81,29 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> View {
 				"nav-link"
 			};
 
-			ElementView::new("li")
+			PageElement::new("li")
 				.attr("class", "nav-item")
 				.child(
 					Link::new(model.url.clone(), model.name.clone())
 						.class(item_class)
 						.render(),
 				)
-				.into_view()
+				.into_page()
 		})
 		.collect();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "sidebar bg-light border-end")
 		.attr(
 			"style",
 			"width: 250px; height: 100vh; position: fixed; top: 56px; left: 0; overflow-y: auto;",
 		)
 		.child(
-			ElementView::new("ul")
+			PageElement::new("ul")
 				.attr("class", "nav flex-column")
 				.children(nav_items),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Footer component
@@ -117,16 +117,16 @@ pub fn sidebar(models: &[ModelInfo], current_path: Option<&str>) -> View {
 ///
 /// footer("0.1.0")
 /// ```
-pub fn footer(version: &str) -> View {
-	ElementView::new("footer")
+pub fn footer(version: &str) -> Page {
+	PageElement::new("footer")
 		.attr("class", "footer bg-light text-center py-3 border-top")
 		.attr("style", "margin-left: 250px;")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "container-fluid")
 				.child(format!("Reinhardt Admin Panel v{}", version)),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Main layout wrapper
@@ -153,16 +153,16 @@ pub fn main_layout(
 	user_name: Option<&str>,
 	version: &str,
 	router: std::sync::Arc<reinhardt_pages::router::Router>,
-) -> View {
+) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::RouterOutlet;
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "admin-layout")
 		.child(header(site_name, user_name))
 		.child(sidebar(models, None))
 		.child(
-			ElementView::new("main")
+			PageElement::new("main")
 				.attr("class", "main-content")
 				.attr(
 					"style",
@@ -176,5 +176,5 @@ pub fn main_layout(
 				),
 		)
 		.child(footer(version))
-		.into_view()
+		.into_page()
 }

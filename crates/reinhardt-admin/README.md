@@ -138,10 +138,10 @@ let router = AdminRouter::new(site, db)
 
 // Automatically creates routes:
 // GET    /admin/<model>/
-// GET    /admin/<model>/:id/
+// GET    /admin/<model>/{id}/
 // POST   /admin/<model>/
-// PUT    /admin/<model>/:id/
-// DELETE /admin/<model>/:id/
+// PUT    /admin/<model>/{id}/
+// DELETE /admin/<model>/{id}/
 // DELETE /admin/<model>/bulk/
 // GET    /admin/<model>/export/
 // POST   /admin/<model>/import/

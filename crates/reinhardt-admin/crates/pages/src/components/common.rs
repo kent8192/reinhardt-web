@@ -9,11 +9,11 @@
 //!
 //! ## Design Note
 //!
-//! These components use ElementView for SSR compatibility and Router integration.
+//! These components use PageElement for SSR compatibility and Router integration.
 //! Interactive components with event handlers will be hydrated on the client side.
 
 use reinhardt_pages::Signal;
-use reinhardt_pages::component::{ElementView, IntoView, View};
+use reinhardt_pages::component::{Page, PageElement, IntoPage};
 
 #[cfg(target_arch = "wasm32")]
 use reinhardt_pages::dom::EventType;
@@ -63,12 +63,12 @@ impl ButtonVariant {
 /// let clicked = Signal::new(false);
 /// button("Click me", ButtonVariant::Primary, false, clicked)
 /// ```
-pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Signal<bool>) -> View {
+pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Signal<bool>) -> Page {
 	let classes = format!("btn {}", variant.class());
 
 	#[cfg(target_arch = "wasm32")]
 	let button_view = {
-		ElementView::new("button")
+		PageElement::new("button")
 			.attr("class", classes.clone())
 			.attr("type", "button")
 			.attr("disabled", if disabled { "true" } else { "false" })
@@ -84,7 +84,7 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Sig
 	#[cfg(not(target_arch = "wasm32"))]
 	let button_view = {
 		// SSR: No event handler needed (will be hydrated on client)
-		ElementView::new("button")
+		PageElement::new("button")
 			.attr("class", classes)
 			.attr("type", "button")
 			.attr("disabled", if disabled { "true" } else { "false" })
@@ -92,7 +92,7 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Sig
 			.child(text.to_string())
 	};
 
-	button_view.into_view()
+	button_view.into_page()
 }
 
 /// Loading spinner component
@@ -106,20 +106,20 @@ pub fn button(text: &str, variant: ButtonVariant, disabled: bool, _on_click: Sig
 ///
 /// loading_spinner()
 /// ```
-pub fn loading_spinner() -> View {
-	ElementView::new("div")
+pub fn loading_spinner() -> Page {
+	PageElement::new("div")
 		.attr("class", "loading-spinner")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "spinner-border")
 				.attr("role", "status")
 				.child(
-					ElementView::new("span")
+					PageElement::new("span")
 						.attr("class", "visually-hidden")
 						.child("Loading..."),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Error display component
@@ -133,14 +133,14 @@ pub fn loading_spinner() -> View {
 ///
 /// error_display("An error occurred", true)
 /// ```
-pub fn error_display(message: &str, dismissible: bool) -> View {
-	let mut container = ElementView::new("div")
+pub fn error_display(message: &str, dismissible: bool) -> Page {
+	let mut container = PageElement::new("div")
 		.attr("class", "alert alert-danger")
 		.attr("role", "alert");
 
 	if dismissible {
 		container = container.child(
-			ElementView::new("button")
+			PageElement::new("button")
 				.attr("class", "btn-close")
 				.attr("type", "button")
 				.attr("data-bs-dismiss", "alert")
@@ -148,7 +148,7 @@ pub fn error_display(message: &str, dismissible: bool) -> View {
 		);
 	}
 
-	container.child(message.to_string()).into_view()
+	container.child(message.to_string()).into_page()
 }
 
 /// Pagination component
@@ -165,7 +165,7 @@ pub fn error_display(message: &str, dismissible: bool) -> View {
 /// let current_page = Signal::new(1u64);
 /// pagination(current_page, 10)
 /// ```
-pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> View {
+pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 	let current_val = current_page.get();
 	let mut nav_items = Vec::new();
 
@@ -217,14 +217,14 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> View {
 		},
 	));
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "d-flex justify-content-center")
 		.child(
-			ElementView::new("ul")
+			PageElement::new("ul")
 				.attr("class", "pagination")
 				.children(nav_items),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Helper function to create a pagination item with event handler
@@ -234,7 +234,7 @@ fn create_page_item<F>(
 	active: bool,
 	_signal: Signal<u64>,
 	_handler: F,
-) -> View
+) -> Page
 where
 	F: Fn(Signal<u64>) + 'static,
 {
@@ -248,7 +248,7 @@ where
 
 	#[cfg(target_arch = "wasm32")]
 	let link = {
-		ElementView::new("a")
+		PageElement::new("a")
 			.attr("class", "page-link")
 			.attr("href", "#")
 			.child(text.to_string())
@@ -263,17 +263,17 @@ where
 	#[cfg(not(target_arch = "wasm32"))]
 	let link = {
 		// SSR: No event handler needed (will be hydrated on client)
-		ElementView::new("a")
+		PageElement::new("a")
 			.attr("class", "page-link")
 			.attr("href", "#")
 			.attr("data-reactive", "true") // Marker for client-side hydration
 			.child(text.to_string())
 	};
 
-	ElementView::new("li")
+	PageElement::new("li")
 		.attr("class", class_name)
 		.child(link)
-		.into_view()
+		.into_page()
 }
 
 /// Search bar component
@@ -293,22 +293,22 @@ where
 /// let search_value = Signal::new(String::new());
 /// search_bar(search_value, "Search...")
 /// ```
-pub fn search_bar(value: Signal<String>, placeholder: &str) -> View {
+pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 	let current_value = value.get();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "input-group")
 		.child(
-			ElementView::new("span")
+			PageElement::new("span")
 				.attr("class", "input-group-text")
-				.child(ElementView::new("i").attr("class", "bi bi-search")),
+				.child(PageElement::new("i").attr("class", "bi bi-search")),
 		)
 		.child(
-			ElementView::new("input")
+			PageElement::new("input")
 				.attr("class", "form-control")
 				.attr("type", "text")
 				.attr("placeholder", placeholder.to_string())
 				.attr("value", current_value),
 		)
-		.into_view()
+		.into_page()
 }

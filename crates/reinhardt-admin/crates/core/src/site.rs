@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use reinhardt_db::orm::DatabaseConnection;
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_urls::routers::UnifiedRouter;
+use reinhardt_urls::routers::ServerRouter;
 use std::sync::Arc;
 
 /// The main admin site that manages all registered models
@@ -300,7 +300,7 @@ impl AdminSite {
 		self.registry.clear();
 	}
 
-	/// Build a UnifiedRouter from this admin site
+	/// Build a ServerRouter from this admin site
 	///
 	/// Creates HTTP endpoints for all registered models including:
 	/// - `GET /` - Dashboard (list of registered models)
@@ -329,7 +329,7 @@ impl AdminSite {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn get_urls(self, _db: DatabaseConnection) -> UnifiedRouter {
+	pub fn get_urls(self, _db: DatabaseConnection) -> ServerRouter {
 		let url_prefix = self.url_prefix.clone();
 		crate::router::admin_routes().with_prefix(&url_prefix)
 	}

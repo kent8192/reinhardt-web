@@ -1,18 +1,18 @@
 //! Admin router integration
 //!
 //! This module provides router integration for admin panel,
-//! generating UnifiedRouter from AdminSite configuration.
+//! generating ServerRouter from AdminSite configuration.
 //!
 //! All endpoints are registered automatically using the `.endpoint()` method
 //! with HTTP method macros from handlers module.
 
 use crate::AdminSite;
-use reinhardt_urls::routers::UnifiedRouter;
+use reinhardt_urls::routers::ServerRouter;
 use std::sync::Arc;
 
 /// Admin router builder
 ///
-/// Builds a UnifiedRouter from an AdminSite with all CRUD endpoints.
+/// Builds a ServerRouter from an AdminSite with all CRUD endpoints.
 ///
 /// # Examples
 ///
@@ -24,7 +24,7 @@ use std::sync::Arc;
 ///
 /// let router = admin_routes();
 /// ```
-pub fn admin_routes() -> UnifiedRouter {
+pub fn admin_routes() -> ServerRouter {
 	// Server Functions are automatically registered via #[server_fn] macro
 	// No manual route registration needed - the macro generates routes at /api/server_fn/{function_name}
 	//
@@ -39,7 +39,7 @@ pub fn admin_routes() -> UnifiedRouter {
 	// - export_data() -> ExportResponse
 	// - import_data() -> ImportResponse
 	// - get_fields() -> FieldsResponse
-	UnifiedRouter::new().with_namespace("admin")
+	ServerRouter::new().with_namespace("admin")
 }
 
 /// Admin router builder (for backward compatibility)
@@ -99,7 +99,7 @@ impl AdminRouter {
 		self
 	}
 
-	/// Build the UnifiedRouter with all admin endpoints
+	/// Build the ServerRouter with all admin endpoints
 	///
 	/// Generated endpoints:
 	/// - `GET /` - Dashboard (list of registered models)
@@ -112,12 +112,12 @@ impl AdminRouter {
 	/// - `POST /{model}/bulk-delete/` - Bulk delete model instances
 	/// - `GET /{model}/export/` - Export model data
 	/// - `POST /{model}/import/` - Import model data
-	pub fn routes(&self) -> UnifiedRouter {
+	pub fn routes(&self) -> ServerRouter {
 		admin_routes()
 	}
 
-	/// Build the UnifiedRouter (alias for routes())
-	pub fn build(self) -> UnifiedRouter {
+	/// Build the ServerRouter (alias for routes())
+	pub fn build(self) -> ServerRouter {
 		admin_routes()
 	}
 }

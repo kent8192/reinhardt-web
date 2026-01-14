@@ -10,7 +10,7 @@
 
 use reinhardt_admin_types::{FilterInfo, FilterType, ModelInfo};
 use reinhardt_pages::Signal;
-use reinhardt_pages::component::{ElementView, IntoView, View};
+use reinhardt_pages::component::{Page, PageElement, IntoPage};
 use std::collections::HashMap;
 
 #[cfg(target_arch = "wasm32")]
@@ -35,80 +35,80 @@ use std::sync::Arc;
 /// ];
 /// dashboard("My Admin Panel", &models)
 /// ```
-pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> View {
-	ElementView::new("div")
+pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
+	PageElement::new("div")
 		.attr("class", "dashboard")
 		.child(
-			ElementView::new("h1")
+			PageElement::new("h1")
 				.attr("class", "mb-4")
 				.child(format!("{} Dashboard", site_name)),
 		)
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "row")
 				.child(models_grid(models)),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Generates a grid of model cards
-fn models_grid(models: &[ModelInfo]) -> View {
+fn models_grid(models: &[ModelInfo]) -> Page {
 	if models.is_empty() {
-		return ElementView::new("div")
+		return PageElement::new("div")
 			.attr("class", "col-12")
 			.child(
-				ElementView::new("div")
+				PageElement::new("div")
 					.attr("class", "alert alert-info")
 					.child("No models registered. Add models to AdminSite to see them here."),
 			)
-			.into_view();
+			.into_page();
 	}
 
-	let card_views: Vec<View> = models
+	let card_views: Vec<Page> = models
 		.iter()
 		.map(|model| {
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "col-md-4")
 				.child(model_card(&model.name, &model.list_url))
-				.into_view()
+				.into_page()
 		})
 		.collect();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "col-12")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "row g-4")
 				.children(card_views),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Generates a single model card
-fn model_card(name: &str, url: &str) -> View {
-	ElementView::new("div")
+fn model_card(name: &str, url: &str) -> Page {
+	PageElement::new("div")
 		.attr("class", "card h-100")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "card-body")
 				.child(
-					ElementView::new("h5")
+					PageElement::new("h5")
 						.attr("class", "card-title")
 						.child(name.to_string()),
 				)
 				.child(
-					ElementView::new("p")
+					PageElement::new("p")
 						.attr("class", "card-text")
 						.child(format!("Manage {} records", name)),
 				)
 				.child(
-					ElementView::new("a")
+					PageElement::new("a")
 						.attr("class", "btn btn-primary")
 						.attr("href", url.to_string())
 						.child(format!("View {}", name)),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Column definition for list view
@@ -172,16 +172,16 @@ pub fn list_view(
 	data: &ListViewData,
 	current_page_signal: reinhardt_pages::Signal<u64>,
 	filters_signal: Signal<HashMap<String, String>>,
-) -> View {
-	ElementView::new("div")
+) -> Page {
+	PageElement::new("div")
 		.attr("class", "list-view")
 		.child(
-			ElementView::new("h1")
+			PageElement::new("h1")
 				.attr("class", "mb-4")
 				.child(format!("{} List", data.model_name)),
 		)
 		.child(filters(&data.filters, filters_signal))
-		.child(ElementView::new("div").attr("class", "mb-3").child(format!(
+		.child(PageElement::new("div").attr("class", "mb-3").child(format!(
 			"Showing {} {} (Page {} of {})",
 			data.total_count, data.model_name, data.current_page, data.total_pages
 		)))
@@ -190,7 +190,7 @@ pub fn list_view(
 			current_page_signal,
 			data.total_pages,
 		))
-		.into_view()
+		.into_page()
 }
 
 /// Generates a data table
@@ -198,35 +198,35 @@ fn data_table(
 	columns: &[Column],
 	records: &[std::collections::HashMap<String, String>],
 	model_name: &str,
-) -> View {
+) -> Page {
 	// Table header
-	let header_cells: Vec<View> = columns
+	let header_cells: Vec<Page> = columns
 		.iter()
-		.map(|col| ElementView::new("th").child(col.label.clone()).into_view())
+		.map(|col| PageElement::new("th").child(col.label.clone()).into_page())
 		.chain(std::iter::once(
-			ElementView::new("th").child("Actions").into_view(),
+			PageElement::new("th").child("Actions").into_page(),
 		))
 		.collect();
 
-	let thead = ElementView::new("thead").child(ElementView::new("tr").children(header_cells));
+	let thead = PageElement::new("thead").child(PageElement::new("tr").children(header_cells));
 
 	// Table body
-	let body_rows: Vec<View> = records
+	let body_rows: Vec<Page> = records
 		.iter()
 		.map(|record| table_row(columns, record, model_name))
 		.collect();
 
-	let tbody = ElementView::new("tbody").children(body_rows);
+	let tbody = PageElement::new("tbody").children(body_rows);
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "table-responsive")
 		.child(
-			ElementView::new("table")
+			PageElement::new("table")
 				.attr("class", "table table-striped table-hover")
 				.child(thead)
 				.child(tbody),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Generates a table row for a single record
@@ -234,40 +234,40 @@ fn table_row(
 	columns: &[Column],
 	record: &std::collections::HashMap<String, String>,
 	model_name: &str,
-) -> View {
+) -> Page {
 	// Data cells
-	let data_cells: Vec<View> = columns
+	let data_cells: Vec<Page> = columns
 		.iter()
 		.map(|col| {
 			let value = record
 				.get(&col.field)
 				.cloned()
 				.unwrap_or_else(|| "-".to_string());
-			ElementView::new("td").child(value).into_view()
+			PageElement::new("td").child(value).into_page()
 		})
 		.collect();
 
 	// Actions cell
 	let record_id = record.get("id").cloned().unwrap_or_else(|| "0".to_string());
-	let actions_cell = ElementView::new("td")
+	let actions_cell = PageElement::new("td")
 		.child(action_buttons(model_name, &record_id))
-		.into_view();
+		.into_page();
 
-	ElementView::new("tr")
+	PageElement::new("tr")
 		.children(data_cells)
 		.child(actions_cell)
-		.into_view()
+		.into_page()
 }
 
 /// Generates action buttons for a record
-fn action_buttons(model_name: &str, record_id: &str) -> View {
+fn action_buttons(model_name: &str, record_id: &str) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
 	let detail_url = format!("/admin/{}/{}/", model_name.to_lowercase(), record_id);
 	let edit_url = format!("/admin/{}/{}/change/", model_name.to_lowercase(), record_id);
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "btn-group btn-group-sm")
 		.attr("role", "group")
 		.child(
@@ -280,7 +280,7 @@ fn action_buttons(model_name: &str, record_id: &str) -> View {
 				.class("btn btn-outline-secondary")
 				.render(),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Form field definition for model forms
@@ -317,23 +317,23 @@ pub fn detail_view(
 	model_name: &str,
 	record_id: &str,
 	record: &std::collections::HashMap<String, String>,
-) -> View {
+) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
 	let edit_url = format!("/admin/{}/{}/change/", model_name.to_lowercase(), record_id);
 	let list_url = format!("/admin/{}/", model_name.to_lowercase());
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "detail-view")
 		.child(
-			ElementView::new("h1")
+			PageElement::new("h1")
 				.attr("class", "mb-4")
 				.child(format!("{} Detail", model_name)),
 		)
 		.child(detail_table(record))
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "mt-4")
 				.child(
 					Link::new(edit_url, "Edit")
@@ -346,33 +346,33 @@ pub fn detail_view(
 						.render(),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Generates a detail table for record fields
-fn detail_table(record: &std::collections::HashMap<String, String>) -> View {
-	let rows: Vec<View> = record
+fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
+	let rows: Vec<Page> = record
 		.iter()
 		.map(|(key, value)| {
-			ElementView::new("tr")
+			PageElement::new("tr")
 				.child(
-					ElementView::new("th")
+					PageElement::new("th")
 						.attr("class", "w-25")
 						.child(key.clone()),
 				)
-				.child(ElementView::new("td").child(value.clone()))
-				.into_view()
+				.child(PageElement::new("td").child(value.clone()))
+				.into_page()
 		})
 		.collect();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "table-responsive")
 		.child(
-			ElementView::new("table")
+			PageElement::new("table")
 				.attr("class", "table table-bordered")
-				.child(ElementView::new("tbody").children(rows)),
+				.child(PageElement::new("tbody").children(rows)),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Model form component
@@ -395,7 +395,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> View {
 /// ];
 /// model_form("User", &fields, None)
 /// ```
-pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str>) -> View {
+pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str>) -> Page {
 	use reinhardt_pages::component::Component;
 	use reinhardt_pages::router::Link;
 
@@ -408,25 +408,25 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	let list_url = format!("/admin/{}/", model_name.to_lowercase());
 
 	// Add form fields
-	let form_groups: Vec<View> = fields.iter().map(form_group).collect();
+	let form_groups: Vec<Page> = fields.iter().map(form_group).collect();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "model-form")
 		.child(
-			ElementView::new("h1")
+			PageElement::new("h1")
 				.attr("class", "mb-4")
 				.child(form_title),
 		)
 		.child(
-			ElementView::new("form")
+			PageElement::new("form")
 				.attr("class", "needs-validation")
 				.attr("novalidate", "true")
 				.children(form_groups)
 				.child(
-					ElementView::new("div")
+					PageElement::new("div")
 						.attr("class", "mt-4")
 						.child(
-							ElementView::new("button")
+							PageElement::new("button")
 								.attr("class", "btn btn-primary me-2")
 								.attr("type", "submit")
 								.child("Save"),
@@ -438,28 +438,28 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 						),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Generates a form group (label + input) for a field
-fn form_group(field: &FormField) -> View {
+fn form_group(field: &FormField) -> Page {
 	let input_id = format!("field-{}", field.name);
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "mb-3")
 		.child(
-			ElementView::new("label")
+			PageElement::new("label")
 				.attr("class", "form-label")
 				.attr("for", input_id.clone())
 				.child(field.label.clone()),
 		)
 		.child(form_element(field, &input_id))
-		.into_view()
+		.into_page()
 }
 
 /// Generates an input element for a form field
-fn form_element(field: &FormField, input_id: &str) -> View {
-	let mut input_builder = ElementView::new("input")
+fn form_element(field: &FormField, input_id: &str) -> Page {
+	let mut input_builder = PageElement::new("input")
 		.attr("class", "form-control")
 		.attr("type", field.field_type.clone())
 		.attr("id", input_id.to_string())
@@ -470,7 +470,7 @@ fn form_element(field: &FormField, input_id: &str) -> View {
 		input_builder = input_builder.attr("required", "true");
 	}
 
-	input_builder.into_view()
+	input_builder.into_page()
 }
 
 /// Convert FilterType to choice list
@@ -516,15 +516,15 @@ fn create_filter_select(
 	filter_type: &FilterType,
 	current_value: Option<&str>,
 	_filters_signal: Signal<HashMap<String, String>>,
-) -> View {
+) -> Page {
 	let choices = filter_type_to_choices(filter_type);
 	let current_val = current_value.unwrap_or("");
 
 	// Generate <option> elements
-	let options: Vec<View> = choices
+	let options: Vec<Page> = choices
 		.iter()
 		.map(|(value, label)| {
-			let mut opt = ElementView::new("option")
+			let mut opt = PageElement::new("option")
 				.attr("value", value.clone())
 				.child(label.clone());
 
@@ -532,7 +532,7 @@ fn create_filter_select(
 				opt = opt.attr("selected", "true");
 			}
 
-			opt.into_view()
+			opt.into_page()
 		})
 		.collect();
 
@@ -545,7 +545,7 @@ fn create_filter_select(
 		let field_clone = field.to_string();
 		let filters_signal = _filters_signal;
 
-		ElementView::new("select")
+		PageElement::new("select")
 			.attr("class", "form-select form-select-sm")
 			.attr("data-filter-field", field.to_string())
 			.children(options)
@@ -573,14 +573,14 @@ fn create_filter_select(
 	// SSR: No event handler (will be hydrated on client)
 	#[cfg(not(target_arch = "wasm32"))]
 	let select_view = {
-		ElementView::new("select")
+		PageElement::new("select")
 			.attr("class", "form-select form-select-sm")
 			.attr("data-filter-field", field.to_string())
 			.attr("data-reactive", "true") // Marker for client-side hydration
 			.children(options)
 	};
 
-	select_view.into_view()
+	select_view.into_page()
 }
 
 /// Create filter control (label + select)
@@ -590,14 +590,14 @@ fn create_filter_control(
 	filter_info: &FilterInfo,
 	current_value: Option<&str>,
 	filters_signal: Signal<HashMap<String, String>>,
-) -> View {
-	ElementView::new("div")
+) -> Page {
+	PageElement::new("div")
 		.attr("class", "col-md-3")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "mb-2")
 				.child(
-					ElementView::new("label")
+					PageElement::new("label")
 						.attr("class", "form-label")
 						.child(filter_info.title.clone()),
 				)
@@ -608,7 +608,7 @@ fn create_filter_control(
 					filters_signal,
 				)),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Filters component
@@ -638,14 +638,14 @@ fn create_filter_control(
 pub fn filters(
 	filters_info: &[FilterInfo],
 	filters_signal: Signal<HashMap<String, String>>,
-) -> View {
+) -> Page {
 	if filters_info.is_empty() {
-		return ElementView::new("div").into_view();
+		return PageElement::new("div").into_page();
 	}
 
 	let current_filters = filters_signal.get();
 
-	let filter_controls: Vec<View> = filters_info
+	let filter_controls: Vec<Page> = filters_info
 		.iter()
 		.map(|info| {
 			let current_value = current_filters.get(&info.field).map(|s| s.as_str());
@@ -653,17 +653,17 @@ pub fn filters(
 		})
 		.collect();
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "filters mb-3")
 		.child(
-			ElementView::new("h5")
+			PageElement::new("h5")
 				.attr("class", "mb-2")
 				.child("Filters"),
 		)
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "row g-2")
 				.children(filter_controls),
 		)
-		.into_view()
+		.into_page()
 }

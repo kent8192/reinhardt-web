@@ -16,7 +16,7 @@ use reinhardt_admin_server::{get_dashboard, get_model_detail, get_model_fields, 
 use reinhardt_admin_types::ListQueryParams;
 use reinhardt_admin_types::ModelInfo;
 use reinhardt_pages::Signal;
-use reinhardt_pages::component::{Component, View};
+use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::router::{Link, Router};
 #[cfg(target_arch = "wasm32")]
 use reinhardt_pages::{ResourceState, create_resource};
@@ -92,13 +92,13 @@ where
 
 /// Dashboard view component for router
 #[cfg(target_arch = "wasm32")]
-fn dashboard_view() -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn dashboard_view() -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
 	let dashboard_resource =
 		create_resource(|| async { get_dashboard().await.map_err(|e| e.to_string()) });
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "dashboard-container")
 		.child({
 			let resource = dashboard_resource.clone();
@@ -108,12 +108,12 @@ fn dashboard_view() -> View {
 				ResourceState::Error(err) => error_view(&err),
 			}
 		})
-		.into_view()
+		.into_page()
 }
 
 /// Dashboard view component for router (non-WASM fallback)
 #[cfg(not(target_arch = "wasm32"))]
-fn dashboard_view() -> View {
+fn dashboard_view() -> Page {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let models = vec![
 		ModelInfo {
@@ -131,8 +131,8 @@ fn dashboard_view() -> View {
 
 /// List view component for router
 #[cfg(target_arch = "wasm32")]
-fn list_view_component(model_name: String) -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn list_view_component(model_name: String) -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
 	let list_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -144,7 +144,7 @@ fn list_view_component(model_name: String) -> View {
 		}
 	});
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "list-container")
 		.child({
 			let resource = list_resource.clone();
@@ -176,12 +176,12 @@ fn list_view_component(model_name: String) -> View {
 				ResourceState::Error(err) => error_view(&err),
 			}
 		})
-		.into_view()
+		.into_page()
 }
 
 /// List view component for router (non-WASM fallback)
 #[cfg(not(target_arch = "wasm32"))]
-fn list_view_component(model_name: String) -> View {
+fn list_view_component(model_name: String) -> Page {
 	use std::collections::HashMap;
 
 	// Dummy data for non-WASM environments (tests, etc.)
@@ -213,8 +213,8 @@ fn list_view_component(model_name: String) -> View {
 
 /// Detail view component for router
 #[cfg(target_arch = "wasm32")]
-fn detail_view_component(model_name: String, record_id: String) -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn detail_view_component(model_name: String, record_id: String) -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
 	let detail_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -226,7 +226,7 @@ fn detail_view_component(model_name: String, record_id: String) -> View {
 		}
 	});
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "detail-container")
 		.child({
 			let resource = detail_resource.clone();
@@ -240,12 +240,12 @@ fn detail_view_component(model_name: String, record_id: String) -> View {
 				ResourceState::Error(err) => error_view(&err),
 			}
 		})
-		.into_view()
+		.into_page()
 }
 
 /// Detail view component for router (non-WASM fallback)
 #[cfg(not(target_arch = "wasm32"))]
-fn detail_view_component(model_name: String, record_id: String) -> View {
+fn detail_view_component(model_name: String, record_id: String) -> Page {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let mut record = HashMap::new();
 	record.insert("id".to_string(), record_id.clone());
@@ -256,8 +256,8 @@ fn detail_view_component(model_name: String, record_id: String) -> View {
 
 /// Create form view component for router
 #[cfg(target_arch = "wasm32")]
-fn create_view_component(model_name: String) -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn create_view_component(model_name: String) -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -268,7 +268,7 @@ fn create_view_component(model_name: String) -> View {
 		}
 	});
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "form-container")
 		.child({
 			let resource = fields_resource.clone();
@@ -293,12 +293,12 @@ fn create_view_component(model_name: String) -> View {
 				ResourceState::Error(err) => error_view(&err),
 			}
 		})
-		.into_view()
+		.into_page()
 }
 
 /// Create form view component for router (non-WASM fallback)
 #[cfg(not(target_arch = "wasm32"))]
-fn create_view_component(model_name: String) -> View {
+fn create_view_component(model_name: String) -> Page {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let fields = vec![
 		FormField {
@@ -322,8 +322,8 @@ fn create_view_component(model_name: String) -> View {
 
 /// Edit form view component for router
 #[cfg(target_arch = "wasm32")]
-fn edit_view_component(model_name: String, record_id: String) -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn edit_view_component(model_name: String, record_id: String) -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -335,7 +335,7 @@ fn edit_view_component(model_name: String, record_id: String) -> View {
 		}
 	});
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "form-container")
 		.child({
 			let resource = fields_resource.clone();
@@ -374,12 +374,12 @@ fn edit_view_component(model_name: String, record_id: String) -> View {
 				ResourceState::Error(err) => error_view(&err),
 			}
 		})
-		.into_view()
+		.into_page()
 }
 
 /// Edit form view component for router (non-WASM fallback)
 #[cfg(not(target_arch = "wasm32"))]
-fn edit_view_component(model_name: String, record_id: String) -> View {
+fn edit_view_component(model_name: String, record_id: String) -> Page {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let fields = vec![
 		FormField {
@@ -402,73 +402,73 @@ fn edit_view_component(model_name: String, record_id: String) -> View {
 }
 
 /// Not found view component for router
-fn not_found_view() -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn not_found_view() -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "not-found")
 		.child(
-			ElementView::new("h1")
+			PageElement::new("h1")
 				.attr("class", "text-center mt-5")
 				.child("404 - Page Not Found"),
 		)
 		.child(
-			ElementView::new("p")
+			PageElement::new("p")
 				.attr("class", "text-center")
 				.child("The requested page could not be found."),
 		)
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "text-center mt-3")
 				.child(Link::new("/admin/", "Go to Dashboard").render()),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Loading view component
 ///
 /// Displays a loading indicator while data is being fetched.
 #[cfg(target_arch = "wasm32")]
-fn loading_view() -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn loading_view() -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "loading-spinner text-center mt-5")
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "spinner-border")
 				.attr("role", "status")
 				.child(
-					ElementView::new("span")
+					PageElement::new("span")
 						.attr("class", "visually-hidden")
 						.child("Loading..."),
 				),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Error view component
 ///
 /// Displays an error message when data fetch fails.
 #[cfg(target_arch = "wasm32")]
-fn error_view(message: &str) -> View {
-	use reinhardt_pages::component::{ElementView, IntoView};
+fn error_view(message: &str) -> Page {
+	use reinhardt_pages::component::{PageElement, IntoPage};
 
-	ElementView::new("div")
+	PageElement::new("div")
 		.attr("class", "error-message alert alert-danger mt-5")
 		.attr("role", "alert")
 		.child(
-			ElementView::new("h4")
+			PageElement::new("h4")
 				.attr("class", "alert-heading")
 				.child("Error"),
 		)
-		.child(ElementView::new("p").child(message.to_string()))
+		.child(PageElement::new("p").child(message.to_string()))
 		.child(
-			ElementView::new("div")
+			PageElement::new("div")
 				.attr("class", "mt-3")
 				.child(Link::new("/admin/", "Go to Dashboard").render()),
 		)
-		.into_view()
+		.into_page()
 }
 
 /// Convert FieldType to HTML input type string
