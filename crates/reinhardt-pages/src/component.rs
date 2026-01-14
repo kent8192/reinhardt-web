@@ -5,18 +5,18 @@
 //!
 //! ## Features
 //!
-//! - **IntoView trait**: Convert any type into a renderable View
+//! - **IntoPage trait**: Convert any type into a renderable Page
 //! - **Component trait**: Define reusable UI components
-//! - **View enum**: Unified representation of DOM elements, text, and fragments
+//! - **Page enum**: Unified representation of DOM elements, text, and fragments
 //! - **Props system**: Type-safe component properties
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! use reinhardt_pages::component::{Component, IntoView, View};
+//! use reinhardt_pages::component::{Component, IntoPage, Page};
 //!
 //! // Simple component as a function
-//! fn greeting(name: &str) -> impl IntoView {
+//! fn greeting(name: &str) -> impl IntoPage {
 //!     div()
 //!         .class("greeting")
 //!         .child(p().text(&format!("Hello, {}!", name)).build())
@@ -24,20 +24,23 @@
 //! }
 //!
 //! // Using the component
-//! let view = greeting("World").into_view();
-//! let html = view.render_to_string();
+//! let page = greeting("World").into_page();
+//! let html = page.render_to_string();
 //! ```
 
-mod head;
-mod into_view;
+mod into_page;
 mod props;
-mod reactive_if;
+pub(crate) mod reactive_if;
 mod r#trait;
 
-pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
+// Re-export Page types (originally from into_page, now from reinhardt-types via into_page)
+pub use into_page::{
+	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
+	ReactiveIf, ScriptTag, StyleTag,
+};
 #[cfg(not(target_arch = "wasm32"))]
-pub use into_view::DummyEvent;
-pub use into_view::{ElementView, IntoView, MountError, ReactiveIf, View, ViewEventHandler};
+pub use into_page::DummyEvent;
+pub use into_page::PageExt;
 pub use props::Props;
 #[cfg(target_arch = "wasm32")]
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};

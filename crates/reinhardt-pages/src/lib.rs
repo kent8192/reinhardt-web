@@ -18,7 +18,7 @@
 //! - [`reactive`]: Fine-grained reactivity system (Signal, Effect, Memo)
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
-//! - [`component`]: Component system with IntoView trait, Head management
+//! - [`component`]: Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
@@ -39,9 +39,9 @@
 //! ### Basic Component
 //!
 //! ```ignore
-//! use reinhardt_pages::{Signal, View, page};
+//! use reinhardt_pages::{Signal, Page, page};
 //!
-//! fn counter() -> View {
+//! fn counter() -> Page {
 //!     let count = Signal::new(0);
 //!
 //!     page!(|| {
@@ -59,9 +59,9 @@
 //! ### With Head Section
 //!
 //! ```ignore
-//! use reinhardt_pages::{head, page, View, resolve_static};
+//! use reinhardt_pages::{head, page, Page, resolve_static};
 //!
-//! fn home_page() -> View {
+//! fn home_page() -> Page {
 //!     let page_head = head!(|| {
 //!         title { "Home - My App" }
 //!         meta { name: "description", content: "Welcome to my app" }
@@ -87,7 +87,7 @@
 //! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
 //! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
 //!
-//! fn chat_component() -> View {
+//! fn chat_component() -> Page {
 //!     // Establish WebSocket connection
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
@@ -157,7 +157,7 @@ pub mod csrf;
 // Static form metadata types for form! macro (WASM-compatible)
 pub mod form_generated;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet
-// For now, client-side forms should use ElementView
+// For now, client-side forms should use PageElement
 #[cfg(not(target_arch = "wasm32"))]
 pub mod form;
 
@@ -199,7 +199,8 @@ pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler
 #[cfg(not(target_arch = "wasm32"))]
 pub use component::DummyEvent;
 pub use component::{
-	Component, ElementView, Head, IntoView, LinkTag, MetaTag, Props, ScriptTag, StyleTag, View,
+	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ScriptTag,
+	StyleTag,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{Document, Element, EventHandle, EventType, document};

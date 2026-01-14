@@ -75,7 +75,11 @@ pub mod codec;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod injectable;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod registration;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod registry;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod router_ext;
 pub mod server_fn_trait;
 
 // Re-exports
@@ -85,9 +89,11 @@ pub use codec::{Codec, JsonCodec, UrlCodec};
 #[cfg(not(target_arch = "wasm32"))]
 pub use injectable::{ServerFnBody, ServerFnRequest};
 #[cfg(not(target_arch = "wasm32"))]
-pub use registry::{
-	ServerFnRoute, register_all_server_functions, server_fn_count, server_fn_paths,
-};
+pub use registration::ServerFnRegistration;
+#[cfg(not(target_arch = "wasm32"))]
+pub use registry::{ServerFnHandler, ServerFnRoute};
+#[cfg(not(target_arch = "wasm32"))]
+pub use router_ext::ServerFnRouterExt;
 pub use server_fn_trait::{ServerFn, ServerFnError};
 
 // Re-export the macro for convenience

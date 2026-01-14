@@ -3,7 +3,7 @@
 //! This module provides Link and RouterOutlet components for
 //! declarative navigation in component trees.
 
-use crate::component::{Component, ElementView, IntoView, View};
+use crate::component::{Component, PageElement, IntoPage, Page};
 
 /// A link component that navigates without full page reload.
 ///
@@ -91,8 +91,8 @@ impl Link {
 }
 
 impl Component for Link {
-	fn render(&self) -> View {
-		let mut el = ElementView::new("a").attr("href", self.to.clone());
+	fn render(&self) -> Page {
+		let mut el = PageElement::new("a").attr("href", self.to.clone());
 
 		if let Some(ref class) = self.class {
 			el = el.attr("class", class.clone());
@@ -114,7 +114,7 @@ impl Component for Link {
 			el = el.attr(name.clone(), value.clone());
 		}
 
-		el.child(self.content.clone()).into_view()
+		el.child(self.content.clone()).into_page()
 	}
 
 	fn name() -> &'static str {
@@ -130,10 +130,10 @@ impl Component for Link {
 ///
 /// ```no_run
 /// use reinhardt_pages::router::{Router, RouterOutlet};
-/// use reinhardt_pages::component::View;
+/// use reinhardt_pages::component::Page;
 /// use std::sync::Arc;
 ///
-/// # fn home_view() -> View { View::text("Home") }
+/// # fn home_view() -> Page { Page::text("Home") }
 /// let router = Arc::new(Router::new().route("/", home_view));
 /// let outlet = RouterOutlet::new(router);
 /// ```
@@ -175,8 +175,8 @@ impl RouterOutlet {
 }
 
 impl Component for RouterOutlet {
-	fn render(&self) -> View {
-		let mut el = ElementView::new("div").attr("data-router-outlet", "true");
+	fn render(&self) -> Page {
+		let mut el = PageElement::new("div").attr("data-router-outlet", "true");
 
 		if let Some(ref id) = self.id {
 			el = el.attr("id", id.clone());
@@ -187,7 +187,7 @@ impl Component for RouterOutlet {
 		}
 
 		// Render current route inside the outlet container
-		el.child(self.router.render_current()).into_view()
+		el.child(self.router.render_current()).into_page()
 	}
 
 	fn name() -> &'static str {
@@ -226,14 +226,14 @@ impl Redirect {
 }
 
 impl Component for Redirect {
-	fn render(&self) -> View {
+	fn render(&self) -> Page {
 		// Render a meta refresh as fallback, actual redirect handled by JS
-		ElementView::new("meta")
+		PageElement::new("meta")
 			.attr("http-equiv", "refresh")
 			.attr("content", format!("0;url={}", self.to))
 			.attr("data-redirect", self.to.clone())
 			.attr("data-replace", if self.replace { "true" } else { "false" })
-			.into_view()
+			.into_page()
 	}
 
 	fn name() -> &'static str {
@@ -244,32 +244,32 @@ impl Component for Redirect {
 /// A navigation guard that conditionally renders content.
 ///
 /// This is a function that wraps content rendering with a condition check.
-pub fn guard<F, V>(condition: F, content: V) -> impl FnOnce() -> View
+pub fn guard<F, V>(condition: F, content: V) -> impl FnOnce() -> Page
 where
 	F: FnOnce() -> bool,
-	V: IntoView,
+	V: IntoPage,
 {
 	move || {
 		if condition() {
-			content.into_view()
+			content.into_page()
 		} else {
-			View::Empty
+			Page::Empty
 		}
 	}
 }
 
 /// A navigation guard with fallback that conditionally renders content.
-pub fn guard_or<F, V, U>(condition: F, content: V, fallback: U) -> impl FnOnce() -> View
+pub fn guard_or<F, V, U>(condition: F, content: V, fallback: U) -> impl FnOnce() -> Page
 where
 	F: FnOnce() -> bool,
-	V: IntoView,
-	U: IntoView,
+	V: IntoPage,
+	U: IntoPage,
 {
 	move || {
 		if condition() {
-			content.into_view()
+			content.into_page()
 		} else {
-			fallback.into_view()
+			fallback.into_page()
 		}
 	}
 }
@@ -316,8 +316,8 @@ mod tests {
 		use super::super::Router;
 		use std::sync::Arc;
 
-		fn test_view() -> View {
-			View::text("Test Route")
+		fn test_view() -> Page {
+			Page::text("Test Route")
 		}
 
 		let router = Arc::new(Router::new().route("/", test_view));

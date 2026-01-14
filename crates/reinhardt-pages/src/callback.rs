@@ -1,12 +1,12 @@
 //! Callback types and event handler conversion traits.
 //!
 //! This module provides type-safe callback wrappers and the [`IntoEventHandler`] trait
-//! for converting various handler types to [`ViewEventHandler`].
+//! for converting various handler types to [`PageEventHandler`].
 //!
 //! ## Features
 //!
 //! - **Callback<Args, Ret>**: A type-safe, cloneable wrapper for event handlers
-//! - **IntoEventHandler**: Trait for converting closures, Callbacks, and `Arc<Fn>` to ViewEventHandler
+//! - **IntoEventHandler**: Trait for converting closures, Callbacks, and `Arc<Fn>` to PageEventHandler
 //!
 //! ## Example
 //!
@@ -30,7 +30,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use crate::component::ViewEventHandler;
+use crate::component::PageEventHandler;
 #[cfg(target_arch = "wasm32")]
 use crate::spawn::spawn_task;
 
@@ -164,12 +164,12 @@ impl<Args, Ret> std::fmt::Debug for Callback<Args, Ret> {
 	}
 }
 
-/// Trait for converting various handler types to [`ViewEventHandler`].
+/// Trait for converting various handler types to [`PageEventHandler`].
 ///
 /// This trait is implemented for:
 /// - Closures that take an Event argument
 /// - [`Callback<Event, ()>`]
-/// - [`ViewEventHandler`] (identity conversion)
+/// - [`PageEventHandler`] (identity conversion)
 ///
 /// The `page!` macro uses this trait internally to allow both inline closures
 /// and external handler references.
@@ -188,8 +188,8 @@ impl<Args, Ret> std::fmt::Debug for Callback<Args, Ret> {
 /// let view_handler = callback.into_event_handler();
 /// ```
 pub trait IntoEventHandler {
-	/// Converts self into a [`ViewEventHandler`].
-	fn into_event_handler(self) -> ViewEventHandler;
+	/// Converts self into a [`PageEventHandler`].
+	fn into_event_handler(self) -> PageEventHandler;
 }
 
 /// Blanket implementation for closures that match the event handler signature.
@@ -204,7 +204,7 @@ impl<F> IntoEventHandler for F
 where
 	F: Fn(web_sys::Event) + 'static,
 {
-	fn into_event_handler(self) -> ViewEventHandler {
+	fn into_event_handler(self) -> PageEventHandler {
 		Arc::new(self)
 	}
 }
@@ -214,21 +214,21 @@ impl<F> IntoEventHandler for F
 where
 	F: Fn(crate::component::DummyEvent) + Send + Sync + 'static,
 {
-	fn into_event_handler(self) -> ViewEventHandler {
+	fn into_event_handler(self) -> PageEventHandler {
 		Arc::new(self)
 	}
 }
 
 /// Implementation for Callback type.
 impl IntoEventHandler for Callback<EventArg, ()> {
-	fn into_event_handler(self) -> ViewEventHandler {
+	fn into_event_handler(self) -> PageEventHandler {
 		self.inner
 	}
 }
 
-/// Identity implementation for ViewEventHandler.
-impl IntoEventHandler for ViewEventHandler {
-	fn into_event_handler(self) -> ViewEventHandler {
+/// Identity implementation for PageEventHandler.
+impl IntoEventHandler for PageEventHandler {
+	fn into_event_handler(self) -> PageEventHandler {
 		self
 	}
 }
@@ -236,7 +236,7 @@ impl IntoEventHandler for ViewEventHandler {
 /// Convenience function for converting handlers in generated code.
 ///
 /// This function is used by the `page!` macro's code generation to convert
-/// event handlers of various types to [`ViewEventHandler`].
+/// event handlers of various types to [`PageEventHandler`].
 ///
 /// # Example
 ///
@@ -245,7 +245,7 @@ impl IntoEventHandler for ViewEventHandler {
 /// ElementView::new("button")
 ///     .on(EventType::Click, into_event_handler(|_| {}))
 /// ```
-pub fn into_event_handler<H: IntoEventHandler>(handler: H) -> ViewEventHandler {
+pub fn into_event_handler<H: IntoEventHandler>(handler: H) -> PageEventHandler {
 	handler.into_event_handler()
 }
 
@@ -264,7 +264,7 @@ pub fn into_event_handler<H: IntoEventHandler>(handler: H) -> ViewEventHandler {
 /// });
 /// ```
 #[cfg(target_arch = "wasm32")]
-pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> ViewEventHandler {
+pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> PageEventHandler {
 	Arc::new(f)
 }
 
@@ -274,7 +274,7 @@ pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> ViewEventHandler {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn event_handler(
 	f: impl Fn(crate::component::DummyEvent) + Send + Sync + 'static,
-) -> ViewEventHandler {
+) -> PageEventHandler {
 	Arc::new(f)
 }
 
@@ -300,7 +300,7 @@ pub fn event_handler(
 /// }
 /// ```
 #[cfg(target_arch = "wasm32")]
-pub fn async_handler<F, Fut>(f: F) -> ViewEventHandler
+pub fn async_handler<F, Fut>(f: F) -> PageEventHandler
 where
 	F: Fn(web_sys::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
@@ -313,7 +313,7 @@ where
 
 /// Creates an async event handler stub for non-WASM targets.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn async_handler<F, Fut>(f: F) -> ViewEventHandler
+pub fn async_handler<F, Fut>(f: F) -> PageEventHandler
 where
 	F: Fn(crate::component::DummyEvent) -> Fut + Send + Sync + 'static,
 	Fut: Future<Output = ()> + Send + 'static,
@@ -376,14 +376,14 @@ mod tests {
 		use crate::component::DummyEvent;
 
 		let closure = |_: DummyEvent| {};
-		let _handler: ViewEventHandler = closure.into_event_handler();
+		let _handler: PageEventHandler = closure.into_event_handler();
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
 	#[test]
 	fn test_into_event_handler_callback() {
 		let callback = Callback::new(|_: crate::component::DummyEvent| {});
-		let _handler: ViewEventHandler = callback.into_event_handler();
+		let _handler: PageEventHandler = callback.into_event_handler();
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
@@ -391,7 +391,7 @@ mod tests {
 	fn test_into_event_handler_function() {
 		use crate::component::DummyEvent;
 
-		let handler: ViewEventHandler = into_event_handler(|_: DummyEvent| {});
+		let handler: PageEventHandler = into_event_handler(|_: DummyEvent| {});
 		// Verify it's callable
 		handler(DummyEvent::default());
 	}

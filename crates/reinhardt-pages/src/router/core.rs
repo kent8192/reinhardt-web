@@ -8,7 +8,7 @@ use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
 use super::params::{FromPath, ParamContext, PathParams};
 use super::pattern::PathPattern;
-use crate::component::View;
+use crate::component::Page;
 use crate::reactive::Signal;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -148,7 +148,7 @@ impl Route {
 	/// Creates a new route.
 	pub fn new<F>(pattern: &str, component: F) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		Self {
 			pattern: PathPattern::new(pattern),
@@ -161,7 +161,7 @@ impl Route {
 	/// Creates a named route.
 	pub fn named<F>(name: impl Into<String>, pattern: &str, component: F) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		Self {
 			pattern: PathPattern::new(pattern),
@@ -209,7 +209,7 @@ pub struct Router {
 	/// Current matched route name signal.
 	current_route_name: Signal<Option<String>>,
 	/// Not found handler.
-	not_found: Option<Arc<dyn Fn() -> View + Send + Sync>>,
+	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Router {
@@ -248,7 +248,7 @@ impl Router {
 	/// Adds a route to the router.
 	pub fn route<F>(mut self, pattern: &str, component: F) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		self.routes.push(Route::new(pattern, component));
 		self
@@ -257,7 +257,7 @@ impl Router {
 	/// Adds a named route to the router.
 	pub fn named_route<F>(mut self, name: &str, pattern: &str, component: F) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
 		self.routes.push(Route::named(name, pattern, component));
@@ -274,12 +274,12 @@ impl Router {
 	///
 	/// let router = Router::new()
 	///     .route_params("/users/{id}/", |PathParams(id): PathParams<i64>| {
-	///         View::text(format!("User ID: {}", id))
+	///         Page::text(format!("User ID: {}", id))
 	///     });
 	/// ```
 	pub fn route_params<F, T>(mut self, pattern: &str, handler: F) -> Self
 	where
-		F: Fn(PathParams<T>) -> View + Send + Sync + 'static,
+		F: Fn(PathParams<T>) -> Page + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
 	{
 		self.routes.push(Route {
@@ -294,7 +294,7 @@ impl Router {
 	/// Adds a named route with typed path parameters.
 	pub fn named_route_params<F, T>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
-		F: Fn(PathParams<T>) -> View + Send + Sync + 'static,
+		F: Fn(PathParams<T>) -> Page + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
@@ -318,7 +318,7 @@ impl Router {
 	/// let router = Router::new()
 	///     .route_result("/users/{id}/", |PathParams(id): PathParams<i64>| {
 	///         if id > 0 {
-	///             Ok(View::text(format!("User ID: {}", id)))
+	///             Ok(Page::text(format!("User ID: {}", id)))
 	///         } else {
 	///             Err(RouterError::NotFound("Invalid ID".to_string()))
 	///         }
@@ -326,7 +326,7 @@ impl Router {
 	/// ```
 	pub fn route_result<F, T, E>(mut self, pattern: &str, handler: F) -> Self
 	where
-		F: Fn(PathParams<T>) -> Result<View, E> + Send + Sync + 'static,
+		F: Fn(PathParams<T>) -> Result<Page, E> + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
 		E: Into<RouterError> + Send + Sync + 'static,
 	{
@@ -342,7 +342,7 @@ impl Router {
 	/// Adds a named route with typed path parameters that returns a Result.
 	pub fn named_route_result<F, T, E>(mut self, name: &str, pattern: &str, handler: F) -> Self
 	where
-		F: Fn(PathParams<T>) -> Result<View, E> + Send + Sync + 'static,
+		F: Fn(PathParams<T>) -> Result<Page, E> + Send + Sync + 'static,
 		T: FromPath + Send + Sync + 'static,
 		E: Into<RouterError> + Send + Sync + 'static,
 	{
@@ -360,7 +360,7 @@ impl Router {
 	/// Adds a route with a guard.
 	pub fn guarded_route<F, G>(mut self, pattern: &str, component: F, guard: G) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 		G: Fn(&RouteMatch) -> bool + Send + Sync + 'static,
 	{
 		self.routes
@@ -371,7 +371,7 @@ impl Router {
 	/// Sets the not found handler.
 	pub fn not_found<F>(mut self, component: F) -> Self
 	where
-		F: Fn() -> View + Send + Sync + 'static,
+		F: Fn() -> Page + Send + Sync + 'static,
 	{
 		self.not_found = Some(Arc::new(component));
 		self
@@ -484,7 +484,7 @@ impl Router {
 	}
 
 	/// Renders the current route's component.
-	pub fn render_current(&self) -> View {
+	pub fn render_current(&self) -> Page {
 		let path = self.current_path.get();
 
 		if let Some(route_match) = self.match_path(&path) {
@@ -493,12 +493,12 @@ impl Router {
 
 			match route_match.route.handler.handle(&ctx) {
 				Ok(view) => view,
-				Err(err) => View::text(format!("Error: {}", err)),
+				Err(err) => Page::text(format!("Error: {}", err)),
 			}
 		} else if let Some(not_found) = &self.not_found {
 			not_found()
 		} else {
-			View::Empty
+			Page::Empty
 		}
 	}
 
@@ -578,20 +578,20 @@ impl Router {
 mod tests {
 	use super::*;
 
-	fn test_view() -> View {
-		View::text("Test")
+	fn test_view() -> Page {
+		Page::text("Test")
 	}
 
-	fn home_view() -> View {
-		View::text("Home")
+	fn home_view() -> Page {
+		Page::text("Home")
 	}
 
-	fn user_view() -> View {
-		View::text("User")
+	fn user_view() -> Page {
+		Page::text("User")
 	}
 
-	fn not_found_view() -> View {
-		View::text("404")
+	fn not_found_view() -> Page {
+		Page::text("404")
 	}
 
 	#[test]

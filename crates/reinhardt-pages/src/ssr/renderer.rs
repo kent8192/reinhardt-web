@@ -3,7 +3,7 @@
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::state::SsrState;
 use crate::auth::AuthData;
-use crate::component::{Component, Head, IntoView, View};
+use crate::component::{Component, Head, IntoPage, Page};
 
 /// Options for SSR rendering.
 #[derive(Debug, Clone)]
@@ -14,14 +14,6 @@ pub struct SsrOptions {
 	pub minify: bool,
 	/// Whether to include SSR state script.
 	pub include_state_script: bool,
-	/// Custom document title.
-	pub title: Option<String>,
-	/// Custom meta tags.
-	pub meta_tags: Vec<(String, String)>,
-	/// Custom CSS links.
-	pub css_links: Vec<String>,
-	/// Custom JS scripts.
-	pub js_scripts: Vec<String>,
 	/// Language attribute for HTML element.
 	pub lang: String,
 	/// CSRF token to embed.
@@ -48,10 +40,6 @@ impl Default for SsrOptions {
 			include_hydration_markers: true,
 			minify: false,
 			include_state_script: true,
-			title: None,
-			meta_tags: Vec::new(),
-			css_links: Vec::new(),
-			js_scripts: Vec::new(),
 			lang: "en".to_string(),
 			csrf_token: None,
 			auth_data: None,
@@ -65,123 +53,6 @@ impl SsrOptions {
 	/// Creates new default options.
 	pub fn new() -> Self {
 		Self::default()
-	}
-
-	/// Sets the document title.
-	///
-	/// # Deprecated
-	///
-	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
-	/// This method will be removed in a future version.
-	///
-	/// # Example (new approach)
-	///
-	/// ```ignore
-	/// use reinhardt_pages::{page, head};
-	///
-	/// let my_head = head!(|| {
-	///     title { "My Page Title" }
-	/// });
-	///
-	/// page! {
-	///     #head: my_head,
-	///     || { div { "Content" } }
-	/// }
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use head! macro with #head directive in page! macro instead"
-	)]
-	pub fn title(mut self, title: impl Into<String>) -> Self {
-		self.title = Some(title.into());
-		self
-	}
-
-	/// Adds a meta tag.
-	///
-	/// # Deprecated
-	///
-	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
-	///
-	/// # Example (new approach)
-	///
-	/// ```ignore
-	/// use reinhardt_pages::{page, head};
-	///
-	/// let my_head = head!(|| {
-	///     meta { name: "description", content: "Page description" }
-	/// });
-	///
-	/// page! {
-	///     #head: my_head,
-	///     || { div { "Content" } }
-	/// }
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use head! macro with #head directive in page! macro instead"
-	)]
-	pub fn meta(mut self, name: impl Into<String>, content: impl Into<String>) -> Self {
-		self.meta_tags.push((name.into(), content.into()));
-		self
-	}
-
-	/// Adds a CSS link.
-	///
-	/// # Deprecated
-	///
-	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
-	///
-	/// # Example (new approach)
-	///
-	/// ```ignore
-	/// use reinhardt_pages::{page, head};
-	///
-	/// let my_head = head!(|| {
-	///     link { rel: "stylesheet", href: "/css/style.css" }
-	/// });
-	///
-	/// page! {
-	///     #head: my_head,
-	///     || { div { "Content" } }
-	/// }
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use head! macro with #head directive in page! macro instead"
-	)]
-	pub fn css(mut self, href: impl Into<String>) -> Self {
-		self.css_links.push(href.into());
-		self
-	}
-
-	/// Adds a JS script.
-	///
-	/// # Deprecated
-	///
-	/// Use the `head!` macro with `#head` directive in `page!` macro instead.
-	///
-	/// # Example (new approach)
-	///
-	/// ```ignore
-	/// use reinhardt_pages::{page, head};
-	///
-	/// let my_head = head!(|| {
-	///     script { src: "/js/app.js" }
-	/// });
-	///
-	/// page! {
-	///     #head: my_head,
-	///     || { div { "Content" } }
-	/// }
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use head! macro with #head directive in page! macro instead"
-	)]
-	pub fn js(mut self, src: impl Into<String>) -> Self {
-		self.js_scripts.push(src.into());
-		self
 	}
 
 	/// Sets the language.
@@ -308,14 +179,14 @@ impl SsrRenderer {
 		self.render_view(&view)
 	}
 
-	/// Renders an IntoView to an HTML string.
-	pub fn render_into_view<V: IntoView>(&mut self, view: V) -> String {
-		let view = view.into_view();
+	/// Renders an IntoPage to an HTML string.
+	pub fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
+		let view = view.into_page();
 		self.render_view(&view)
 	}
 
 	/// Renders a View to an HTML string.
-	pub fn render_view(&self, view: &View) -> String {
+	pub fn render_view(&self, view: &Page) -> String {
 		view.render_to_string()
 	}
 
@@ -325,9 +196,9 @@ impl SsrRenderer {
 		self.wrap_in_html(&content)
 	}
 
-	/// Renders an IntoView to a full HTML page.
-	pub fn render_page_into_view<V: IntoView>(&mut self, view: V) -> String {
-		let content = self.render_into_view(view);
+	/// Renders an IntoPage to a full HTML page.
+	pub fn render_page_into_page<V: IntoPage>(&mut self, view: V) -> String {
+		let content = self.render_into_page(view);
 		self.wrap_in_html(&content)
 	}
 
@@ -357,7 +228,7 @@ impl SsrRenderer {
 	/// let html = renderer.render_page_with_view_head(view);
 	/// // html contains <title>My Page</title> in the head
 	/// ```
-	pub fn render_page_with_view_head(&mut self, view: View) -> String {
+	pub fn render_page_with_view_head(&mut self, view: Page) -> String {
 		// Extract head from the view tree
 		let view_head = view.find_topmost_head().cloned();
 
@@ -368,20 +239,16 @@ impl SsrRenderer {
 		self.wrap_in_html_with_head(&content, view_head.as_ref())
 	}
 
-	/// Wraps content in a full HTML document, merging View's head with SsrOptions.
+	/// Wraps content in a full HTML document with View's head elements.
 	///
-	/// This method combines head elements from both sources:
-	/// 1. Base head elements from SsrOptions (title, meta, CSS, JS)
-	/// 2. Additional head elements from View's attached Head (additive)
-	///
-	/// When a View has an attached Head, its elements are **added** to the
-	/// SsrOptions head, not replaced. If the View's Head has a title, it
-	/// takes precedence over SsrOptions title.
+	/// Head elements (title, meta tags, CSS links, JS scripts) are sourced
+	/// from the View's attached Head. Use the `head!` macro to define
+	/// head elements.
 	///
 	/// # Arguments
 	///
 	/// * `content` - The rendered body content
-	/// * `view_head` - Optional head extracted from a View (additive)
+	/// * `view_head` - Optional head extracted from a View
 	fn wrap_in_html_with_head(&self, content: &str, view_head: Option<&Head>) -> String {
 		let mut html = String::with_capacity(content.len() + 1024);
 
@@ -396,51 +263,29 @@ impl SsrRenderer {
 			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
 		);
 
-		// Title: View's head takes precedence, otherwise use SsrOptions
-		if let Some(head) = view_head
-			&& head.title.is_some()
-		{
+		// Add View's head elements
+		if let Some(head) = view_head {
+			// Title from View's head
 			if let Some(ref title) = head.title {
 				html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
 			}
-		} else if let Some(ref title) = self.options.title {
-			html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
-		}
 
-		// Render SsrOptions meta tags and CSS links (always included)
-		for (name, content) in &self.options.meta_tags {
-			html.push_str(&format!(
-				"<meta name=\"{}\" content=\"{}\">\n",
-				html_escape(name),
-				html_escape(content)
-			));
-		}
-
-		for href in &self.options.css_links {
-			html.push_str(&format!(
-				"<link rel=\"stylesheet\" href=\"{}\">\n",
-				html_escape(href)
-			));
-		}
-
-		// Add View's head elements (additive, after SsrOptions)
-		if let Some(head) = view_head {
-			// Add View's meta tags
+			// View's meta tags
 			for meta in &head.meta_tags {
 				html.push_str(&meta.to_html());
 			}
 
-			// Add View's links
+			// View's links
 			for link in &head.links {
 				html.push_str(&link.to_html());
 			}
 
-			// Add View's styles
+			// View's styles
 			for style in &head.styles {
 				html.push_str(&style.to_html());
 			}
 
-			// Add View's scripts (in head)
+			// View's scripts (in head)
 			for script in &head.scripts {
 				html.push_str(&script.to_html());
 			}
@@ -478,11 +323,6 @@ impl SsrRenderer {
 			html.push('\n');
 		}
 
-		// JS scripts from options (always included)
-		for src in &self.options.js_scripts {
-			html.push_str(&format!("<script src=\"{}\"></script>\n", html_escape(src)));
-		}
-
 		html.push_str("</body>\n");
 		html.push_str("</html>");
 
@@ -494,6 +334,10 @@ impl SsrRenderer {
 	}
 
 	/// Wraps content in a full HTML document.
+	///
+	/// This method creates a minimal HTML document without head elements.
+	/// Use `render_page_with_view_head` with the `head!` macro for pages
+	/// that require title, meta tags, CSS, or JS.
 	pub fn wrap_in_html(&self, content: &str) -> String {
 		let mut html = String::with_capacity(content.len() + 1024);
 
@@ -508,33 +352,11 @@ impl SsrRenderer {
 			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
 		);
 
-		// Title
-		if let Some(ref title) = self.options.title {
-			html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
-		}
-
-		// Custom meta tags
-		for (name, content) in &self.options.meta_tags {
-			html.push_str(&format!(
-				"<meta name=\"{}\" content=\"{}\">\n",
-				html_escape(name),
-				html_escape(content)
-			));
-		}
-
 		// CSRF token meta tag
 		if let Some(ref token) = self.options.csrf_token {
 			html.push_str(&format!(
 				"<meta name=\"csrf-token\" content=\"{}\">\n",
 				html_escape(token)
-			));
-		}
-
-		// CSS links
-		for href in &self.options.css_links {
-			html.push_str(&format!(
-				"<link rel=\"stylesheet\" href=\"{}\">\n",
-				html_escape(href)
 			));
 		}
 
@@ -562,11 +384,6 @@ impl SsrRenderer {
 		if self.options.include_state_script && !self.state.is_empty() {
 			html.push_str(&self.state.to_script_tag());
 			html.push('\n');
-		}
-
-		// JS scripts
-		for src in &self.options.js_scripts {
-			html.push_str(&format!("<script src=\"{}\"></script>\n", html_escape(src)));
 		}
 
 		html.push_str("</body>\n");
@@ -685,18 +502,18 @@ fn test_ssr_options_default_strategy_static() {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::component::ElementView;
+	use crate::component::PageElement;
 
 	struct TestComponent {
 		message: String,
 	}
 
 	impl Component for TestComponent {
-		fn render(&self) -> View {
-			ElementView::new("div")
+		fn render(&self) -> Page {
+			PageElement::new("div")
 				.attr("class", "test")
 				.child(self.message.clone())
-				.into_view()
+				.into_page()
 		}
 
 		fn name() -> &'static str {

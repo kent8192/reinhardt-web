@@ -3,7 +3,7 @@
 //! This module verifies that SSR-rendered DOM matches the expected
 //! component structure during hydration.
 
-use crate::component::View;
+use crate::component::Page;
 
 #[cfg(target_arch = "wasm32")]
 use crate::dom::Element;
@@ -143,15 +143,15 @@ impl ReconcileOptions {
 	}
 }
 
-/// Reconciles the existing DOM with the expected View structure.
+/// Reconciles the existing DOM with the expected Page structure.
 ///
 /// This function verifies that the SSR-rendered HTML matches what
 /// the component would render, issuing warnings for mismatches
 /// but generally allowing hydration to proceed.
 #[cfg(target_arch = "wasm32")]
-pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
+pub fn reconcile(element: &Element, view: &Page) -> Result<(), ReconcileError> {
 	match view {
-		View::Element(el_view) => {
+		Page::Element(el_view) => {
 			// Check tag name
 			let actual_tag = element.tag_name().to_lowercase();
 			let expected_tag = el_view.tag_name().to_lowercase();
@@ -175,7 +175,7 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 
 			Ok(())
 		}
-		View::Text(expected_text) => {
+		Page::Text(expected_text) => {
 			let actual_text = element.text_content().unwrap_or_default();
 			// Normalize whitespace for comparison
 			let expected_normalized = normalize_whitespace(expected_text);
@@ -194,7 +194,7 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 			}
 			Ok(())
 		}
-		View::Fragment(views) => {
+		Page::Fragment(views) => {
 			let children = element.children();
 			for (i, child_view) in views.iter().enumerate() {
 				if i < children.len() {
@@ -203,13 +203,13 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 			}
 			Ok(())
 		}
-		View::Empty => Ok(()),
-		View::WithHead { view, .. } => {
+		Page::Empty => Ok(()),
+		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For hydration, just reconcile the inner view
 			reconcile(element, view)
 		}
-		View::ReactiveIf(reactive_if) => {
+		Page::ReactiveIf(reactive_if) => {
 			// For hydration, evaluate the condition and reconcile the rendered branch.
 			// SSR rendered one branch based on the initial condition value.
 			let branch_view = if reactive_if.condition() {
@@ -219,7 +219,7 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 			};
 			reconcile(element, &branch_view)
 		}
-		View::Reactive(reactive) => {
+		Page::Reactive(reactive) => {
 			// For hydration, evaluate the render closure and reconcile the resulting view.
 			// SSR rendered the initial view from the closure.
 			let rendered_view = reactive.render();
@@ -228,7 +228,7 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 	}
 }
 
-/// Reconciles the existing DOM with the expected View structure with options (Phase 2-B).
+/// Reconciles the existing DOM with the expected Page structure with options (Phase 2-B).
 ///
 /// This function performs selective reconciliation based on the provided options,
 /// enabling Island Architecture by reconciling only interactive components.
@@ -251,7 +251,7 @@ pub fn reconcile(element: &Element, view: &View) -> Result<(), ReconcileError> {
 #[cfg(target_arch = "wasm32")]
 pub fn reconcile_with_options(
 	element: &Element,
-	view: &View,
+	view: &Page,
 	options: &ReconcileOptions,
 ) -> Result<(), ReconcileError> {
 	// Check if this element should be skipped
@@ -304,7 +304,7 @@ pub fn reconcile_with_options(
 	};
 
 	if should_recurse {
-		if let View::Element(el_view) = view {
+		if let Page::Element(el_view) = view {
 			let children = element.children();
 			let view_children = el_view.child_views();
 
@@ -313,7 +313,7 @@ pub fn reconcile_with_options(
 					reconcile_with_options(&children[i], child_view, options)?;
 				}
 			}
-		} else if let View::Fragment(views) = view {
+		} else if let Page::Fragment(views) = view {
 			let children = element.children();
 
 			for (i, child_view) in views.iter().enumerate() {
@@ -329,7 +329,7 @@ pub fn reconcile_with_options(
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn reconcile(_element: &str, _view: &View) -> Result<(), ReconcileError> {
+pub fn reconcile(_element: &str, _view: &Page) -> Result<(), ReconcileError> {
 	Ok(())
 }
 
@@ -337,7 +337,7 @@ pub fn reconcile(_element: &str, _view: &View) -> Result<(), ReconcileError> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn reconcile_with_options(
 	_element: &str,
-	_view: &View,
+	_view: &Page,
 	_options: &ReconcileOptions,
 ) -> Result<(), ReconcileError> {
 	Ok(())
@@ -352,14 +352,14 @@ fn normalize_whitespace(s: &str) -> String {
 /// Checks if an element's structure matches the view.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub(super) fn structure_matches(element: &Element, view: &View) -> bool {
+pub(super) fn structure_matches(element: &Element, view: &Page) -> bool {
 	reconcile(element, view).is_ok()
 }
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub(super) fn structure_matches(_element: &str, _view: &View) -> bool {
+pub(super) fn structure_matches(_element: &str, _view: &Page) -> bool {
 	true
 }
 
@@ -395,7 +395,7 @@ impl CompareResult {
 /// Compares DOM structure with view and returns detailed results.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-pub(super) fn compare_structure(element: &Element, view: &View) -> CompareResult {
+pub(super) fn compare_structure(element: &Element, view: &Page) -> CompareResult {
 	let mut differences = Vec::new();
 	compare_recursive(element, view, "", &mut differences);
 
@@ -407,9 +407,9 @@ pub(super) fn compare_structure(element: &Element, view: &View) -> CompareResult
 }
 
 #[cfg(target_arch = "wasm32")]
-fn compare_recursive(element: &Element, view: &View, path: &str, differences: &mut Vec<String>) {
+fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &mut Vec<String>) {
 	match view {
-		View::Element(el_view) => {
+		Page::Element(el_view) => {
 			let actual_tag = element.tag_name().to_lowercase();
 			let expected_tag = el_view.tag_name().to_lowercase();
 
@@ -443,8 +443,8 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 				}
 			}
 		}
-		View::Text(_) | View::Empty => {}
-		View::Fragment(views) => {
+		Page::Text(_) | Page::Empty => {}
+		Page::Fragment(views) => {
 			let children = element.children();
 			for (i, child_view) in views.iter().enumerate() {
 				let child_path = format!("{}/{}", path, i);
@@ -453,12 +453,12 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 				}
 			}
 		}
-		View::WithHead { view, .. } => {
+		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For comparison, just compare the inner view
 			compare_recursive(element, view, path, differences);
 		}
-		View::ReactiveIf(reactive_if) => {
+		Page::ReactiveIf(reactive_if) => {
 			// For comparison, evaluate the condition and compare the rendered branch
 			let branch_view = if reactive_if.condition() {
 				reactive_if.then_view()
@@ -467,7 +467,7 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 			};
 			compare_recursive(element, &branch_view, path, differences);
 		}
-		View::Reactive(reactive) => {
+		Page::Reactive(reactive) => {
 			// For comparison, evaluate the render closure and compare the resulting view
 			let rendered_view = reactive.render();
 			compare_recursive(element, &rendered_view, path, differences);
@@ -478,7 +478,7 @@ fn compare_recursive(element: &Element, view: &View, path: &str, differences: &m
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-pub(super) fn compare_structure(_element: &str, _view: &View) -> CompareResult {
+pub(super) fn compare_structure(_element: &str, _view: &Page) -> CompareResult {
 	CompareResult::success()
 }
 
@@ -517,7 +517,7 @@ fn test_reconcile_options_warn_on_mismatch() {
 #[test]
 fn test_reconcile_with_options_non_wasm() {
 	// Non-WASM version always succeeds
-	let view = View::Empty;
+	let view = Page::Empty;
 	let options = ReconcileOptions::default();
 	assert!(reconcile_with_options("", &view, &options).is_ok());
 }
@@ -571,14 +571,14 @@ mod tests {
 	#[test]
 	fn test_structure_matches_non_wasm() {
 		// Non-WASM version always returns true
-		let view = View::Empty;
+		let view = Page::Empty;
 		assert!(structure_matches("", &view));
 	}
 
 	#[test]
 	fn test_reconcile_non_wasm() {
 		// Non-WASM version always succeeds
-		let view = View::Empty;
+		let view = Page::Empty;
 		assert!(reconcile("", &view).is_ok());
 	}
 }

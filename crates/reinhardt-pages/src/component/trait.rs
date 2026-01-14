@@ -1,6 +1,6 @@
 //! Component trait definition.
 
-use super::into_view::{IntoView, View};
+use super::into_page::{IntoPage, Page};
 
 /// Trait for reusable UI components.
 ///
@@ -10,18 +10,18 @@ use super::into_view::{IntoView, View};
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::component::{Component, View, IntoView};
+/// use reinhardt_pages::component::{Component, View, IntoPage};
 ///
 /// struct Greeting {
 ///     name: String,
 /// }
 ///
 /// impl Component for Greeting {
-///     fn render(&self) -> View {
-///         View::element("div")
+///     fn render(&self) -> Page {
+///         Page::element("div")
 ///             .attr("class", "greeting")
 ///             .child(format!("Hello, {}!", self.name))
-///             .into_view()
+///             .into_page()
 ///     }
 ///
 ///     fn name() -> &'static str {
@@ -30,8 +30,8 @@ use super::into_view::{IntoView, View};
 /// }
 /// ```
 pub trait Component: 'static {
-	/// Renders the component to a View.
-	fn render(&self) -> View;
+	/// Renders the component to a Page.
+	fn render(&self) -> Page;
 
 	/// Returns the component's name for debugging and hydration.
 	fn name() -> &'static str
@@ -39,12 +39,11 @@ pub trait Component: 'static {
 		Self: Sized;
 }
 
-/// Blanket implementation of IntoView for all Components.
-impl<T: Component> IntoView for T {
-	fn into_view(self) -> View {
-		self.render()
-	}
-}
+// Note: Blanket implementation of IntoPage for Component was removed
+// because IntoPage is now defined in reinhardt-types (external crate).
+// Components can:
+// 1. Manually implement IntoPage: impl IntoPage for MyComponent { fn into_page(self) -> Page { self.render() } }
+// 2. Use render() directly: component.render() returns Page
 
 /// A boxed component for dynamic dispatch.
 #[allow(dead_code)]
@@ -69,7 +68,7 @@ impl DynComponent {
 	}
 
 	/// Renders the component.
-	pub(super) fn render(&self) -> View {
+	pub(super) fn render(&self) -> Page {
 		self.inner.render()
 	}
 }
@@ -88,7 +87,7 @@ impl std::fmt::Debug for DynComponent {
 #[allow(dead_code)]
 pub(super) trait FnComponent<Args> {
 	/// The output type of the function.
-	type Output: IntoView;
+	type Output: IntoPage;
 
 	/// Calls the function to produce a view.
 	fn call(&self, args: Args) -> Self::Output;
@@ -98,7 +97,7 @@ pub(super) trait FnComponent<Args> {
 impl<F, O> FnComponent<()> for F
 where
 	F: Fn() -> O,
-	O: IntoView,
+	O: IntoPage,
 {
 	type Output = O;
 
@@ -111,7 +110,7 @@ where
 impl<F, A, O> FnComponent<(A,)> for F
 where
 	F: Fn(A) -> O,
-	O: IntoView,
+	O: IntoPage,
 {
 	type Output = O;
 
@@ -124,7 +123,7 @@ where
 impl<F, A, B, O> FnComponent<(A, B)> for F
 where
 	F: Fn(A, B) -> O,
-	O: IntoView,
+	O: IntoPage,
 {
 	type Output = O;
 
@@ -137,17 +136,17 @@ where
 #[allow(unstable_name_collisions)]
 mod tests {
 	use super::*;
-	use crate::component::into_view::ElementView;
+	use crate::component::into_page::PageElement;
 
 	struct TestComponent {
 		message: String,
 	}
 
 	impl Component for TestComponent {
-		fn render(&self) -> View {
-			ElementView::new("div")
+		fn render(&self) -> Page {
+			PageElement::new("div")
 				.child(self.message.clone())
-				.into_view()
+				.into_page()
 		}
 
 		fn name() -> &'static str {
@@ -170,11 +169,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_component_into_view() {
+	fn test_component_render_returns_page() {
 		let comp = TestComponent {
 			message: "World".to_string(),
 		};
-		let view: View = comp.into_view();
+		// Component::render() returns Page directly
+		let view: Page = comp.render();
 		assert_eq!(view.render_to_string(), "<div>World</div>");
 	}
 
@@ -190,8 +190,8 @@ mod tests {
 
 	#[test]
 	fn test_fn_component_no_args() {
-		fn greeting() -> View {
-			View::text("Hello")
+		fn greeting() -> Page {
+			Page::text("Hello")
 		}
 
 		let output = greeting.call(());
@@ -200,8 +200,8 @@ mod tests {
 
 	#[test]
 	fn test_fn_component_one_arg() {
-		fn greeting(name: String) -> View {
-			View::text(format!("Hello, {}!", name))
+		fn greeting(name: String) -> Page {
+			Page::text(format!("Hello, {}!", name))
 		}
 
 		let output = greeting.call(("World".to_string(),));
@@ -210,8 +210,8 @@ mod tests {
 
 	#[test]
 	fn test_fn_component_two_args() {
-		fn greeting(first: String, last: String) -> View {
-			View::text(format!("Hello, {} {}!", first, last))
+		fn greeting(first: String, last: String) -> Page {
+			Page::text(format!("Hello, {} {}!", first, last))
 		}
 
 		let output = greeting.call(("John".to_string(), "Doe".to_string()));

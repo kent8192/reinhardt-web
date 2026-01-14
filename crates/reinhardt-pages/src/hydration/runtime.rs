@@ -233,7 +233,7 @@ pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
 #[cfg(target_arch = "wasm32")]
 pub fn attach_events_to_mounted_view(
 	element: &Element,
-	view: &crate::component::View,
+	view: &crate::component::Page,
 ) -> Result<(), HydrationError> {
 	use super::events::EventRegistry;
 
@@ -254,14 +254,14 @@ pub fn attach_events_to_mounted_view(
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn attach_events_recursive(
 	element: &Element,
-	view: &crate::component::View,
+	view: &crate::component::Page,
 	registry: &mut super::events::EventRegistry,
 ) -> Result<(), HydrationError> {
 	use super::events::attach_event;
-	use crate::component::View;
+	use crate::component::Page;
 
 	match view {
-		View::Element(el_view) => {
+		Page::Element(el_view) => {
 			let tag = el_view.tag_name();
 			let event_count = el_view.event_handlers().len();
 
@@ -291,7 +291,7 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
-		View::Fragment(views) => {
+		Page::Fragment(views) => {
 			let children = element.children();
 			for (i, child_view) in views.iter().enumerate() {
 				if i < children.len() {
@@ -299,15 +299,15 @@ pub(crate) fn attach_events_recursive(
 				}
 			}
 		}
-		View::Text(_) | View::Empty => {
+		Page::Text(_) | Page::Empty => {
 			// No events to attach
 		}
-		View::WithHead { view, .. } => {
+		Page::WithHead { view, .. } => {
 			// Head section doesn't have event handlers
 			// Attach events to the inner view
 			attach_events_recursive(element, view, registry)?;
 		}
-		View::ReactiveIf(reactive_if) => {
+		Page::ReactiveIf(reactive_if) => {
 			// For hydration, evaluate the condition and attach events to the rendered branch
 			let branch_view = if reactive_if.condition() {
 				reactive_if.then_view()
@@ -316,7 +316,7 @@ pub(crate) fn attach_events_recursive(
 			};
 			attach_events_recursive(element, &branch_view, registry)?;
 		}
-		View::Reactive(reactive) => {
+		Page::Reactive(reactive) => {
 			// For hydration, evaluate the render closure and attach events to the resulting view
 			let rendered_view = reactive.render();
 			attach_events_recursive(element, &rendered_view, registry)?;

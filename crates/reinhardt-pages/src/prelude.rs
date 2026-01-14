@@ -8,19 +8,19 @@
 //! ```rust,ignore
 //! // Instead of multiple imports with cfg guards:
 //! // #[cfg(target_arch = "wasm32")]
-//! // use reinhardt_pages::{Signal, View, use_state, ...};
+//! // use reinhardt_pages::{Signal, Page, use_state, ...};
 //! // #[cfg(not(target_arch = "wasm32"))]
-//! // use reinhardt::pages::{Signal, View, use_state, ...};
+//! // use reinhardt::pages::{Signal, Page, use_state, ...};
 //!
 //! // Use the unified prelude:
 //! use reinhardt_pages::prelude::*;
 //! // or
 //! use reinhardt::pages::prelude::*;
 //!
-//! fn my_component() -> View {
+//! fn my_component() -> Page {
 //!     let (count, set_count) = use_state(|| 0);
 //!     // Component logic...
-//!     View::empty()
+//!     Page::empty()
 //! }
 //! ```
 //!
@@ -39,8 +39,8 @@
 //! - [`use_sync_external_store`]
 //!
 //! ## Component System
-//! - [`Component`], [`ElementView`], [`IntoView`], [`View`], [`Props`]
-//! - [`ViewEventHandler`]
+//! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
+//! - [`PageEventHandler`]
 //!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
@@ -90,8 +90,8 @@ pub use crate::reactive::{create_resource, create_resource_with_deps};
 // ============================================================================
 
 pub use crate::component::{
-	Component, ElementView, Head, IntoView, LinkTag, MetaTag, Props, ScriptTag, StyleTag, View,
-	ViewEventHandler,
+	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt,
+	Props, ScriptTag, StyleTag,
 };
 
 // ============================================================================

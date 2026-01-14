@@ -4,11 +4,13 @@
 //! for conditional rendering based on Signal changes.
 
 #[cfg(target_arch = "wasm32")]
-use crate::component::View;
+use crate::component::into_page::PageExt;
 #[cfg(target_arch = "wasm32")]
 use crate::reactive::effect::Effect;
 #[cfg(target_arch = "wasm32")]
 use crate::reactive::runtime::EffectTiming;
+#[cfg(target_arch = "wasm32")]
+use reinhardt_types::page::{Page, is_boolean_attr_truthy, BOOLEAN_ATTRS};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
@@ -81,8 +83,8 @@ impl ReactiveIfNode {
 	) -> Self
 	where
 		C: Fn() -> bool + 'static,
-		T: Fn() -> View + 'static,
-		E: Fn() -> View + 'static,
+		T: Fn() -> Page + 'static,
+		E: Fn() -> Page + 'static,
 	{
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
@@ -180,7 +182,7 @@ impl ReactiveNode {
 	/// * `render` - Closure that returns the view to render
 	pub fn new<F>(parent: &crate::dom::Element, render: F) -> Self
 	where
-		F: Fn() -> View + 'static,
+		F: Fn() -> Page + 'static,
 	{
 		// Create a comment node as a marker/anchor point
 		let document = web_sys::window()
@@ -231,12 +233,12 @@ impl ReactiveNode {
 	}
 }
 
-/// Mounts a View before a marker node and returns the created DOM nodes.
+/// Mounts a Page before a marker node and returns the created DOM nodes.
 ///
 /// This function recursively mounts the view tree and inserts all created
 /// nodes before the marker comment node.
 #[cfg(target_arch = "wasm32")]
-fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::Node> {
+fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::Node> {
 	use wasm_bindgen::JsCast;
 
 	let document = web_sys::window()
@@ -249,7 +251,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::No
 	let mut nodes = Vec::new();
 
 	match view {
-		View::Element(el) => {
+		Page::Element(el) => {
 			// Decompose the element to avoid ownership issues
 			let (tag, attrs, children, _is_void, event_handlers) = el.into_parts();
 
@@ -261,7 +263,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::No
 			for (name, value) in attrs {
 				// Skip falsy boolean attributes
 				let name_str: &str = name.as_ref();
-				if is_boolean_attr(name_str) && !is_boolean_attr_truthy(&value) {
+				if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
 					continue;
 				}
 				let _ = element.set_attribute(&name, &value);
@@ -293,22 +295,22 @@ fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::No
 			let _ = parent.insert_before(&element, Some(marker));
 			nodes.push(element.unchecked_into());
 		}
-		View::Text(text) => {
+		Page::Text(text) => {
 			let text_node = document.create_text_node(&text);
 			let _ = parent.insert_before(&text_node, Some(marker));
 			nodes.push(text_node.unchecked_into());
 		}
-		View::Fragment(children) => {
+		Page::Fragment(children) => {
 			for child in children {
 				nodes.extend(mount_before_marker(marker, child));
 			}
 		}
-		View::Empty => {}
-		View::WithHead { view, .. } => {
+		Page::Empty => {}
+		Page::WithHead { view, .. } => {
 			// Head is handled separately; just mount the content
 			nodes.extend(mount_before_marker(marker, *view));
 		}
-		View::ReactiveIf(reactive_if) => {
+		Page::ReactiveIf(reactive_if) => {
 			// Decompose the ReactiveIf to get the closures
 			let (condition, then_view, else_view) = reactive_if.into_parts();
 
@@ -333,7 +335,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::No
 			// Store the nested node to keep it alive
 			store_reactive_node(nested_node);
 		}
-		View::Reactive(reactive) => {
+		Page::Reactive(reactive) => {
 			// Create a nested ReactiveNode
 			// First, create a new marker for this nested reactive
 			let nested_marker = document.create_comment("reactive-nested");
@@ -358,66 +360,4 @@ fn mount_before_marker(marker: &web_sys::Comment, view: View) -> Vec<web_sys::No
 	nodes
 }
 
-/// Checks if an attribute is a boolean attribute.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // Used by mount_before_marker on WASM
-fn is_boolean_attr(name: &str) -> bool {
-	const BOOLEAN_ATTRS: &[&str] = &[
-		"allowfullscreen",
-		"async",
-		"autofocus",
-		"autoplay",
-		"checked",
-		"controls",
-		"default",
-		"defer",
-		"disabled",
-		"formnovalidate",
-		"hidden",
-		"inert",
-		"ismap",
-		"itemscope",
-		"loop",
-		"multiple",
-		"muted",
-		"nomodule",
-		"novalidate",
-		"open",
-		"playsinline",
-		"readonly",
-		"required",
-		"reversed",
-		"selected",
-		"truespeed",
-	];
-	BOOLEAN_ATTRS.contains(&name)
-}
-
-/// Checks if a boolean attribute value is truthy.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // Used by mount_before_marker on WASM
-fn is_boolean_attr_truthy(value: &str) -> bool {
-	!value.is_empty() && value != "false" && value != "0"
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_is_boolean_attr() {
-		assert!(is_boolean_attr("disabled"));
-		assert!(is_boolean_attr("checked"));
-		assert!(is_boolean_attr("readonly"));
-		assert!(!is_boolean_attr("class"));
-		assert!(!is_boolean_attr("id"));
-	}
-
-	#[test]
-	fn test_is_boolean_attr_truthy() {
-		assert!(is_boolean_attr_truthy("true"));
-		assert!(is_boolean_attr_truthy("disabled"));
-		assert!(is_boolean_attr_truthy("1"));
-		assert!(!is_boolean_attr_truthy(""));
-		assert!(!is_boolean_attr_truthy("false"));
-		assert!(!is_boolean_attr_truthy("0"));
-	}
-}
+// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_types::page

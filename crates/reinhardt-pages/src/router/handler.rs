@@ -6,28 +6,28 @@
 
 use super::core::RouterError;
 use super::params::{FromPath, ParamContext, PathParams};
-use crate::component::View;
+use crate::component::Page;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Trait for route handlers that can handle route requests.
 ///
 /// This trait abstracts over different handler signatures:
-/// - `Fn() -> View` - No parameters
-/// - `Fn(PathParams<T>) -> View` - With typed parameters
-/// - `Fn(PathParams<T>) -> Result<View, E>` - With error handling
+/// - `Fn() -> Page` - No parameters
+/// - `Fn(PathParams<T>) -> Page` - With typed parameters
+/// - `Fn(PathParams<T>) -> Result<Page, E>` - With error handling
 pub(super) trait RouteHandler: Send + Sync {
 	/// Handles the route request with the given parameter context.
 	///
 	/// # Errors
 	///
 	/// Returns [`RouterError::PathExtraction`] if parameter extraction fails.
-	fn handle(&self, ctx: &ParamContext) -> Result<View, RouterError>;
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError>;
 }
 
 /// Handler for routes without parameters.
 ///
-/// Wraps a `Fn() -> View` closure.
+/// Wraps a `Fn() -> Page` closure.
 pub(super) struct NoParamsHandler<F> {
 	handler: F,
 }
@@ -41,16 +41,16 @@ impl<F> NoParamsHandler<F> {
 
 impl<F> RouteHandler for NoParamsHandler<F>
 where
-	F: Fn() -> View + Send + Sync,
+	F: Fn() -> Page + Send + Sync,
 {
-	fn handle(&self, _ctx: &ParamContext) -> Result<View, RouterError> {
+	fn handle(&self, _ctx: &ParamContext) -> Result<Page, RouterError> {
 		Ok((self.handler)())
 	}
 }
 
 /// Handler for routes with typed parameters.
 ///
-/// Wraps a `Fn(PathParams<T>) -> View` closure.
+/// Wraps a `Fn(PathParams<T>) -> Page` closure.
 pub(super) struct WithParamsHandler<F, T> {
 	handler: F,
 	_phantom: PhantomData<T>,
@@ -68,18 +68,18 @@ impl<F, T> WithParamsHandler<F, T> {
 
 impl<F, T> RouteHandler for WithParamsHandler<F, T>
 where
-	F: Fn(PathParams<T>) -> View + Send + Sync,
+	F: Fn(PathParams<T>) -> Page + Send + Sync,
 	T: FromPath + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<View, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let params = PathParams::<T>::from_path(ctx).map_err(RouterError::PathExtraction)?;
 		Ok((self.handler)(params))
 	}
 }
 
-/// Handler for routes that return `Result<View, E>`.
+/// Handler for routes that return `Result<Page, E>`.
 ///
-/// Wraps a `Fn(PathParams<T>) -> Result<View, E>` closure.
+/// Wraps a `Fn(PathParams<T>) -> Result<Page, E>` closure.
 pub(super) struct ResultHandler<F, T, E> {
 	handler: F,
 	_phantom: PhantomData<(T, E)>,
@@ -97,11 +97,11 @@ impl<F, T, E> ResultHandler<F, T, E> {
 
 impl<F, T, E> RouteHandler for ResultHandler<F, T, E>
 where
-	F: Fn(PathParams<T>) -> Result<View, E> + Send + Sync,
+	F: Fn(PathParams<T>) -> Result<Page, E> + Send + Sync,
 	T: FromPath + Send + Sync,
 	E: Into<RouterError> + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<View, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let params = PathParams::<T>::from_path(ctx).map_err(RouterError::PathExtraction)?;
 		(self.handler)(params).map_err(|e| e.into())
 	}
@@ -110,7 +110,7 @@ where
 /// Helper function to create a no-params handler.
 pub(super) fn no_params_handler<F>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn() -> View + Send + Sync + 'static,
+	F: Fn() -> Page + Send + Sync + 'static,
 {
 	Arc::new(NoParamsHandler::new(handler))
 }
@@ -118,7 +118,7 @@ where
 /// Helper function to create a with-params handler.
 pub(super) fn with_params_handler<F, T>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(PathParams<T>) -> View + Send + Sync + 'static,
+	F: Fn(PathParams<T>) -> Page + Send + Sync + 'static,
 	T: FromPath + Send + Sync + 'static,
 {
 	Arc::new(WithParamsHandler::new(handler))
@@ -127,7 +127,7 @@ where
 /// Helper function to create a result handler.
 pub(super) fn result_handler<F, T, E>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(PathParams<T>) -> Result<View, E> + Send + Sync + 'static,
+	F: Fn(PathParams<T>) -> Result<Page, E> + Send + Sync + 'static,
 	T: FromPath + Send + Sync + 'static,
 	E: Into<RouterError> + Send + Sync + 'static,
 {
@@ -140,8 +140,8 @@ mod tests {
 	use crate::router::PathError;
 	use std::collections::HashMap;
 
-	fn test_view() -> View {
-		View::text("Test")
+	fn test_view() -> Page {
+		Page::text("Test")
 	}
 
 	#[test]
@@ -156,7 +156,7 @@ mod tests {
 	#[test]
 	fn test_with_params_handler() {
 		let handler = WithParamsHandler::new(|PathParams(id): PathParams<i32>| {
-			View::text(format!("ID: {}", id))
+			Page::text(format!("ID: {}", id))
 		});
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
@@ -171,7 +171,7 @@ mod tests {
 	#[test]
 	fn test_with_params_handler_error() {
 		let handler = WithParamsHandler::new(|PathParams(id): PathParams<i32>| {
-			View::text(format!("ID: {}", id))
+			Page::text(format!("ID: {}", id))
 		});
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["not_a_number".to_string()]);
@@ -189,7 +189,7 @@ mod tests {
 	fn test_result_handler_ok() {
 		let handler = ResultHandler::new(|PathParams(id): PathParams<i32>| {
 			if id > 0 {
-				Ok(View::text(format!("ID: {}", id)))
+				Ok(Page::text(format!("ID: {}", id)))
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}
@@ -205,7 +205,7 @@ mod tests {
 	fn test_result_handler_err() {
 		let handler = ResultHandler::new(|PathParams(id): PathParams<i32>| {
 			if id > 0 {
-				Ok(View::text(format!("ID: {}", id)))
+				Ok(Page::text(format!("ID: {}", id)))
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}
@@ -226,7 +226,7 @@ mod tests {
 	fn test_with_params_handler_tuple() {
 		let handler =
 			WithParamsHandler::new(|PathParams((user_id, post_id)): PathParams<(i64, i64)>| {
-				View::text(format!("User: {}, Post: {}", user_id, post_id))
+				Page::text(format!("User: {}, Post: {}", user_id, post_id))
 			});
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["123".to_string(), "456".to_string()]);
@@ -250,7 +250,7 @@ mod tests {
 	#[test]
 	fn test_helper_with_params_handler() {
 		let handler = with_params_handler(|PathParams(id): PathParams<i32>| {
-			View::text(format!("ID: {}", id))
+			Page::text(format!("ID: {}", id))
 		});
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
@@ -263,7 +263,7 @@ mod tests {
 	fn test_helper_result_handler() {
 		let handler = result_handler(|PathParams(id): PathParams<i32>| {
 			if id > 0 {
-				Ok(View::text(format!("ID: {}", id)))
+				Ok(Page::text(format!("ID: {}", id)))
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}
