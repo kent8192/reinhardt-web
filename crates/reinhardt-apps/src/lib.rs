@@ -100,7 +100,7 @@ pub use reinhardt_exception::{Error, Result};
 pub use reinhardt_server::{HttpServer, serve};
 
 // Re-export from reinhardt-types
-pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 
 // Re-export inventory for macro usage
 pub use inventory;
