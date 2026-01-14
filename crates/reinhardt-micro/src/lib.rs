@@ -141,7 +141,7 @@ pub mod prelude {
 	pub use serde::{Deserialize, Serialize};
 }
 
-use reinhardt_core::types::Handler;
+use reinhardt_core::Handler;
 use reinhardt_middleware::Middleware;
 use reinhardt_server::serve as http_serve;
 use reinhardt_urls::routers::{DefaultRouter, Route, Router};

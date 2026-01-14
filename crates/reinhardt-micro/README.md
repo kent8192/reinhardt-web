@@ -76,7 +76,7 @@ use reinhardt_micro::prelude::*;
 async fn main() {
     let app = App::new()
         .route("/", hello)
-        .route("/users/:id", get_user)
+        .route("/users/{id}/", get_user)
         .route("/users", create_user);
 
     app.serve("127.0.0.1:8000").await.unwrap();
@@ -86,7 +86,7 @@ async fn hello() -> &'static str {
     "Hello, World!"
 }
 
-#[get("/users/:id")]
+#[get("/users/{id}/")]
 async fn get_user(Path(id): Path<u64>) -> String {
     format!("User ID: {}", id)
 }
