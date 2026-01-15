@@ -11,7 +11,7 @@
 use http::StatusCode;
 use reinhardt_http::{Request, Response, ViewResult};
 use reinhardt_macros::{get, post};
-use reinhardt_routers::UnifiedRouter as Router;
+use reinhardt_routers::ServerRouter as Router;
 use reinhardt_server::ShutdownCoordinator;
 use reinhardt_test::APIClient;
 use reinhardt_test::fixtures::*;

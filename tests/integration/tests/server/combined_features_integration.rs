@@ -15,7 +15,7 @@ use reinhardt_server::{
 	ShutdownCoordinator, TimeoutHandler,
 };
 use reinhardt_test::APIClient;
-use reinhardt_types::{Handler, Middleware};
+use reinhardt_http::{Handler, Middleware};
 use rstest::*;
 use std::net::SocketAddr;
 use std::sync::Arc;

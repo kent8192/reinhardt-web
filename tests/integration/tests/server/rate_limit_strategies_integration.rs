@@ -9,10 +9,10 @@
 
 use http::StatusCode;
 use reinhardt_core::http::{Request, Response};
-use reinhardt_core::types::Handler;
+use reinhardt_core::Handler;
 use reinhardt_http::ViewResult;
 use reinhardt_macros::get;
-use reinhardt_routers::UnifiedRouter as Router;
+use reinhardt_routers::ServerRouter as Router;
 use reinhardt_server::{RateLimitConfig, RateLimitHandler, RateLimitStrategy};
 use reinhardt_test::APIClient;
 use reinhardt_test::fixtures::*;
