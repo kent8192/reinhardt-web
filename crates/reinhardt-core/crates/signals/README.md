@@ -325,24 +325,20 @@ Signal-based GraphQL subscription support.
 - Connect signals to GraphQL subscription resolvers
 - Stream-based subscription updates
 
-## Dependency Injection Integration ✓
+## Context-Aware Receivers
 
-Signals can be integrated with Reinhardt's dependency injection system.
+Signal receivers can receive additional context information.
 
-- **InjectableSignal**: Trait for DI-aware signals
-- **ReceiverContext**: Context passed to receivers with DI support
-- Requires `di` feature flag
-- Allows receivers to resolve dependencies from DI container
+- **InjectableSignal**: Extension trait for context-aware receivers
+- **ReceiverContext**: Context passed to receivers
 
 Example usage:
 
 ```rust
-#[cfg(feature = "di")]
-use reinhardt::core::signals::{Signal, InjectableSignal, ReceiverContext};
+use reinhardt_signals::{Signal, SignalName, InjectableSignal, ReceiverContext};
 
-#[cfg(feature = "di")]
 signal.connect_with_context(|instance, ctx: ReceiverContext| async move {
-    // Resolve dependencies from ctx
+    // Process signal with context
     Ok(())
 });
 ```

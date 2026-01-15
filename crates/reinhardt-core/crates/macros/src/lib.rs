@@ -17,6 +17,7 @@ use syn::{ItemFn, ItemStruct, parse_macro_input};
 mod action;
 mod admin;
 mod api_view;
+mod app_config_attribute;
 mod app_config_derive;
 mod collect_migrations;
 mod crate_paths;
@@ -41,6 +42,7 @@ mod use_inject;
 use action::action_impl;
 use admin::admin_impl;
 use api_view::api_view_impl;
+use app_config_attribute::app_config_attribute_impl;
 use injectable_fn::injectable_fn_impl;
 use injectable_struct::injectable_struct_impl;
 use installed_apps::installed_apps_impl;
@@ -575,10 +577,23 @@ pub fn derive_orm_reflectable(input: TokenStream) -> TokenStream {
 	orm_reflectable_derive_impl(input)
 }
 
-/// Derive macro for automatic AppConfig factory method generation
+/// Attribute macro for Django-style AppConfig definition with automatic derive
 ///
-/// Automatically generates a `config()` method that returns an `AppConfig` instance
-/// with the specified name and label.
+/// Automatically adds `#[derive(AppConfig)]` and keeps the `#[app_config(...)]` attribute.
+/// This provides a cleaner syntax by eliminating the need to explicitly write
+/// `#[derive(AppConfig)]` on every app config struct.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[app_config(name = "hello", label = "hello")]
+/// pub struct HelloConfig;
+///
+/// // Generates a config() method:
+/// let config = HelloConfig::config();
+/// assert_eq!(config.name, "hello");
+/// assert_eq!(config.label, "hello");
+/// ```
 ///
 /// # Attributes
 ///
@@ -586,7 +601,29 @@ pub fn derive_orm_reflectable(input: TokenStream) -> TokenStream {
 /// - `label`: Application label (required, string literal)
 /// - `verbose_name`: Verbose name (optional, string literal)
 ///
-#[proc_macro_derive(AppConfig, attributes(app_config))]
+/// # Note
+///
+/// Direct use of `#[derive(AppConfig)]` is not allowed. Always use
+/// `#[app_config(...)]` attribute macro instead.
+///
+#[proc_macro_attribute]
+pub fn app_config(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemStruct);
+
+	app_config_attribute_impl(args.into(), input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Derive macro for automatic AppConfig factory method generation
+///
+/// **Note**: Do not use this derive macro directly. Use `#[app_config(...)]`
+/// attribute macro instead.
+///
+/// This derive macro is invoked automatically by the `#[app_config(...)]` attribute.
+/// Direct use will result in a compile error.
+///
+#[proc_macro_derive(AppConfig, attributes(app_config, app_config_internal))]
 pub fn derive_app_config(input: TokenStream) -> TokenStream {
 	app_config_derive::derive(input)
 }

@@ -1,11 +1,14 @@
-//! Context processor for template integration
+//! Context for template integration
 //!
 //! This module provides utilities for integrating messages with template engines.
-//! Messages can be added to the template context for rendering in views.
+//! Messages can be serialized and passed to templates for rendering.
+//!
+//! ## Note
+//!
+//! HTTP request integration functions (`get_messages_context`, `add_message`)
+//! have been moved to `reinhardt-http` crate to prevent circular dependencies.
 
 use crate::message::Message;
-use crate::middleware::MessagesContainer;
-use reinhardt_http::Request;
 use serde::Serialize;
 
 /// Messages context for template rendering
@@ -15,7 +18,7 @@ use serde::Serialize;
 /// ## Example
 ///
 /// ```rust
-/// use reinhardt_messages::context::{MessagesContext, get_messages_context};
+/// use reinhardt_messages::context::MessagesContext;
 /// use reinhardt_messages::Message;
 ///
 /// let messages = vec![Message::info("Hello"), Message::success("Done")];
@@ -98,104 +101,10 @@ impl MessagesContext {
 	}
 }
 
-/// Extract messages from request and create a context
-///
-/// This function is designed to be used as a context processor in template engines.
-/// It retrieves messages from the request extensions and wraps them in a
-/// MessagesContext for easy serialization.
-///
-/// # Example
-///
-/// ```rust
-/// use reinhardt_messages::context::get_messages_context;
-/// use reinhardt_messages::middleware::MessagesContainer;
-/// use reinhardt_messages::Message;
-/// use reinhardt_http::Request;
-/// use bytes::Bytes;
-/// use hyper::{HeaderMap, Method, Version};
-///
-/// let mut request = Request::builder()
-///     .method(Method::GET)
-///     .uri("/")
-///     .version(Version::HTTP_11)
-///     .headers(HeaderMap::new())
-///     .body(Bytes::new())
-///     .build()
-///     .unwrap();
-///
-/// let container = MessagesContainer::new(vec![Message::info("Test")]);
-/// request.extensions.insert(container);
-///
-/// let context = get_messages_context(&request);
-/// assert_eq!(context.messages.len(), 1);
-/// ```
-pub fn get_messages_context(request: &Request) -> MessagesContext {
-	if let Some(container) = request.extensions.get::<MessagesContainer>() {
-		MessagesContext::new(container.get_messages())
-	} else {
-		MessagesContext::empty()
-	}
-}
-
-/// Add a message to the request's message container
-///
-/// This is a convenience function for adding messages to the request during
-/// request processing.
-///
-/// # Example
-///
-/// ```rust
-/// use reinhardt_messages::context::add_message;
-/// use reinhardt_messages::middleware::MessagesContainer;
-/// use reinhardt_messages::Message;
-/// use reinhardt_http::Request;
-/// use bytes::Bytes;
-/// use hyper::{HeaderMap, Method, Version};
-///
-/// let mut request = Request::builder()
-///     .method(Method::GET)
-///     .uri("/")
-///     .version(Version::HTTP_11)
-///     .headers(HeaderMap::new())
-///     .body(Bytes::new())
-///     .build()
-///     .unwrap();
-///
-/// // Initialize container
-/// request.extensions.insert(MessagesContainer::new(vec![]));
-///
-/// // Add message
-/// add_message(&request, Message::success("Operation completed"));
-///
-/// // Verify message was added
-/// if let Some(container) = request.extensions.get::<MessagesContainer>() {
-///     assert_eq!(container.get_messages().len(), 1);
-/// }
-/// ```
-pub fn add_message(request: &Request, message: Message) {
-	if let Some(container) = request.extensions.get::<MessagesContainer>() {
-		container.add(message);
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::Level;
-	use crate::middleware::MessagesContainer;
-	use bytes::Bytes;
-	use hyper::{HeaderMap, Method, Version};
-
-	fn create_test_request() -> Request {
-		Request::builder()
-			.method(Method::GET)
-			.uri("/")
-			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
-			.body(Bytes::new())
-			.build()
-			.unwrap()
-	}
 
 	#[test]
 	fn test_messages_context_new() {
@@ -230,54 +139,6 @@ mod tests {
 			Message::error("Three"),
 		]);
 		assert_eq!(context.count(), 3);
-	}
-
-	#[test]
-	fn test_get_messages_context_with_messages() {
-		let request = create_test_request();
-		let container = MessagesContainer::new(vec![
-			Message::info("Message 1"),
-			Message::warning("Message 2"),
-		]);
-		request.extensions.insert(container);
-
-		let context = get_messages_context(&request);
-		assert_eq!(context.messages.len(), 2);
-		assert_eq!(context.messages[0].text, "Message 1");
-		assert_eq!(context.messages[1].text, "Message 2");
-	}
-
-	#[test]
-	fn test_get_messages_context_without_container() {
-		let request = create_test_request();
-		let context = get_messages_context(&request);
-		assert_eq!(context.messages.len(), 0);
-		assert!(!context.has_messages());
-	}
-
-	#[test]
-	fn test_add_message_to_request() {
-		let request = create_test_request();
-		request.extensions.insert(MessagesContainer::new(vec![]));
-
-		add_message(&request, Message::success("Success message"));
-		add_message(&request, Message::error("Error message"));
-
-		if let Some(container) = request.extensions.get::<MessagesContainer>() {
-			let messages = container.get_messages();
-			assert_eq!(messages.len(), 2);
-			assert_eq!(messages[0].text, "Success message");
-			assert_eq!(messages[1].text, "Error message");
-		} else {
-			panic!("Container not found");
-		}
-	}
-
-	#[test]
-	fn test_add_message_without_container() {
-		let request = create_test_request();
-		// Should not panic, just do nothing
-		add_message(&request, Message::info("Test"));
 	}
 
 	#[test]

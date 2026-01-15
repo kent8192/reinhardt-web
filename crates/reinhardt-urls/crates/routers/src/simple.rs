@@ -126,7 +126,7 @@ impl crate::router::Router for SimpleRouter {
 		self.routes.push(route);
 	}
 
-	/// Include routes with a prefix
+	/// Mount routes at the given prefix
 	///
 	/// Note: SimpleRouter ignores namespaces as it doesn't support URL reversal
 	///
@@ -153,13 +153,13 @@ impl crate::router::Router for SimpleRouter {
 	/// ];
 	///
 	/// let mut router = SimpleRouter::new();
-	/// router.include("/users", users_routes, None);
+	/// router.mount("/users", users_routes, None);
 	///
 	/// // Routes are prefixed: /users/ and /users/{id}/
 	/// assert_eq!(router.get_routes().len(), 2);
 	/// assert_eq!(router.get_routes()[0].path, "/users/");
 	/// ```
-	fn include(&mut self, prefix: &str, routes: Vec<Route>, _namespace: Option<String>) {
+	fn mount(&mut self, prefix: &str, routes: Vec<Route>, _namespace: Option<String>) {
 		let prefix = prefix.trim_end_matches('/');
 
 		for mut route in routes {

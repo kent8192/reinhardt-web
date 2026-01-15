@@ -21,10 +21,12 @@ sea-query = { workspace = true, features = [
   "backend-mysql",
   "backend-sqlite",
   "sqlx-utils",
+  "with-uuid",
 ] }
 pg_escape = "0.1.1"
 futures = { workspace = true }
 rust_decimal = { workspace = true }
+uuid = { workspace = true }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-conf = { workspace = true, optional = true }
 [dev-dependencies]

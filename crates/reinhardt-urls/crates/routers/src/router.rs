@@ -456,8 +456,7 @@ impl Router for DefaultRouter {
 		self.routes.push(route);
 	}
 
-	/// Include routes with a prefix and optional namespace
-	/// Similar to Django's include() function
+	/// Mount routes at the given prefix
 	///
 	/// # Examples
 	///
@@ -482,12 +481,12 @@ impl Router for DefaultRouter {
 	/// ];
 	///
 	/// let mut router = DefaultRouter::new();
-	/// router.include("/users", users_routes, Some("users".to_string()));
+	/// router.mount("/users", users_routes, Some("users".to_string()));
 	///
 	// Routes are prefixed: /users/ and /users/{id}/
 	/// assert_eq!(router.get_routes().len(), 2);
 	/// ```
-	fn include(&mut self, prefix: &str, routes: Vec<Route>, namespace: Option<String>) {
+	fn mount(&mut self, prefix: &str, routes: Vec<Route>, namespace: Option<String>) {
 		let prefix = prefix.trim_end_matches('/');
 
 		for mut route in routes {

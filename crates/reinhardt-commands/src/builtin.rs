@@ -1259,7 +1259,7 @@ impl RunServerCommand {
 		#[cfg(feature = "openapi")]
 		let router = if !no_docs {
 			use reinhardt_openapi::OpenApiRouter;
-			use reinhardt_types::Handler;
+			use reinhardt_http::Handler;
 			std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
 		} else {
 			base_router
@@ -2562,10 +2562,10 @@ mod tests {
 		// Server blocks indefinitely, so timeout is expected
 		#[cfg(feature = "server")]
 		{
-			use reinhardt_urls::routers::UnifiedRouter;
+			use reinhardt_urls::routers::ServerRouter;
 
 			// Register a dummy router for the test
-			let router = UnifiedRouter::new();
+			let router = ServerRouter::new();
 			reinhardt_urls::routers::register_router(router);
 
 			// Create context with noreload option to disable autoreload

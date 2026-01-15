@@ -1,27 +1,28 @@
-//! Tests for AppConfig derive macro
+//! Tests for AppConfig attribute macro
 //!
 //! Tests that verify the correct generation of AppConfig factory methods.
 
-use reinhardt_macros::AppConfig;
+use reinhardt_macros::app_config;
 
 // Allow this test crate to be referenced as `::reinhardt` for proc macro generated code.
 // The macro generates code with absolute paths like ::reinhardt::reinhardt_apps::AppConfig
 extern crate self as reinhardt;
 
-// Re-export module for proc macro generated code paths.
+// Re-export modules for proc macro generated code paths.
 pub mod reinhardt_apps {
 	pub use ::reinhardt_apps::*;
 }
 
-#[derive(AppConfig)]
+pub mod macros {
+	pub use reinhardt_macros::AppConfig;
+}
+
 #[app_config(name = "api", label = "api")]
 pub struct ApiConfig;
 
-#[derive(AppConfig)]
 #[app_config(name = "todos", label = "todos", verbose_name = "TODO Application")]
 pub struct TodosConfig;
 
-#[derive(AppConfig)]
 #[app_config(name = "users", label = "users")]
 pub struct UsersConfig;
 

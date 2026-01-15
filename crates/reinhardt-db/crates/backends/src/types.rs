@@ -3,6 +3,7 @@
 use crate::error::DatabaseError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Database type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +48,8 @@ pub enum QueryValue {
 	String(String),
 	Bytes(Vec<u8>),
 	Timestamp(chrono::DateTime<chrono::Utc>),
+	/// UUID value for PostgreSQL uuid columns
+	Uuid(Uuid),
 	/// Represents SQL NOW() function
 	Now,
 }
@@ -90,6 +93,12 @@ impl From<bool> for QueryValue {
 impl From<chrono::DateTime<chrono::Utc>> for QueryValue {
 	fn from(dt: chrono::DateTime<chrono::Utc>) -> Self {
 		QueryValue::Timestamp(dt)
+	}
+}
+
+impl From<Uuid> for QueryValue {
+	fn from(u: Uuid) -> Self {
+		QueryValue::Uuid(u)
 	}
 }
 
@@ -244,6 +253,22 @@ impl TryFrom<QueryValue> for chrono::DateTime<chrono::Utc> {
 			QueryValue::Timestamp(dt) => Ok(dt),
 			_ => Err(DatabaseError::TypeError(format!(
 				"Cannot convert {:?} to DateTime<Utc>",
+				value
+			))),
+		}
+	}
+}
+
+impl TryFrom<QueryValue> for Uuid {
+	type Error = DatabaseError;
+
+	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
+		match value {
+			QueryValue::Uuid(u) => Ok(u),
+			QueryValue::String(s) => Uuid::parse_str(&s)
+				.map_err(|_| DatabaseError::TypeError(format!("Invalid UUID string: {}", s))),
+			_ => Err(DatabaseError::TypeError(format!(
+				"Cannot convert {:?} to Uuid",
 				value
 			))),
 		}

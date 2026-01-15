@@ -236,7 +236,7 @@ fn parse_non_group_char(input: &str) -> IResult<&str, char> {
 ///
 /// let mut main_router = DefaultRouter::new();
 /// let users_routes = users_router.get_routes().to_vec();
-/// main_router.include("/api/users", users_routes, Some("users".to_string()));
+/// main_router.mount("/api/users", users_routes, Some("users".to_string()));
 /// ```
 pub struct IncludedRouter {
 	pub prefix: String,

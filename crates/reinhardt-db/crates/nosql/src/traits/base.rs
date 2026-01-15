@@ -10,11 +10,47 @@ use crate::{
 	types::{NoSQLBackendType, NoSQLType},
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Base trait for all NoSQL database backends
 ///
 /// This trait defines the minimum interface that all NoSQL backends must implement.
 /// Specific NoSQL paradigms (Document, KeyValue, Column, Graph) extend this trait
 /// with their own specialized methods.
+///
+/// # Architecture
+///
+/// ```mermaid
+/// classDiagram
+///     class NoSQLBackend {
+///         <<trait>>
+///         +backend_type() NoSQLBackendType
+///         +nosql_type() NoSQLType
+///         +health_check() Result
+///     }
+///     class DocumentBackend {
+///         <<trait>>
+///         MongoDB
+///         CouchDB
+///     }
+///     class KeyValueBackend {
+///         <<trait>>
+///         Redis
+///         DynamoDB
+///     }
+///     class ColumnBackend {
+///         <<trait>>
+///         Cassandra
+///     }
+///     class GraphBackend {
+///         <<trait>>
+///         Neo4j
+///     }
+///
+///     NoSQLBackend <|-- DocumentBackend
+///     NoSQLBackend <|-- KeyValueBackend
+///     NoSQLBackend <|-- ColumnBackend
+///     NoSQLBackend <|-- GraphBackend
+/// ```
 ///
 /// # Example
 ///

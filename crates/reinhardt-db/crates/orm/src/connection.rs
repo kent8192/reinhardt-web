@@ -48,6 +48,7 @@ impl QueryRow {
 					serde_json::Value::String(base64::engine::general_purpose::STANDARD.encode(&b))
 				}
 				QueryValue::Timestamp(dt) => serde_json::Value::String(dt.to_rfc3339()),
+				QueryValue::Uuid(u) => serde_json::Value::String(u.to_string()),
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};

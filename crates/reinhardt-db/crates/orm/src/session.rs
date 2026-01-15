@@ -16,6 +16,7 @@ use sqlx::{AnyPool, Row};
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Session error types
 #[derive(Debug, Clone)]
@@ -1328,7 +1329,13 @@ fn json_to_sea_value(value: &Value) -> sea_query::Value {
 				sea_query::Value::Int(None)
 			}
 		}
-		Value::String(s) => sea_query::Value::String(Some(s.clone())),
+		Value::String(s) => {
+			// Try to parse as UUID first
+			if let Ok(uuid) = Uuid::parse_str(s) {
+				return sea_query::Value::Uuid(Some(uuid));
+			}
+			sea_query::Value::String(Some(s.clone()))
+		}
 		Value::Array(_) | Value::Object(_) => {
 			// For complex types, serialize as JSON string
 			sea_query::Value::String(Some(value.to_string()))
@@ -1355,6 +1362,8 @@ fn bind_sea_value<'a>(
 		sea_query::Value::Double(Some(f)) => query.bind(*f),
 		sea_query::Value::String(Some(s)) => query.bind(s.clone()),
 		sea_query::Value::Bytes(Some(b)) => query.bind(b.clone()),
+		// UUID: sqlx::Any doesn't natively support UUID, bind as string
+		sea_query::Value::Uuid(Some(u)) => query.bind(u.to_string()),
 		_ => query.bind(None::<i32>), // NULL values
 	}
 }

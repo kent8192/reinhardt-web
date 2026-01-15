@@ -211,7 +211,7 @@ impl ServerRouter {
 	///
 	/// // This will panic because "api" doesn't end with "/"
 	/// let router = ServerRouter::new()
-	///     .include("api", ServerRouter::new());
+	///     .mount("api", ServerRouter::new());
 	/// ```
 	///
 	/// ```should_panic
@@ -219,7 +219,7 @@ impl ServerRouter {
 	///
 	/// // This will panic because "" is not allowed, use "/" instead
 	/// let router = ServerRouter::new()
-	///     .include("", ServerRouter::new());
+	///     .mount("", ServerRouter::new());
 	/// ```
 	fn validate_prefix(prefix: &str) {
 		// Prefix must end with "/"
@@ -410,48 +410,6 @@ impl ServerRouter {
 			child.di_context = self.di_context.clone();
 		}
 		self.children.push(child);
-	}
-
-	/// Include a child router at the given prefix (Django-style alias for `mount`)
-	///
-	/// This is a Django-compatible alias for the `mount` method, providing
-	/// familiar syntax for developers coming from Django.
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_routers::ServerRouter;
-	///
-	/// let users_router = ServerRouter::new()
-	///     .with_namespace("users");
-	///
-	/// let router = ServerRouter::new()
-	///     .with_prefix("/api/")
-	///     .include("/users/", users_router);
-	///
-	/// // Verify the router was created successfully
-	/// assert_eq!(router.prefix(), "/api/");
-	/// ```
-	pub fn include(self, prefix: &str, child: ServerRouter) -> Self {
-		self.mount(prefix, child)
-	}
-
-	/// Include a child router (mutable version, Django-style alias for `mount_mut`)
-	///
-	/// This is a Django-compatible alias for the `mount_mut` method.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_routers::ServerRouter;
-	///
-	/// let mut router = ServerRouter::new();
-	/// let users_router = ServerRouter::new();
-	///
-	/// router.include_mut("/users", users_router);
-	/// ```
-	pub fn include_mut(&mut self, prefix: &str, child: ServerRouter) {
-		self.mount_mut(prefix, child);
 	}
 
 	/// Add multiple child routers at once

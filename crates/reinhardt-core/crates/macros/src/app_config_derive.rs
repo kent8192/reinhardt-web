@@ -12,14 +12,15 @@ struct AppConfigAttr {
 }
 
 impl AppConfigAttr {
-	/// Parse `#[app_config(...)]` attribute
+	/// Parse `#[app_config(...)]` or `#[app_config_internal(...)]` attribute
 	fn from_attrs(attrs: &[syn::Attribute], struct_name: &syn::Ident) -> Result<Self> {
 		let mut name = None;
 		let mut label = None;
 		let mut verbose_name = None;
 
 		for attr in attrs {
-			if !attr.path().is_ident("app_config") {
+			// Accept both #[app_config(...)] and #[app_config_internal(...)] helper attributes
+			if !attr.path().is_ident("app_config") && !attr.path().is_ident("app_config_internal") {
 				continue;
 			}
 
@@ -78,6 +79,23 @@ fn derive_impl(input: DeriveInput) -> Result<TokenStream> {
 	let apps_crate = get_reinhardt_apps_crate();
 
 	let struct_name = &input.ident;
+
+	// Check if app_config_internal helper attribute exists
+	// This attribute is added by the #[app_config(...)] attribute macro
+	// If it doesn't exist, it means the user directly used #[derive(AppConfig)]
+	let has_internal_attr = input
+		.attrs
+		.iter()
+		.any(|attr| attr.path().is_ident("app_config_internal"));
+
+	if !has_internal_attr {
+		return Err(syn::Error::new_spanned(
+			struct_name,
+			"Direct use of #[derive(AppConfig)] is not allowed. \
+			 Use #[app_config(name = \"...\", label = \"...\")] instead.",
+		));
+	}
+
 	let config = AppConfigAttr::from_attrs(&input.attrs, struct_name)?;
 
 	let name = &config.name;

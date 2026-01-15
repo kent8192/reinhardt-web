@@ -187,9 +187,9 @@ router.add_route(
         .with_name("health")
 );
 
-// Include routes with namespace
+// Mount routes with namespace
 let api_routes = vec![/* routes */];
-router.include("/api/v1", api_routes, Some("v1".to_string()));
+router.mount("/api/v1", api_routes, Some("v1".to_string()));
 
 // URL reversal
 let user_url = router.reverse_with("users-detail", &[("id", "123")]).unwrap();

@@ -215,7 +215,7 @@ pub use reinhardt_apps::{AppConfig, AppError, AppResult, Apps};
 
 // Re-export macros
 #[cfg(all(feature = "core", not(target_arch = "wasm32")))]
-pub use reinhardt_macros::{AppConfig, installed_apps};
+pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 
 // Re-export Model derive macro and model attribute macro (requires database feature)
 #[cfg(all(feature = "database", not(target_arch = "wasm32")))]
@@ -279,12 +279,11 @@ pub use reinhardt_core::{
 	endpoint::EndpointMetadata,
 	exception::{Error, Result},
 	http::{Request, Response},
-	types::{Handler, Middleware, MiddlewareChain},
 };
 
-// Re-export ViewResult from reinhardt-http
+// Re-export HTTP types
 #[cfg(all(feature = "core", not(target_arch = "wasm32")))]
-pub use reinhardt_http::ViewResult;
+pub use reinhardt_http::{Handler, Middleware, MiddlewareChain, ViewResult};
 
 // Re-export inventory crate (used by HTTP method macros for endpoint registration)
 #[cfg(not(target_arch = "wasm32"))]
@@ -581,9 +580,21 @@ pub use reinhardt_views::viewsets::{
 // Re-export routers
 #[cfg(not(target_arch = "wasm32"))]
 pub use reinhardt_urls::routers::{
-	DefaultRouter, PathMatcher, PathPattern, Route, Router, UnifiedRouter, UrlPatternsRegistration,
-	clear_router, get_router, is_router_registered, register_router, register_router_arc,
+	DefaultRouter, PathMatcher, PathPattern, Route, Router, ServerRouter, UnifiedRouter,
+	UrlPatternsRegistration, clear_router, get_router, is_router_registered, register_router,
+	register_router_arc,
 };
+
+// Re-export client-router types (requires client-router feature)
+// These types enable UnifiedRouter<V> with both .server() and .client() methods
+#[cfg(feature = "client-router")]
+pub use reinhardt_urls::routers::{
+	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
+	NavigationType, ParamContext, SingleFromPath,
+};
+// Path extractor for client-side routing (separate from server-side Path from reinhardt-di)
+#[cfg(feature = "client-router")]
+pub use reinhardt_urls::routers::Path as ClientPath;
 
 // Re-export auth
 #[cfg(all(feature = "auth", not(target_arch = "wasm32")))]
@@ -878,6 +889,7 @@ pub mod prelude {
 		ReadOnlyModelViewSet,
 		Route,
 		Router,
+		ServerRouter,
 		SingleObjectMixin,
 		StatusCode,
 		UnifiedRouter,

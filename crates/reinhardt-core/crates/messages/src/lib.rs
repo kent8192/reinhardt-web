@@ -6,25 +6,29 @@
 //! ## Features
 //!
 //! - **Message Storage**: Multiple storage backends (Memory, Cookie, Session, Fallback)
-//! - **Middleware Integration**: Automatic message loading and saving during request lifecycle
 //! - **Template Context**: Easy integration with template engines
 //! - **Message Filtering**: Filter messages by level or tags
 //! - **Type-Safe Levels**: Predefined message levels (Debug, Info, Success, Warning, Error)
 //!
+//! ## Note
+//!
+//! HTTP middleware integration (`MessagesMiddleware`) has been moved to
+//! `reinhardt-http` crate to prevent circular dependencies.
+//!
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reinhardt_messages::{Message, middleware::MessagesMiddleware, storage::MemoryStorage};
+//! use reinhardt_messages::{Message, middleware::MessagesContainer, storage::MemoryStorage};
 //!
-//! // Create middleware with memory storage
-//! let storage = MemoryStorage::new();
-//! let middleware = MessagesMiddleware::new(storage);
+//! // Create a message container
+//! let container = MessagesContainer::new(vec![]);
 //!
-//! // Add messages during request processing
-//! # use reinhardt_messages::middleware::MessagesContainer;
-//! # let mut container = MessagesContainer::new(vec![]);
+//! // Add messages
 //! container.add(Message::success("Operation completed successfully!"));
 //! container.add(Message::warning("Please review your settings"));
+//!
+//! // Get messages
+//! let messages = container.get_messages();
 //! ```
 
 pub mod context;
@@ -35,10 +39,10 @@ pub mod safedata;
 pub mod storage;
 pub mod utils;
 
-pub use context::{MessagesContext, add_message, get_messages_context};
+pub use context::MessagesContext;
 pub use levels::Level;
 pub use message::{Message, MessageConfig};
-pub use middleware::{MessagesContainer, MessagesMiddleware};
+pub use middleware::MessagesContainer;
 pub use safedata::SafeData;
 pub use storage::{CookieStorage, FallbackStorage, MemoryStorage, MessageStorage, SessionStorage};
 

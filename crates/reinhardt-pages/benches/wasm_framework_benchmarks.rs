@@ -284,7 +284,7 @@ fn bench_router_path_matching(c: &mut Criterion) {
 		.route("/users/{id}", || {
 			PageElement::new("div").child("User").into_page()
 		})
-		.route("/posts/:slug", || {
+		.route("/posts/{slug}/", || {
 			PageElement::new("div").child("Post").into_page()
 		})
 		.route("/admin/users/{id}/edit", || {
@@ -317,7 +317,7 @@ fn bench_router_complex_path_matching(c: &mut Criterion) {
 /// Benchmark: Parameter extraction
 fn bench_router_parameter_extraction(c: &mut Criterion) {
 	let router = Router::new().route(
-		"/users/:user_id/posts/:post_id/comments/:comment_id",
+		"/users/{user_id}/posts/{post_id}/comments/{comment_id}/",
 		|| PageElement::new("div").child("Comment").into_page(),
 	);
 

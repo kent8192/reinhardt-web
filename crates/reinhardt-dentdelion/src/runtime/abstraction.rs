@@ -3,17 +3,7 @@
 //! This module defines the core abstractions that enable plugins to run on
 //! different runtime backends (Static Rust, WASM, TypeScript/deno_core).
 //!
-//! # Architecture
-//!
-//! The runtime abstraction provides a unified interface for executing plugin
-//! code regardless of the underlying runtime:
-//!
-//! ```text
-//! PluginRuntime (trait)
-//!     ├── StaticRuntime  (Rust crates, compile-time integration)
-//!     ├── WasmRuntime    (wasmtime, Component Model)
-//!     └── TsRuntime      (deno_core, TypeScript/JavaScript)
-//! ```
+//! See [`RuntimeType`] for the architecture diagram.
 //!
 //! # Example
 //!
@@ -37,10 +27,41 @@ use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Identifies the type of runtime a plugin uses.
 ///
 /// This enum allows the framework to make runtime-specific decisions
 /// about capability support, resource limits, and execution strategies.
+///
+/// # Architecture
+///
+/// The runtime abstraction provides a unified interface for executing plugin
+/// code regardless of the underlying runtime:
+///
+/// ```mermaid
+/// classDiagram
+///     class PluginRuntime {
+///         <<trait>>
+///         +runtime_type() RuntimeType
+///         +invoke() Result
+///     }
+///     class StaticRuntime {
+///         Rust crates
+///         compile-time integration
+///     }
+///     class WasmRuntime {
+///         wasmtime
+///         Component Model
+///     }
+///     class TsRuntime {
+///         deno_core
+///         TypeScript/JavaScript
+///     }
+///
+///     PluginRuntime <|.. StaticRuntime
+///     PluginRuntime <|.. WasmRuntime
+///     PluginRuntime <|.. TsRuntime
+/// ```
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeType {

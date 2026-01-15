@@ -139,6 +139,19 @@ fn test_admin_macro_fail() {
 	t.compile_fail("tests/ui/admin/fail/*.rs");
 }
 
+// AppConfig attribute macro tests
+#[test]
+fn test_app_config_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/app_config/pass/*.rs");
+}
+
+#[test]
+fn test_app_config_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/app_config/fail/*.rs");
+}
+
 // Injectable macro tests (#[injectable] and #[use_inject])
 // Note: pass tests are omitted because generated code requires Injectable implementations
 // which cannot be easily provided in trybuild tests

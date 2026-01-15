@@ -8,17 +8,18 @@ description = "Django-style messaging framework for displaying notifications to 
 repository.workspace = true
 
 [features]
+default = []
 full = []
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+# Core internal dependencies (reinhardt-core subcrates)
 reinhardt-exception = { workspace = true }
-reinhardt-types = { workspace = true, features = ["http"] }
-reinhardt-http = { workspace = true }
+
+# External dependencies
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 percent-encoding = "2.3"
-async-trait = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

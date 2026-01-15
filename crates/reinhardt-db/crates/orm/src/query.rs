@@ -15,6 +15,7 @@ use sea_query::{
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 // Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2731,7 +2732,14 @@ where
 
 	fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 		match v {
-			FilterValue::String(s) => s.clone().into(),
+			FilterValue::String(s) => {
+				// Try to parse as UUID first for proper PostgreSQL uuid column handling
+				if let Ok(uuid) = Uuid::parse_str(s) {
+					sea_query::Value::Uuid(Some(uuid))
+				} else {
+					s.clone().into()
+				}
+			}
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),

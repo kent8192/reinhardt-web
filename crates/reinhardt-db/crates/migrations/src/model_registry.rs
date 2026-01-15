@@ -9,25 +9,38 @@
 //! - Model retrieval via `Apps.get_models()`
 //! - Thread-safe access with RwLock
 //!
-//! # Architecture
-//! ```text
-//! Django:                         Reinhardt:
-//! ┌─────────────┐                ┌──────────────────┐
-//! │ Apps        │                │ ModelRegistry    │
-//! │ ┌─────────┐ │                │ ┌──────────────┐ │
-//! │ │all_models│ │                │ │models        │ │
-//! │ └─────────┘ │                │ └──────────────┘ │
-//! │ - register_ │                │ - register_model │
-//! │   model()   │                │ - get_models()   │
-//! │ - get_models│                │ - get_model()    │
-//! └─────────────┘                └──────────────────┘
-//! ```
+//! See [`ModelMetadata`] for the architecture comparison diagram.
 
 use crate::autodetector::{FieldState, ModelState};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Model metadata for registration
+///
+/// # Architecture
+///
+/// This struct mirrors Django's model registration pattern:
+///
+/// ```mermaid
+/// graph LR
+///     subgraph Django["Django (Reference)"]
+///         Apps["Apps"]
+///         Apps --> all_models["all_models"]
+///         Apps --> register_model["register_model()"]
+///         Apps --> get_models["get_models()"]
+///     end
+///
+///     subgraph Reinhardt["Reinhardt"]
+///         ModelRegistry["ModelRegistry"]
+///         ModelRegistry --> models["models"]
+///         ModelRegistry --> register_model2["register_model()"]
+///         ModelRegistry --> get_models2["get_models()"]
+///         ModelRegistry --> get_model["get_model()"]
+///     end
+///
+///     Django -.-> Reinhardt
+/// ```
 #[derive(Debug, Clone)]
 pub struct ModelMetadata {
 	/// Application label (e.g., "auth", "blog")

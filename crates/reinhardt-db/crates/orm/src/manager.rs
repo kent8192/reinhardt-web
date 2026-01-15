@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 /// Build SQL with values from an INSERT statement based on database backend
 fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
@@ -806,23 +807,29 @@ impl<M: Model> Manager<M> {
 				}
 			}
 			serde_json::Value::String(s) => {
-				// Try to parse as ISO 8601 datetime (chrono::DateTime<Utc>)
+				// 1. Try to parse as UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+				//    UUIDs are often serialized as strings via serde
+				if let Ok(uuid) = Uuid::parse_str(s) {
+					return sea_query::Value::Uuid(Some(uuid));
+				}
+
+				// 2. Try to parse as ISO 8601 datetime (chrono::DateTime<Utc>)
 				// This handles timestamps serialized by serde_json from chrono::DateTime
 
-				// 1. Try RFC3339 strict format first (e.g., "2024-01-01T00:00:00+00:00")
+				// 2.1 Try RFC3339 strict format first (e.g., "2024-01-01T00:00:00+00:00")
 				if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
 					return sea_query::Value::ChronoDateTimeUtc(Some(
 						dt.with_timezone(&chrono::Utc),
 					));
 				}
 
-				// 2. Try chrono's FromStr trait for DateTime<Utc>
+				// 2.2 Try chrono's FromStr trait for DateTime<Utc>
 				//    This handles formats like "2024-01-01T00:00:00Z" with optional subseconds
 				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::Utc>>() {
 					return sea_query::Value::ChronoDateTimeUtc(Some(dt));
 				}
 
-				// 3. Try parsing with FixedOffset timezone then convert to UTC
+				// 2.3 Try parsing with FixedOffset timezone then convert to UTC
 				//    Handles formats like "2024-01-01T00:00:00.123456789+00:00"
 				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::FixedOffset>>() {
 					return sea_query::Value::ChronoDateTimeUtc(Some(
@@ -830,7 +837,7 @@ impl<M: Model> Manager<M> {
 					));
 				}
 
-				// Fallback: treat as regular string (non-datetime values)
+				// Fallback: treat as regular string (non-datetime, non-UUID values)
 				sea_query::Value::String(Some(s.clone()))
 			}
 			serde_json::Value::Array(arr) => {
@@ -891,6 +898,10 @@ impl<M: Model> Manager<M> {
 			sea_query::Value::ChronoDateTime(None) => QueryValue::Null,
 			sea_query::Value::ChronoDateTimeUtc(Some(dt)) => QueryValue::Timestamp(dt),
 			sea_query::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
+
+			// UUID handling
+			sea_query::Value::Uuid(Some(u)) => QueryValue::Uuid(u),
+			sea_query::Value::Uuid(None) => QueryValue::Null,
 
 			// JSON types - serialize to string
 			sea_query::Value::Json(Some(json)) => QueryValue::String(json.to_string()),
@@ -998,6 +1009,8 @@ impl<M: Model> Manager<M> {
 		let pk_str = pk.to_string();
 		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
 			sea_query::Value::BigInt(Some(int_value))
+		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
+			sea_query::Value::Uuid(Some(uuid))
 		} else {
 			sea_query::Value::String(Some(pk_str))
 		};
@@ -1066,6 +1079,8 @@ impl<M: Model> Manager<M> {
 		let pk_str = pk.to_string();
 		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
 			sea_query::Value::BigInt(Some(int_value))
+		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
+			sea_query::Value::Uuid(Some(uuid))
 		} else {
 			sea_query::Value::String(Some(pk_str))
 		};

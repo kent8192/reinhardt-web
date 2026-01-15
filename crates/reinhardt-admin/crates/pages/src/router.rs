@@ -2,10 +2,10 @@
 //!
 //! Handles routing between different admin pages:
 //! - `/admin/` - Dashboard
-//! - `/admin/:model/` - List view
-//! - `/admin/:model/:id/` - Detail view
-//! - `/admin/:model/add/` - Create form
-//! - `/admin/:model/:id/change/` - Edit form
+//! - `/admin/{model}/` - List view
+//! - `/admin/{model}/{id}/` - Detail view
+//! - `/admin/{model}/add/` - Create form
+//! - `/admin/{model}/{id}/change/` - Edit form
 
 use crate::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,

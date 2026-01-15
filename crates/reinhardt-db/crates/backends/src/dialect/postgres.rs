@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use sqlx::{Column, PgPool, Postgres, Transaction, postgres::PgRow};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
 	backend::DatabaseBackend,
@@ -40,6 +41,7 @@ impl PostgresBackend {
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
+			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -161,6 +163,7 @@ impl PgTransactionExecutor {
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
+			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
@@ -180,7 +183,9 @@ impl PostgresBackend {
 		for column in pg_row.columns() {
 			let column_name = column.name();
 
-			if let Ok(value) = pg_row.try_get::<bool, _>(column_name) {
+			if let Ok(value) = pg_row.try_get::<Uuid, _>(column_name) {
+				row.insert(column_name.to_string(), QueryValue::Uuid(value));
+			} else if let Ok(value) = pg_row.try_get::<bool, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Bool(value));
 			} else if let Ok(value) = pg_row.try_get::<i64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value));

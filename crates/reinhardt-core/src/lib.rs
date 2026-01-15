@@ -29,6 +29,11 @@
 #[cfg(feature = "types")]
 pub use reinhardt_types as types;
 
+// Re-export Page types when page feature is enabled
+// This provides Page, PageElement, IntoPage, Head, EventType, etc.
+#[cfg(feature = "page")]
+pub use reinhardt_types::page;
+
 #[cfg(feature = "exception")]
 pub use reinhardt_exception as exception;
 
@@ -72,9 +77,9 @@ pub mod endpoint;
 #[cfg(feature = "http")]
 pub use endpoint::{EndpointInfo, EndpointMetadata};
 
-// Re-export Handler and Middleware traits from reinhardt-types when http feature is enabled
+// Re-export Handler and Middleware traits from reinhardt-http when http feature is enabled
 #[cfg(feature = "http")]
-pub use reinhardt_types::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 
 // Re-export common external dependencies
 pub use async_trait::async_trait;

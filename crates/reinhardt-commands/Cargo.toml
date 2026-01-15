@@ -19,7 +19,7 @@ reinhardt-db = { workspace = true, features = ["migrations", "backends-settings"
 reinhardt-test = { workspace = true, optional = true }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-openapi = { workspace = true, optional = true }
-reinhardt-types = { workspace = true, optional = true }
+reinhardt-http = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 reinhardt-server = { workspace = true, optional = true }
 reinhardt-middleware = { workspace = true, optional = true }
@@ -78,7 +78,7 @@ default = ["server", "autoreload"]
 migrations = ["reinhardt-db"]
 routers = ["dep:reinhardt-urls"]
 di = ["dep:reinhardt-di"]
-openapi = ["dep:reinhardt-openapi", "dep:reinhardt-types"]
+openapi = ["dep:reinhardt-openapi", "dep:reinhardt-http"]
 server = ["dep:reinhardt-server", "dep:reinhardt-middleware", "routers", "di"]
 autoreload = ["dep:notify", "server"]
 shell = ["dep:rustyline"]

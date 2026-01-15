@@ -22,6 +22,7 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::String(s) => Value::String(Some(s.clone())),
 		QueryValue::Bytes(b) => Value::Bytes(Some(b.clone())),
 		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(*dt)),
+		QueryValue::Uuid(u) => Value::Uuid(Some(*u)),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")

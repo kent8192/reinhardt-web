@@ -35,6 +35,9 @@ aws-sdk-sqs = { version = "1.76.0", optional = true }
 # RabbitMQ backend (optional)
 lapin = { version = "3.7.2", optional = true }
 
+# Documentation
+aquamarine = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
 testcontainers = { workspace = true }

@@ -17,7 +17,10 @@ yaml = ["serde_yaml"]
 full = ["json", "xml", "yaml"]
 
 [dependencies]
+# Core internal dependencies (reinhardt-core subcrates)
 reinhardt-types = { workspace = true }
+
+# External dependencies
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

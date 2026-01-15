@@ -14,11 +14,11 @@
 //!
 //! ```rust,ignore
 //! use reinhardt::pages::prelude::*;
-//! use reinhardt::pages::component::{ElementView, IntoView, View};
+//! use reinhardt::pages::component::{PageElement, IntoPage, Page};
 //! use reinhardt::pages::Signal;
 //!
 //! // Define a reactive component
-//! pub fn counter() -> View {
+//! pub fn counter() -> Page {
 //!     let count = Signal::new(0);
 //!
 //!     let on_click = {
@@ -28,14 +28,14 @@
 //!         }
 //!     };
 //!
-//!     ElementView::new("div")
+//!     PageElement::new("div")
 //!         .child(
-//!             ElementView::new("button")
+//!             PageElement::new("button")
 //!                 .attr("type", "button")
 //!                 .listener("click", on_click)
 //!                 .child(format!("Count: {}", count.get()))
 //!         )
-//!         .into_view()
+//!         .into_page()
 //! }
 //!
 //! // Define a server function

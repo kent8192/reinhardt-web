@@ -14,15 +14,8 @@
 //!
 //! ## Architecture
 //!
-//! The crate is organized around a trait hierarchy:
-//!
-//! ```text
-//! NoSQLBackend (base trait)
-//! ├── DocumentBackend    → MongoDB, CouchDB
-//! ├── KeyValueBackend    → Redis, DynamoDB
-//! ├── ColumnBackend      → Cassandra
-//! └── GraphBackend       → Neo4j
-//! ```
+//! The crate is organized around a trait hierarchy.
+//! See [`NoSQLBackend`] for the architecture diagram.
 //!
 //! ## Feature Flags
 //!

@@ -41,6 +41,8 @@ impl SqliteBackend {
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
+			// SQLite stores UUIDs as strings
+			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Now => {
 				// SQLite uses datetime('now'), which should be part of SQL string
 				// For binding, we use current UTC time
@@ -277,6 +279,8 @@ impl SqliteTransactionExecutor {
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
+			// SQLite doesn't have native UUID type; bind as string
+			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}

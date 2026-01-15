@@ -57,7 +57,7 @@ pub use reinhardt_proxy as proxy;
 #[cfg_attr(docsrs, doc(cfg(feature = "routers")))]
 pub mod prelude {
 	pub use reinhardt_routers::{
-		PathPattern, Route, RouteGroup, Router, UnifiedRouter, clear_script_prefix,
+		PathPattern, Route, RouteGroup, Router, ServerRouter, UnifiedRouter, clear_script_prefix,
 		get_script_prefix, set_script_prefix,
 	};
 }

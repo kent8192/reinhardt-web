@@ -4,19 +4,7 @@
 //! It uses RabbitMQ for message queuing and a pluggable metadata store for task
 //! status tracking.
 //!
-//! # Architecture
-//!
-//! ```text
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │                    RabbitMQ Backend                         │
-//! │  ┌───────────────────┐    ┌───────────────────────────────┐ │
-//! │  │   RabbitMQ Queue  │    │     Metadata Store            │ │
-//! │  │                   │    │  (InMemory, Redis, DB, etc.)  │ │
-//! │  │  • Task messages  │    │  • Status tracking            │ │
-//! │  │  • FIFO delivery  │    │  • Task data retrieval        │ │
-//! │  └───────────────────┘    └───────────────────────────────┘ │
-//! └─────────────────────────────────────────────────────────────┘
-//! ```
+//! See [`RabbitMQBackend`] for the architecture diagram.
 //!
 //! # Examples
 //!
@@ -163,12 +151,29 @@ impl Default for RabbitMQConfig {
 	}
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// RabbitMQ-based task backend with pluggable metadata storage
 ///
 /// Uses RabbitMQ as a message queue for task distribution and a configurable
 /// metadata store for task status tracking and data retrieval.
 ///
 /// # Architecture
+///
+/// ```mermaid
+/// graph TB
+///     subgraph RabbitMQBackend["RabbitMQ Backend"]
+///         subgraph Queue["RabbitMQ Queue"]
+///             TaskMessages["Task messages"]
+///             FIFODelivery["FIFO delivery"]
+///         end
+///
+///         subgraph MetadataStore["Metadata Store"]
+///             StoreTypes["InMemory / Redis / DB"]
+///             StatusTracking["Status tracking"]
+///             TaskRetrieval["Task data retrieval"]
+///         end
+///     end
+/// ```
 ///
 /// - **Queue**: RabbitMQ handles task message delivery (FIFO)
 /// - **Metadata Store**: Tracks task status and stores task data

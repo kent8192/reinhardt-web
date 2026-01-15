@@ -81,7 +81,8 @@ fn convert_value_to_query_value(value: sea_query::Value) -> QueryValue {
 		| SV::ChronoTime(None)
 		| SV::ChronoDateTime(None)
 		| SV::Json(None)
-		| SV::Decimal(None) => QueryValue::Null,
+		| SV::Decimal(None)
+		| SV::Uuid(None) => QueryValue::Null,
 
 		// Boolean
 		SV::Bool(Some(b)) => QueryValue::Bool(b),
@@ -129,6 +130,9 @@ fn convert_value_to_query_value(value: sea_query::Value) -> QueryValue {
 
 		// Decimal - convert to f64
 		SV::Decimal(Some(d)) => QueryValue::Float(d.to_f64().unwrap_or(0.0)),
+
+		// UUID
+		SV::Uuid(Some(u)) => QueryValue::Uuid(u),
 
 		// Arrays - convert to string
 		// For sea-query 1.0.0-rc.29+: Array(ArrayType, Option<Box<Vec<Value>>>)

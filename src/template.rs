@@ -8,7 +8,7 @@
 //!
 //! ```rust,ignore
 //! use reinhardt::pages::{SsrRenderer, SsrOptions, Component};
-//! use reinhardt::pages::component::ElementView;
+//! use reinhardt::pages::component::PageElement;
 //!
 //! let mut renderer = SsrRenderer::with_options(
 //!     SsrOptions::new()
@@ -28,7 +28,7 @@
 // Re-export SSR functionality from reinhardt-pages when templates feature is enabled
 #[cfg(feature = "templates")]
 pub use reinhardt_pages::{
-	component::{Component, ElementView, IntoView, View},
+	component::{Component, IntoPage, Page, PageElement},
 	hydration::HydrationContext,
 	ssr::{SsrOptions, SsrRenderer, SsrState},
 };

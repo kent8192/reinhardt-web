@@ -7,18 +7,7 @@
 //! - **WASM**: WebAssembly plugins via wasmtime
 //! - **TypeScript**: TypeScript/JavaScript plugins via deno_core
 //!
-//! # Architecture
-//!
-//! ```text
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │                     PluginRuntime                           │
-//! │  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-//! │  │   Static   │  │    WASM    │  │ TypeScript │            │
-//! │  │  Runtime   │  │  Runtime   │  │  Runtime   │            │
-//! │  │   (Rust)   │  │ (wasmtime) │  │(deno_core) │            │
-//! │  └────────────┘  └────────────┘  └────────────┘            │
-//! └─────────────────────────────────────────────────────────────┘
-//! ```
+//! See [`RuntimeType`] for the architecture diagram.
 //!
 //! # Example
 //!
