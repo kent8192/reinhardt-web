@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │           UnifiedRouter<V>              │
+//! │             UnifiedRouter               │
 //! │  ┌─────────────┐  ┌─────────────────┐   │
 //! │  │ClientRouter │  │  ServerRouter   │   │
 //! │  │ (WASM/SPA)  │  │ (HTTP/Backend)  │   │
@@ -22,7 +22,7 @@
 //! use reinhardt_core::page::Page;
 //! use hyper::Method;
 //!
-//! let router: UnifiedRouter<Page> = UnifiedRouter::new()
+//! let router = UnifiedRouter::new()
 //!     .server(|s| s
 //!         .with_prefix("/api/v1")
 //!         .function("/users", Method::GET, list_users)
@@ -34,9 +34,9 @@
 //!
 //! # Feature Flags
 //!
-//! - When `client-router` feature is **enabled**: Full `UnifiedRouter<V>` with both
+//! - When `client-router` feature is **enabled**: Full [`UnifiedRouter`] with both
 //!   `.server()` and `.client()` methods available.
-//! - When `client-router` feature is **disabled**: Server-only `UnifiedRouter` with
+//! - When `client-router` feature is **disabled**: Server-only [`UnifiedRouter`] with
 //!   only `.server()` method available.
 
 use crate::server_router::ServerRouter;
@@ -60,11 +60,7 @@ use std::sync::Arc;
 ///
 /// This struct provides a unified interface for configuring both:
 /// - **Server-side routes**: HTTP methods, middleware, DI, ViewSets
-/// - **Client-side routes**: SPA navigation, history API, View rendering
-///
-/// # Type Parameters
-///
-/// - `V`: The View type used for client-side rendering (default: [`Page`])
+/// - **Client-side routes**: SPA navigation, history API, [`Page`] rendering
 ///
 /// # Example
 ///
@@ -72,18 +68,20 @@ use std::sync::Arc;
 /// use reinhardt_routers::UnifiedRouter;
 /// use reinhardt_core::page::Page;
 ///
-/// let router: UnifiedRouter<Page> = UnifiedRouter::new()
+/// let router = UnifiedRouter::new()
 ///     .server(|s| s.function("/api/health", Method::GET, health_handler))
 ///     .client(|c| c.route("/", || home_page()));
 /// ```
+///
+/// [`Page`]: reinhardt_core::page::Page
 #[cfg(feature = "client-router")]
-pub struct UnifiedRouter<V> {
+pub struct UnifiedRouter {
 	server: ServerRouter,
-	client: ClientRouter<V>,
+	client: ClientRouter,
 }
 
 #[cfg(feature = "client-router")]
-impl<V: 'static> UnifiedRouter<V> {
+impl UnifiedRouter {
 	/// Creates a new `UnifiedRouter` with default server and client routers.
 	pub fn new() -> Self {
 		Self {
@@ -119,14 +117,14 @@ impl<V: 'static> UnifiedRouter<V> {
 	/// # Example
 	///
 	/// ```rust,ignore
-	/// let router: UnifiedRouter<Page> = UnifiedRouter::new()
+	/// let router = UnifiedRouter::new()
 	///     .client(|c| c
 	///         .route("/", || home_page())
 	///         .route_path("/users/{id}", |Path(id): Path<i64>| user_page(id)));
 	/// ```
 	pub fn client<F>(mut self, f: F) -> Self
 	where
-		F: FnOnce(ClientRouter<V>) -> ClientRouter<V>,
+		F: FnOnce(ClientRouter) -> ClientRouter,
 	{
 		self.client = f(self.client);
 		self
@@ -143,17 +141,27 @@ impl<V: 'static> UnifiedRouter<V> {
 	}
 
 	/// Returns a reference to the client router.
-	pub fn client_ref(&self) -> &ClientRouter<V> {
+	pub fn client_ref(&self) -> &ClientRouter {
 		&self.client
 	}
 
 	/// Returns a mutable reference to the client router.
-	pub fn client_mut(&mut self) -> &mut ClientRouter<V> {
+	pub fn client_mut(&mut self) -> &mut ClientRouter {
 		&mut self.client
 	}
 
+	/// Consumes the router and returns the server router.
+	pub fn into_server(self) -> ServerRouter {
+		self.server
+	}
+
+	/// Consumes the router and returns the client router.
+	pub fn into_client(self) -> ClientRouter {
+		self.client
+	}
+
 	/// Consumes the router and returns both parts.
-	pub fn into_parts(self) -> (ServerRouter, ClientRouter<V>) {
+	pub fn into_parts(self) -> (ServerRouter, ClientRouter) {
 		(self.server, self.client)
 	}
 
@@ -174,7 +182,7 @@ impl<V: 'static> UnifiedRouter<V> {
 	/// // Server router is now globally registered
 	/// // Client router is returned for SPA use
 	/// ```
-	pub fn register_globally(self) -> ClientRouter<V> {
+	pub fn register_globally(self) -> ClientRouter {
 		let (server, client) = self.into_parts();
 		crate::register_router(server);
 		client
@@ -227,7 +235,7 @@ impl<V: 'static> UnifiedRouter<V> {
 	/// Mount a child UnifiedRouter on this router.
 	///
 	/// Extracts the server router from the child and mounts it.
-	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter<V>) -> Self {
+	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter) -> Self {
 		self.mount(prefix, child.server)
 	}
 
@@ -269,13 +277,13 @@ impl<V: 'static> UnifiedRouter<V> {
 }
 
 #[cfg(feature = "client-router")]
-impl<V: 'static> Default for UnifiedRouter<V> {
+impl Default for UnifiedRouter {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-// Note: Handler is NOT implemented for UnifiedRouter<V> when client-router is enabled
+// Note: Handler is NOT implemented for UnifiedRouter when client-router is enabled
 // because ClientRouter contains non-Sync types (Rc<RefCell>).
 // For server-side HTTP handling, use ServerRouter directly or extract it via into_parts().
 
@@ -432,13 +440,11 @@ impl reinhardt_core::Handler for UnifiedRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(feature = "client-router")]
+	use reinhardt_core::page::Page;
 
 	#[test]
 	fn test_unified_router_new() {
-		// When client-router is enabled, UnifiedRouter<V> requires type annotation
-		#[cfg(feature = "client-router")]
-		let router: UnifiedRouter<()> = UnifiedRouter::new();
-		#[cfg(not(feature = "client-router"))]
 		let router = UnifiedRouter::new();
 		// Should have default server router
 		assert_eq!(router.server_ref().prefix(), "");
@@ -446,11 +452,6 @@ mod tests {
 
 	#[test]
 	fn test_unified_router_server_closure() {
-		// When client-router is enabled, UnifiedRouter<V> requires type annotation
-		#[cfg(feature = "client-router")]
-		let router: UnifiedRouter<()> =
-			UnifiedRouter::new().server(|s| s.with_prefix("/api").with_namespace("v1"));
-		#[cfg(not(feature = "client-router"))]
 		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api").with_namespace("v1"));
 
 		assert_eq!(router.server_ref().prefix(), "/api");
@@ -459,12 +460,6 @@ mod tests {
 
 	#[test]
 	fn test_unified_router_convenience_methods() {
-		// When client-router is enabled, UnifiedRouter<V> requires type annotation
-		#[cfg(feature = "client-router")]
-		let router: UnifiedRouter<()> = UnifiedRouter::new()
-			.with_prefix("/api")
-			.with_namespace("v1");
-		#[cfg(not(feature = "client-router"))]
 		let router = UnifiedRouter::new()
 			.with_prefix("/api")
 			.with_namespace("v1");
@@ -476,11 +471,7 @@ mod tests {
 	#[cfg(feature = "client-router")]
 	#[test]
 	fn test_unified_router_client_closure() {
-		#[derive(Clone, Debug, PartialEq, Default)]
-		struct TestView(String);
-
-		let router: UnifiedRouter<TestView> =
-			UnifiedRouter::new().client(|c| c.route("/", || TestView("home".to_string())));
+		let router = UnifiedRouter::new().client(|c| c.route("/", || Page::Empty));
 
 		assert_eq!(router.client_ref().route_count(), 1);
 	}
@@ -488,15 +479,30 @@ mod tests {
 	#[cfg(feature = "client-router")]
 	#[test]
 	fn test_unified_router_into_parts() {
-		#[derive(Clone, Debug, PartialEq, Default)]
-		struct TestView(String);
-
-		let router: UnifiedRouter<TestView> = UnifiedRouter::new()
+		let router = UnifiedRouter::new()
 			.server(|s| s.with_prefix("/api"))
-			.client(|c| c.route("/", || TestView("home".to_string())));
+			.client(|c| c.route("/", || Page::Empty));
 
 		let (server, client) = router.into_parts();
 		assert_eq!(server.prefix(), "/api");
+		assert_eq!(client.route_count(), 1);
+	}
+
+	#[cfg(feature = "client-router")]
+	#[test]
+	fn test_unified_router_into_server() {
+		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api"));
+
+		let server = router.into_server();
+		assert_eq!(server.prefix(), "/api");
+	}
+
+	#[cfg(feature = "client-router")]
+	#[test]
+	fn test_unified_router_into_client() {
+		let router = UnifiedRouter::new().client(|c| c.route("/", || Page::Empty));
+
+		let client = router.into_client();
 		assert_eq!(client.route_count(), 1);
 	}
 }

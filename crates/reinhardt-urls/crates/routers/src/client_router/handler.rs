@@ -6,27 +6,28 @@
 
 use super::error::RouterError;
 use super::params::{FromPath, ParamContext, Path, SingleFromPath};
+use reinhardt_core::page::Page;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Trait for route handlers that can handle route requests.
 ///
 /// This trait abstracts over different handler signatures:
-/// - `Fn() -> V` - No parameters
-/// - `Fn(Path<T>) -> V` - With typed parameters
-/// - `Fn(Path<T>) -> Result<V, E>` - With error handling
-pub trait RouteHandler<V>: Send + Sync {
+/// - `Fn() -> Page` - No parameters
+/// - `Fn(Path<T>) -> Page` - With typed parameters
+/// - `Fn(Path<T>) -> Result<Page, E>` - With error handling
+pub trait RouteHandler: Send + Sync {
 	/// Handles the route request with the given parameter context.
 	///
 	/// # Errors
 	///
 	/// Returns [`RouterError::PathExtraction`] if parameter extraction fails.
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError>;
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError>;
 }
 
 /// Handler for routes without parameters.
 ///
-/// Wraps a `Fn() -> V` closure.
+/// Wraps a `Fn() -> Page` closure.
 pub(crate) struct NoParamsHandler<F> {
 	handler: F,
 }
@@ -42,18 +43,18 @@ impl<F> NoParamsHandler<F> {
 unsafe impl<F: Send> Send for NoParamsHandler<F> {}
 unsafe impl<F: Sync> Sync for NoParamsHandler<F> {}
 
-impl<F, V> RouteHandler<V> for NoParamsHandler<F>
+impl<F> RouteHandler for NoParamsHandler<F>
 where
-	F: Fn() -> V + Send + Sync,
+	F: Fn() -> Page + Send + Sync,
 {
-	fn handle(&self, _ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, _ctx: &ParamContext) -> Result<Page, RouterError> {
 		Ok((self.handler)())
 	}
 }
 
 /// Handler for routes with typed parameters.
 ///
-/// Wraps a `Fn(Path<T>) -> V` closure.
+/// Wraps a `Fn(Path<T>) -> Page` closure.
 pub(crate) struct WithParamsHandler<F, T> {
 	handler: F,
 	_phantom: PhantomData<T>,
@@ -74,20 +75,20 @@ impl<F, T> WithParamsHandler<F, T> {
 unsafe impl<F: Send, T> Send for WithParamsHandler<F, T> {}
 unsafe impl<F: Sync, T> Sync for WithParamsHandler<F, T> {}
 
-impl<F, T, V> RouteHandler<V> for WithParamsHandler<F, T>
+impl<F, T> RouteHandler for WithParamsHandler<F, T>
 where
-	F: Fn(Path<T>) -> V + Send + Sync,
+	F: Fn(Path<T>) -> Page + Send + Sync,
 	T: FromPath + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let params = Path::<T>::from_path(ctx).map_err(RouterError::PathExtraction)?;
 		Ok((self.handler)(params))
 	}
 }
 
-/// Handler for routes that return `Result<V, E>`.
+/// Handler for routes that return `Result<Page, E>`.
 ///
-/// Wraps a `Fn(Path<T>) -> Result<V, E>` closure.
+/// Wraps a `Fn(Path<T>) -> Result<Page, E>` closure.
 pub(crate) struct ResultHandler<F, T, E> {
 	handler: F,
 	_phantom: PhantomData<(T, E)>,
@@ -108,44 +109,41 @@ impl<F, T, E> ResultHandler<F, T, E> {
 unsafe impl<F: Send, T, E> Send for ResultHandler<F, T, E> {}
 unsafe impl<F: Sync, T, E> Sync for ResultHandler<F, T, E> {}
 
-impl<F, T, E, V> RouteHandler<V> for ResultHandler<F, T, E>
+impl<F, T, E> RouteHandler for ResultHandler<F, T, E>
 where
-	F: Fn(Path<T>) -> Result<V, E> + Send + Sync,
+	F: Fn(Path<T>) -> Result<Page, E> + Send + Sync,
 	T: FromPath + Send + Sync,
 	E: Into<RouterError> + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let params = Path::<T>::from_path(ctx).map_err(RouterError::PathExtraction)?;
 		(self.handler)(params).map_err(|e| e.into())
 	}
 }
 
 /// Helper function to create a no-params handler.
-pub(crate) fn no_params_handler<F, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn no_params_handler<F>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn() -> V + Send + Sync + 'static,
-	V: 'static,
+	F: Fn() -> Page + Send + Sync + 'static,
 {
 	Arc::new(NoParamsHandler::new(handler))
 }
 
 /// Helper function to create a with-params handler.
-pub(crate) fn with_params_handler<F, T, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn with_params_handler<F, T>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(Path<T>) -> V + Send + Sync + 'static,
+	F: Fn(Path<T>) -> Page + Send + Sync + 'static,
 	T: FromPath + Send + Sync + 'static,
-	V: 'static,
 {
 	Arc::new(WithParamsHandler::new(handler))
 }
 
 /// Helper function to create a result handler.
-pub(crate) fn result_handler<F, T, E, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn result_handler<F, T, E>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(Path<T>) -> Result<V, E> + Send + Sync + 'static,
+	F: Fn(Path<T>) -> Result<Page, E> + Send + Sync + 'static,
 	T: FromPath + Send + Sync + 'static,
 	E: Into<RouterError> + Send + Sync + 'static,
-	V: 'static,
 {
 	Arc::new(ResultHandler::new(handler))
 }
@@ -156,7 +154,7 @@ where
 
 /// Handler for routes with a single `Path<T>` argument.
 ///
-/// Wraps a `Fn(Path<T>) -> V` closure.
+/// Wraps a `Fn(Path<T>) -> Page` closure.
 pub(crate) struct SinglePathHandler<F, T> {
 	handler: F,
 	_phantom: PhantomData<T>,
@@ -175,12 +173,12 @@ impl<F, T> SinglePathHandler<F, T> {
 unsafe impl<F: Send, T> Send for SinglePathHandler<F, T> {}
 unsafe impl<F: Sync, T> Sync for SinglePathHandler<F, T> {}
 
-impl<F, T, V> RouteHandler<V> for SinglePathHandler<F, T>
+impl<F, T> RouteHandler for SinglePathHandler<F, T>
 where
-	F: Fn(Path<T>) -> V + Send + Sync,
+	F: Fn(Path<T>) -> Page + Send + Sync,
 	T: SingleFromPath + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let value = T::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
 		Ok((self.handler)(Path(value)))
 	}
@@ -188,7 +186,7 @@ where
 
 /// Handler for routes with two `Path<T>` arguments.
 ///
-/// Wraps a `Fn(Path<T1>, Path<T2>) -> V` closure.
+/// Wraps a `Fn(Path<T1>, Path<T2>) -> Page` closure.
 pub(crate) struct TwoPathHandler<F, T1, T2> {
 	handler: F,
 	_phantom: PhantomData<(T1, T2)>,
@@ -207,13 +205,13 @@ impl<F, T1, T2> TwoPathHandler<F, T1, T2> {
 unsafe impl<F: Send, T1, T2> Send for TwoPathHandler<F, T1, T2> {}
 unsafe impl<F: Sync, T1, T2> Sync for TwoPathHandler<F, T1, T2> {}
 
-impl<F, T1, T2, V> RouteHandler<V> for TwoPathHandler<F, T1, T2>
+impl<F, T1, T2> RouteHandler for TwoPathHandler<F, T1, T2>
 where
-	F: Fn(Path<T1>, Path<T2>) -> V + Send + Sync,
+	F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync,
 	T1: SingleFromPath + Send + Sync,
 	T2: SingleFromPath + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let v1 = T1::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
 		let v2 = T2::from_path_at(ctx, 1).map_err(RouterError::PathExtraction)?;
 		Ok((self.handler)(Path(v1), Path(v2)))
@@ -222,7 +220,7 @@ where
 
 /// Handler for routes with three `Path<T>` arguments.
 ///
-/// Wraps a `Fn(Path<T1>, Path<T2>, Path<T3>) -> V` closure.
+/// Wraps a `Fn(Path<T1>, Path<T2>, Path<T3>) -> Page` closure.
 pub(crate) struct ThreePathHandler<F, T1, T2, T3> {
 	handler: F,
 	_phantom: PhantomData<(T1, T2, T3)>,
@@ -241,14 +239,14 @@ impl<F, T1, T2, T3> ThreePathHandler<F, T1, T2, T3> {
 unsafe impl<F: Send, T1, T2, T3> Send for ThreePathHandler<F, T1, T2, T3> {}
 unsafe impl<F: Sync, T1, T2, T3> Sync for ThreePathHandler<F, T1, T2, T3> {}
 
-impl<F, T1, T2, T3, V> RouteHandler<V> for ThreePathHandler<F, T1, T2, T3>
+impl<F, T1, T2, T3> RouteHandler for ThreePathHandler<F, T1, T2, T3>
 where
-	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> V + Send + Sync,
+	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync,
 	T1: SingleFromPath + Send + Sync,
 	T2: SingleFromPath + Send + Sync,
 	T3: SingleFromPath + Send + Sync,
 {
-	fn handle(&self, ctx: &ParamContext) -> Result<V, RouterError> {
+	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
 		let v1 = T1::from_path_at(ctx, 0).map_err(RouterError::PathExtraction)?;
 		let v2 = T2::from_path_at(ctx, 1).map_err(RouterError::PathExtraction)?;
 		let v3 = T3::from_path_at(ctx, 2).map_err(RouterError::PathExtraction)?;
@@ -257,34 +255,31 @@ where
 }
 
 /// Helper function to create a single-path handler.
-pub(crate) fn single_path_handler<F, T, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn single_path_handler<F, T>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(Path<T>) -> V + Send + Sync + 'static,
+	F: Fn(Path<T>) -> Page + Send + Sync + 'static,
 	T: SingleFromPath + Send + Sync + 'static,
-	V: 'static,
 {
 	Arc::new(SinglePathHandler::new(handler))
 }
 
 /// Helper function to create a two-path handler.
-pub(crate) fn two_path_handler<F, T1, T2, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn two_path_handler<F, T1, T2>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(Path<T1>, Path<T2>) -> V + Send + Sync + 'static,
+	F: Fn(Path<T1>, Path<T2>) -> Page + Send + Sync + 'static,
 	T1: SingleFromPath + Send + Sync + 'static,
 	T2: SingleFromPath + Send + Sync + 'static,
-	V: 'static,
 {
 	Arc::new(TwoPathHandler::new(handler))
 }
 
 /// Helper function to create a three-path handler.
-pub(crate) fn three_path_handler<F, T1, T2, T3, V>(handler: F) -> Arc<dyn RouteHandler<V>>
+pub(crate) fn three_path_handler<F, T1, T2, T3>(handler: F) -> Arc<dyn RouteHandler>
 where
-	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> V + Send + Sync + 'static,
+	F: Fn(Path<T1>, Path<T2>, Path<T3>) -> Page + Send + Sync + 'static,
 	T1: SingleFromPath + Send + Sync + 'static,
 	T2: SingleFromPath + Send + Sync + 'static,
 	T3: SingleFromPath + Send + Sync + 'static,
-	V: 'static,
 {
 	Arc::new(ThreePathHandler::new(handler))
 }
@@ -295,23 +290,17 @@ mod tests {
 	use super::*;
 	use std::collections::HashMap;
 
-	// Test view type for unit tests
-	#[derive(Debug, Clone, PartialEq)]
-	struct TestView(String);
-
-	impl TestView {
-		fn new(s: &str) -> Self {
-			TestView(s.to_string())
-		}
+	fn test_page() -> Page {
+		Page::Empty
 	}
 
-	fn test_view() -> TestView {
-		TestView::new("Test")
+	fn page_with_text(s: &str) -> Page {
+		Page::Text(s.to_string().into())
 	}
 
 	#[test]
 	fn test_no_params_handler() {
-		let handler = NoParamsHandler::new(test_view);
+		let handler = NoParamsHandler::new(test_page);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
 
 		let result = handler.handle(&ctx);
@@ -321,23 +310,21 @@ mod tests {
 	#[test]
 	fn test_with_params_handler() {
 		let handler =
-			WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
+			WithParamsHandler::new(|Path(id): Path<i32>| page_with_text(&format!("ID: {}", id)));
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
 		let result = handler.handle(&ctx);
 		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), TestView::new("ID: 42"));
 	}
 
 	#[test]
 	fn test_with_params_handler_error() {
-		let handler =
-			WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
+		let handler = WithParamsHandler::new(|Path(_id): Path<i32>| Page::Empty);
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["not_a_number".to_string()]);
 
-		let result: Result<TestView, RouterError> = handler.handle(&ctx);
+		let result = handler.handle(&ctx);
 		assert!(result.is_err());
 
 		match result {
@@ -350,7 +337,7 @@ mod tests {
 	fn test_result_handler_ok() {
 		let handler = ResultHandler::new(|Path(id): Path<i32>| {
 			if id > 0 {
-				Ok(TestView::new(&format!("ID: {}", id)))
+				Ok(page_with_text(&format!("ID: {}", id)))
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}
@@ -366,7 +353,7 @@ mod tests {
 	fn test_result_handler_err() {
 		let handler = ResultHandler::new(|Path(id): Path<i32>| {
 			if id > 0 {
-				Ok(TestView::new(&format!("ID: {}", id)))
+				Ok(Page::Empty)
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}
@@ -374,7 +361,7 @@ mod tests {
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["-1".to_string()]);
 
-		let result: Result<TestView, RouterError> = handler.handle(&ctx);
+		let result = handler.handle(&ctx);
 		assert!(result.is_err());
 
 		match result {
@@ -386,19 +373,18 @@ mod tests {
 	#[test]
 	fn test_with_params_handler_tuple() {
 		let handler = WithParamsHandler::new(|Path((user_id, post_id)): Path<(i64, i64)>| {
-			TestView::new(&format!("User: {}, Post: {}", user_id, post_id))
+			page_with_text(&format!("User: {}, Post: {}", user_id, post_id))
 		});
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["123".to_string(), "456".to_string()]);
 
 		let result = handler.handle(&ctx);
 		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), TestView::new("User: 123, Post: 456"));
 	}
 
 	#[test]
 	fn test_helper_no_params_handler() {
-		let handler: Arc<dyn RouteHandler<TestView>> = no_params_handler(test_view);
+		let handler: Arc<dyn RouteHandler> = no_params_handler(test_page);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
 
 		let result = handler.handle(&ctx);
@@ -407,8 +393,8 @@ mod tests {
 
 	#[test]
 	fn test_helper_with_params_handler() {
-		let handler: Arc<dyn RouteHandler<TestView>> =
-			with_params_handler(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
+		let handler: Arc<dyn RouteHandler> =
+			with_params_handler(|Path(id): Path<i32>| page_with_text(&format!("ID: {}", id)));
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
@@ -418,9 +404,9 @@ mod tests {
 
 	#[test]
 	fn test_helper_result_handler() {
-		let handler: Arc<dyn RouteHandler<TestView>> = result_handler(|Path(id): Path<i32>| {
+		let handler: Arc<dyn RouteHandler> = result_handler(|Path(id): Path<i32>| {
 			if id > 0 {
-				Ok(TestView::new(&format!("ID: {}", id)))
+				Ok(page_with_text(&format!("ID: {}", id)))
 			} else {
 				Err(RouterError::NotFound("Invalid ID".to_string()))
 			}

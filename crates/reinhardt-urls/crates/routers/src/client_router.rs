@@ -5,8 +5,8 @@
 //!
 //! # Architecture
 //!
-//! `ClientRouter<V>` is generic over the view type `V` that handlers return.
-//! This allows integration with any view/component system.
+//! [`ClientRouter`] renders views using the [`Page`] type from `reinhardt_core::page`.
+//! All route handlers must return `Page` values.
 //!
 //! # Features
 //!
@@ -20,9 +20,10 @@
 //!
 //! ```rust,ignore
 //! use reinhardt_routers::client_router::{ClientRouter, Path};
+//! use reinhardt_core::page::Page;
 //!
-//! // Create a router with routes (V = your view type)
-//! let router: ClientRouter<View> = ClientRouter::new()
+//! // Create a router with routes
+//! let router = ClientRouter::new()
 //!     .route("/", || home_page())
 //!     .route_path("/users/{id}/", |Path(id): Path<u64>| {
 //!         user_page(id)
@@ -57,6 +58,8 @@
 //!         user_post_page(user_id, post_id)
 //!     })
 //! ```
+//!
+//! [`Page`]: reinhardt_core::page::Page
 
 mod core;
 mod error;
