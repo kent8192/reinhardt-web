@@ -140,10 +140,9 @@ mod tests {
 		use async_trait::async_trait;
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, StatusCode, Version};
-		use reinhardt_http::{Request, Response};
-		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
+		use reinhardt_http::{Handler, MessagesMiddleware, Middleware, Request, Response};
+		use reinhardt_messages::middleware::MessagesContainer;
 		use reinhardt_messages::{Level, MemoryStorage, Message};
-		use reinhardt_types::{Handler, Middleware};
 		use std::sync::Arc;
 
 		// Mock handler that adds a message
@@ -214,10 +213,9 @@ mod tests {
 		use async_trait::async_trait;
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, StatusCode, Version};
-		use reinhardt_http::{Request, Response};
-		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
+		use reinhardt_http::{Handler, MessagesMiddleware, Middleware, Request, Response};
+		use reinhardt_messages::middleware::MessagesContainer;
 		use reinhardt_messages::{Level, MemoryStorage, Message};
-		use reinhardt_types::{Handler, Middleware};
 		use std::sync::Arc;
 
 		// Handler that retrieves messages (simulating display)
@@ -292,10 +290,9 @@ mod tests {
 		use async_trait::async_trait;
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, StatusCode, Version};
-		use reinhardt_http::{Request, Response};
-		use reinhardt_messages::middleware::{MessagesContainer, MessagesMiddleware};
+		use reinhardt_http::{Handler, MessagesMiddleware, Middleware, Request, Response};
+		use reinhardt_messages::middleware::MessagesContainer;
 		use reinhardt_messages::{Level, MemoryStorage, Message};
-		use reinhardt_types::{Handler, Middleware};
 		use std::sync::Arc;
 
 		// Handler that adds a message

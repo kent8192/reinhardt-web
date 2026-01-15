@@ -14,7 +14,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use reinhardt_core::exception::Result;
-use reinhardt_core::types::{Handler, Middleware, Request, Response};
+use reinhardt_core::{Handler, Middleware, Request, Response};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 

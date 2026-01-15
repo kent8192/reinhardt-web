@@ -8,7 +8,7 @@ use reinhardt_http::{Request, Response, Result};
 use reinhardt_security::csrf::SameSite;
 use reinhardt_security::{CsrfConfig, generate_token_hmac, verify_token_hmac};
 use reinhardt_test::http::*;
-use reinhardt_types::Handler;
+use reinhardt_http::Handler;
 
 // Mock handler for testing
 #[allow(dead_code)]
