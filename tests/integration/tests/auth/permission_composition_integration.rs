@@ -19,7 +19,7 @@ use reinhardt_auth::{
 	AllowAny, IsActiveUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
 	PermissionContext,
 };
-use reinhardt_types::Request;
+use reinhardt_http::Request;
 use rstest::*;
 
 // =============================================================================

@@ -23,7 +23,7 @@ use reinhardt_auth::{
 	AllowAny, AnonymousUser, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, Permission,
 	PermissionContext, SimpleUser,
 };
-use reinhardt_types::Request;
+use reinhardt_http::Request;
 use rstest::*;
 use uuid::Uuid;
 
