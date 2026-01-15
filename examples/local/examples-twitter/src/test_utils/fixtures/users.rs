@@ -1,139 +1,225 @@
-//! User fixtures for tests.
+//! User fixtures for examples-twitter tests.
 //!
-//! Provides user creation fixtures and helpers.
+//! Provides pre-configured test users and authenticated sessions.
 
-use crate::apps::auth::models::User;
-use crate::test_utils::fixtures::{TestDatabase, test_database};
-use reinhardt::db::DatabaseConnection;
-use reinhardt::{BaseUser, Model};
 use rstest::*;
 use uuid::Uuid;
 
-/// Parameters for creating a test user.
-#[derive(Debug, Clone)]
-pub struct TestUserParams {
-	pub email: String,
+use crate::apps::auth::shared::types::SessionData;
+
+/// Test user data for fixture creation.
+///
+/// Contains all fields needed to create a test user, with sensible defaults.
+#[derive(Clone, Debug)]
+pub struct TestTwitterUser {
+	pub id: Uuid,
 	pub username: String,
+	pub email: String,
 	pub password: String,
 	pub is_active: bool,
+	pub bio: Option<String>,
 }
 
-impl Default for TestUserParams {
-	fn default() -> Self {
-		let unique_id = Uuid::new_v4().to_string()[..8].to_string();
+impl TestTwitterUser {
+	/// Create a new test user with the given username.
+	pub fn new(username: &str) -> Self {
+		let id = Uuid::new_v4();
 		Self {
-			email: format!("test_{}@example.com", unique_id),
-			username: format!("testuser_{}", unique_id),
+			id,
+			username: username.to_string(),
+			email: format!("{}@example.com", username),
 			password: "password123".to_string(),
 			is_active: true,
+			bio: None,
+		}
+	}
+
+	/// Create a test user with a specific ID.
+	pub fn with_id(mut self, id: Uuid) -> Self {
+		self.id = id;
+		self
+	}
+
+	/// Set the user's email.
+	pub fn with_email(mut self, email: &str) -> Self {
+		self.email = email.to_string();
+		self
+	}
+
+	/// Set the user's password.
+	pub fn with_password(mut self, password: &str) -> Self {
+		self.password = password.to_string();
+		self
+	}
+
+	/// Set the user's active status.
+	pub fn with_active(mut self, is_active: bool) -> Self {
+		self.is_active = is_active;
+		self
+	}
+
+	/// Set the user's bio.
+	pub fn with_bio(mut self, bio: &str) -> Self {
+		self.bio = Some(bio.to_string());
+		self
+	}
+
+	/// Convert to SessionData for authenticated requests.
+	pub fn to_session_data(&self) -> SessionData {
+		SessionData {
+			user_id: self.id,
+			username: self.username.clone(),
+			email: self.email.clone(),
 		}
 	}
 }
 
-impl TestUserParams {
-	/// Create params with a specific email.
-	pub fn with_email(mut self, email: impl Into<String>) -> Self {
-		self.email = email.into();
-		self
-	}
-
-	/// Create params with a specific username.
-	pub fn with_username(mut self, username: impl Into<String>) -> Self {
-		self.username = username.into();
-		self
-	}
-
-	/// Create params with a specific password.
-	pub fn with_password(mut self, password: impl Into<String>) -> Self {
-		self.password = password.into();
-		self
-	}
-
-	/// Create params with inactive status.
-	pub fn inactive(mut self) -> Self {
-		self.is_active = false;
-		self
+impl Default for TestTwitterUser {
+	fn default() -> Self {
+		Self::new("testuser")
 	}
 }
 
-/// Create a test user in the database.
-///
-/// Uses reinhardt ORM for type-safe insertion with SQL injection protection.
-///
-/// # Arguments
-///
-/// * `db` - Database connection
-/// * `params` - User creation parameters
-///
-/// # Returns
-///
-/// The created User with its ID set.
+/// Fixture providing a standard test user.
 ///
 /// # Example
 ///
-/// ```ignore
-/// let db = Arc::new(connection);
-/// let user = create_test_user(&db, TestUserParams::default()).await;
-/// assert_eq!(user.is_active, true);
-/// ```
-pub async fn create_test_user(db: &DatabaseConnection, params: TestUserParams) -> User {
-	// Create user using User::new() which auto-generates id, created_at, and ManyToManyFields
-	let mut user = User::new(
-		params.username,
-		params.email,
-		None, // password_hash will be set after hashing
-		params.is_active,
-		None, // bio (optional)
-	);
-
-	// Hash password using BaseUser trait
-	user.set_password(&params.password)
-		.expect("Failed to hash password");
-
-	// Create user in database using ORM
-	User::objects()
-		.create_with_conn(db, &user)
-		.await
-		.expect("Failed to create test user")
-}
-
-/// Create multiple test users.
+/// ```rust,ignore
+/// use examples_twitter::test_utils::fixtures::twitter_user;
+/// use rstest::*;
 ///
-/// # Example
-///
-/// ```ignore
-/// let users = create_test_users(&db, 5).await;
-/// assert_eq!(users.len(), 5);
-/// ```
-pub async fn create_test_users(db: &DatabaseConnection, count: usize) -> Vec<User> {
-	let mut users = Vec::with_capacity(count);
-	for i in 0..count {
-		let params = TestUserParams::default()
-			.with_username(format!("testuser_{}", i))
-			.with_email(format!("test_{}@example.com", i));
-		users.push(create_test_user(db, params).await);
-	}
-	users
-}
-
-/// Default test user fixture.
-///
-/// Creates a single test user with default parameters.
-///
-/// # Example
-///
-/// ```ignore
 /// #[rstest]
-/// #[tokio::test]
-/// async fn my_test(#[future] test_user: (User, TestDatabase)) {
-///     let (user, (_container, db)) = test_user.await;
-///     assert!(user.is_active);
+/// fn test_with_user(twitter_user: TestTwitterUser) {
+///     assert_eq!(twitter_user.username, "testuser");
+///     assert!(twitter_user.is_active);
 /// }
 /// ```
 #[fixture]
-pub async fn test_user(#[future] test_database: TestDatabase) -> (User, TestDatabase) {
-	let db_tuple = test_database.await;
-	let user = create_test_user(&db_tuple.1, TestUserParams::default()).await;
+pub fn twitter_user() -> TestTwitterUser {
+	TestTwitterUser::default()
+}
 
-	(user, db_tuple)
+/// Fixture providing a second test user for multi-user scenarios.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use examples_twitter::test_utils::fixtures::{twitter_user, twitter_user_2};
+/// use rstest::*;
+///
+/// #[rstest]
+/// fn test_two_users(twitter_user: TestTwitterUser, twitter_user_2: TestTwitterUser) {
+///     assert_ne!(twitter_user.id, twitter_user_2.id);
+/// }
+/// ```
+#[fixture]
+pub fn twitter_user_2() -> TestTwitterUser {
+	TestTwitterUser::new("testuser2")
+}
+
+/// Fixture providing an inactive test user.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use examples_twitter::test_utils::fixtures::inactive_twitter_user;
+/// use rstest::*;
+///
+/// #[rstest]
+/// fn test_inactive(inactive_twitter_user: TestTwitterUser) {
+///     assert!(!inactive_twitter_user.is_active);
+/// }
+/// ```
+#[fixture]
+pub fn inactive_twitter_user() -> TestTwitterUser {
+	TestTwitterUser::new("inactive").with_active(false)
+}
+
+/// Fixture providing an authenticated session for the default test user.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use examples_twitter::test_utils::fixtures::authenticated_session;
+/// use rstest::*;
+///
+/// #[rstest]
+/// fn test_authenticated(authenticated_session: SessionData) {
+///     assert_eq!(authenticated_session.username, "testuser");
+/// }
+/// ```
+#[fixture]
+pub fn authenticated_session(twitter_user: TestTwitterUser) -> SessionData {
+	twitter_user.to_session_data()
+}
+
+/// Fixture providing multiple test users for list/relationship tests.
+///
+/// Returns 5 users: user1, user2, user3 (inactive), staff, admin
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use examples_twitter::test_utils::fixtures::twitter_users;
+/// use rstest::*;
+///
+/// #[rstest]
+/// fn test_multiple_users(twitter_users: Vec<TestTwitterUser>) {
+///     assert_eq!(twitter_users.len(), 5);
+/// }
+/// ```
+#[fixture]
+pub fn twitter_users() -> Vec<TestTwitterUser> {
+	vec![
+		TestTwitterUser::new("user1"),
+		TestTwitterUser::new("user2"),
+		TestTwitterUser::new("user3").with_active(false),
+		TestTwitterUser::new("staff").with_bio("Staff member"),
+		TestTwitterUser::new("admin").with_bio("Administrator"),
+	]
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[rstest]
+	fn test_twitter_user_fixture(twitter_user: TestTwitterUser) {
+		assert_eq!(twitter_user.username, "testuser");
+		assert_eq!(twitter_user.email, "testuser@example.com");
+		assert!(twitter_user.is_active);
+	}
+
+	#[rstest]
+	fn test_twitter_user_2_fixture(twitter_user_2: TestTwitterUser) {
+		assert_eq!(twitter_user_2.username, "testuser2");
+		assert_eq!(twitter_user_2.email, "testuser2@example.com");
+	}
+
+	#[rstest]
+	fn test_inactive_twitter_user_fixture(inactive_twitter_user: TestTwitterUser) {
+		assert!(!inactive_twitter_user.is_active);
+	}
+
+	#[rstest]
+	fn test_authenticated_session_fixture(authenticated_session: SessionData) {
+		assert_eq!(authenticated_session.username, "testuser");
+		assert_eq!(authenticated_session.email, "testuser@example.com");
+	}
+
+	#[rstest]
+	fn test_twitter_users_fixture(twitter_users: Vec<TestTwitterUser>) {
+		assert_eq!(twitter_users.len(), 5);
+		assert!(!twitter_users[2].is_active); // user3 is inactive
+	}
+
+	#[rstest]
+	fn test_to_session_data() {
+		let user = TestTwitterUser::new("alice").with_email("alice@test.com");
+		let session = user.to_session_data();
+
+		assert_eq!(session.user_id, user.id);
+		assert_eq!(session.username, "alice");
+		assert_eq!(session.email, "alice@test.com");
+	}
 }

@@ -1,14 +1,12 @@
-//! Test fixtures module.
+//! Test fixtures for examples-twitter.
 //!
-//! Provides reusable test fixtures for database, users, authentication, and server setup.
+//! Wraps `reinhardt-test` fixtures with examples-twitter specific setup,
+//! including database migrations and test context initialization.
 
-pub mod auth;
+pub mod context;
 pub mod database;
-pub mod server;
 pub mod users;
 
-// Re-export commonly used fixtures
-pub use auth::*;
+pub use context::*;
 pub use database::*;
-pub use server::*;
 pub use users::*;

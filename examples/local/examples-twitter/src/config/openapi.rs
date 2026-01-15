@@ -7,6 +7,14 @@ use reinhardt::rest::openapi::{
 };
 use std::sync::{Arc, LazyLock};
 
+// Import server_fn marker modules for OpenAPI registration (snake_case + ::marker)
+use crate::server_fn::auth::{current_user, login, logout, register};
+use crate::server_fn::profile::{fetch_profile, update_profile, update_profile_form};
+use crate::server_fn::relationship::{
+	fetch_followers, fetch_following, follow_user, unfollow_user,
+};
+use crate::server_fn::tweet::{create_tweet, delete_tweet, list_tweets};
+
 /// Global Swagger UI instance
 pub static SWAGGER_UI: LazyLock<Arc<SwaggerUI>> = LazyLock::new(|| {
 	let schema = build_openapi_schema();
@@ -31,7 +39,21 @@ pub fn build_openapi_schema() -> OpenApiSchema {
 		.title("Twitter Example API")
 		.version("1.0.0")
 		.description("A Twitter-like API built with Reinhardt Framework")
-		.add_server_fn_endpoints(); // Auto-discover server function endpoints from #[server_fn]
+		// Explicitly register server function endpoints
+		.add_server_fn(login::marker)
+		.add_server_fn(register::marker)
+		.add_server_fn(logout::marker)
+		.add_server_fn(current_user::marker)
+		.add_server_fn(fetch_profile::marker)
+		.add_server_fn(update_profile::marker)
+		.add_server_fn(update_profile_form::marker)
+		.add_server_fn(follow_user::marker)
+		.add_server_fn(unfollow_user::marker)
+		.add_server_fn(fetch_followers::marker)
+		.add_server_fn(fetch_following::marker)
+		.add_server_fn(create_tweet::marker)
+		.add_server_fn(list_tweets::marker)
+		.add_server_fn(delete_tweet::marker);
 
 	// Register schemas for all apps
 	register_auth_schemas(&mut generator);

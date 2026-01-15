@@ -1,21 +1,32 @@
 //! URL configuration for examples-twitter project
 //!
 //! This project uses reinhardt-pages with Server Functions for API communication.
-//! Server Functions are automatically registered via the inventory crate.
+//! Each app defines unified routes (server + client) in `urls.rs`, which are mounted here.
 
-use reinhardt::pages::server_fn::register_all_server_functions;
-use reinhardt::prelude::*;
-use reinhardt::routes;
+use reinhardt::pages::component::Page;
+use reinhardt::UnifiedRouter;
+
+// Import app URL modules
+use crate::apps::{auth, dm, profile, relationship, tweet};
 
 /// Build URL patterns for the application
 ///
-/// This project primarily uses Server Functions (`#[server_fn]`) for API communication.
-/// All server functions decorated with `#[server_fn]` are automatically collected
-/// and registered via the inventory crate.
-#[routes]
-pub fn routes() -> UnifiedRouter {
-	// Automatically register all server functions collected by inventory
-	// Each #[server_fn] macro generates an inventory::submit! that adds
-	// the function to the global registry
-	register_all_server_functions(UnifiedRouter::new())
+/// This project uses:
+/// - Server Functions (`#[server_fn]`) for API communication
+/// - Client routing for SPA navigation
+///
+/// Each app's `routes()` function returns a `UnifiedRouter<Page>` with both
+/// server and client routes defined.
+///
+/// Note: `#[routes]` macro is not compatible with `UnifiedRouter<Page>` as it
+/// expects `ServerRouter`. For Pages projects, routes are registered via
+/// `PagesRegistration` in server configuration.
+pub fn routes() -> UnifiedRouter<Page> {
+	UnifiedRouter::new()
+		// Mount each app's unified routes
+		.mount_unified("/", auth::urls::routes())
+		.mount_unified("/", tweet::urls::routes())
+		.mount_unified("/", profile::urls::routes())
+		.mount_unified("/", relationship::urls::routes())
+		.mount_unified("/", dm::urls::routes())
 }
