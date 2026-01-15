@@ -12,9 +12,8 @@ use std::sync::Arc;
 pub trait Router: Send + Sync {
 	fn add_route(&mut self, route: Route);
 
-	/// Include routes from another source with a prefix
-	/// Similar to Django's include() in URLconf
-	fn include(&mut self, prefix: &str, routes: Vec<Route>, namespace: Option<String>);
+	/// Mount routes from another source with a prefix
+	fn mount(&mut self, prefix: &str, routes: Vec<Route>, namespace: Option<String>);
 
 	/// Handle a request (similar to Handler::handle)
 	fn route(&self, request: Request)

@@ -159,12 +159,12 @@ where
 	///
 	/// # Panics
 	///
-	/// This method always panics. Routes must be included in the base router
+	/// This method always panics. Routes must be mounted in the base router
 	/// before wrapping with `OpenApiRouter::wrap()`.
-	fn include(&mut self, _prefix: &str, _routes: Vec<Route>, _namespace: Option<String>) {
+	fn mount(&mut self, _prefix: &str, _routes: Vec<Route>, _namespace: Option<String>) {
 		panic!(
-			"Cannot include routes in OpenApiRouter after wrapping. \
-             Include routes in the base router before calling OpenApiRouter::wrap()."
+			"Cannot mount routes in OpenApiRouter after wrapping. \
+             Mount routes in the base router before calling OpenApiRouter::wrap()."
 		);
 	}
 

@@ -252,13 +252,13 @@ mod tests {
 	}
 
 	#[test]
-	fn test_simple_router_include() {
+	fn test_simple_router_mount() {
 		let mut router = SimpleRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
 
 		let users_routes = vec![path("/", handler.clone()), path("/{id}/", handler)];
 
-		router.include("/users", users_routes, None);
+		router.mount("/users", users_routes, None);
 
 		assert_eq!(router.get_routes().len(), 2);
 		assert_eq!(router.get_routes()[0].path, "/users/");
