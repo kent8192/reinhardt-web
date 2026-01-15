@@ -48,7 +48,9 @@ tempfile = "3.15"
 example-common = { path = "../../remote/common" }
 
 [features]
-default = ["with-reinhardt"]
+default = ["with-reinhardt", "client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+client-router = []
 with-reinhardt = []
 
 [[test]]

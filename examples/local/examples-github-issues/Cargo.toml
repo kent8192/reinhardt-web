@@ -41,3 +41,8 @@ argon2 = { version = "0.5", features = ["std"] }
 path = "../../.."
 package = "reinhardt-web"
 features = ["full", "auth-jwt", "test", "testcontainers", "graphql"]
+
+[features]
+default = ["client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+client-router = []

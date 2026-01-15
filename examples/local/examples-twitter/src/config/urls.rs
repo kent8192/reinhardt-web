@@ -4,7 +4,7 @@
 //! Each app defines unified routes (server + client) in `urls.rs`, which are mounted here.
 
 use reinhardt::UnifiedRouter;
-use reinhardt::pages::component::Page;
+use reinhardt::routes;
 
 // Import app URL modules
 use crate::apps::{auth, dm, profile, relationship, tweet};
@@ -15,13 +15,10 @@ use crate::apps::{auth, dm, profile, relationship, tweet};
 /// - Server Functions (`#[server_fn]`) for API communication
 /// - Client routing for SPA navigation
 ///
-/// Each app's `routes()` function returns a `UnifiedRouter<Page>` with both
+/// Each app's `routes()` function returns a `UnifiedRouter` with both
 /// server and client routes defined.
-///
-/// Note: `#[routes]` macro is not compatible with `UnifiedRouter<Page>` as it
-/// expects `ServerRouter`. For Pages projects, routes are registered via
-/// `PagesRegistration` in server configuration.
-pub fn routes() -> UnifiedRouter<Page> {
+#[routes]
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		// Mount each app's unified routes
 		.mount_unified("/", auth::urls::routes())

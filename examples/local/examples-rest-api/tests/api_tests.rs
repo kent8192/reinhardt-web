@@ -27,8 +27,8 @@ use examples_rest_api::config::urls::routes;
 #[fixture]
 async fn server() -> reinhardt::test::fixtures::TestServerGuard {
 	// Use the actual application router instead of an empty one
-	let router = routes();
-	test_server_guard(router.into()).await
+	let router = routes().into_server();
+	test_server_guard(router).await
 }
 
 // ============================================================================

@@ -3,7 +3,6 @@
 //! Defines unified routes for authentication with both server and client routing.
 
 use reinhardt::UnifiedRouter;
-use reinhardt::pages::component::Page;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
@@ -15,7 +14,7 @@ use crate::apps::auth::server::server_fn::{current_user, login, logout, register
 use crate::apps::auth::client::components::{login_form, register_form};
 
 /// Unified routes for auth application (client + server)
-pub fn routes() -> UnifiedRouter<Page> {
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		// Server-side routes (server functions)
 		.server(|s| {

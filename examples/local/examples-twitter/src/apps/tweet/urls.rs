@@ -3,7 +3,6 @@
 //! Defines unified routes for tweets with both server and client routing.
 
 use reinhardt::UnifiedRouter;
-use reinhardt::pages::component::Page;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
@@ -15,7 +14,7 @@ use crate::apps::tweet::server::server_fn::{create_tweet, delete_tweet, list_twe
 use crate::core::client::pages::{home_page, timeline_page};
 
 /// Unified routes for tweet application (client + server)
-pub fn routes() -> UnifiedRouter<Page> {
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		// Server-side routes (server functions)
 		.server(|s| {

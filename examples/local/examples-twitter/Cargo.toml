@@ -81,7 +81,10 @@ async-trait = "0.1"
 utoipa = { version = "^5.4.0", features = ["uuid"] }
 
 [features]
-default = []
+default = ["client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+# This feature must match reinhardt's client-router feature for the macro to work correctly
+client-router = []
 e2e-tests = ["rstest", "testcontainers"]
 
 [dependencies.rstest]

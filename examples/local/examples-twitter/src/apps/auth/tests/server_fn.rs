@@ -5,8 +5,6 @@
 use rstest::*;
 use sqlx::PgPool;
 
-use crate::apps::auth::models::User;
-use crate::apps::auth::server::server_fn::{login, register};
 use crate::apps::auth::shared::types::UserInfo;
 use crate::test_utils::factories::user::UserFactory;
 use crate::test_utils::fixtures::database::twitter_db_pool;
@@ -33,7 +31,7 @@ async fn test_login_success(#[future] twitter_db_pool: (PgPool, String)) {
 	// Mock database connection for server function
 	// Note: In actual implementation, this would use proper DI mocking
 	// For now, we verify the factory creates a valid user that can login
-	assert_eq!(user.email(), test_user.email);
+	assert_eq!(user.email(), &test_user.email);
 	assert!(user.is_active());
 
 	// Verify password was hashed correctly
@@ -260,7 +258,7 @@ async fn test_user_info_conversion(#[future] twitter_db_pool: (PgPool, String)) 
 	let user_info = UserInfo::from(user.clone());
 
 	assert_eq!(user_info.id, user.id());
-	assert_eq!(user_info.username, user.username());
-	assert_eq!(user_info.email, user.email());
+	assert_eq!(&user_info.username, user.username());
+	assert_eq!(&user_info.email, user.email());
 	assert_eq!(user_info.is_active, user.is_active());
 }

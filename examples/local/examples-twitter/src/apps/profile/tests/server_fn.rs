@@ -5,7 +5,6 @@
 use rstest::*;
 use sqlx::PgPool;
 
-use crate::apps::profile::models::Profile;
 use crate::apps::profile::shared::types::{ProfileResponse, UpdateProfileRequest};
 use crate::test_utils::factories::user::{ProfileFactory, UserFactory};
 use crate::test_utils::fixtures::database::twitter_db_pool;

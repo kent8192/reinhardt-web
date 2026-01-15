@@ -6,8 +6,8 @@ use reinhardt::prelude::*;
 use reinhardt::routes;
 
 #[routes]
-pub fn routes() -> ServerRouter {
-	ServerRouter::new().mount(
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new().mount(
 		"/api/snippets/",
 		crate::apps::snippets::urls::url_patterns(),
 	)

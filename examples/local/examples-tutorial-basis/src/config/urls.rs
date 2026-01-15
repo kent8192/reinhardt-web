@@ -13,15 +13,17 @@ use crate::server_fn::polls::{
 };
 
 #[routes]
-pub fn routes() -> ServerRouter {
-	// Register all server functions explicitly
-	ServerRouter::new()
-		.server_fn(get_questions::marker)
-		.server_fn(get_question_detail::marker)
-		.server_fn(get_question_results::marker)
-		.server_fn(vote::marker)
-		.server_fn(get_vote_form_metadata::marker)
-		.server_fn(submit_vote::marker)
+pub fn routes() -> UnifiedRouter {
+	// Register all server functions explicitly via .server() closure
+	UnifiedRouter::new()
+		.server(|s| {
+			s.server_fn(get_questions::marker)
+				.server_fn(get_question_detail::marker)
+				.server_fn(get_question_results::marker)
+				.server_fn(vote::marker)
+				.server_fn(get_vote_form_metadata::marker)
+				.server_fn(submit_vote::marker)
+		})
 		// Mount polls routes
 		.mount("/polls/", crate::apps::polls::urls::routes())
 }

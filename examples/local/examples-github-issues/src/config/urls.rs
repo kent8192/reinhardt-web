@@ -7,7 +7,7 @@ use async_graphql::{
 	http::{GraphQLPlaygroundConfig, playground_source},
 };
 use reinhardt::routes;
-use reinhardt::{JwtAuth, Request, Response, ServerRouter, StatusCode, ViewResult};
+use reinhardt::{JwtAuth, Request, Response, StatusCode, UnifiedRouter, ViewResult};
 
 use crate::apps::auth::views::{AuthMutation, AuthQuery};
 use crate::apps::issues::views::{IssueMutation, IssueQuery, IssueSubscription};
@@ -83,8 +83,8 @@ pub async fn graphql_playground(_req: Request) -> ViewResult<Response> {
 
 /// Build URL patterns for the application
 #[routes]
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new()
 		.endpoint(views::health_check)
 		.function("/graphql", reinhardt::Method::POST, graphql_handler)
 		.function("/graphql", reinhardt::Method::GET, graphql_playground)

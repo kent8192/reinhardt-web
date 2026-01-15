@@ -3,7 +3,6 @@
 //! Defines unified routes for direct messaging with both server and client routing.
 
 use reinhardt::UnifiedRouter;
-use reinhardt::pages::component::Page;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
@@ -20,7 +19,7 @@ use {crate::core::client::pages::dm_chat_page, reinhardt::ClientPath};
 ///
 /// Server functions handle REST API access.
 /// WebSocket handlers are registered separately through the WebSocket middleware.
-pub fn routes() -> UnifiedRouter<Page> {
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		// Server-side routes (server functions)
 		.server(|s| {

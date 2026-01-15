@@ -80,7 +80,9 @@ example-common = { path = "../../remote/common" }
 cfg_aliases = "0.2"
 
 [features]
-default = ["with-reinhardt"]
+default = ["with-reinhardt", "client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+client-router = []
 with-reinhardt = []
 
 [[test]]

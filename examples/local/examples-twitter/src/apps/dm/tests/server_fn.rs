@@ -8,7 +8,6 @@
 use rstest::*;
 use sqlx::PgPool;
 
-use crate::apps::dm::models::{DMMessage, DMRoom};
 use crate::apps::dm::shared::types::{
 	CreateRoomRequest, MessageInfo, NewMessageNotification, RoomInfo, SendMessageRequest,
 };

@@ -3,7 +3,6 @@
 //! Defines unified routes for user relationships (follow/unfollow).
 
 use reinhardt::UnifiedRouter;
-use reinhardt::pages::component::Page;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
@@ -17,7 +16,7 @@ use crate::apps::relationship::server::server_fn::{
 ///
 /// This app currently only has server-side routes.
 /// Client-side relationship management is handled through profile components.
-pub fn routes() -> UnifiedRouter<Page> {
+pub fn routes() -> UnifiedRouter {
 	UnifiedRouter::new()
 		// Server-side routes (server functions)
 		.server(|s| {

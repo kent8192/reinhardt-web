@@ -5,7 +5,6 @@
 use rstest::*;
 use sqlx::PgPool;
 
-use crate::apps::tweet::models::Tweet;
 use crate::apps::tweet::shared::types::{CreateTweetRequest, TweetInfo};
 use crate::test_utils::factories::tweet::TweetFactory;
 use crate::test_utils::factories::user::UserFactory;

@@ -29,7 +29,9 @@ tokio = { version = "1.48.0", features = ["full"] }
 example-common = { path = "../../remote/common" }
 
 [features]
-default = []
+default = ["client-router"]
+# client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
+client-router = []
 with-reinhardt = []
 
 [[test]]
