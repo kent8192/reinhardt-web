@@ -134,12 +134,7 @@ fn bench_ssr_full_page(c: &mut Criterion) {
 	let component = SimpleComponent {
 		message: "Test".to_string(),
 	};
-	let options = SsrOptions {
-		title: Some("Benchmark Page".to_string()),
-		css_links: vec!["/static/style.css".to_string()],
-		js_scripts: vec!["/static/app.js".to_string()],
-		..SsrOptions::default()
-	};
+	let options = SsrOptions::default();
 	let mut renderer = SsrRenderer::with_options(options);
 
 	c.bench_function("ssr_full_page", |b| {
@@ -233,10 +228,7 @@ fn bench_ssr_with_state_script(c: &mut Criterion) {
 	let component = SimpleComponent {
 		message: "State test".to_string(),
 	};
-	let options = SsrOptions {
-		title: Some("State Test".to_string()),
-		..SsrOptions::default()
-	};
+	let options = SsrOptions::default();
 	let mut renderer = SsrRenderer::with_options(options);
 
 	// Add some state

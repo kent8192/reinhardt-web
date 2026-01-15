@@ -509,7 +509,7 @@ fn test_watch_ssr_empty_content() {
 
 #[rstest]
 #[serial(reactive)]
-fn test_watch_ssr_with_renderer(mut ssr_renderer: SsrRenderer, string_signal: Signal<String>) {
+fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
 	let view = page!(|signal: Signal<String>| {
