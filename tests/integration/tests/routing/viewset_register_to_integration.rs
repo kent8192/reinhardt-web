@@ -1,7 +1,7 @@
 //! ViewSet as_view → register_to_router integration tests
 
 use hyper::Method;
-use reinhardt_routers::UnifiedRouter;
+use reinhardt_routers::ServerRouter;
 use reinhardt_viewsets::ModelViewSet;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ struct TestSerializer;
 #[tokio::test]
 async fn test_viewset_register_to() {
 	// Create router
-	let mut router = UnifiedRouter::new();
+	let mut router = ServerRouter::new();
 
 	// Create viewset
 	let viewset: ModelViewSet<TestUser, TestSerializer> = ModelViewSet::new("users");
@@ -38,7 +38,7 @@ async fn test_viewset_register_to() {
 
 #[tokio::test]
 async fn test_viewset_register_to_with_actions() {
-	let mut router = UnifiedRouter::new();
+	let mut router = ServerRouter::new();
 	let viewset: ModelViewSet<TestUser, TestSerializer> = ModelViewSet::new("users");
 
 	// Register with multiple actions
@@ -62,7 +62,7 @@ async fn test_viewset_register_to_with_actions() {
 
 #[tokio::test]
 async fn test_register_to_requires_actions() {
-	let mut router = UnifiedRouter::new();
+	let mut router = ServerRouter::new();
 	let viewset: ModelViewSet<TestUser, TestSerializer> = ModelViewSet::new("users");
 
 	// Try to register without actions - should fail

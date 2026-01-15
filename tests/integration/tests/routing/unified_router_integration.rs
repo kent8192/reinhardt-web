@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use reinhardt_http::{Request, Response, Result, ViewResult};
 use reinhardt_macros::get;
-use reinhardt_routers::UnifiedRouter;
-use reinhardt_types::Handler;
+use reinhardt_routers::ServerRouter;
+use reinhardt_http::Handler;
 use reinhardt_viewsets::{Action, ActionType, ViewSet};
 
 // Mock ViewSet for testing
@@ -63,7 +63,7 @@ impl Handler for AboutView {
 
 #[tokio::test]
 async fn test_unified_router_basic_structure() {
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.with_namespace("api");
 
@@ -73,9 +73,9 @@ async fn test_unified_router_basic_structure() {
 
 #[tokio::test]
 async fn test_unified_router_mount_child() {
-	let child = UnifiedRouter::new().with_namespace("users");
+	let child = ServerRouter::new().with_namespace("users");
 
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.with_namespace("api")
 		.mount("/users/", child);
@@ -85,7 +85,7 @@ async fn test_unified_router_mount_child() {
 
 #[tokio::test]
 async fn test_unified_router_with_viewset() {
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.viewset("users", UserViewSet);
 
@@ -96,11 +96,11 @@ async fn test_unified_router_with_viewset() {
 
 #[tokio::test]
 async fn test_unified_router_hierarchical_namespace() {
-	let users = UnifiedRouter::new()
+	let users = ServerRouter::new()
 		.with_namespace("users")
 		.viewset("users", UserViewSet);
 
-	let mut api = UnifiedRouter::new()
+	let mut api = ServerRouter::new()
 		.with_namespace("v1")
 		.with_prefix("/api/v1")
 		.mount("/users/", users);
@@ -114,7 +114,7 @@ async fn test_unified_router_hierarchical_namespace() {
 
 #[tokio::test]
 async fn test_unified_router_url_reversal() {
-	let mut router = UnifiedRouter::new()
+	let mut router = ServerRouter::new()
 		.with_namespace("api")
 		.endpoint(health_handler);
 
@@ -128,15 +128,15 @@ async fn test_unified_router_url_reversal() {
 
 #[tokio::test]
 async fn test_unified_router_nested_namespace_reversal() {
-	let users = UnifiedRouter::new()
+	let users = ServerRouter::new()
 		.with_namespace("users")
 		.endpoint(list_handler);
 
-	let v1 = UnifiedRouter::new()
+	let v1 = ServerRouter::new()
 		.with_namespace("v1")
 		.mount("/users/", users);
 
-	let mut api = UnifiedRouter::new().with_namespace("api").mount("/v1/", v1);
+	let mut api = ServerRouter::new().with_namespace("api").mount("/v1/", v1);
 
 	api.register_all_routes();
 
@@ -147,15 +147,15 @@ async fn test_unified_router_nested_namespace_reversal() {
 
 #[tokio::test]
 async fn test_unified_router_multiple_children() {
-	let users = UnifiedRouter::new()
+	let users = ServerRouter::new()
 		.with_namespace("users")
 		.viewset("users", UserViewSet);
 
-	let posts = UnifiedRouter::new()
+	let posts = ServerRouter::new()
 		.with_namespace("posts")
 		.endpoint(list_handler);
 
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.mount("/users/", users)
 		.mount("/posts/", posts);
@@ -168,7 +168,7 @@ async fn test_unified_router_multiple_children() {
 
 #[tokio::test]
 async fn test_unified_router_mixed_api_styles() {
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.endpoint(health_handler)
 		.viewset("users", UserViewSet)
@@ -187,17 +187,17 @@ async fn test_unified_router_deep_nesting() {
 		Ok(Response::ok().with_body(b"Action".to_vec()))
 	}
 
-	let resource = UnifiedRouter::new()
+	let resource = ServerRouter::new()
 		.with_namespace("resource")
 		.endpoint(action_post_handler);
 
-	let v2 = UnifiedRouter::new()
+	let v2 = ServerRouter::new()
 		.with_namespace("v2")
 		.mount("/resource/", resource);
 
-	let v1 = UnifiedRouter::new().with_namespace("v1").mount("/v2/", v2);
+	let v1 = ServerRouter::new().with_namespace("v1").mount("/v2/", v2);
 
-	let mut api = UnifiedRouter::new()
+	let mut api = ServerRouter::new()
 		.with_namespace("api")
 		.with_prefix("/api")
 		.mount("/v1/", v1);
@@ -211,11 +211,11 @@ async fn test_unified_router_deep_nesting() {
 
 #[tokio::test]
 async fn test_unified_router_get_all_routes() {
-	let users = UnifiedRouter::new()
+	let users = ServerRouter::new()
 		.with_namespace("users")
 		.endpoint(export_handler);
 
-	let router = UnifiedRouter::new()
+	let router = ServerRouter::new()
 		.with_prefix("/api")
 		.with_namespace("api")
 		.endpoint(health_handler)
@@ -235,7 +235,7 @@ async fn test_unified_router_get_all_routes() {
 
 #[tokio::test]
 async fn test_unified_router_viewset_url_reversal() {
-	let mut router = UnifiedRouter::new()
+	let mut router = ServerRouter::new()
 		.with_namespace("api")
 		.with_prefix("/api")
 		.viewset("users", UserViewSet);
@@ -258,9 +258,9 @@ async fn test_unified_router_namespace_inheritance() {
 		Ok(Response::ok().with_body(b"Action".to_vec()))
 	}
 
-	let child = UnifiedRouter::new().endpoint(action_inherit_handler);
+	let child = ServerRouter::new().endpoint(action_inherit_handler);
 
-	let mut parent = UnifiedRouter::new()
+	let mut parent = ServerRouter::new()
 		.with_namespace("parent")
 		.mount("/child/", child);
 

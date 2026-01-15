@@ -1,6 +1,6 @@
 //! Nested router implementation tests
 
-use reinhardt_routers::UnifiedRouter;
+use reinhardt_routers::ServerRouter;
 use reinhardt_viewsets::{ModelViewSet, NestedResource, NestedViewSet, nested_url};
 use serde::{Deserialize, Serialize};
 
@@ -26,13 +26,13 @@ struct PostSerializer;
 #[tokio::test]
 async fn test_nested_router_basic_structure() {
 	// Create parent router for users
-	let users_router = UnifiedRouter::new().with_namespace("users");
+	let users_router = ServerRouter::new().with_namespace("users");
 
 	// Create child router for posts
-	let posts_router = UnifiedRouter::new().with_namespace("posts");
+	let posts_router = ServerRouter::new().with_namespace("posts");
 
 	// Nest posts under users
-	let api_router = UnifiedRouter::new()
+	let api_router = ServerRouter::new()
 		.with_prefix("/api")
 		.include("/users/", users_router)
 		.include("/posts/", posts_router);
@@ -74,17 +74,17 @@ async fn test_deeply_nested_router() {
 	// Create deeply nested router structure:
 	// /api/v1/orgs/{org_id}/teams/{team_id}/members/
 
-	let members_router = UnifiedRouter::new().with_namespace("members");
+	let members_router = ServerRouter::new().with_namespace("members");
 
-	let teams_router = UnifiedRouter::new()
+	let teams_router = ServerRouter::new()
 		.with_namespace("teams")
 		.include("/{team_id}/members/", members_router);
 
-	let orgs_router = UnifiedRouter::new()
+	let orgs_router = ServerRouter::new()
 		.with_namespace("orgs")
 		.include("/{org_id}/teams/", teams_router);
 
-	let api_router = UnifiedRouter::new()
+	let api_router = ServerRouter::new()
 		.with_prefix("/api/v1")
 		.include("/orgs/", orgs_router);
 
