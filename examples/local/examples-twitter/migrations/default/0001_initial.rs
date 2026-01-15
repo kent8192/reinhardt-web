@@ -2,13 +2,13 @@ use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
 pub fn migration() -> Migration {
 	Migration {
-		app_label: "default",
-		name: "0001_initial",
+		app_label: "default".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: "sessions",
+			name: "sessions".to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "created_at",
+					name: "created_at".to_string(),
 					type_definition: FieldType::BigInteger,
 					not_null: false,
 					unique: false,
@@ -17,7 +17,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "expire_date",
+					name: "expire_date".to_string(),
 					type_definition: FieldType::BigInteger,
 					not_null: false,
 					unique: false,
@@ -26,7 +26,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "last_accessed",
+					name: "last_accessed".to_string(),
 					type_definition: FieldType::BigInteger,
 					not_null: false,
 					unique: false,
@@ -35,7 +35,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "session_data",
+					name: "session_data".to_string(),
 					type_definition: FieldType::VarChar(65535u32),
 					not_null: false,
 					unique: false,
@@ -44,7 +44,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "session_key",
+					name: "session_key".to_string(),
 					type_definition: FieldType::VarChar(255u32),
 					not_null: true,
 					unique: false,

@@ -1,14 +1,14 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
-		app_label: "profile",
-		name: "0001_initial",
+		app_label: "profile".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![Operation::CreateTable {
-			name: "profile_profile",
+			name: "profile_profile".to_string(),
 			columns: vec![
 				ColumnDefinition {
-					name: "avatar_url",
+					name: "avatar_url".to_string(),
 					type_definition: FieldType::VarChar(255u32),
 					not_null: false,
 					unique: false,
@@ -17,7 +17,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "bio",
+					name: "bio".to_string(),
 					type_definition: FieldType::VarChar(500u32),
 					not_null: false,
 					unique: false,
@@ -26,7 +26,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "created_at",
+					name: "created_at".to_string(),
 					type_definition: FieldType::DateTime,
 					not_null: false,
 					unique: false,
@@ -35,7 +35,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "id",
+					name: "id".to_string(),
 					type_definition: FieldType::Uuid,
 					not_null: true,
 					unique: false,
@@ -44,7 +44,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "location",
+					name: "location".to_string(),
 					type_definition: FieldType::VarChar(255u32),
 					not_null: false,
 					unique: false,
@@ -53,7 +53,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "updated_at",
+					name: "updated_at".to_string(),
 					type_definition: FieldType::DateTime,
 					not_null: false,
 					unique: false,
@@ -62,7 +62,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "user_id",
+					name: "user_id".to_string(),
 					type_definition: FieldType::Uuid,
 					not_null: false,
 					unique: true,
@@ -71,7 +71,7 @@ pub fn migration() -> Migration {
 					default: None,
 				},
 				ColumnDefinition {
-					name: "website",
+					name: "website".to_string(),
 					type_definition: FieldType::VarChar(255u32),
 					not_null: false,
 					unique: false,
@@ -91,5 +91,6 @@ pub fn migration() -> Migration {
 		dependencies: vec![],
 		atomic: true,
 		replaces: vec![],
+		..Default::default()
 	}
 }

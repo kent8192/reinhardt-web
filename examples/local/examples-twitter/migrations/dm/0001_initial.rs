@@ -1,15 +1,15 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
-		app_label: "dm",
-		name: "0001_initial",
+		app_label: "dm".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![
 			Operation::CreateTable {
-				name: "dm_message",
+				name: "dm_message".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "content",
+						name: "content".to_string(),
 						type_definition: FieldType::VarChar(1000u32),
 						not_null: false,
 						unique: false,
@@ -18,7 +18,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "created_at",
+						name: "created_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -27,7 +27,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -36,7 +36,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "is_read",
+						name: "is_read".to_string(),
 						type_definition: FieldType::Boolean,
 						not_null: false,
 						unique: false,
@@ -45,7 +45,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "room_id",
+						name: "room_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: false,
 						unique: false,
@@ -54,7 +54,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "sender_id",
+						name: "sender_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: false,
 						unique: false,
@@ -63,7 +63,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "updated_at",
+						name: "updated_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -78,10 +78,10 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 			Operation::CreateTable {
-				name: "dm_room",
+				name: "dm_room".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "created_at",
+						name: "created_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -90,7 +90,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -99,7 +99,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "is_group",
+						name: "is_group".to_string(),
 						type_definition: FieldType::Boolean,
 						not_null: false,
 						unique: false,
@@ -108,7 +108,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "name",
+						name: "name".to_string(),
 						type_definition: FieldType::VarChar(100u32),
 						not_null: false,
 						unique: false,
@@ -117,7 +117,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "updated_at",
+						name: "updated_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -132,10 +132,10 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 			Operation::CreateTable {
-				name: "dm_dmroom_members",
+				name: "dm_dmroom_members".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Integer,
 						not_null: true,
 						unique: false,
@@ -144,7 +144,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "dmroom_id",
+						name: "dmroom_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -153,7 +153,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "user_id",
+						name: "user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -191,8 +191,9 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 		],
-		dependencies: vec![("auth", "0001_initial")],
+		dependencies: vec![("auth".to_string(), "0001_initial".to_string())],
 		atomic: true,
 		replaces: vec![],
+		..Default::default()
 	}
 }

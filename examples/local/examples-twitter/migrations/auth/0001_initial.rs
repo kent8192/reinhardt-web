@@ -1,15 +1,15 @@
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
-pub fn migration() -> Migration {
+pub(super) fn migration() -> Migration {
 	Migration {
-		app_label: "auth",
-		name: "0001_initial",
+		app_label: "auth".to_string(),
+		name: "0001_initial".to_string(),
 		operations: vec![
 			Operation::CreateTable {
-				name: "auth_password_reset_token",
+				name: "auth_password_reset_token".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "created_at",
+						name: "created_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -18,7 +18,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "expires_at",
+						name: "expires_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -27,7 +27,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -36,7 +36,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "is_used",
+						name: "is_used".to_string(),
 						type_definition: FieldType::Boolean,
 						not_null: false,
 						unique: false,
@@ -45,7 +45,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "token",
+						name: "token".to_string(),
 						type_definition: FieldType::VarChar(255u32),
 						not_null: false,
 						unique: true,
@@ -54,7 +54,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "user_id",
+						name: "user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: false,
 						unique: false,
@@ -72,10 +72,10 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 			Operation::CreateTable {
-				name: "auth_user",
+				name: "auth_user".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "bio",
+						name: "bio".to_string(),
 						type_definition: FieldType::VarChar(500u32),
 						not_null: false,
 						unique: false,
@@ -84,7 +84,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "created_at",
+						name: "created_at".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -93,7 +93,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "email",
+						name: "email".to_string(),
 						type_definition: FieldType::VarChar(255u32),
 						not_null: false,
 						unique: true,
@@ -102,7 +102,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -111,7 +111,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "is_active",
+						name: "is_active".to_string(),
 						type_definition: FieldType::Boolean,
 						not_null: false,
 						unique: false,
@@ -120,7 +120,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "last_login",
+						name: "last_login".to_string(),
 						type_definition: FieldType::DateTime,
 						not_null: false,
 						unique: false,
@@ -129,7 +129,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "password_hash",
+						name: "password_hash".to_string(),
 						type_definition: FieldType::VarChar(255u32),
 						not_null: false,
 						unique: false,
@@ -138,7 +138,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "username",
+						name: "username".to_string(),
 						type_definition: FieldType::VarChar(150u32),
 						not_null: false,
 						unique: true,
@@ -162,10 +162,10 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 			Operation::CreateTable {
-				name: "auth_user_blocked_users",
+				name: "auth_user_blocked_users".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "from_user_id",
+						name: "from_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -174,7 +174,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Integer,
 						not_null: true,
 						unique: false,
@@ -183,7 +183,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "to_user_id",
+						name: "to_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -221,10 +221,10 @@ pub fn migration() -> Migration {
 				partition: None,
 			},
 			Operation::CreateTable {
-				name: "auth_user_following",
+				name: "auth_user_following".to_string(),
 				columns: vec![
 					ColumnDefinition {
-						name: "from_user_id",
+						name: "from_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -233,7 +233,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "id",
+						name: "id".to_string(),
 						type_definition: FieldType::Integer,
 						not_null: true,
 						unique: false,
@@ -242,7 +242,7 @@ pub fn migration() -> Migration {
 						default: None,
 					},
 					ColumnDefinition {
-						name: "to_user_id",
+						name: "to_user_id".to_string(),
 						type_definition: FieldType::Uuid,
 						not_null: true,
 						unique: false,
@@ -283,5 +283,6 @@ pub fn migration() -> Migration {
 		dependencies: vec![],
 		atomic: true,
 		replaces: vec![],
+		..Default::default()
 	}
 }
