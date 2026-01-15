@@ -3,7 +3,7 @@
 
 use reinhardt_http::{Request, Response};
 use reinhardt_test::fixtures::*;
-use reinhardt_types::Handler;
+use reinhardt_http::Handler;
 use reqwest;
 use rstest::*;
 use std::sync::Arc;

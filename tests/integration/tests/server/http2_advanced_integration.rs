@@ -12,7 +12,7 @@ use reinhardt_http::{Request, Response};
 use reinhardt_server::{Http2Server, ShutdownCoordinator};
 use reinhardt_test::APIClient;
 use reinhardt_test::fixtures::*;
-use reinhardt_types::Handler;
+use reinhardt_http::Handler;
 use rstest::*;
 use std::net::SocketAddr;
 use std::sync::Arc;
