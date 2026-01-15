@@ -6,7 +6,7 @@ use reinhardt_utils::cache::{Cache, MemcachedCache, MemcachedConfig};
 use rstest::*;
 use std::time::Duration;
 use testcontainers::core::ContainerPort;
-use testcontainers::{GenericImage, ImageExt, runners::AsyncRunner};
+use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
 
 /// Default Memcached port
 const MEMCACHED_PORT: u16 = 11211;

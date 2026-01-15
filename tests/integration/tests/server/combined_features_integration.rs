@@ -18,8 +18,8 @@ use reinhardt_server::{
 use reinhardt_test::APIClient;
 use rstest::*;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 

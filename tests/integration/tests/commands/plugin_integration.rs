@@ -3,8 +3,8 @@
 //! Tests for plugin management commands: list, info, install, remove, enable, disable, search, update.
 
 use super::fixtures::{
-	MockCratesIoClient, PluginManifestFixture, plugin_manifest_fixture,
-	plugin_manifest_with_plugins,
+	plugin_manifest_fixture, plugin_manifest_with_plugins, MockCratesIoClient,
+	PluginManifestFixture,
 };
 use reinhardt_commands::CommandContext;
 use rstest::*;

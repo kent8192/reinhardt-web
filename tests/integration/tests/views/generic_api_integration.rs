@@ -7,11 +7,11 @@
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_core::http::Request;
 use reinhardt_serializers::JsonSerializer;
-use reinhardt_views::View;
 use reinhardt_views::generic::{
 	CreateAPIView, DestroyAPIView, ListAPIView, ListCreateAPIView, RetrieveDestroyAPIView,
 	RetrieveUpdateAPIView, RetrieveUpdateDestroyAPIView, UpdateAPIView,
 };
+use reinhardt_views::View;
 use serde::{Deserialize, Serialize};
 
 // Test model for integration tests

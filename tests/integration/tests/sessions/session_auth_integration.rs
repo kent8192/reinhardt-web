@@ -17,8 +17,8 @@
 
 use reinhardt_orm::manager::{get_connection, reinitialize_database};
 use reinhardt_sessions::{
-	Session,
 	backends::{cache::SessionBackend, database::DatabaseSessionBackend},
+	Session,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;

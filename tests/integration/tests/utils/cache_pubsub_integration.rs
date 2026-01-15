@@ -8,7 +8,7 @@ use reinhardt_test::fixtures::testcontainers::redis_container;
 use reinhardt_utils::cache::{CacheInvalidationChannel, CacheInvalidationMessage};
 use rstest::*;
 use testcontainers::ContainerAsync;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 /// Fixture providing Redis container and connection URL for cache pubsub testing
 ///

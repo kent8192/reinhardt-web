@@ -16,9 +16,9 @@
 use chrono::Utc;
 use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser};
 use reinhardt_di::{InjectionContext, SingletonScope};
-use reinhardt_test::fixtures::auth::{TestUser, test_user};
+use reinhardt_test::fixtures::auth::{test_user, TestUser};
 use reinhardt_test::fixtures::singleton_scope;
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use sea_query::{ColumnDef, Expr, ExprTrait, Iden, PostgresQueryBuilder, Query, Table};
 use sqlx::{PgPool, Row};

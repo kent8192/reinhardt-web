@@ -7,8 +7,8 @@
 
 use linkme::distributed_slice;
 use reinhardt_apps::registry::{
-	MODELS, ModelMetadata, RELATIONSHIPS, RelationshipMetadata, RelationshipType,
-	get_models_for_app, get_registered_models, get_registered_relationships,
+	get_models_for_app, get_registered_models, get_registered_relationships, ModelMetadata,
+	RelationshipMetadata, RelationshipType, MODELS, RELATIONSHIPS,
 };
 use rstest::rstest;
 use serial_test::serial;

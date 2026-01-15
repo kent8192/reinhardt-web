@@ -23,8 +23,8 @@
 use regex::Regex;
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	ColumnDefinition, Constraint, FieldType, ForeignKeyAction, Migration, Operation,
-	executor::DatabaseMigrationExecutor, operations::SqlDialect,
+	executor::DatabaseMigrationExecutor, operations::SqlDialect, ColumnDefinition, Constraint,
+	FieldType, ForeignKeyAction, Migration, Operation,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;

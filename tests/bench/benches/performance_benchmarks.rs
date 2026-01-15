@@ -5,7 +5,7 @@
 //! and other critical paths.
 
 use bytes::Bytes;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use http::{HeaderMap, StatusCode};
 use reinhardt_orm::{CascadeOption, LoadingStrategy, Relationship, RelationshipType};
 use reinhardt_proxy::{AssociationProxy, CollectionProxy, ProxyTarget, ScalarProxy, ScalarValue};

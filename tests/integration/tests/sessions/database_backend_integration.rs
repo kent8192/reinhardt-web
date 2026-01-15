@@ -114,12 +114,10 @@ async fn test_delete_session(#[future] backend: DatabaseSessionBackend) {
 		.expect("Failed to save session");
 
 	// Verify session exists
-	assert!(
-		backend
-			.exists(session_key)
-			.await
-			.expect("Failed to check existence")
-	);
+	assert!(backend
+		.exists(session_key)
+		.await
+		.expect("Failed to check existence"));
 
 	// Delete session
 	backend
@@ -128,12 +126,10 @@ async fn test_delete_session(#[future] backend: DatabaseSessionBackend) {
 		.expect("Failed to delete session");
 
 	// Verify session no longer exists
-	assert!(
-		!backend
-			.exists(session_key)
-			.await
-			.expect("Failed to check existence")
-	);
+	assert!(!backend
+		.exists(session_key)
+		.await
+		.expect("Failed to check existence"));
 }
 
 #[rstest]
@@ -210,11 +206,9 @@ async fn test_cleanup_expired(#[future] backend: DatabaseSessionBackend) {
 	// Verify active sessions still exist
 	for i in 0..3 {
 		let key = format!("active_{}", i);
-		assert!(
-			backend
-				.exists(&key)
-				.await
-				.expect("Failed to check existence")
-		);
+		assert!(backend
+			.exists(&key)
+			.await
+			.expect("Failed to check existence"));
 	}
 }

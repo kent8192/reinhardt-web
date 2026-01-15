@@ -3,7 +3,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
 use reinhardt_viewsets::{
-	ActionMetadata, FunctionActionHandler, ViewSet, action, clear_actions, register_action,
+	action, clear_actions, register_action, ActionMetadata, FunctionActionHandler, ViewSet,
 };
 use serial_test::serial;
 use std::collections::HashSet;

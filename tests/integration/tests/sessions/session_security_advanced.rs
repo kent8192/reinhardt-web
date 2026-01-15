@@ -28,10 +28,10 @@
 //! - Expired sessions are rejected (enforces TTL)
 //! - Session validation correctly identifies valid/invalid sessions
 
-use reinhardt_sessions::Session;
 use reinhardt_sessions::backends::InMemorySessionBackend;
 use reinhardt_sessions::csrf::CsrfSessionManager;
 use reinhardt_sessions::models::SessionModel;
+use reinhardt_sessions::Session;
 use rstest::*;
 use serde_json::json;
 use serial_test::serial;

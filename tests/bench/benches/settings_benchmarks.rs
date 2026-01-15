@@ -5,7 +5,7 @@
 //! - Profile parsing and detection
 //! - SettingsBuilder operations
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reinhardt_settings::builder::SettingsBuilder;
 use reinhardt_settings::env_loader::EnvLoader;
 use reinhardt_settings::profile::Profile;

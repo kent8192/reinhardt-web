@@ -453,10 +453,8 @@ async fn test_introspect_composite_pk(
 		2,
 		"posts_tags should have composite PK"
 	);
-	assert!(
-		posts_tags_table
-			.primary_key
-			.contains(&"post_id".to_string())
-	);
+	assert!(posts_tags_table
+		.primary_key
+		.contains(&"post_id".to_string()));
 	assert!(posts_tags_table.primary_key.contains(&"tag_id".to_string()));
 }

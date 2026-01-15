@@ -13,7 +13,7 @@
 
 use reinhardt_core::macros::model;
 use reinhardt_orm::manager::reinitialize_database;
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

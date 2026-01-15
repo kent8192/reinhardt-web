@@ -15,7 +15,7 @@ use reinhardt_integration_tests::{
 };
 use reinhardt_orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
-use reinhardt_test::fixtures::validator::{ValidatorDbGuard, validator_db_guard};
+use reinhardt_test::fixtures::validator::{validator_db_guard, ValidatorDbGuard};
 use reinhardt_test::resource::TeardownGuard;
 use rstest::*;
 use serial_test::serial;
@@ -499,11 +499,9 @@ mod relationship_validation_tests {
 		let result = product_validator.validate_async("88888").await;
 		assert!(result.is_err());
 		let error = result.unwrap_err();
-		assert!(
-			error
-				.to_string()
-				.contains("Foreign key reference not found")
-		);
+		assert!(error
+			.to_string()
+			.contains("Foreign key reference not found"));
 		assert!(error.to_string().contains("product_id"));
 		assert!(error.to_string().contains("88888"));
 

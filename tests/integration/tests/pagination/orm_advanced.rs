@@ -10,7 +10,7 @@
 //! - paginate_test_db: Custom fixture providing database connection with test schema
 
 use reinhardt_pagination::PageNumberPagination;
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

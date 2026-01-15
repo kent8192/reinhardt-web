@@ -16,7 +16,7 @@
 
 use reinhardt_orm::manager::{get_connection, reinitialize_database};
 use reinhardt_sessions::backends::cache::SessionBackend;
-use reinhardt_sessions::{Session, backends::database::DatabaseSessionBackend};
+use reinhardt_sessions::{backends::database::DatabaseSessionBackend, Session};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;

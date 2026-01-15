@@ -9,7 +9,7 @@
 //! Each test initializes its own database tables using the container's connection pool.
 
 use reinhardt_macros::model;
-use reinhardt_orm::{QuerySet, composite_pk::PkValue, manager::reinitialize_database};
+use reinhardt_orm::{composite_pk::PkValue, manager::reinitialize_database, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

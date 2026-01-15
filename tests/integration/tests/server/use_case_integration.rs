@@ -17,8 +17,8 @@ use http::Method;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_routers::ServerRouter as Router;
-use reinhardt_test::APIClient;
 use reinhardt_test::fixtures::*;
+use reinhardt_test::APIClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -646,8 +646,8 @@ mod graphql_tests {
 	use super::*;
 	use async_graphql::*;
 	use reinhardt_server::graphql_handler;
-	use reinhardt_test::APIClient;
 	use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
+	use reinhardt_test::APIClient;
 
 	/// User for pagination testing
 	#[derive(Debug, Clone, SimpleObject)]

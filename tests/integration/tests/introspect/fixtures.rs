@@ -9,7 +9,7 @@
 //! - Empty database for edge case testing
 //! - Database with all supported types
 
-use reinhardt_test::fixtures::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use sqlx::PgPool;
 use std::sync::Arc;

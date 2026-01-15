@@ -25,7 +25,7 @@ use reinhardt_filters::{
 	SimpleSearchBackend,
 };
 use reinhardt_http::Request;
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use reinhardt_viewsets::{
 	FilterConfig, FilterableViewSet, ModelViewSet, OrderingConfig, ReadOnlyModelViewSet,
 };

@@ -7,7 +7,7 @@
 //! 4. sea-query builder injection
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use sea_query::{Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, Table};
 use sqlx::PgPool;

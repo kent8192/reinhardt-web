@@ -6,7 +6,7 @@
 //! - Claims creation and validation
 
 use chrono::Duration;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use reinhardt_auth::jwt::{Claims, JwtAuth};
 use std::hint::black_box;
 

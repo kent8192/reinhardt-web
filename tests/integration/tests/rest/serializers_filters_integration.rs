@@ -34,7 +34,7 @@ use reinhardt_rest::filters::{
 	CustomFilterBackend, FilterBackend, FuzzySearchFilter, RangeFilter, SimpleOrderingBackend,
 	SimpleSearchBackend,
 };
-use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
+use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;

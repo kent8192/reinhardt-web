@@ -87,8 +87,8 @@ fn test_composite_pk_definition() {
 
 #[test]
 fn test_composite_pk_values() {
-	use reinhardt_orm::Model;
 	use reinhardt_orm::composite_pk::PkValue;
+	use reinhardt_orm::Model;
 	use test_models::*;
 
 	// Create test instance

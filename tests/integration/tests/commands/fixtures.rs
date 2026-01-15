@@ -5,7 +5,7 @@
 
 use reinhardt_commands::{CommandContext, MigrateCommand};
 use reinhardt_migrations::{Migration, Operation};
-use reinhardt_test::fixtures::{TestMigrationSource, postgres_container};
+use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
 use rstest::*;
 use sea_query::{Alias, ColumnDef, PostgresQueryBuilder, Table};
 use sqlx::PgPool;

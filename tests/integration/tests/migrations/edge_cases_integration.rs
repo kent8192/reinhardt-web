@@ -17,8 +17,8 @@
 
 use reinhardt_backends::DatabaseConnection;
 use reinhardt_migrations::{
-	ColumnDefinition, Constraint, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	executor::DatabaseMigrationExecutor, ColumnDefinition, Constraint, FieldType, Migration,
+	Operation,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;

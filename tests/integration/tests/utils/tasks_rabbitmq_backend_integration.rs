@@ -9,7 +9,7 @@ use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig};
 use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority};
 use serial_test::serial;
-use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
 
 struct TestTask {
 	id: TaskId,
