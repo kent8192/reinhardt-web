@@ -103,14 +103,14 @@ dependencies = ["install-bacon", "install-nextest"]
 # ============================================================================
 
 [tasks.fmt-check]
-description = "Check code formatting"
+description = "Check code formatting (rustfmt + page! DSL)"
 command = "cargo"
-args = ["fmt", "--all", "--", "--check"]
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", ".", "--check"]
 
 [tasks.fmt-fix]
-description = "Fix code formatting"
+description = "Fix code formatting (rustfmt + page! DSL)"
 command = "cargo"
-args = ["fmt", "--all"]
+args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
 
 [tasks.clippy-check]
 description = "Check linting rules"
