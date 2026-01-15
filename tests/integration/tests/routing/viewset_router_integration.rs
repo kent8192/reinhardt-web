@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
+use reinhardt_http::Handler;
 use reinhardt_http::Request;
 use reinhardt_routers::{DefaultRouter, Router};
-use reinhardt_http::Handler;
 use reinhardt_viewsets::{GenericViewSet, ModelViewSet, ViewSet};
 use std::sync::Arc;
 

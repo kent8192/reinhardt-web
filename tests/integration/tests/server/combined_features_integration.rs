@@ -9,13 +9,13 @@
 //! - Multiple middleware + DI (if DI integration exists)
 
 use http::Version;
+use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{
 	Http2Server, HttpServer, RateLimitConfig, RateLimitHandler, RateLimitStrategy,
 	ShutdownCoordinator, TimeoutHandler,
 };
 use reinhardt_test::APIClient;
-use reinhardt_http::{Handler, Middleware};
 use rstest::*;
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -2,8 +2,8 @@
 //!
 //! Defines unified routes for user profiles with both server and client routing.
 
-use reinhardt::pages::component::Page;
 use reinhardt::UnifiedRouter;
+use reinhardt::pages::component::Page;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::pages::server_fn::ServerFnRouterExt;

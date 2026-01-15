@@ -56,35 +56,35 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> View {
 							disabled: loading_signal.get(),
 							aria_label: "Loading",
 							@click: {
-									let is_following = is_following_clone.clone();
-									let loading = loading_clone.clone();
-									let error = error_clone.clone();
-									move |_event| {
-										let is_following_inner = is_following.clone();
-										let loading_inner = loading.clone();
-										let error_inner = error.clone();
-										let currently_following = is_following.get();
-										spawn_task(async move {
-											loading_inner.set(true);
-											error_inner.set(None);
-											let result = if currently_following {
-												unfollow_user(target_user_id).await
-											} else {
-												follow_user(target_user_id).await
-											};
-											match result {
-												Ok(()) => {
-													is_following_inner.set(!currently_following);
-													loading_inner.set(false);
+										let is_following = is_following_clone.clone();
+										let loading = loading_clone.clone();
+										let error = error_clone.clone();
+										move |_event| {
+											let is_following_inner = is_following.clone();
+											let loading_inner = loading.clone();
+											let error_inner = error.clone();
+											let currently_following = is_following.get();
+											spawn_task(async move {
+												loading_inner.set(true);
+												error_inner.set(None);
+												let result = if currently_following {
+													unfollow_user(target_user_id).await
+												} else {
+													follow_user(target_user_id).await
+												};
+												match result {
+													Ok(()) => {
+														is_following_inner.set(!currently_following);
+														loading_inner.set(false);
+													}
+													Err(e) => {
+														error_inner.set(Some(e.to_string()));
+														loading_inner.set(false);
+													}
 												}
-												Err(e) => {
-													error_inner.set(Some(e.to_string()));
-													loading_inner.set(false);
-												}
-											}
-										});
-									}
-								},
+											});
+										}
+									},
 							div {
 								class: "flex items-center gap-2",
 								div {
@@ -97,35 +97,35 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> View {
 							r#type: "button",
 							class: "btn-outline group",
 							@click: {
-									let is_following = is_following_clone.clone();
-									let loading = loading_clone.clone();
-									let error = error_clone.clone();
-									move |_event| {
-										let is_following_inner = is_following.clone();
-										let loading_inner = loading.clone();
-										let error_inner = error.clone();
-										let currently_following = is_following.get();
-										spawn_task(async move {
-											loading_inner.set(true);
-											error_inner.set(None);
-											let result = if currently_following {
-												unfollow_user(target_user_id).await
-											} else {
-												follow_user(target_user_id).await
-											};
-											match result {
-												Ok(()) => {
-													is_following_inner.set(!currently_following);
-													loading_inner.set(false);
+										let is_following = is_following_clone.clone();
+										let loading = loading_clone.clone();
+										let error = error_clone.clone();
+										move |_event| {
+											let is_following_inner = is_following.clone();
+											let loading_inner = loading.clone();
+											let error_inner = error.clone();
+											let currently_following = is_following.get();
+											spawn_task(async move {
+												loading_inner.set(true);
+												error_inner.set(None);
+												let result = if currently_following {
+													unfollow_user(target_user_id).await
+												} else {
+													follow_user(target_user_id).await
+												};
+												match result {
+													Ok(()) => {
+														is_following_inner.set(!currently_following);
+														loading_inner.set(false);
+													}
+													Err(e) => {
+														error_inner.set(Some(e.to_string()));
+														loading_inner.set(false);
+													}
 												}
-												Err(e) => {
-													error_inner.set(Some(e.to_string()));
-													loading_inner.set(false);
-												}
-											}
-										});
-									}
-								},
+											});
+										}
+									},
 							span {
 								class: "group-hover:hidden",
 								"Following"
@@ -140,35 +140,35 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> View {
 							r#type: "button",
 							class: "btn-primary",
 							@click: {
-									let is_following = is_following_clone.clone();
-									let loading = loading_clone.clone();
-									let error = error_clone.clone();
-									move |_event| {
-										let is_following_inner = is_following.clone();
-										let loading_inner = loading.clone();
-										let error_inner = error.clone();
-										let currently_following = is_following.get();
-										spawn_task(async move {
-											loading_inner.set(true);
-											error_inner.set(None);
-											let result = if currently_following {
-												unfollow_user(target_user_id).await
-											} else {
-												follow_user(target_user_id).await
-											};
-											match result {
-												Ok(()) => {
-													is_following_inner.set(!currently_following);
-													loading_inner.set(false);
+										let is_following = is_following_clone.clone();
+										let loading = loading_clone.clone();
+										let error = error_clone.clone();
+										move |_event| {
+											let is_following_inner = is_following.clone();
+											let loading_inner = loading.clone();
+											let error_inner = error.clone();
+											let currently_following = is_following.get();
+											spawn_task(async move {
+												loading_inner.set(true);
+												error_inner.set(None);
+												let result = if currently_following {
+													unfollow_user(target_user_id).await
+												} else {
+													follow_user(target_user_id).await
+												};
+												match result {
+													Ok(()) => {
+														is_following_inner.set(!currently_following);
+														loading_inner.set(false);
+													}
+													Err(e) => {
+														error_inner.set(Some(e.to_string()));
+														loading_inner.set(false);
+													}
 												}
-												Err(e) => {
-													error_inner.set(Some(e.to_string()));
-													loading_inner.set(false);
-												}
-											}
-										});
-									}
-								},
+											});
+										}
+									},
 							"Follow"
 						}
 					}

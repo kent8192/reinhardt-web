@@ -10,7 +10,7 @@ use crate::reactive::effect::Effect;
 #[cfg(target_arch = "wasm32")]
 use crate::reactive::runtime::EffectTiming;
 #[cfg(target_arch = "wasm32")]
-use reinhardt_types::page::{Page, is_boolean_attr_truthy, BOOLEAN_ATTRS};
+use reinhardt_types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]

@@ -227,5 +227,8 @@ async fn test_inactive_user_in_relationship(#[future] twitter_db_pool: (PgPool, 
 
 	// In business logic, inactive users might be excluded from follow operations
 	let user_info = UserInfo::from(user);
-	assert!(!user_info.is_active, "UserInfo should reflect inactive status");
+	assert!(
+		!user_info.is_active,
+		"UserInfo should reflect inactive status"
+	);
 }

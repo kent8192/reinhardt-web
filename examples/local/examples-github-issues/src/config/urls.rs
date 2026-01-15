@@ -7,7 +7,7 @@ use async_graphql::{
 	http::{GraphQLPlaygroundConfig, playground_source},
 };
 use reinhardt::routes;
-use reinhardt::{JwtAuth, Request, Response, StatusCode, ServerRouter, ViewResult};
+use reinhardt::{JwtAuth, Request, Response, ServerRouter, StatusCode, ViewResult};
 
 use crate::apps::auth::views::{AuthMutation, AuthQuery};
 use crate::apps::issues::views::{IssueMutation, IssueQuery, IssueSubscription};

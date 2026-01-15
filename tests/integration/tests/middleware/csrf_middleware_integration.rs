@@ -4,11 +4,11 @@
 //! Based on Django's CSRF middleware tests
 
 use hyper::header::{COOKIE, HeaderName, HeaderValue, SET_COOKIE};
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response, Result};
 use reinhardt_security::csrf::SameSite;
 use reinhardt_security::{CsrfConfig, generate_token_hmac, verify_token_hmac};
 use reinhardt_test::http::*;
-use reinhardt_http::Handler;
 
 // Mock handler for testing
 #[allow(dead_code)]

@@ -1829,9 +1829,7 @@ mod tests {
 	#[test]
 	fn test_mount_prefix_inheritance() {
 		let child = ServerRouter::new();
-		let parent = ServerRouter::new()
-			.with_prefix("/api")
-			.mount("/v1/", child);
+		let parent = ServerRouter::new().with_prefix("/api").mount("/v1/", child);
 
 		assert_eq!(parent.children_count(), 1);
 		// Child should inherit the mount path as its prefix

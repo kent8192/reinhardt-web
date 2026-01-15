@@ -17,8 +17,8 @@ use reinhardt_auth::{
 	Permission, PermissionContext, RateLimitConfig, RateLimitKeyStrategy, RateLimitPermission,
 	SimpleUser,
 };
-use reinhardt_throttling::{MemoryBackend, ThrottleBackend};
 use reinhardt_http::Request;
+use reinhardt_throttling::{MemoryBackend, ThrottleBackend};
 use rstest::*;
 use std::sync::Arc;
 use uuid::Uuid;

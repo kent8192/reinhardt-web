@@ -17,8 +17,8 @@
 //! }
 //! ```
 
-use super::registration::ServerFnRegistration;
 use super::ServerFnError;
+use super::registration::ServerFnRegistration;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Request, Response};
 use reinhardt_routers::ServerRouter;
@@ -96,8 +96,10 @@ impl ServerFnRouterExt for ServerRouter {
 						let status_code = serde_json::from_str::<ServerFnError>(&error_body)
 							.ok()
 							.map(|err| match err {
-								ServerFnError::Server { status, .. } => StatusCode::from_u16(status)
-									.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+								ServerFnError::Server { status, .. } => {
+									StatusCode::from_u16(status)
+										.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+								}
 								_ => StatusCode::INTERNAL_SERVER_ERROR,
 							})
 							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);

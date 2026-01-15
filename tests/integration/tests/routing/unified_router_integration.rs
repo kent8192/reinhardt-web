@@ -1,10 +1,10 @@
 //! Integration tests for UnifiedRouter with hierarchical routing and namespace support
 
 use async_trait::async_trait;
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response, Result, ViewResult};
 use reinhardt_macros::get;
 use reinhardt_routers::ServerRouter;
-use reinhardt_http::Handler;
 use reinhardt_viewsets::{Action, ActionType, ViewSet};
 
 // Mock ViewSet for testing

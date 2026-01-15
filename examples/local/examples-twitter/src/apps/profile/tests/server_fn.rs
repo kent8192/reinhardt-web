@@ -31,7 +31,12 @@ async fn test_fetch_profile_success(#[future] twitter_db_pool: (PgPool, String))
 
 	// Create profile for user
 	let profile = profile_factory
-		.create_for_user(&pool, user.id(), "Test bio", "https://example.com/avatar.png")
+		.create_for_user(
+			&pool,
+			user.id(),
+			"Test bio",
+			"https://example.com/avatar.png",
+		)
 		.await
 		.expect("Profile creation should succeed");
 
@@ -142,7 +147,10 @@ async fn test_update_profile_validation_location_too_long() {
 	};
 
 	let result = request.validate();
-	assert!(result.is_err(), "Location over 100 chars should fail validation");
+	assert!(
+		result.is_err(),
+		"Location over 100 chars should fail validation"
+	);
 }
 
 #[rstest]
@@ -158,7 +166,10 @@ async fn test_update_profile_validation_invalid_website() {
 	};
 
 	let result = request.validate();
-	assert!(result.is_err(), "Invalid website URL should fail validation");
+	assert!(
+		result.is_err(),
+		"Invalid website URL should fail validation"
+	);
 }
 
 #[rstest]
@@ -213,7 +224,12 @@ async fn test_profile_response_from_profile(#[future] twitter_db_pool: (PgPool, 
 		.expect("User creation should succeed");
 
 	let profile = profile_factory
-		.create_for_user(&pool, user.id(), "Bio content", "https://avatar.url/image.png")
+		.create_for_user(
+			&pool,
+			user.id(),
+			"Bio content",
+			"https://avatar.url/image.png",
+		)
 		.await
 		.expect("Profile creation should succeed");
 
@@ -222,7 +238,10 @@ async fn test_profile_response_from_profile(#[future] twitter_db_pool: (PgPool, 
 
 	assert_eq!(response.user_id, profile.user_id());
 	assert_eq!(response.bio, Some("Bio content".to_string()));
-	assert_eq!(response.avatar_url, Some("https://avatar.url/image.png".to_string()));
+	assert_eq!(
+		response.avatar_url,
+		Some("https://avatar.url/image.png".to_string())
+	);
 }
 
 // ============================================================================

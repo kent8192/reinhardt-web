@@ -27,8 +27,8 @@ use hyper::header::CONTENT_TYPE;
 #[cfg(feature = "cors")]
 use hyper::header::ORIGIN;
 use reinhardt_core::exception::Result;
-use reinhardt_core::{Handler, Middleware};
 use reinhardt_core::http::{Request, Response};
+use reinhardt_core::{Handler, Middleware};
 use reinhardt_middleware::cache::{CacheConfig, CacheKeyStrategy, CacheMiddleware};
 use reinhardt_middleware::circuit_breaker::{
 	CircuitBreakerConfig, CircuitBreakerMiddleware, CircuitState,

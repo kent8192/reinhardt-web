@@ -5,10 +5,10 @@
 
 use crate::apps::dm::client::hooks::{use_dm_chat, use_dm_room_list};
 use crate::apps::dm::shared::types::{MessageInfo, RoomInfo};
+use reinhardt::pages::Signal;
 use reinhardt::pages::component::View;
 use reinhardt::pages::page;
-use reinhardt::pages::reactive::hooks::{use_state, ConnectionState};
-use reinhardt::pages::Signal;
+use reinhardt::pages::reactive::hooks::{ConnectionState, use_state};
 use uuid::Uuid;
 
 /// Message input component (extracted to avoid complex closures)
@@ -31,30 +31,30 @@ fn message_input(
 				placeholder: "Type a message...",
 				value: input_for_display.get(),
 				@input: {
-					let input_signal = input_for_change.clone();
-					move |event: web_sys::Event| {
-						if let Some(target) = event.target() {
-							if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
-								input_signal.set(input.value());
+							let input_signal = input_for_change.clone();
+							move |event: web_sys::Event| {
+								if let Some(target) = event.target() {
+									if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+										input_signal.set(input.value());
+									}
+								}
 							}
-						}
-					}
-				},
+						},
 			}
 			button {
 				class: "btn-primary",
 				r#type: "button",
 				@click: {
-					let input_signal = input_for_click.clone();
-					let send_callback = send_callback.clone();
-					move |_event| {
-						let content = input_signal.get();
-						if !content.trim().is_empty() {
-							send_callback(content);
-							input_signal.set(String::new());
-						}
-					}
-				},
+							let input_signal = input_for_click.clone();
+							let send_callback = send_callback.clone();
+							move |_event| {
+								let content = input_signal.get();
+								if !content.trim().is_empty() {
+									send_callback(content);
+									input_signal.set(String::new());
+								}
+							}
+						},
 				"Send"
 			}
 		}
@@ -82,7 +82,7 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> View {
 			class: align_class,
 			div {
 				class: bubble_class,
-				if !is_own_message {
+				if ! is_own_message {
 					div {
 						class: "text-xs font-medium text-content-secondary mb-1",
 						{ sender }
@@ -98,7 +98,14 @@ fn message_item(message: &MessageInfo, is_own_message: bool) -> View {
 				}
 			}
 		}
-	})(align_class, bubble_class, sender, content, timestamp, is_own_message)
+	})(
+		align_class,
+		bubble_class,
+		sender,
+		content,
+		timestamp,
+		is_own_message,
+	)
 }
 
 /// Connection status indicator component
@@ -234,7 +241,15 @@ pub fn dm_chat(room_id: Uuid, current_user_id: Option<Uuid>) -> View {
 				})
 			}
 		}
-	})(messages_signal, is_loading_signal, error_signal, ws_state, input_signal, current_user_id, room_id)
+	})(
+		messages_signal,
+		is_loading_signal,
+		error_signal,
+		ws_state,
+		input_signal,
+		current_user_id,
+		room_id,
+	)
 }
 
 /// Single room item in the list
@@ -249,12 +264,11 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 		div {
 			class: "room-item flex items-center gap-3 p-4 hover:bg-surface-secondary cursor-pointer transition-colors border-b border-surface-tertiary",
 			@click: {
-				let on_select = on_select.clone();
-				move |_event| {
-					on_select(room_id);
-				}
-			},
-			// Avatar
+						let on_select = on_select.clone();
+						move |_event| {
+							on_select(room_id);
+						}
+					},
 			div {
 				class: "flex-shrink-0",
 				div {
@@ -262,7 +276,6 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 					{ name.chars().next().unwrap_or('?').to_uppercase().to_string() }
 				}
 			}
-			// Room info
 			div {
 				class: "flex-1 min-w-0",
 				div {
@@ -285,8 +298,7 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 					}
 				}
 			}
-			// Unread badge
-			if unread_count > 0 {
+			if unread_count>0 {
 				div {
 					class: "flex-shrink-0",
 					span {
@@ -324,7 +336,6 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> View {
 	page!(|rooms_signal: Signal<Vec<RoomInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
 			class: "dm-room-list h-full flex flex-col",
-			// Header
 			div {
 				class: "p-4 border-b border-surface-tertiary",
 				h3 {
@@ -332,7 +343,6 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> View {
 					"Conversations"
 				}
 			}
-			// Room list
 			div {
 				class: "flex-1 overflow-y-auto",
 				watch {
@@ -385,13 +395,7 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> View {
 						}
 					} else {
 						div {
-							{
-								View::fragment(
-									rooms_signal.get().iter().map(|r| {
-										room_item(r, on_room_select.clone())
-									}).collect::<Vec<_>>()
-								)
-							}
+							{ View::fragment(rooms_signal.get().iter().map(|r| { room_item(r, on_room_select.clone()) }).collect ::<Vec<_>>()) }
 						}
 					}
 				}

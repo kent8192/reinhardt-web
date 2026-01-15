@@ -6,9 +6,9 @@
 use crate::BaseVersioning;
 use async_trait::async_trait;
 use bytes::Bytes;
+use reinhardt_core::Handler;
 use reinhardt_core::exception::Result;
 use reinhardt_core::http::{Request, Response};
-use reinhardt_core::Handler;
 use std::collections::HashMap;
 use std::sync::Arc;
 

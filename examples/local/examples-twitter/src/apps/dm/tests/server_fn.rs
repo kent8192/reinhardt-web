@@ -75,7 +75,11 @@ async fn test_create_group_room(#[future] twitter_db_pool: (PgPool, String)) {
 
 	// Create group room
 	let room = room_factory
-		.create_group(&pool, "Friends Group", &[user1.id(), user2.id(), user3.id()])
+		.create_group(
+			&pool,
+			"Friends Group",
+			&[user1.id(), user2.id(), user3.id()],
+		)
 		.await
 		.expect("Room creation should succeed");
 
@@ -177,7 +181,12 @@ async fn test_send_message_success(#[future] twitter_db_pool: (PgPool, String)) 
 
 	// Send message
 	let message = message_factory
-		.create(&pool, room.id(), sender.id(), "Hello, this is a test message!")
+		.create(
+			&pool,
+			room.id(),
+			sender.id(),
+			"Hello, this is a test message!",
+		)
 		.await
 		.expect("Message creation should succeed");
 
@@ -287,7 +296,12 @@ async fn test_list_messages_multiple(#[future] twitter_db_pool: (PgPool, String)
 
 	// Create multiple messages
 	let _messages = message_factory
-		.create_many(&pool, room.id(), user1.id(), &["Message 1", "Message 2", "Message 3"])
+		.create_many(
+			&pool,
+			room.id(),
+			user1.id(),
+			&["Message 1", "Message 2", "Message 3"],
+		)
 		.await
 		.expect("Messages creation should succeed");
 
@@ -421,7 +435,12 @@ async fn test_mark_room_as_read(#[future] twitter_db_pool: (PgPool, String)) {
 
 	// Send messages from user1 to user2
 	message_factory
-		.create_many(&pool, room.id(), user1.id(), &["Unread 1", "Unread 2", "Unread 3"])
+		.create_many(
+			&pool,
+			room.id(),
+			user1.id(),
+			&["Unread 1", "Unread 2", "Unread 3"],
+		)
 		.await
 		.expect("Messages creation should succeed");
 
@@ -576,7 +595,12 @@ async fn test_count_messages_in_room(#[future] twitter_db_pool: (PgPool, String)
 
 	// Add messages
 	message_factory
-		.create_many(&pool, room.id(), user1.id(), &["Msg 1", "Msg 2", "Msg 3", "Msg 4"])
+		.create_many(
+			&pool,
+			room.id(),
+			user1.id(),
+			&["Msg 1", "Msg 2", "Msg 3", "Msg 4"],
+		)
 		.await
 		.expect("Messages creation should succeed");
 

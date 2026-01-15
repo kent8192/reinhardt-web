@@ -320,7 +320,8 @@ mod tests {
 
 	#[test]
 	fn test_with_params_handler() {
-		let handler = WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
+		let handler =
+			WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
@@ -331,7 +332,8 @@ mod tests {
 
 	#[test]
 	fn test_with_params_handler_error() {
-		let handler = WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
+		let handler =
+			WithParamsHandler::new(|Path(id): Path<i32>| TestView::new(&format!("ID: {}", id)));
 
 		let ctx = ParamContext::new(HashMap::new(), vec!["not_a_number".to_string()]);
 

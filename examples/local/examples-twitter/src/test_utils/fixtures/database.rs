@@ -2,10 +2,10 @@
 //!
 //! Provides TestContainers PostgreSQL with automatic migration application.
 
+use reinhardt::DatabaseConnection;
 use reinhardt::db::migrations::executor::DatabaseMigrationExecutor;
 use reinhardt::db::migrations::{DatabaseConnection as MigrationsConnection, MigrationProvider};
 use reinhardt::test::fixtures::shared_postgres::get_test_pool_with_orm;
-use reinhardt::DatabaseConnection;
 use rstest::*;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -91,9 +91,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_twitter_db_pool_applies_migrations(
-		#[future] twitter_db_pool: (PgPool, String),
-	) {
+	async fn test_twitter_db_pool_applies_migrations(#[future] twitter_db_pool: (PgPool, String)) {
 		let (pool, _url) = twitter_db_pool.await;
 
 		// Verify auth_user table exists

@@ -6,7 +6,7 @@
 //! - `Footer` - Footer component
 //! - `MainLayout` - Main layout wrapper
 
-use reinhardt_pages::component::{Page, PageElement, IntoPage};
+use reinhardt_pages::component::{IntoPage, Page, PageElement};
 
 /// Model information for navigation
 #[derive(Debug, Clone)]

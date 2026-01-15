@@ -11,7 +11,7 @@
 //! Note: Category 1 (URL Generation) tests are in reinhardt-static crate.
 //! This file focuses on Category 2 (SSR Component Integration).
 
-use reinhardt_pages::component::{Head, IntoPage, LinkTag, ScriptTag, Page};
+use reinhardt_pages::component::{Head, IntoPage, LinkTag, Page, ScriptTag};
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_static::TemplateStaticConfig;
 use std::collections::HashMap;

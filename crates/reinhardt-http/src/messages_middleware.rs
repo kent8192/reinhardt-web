@@ -25,7 +25,7 @@
 //! ```
 
 use async_trait::async_trait;
-use reinhardt_messages::{middleware::MessagesContainer, MessageStorage};
+use reinhardt_messages::{MessageStorage, middleware::MessagesContainer};
 use std::sync::{Arc, Mutex};
 
 use crate::{Handler, Middleware, Request, Response};

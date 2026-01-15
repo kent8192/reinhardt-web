@@ -1258,8 +1258,8 @@ impl RunServerCommand {
 		// Wrap with OpenAPI endpoints if enabled
 		#[cfg(feature = "openapi")]
 		let router = if !no_docs {
-			use reinhardt_openapi::OpenApiRouter;
 			use reinhardt_http::Handler;
+			use reinhardt_openapi::OpenApiRouter;
 			std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
 		} else {
 			base_router

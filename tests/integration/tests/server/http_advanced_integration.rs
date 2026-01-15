@@ -1,9 +1,9 @@
 // HTTP Advanced Features Integration Tests
 // Tests advanced HTTP features: large payloads, streaming, keep-alive, chunked encoding, etc.
 
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_test::fixtures::*;
-use reinhardt_http::Handler;
 use reqwest;
 use rstest::*;
 use std::sync::Arc;

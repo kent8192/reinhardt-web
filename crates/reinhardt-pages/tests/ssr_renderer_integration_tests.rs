@@ -12,7 +12,7 @@
 //! 6. Edge Cases - SVG, custom attributes, fragments
 
 use reinhardt_pages::component::{
-	Component, PageElement, Head, IntoPage, LinkTag, MetaTag, ScriptTag, Page,
+	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 

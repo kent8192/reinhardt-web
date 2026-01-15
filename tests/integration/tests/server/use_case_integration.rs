@@ -14,11 +14,11 @@
 
 use bytes::Bytes;
 use http::Method;
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_routers::ServerRouter as Router;
 use reinhardt_test::APIClient;
 use reinhardt_test::fixtures::*;
-use reinhardt_http::Handler;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};

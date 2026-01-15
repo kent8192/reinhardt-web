@@ -304,7 +304,12 @@ mod tests {
 			.expect("User creation should succeed");
 
 		let profile = profile_factory
-			.create_for_user(&pool, user.id(), "Test bio", "https://example.com/avatar.png")
+			.create_for_user(
+				&pool,
+				user.id(),
+				"Test bio",
+				"https://example.com/avatar.png",
+			)
 			.await
 			.expect("Profile creation should succeed");
 

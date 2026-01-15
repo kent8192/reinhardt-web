@@ -153,10 +153,7 @@ impl TweetFactory {
 			])
 			.from(sea_query::Alias::new("tweet_tweet"))
 			.and_where(Expr::col(sea_query::Alias::new("user_id")).eq(Expr::val(user_id)))
-			.order_by(
-				sea_query::Alias::new("created_at"),
-				sea_query::Order::Desc,
-			)
+			.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, Tweet>(&sql).fetch_all(pool).await

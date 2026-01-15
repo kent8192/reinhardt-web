@@ -15,7 +15,7 @@
 //!
 //! Total: 13 tests
 
-use reinhardt_pages::component::{PageElement, Head, IntoPage, LinkTag, MetaTag, ScriptTag, Page};
+use reinhardt_pages::component::{Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag};
 use reinhardt_pages::head;
 use rstest::*;
 

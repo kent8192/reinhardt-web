@@ -1,7 +1,7 @@
 // Test helper functions for integration tests
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::HttpServer;
-use reinhardt_http::Handler;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;

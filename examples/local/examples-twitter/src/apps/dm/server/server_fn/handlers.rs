@@ -4,8 +4,8 @@
 //! It handles real-time message delivery, room management, and message persistence.
 
 use async_trait::async_trait;
-use reinhardt::db::orm::Model;
 use reinhardt::DatabaseConnection;
+use reinhardt::db::orm::Model;
 use reinhardt_websockets::integration::pages::PagesAuthenticator;
 use reinhardt_websockets::room::RoomManager;
 use reinhardt_websockets::{

@@ -5,10 +5,10 @@
 //! chain functionality, including real HTTP server tests.
 
 use http::StatusCode;
+use reinhardt_http::{Handler, Middleware};
 use reinhardt_middleware::{LoggingMiddleware, MiddlewareChain};
 use reinhardt_test::APIClient;
 use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
-use reinhardt_http::{Handler, Middleware};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;

@@ -3,7 +3,7 @@
 //! This module provides Link and RouterOutlet components for
 //! declarative navigation in component trees.
 
-use crate::component::{Component, PageElement, IntoPage, Page};
+use crate::component::{Component, IntoPage, Page, PageElement};
 
 /// A link component that navigates without full page reload.
 ///

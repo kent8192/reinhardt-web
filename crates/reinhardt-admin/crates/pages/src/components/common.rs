@@ -13,7 +13,7 @@
 //! Interactive components with event handlers will be hydrated on the client side.
 
 use reinhardt_pages::Signal;
-use reinhardt_pages::component::{Page, PageElement, IntoPage};
+use reinhardt_pages::component::{IntoPage, Page, PageElement};
 
 #[cfg(target_arch = "wasm32")]
 use reinhardt_pages::dom::EventType;

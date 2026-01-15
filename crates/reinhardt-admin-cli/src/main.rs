@@ -552,7 +552,9 @@ fn run_fmt(
 		color: Some(color),
 	};
 
-	if verbosity > 0 && let Some(ref p) = resolved_config_path {
+	if verbosity > 0
+		&& let Some(ref p) = resolved_config_path
+	{
 		println!("Using rustfmt config: {}", p.display());
 	}
 
@@ -767,7 +769,9 @@ fn run_fmt_all(
 		color: Some(color),
 	};
 
-	if verbosity > 0 && let Some(ref p) = options.config_path {
+	if verbosity > 0
+		&& let Some(ref p) = options.config_path
+	{
 		println!("Using rustfmt config: {}", p.display());
 	}
 

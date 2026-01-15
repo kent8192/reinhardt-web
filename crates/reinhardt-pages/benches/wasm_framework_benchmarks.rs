@@ -9,7 +9,7 @@
 //! Total: 18 benchmarks
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use reinhardt_pages::component::{Component, PageElement, IntoPage, Page};
+use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
 use reinhardt_pages::router::Router;
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};

@@ -8,8 +8,8 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::{Method, StatusCode};
-use reinhardt_core::http::{Request, Response};
 use reinhardt_core::Handler;
+use reinhardt_core::http::{Request, Response};
 use reinhardt_dispatch::middleware::MiddlewareChain;
 use reinhardt_middleware::Middleware;
 use reinhardt_urls::prelude::Router;

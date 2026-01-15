@@ -3,8 +3,8 @@
 //! This module provides rstest fixtures for testing HTTP servers with automatic
 //! cleanup via RAII pattern.
 
-use reinhardt_core::http::{Request, Response};
 use reinhardt_core::Handler;
+use reinhardt_core::http::{Request, Response};
 use reinhardt_di::InjectionContext;
 use reinhardt_routers::ServerRouter as Router;
 use reinhardt_server::{

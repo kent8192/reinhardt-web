@@ -44,8 +44,6 @@ use crate::server_router::ServerRouter;
 #[cfg(feature = "client-router")]
 use crate::client_router::ClientRouter;
 
-
-
 use hyper::Method;
 use reinhardt_core::di::InjectionContext;
 use reinhardt_core::exception::Result;
@@ -260,13 +258,7 @@ impl<V: 'static> UnifiedRouter<V> {
 	/// Register a named function-based route on server router.
 	///
 	/// This is a convenience method that delegates to [`ServerRouter::function_named`].
-	pub fn function_named<F, Fut>(
-		mut self,
-		path: &str,
-		method: Method,
-		name: &str,
-		func: F,
-	) -> Self
+	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
 	where
 		F: Fn(Request) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<Response>> + Send + 'static,
@@ -407,13 +399,7 @@ impl UnifiedRouter {
 	}
 
 	/// Register a named function-based route on server router.
-	pub fn function_named<F, Fut>(
-		mut self,
-		path: &str,
-		method: Method,
-		name: &str,
-		func: F,
-	) -> Self
+	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
 	where
 		F: Fn(Request) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<Response>> + Send + 'static,
@@ -475,9 +461,13 @@ mod tests {
 	fn test_unified_router_convenience_methods() {
 		// When client-router is enabled, UnifiedRouter<V> requires type annotation
 		#[cfg(feature = "client-router")]
-		let router: UnifiedRouter<()> = UnifiedRouter::new().with_prefix("/api").with_namespace("v1");
+		let router: UnifiedRouter<()> = UnifiedRouter::new()
+			.with_prefix("/api")
+			.with_namespace("v1");
 		#[cfg(not(feature = "client-router"))]
-		let router = UnifiedRouter::new().with_prefix("/api").with_namespace("v1");
+		let router = UnifiedRouter::new()
+			.with_prefix("/api")
+			.with_namespace("v1");
 
 		assert_eq!(router.server_ref().prefix(), "/api");
 		assert_eq!(router.server_ref().namespace(), Some("v1"));

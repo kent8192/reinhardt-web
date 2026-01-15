@@ -34,13 +34,13 @@ pub(crate) mod reactive_if;
 mod r#trait;
 
 // Re-export Page types (originally from into_page, now from reinhardt-types via into_page)
+#[cfg(not(target_arch = "wasm32"))]
+pub use into_page::DummyEvent;
+pub use into_page::PageExt;
 pub use into_page::{
 	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
 	ReactiveIf, ScriptTag, StyleTag,
 };
-#[cfg(not(target_arch = "wasm32"))]
-pub use into_page::DummyEvent;
-pub use into_page::PageExt;
 pub use props::Props;
 #[cfg(target_arch = "wasm32")]
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};

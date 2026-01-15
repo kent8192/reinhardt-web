@@ -140,7 +140,11 @@ impl DMRoomFactory {
 	}
 
 	/// Find rooms for a user.
-	pub async fn find_by_member(&self, pool: &PgPool, user_id: Uuid) -> Result<Vec<DMRoom>, sqlx::Error> {
+	pub async fn find_by_member(
+		&self,
+		pool: &PgPool,
+		user_id: Uuid,
+	) -> Result<Vec<DMRoom>, sqlx::Error> {
 		let sql = "SELECT r.id, r.name, r.is_group, r.created_at, r.updated_at \
 		           FROM dm_room r \
 		           INNER JOIN dm_room_members m ON r.id = m.dm_room_id \
@@ -155,12 +159,10 @@ impl DMRoomFactory {
 
 	/// Count rooms for a user.
 	pub async fn count_by_member(&self, pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx::Error> {
-		sqlx::query_scalar(
-			"SELECT COUNT(*) FROM dm_room_members WHERE user_id = $1",
-		)
-		.bind(user_id)
-		.fetch_one(pool)
-		.await
+		sqlx::query_scalar("SELECT COUNT(*) FROM dm_room_members WHERE user_id = $1")
+			.bind(user_id)
+			.fetch_one(pool)
+			.await
 	}
 
 	/// Delete a room by ID (also deletes messages and members).
@@ -297,10 +299,7 @@ impl DMMessageFactory {
 			])
 			.from(sea_query::Alias::new("dm_message"))
 			.and_where(Expr::col(sea_query::Alias::new("room_id")).eq(Expr::val(room_id)))
-			.order_by(
-				sea_query::Alias::new("created_at"),
-				sea_query::Order::Desc,
-			)
+			.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
 			.to_owned();
 
 		if let Some(l) = limit {
@@ -338,13 +337,11 @@ impl DMMessageFactory {
 		room_id: Uuid,
 		user_id: Uuid,
 	) -> Result<(), sqlx::Error> {
-		sqlx::query(
-			"UPDATE dm_message SET is_read = true WHERE room_id = $1 AND sender_id != $2",
-		)
-		.bind(room_id)
-		.bind(user_id)
-		.execute(pool)
-		.await?;
+		sqlx::query("UPDATE dm_message SET is_read = true WHERE room_id = $1 AND sender_id != $2")
+			.bind(room_id)
+			.bind(user_id)
+			.execute(pool)
+			.await?;
 		Ok(())
 	}
 
@@ -381,9 +378,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_dm_room_factory_create_direct(
-		#[future] twitter_db_pool: (PgPool, String),
-	) {
+	async fn test_dm_room_factory_create_direct(#[future] twitter_db_pool: (PgPool, String)) {
 		let (pool, _url) = twitter_db_pool.await;
 		let user_factory = UserFactory::new();
 		let room_factory = DMRoomFactory::new();
@@ -408,9 +403,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_dm_room_factory_create_group(
-		#[future] twitter_db_pool: (PgPool, String),
-	) {
+	async fn test_dm_room_factory_create_group(#[future] twitter_db_pool: (PgPool, String)) {
 		let (pool, _url) = twitter_db_pool.await;
 		let user_factory = UserFactory::new();
 		let room_factory = DMRoomFactory::new();
@@ -439,9 +432,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_dm_message_factory_create(
-		#[future] twitter_db_pool: (PgPool, String),
-	) {
+	async fn test_dm_message_factory_create(#[future] twitter_db_pool: (PgPool, String)) {
 		let (pool, _url) = twitter_db_pool.await;
 		let user_factory = UserFactory::new();
 		let room_factory = DMRoomFactory::new();
@@ -472,9 +463,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_dm_message_factory_mark_as_read(
-		#[future] twitter_db_pool: (PgPool, String),
-	) {
+	async fn test_dm_message_factory_mark_as_read(#[future] twitter_db_pool: (PgPool, String)) {
 		let (pool, _url) = twitter_db_pool.await;
 		let user_factory = UserFactory::new();
 		let room_factory = DMRoomFactory::new();

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(not(target_arch = "wasm32"))]
-use reinhardt::rest::openapi::Schema;
-#[cfg(not(target_arch = "wasm32"))]
 use reinhardt::rest::ToSchema;
+#[cfg(not(target_arch = "wasm32"))]
+use reinhardt::rest::openapi::Schema;
 
 /// Information about a DM room
 #[cfg_attr(not(target_arch = "wasm32"), derive(Schema))]

@@ -93,7 +93,7 @@ where
 /// Dashboard view component for router
 #[cfg(target_arch = "wasm32")]
 fn dashboard_view() -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let dashboard_resource =
 		create_resource(|| async { get_dashboard().await.map_err(|e| e.to_string()) });
@@ -132,7 +132,7 @@ fn dashboard_view() -> Page {
 /// List view component for router
 #[cfg(target_arch = "wasm32")]
 fn list_view_component(model_name: String) -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let list_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -214,7 +214,7 @@ fn list_view_component(model_name: String) -> Page {
 /// Detail view component for router
 #[cfg(target_arch = "wasm32")]
 fn detail_view_component(model_name: String, record_id: String) -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let detail_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -257,7 +257,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 /// Create form view component for router
 #[cfg(target_arch = "wasm32")]
 fn create_view_component(model_name: String) -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -323,7 +323,7 @@ fn create_view_component(model_name: String) -> Page {
 /// Edit form view component for router
 #[cfg(target_arch = "wasm32")]
 fn edit_view_component(model_name: String, record_id: String) -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	let fields_resource = create_resource(move || {
 		let model_name = model_name.clone();
@@ -403,7 +403,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 
 /// Not found view component for router
 fn not_found_view() -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	PageElement::new("div")
 		.attr("class", "not-found")
@@ -430,7 +430,7 @@ fn not_found_view() -> Page {
 /// Displays a loading indicator while data is being fetched.
 #[cfg(target_arch = "wasm32")]
 fn loading_view() -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	PageElement::new("div")
 		.attr("class", "loading-spinner text-center mt-5")
@@ -452,7 +452,7 @@ fn loading_view() -> Page {
 /// Displays an error message when data fetch fails.
 #[cfg(target_arch = "wasm32")]
 fn error_view(message: &str) -> Page {
-	use reinhardt_pages::component::{PageElement, IntoPage};
+	use reinhardt_pages::component::{IntoPage, PageElement};
 
 	PageElement::new("div")
 		.attr("class", "error-message alert alert-danger mt-5")

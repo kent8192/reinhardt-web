@@ -3,7 +3,7 @@
 //! Server functions for user authentication and session management.
 
 use crate::apps::auth::shared::types::UserInfo;
-use reinhardt::pages::server_fn::{server_fn, ServerFnError};
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 // Server-only imports
 #[cfg(not(target_arch = "wasm32"))]

@@ -27,8 +27,8 @@
 use crate::endpoints::generate_openapi_schema;
 use crate::swagger::{RedocUI, SwaggerUI};
 use async_trait::async_trait;
-use reinhardt_core::http::{Request, Response, Result};
 use reinhardt_core::Handler;
+use reinhardt_core::http::{Request, Response, Result};
 use reinhardt_urls::prelude::Route;
 use reinhardt_urls::routers::Router;
 use std::sync::Arc;

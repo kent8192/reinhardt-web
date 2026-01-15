@@ -6,7 +6,7 @@
 //! 3. Hydration markers are properly embedded
 //! 4. View tree serialization works correctly
 
-use reinhardt_pages::component::{Component, PageElement, IntoPage, Page};
+use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer, SsrState};
 use serde::de::DeserializeOwned;
 

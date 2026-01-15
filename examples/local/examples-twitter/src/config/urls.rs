@@ -3,8 +3,8 @@
 //! This project uses reinhardt-pages with Server Functions for API communication.
 //! Each app defines unified routes (server + client) in `urls.rs`, which are mounted here.
 
-use reinhardt::pages::component::Page;
 use reinhardt::UnifiedRouter;
+use reinhardt::pages::component::Page;
 
 // Import app URL modules
 use crate::apps::{auth, dm, profile, relationship, tweet};

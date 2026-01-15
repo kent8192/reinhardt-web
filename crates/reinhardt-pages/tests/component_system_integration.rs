@@ -25,7 +25,7 @@
 use proptest::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt_pages::component::DummyEvent;
-use reinhardt_pages::component::{Component, Page, PageElement, IntoPage};
+use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use rstest::*;
 
 // ============================================================================

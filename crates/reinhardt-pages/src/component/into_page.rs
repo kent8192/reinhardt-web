@@ -15,7 +15,7 @@ pub use reinhardt_types::page::DummyEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(target_arch = "wasm32")]
-pub use reinhardt_types::page::{is_boolean_attr_truthy, BOOLEAN_ATTRS};
+pub use reinhardt_types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 #[cfg(target_arch = "wasm32")]
 use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};

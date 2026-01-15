@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use super::database::twitter_db_pool;
-use super::users::{twitter_user, TestTwitterUser};
+use super::users::{TestTwitterUser, twitter_user};
 use crate::apps::auth::shared::types::SessionData;
 use crate::test_utils::factories::UserFactory;
 
@@ -175,13 +175,12 @@ mod tests {
 		let ctx = authenticated_twitter_context.await;
 
 		// Verify user exists in database
-		let result = sqlx::query_scalar::<_, i64>(
-			"SELECT COUNT(*) FROM auth_user WHERE username = $1",
-		)
-		.bind(&ctx.user().username)
-		.fetch_one(&ctx.pool)
-		.await
-		.expect("Query should succeed");
+		let result =
+			sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM auth_user WHERE username = $1")
+				.bind(&ctx.user().username)
+				.fetch_one(&ctx.pool)
+				.await
+				.expect("Query should succeed");
 
 		assert_eq!(result, 1, "User should exist in database");
 	}

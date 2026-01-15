@@ -58,7 +58,9 @@ pub mod runtime;
 pub mod signal;
 
 // Re-export main types
-pub use context::{Context, ContextGuard, create_context, get_context, provide_context, remove_context};
+pub use context::{
+	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
+};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, with_runtime};

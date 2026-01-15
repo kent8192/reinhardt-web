@@ -10,7 +10,7 @@
 
 use reinhardt_admin_types::{FilterInfo, FilterType, ModelInfo};
 use reinhardt_pages::Signal;
-use reinhardt_pages::component::{Page, PageElement, IntoPage};
+use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use std::collections::HashMap;
 
 #[cfg(target_arch = "wasm32")]

@@ -8,7 +8,7 @@ pub mod handlers;
 pub use handlers::DMHandler;
 
 use crate::apps::dm::shared::types::{MessageInfo, RoomInfo};
-use reinhardt::pages::server_fn::{server_fn, ServerFnError};
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use uuid::Uuid;
 
 // Server-only imports
@@ -16,9 +16,9 @@ use uuid::Uuid;
 use {
 	crate::apps::auth::models::User,
 	crate::apps::dm::models::{DMMessage, DMRoom},
+	reinhardt::DatabaseConnection,
 	reinhardt::db::orm::{Filter, FilterOperator, FilterValue, ManyToManyAccessor, Model},
 	reinhardt::middleware::session::SessionData,
-	reinhardt::DatabaseConnection,
 };
 
 /// Helper to get current user from session
@@ -93,9 +93,7 @@ pub async fn create_room(
 			.first()
 			.await
 			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?
-			.ok_or_else(|| {
-				ServerFnError::application(format!("User not found: {}", pid))
-			})?;
+			.ok_or_else(|| ServerFnError::application(format!("User not found: {}", pid)))?;
 		participants.push(user);
 	}
 
@@ -104,9 +102,10 @@ pub async fn create_room(
 		// Get rooms for current user
 		let user_rooms_accessor =
 			ManyToManyAccessor::<User, DMRoom>::new(&current_user, "rooms", db.clone());
-		let current_user_rooms = user_rooms_accessor.all().await.map_err(|e| {
-			ServerFnError::server(500, format!("Database error: {}", e))
-		})?;
+		let current_user_rooms = user_rooms_accessor
+			.all()
+			.await
+			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
 
 		// Check each room
 		for room in current_user_rooms {
@@ -117,9 +116,10 @@ pub async fn create_room(
 			// Get members of this room
 			let room_members_accessor =
 				ManyToManyAccessor::<DMRoom, User>::new(&room, "members", db.clone());
-			let members = room_members_accessor.all().await.map_err(|e| {
-				ServerFnError::server(500, format!("Database error: {}", e))
-			})?;
+			let members = room_members_accessor
+				.all()
+				.await
+				.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
 
 			// Check if this is a 1:1 room with the same participants
 			if members.len() == 2 {
@@ -128,7 +128,7 @@ pub async fn create_room(
 
 				if member_ids.iter().all(|id| participant_ids_set.contains(id)) {
 					// Room already exists, return it
-					return Ok(build_room_info(&room, &members, &current_user, db).await?);
+					return build_room_info(&room, &members, &current_user, db).await;
 				}
 			}
 		}
@@ -172,12 +172,13 @@ pub async fn create_room(
 	let members_accessor =
 		ManyToManyAccessor::<DMRoom, User>::new(&saved_room, "members", db.clone());
 	for participant in &participants {
-		members_accessor.add(participant).await.map_err(|e| {
-			ServerFnError::server(500, format!("Failed to add member: {}", e))
-		})?;
+		members_accessor
+			.add(participant)
+			.await
+			.map_err(|e| ServerFnError::server(500, format!("Failed to add member: {}", e)))?;
 	}
 
-	Ok(build_room_info(&saved_room, &participants, &current_user, db).await?)
+	build_room_info(&saved_room, &participants, &current_user, db).await
 }
 
 /// List all DM rooms for the current user
@@ -189,7 +190,8 @@ pub async fn list_rooms(
 	let current_user = get_current_user(&session).await?;
 
 	// Get rooms the user is a member of
-	let rooms_accessor = ManyToManyAccessor::<User, DMRoom>::new(&current_user, "rooms", db.clone());
+	let rooms_accessor =
+		ManyToManyAccessor::<User, DMRoom>::new(&current_user, "rooms", db.clone());
 	let rooms = rooms_accessor
 		.all()
 		.await
@@ -198,10 +200,12 @@ pub async fn list_rooms(
 	let mut room_infos = Vec::new();
 	for room in rooms {
 		// Get members for each room
-		let members_accessor = ManyToManyAccessor::<DMRoom, User>::new(&room, "members", db.clone());
-		let members = members_accessor.all().await.map_err(|e| {
-			ServerFnError::server(500, format!("Database error: {}", e))
-		})?;
+		let members_accessor =
+			ManyToManyAccessor::<DMRoom, User>::new(&room, "members", db.clone());
+		let members = members_accessor
+			.all()
+			.await
+			.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
 
 		room_infos.push(build_room_info(&room, &members, &current_user, db.clone()).await?);
 	}
@@ -245,7 +249,7 @@ pub async fn get_room(
 		.await
 		.map_err(|e| ServerFnError::server(500, format!("Database error: {}", e)))?;
 
-	Ok(build_room_info(&room, &members, &current_user, db).await?)
+	build_room_info(&room, &members, &current_user, db).await
 }
 
 /// Send a message to a DM room
@@ -506,7 +510,9 @@ async fn build_room_info(
 
 	// Build display name (for 1:1 chats, use the other person's name)
 	let display_name = if room.is_group() {
-		room.name().clone().unwrap_or_else(|| "Group Chat".to_string())
+		room.name()
+			.clone()
+			.unwrap_or_else(|| "Group Chat".to_string())
 	} else {
 		members
 			.iter()
@@ -520,7 +526,9 @@ async fn build_room_info(
 		name: display_name,
 		is_group: room.is_group(),
 		participants: members.iter().map(|m| m.id()).collect(),
-		last_message: last_message.as_ref().map(|m| truncate_message(m.content(), 50)),
+		last_message: last_message
+			.as_ref()
+			.map(|m| truncate_message(m.content(), 50)),
 		last_activity: last_message.map(|m| m.created_at().to_rfc3339()),
 		unread_count: unread_messages.len() as i32,
 	})

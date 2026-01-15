@@ -44,19 +44,19 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> View {
 					r#type: "button",
 					aria_label: "Like",
 					@click: {
-							let liked_for_click = liked_for_click_if.clone();
-							let like_count_for_click = like_count_for_click_if.clone();
-							move |_event| {
-								let current_liked = liked_for_click.get();
-								let current_count = like_count_for_click.get();
-								liked_for_click.set(!current_liked);
-								like_count_for_click.set(if current_liked {
-									current_count - 1
-								} else {
-									current_count + 1
-								});
-							}
-						},
+								let liked_for_click = liked_for_click_if.clone();
+								let like_count_for_click = like_count_for_click_if.clone();
+								move |_event| {
+									let current_liked = liked_for_click.get();
+									let current_count = like_count_for_click.get();
+									liked_for_click.set(!current_liked);
+									like_count_for_click.set(if current_liked {
+										current_count - 1
+									} else {
+										current_count + 1
+									});
+								}
+							},
 					svg {
 						class: "w-5 h-5 animate-heart",
 						fill: "currentColor",
@@ -79,19 +79,19 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> View {
 					r#type: "button",
 					aria_label: "Like",
 					@click: {
-							let liked_for_click = liked_for_click_else.clone();
-							let like_count_for_click = like_count_for_click_else.clone();
-							move |_event| {
-								let current_liked = liked_for_click.get();
-								let current_count = like_count_for_click.get();
-								liked_for_click.set(!current_liked);
-								like_count_for_click.set(if current_liked {
-									current_count - 1
-								} else {
-									current_count + 1
-								});
-							}
-						},
+								let liked_for_click = liked_for_click_else.clone();
+								let like_count_for_click = like_count_for_click_else.clone();
+								move |_event| {
+									let current_liked = liked_for_click.get();
+									let current_count = like_count_for_click.get();
+									liked_for_click.set(!current_liked);
+									like_count_for_click.set(if current_liked {
+										current_count - 1
+									} else {
+										current_count + 1
+									});
+								}
+							},
 					svg {
 						class: "w-5 h-5",
 						fill: "none",
@@ -214,26 +214,26 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> View {
 										r#type: "button",
 										aria_label: "Delete tweet",
 										@click: {
-												let set_deleted = set_deleted.clone();
-												let set_error = set_error.clone();
-												move |_event| {
-													#[cfg(target_arch = "wasm32")]
-													{
-														let set_deleted = set_deleted.clone();
-														let set_error = set_error.clone();
-														spawn_task(async move {
-															match delete_tweet(tweet_id).await {
-																Ok(()) => {
-																	set_deleted(true);
+													let set_deleted = set_deleted.clone();
+													let set_error = set_error.clone();
+													move |_event| {
+														#[cfg(target_arch = "wasm32")]
+														{
+															let set_deleted = set_deleted.clone();
+															let set_error = set_error.clone();
+															spawn_task(async move {
+																match delete_tweet(tweet_id).await {
+																	Ok(()) => {
+																		set_deleted(true);
+																	}
+																	Err(e) => {
+																		set_error(Some(e.to_string()));
+																	}
 																}
-																Err(e) => {
-																	set_error(Some(e.to_string()));
-																}
-															}
-														});
+															});
+														}
 													}
-												}
-											},
+												},
 										svg {
 											class: "w-4 h-4",
 											fill: "none",
@@ -578,7 +578,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> View {
 				} else {
 					div {
 						class: "card overflow-hidden",
-						{ View::fragment(tweets_signal.get().iter().map(|t| tweet_card(t, false)).collect::<Vec<_>>()) }
+						{ View::fragment(tweets_signal.get().iter().map(|t| tweet_card(t, false)).collect ::<Vec<_>>()) }
 					}
 				}
 			}

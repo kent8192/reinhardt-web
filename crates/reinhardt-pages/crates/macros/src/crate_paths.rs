@@ -192,4 +192,3 @@ pub(crate) fn get_reinhardt_http_crate() -> TokenStream {
 	// Final fallback - use reinhardt facade crate (re-exported module)
 	quote!(::reinhardt::reinhardt_http)
 }
-

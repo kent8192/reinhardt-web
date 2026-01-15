@@ -66,7 +66,10 @@ async fn test_create_tweet_validation_too_long() {
 	};
 
 	let result = request.validate();
-	assert!(result.is_err(), "Content over 280 chars should fail validation");
+	assert!(
+		result.is_err(),
+		"Content over 280 chars should fail validation"
+	);
 }
 
 #[rstest]
@@ -81,7 +84,10 @@ async fn test_create_tweet_validation_max_length() {
 	};
 
 	let result = request.validate();
-	assert!(result.is_ok(), "Content at 280 chars should pass validation");
+	assert!(
+		result.is_ok(),
+		"Content at 280 chars should pass validation"
+	);
 }
 
 // ============================================================================
@@ -237,7 +243,10 @@ async fn test_delete_tweet_not_found(#[future] twitter_db_pool: (PgPool, String)
 
 	// Delete of non-existent should succeed (no-op) or handle appropriately
 	// Database delete typically succeeds even if nothing to delete
-	assert!(result.is_ok(), "Delete should not error for non-existent tweet");
+	assert!(
+		result.is_ok(),
+		"Delete should not error for non-existent tweet"
+	);
 }
 
 // ============================================================================

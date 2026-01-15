@@ -4,9 +4,9 @@
 //! Routes are defined in each app's `urls.rs` using the `UnifiedRouter<Page>` pattern,
 //! and this module handles router initialization and global access.
 
+use reinhardt::ClientRouter;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
-use reinhardt::ClientRouter;
 use std::cell::RefCell;
 use uuid::Uuid;
 

@@ -28,7 +28,7 @@ mod util;
 pub use event::EventType;
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
 pub(crate) use util::html_escape;
-pub use util::{is_boolean_attr_truthy, BOOLEAN_ATTRS};
+pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
 use std::sync::Arc;

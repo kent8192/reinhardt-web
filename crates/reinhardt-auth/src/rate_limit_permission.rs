@@ -391,8 +391,8 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
-	use reinhardt_throttling::MemoryBackend;
 	use reinhardt_http::Request;
+	use reinhardt_throttling::MemoryBackend;
 
 	fn create_test_request(headers: HeaderMap) -> Request {
 		Request::builder()

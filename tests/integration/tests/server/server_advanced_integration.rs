@@ -1,9 +1,9 @@
 // Advanced Server Integration Tests
 // Tests HTTP server functionality, WebSocket support, and server lifecycle
 
+use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{HttpServer, serve};
-use reinhardt_http::Handler;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;

@@ -5,8 +5,8 @@
 
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
-use reinhardt_http::{Request, Response};
 use reinhardt_http::{Handler, MiddlewareChain};
+use reinhardt_http::{Request, Response};
 use reinhardt_versioning::{
 	AcceptHeaderVersioning, HostNameVersioning, NamespaceVersioning, QueryParameterVersioning,
 	RequestVersionExt, URLPathVersioning, VersioningMiddleware,
