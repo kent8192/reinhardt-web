@@ -72,57 +72,53 @@ jobs:
       - name: Install cargo-workspaces
         run: cargo install cargo-workspaces
 
-      - name: Detect changed crates
+      - name: Detect crates to publish
         id: detect-crates
         run: |
-          echo "Detecting changed crates..."
+          echo "Detecting crates to publish using cargo ws plan..."
 
-          # Use cargo-workspaces to detect changed crates
-          CHANGED_OUTPUT=$(cargo ws changed 2>&1 || true)
+          # Use cargo ws plan to get crates in dependency-aware publishing order
+          # --skip-published excludes already published versions
+          PLAN_JSON=$(cargo ws plan --json --skip-published 2>/dev/null || cargo ws plan --json 2>/dev/null)
 
-          if echo "$CHANGED_OUTPUT" | grep -q "No changed crates detected"; then
-            echo "No changed crates detected. Skipping publication."
+          if [ -z "$PLAN_JSON" ] || [ "$PLAN_JSON" = "[]" ]; then
+            echo "No crates to publish."
             echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          echo "Changed crates found:"
-          echo "$CHANGED_OUTPUT"
-          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "Crates in publishing order (from cargo ws plan):"
+          echo "$PLAN_JSON" | jq -r '.[] | "  - \(.name) v\(.version)"'
 
-          # Extract changed crate names and store in array
+          # Filter to only public crates and build final JSON
           CRATES_JSON="["
           FIRST=true
 
-          for CRATE_PATH in crates/*/Cargo.toml; do
-            CRATE_DIR=$(dirname "$CRATE_PATH")
-            CRATE_NAME=$(basename "$CRATE_DIR")
+          for row in $(echo "$PLAN_JSON" | jq -c '.[]'); do
+            CRATE_NAME=$(echo "$row" | jq -r '.name')
+            VERSION=$(echo "$row" | jq -r '.version')
+            IS_PRIVATE=$(echo "$row" | jq -r '.private')
 
-            # Check if this crate was in the changed list
-            if echo "$CHANGED_OUTPUT" | grep -q "$CRATE_NAME"; then
-              # Extract version from Cargo.toml
-              VERSION=$(grep -m1 '^version = ' "$CRATE_PATH" | sed 's/version = "\(.*\)"/\1/')
-
-              if [ -z "$VERSION" ]; then
-                echo "⚠️ Could not extract version for $CRATE_NAME, skipping..."
-                continue
-              fi
-
-              # Check if already published
-              if curl -s "https://crates.io/api/v1/crates/$CRATE_NAME/$VERSION" | grep -q "\"num\":\"$VERSION\""; then
-                echo "ℹ️ $CRATE_NAME@$VERSION already published, skipping..."
-                continue
-              fi
-
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                CRATES_JSON="${CRATES_JSON},"
-              fi
-
-              CRATES_JSON="${CRATES_JSON}{\"name\":\"${CRATE_NAME}\",\"version\":\"${VERSION}\"}"
-              echo "📦 Will publish: $CRATE_NAME v$VERSION"
+            # Skip private crates
+            if [ "$IS_PRIVATE" = "true" ]; then
+              echo "ℹ️ Skipping private crate: $CRATE_NAME"
+              continue
             fi
+
+            # Double-check if already published (cargo ws plan --skip-published may not catch all cases)
+            if curl -s "https://crates.io/api/v1/crates/$CRATE_NAME/$VERSION" | grep -q "\"num\":\"$VERSION\""; then
+              echo "ℹ️ $CRATE_NAME@$VERSION already published, skipping..."
+              continue
+            fi
+
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              CRATES_JSON="${CRATES_JSON},"
+            fi
+
+            CRATES_JSON="${CRATES_JSON}{\"name\":\"${CRATE_NAME}\",\"version\":\"${VERSION}\"}"
+            echo "📦 Will publish: $CRATE_NAME v$VERSION"
           done
 
           CRATES_JSON="${CRATES_JSON}]"
@@ -131,7 +127,10 @@ jobs:
             echo "No crates to publish (all may be already published)."
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "crates_json=$CRATES_JSON" >> $GITHUB_OUTPUT
+            echo ""
+            echo "Publishing order determined by cargo ws plan (dependency-aware)."
           fi
 
       - name: Publish crates sequentially
@@ -141,7 +140,8 @@ jobs:
         run: |
           CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
 
-          echo "Publishing crates with 30s interval..."
+          echo "Publishing crates in dependency order with 30s interval..."
+          echo "Order determined by cargo ws plan to ensure dependencies are published first."
           echo "This delay allows crates.io index to update between publishes."
 
           CRATE_COUNT=$(echo "$CRATES_JSON" | jq '. | length')
@@ -158,7 +158,7 @@ jobs:
 
             # Run dry-run first
             echo "Running dry-run..."
-            if ! cargo ws publish --dry-run -p "$CRATE_NAME"; then
+            if ! cargo publish --dry-run -p "$CRATE_NAME"; then
               echo "❌ Dry-run failed for $CRATE_NAME"
               exit 1
             fi
@@ -169,7 +169,7 @@ jobs:
             WAIT_TIME=10
 
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              if cargo ws publish -p "$CRATE_NAME" --no-git-push; then
+              if cargo publish -p "$CRATE_NAME"; then
                 echo "✅ Successfully published $CRATE_NAME v$VERSION"
                 break
               else
@@ -271,7 +271,7 @@ jobs:
           {
             echo "## 🎉 Release Successful"
             echo ""
-            echo "The following crates were published to crates.io:"
+            echo "The following crates were published to crates.io (in dependency order):"
             echo ""
             echo "$CRATES_JSON" | jq -r '.[] | "- [\(.name) v\(.version)](https://crates.io/crates/\(.name)/\(.version))"'
             echo ""
