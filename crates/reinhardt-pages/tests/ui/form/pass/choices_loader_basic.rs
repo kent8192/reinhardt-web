@@ -12,7 +12,7 @@ fn main() {
 		choices_loader: get_poll_choices,
 
 		fields: {
-			choice: ChoiceField {
+			_choice: ChoiceField {
 				required,
 				choices_from: "choices",
 				choice_value: "id",

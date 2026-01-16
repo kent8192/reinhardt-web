@@ -64,9 +64,9 @@ async fn search(query: String, page: u32) -> Result<Vec<SearchResult>, ServerFnE
 #[server_fn(codec = "url")]
 async fn filter_items(
 	category: String,
-	min_price: u32,
-	max_price: u32,
-	sort_by: String,
+	_min_price: u32,
+	_max_price: u32,
+	_sort_by: String,
 ) -> Result<Vec<String>, ServerFnError> {
 	Ok(vec![
 		format!("Item 1 in {}", category),

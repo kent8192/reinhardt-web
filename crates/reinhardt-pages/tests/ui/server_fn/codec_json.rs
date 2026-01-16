@@ -61,8 +61,8 @@ async fn get_user_default_codec(id: u32) -> Result<User, ServerFnError> {
 #[server_fn(codec = "json")]
 async fn create_user_json(
 	name: String,
-	email: String,
-	settings: Vec<String>,
+	_email: String,
+	_settings: Vec<String>,
 ) -> Result<User, ServerFnError> {
 	Ok(User { id: 1, name })
 }

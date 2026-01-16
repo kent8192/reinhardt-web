@@ -9,8 +9,8 @@ fn main() {
 		server_fn: submit_vote,
 
 		fields: {
-			question_id: IntegerField { widget: HiddenInput },
-			choice_id: IntegerField { required },
+			_question_id: IntegerField { widget: HiddenInput },
+			_choice_id: IntegerField { required },
 		},
 	};
 }

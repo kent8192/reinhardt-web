@@ -764,7 +764,10 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 			let field_signal_clones: Vec<TokenStream> = field_names
 				.iter()
 				.map(|name| {
-					let signal_name = quote::format_ident!("submit_{}", name);
+					// Sanitize variable name to avoid double underscores (submit__field -> submit_field)
+					let signal_name_str = format!("submit_{}", name);
+					let sanitized = signal_name_str.replace("__", "_");
+					let signal_name = quote::format_ident!("{}", sanitized);
 					quote! { let #signal_name = self.#name.clone(); }
 				})
 				.collect();
@@ -773,7 +776,10 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 			let field_value_getters: Vec<TokenStream> = field_names
 				.iter()
 				.map(|name| {
-					let signal_name = quote::format_ident!("submit_{}", name);
+					// Sanitize variable name to avoid double underscores (submit__field -> submit_field)
+					let signal_name_str = format!("submit_{}", name);
+					let sanitized = signal_name_str.replace("__", "_");
+					let signal_name = quote::format_ident!("{}", sanitized);
 					quote! { #signal_name.get() }
 				})
 				.collect();
@@ -875,38 +881,86 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 					#after_fields_slot
 					#watch_components
 					.on(
-						#pages_crate::dom::event::EventType::Submit,
-						::std::sync::Arc::new(move |event: web_sys::Event| {
-							// Prevent default form submission by handling it ourselves
-							event.prevent_default();
+					#pages_crate::dom::event::EventType::Submit,
+					{
+						#[cfg(target_arch = "wasm32")]
+						{
+							::std::sync::Arc::new(move |event: web_sys::Event| {
+								// Prevent default form submission by handling it ourselves
+								event.prevent_default();
 
-							// Get field values from cloned signals
-							#loading_start
+								// Get field values from cloned signals
+								#loading_start
 
-							// Clone signals for async block
-							#(let #field_names = #field_value_getters;)*
+								// Clone signals for async block - allow non_snake_case for generated variable names
+								{
+									#(
+										#[allow(non_snake_case)]
+										let #field_names = #field_value_getters;
+									)*
+								}
 
-							#[cfg(target_arch = "wasm32")]
-							{
-								// Clone loading/error signals for async block if they exist
-								#async_signal_clones
+								#[cfg(target_arch = "wasm32")]
+								{
+									// Clone loading/error signals for async block if they exist
+									#async_signal_clones
 
-								#pages_crate::spawn::spawn_task(async move {
-									match #server_fn_ident(#(#field_names),*).await {
-										Ok(_value) => {
-											#on_success_code
-											#redirect_code
+									#pages_crate::spawn::spawn_task(async move {
+										match #server_fn_ident(#(#field_names),*).await {
+											Ok(_value) => {
+												#on_success_code
+												#redirect_code
+											}
+											Err(e) => {
+												#on_error_code
+												#async_error_handling
+											}
 										}
-										Err(e) => {
-											#on_error_code
-											#async_error_handling
+										#async_loading_end
+									});
+								}
+							})
+						}
+						#[cfg(not(target_arch = "wasm32"))]
+						{
+							::std::sync::Arc::new(move |event: #pages_crate::component::DummyEvent| {
+								// Prevent default form submission by handling it ourselves (no-op in non-WASM)
+								event.prevent_default();
+
+								// Get field values from cloned signals
+								#loading_start
+
+								// Clone signals for async block - allow non_snake_case for generated variable names
+								{
+									#(
+										#[allow(non_snake_case)]
+										let #field_names = #field_value_getters;
+									)*
+								}
+
+								#[cfg(target_arch = "wasm32")]
+								{
+									// Clone loading/error signals for async block if they exist
+									#async_signal_clones
+
+									#pages_crate::spawn::spawn_task(async move {
+										match #server_fn_ident(#(#field_names),*).await {
+											Ok(_value) => {
+												#on_success_code
+												#redirect_code
+											}
+											Err(e) => {
+												#on_error_code
+												#async_error_handling
+											}
 										}
-									}
-									#async_loading_end
-								});
-							}
-						})
-					);
+										#async_loading_end
+									});
+								}
+							})
+						}
+					}
+				);
 			}
 		}
 		_ => {
@@ -2019,7 +2073,7 @@ mod tests {
 		assert!(output_str.contains("fn password"));
 
 		// Check into_view method
-		assert!(output_str.contains("fn into_view"));
+		assert!(output_str.contains("fn into_page"));
 
 		// Check action
 		assert!(output_str.contains("/api/login"));
@@ -3270,7 +3324,7 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Check that into_view method exists
-		assert!(output_str.contains("fn into_view"));
+		assert!(output_str.contains("fn into_page"));
 
 		// Check that the form element is generated
 		assert!(output_str.contains("PageElement :: new (\"form\")"));
@@ -3300,7 +3354,7 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Check that into_view method exists
-		assert!(output_str.contains("fn into_view"));
+		assert!(output_str.contains("fn into_page"));
 
 		// The slot closure should be called
 		assert!(output_str.contains(". child"));
@@ -3354,7 +3408,7 @@ mod tests {
 		let output_str = output.to_string();
 
 		// Form should still be generated properly without slots
-		assert!(output_str.contains("fn into_view"));
+		assert!(output_str.contains("fn into_page"));
 		assert!(output_str.contains("PageElement :: new (\"form\")"));
 	}
 
@@ -3566,7 +3620,7 @@ mod tests {
 		assert!(output_str.contains("data . email"));
 
 		// 3. slots
-		assert!(output_str.contains("fn into_view"));
+		assert!(output_str.contains("fn into_page"));
 
 		// 4. state
 		assert!(output_str.contains("__loading"));
