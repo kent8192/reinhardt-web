@@ -48,3 +48,8 @@ staticfiles/
 # Admin panel build artifacts (WASM, JS, CSS with hashes)
 static/admin/
 dist/
+
+# Postman/Newman reports
+postman/reports/*.xml
+postman/reports/*.html
+!postman/reports/.gitkeep

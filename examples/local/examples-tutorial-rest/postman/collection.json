@@ -1,0 +1,293 @@
+{
+	"info": {
+		"name": "Reinhardt examples-tutorial-rest",
+		"description": "Code Snippet Management REST API Tests",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Snippets CRUD",
+			"item": [
+				{
+					"name": "List Snippets (Initial)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response is JSON', function() {",
+									"    pm.response.to.be.json;",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create Snippet",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Hello World\",\n    \"code\": \"fn main() {\\n    println!(\\\"Hello, World!\\\");\\n}\",\n    \"language\": \"rust\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 201', function() {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Snippet created with correct data', function() {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.snippet) {",
+									"        pm.expect(jsonData.snippet.title).to.eql('Hello World');",
+									"        pm.expect(jsonData.snippet.language).to.eql('rust');",
+									"        pm.environment.set('snippetId', jsonData.snippet.id);",
+									"    } else {",
+									"        pm.expect(jsonData.title).to.eql('Hello World');",
+									"        pm.expect(jsonData.language).to.eql('rust');",
+									"        pm.environment.set('snippetId', jsonData.id);",
+									"    }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Snippet",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/{{snippetId}}/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", "{{snippetId}}", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Returned snippet matches created snippet', function() {",
+									"    var jsonData = pm.response.json();",
+									"    var snippet = jsonData.snippet || jsonData;",
+									"    pm.expect(snippet.title).to.eql('Hello World');",
+									"    pm.expect(snippet.language).to.eql('rust');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Update Snippet",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Updated Hello World\",\n    \"code\": \"fn main() {\\n    println!(\\\"Hello, Updated World!\\\");\\n}\",\n    \"language\": \"rust\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/{{snippetId}}/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", "{{snippetId}}", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Snippet updated correctly', function() {",
+									"    var jsonData = pm.response.json();",
+									"    var snippet = jsonData.snippet || jsonData;",
+									"    pm.expect(snippet.title).to.eql('Updated Hello World');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Delete Snippet",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/{{snippetId}}/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", "{{snippetId}}", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 204', function() {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Verify Deletion (404)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/{{snippetId}}/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", "{{snippetId}}", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 404', function() {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Validation Tests",
+			"item": [
+				{
+					"name": "Create Snippet - Missing Title (400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"fn main() {}\",\n    \"language\": \"rust\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 400 or 422', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create Snippet - Empty Code (400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Test\",\n    \"code\": \"\",\n    \"language\": \"rust\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/snippets/",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "snippets", ""]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 400 or 422', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

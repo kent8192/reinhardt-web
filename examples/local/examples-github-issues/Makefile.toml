@@ -221,6 +221,32 @@ command = "cargo"
 args = ["run", "--bin", "manage", "runserver", "-vvv"]
 
 # ============================================================================
+# API Tests (Newman/Postman)
+# ============================================================================
+
+[tasks.api-test]
+description = "Run Newman API tests (GraphQL + JWT)"
+script = '''
+#!/bin/bash
+docker-compose -f docker-compose.api-tests.yml up --build --abort-on-container-exit
+docker-compose -f docker-compose.api-tests.yml down
+'''
+
+[tasks.api-test-report]
+description = "Open API test report in browser"
+script = '''
+#!/bin/bash
+open postman/reports/report.html
+'''
+
+[tasks.api-test-clean]
+description = "Clean API test reports"
+script = '''
+#!/bin/bash
+rm -f postman/reports/*.xml postman/reports/*.html
+'''
+
+# ============================================================================
 # Help
 # ============================================================================
 
