@@ -34,7 +34,7 @@ use reinhardt_auth::{AnonymousUser, AuthenticationBackend, User};
 /// use std::sync::Arc;
 /// use reinhardt_middleware::AuthenticationMiddleware;
 /// use reinhardt_auth::session::InMemorySessionStore;
-/// use reinhardt_core::types::MiddlewareChain;
+/// use reinhardt_core::MiddlewareChain;
 /// # use reinhardt_core::{Handler, http::{Request, Response, Result}};
 /// # use reinhardt_auth::{AuthenticationBackend, AuthenticationError, User, SimpleUser};
 /// # use async_trait::async_trait;

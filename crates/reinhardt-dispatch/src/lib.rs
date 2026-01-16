@@ -31,7 +31,7 @@
 //! use reinhardt_dispatch::BaseHandler;
 //! use reinhardt_urls::routers::{DefaultRouter, Router, path};
 //! use reinhardt_core::http::{Request, Response};
-//! use reinhardt_core::types::Handler;
+//! use reinhardt_core::Handler;
 //! use std::sync::Arc;
 //! use hyper::{Method, Version, HeaderMap, StatusCode};
 //! use bytes::Bytes;
@@ -77,7 +77,7 @@
 //! ```rust
 //! use reinhardt_dispatch::{BaseHandler, MiddlewareChain};
 //! use reinhardt_urls::routers::{DefaultRouter, Router, path};
-//! use reinhardt_core::types::{Handler, Middleware};
+//! use reinhardt_core::{Handler, Middleware};
 //! use reinhardt_core::http::{Request, Response};
 //! use std::sync::Arc;
 //! use async_trait::async_trait;

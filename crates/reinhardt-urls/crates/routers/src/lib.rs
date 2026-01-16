@@ -76,7 +76,7 @@
 //! # }
 //! let router = UnifiedRouter::new()
 //!     .function("/api/users", Method::GET, handler)
-//!     .with_route_middleware(LoggingMiddleware::new());
+//!     .with_middleware(LoggingMiddleware::new());
 //! ```
 //!
 //! ## Route Group Middleware
