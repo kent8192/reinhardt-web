@@ -1,0 +1,23 @@
+name: Setup Rust
+description: Install Rust toolchain with caching
+inputs:
+  components:
+    description: 'Rust components to install (e.g., rustfmt, clippy)'
+    required: false
+    default: ''
+  cache:
+    description: 'Enable Rust cache'
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install Rust 1.91.1
+      uses: dtolnay/rust-toolchain@1.91.1
+      with:
+        components: ${{ inputs.components }}
+
+    - name: Cache Rust dependencies
+      if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@v2
+      shell: bash
