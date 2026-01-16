@@ -1540,6 +1540,132 @@ fn test_polls_migrations_registered() {
 
 ---
 
+## Compiler Error Testing (UI Tests)
+
+### UT-1 (MUST): UI Test Error Isolation
+
+**trybuildテストの`.stderr`ファイルは、確かめたい単一種のエラー出力のみを含むべきである。**
+
+**Why?**
+- 検証対象を明確にする
+- テストの脆弱性を減らす（関係ないwarningでテストが壊れない）
+- 保守性を向上させる（`.stderr`ファイルが何をテストしているか明確）
+
+**Definition of "Single Error Type":**
+- A single compilation error (e.g., `error[E0053]`)
+- OR a single warning (e.g., `warning: unused variable`)
+- OR multiple logically related errors (e.g., multiple type mismatch errors from the same root cause)
+
+**禁止事項:**
+- ❌ Mixing warnings and errors in the same `.stderr` file
+- ❌ Including warnings unrelated to test objective (e.g., unused imports)
+- ❌ Including multiple unrelated errors
+
+**許可事項:**
+- ✅ Single error message
+- ✅ Multiple logically related errors (derived from the same issue)
+- ✅ Single warning message (when testing warnings)
+
+**Examples:**
+
+❌ **BAD - Mixed warnings and errors:**
+```
+warning: unused import: `CommandError`
+ --> tests/ui/command_invalid_return.rs:7:48
+  |
+7 |     BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption,
+  |                                                   ^^^^^^^^^^^^
+
+error[E0053]: method `execute` has an incompatible type for trait
+  --> tests/ui/command_invalid_return.rs:13:1
+   |
+13 | #[async_trait]
+   | ^^^^^^^^^^^^^^ expected `Result<(), CommandError>`, found `String`
+```
+
+✅ **GOOD - Single error only:**
+```
+error[E0053]: method `execute` has an incompatible type for trait
+  --> tests/ui/command_invalid_return.rs:13:1
+   |
+13 | #[async_trait]
+   | ^^^^^^^^^^^^^^ expected `Result<(), CommandError>`, found `String`
+```
+
+✅ **GOOD - Multiple related errors (acceptable):**
+```
+error[E0308]: mismatched types
+  --> tests/ui/type_mismatch.rs:10:5
+   |
+10 |     "string"
+   |     ^^^^^^^^ expected `i32`, found `&str`
+
+error[E0308]: mismatched types
+  --> tests/ui/type_mismatch.rs:15:5
+   |
+15 |     42
+   |     ^^ expected `&str`, found `i32`
+```
+
+**Implementation Guidelines:**
+
+1. **Remove unused imports** that cause unrelated warnings:
+   ```rust
+   // ❌ BAD
+   use reinhardt_commands::{
+       BaseCommand, CommandError, CommandOption,  // CommandError is unused
+   };
+
+   // ✅ GOOD
+   use reinhardt_commands::{
+       BaseCommand, CommandOption,  // Only used imports
+   };
+   ```
+
+2. **Suppress unrelated warnings** with `#[allow(...)]`:
+   ```rust
+   #[allow(dead_code)]  // Compile-time test only
+   struct MockAdapter;
+   ```
+
+3. **Regenerate `.stderr` files** after fixing warnings:
+   ```bash
+   TRYBUILD=overwrite cargo test --package <crate> --test ui <test_name>
+   ```
+
+4. **Verify the result** - check that `.stderr` contains only the intended error:
+   ```bash
+   cat tests/ui/<test_file>.stderr
+   ```
+
+**When Multiple Errors Are Acceptable:**
+
+Multiple errors in a single `.stderr` file are acceptable ONLY when:
+- They are logically related (same root cause)
+- They are all intentionally tested together
+- Separating them would not improve test clarity
+
+Example of acceptable multiple errors:
+```rust
+// Test file intentionally triggers multiple related type errors
+fn test_multiple_type_errors() {
+    let x: i32 = "string";      // Error 1: type mismatch
+    let y: bool = "another";    // Error 2: type mismatch (same pattern)
+}
+```
+
+Both errors verify the same behavior (type checking), so they can be in the same test.
+
+**Verification Checklist:**
+
+Before committing `.stderr` files, verify:
+- [ ] File contains only errors OR only warnings (not mixed)
+- [ ] All errors/warnings are related to the test objective
+- [ ] No "unexpected" warnings (e.g., unused imports, dead code)
+- [ ] Test filename clearly indicates what error is being tested
+
+---
+
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)

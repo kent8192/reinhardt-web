@@ -344,6 +344,7 @@ Before submitting code:
 - Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
+- Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -376,6 +377,7 @@ Before submitting code:
 - Write bare URLs in doc comments (causes bare URL warnings)
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
+- Mix warnings and errors in trybuild `.stderr` files
 
 ### 📚 Detailed Standards
 
