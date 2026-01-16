@@ -46,7 +46,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-make
-        run: cargo install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
 
       - name: Run cargo check
         run: cargo make check
@@ -65,7 +67,9 @@ jobs:
           components: rustfmt
 
       - name: Install cargo-make
-        run: cargo install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
 
       - name: Check code formatting
         run: cargo make fmt-check
@@ -104,7 +108,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-make
-        run: cargo install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
 
       - name: Run clippy
         run: cargo make clippy-check
@@ -142,7 +148,9 @@ jobs:
           protoc --version
 
       - name: Install cargo-make
-        run: cargo install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
