@@ -28,25 +28,32 @@ jobs:
     name: Clippy
     uses: ./.github/workflows/clippy.yml
 
+  # Serialize disk-intensive test jobs to prevent space exhaustion
+  # Each job waits for the previous one to complete, ensuring a fresh disk state
   unit-test:
     name: Unit Tests
     uses: ./.github/workflows/unit-test.yml
+    needs: [check, fmt, clippy]  # Run after lightweight checks
 
   integration-test:
     name: Integration Tests
     uses: ./.github/workflows/integration-test.yml
+    needs: [unit-test]  # Run after unit tests complete
 
   doc-test:
     name: Documentation Tests
     uses: ./.github/workflows/doc-test.yml
+    needs: [integration-test]  # Run after integration tests complete
 
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
+    needs: [doc-test]  # Run after doc tests complete
 
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
+    needs: [examples-test]  # Run after examples tests complete
 
   # All jobs must pass
   ci-success:
