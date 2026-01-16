@@ -46,6 +46,19 @@ jobs:
         with:
           tool: nextest
 
+      - name: Additional disk cleanup before tests
+        run: |
+          echo "Disk usage before additional cleanup:"
+          df -h
+          # Remove apt cache
+          sudo apt-get clean
+          # Remove old Docker resources
+          docker system prune -af --volumes || true
+          # Remove pip cache
+          rm -rf ~/.cache/pip || true
+          echo "Disk usage after additional cleanup:"
+          df -h
+
       - name: Run examples tests
         run: cargo make examples-test-only
 
