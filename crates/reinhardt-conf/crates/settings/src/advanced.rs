@@ -11,36 +11,47 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedSettings {
 	/// Debug mode
+	#[serde(default)]
 	pub debug: bool,
 
 	/// Secret key for cryptographic signing
+	#[serde(default = "default_secret_key")]
 	pub secret_key: String,
 
 	/// Allowed hosts
+	#[serde(default)]
 	pub allowed_hosts: Vec<String>,
 
 	/// Database configuration
+	#[serde(default)]
 	pub database: DatabaseSettings,
 
 	/// Cache configuration
+	#[serde(default)]
 	pub cache: CacheSettings,
 
 	/// Session configuration
+	#[serde(default)]
 	pub session: SessionSettings,
 
 	/// CORS configuration
+	#[serde(default)]
 	pub cors: CorsSettings,
 
 	/// Static files configuration
+	#[serde(default)]
 	pub static_files: StaticSettings,
 
 	/// Media files configuration
+	#[serde(default)]
 	pub media: MediaSettings,
 
 	/// Email configuration
+	#[serde(default)]
 	pub email: EmailSettings,
 
 	/// Logging configuration
+	#[serde(default)]
 	pub logging: LoggingSettings,
 
 	/// Custom application-specific settings
@@ -335,6 +346,10 @@ pub struct EmailSettings {
 	/// Required when backend is "file".
 	#[serde(default)]
 	pub file_path: Option<PathBuf>,
+}
+
+fn default_secret_key() -> String {
+	"change-me-in-production".to_string()
 }
 
 fn default_server_email() -> String {
