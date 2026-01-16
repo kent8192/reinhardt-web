@@ -33,6 +33,7 @@ use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serial_test::serial;
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -87,14 +88,25 @@ async fn db_pool(#[future] shared_db_pool: (PgPool, String)) -> Arc<PgPool> {
 }
 
 /// Fixture: Setup articles table
+///
+/// Drops and recreates the table to ensure clean state for each test.
 #[fixture]
 async fn articles_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
+	// Drop existing table to ensure clean state
+	let drop_stmt = Table::drop()
+		.table(Articles::Table)
+		.if_exists()
+		.to_string(PostgresQueryBuilder);
+	sqlx::query(&drop_stmt)
+		.execute(pool.as_ref())
+		.await
+		.expect("Failed to drop articles table");
+
 	// Create articles table using SeaQuery
 	let create_table_stmt = Table::create()
 		.table(Articles::Table)
-		.if_not_exists()
 		.col(
 			ColumnDef::new(Articles::Id)
 				.big_integer()
@@ -268,6 +280,7 @@ fn parse_json_response(response: &Response) -> Value {
 /// Test: ListAPIView returns empty list when no data exists
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_list_api_view_empty_list(#[future] articles_table: Arc<PgPool>) {
 	let _pool = articles_table.await;
 
@@ -286,6 +299,7 @@ async fn test_list_api_view_empty_list(#[future] articles_table: Arc<PgPool>) {
 /// Test: ListAPIView returns list with multiple items
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_list_api_view_with_items(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -312,6 +326,7 @@ async fn test_list_api_view_with_items(#[future] articles_table: Arc<PgPool>) {
 /// Test: CreateAPIView creates new article with valid data
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_create_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -340,6 +355,7 @@ async fn test_create_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: RetrieveAPIView retrieves article by ID
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_retrieve_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -364,6 +380,7 @@ async fn test_retrieve_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView performs full update with PUT
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_update_api_view_put(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -398,6 +415,7 @@ async fn test_update_api_view_put(#[future] articles_table: Arc<PgPool>) {
 /// Test: UpdateAPIView performs partial update with PATCH
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_update_api_view_patch(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -432,6 +450,7 @@ async fn test_update_api_view_patch(#[future] articles_table: Arc<PgPool>) {
 /// Test: DestroyAPIView deletes article successfully
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -468,6 +487,7 @@ async fn test_destroy_api_view_success(#[future] articles_table: Arc<PgPool>) {
 /// Test: ListCreateAPIView supports both GET and POST
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_list_create_composite(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -502,6 +522,7 @@ async fn test_list_create_composite(#[future] articles_table: Arc<PgPool>) {
 /// Test: RetrieveUpdateDestroyAPIView supports GET, PUT, and DELETE
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
@@ -551,6 +572,7 @@ async fn test_retrieve_update_destroy_composite(#[future] articles_table: Arc<Pg
 /// Test: ListAPIView applies default ordering (by -created_at)
 #[rstest]
 #[tokio::test]
+#[serial(views_crud)]
 async fn test_default_ordering(#[future] articles_table: Arc<PgPool>) {
 	let pool = articles_table.await;
 
