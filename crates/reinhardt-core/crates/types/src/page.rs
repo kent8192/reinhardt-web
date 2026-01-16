@@ -46,13 +46,22 @@ pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 #[derive(Debug, Clone, Default)]
 pub struct DummyEvent;
 
+#[cfg(not(target_arch = "wasm32"))]
+impl DummyEvent {
+	/// No-op method for API compatibility with web_sys::Event.
+	///
+	/// This method exists to maintain API compatibility between WASM and non-WASM builds.
+	/// In non-WASM environments, this is a no-op.
+	pub fn prevent_default(&self) {}
+}
+
 /// Type alias for event handler functions (non-WASM placeholder).
 ///
 /// Uses `DummyEvent` to maintain API compatibility with the WASM version,
 /// allowing the same event handler signatures (e.g., `|_| { ... }`) to work
 /// in both WASM and non-WASM environments.
 #[cfg(not(target_arch = "wasm32"))]
-pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + Send + Sync + 'static>;
+pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + 'static>;
 
 /// Error type for mounting views to the DOM.
 #[derive(Debug, Clone)]
