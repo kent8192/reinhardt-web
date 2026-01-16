@@ -4,6 +4,7 @@
 
 use reinhardt::app_config;
 
+#[cfg(feature = "with-admin")]
 pub mod admin;
 pub mod models;
 pub mod serializers;

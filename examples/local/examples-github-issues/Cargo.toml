@@ -10,9 +10,10 @@ path = "src/bin/manage.rs"
 
 [dependencies]
 reinhardt = { workspace = true, features = [
-	"full",
-	"auth-jwt",
-	"graphql",    # GraphQL support
+	"minimal",        # Core HTTP/Routing/DI/Server
+	"graphql",        # GraphQL support
+	"auth-jwt",       # JWT authentication
+	"client-router",  # Client-side routing support (required for #[routes] macro)
 ] }
 clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
@@ -40,7 +41,7 @@ argon2 = { version = "0.5", features = ["std"] }
 [dev-dependencies.reinhardt]
 path = "../../.."
 package = "reinhardt-web"
-features = ["full", "auth-jwt", "test", "testcontainers", "graphql"]
+features = ["minimal", "graphql", "auth-jwt", "client-router", "test", "testcontainers"]
 
 [features]
 default = ["client-router"]

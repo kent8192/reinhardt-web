@@ -13,8 +13,10 @@ path = "src/bin/manage.rs"
 # Use local workspace version directly via path
 # package="reinhardt-web" maps the crate name to the actual package name
 reinhardt = { workspace = true, features = [
-    "full",
-    "db-sqlite",
+    "minimal",        # Core HTTP/Routing/DI/Server (no reinhardt-pages)
+    "conf",           # Settings configuration
+    "commands",       # Management commands (runserver, etc.)
+    "client-router",  # Client-side routing support (required for #[routes] macro)
 ] }
 
 # Common utilities for availability checking
@@ -46,9 +48,11 @@ example-common = { path = "../../remote/common" }
 
 [features]
 default = ["with-reinhardt", "client-router"]
+with-reinhardt = []
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
 client-router = []
-with-reinhardt = []
+# Enable admin panel (adds ~40MB dependencies due to reinhardt-pages)
+with-admin = []
 
 [[test]]
 name = "api_tests"
