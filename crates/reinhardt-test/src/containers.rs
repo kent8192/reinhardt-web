@@ -237,7 +237,9 @@ impl MySqlContainer {
 	}
 	/// Create a MySQL container with custom credentials
 	pub async fn with_credentials(username: &str, password: &str, database: &str) -> Self {
+		// Use mysql:8.0 instead of default 8.1 to reduce image size and improve CI stability
 		let image = Mysql::default()
+			.with_tag("8.0")
 			.with_env_var("MYSQL_ROOT_PASSWORD", password)
 			.with_env_var("MYSQL_DATABASE", database);
 
