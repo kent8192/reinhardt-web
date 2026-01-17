@@ -54,6 +54,8 @@ jobs:
           sudo apt-get clean
           # Remove old Docker resources
           docker system prune -af --volumes || true
+          # Remove Docker builder cache
+          docker builder prune -af || true
           # Remove pip cache
           rm -rf ~/.cache/pip || true
           echo "Disk usage after additional cleanup:"
