@@ -52,10 +52,21 @@ jobs:
           df -h
           # Remove apt cache
           sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/* || true
           # Remove old Docker resources
           docker system prune -af --volumes || true
+          # Remove Docker builder cache
+          docker builder prune -af || true
           # Remove pip cache
           rm -rf ~/.cache/pip || true
+          # Remove npm cache
+          rm -rf ~/.npm || true
+          # Remove yarn cache
+          rm -rf ~/.cache/yarn || true
+          # Remove Gradle cache
+          rm -rf ~/.gradle || true
+          # Remove Maven cache
+          rm -rf ~/.m2 || true
           echo "Disk usage after additional cleanup:"
           df -h
 
