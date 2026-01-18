@@ -32,6 +32,7 @@ pub mod messages;
 pub mod negotiation;
 pub mod pagination;
 pub mod parsers;
+pub mod rate_limit;
 pub mod reactive;
 pub mod security;
 pub mod serializers;
@@ -46,6 +47,9 @@ pub use crate::types::page;
 
 #[cfg(feature = "macros")]
 pub use reinhardt_macros as macros;
+
+// Re-export rate limiting types
+pub use crate::rate_limit::RateLimitStrategy;
 
 
 // Re-export common external dependencies
