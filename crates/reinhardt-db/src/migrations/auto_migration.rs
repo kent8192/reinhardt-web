@@ -368,7 +368,8 @@ impl From<std::io::Error> for AutoMigrationError {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::{FieldType, Migration, repository::MigrationRepository};
+	use crate::migrations::{FieldType, Migration};
+	use crate::migrations::repository::MigrationRepository;
 	use async_trait::async_trait;
 	use std::collections::{BTreeMap, HashMap};
 	use tokio::sync::Mutex;
@@ -442,7 +443,7 @@ mod tests {
 
 	#[test]
 	fn test_validation_nullable_change() {
-		use super::schema_diff::{ColumnSchema, TableSchema};
+		use crate::migrations::schema_diff::{ColumnSchema, TableSchema};
 
 		let mut current = DatabaseSchema::default();
 		let mut current_table = TableSchema {

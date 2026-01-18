@@ -1228,7 +1228,7 @@ impl<M: Model> Manager<M> {
 		queryset: &QuerySet<M>,
 		updates: &[(&str, &str)],
 	) -> (String, Vec<String>) {
-		use super::query::UpdateValue;
+		use crate::orm::query::UpdateValue;
 		use std::collections::HashMap;
 
 		// Convert &[(&str, &str)] to HashMap<String, UpdateValue>
@@ -1641,8 +1641,8 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
-	use super::Model;
-	use super::connection::DatabaseBackend;
+	use crate::orm::Model;
+	use crate::orm::connection::DatabaseBackend;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 

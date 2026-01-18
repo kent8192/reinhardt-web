@@ -6,7 +6,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::Model;
+use crate::orm::Model;
 use sea_query::{
 	Alias, ColumnDef, ColumnType, DeleteStatement, Expr, ExprTrait, InsertStatement, IntoIden,
 	Query, SelectStatement, Table,

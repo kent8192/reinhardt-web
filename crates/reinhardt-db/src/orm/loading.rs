@@ -15,7 +15,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::Model;
+use crate::orm::Model;
 use std::marker::PhantomData;
 
 /// Loading strategy for relationships

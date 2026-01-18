@@ -4,8 +4,10 @@
 
 #[cfg(test)]
 mod integration_tests {
-	use crate::two_phase_commit::core::{MockParticipant, TransactionState, TwoPhaseCoordinator};
-	use crate::two_phase_commit::transaction_log::{InMemoryTransactionLog, TransactionLog};
+	use crate::orm::two_phase_commit::core::{
+		MockParticipant, TransactionState, TwoPhaseCoordinator,
+	};
+	use crate::orm::two_phase_commit::transaction_log::{InMemoryTransactionLog, TransactionLog};
 	use std::sync::Arc;
 
 	#[tokio::test]

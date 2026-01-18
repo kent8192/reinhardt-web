@@ -6,9 +6,9 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::Model;
+use crate::orm::Model;
 use super::engine::Engine;
-use super::expressions::{Q, QOperator};
+use crate::orm::expressions::{Q, QOperator};
 use super::types::DatabaseDialect;
 use sea_query::{
 	Alias, Condition, DeleteStatement, Expr, InsertStatement, Query, SelectStatement, SimpleExpr,

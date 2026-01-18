@@ -4,7 +4,7 @@
 //! similar to SQLAlchemy's declarative base system.
 
 use super::fields::Field;
-use super::registry::{ColumnInfo, EntityMapper, TableInfo, registry};
+use crate::orm::registry::{ColumnInfo, EntityMapper, TableInfo, registry};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -451,7 +451,7 @@ mod tests {
 
 	#[test]
 	fn test_field_metadata_from_char_field() {
-		use super::fields::{CharField, Field};
+		use crate::orm::fields::{CharField, Field};
 
 		let mut char_field = CharField::new(100);
 		char_field.set_attributes_from_name("username");

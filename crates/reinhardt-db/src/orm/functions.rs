@@ -1,4 +1,4 @@
-use super::annotation::AnnotationValue;
+use crate::orm::annotation::AnnotationValue;
 use serde::{Deserialize, Serialize};
 
 /// Base database function trait
@@ -1233,8 +1233,8 @@ impl Default for CurrentTime {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::annotation::Value;
-	use super::expressions::F;
+	use crate::orm::annotation::Value;
+	use crate::orm::expressions::F;
 
 	#[test]
 	fn test_cast_to_integer() {

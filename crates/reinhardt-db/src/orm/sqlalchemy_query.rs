@@ -6,7 +6,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::query_fields::{Field, Lookup, QueryFieldCompiler};
+use crate::orm::query_fields::{Field, Lookup, QueryFieldCompiler};
 use super::set_operations::CombinedQuery;
 use super::typed_join::TypedJoin;
 use super::{Model, Q};

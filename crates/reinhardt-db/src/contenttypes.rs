@@ -37,6 +37,9 @@
 //! - Content type inspection utilities
 
 pub mod cleanup;
+// Allow module_inception: Re-exporting contenttypes submodule from contenttypes.rs
+// is intentional for compatibility with existing imports (`reinhardt_db::contenttypes::ContentType`)
+#[allow(clippy::module_inception)]
 pub mod contenttypes;
 pub mod generic_fk;
 pub mod inspect;

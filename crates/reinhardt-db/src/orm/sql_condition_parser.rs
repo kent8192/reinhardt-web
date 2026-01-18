@@ -2,12 +2,12 @@
 //!
 //! This module provides a hand-written parser with regex support for common SQL patterns.
 
-use super::expressions::Q;
+use crate::orm::expressions::Q;
 use regex::Regex;
 use std::sync::OnceLock;
 
 #[cfg(test)]
-use super::expressions::QOperator;
+use crate::orm::expressions::QOperator;
 
 /// Compiled regex patterns for SQL parsing
 struct Patterns {

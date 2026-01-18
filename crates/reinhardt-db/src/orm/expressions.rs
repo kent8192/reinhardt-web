@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 
-use super::query::{Filter, FilterOperator, FilterValue};
+use crate::orm::query::{Filter, FilterOperator, FilterValue};
 
 /// F expression - represents a database field reference
 /// Similar to Django's F() objects for database-side operations
@@ -1099,10 +1099,10 @@ mod tests {
 #[cfg(test)]
 mod expressions_extended_tests {
 	use super::*;
-	use super::aggregation::*;
+	use crate::orm::aggregation::*;
 	// Tests use annotation types directly
-	// use super::annotation::*;
-	use super::expressions::{F, Q};
+	// use crate::orm::annotation::*;
+	use crate::orm::expressions::{F, Q};
 
 	#[test]
 	// From: Django/expressions

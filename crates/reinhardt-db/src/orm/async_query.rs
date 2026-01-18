@@ -6,10 +6,10 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::Model;
+use crate::orm::Model;
 use super::engine::Engine;
-use super::expressions::Q;
-use super::query_execution::QueryCompiler;
+use crate::orm::expressions::Q;
+use crate::orm::query_execution::QueryCompiler;
 use super::types::DatabaseDialect;
 use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 use std::marker::PhantomData;

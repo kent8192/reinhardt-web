@@ -6,7 +6,7 @@
 use super::aggregate::{AggregateFunction, ComparisonExpr, ComparisonValue};
 use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType, LookupValue};
-use super::super::Model;
+use crate::orm::Model;
 use sea_query::SimpleExpr;
 
 /// Compiles field lookups into SQL
@@ -461,8 +461,8 @@ impl QueryFieldCompiler {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::super::Model;
-	use super::query_fields::Field;
+	use crate::orm::Model;
+	use crate::orm::query_fields::field::Field;
 	use reinhardt_core::validators::TableName;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

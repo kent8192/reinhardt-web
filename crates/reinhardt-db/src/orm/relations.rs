@@ -29,7 +29,7 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-use super::Model;
+use crate::orm::Model;
 
 /// A set of objects that have a GenericForeignKey pointing to the owner model
 ///
@@ -202,7 +202,7 @@ impl<T: Model> GenericRelationSet<T> {
 	///     .await?;
 	/// ```
 	pub fn query(&self) -> super::query::QuerySet<T> {
-		use super::query::{Filter, FilterOperator, FilterValue};
+		use crate::orm::query::{Filter, FilterOperator, FilterValue};
 
 		// Create filters for content_type_id and object_id
 		let ct_filter = Filter::new(

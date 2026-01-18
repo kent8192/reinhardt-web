@@ -1,6 +1,6 @@
 //! Lookup type and value definitions
 
-use super::super::Model;
+use crate::orm::Model;
 use chrono::Timelike;
 use serde::{Deserialize, Serialize};
 

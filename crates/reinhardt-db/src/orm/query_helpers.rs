@@ -7,7 +7,7 @@ use sea_query::{
 	SelectStatement, UpdateStatement,
 };
 
-use super::model::Model;
+use crate::orm::model::Model;
 
 /// Build SELECT COUNT(*) query for a model
 ///

@@ -6,8 +6,8 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::Model;
-use super::loading::LoadingStrategy;
+use crate::orm::Model;
+use crate::orm::loading::LoadingStrategy;
 use sea_query::{Alias, Expr, ExprTrait, Query, SelectStatement};
 use std::marker::PhantomData;
 

@@ -468,7 +468,7 @@ impl ZeroDowntimeMigration {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::{ColumnDefinition, FieldType};
+	use crate::migrations::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_strategy_name() {

@@ -58,8 +58,8 @@
 //! assert_eq!(name_value.as_str(), Some("Alice"));
 //! ```
 
-use super::model::Model;
-use super::registry::registry;
+use crate::orm::model::Model;
+use crate::orm::registry::registry;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -550,8 +550,8 @@ fn json_value_to_field_value(value: serde_json::Value) -> FieldValue {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::model::Model;
-	use super::registry::{ColumnMapping, EntityMapper, registry};
+	use crate::orm::model::Model;
+	use crate::orm::registry::{ColumnMapping, EntityMapper, registry};
 	use serial_test::serial;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

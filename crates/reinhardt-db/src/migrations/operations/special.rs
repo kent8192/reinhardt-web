@@ -336,7 +336,7 @@ impl RunCode {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::FieldType;
+	use crate::migrations::FieldType;
 
 	#[test]
 	fn test_run_sql_basic() {
@@ -398,8 +398,8 @@ mod tests {
 
 	#[test]
 	fn test_state_operation_remove_model() {
-		use super::operations::FieldDefinition;
-		use super::operations::models::CreateModel;
+		use crate::migrations::operations::FieldDefinition;
+		use crate::migrations::operations::models::CreateModel;
 
 		let mut state = ProjectState::new();
 

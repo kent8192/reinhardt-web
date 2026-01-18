@@ -496,7 +496,7 @@ pub fn global_registry() -> &'static ModelRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::FieldType;
+	use crate::migrations::FieldType;
 
 	#[test]
 	fn test_model_registry_new() {

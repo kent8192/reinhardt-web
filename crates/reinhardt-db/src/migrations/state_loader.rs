@@ -245,8 +245,8 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::FieldType;
-	use super::operations::{ColumnDefinition, Operation};
+	use crate::migrations::FieldType;
+	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use chrono::Utc;
 
 	/// Helper function to create a MigrationRecord for testing

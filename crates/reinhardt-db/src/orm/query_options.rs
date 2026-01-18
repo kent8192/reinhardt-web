@@ -12,7 +12,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::loading::LoadOption;
+use crate::orm::loading::LoadOption;
 use std::collections::HashMap;
 
 /// Query execution options
@@ -309,7 +309,7 @@ impl Default for QueryOptionsBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::loading::{joinedload, selectinload};
+	use crate::orm::loading::{joinedload, selectinload};
 
 	#[test]
 	fn test_execution_options() {

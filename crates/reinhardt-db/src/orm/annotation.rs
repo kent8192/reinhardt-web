@@ -1,5 +1,5 @@
-use super::aggregation::Aggregate;
-use super::expressions::{F, Q};
+use crate::orm::aggregation::Aggregate;
+use crate::orm::expressions::{F, Q};
 use super::postgres_features::{ArrayAgg, JsonbAgg, JsonbBuildObject, StringAgg, TsRank};
 use serde::{Deserialize, Serialize};
 
@@ -346,10 +346,10 @@ mod tests {
 #[cfg(test)]
 mod annotation_extended_tests {
 	use super::*;
-	use crate::Filter;
-	use super::Model;
-	use super::expressions::Q;
-	use super::query::QuerySet;
+	use crate::orm::query::Filter;
+	use crate::orm::Model;
+	use crate::orm::expressions::Q;
+	use crate::orm::query::QuerySet;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -396,9 +396,9 @@ mod annotation_extended_tests {
 	fn test_aggregate_alias() {
 		// Django: Author.objects.alias(other_age=F("age")).aggregate(Sum("other_age"))
 		// Note: This tests error handling - cannot aggregate over alias
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -420,9 +420,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_aggregate_alias_1() {
 		// Test aggregate with different alias
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -445,9 +445,9 @@ mod annotation_extended_tests {
 	fn test_aggregate_over_annotation() {
 		// Django: Author.objects.annotate(other_age=F("age")).aggregate(Sum("other_age"))
 		// Test aggregating over an annotated field
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -476,9 +476,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_aggregate_over_annotation_1() {
 		// Test aggregate over annotated field with different aggregate function
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -500,9 +500,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_aggregate_over_full_expression_annotation() {
 		// Test aggregate over complex expression annotation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -524,9 +524,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_aggregate_over_full_expression_annotation_1() {
 		// Test aggregate over full expression with MIN
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -548,8 +548,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_after_values() {
 		// Test using alias after values() call
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["name", "age"])
@@ -571,8 +571,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_after_values_1() {
 		// Test alias after values_list()
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values_list(&["id", "name"])
@@ -595,9 +595,9 @@ mod annotation_extended_tests {
 	fn test_alias_annotate_with_aggregation() {
 		// Django: Book.objects.alias(rating_count_alias=Count("rating"))
 		//                    .annotate(rating_count=F("rating_count_alias"))
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.aggregate(Aggregate::count(Some("rating")).with_alias("rating_count_alias"))
@@ -619,9 +619,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_annotate_with_aggregation_1() {
 		// Test alias with different aggregation function
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.aggregate(Aggregate::sum("price").with_alias("total_alias"))
@@ -643,8 +643,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_annotation_expression() {
 		// Test alias with expression annotation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"expr_alias",
@@ -664,8 +664,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_annotation_expression_1() {
 		// Test alias with complex expression
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"complex",
@@ -685,8 +685,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_default_alias_expression() {
 		// Test default alias behavior
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"default_alias",
@@ -706,8 +706,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_alias_default_alias_expression_1() {
 		// Test multiple default aliases
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -784,7 +784,7 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotate_exists() {
 		// Test annotate with EXISTS subquery
-		use super::query::QuerySet;
+		use crate::orm::query::QuerySet;
 
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
@@ -812,7 +812,7 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotate_exists_1() {
 		// Test annotate with different EXISTS condition
-		use super::query::QuerySet;
+		use crate::orm::query::QuerySet;
 
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
@@ -840,9 +840,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotate_with_aggregation() {
 		// Test annotate combined with aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -864,8 +864,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotate_with_aggregation_1() {
 		// Test annotate with COUNT aggregation
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"item_count",
@@ -885,8 +885,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_aggregate_with_m2o() {
 		// Test annotation with many-to-one aggregate
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"related_count",
@@ -906,8 +906,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_aggregate_with_m2o_1() {
 		// Test annotation with different many-to-one aggregate
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"sum_related",
@@ -981,8 +981,8 @@ mod annotation_extended_tests {
 		// Django: Book.objects.values("publisher")
 		//                     .annotate(has_authors=Exists(...), max_pubdate=Max("pubdate"))
 		//                     .values_list("max_pubdate", flat=True)
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["publisher"])
@@ -1005,8 +1005,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_exists_aggregate_values_chaining_1() {
 		// Test EXISTS with aggregate chaining
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
@@ -1066,9 +1066,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_in_f_grouped_by_annotation() {
 		// Test F expression referencing annotation in GROUP BY
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1094,9 +1094,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_in_f_grouped_by_annotation_1() {
 		// Test F expression with different grouping
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1124,8 +1124,8 @@ mod annotation_extended_tests {
 		// Django: Book.objects.annotate(pub_year=ExtractYear("pubdate"))
 		//                     .values("pub_year")
 		//                     .annotate(top_rating=Subquery(...), total_pages=Sum("pages"))
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["year"])
@@ -1147,8 +1147,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_annotation_subquery_and_aggregate_values_chaining_1() {
 		// Test subquery with aggregate in values chain
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
@@ -1182,8 +1182,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_arguments_must_be_expressions() {
 		// Test that annotation arguments are expressions
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"expr",
@@ -1203,8 +1203,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_arguments_must_be_expressions_1() {
 		// Test multiple expression arguments
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1229,8 +1229,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_boolean_value_annotation() {
 		// Test annotation with boolean value
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"is_active",
@@ -1250,8 +1250,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_boolean_value_annotation_1() {
 		// Test boolean annotation with filter
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1303,8 +1303,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_column_field_ordering() {
 		// Test column field ordering in SELECT clause
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1328,8 +1328,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_column_field_ordering_1() {
 		// Test different column ordering
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1351,8 +1351,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_column_field_ordering_with_deferred() {
 		// Test column ordering with deferred fields
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.defer(&["description"])
@@ -1374,8 +1374,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_column_field_ordering_with_deferred_1() {
 		// Test deferred fields with multiple annotations
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.only(&["id", "name"])
@@ -1400,9 +1400,9 @@ mod annotation_extended_tests {
 		//             combined=ExpressionWrapper(Value(3) * Value(4), ...),
 		//             rating_count=Count("rating")
 		//         )
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1427,9 +1427,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_combined_expression_annotation_with_aggregation_1() {
 		// Test combined expression with different aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1457,9 +1457,9 @@ mod annotation_extended_tests {
 		//             combined=ExpressionWrapper(F("price") * F("pages"), ...),
 		//             rating_count=Count("rating")
 		//         )
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1484,9 +1484,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_combined_f_expression_annotation_with_aggregation_1() {
 		// Test F expression with MAX aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1512,8 +1512,8 @@ mod annotation_extended_tests {
 	fn test_distinct_on_alias() {
 		// Django: Book.objects.alias(rating_alias=F("rating") - 1).distinct("rating_alias")
 		// Note: This tests error handling - alias cannot be used in distinct()
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1535,8 +1535,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_distinct_on_alias_1() {
 		// Test distinct with different alias
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1559,8 +1559,8 @@ mod annotation_extended_tests {
 	fn test_distinct_on_with_annotation() {
 		// Django: Employee.objects.annotate(name_lower=Lower("last_name"))
 		//                         .distinct("name_lower")
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1580,8 +1580,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_distinct_on_with_annotation_1() {
 		// Test distinct with multiple annotated fields
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1607,8 +1607,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_empty_expression_annotation() {
 		// Test annotation with empty/simple expression
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"simple",
@@ -1628,8 +1628,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_empty_expression_annotation_1() {
 		// Test annotation with minimal expression
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"minimal",
@@ -1883,8 +1883,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_annotation() {
 		// Test full expression as annotation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"full_expr",
@@ -1904,8 +1904,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_annotation_1() {
 		// Test complex full expression
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1931,9 +1931,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_annotation_with_aggregation() {
 		// Test full expression annotation combined with aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1958,9 +1958,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_annotation_with_aggregation_1() {
 		// Test full expression with COUNT aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1985,8 +1985,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_wrapped_annotation() {
 		// Test wrapped expression annotation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"wrapped",
@@ -2006,8 +2006,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_full_expression_wrapped_annotation_1() {
 		// Test complex wrapped expression
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"wrapped_expr",
@@ -2027,9 +2027,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_grouping_by_q_expression_annotation() {
 		// Test grouping by Q expression annotation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2055,9 +2055,9 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_grouping_by_q_expression_annotation_1() {
 		// Test different Q expression grouping
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2083,8 +2083,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_alias_annotation() {
 		// Test annotation with joined relation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"related_field",
@@ -2104,8 +2104,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_alias_annotation_1() {
 		// Test different joined annotation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"parent_value",
@@ -2125,8 +2125,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_annotation() {
 		// Test simple joined annotation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"fk_field",
@@ -2146,8 +2146,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_annotation_1() {
 		// Test joined annotation with different relation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"related_data",
@@ -2167,8 +2167,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_transformed_annotation() {
 		// Test joined annotation with transformation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"transformed",
@@ -2188,8 +2188,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_joined_transformed_annotation_1() {
 		// Test different joined transformation
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"converted",
@@ -2209,8 +2209,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_aggregate() {
 		// Test ordering by aggregate
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["category"])
@@ -2233,8 +2233,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_aggregate_1() {
 		// Test ordering by different aggregate
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["type"])
@@ -2257,8 +2257,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_alias() {
 		// Django: Author.objects.alias(other_age=F("age")).order_by("other_age")
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2280,8 +2280,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_alias_1() {
 		// Test order by different alias
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2305,8 +2305,8 @@ mod annotation_extended_tests {
 		// Django: Author.objects.values("age")
 		//                       .alias(age_count=Count("age"))
 		//                       .order_by("age_count", "age")
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.values(&["age"])
@@ -2329,8 +2329,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_alias_aggregate_1() {
 		// Test order by aggregate with different ordering
-		use super::aggregation::Aggregate;
-		use super::query::QuerySet;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2352,8 +2352,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_annotation() {
 		// Django: Author.objects.annotate(other_age=F("age")).order_by("other_age")
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2375,8 +2375,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_order_by_annotation_1() {
 		// Test order by multiple annotations
-		use super::expressions::F;
-		use super::query::QuerySet;
+		use crate::orm::expressions::F;
+		use crate::orm::query::QuerySet;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2402,8 +2402,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_q_expression_annotation_with_aggregation() {
 		// Test Q expression annotation with aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2428,8 +2428,8 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_q_expression_annotation_with_aggregation_1() {
 		// Test Q expression with different aggregation
-		use super::aggregation::Aggregate;
-		use super::expressions::F;
+		use crate::orm::aggregation::Aggregate;
+		use crate::orm::expressions::F;
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -2454,7 +2454,7 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_raw_sql_with_inherited_field() {
 		// Test raw SQL annotation with inherited field
-		use super::expressions::F;
+		use crate::orm::expressions::F;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"raw_field",
@@ -2474,7 +2474,7 @@ mod annotation_extended_tests {
 	// From: Django/annotations
 	fn test_raw_sql_with_inherited_field_1() {
 		// Test raw SQL with different inherited field
-		use super::expressions::F;
+		use crate::orm::expressions::F;
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"parent_field",

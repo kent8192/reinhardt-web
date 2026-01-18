@@ -3,7 +3,7 @@
 use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType};
 use super::traits::{Comparable, Date, DateTime, NumericType};
-use super::super::Model;
+use crate::orm::Model;
 use std::marker::PhantomData;
 
 /// Represents a field with its type information
@@ -583,7 +583,7 @@ impl<M: Model, T> Field<M, Option<T>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::super::Model;
+	use crate::orm::Model;
 	use reinhardt_core::validators::TableName;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

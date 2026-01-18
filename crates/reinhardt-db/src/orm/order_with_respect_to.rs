@@ -3,7 +3,7 @@
 //! Django's order_with_respect_to allows automatic ordering of model instances
 //! relative to a parent model or set of fields.
 
-use super::query_types::DbBackend;
+use crate::orm::query_types::DbBackend;
 use sea_query::{
 	Alias, Expr, ExprTrait, Func, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
 	SqliteQueryBuilder,

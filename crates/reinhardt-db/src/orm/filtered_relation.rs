@@ -30,7 +30,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use super::query_fields::{LookupType, LookupValue};
+use crate::orm::query_fields::{LookupType, LookupValue};
 use std::collections::HashMap;
 
 /// A single filter condition for a filtered relation

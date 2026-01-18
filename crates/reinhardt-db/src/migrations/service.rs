@@ -231,7 +231,7 @@ impl MigrationService {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::MigrationSource;
+	use crate::migrations::source::MigrationSource;
 	use async_trait::async_trait;
 	use std::collections::HashMap;
 	use tokio::sync::Mutex;

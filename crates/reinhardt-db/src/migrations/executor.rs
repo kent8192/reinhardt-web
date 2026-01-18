@@ -2,6 +2,9 @@
 //!
 //! Translated from Django's db/migrations/executor.py
 
+// Allow unused_imports: ForeignKeyAction is used in database-specific code
+// that may be conditionally compiled based on feature flags
+#[allow(unused_imports)]
 use super::{
 	DatabaseMigrationRecorder, ForeignKeyAction, Migration, MigrationError, MigrationPlan,
 	MigrationService, Operation, Result, SchemaEditor, operations::SqlDialect,
@@ -1418,7 +1421,7 @@ impl Default for OperationOptimizer {
 #[cfg(test)]
 mod optimizer_tests {
 	use super::*;
-	use super::{ColumnDefinition, FieldType};
+	use crate::migrations::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_optimizer_creation() {

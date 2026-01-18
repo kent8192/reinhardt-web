@@ -39,7 +39,7 @@
 //! auto-completion support, as all relationship information is determined
 //! at compile time. No string literals are required.
 
-use super::Model;
+use crate::orm::Model;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use sea_query::{
 	Alias, Asterisk, BinOper, Expr, ExprTrait, Func, MysqlQueryBuilder, PostgresQueryBuilder,

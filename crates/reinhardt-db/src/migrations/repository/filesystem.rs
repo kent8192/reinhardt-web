@@ -315,8 +315,8 @@ impl MigrationRepository for FilesystemRepository {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::fields::FieldType;
-	use super::operations::{ColumnDefinition, Operation};
+	use crate::migrations::fields::FieldType;
+	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use serial_test::serial;
 	use tempfile::TempDir;
 

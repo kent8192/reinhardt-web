@@ -443,8 +443,8 @@ impl MigrationOperation for RenameField {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::FieldType;
-	use super::operations::models::CreateModel;
+	use crate::migrations::FieldType;
+	use crate::migrations::operations::models::CreateModel;
 
 	#[test]
 	fn test_add_field_state_forwards() {

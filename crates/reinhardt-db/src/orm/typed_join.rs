@@ -3,8 +3,8 @@
 //! This module provides compile-time type safety for JOIN operations
 //! by leveraging the existing Field<M, T> type system.
 
-use super::Model;
-use super::query_fields::Field;
+use crate::orm::Model;
+use crate::orm::query_fields::Field;
 use super::sqlalchemy_query::JoinType;
 use std::marker::PhantomData;
 

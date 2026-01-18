@@ -1049,7 +1049,7 @@ impl MigrationOperation for MoveModel {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::super::FieldType;
+	use crate::migrations::FieldType;
 
 	#[test]
 	fn test_field_definition_to_sql() {

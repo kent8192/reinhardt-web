@@ -3,7 +3,7 @@
 //! This module provides introspection capabilities for examining model metadata,
 //! field definitions, relationships, indexes, and constraints at runtime.
 
-use super::Model;
+use crate::orm::Model;
 use super::constraints::{CheckConstraint, Constraint, ForeignKeyConstraint, UniqueConstraint};
 use super::fields::{Field, FieldKwarg};
 use super::indexes::Index;
@@ -1114,7 +1114,7 @@ impl FieldInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::fields::{
+	use crate::orm::fields::{
 		AutoField, BooleanField, CharField, DecimalField, EmailField, IntegerField,
 	};
 

@@ -4,10 +4,10 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
-use super::query_fields::GroupByFields;
-use super::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
-use super::query_fields::comparison::FieldComparison;
-use super::query_fields::compiler::QueryFieldCompiler;
+use crate::orm::query_fields::GroupByFields;
+use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
+use crate::orm::query_fields::comparison::FieldComparison;
+use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use sea_query::{
 	Alias, Asterisk, ColumnName, Condition, Expr, ExprTrait, JoinType as SeaJoinType, Order,
 	PostgresQueryBuilder, Query as SeaQuery, SelectStatement, TableName,
@@ -2673,7 +2673,7 @@ where
 	/// multiply/divide/etc. methods. SQL injection risk is low since F() only
 	/// accepts field names.
 	fn expression_to_seaquery(expr: &super::annotation::Expression) -> Expr {
-		use super::annotation::Expression;
+		use crate::orm::annotation::Expression;
 
 		match expr {
 			Expression::Add(left, right) => {
@@ -5473,8 +5473,8 @@ fn parse_column_reference(field: &str) -> sea_query::ColumnRef {
 
 #[cfg(test)]
 mod tests {
-	use super::query::UpdateValue;
-	use crate::{Filter, FilterOperator, FilterValue, Model, QuerySet};
+	use crate::orm::query::UpdateValue;
+	use crate::orm::{query::Filter, FilterOperator, FilterValue, Model, QuerySet};
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -5977,7 +5977,7 @@ mod tests {
 
 	// ==================== FilterCondition tests ====================
 
-	use crate::FilterCondition;
+	use crate::orm::filtered_relation::FilterCondition;
 
 	#[test]
 	fn test_filter_condition_single() {

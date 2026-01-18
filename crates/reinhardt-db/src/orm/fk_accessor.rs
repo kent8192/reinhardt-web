@@ -36,7 +36,7 @@
 //! - **Compile-time checks**: Invalid relationships cause compilation errors
 //! - **Consistent pattern**: Follows the same pattern as ManyToMany accessors
 
-use super::Model;
+use crate::orm::Model;
 use super::connection::DatabaseConnection;
 use super::reverse_accessor::ReverseAccessor;
 use serde::{Serialize, de::DeserializeOwned};

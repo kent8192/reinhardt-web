@@ -9,7 +9,7 @@
 //! - `set()` - Replace all relationships
 
 use super::Manager;
-use super::Model;
+use crate::orm::Model;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
 use sea_query::{

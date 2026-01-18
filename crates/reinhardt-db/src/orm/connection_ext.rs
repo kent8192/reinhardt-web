@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use sea_query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement};
 
-use super::query_types::{DbBackend, QueryStatement};
+use crate::orm::query_types::{DbBackend, QueryStatement};
 
 /// Universal row type supporting multiple database backends
 ///

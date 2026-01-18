@@ -426,7 +426,7 @@ fn mask_password_in_url(url: &str) -> String {
 mod tests {
 	use super::*;
 	use super::super::super::fields::FieldType;
-	use super::super::introspection::{ColumnInfo, TableInfo, UniqueConstraintInfo};
+	use crate::migrations::introspection::{ColumnInfo, TableInfo, UniqueConstraintInfo};
 	use std::collections::HashMap;
 
 	fn create_test_table() -> TableInfo {
