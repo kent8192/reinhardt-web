@@ -1,0 +1,21 @@
+[package]
+name = "reinhardt-pages-ast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "AST definitions for reinhardt-pages macro DSLs (shared between proc-macros and formatters)"
+repository.workspace = true
+keywords = ["ast", "parser", "wasm"]
+categories = ["parser-implementations", "wasm"]
+
+[dependencies]
+# Parsing and AST manipulation
+syn = { version = "2.0", features = ["full", "extra-traits", "visit-mut"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+# Diagnostic and error handling
+darling = "0.20"
+
+# Case conversion for identifiers
+convert_case = "0.6"

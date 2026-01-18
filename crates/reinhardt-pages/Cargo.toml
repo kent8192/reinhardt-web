@@ -68,7 +68,7 @@ aquamarine = "0.5"
 # Reactive system
 
 # AST definitions
-reinhardt-pages-ast = { path = "crates/ast" }
+reinhardt-pages-ast = { workspace = true }
 
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
