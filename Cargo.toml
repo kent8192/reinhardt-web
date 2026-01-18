@@ -278,26 +278,28 @@ members = [
   "crates/reinhardt-conf",
   "crates/reinhardt-conf/crates/settings-cli",
   "crates/reinhardt-core",
-  "crates/reinhardt-core/crates/macros",
+  "crates/reinhardt-core/macros",
   "crates/reinhardt-di",
+  "crates/reinhardt-di/macros",
   "crates/reinhardt-http",
   "crates/reinhardt-server",
   "crates/reinhardt-views",
   "crates/reinhardt-urls",
-  "crates/reinhardt-urls/crates/routers-macros",
+  "crates/reinhardt-urls/routers-macros",
   "crates/reinhardt-middleware",
   "crates/reinhardt-pages",                             # WASM frontend framework
-  "crates/reinhardt-pages/crates/macros",              # WASM frontend macros
+  "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
   "crates/reinhardt-rest",
-  "crates/reinhardt-rest/crates/openapi-macros",
+  "crates/reinhardt-rest/openapi-macros",
   "crates/reinhardt-auth",
   "crates/reinhardt-admin",                            # Admin panel functionality
   "crates/reinhardt-admin-cli",                        # Admin CLI tool
   "crates/reinhardt-grpc",
+  "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
   "crates/reinhardt-db",
   "crates/reinhardt-dispatch",
@@ -306,6 +308,7 @@ members = [
   "crates/reinhardt-i18n",
   "crates/reinhardt-mail",
   "crates/reinhardt-graphql",
+  "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
   # Integration tests
@@ -369,7 +372,7 @@ reinhardt-views = { path = "crates/reinhardt-views", version = "0.1.0-alpha.1" }
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.1.0-alpha.1" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-alpha.1" }
 reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.1" }
-reinhardt-pages-macros = { path = "crates/reinhardt-pages/crates/macros", version = "0.1.0-alpha.1" }
+reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.1" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.1" }
 reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.1" }
@@ -380,8 +383,8 @@ reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.0-alpha.1" }
 reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.0-alpha.1" }
 reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.1" }
 reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.1" }
-reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/crates/macros", version = "0.1.0-alpha.1" }
-reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/crates/macros", version = "0.1.0-alpha.1" }
+reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.0-alpha.1" }
+reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.1" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.1" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
@@ -395,12 +398,12 @@ reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.1" }
 
 # Core subcrates
-reinhardt-macros = { path = "crates/reinhardt-core/crates/macros", version = "0.1.0-alpha.1" }
+reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.1" }
 
 # Database subcrates
 
 # DI subcrates
-reinhardt-di-macros = { path = "crates/reinhardt-di/crates/macros", version = "0.1.0-alpha.1" }
+reinhardt-di-macros = { path = "crates/reinhardt-di/macros", version = "0.1.0-alpha.1" }
 
 # Server subcrates
 
@@ -411,10 +414,10 @@ reinhardt-di-macros = { path = "crates/reinhardt-di/crates/macros", version = "0
 # Auth subcrates
 
 # REST subcrates
-reinhardt-openapi-macros = { path = "crates/reinhardt-rest/crates/openapi-macros", version = "0.1.0-alpha.1" }
+reinhardt-openapi-macros = { path = "crates/reinhardt-rest/openapi-macros", version = "0.1.0-alpha.1" }
 
 # REST subcrates (continued)
-reinhardt-routers-macros = { path = "crates/reinhardt-urls/crates/routers-macros", version = "0.1.0-alpha.1" }
+reinhardt-routers-macros = { path = "crates/reinhardt-urls/routers-macros", version = "0.1.0-alpha.1" }
 
 # URL subcrates
 
