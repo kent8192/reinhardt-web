@@ -13,7 +13,7 @@
 //!
 //! ```rust,ignore
 //! use reinhardt_pages::testing::e2e::{E2ETestEnv, E2ETestConfig};
-//! use reinhardt_routers::ServerRouter;
+//! use reinhardt_urls::routers::ServerRouter;
 //!
 //! #[tokio::test]
 //! async fn test_e2e_flow() {
@@ -140,7 +140,7 @@ impl E2ETestEnv {
 	///
 	/// An E2ETestEnv with a running server
 	pub async fn new(
-		router: reinhardt_routers::ServerRouter,
+		router: reinhardt_urls::routers::ServerRouter,
 		config: E2ETestConfig,
 	) -> Result<Self, E2ETestError> {
 		// Bind to specified port (0 = random)
@@ -204,8 +204,8 @@ impl E2ETestEnv {
 
 	/// Add CORS middleware to the router for browser-based tests
 	fn add_cors_middleware(
-		router: reinhardt_routers::ServerRouter,
-	) -> reinhardt_routers::ServerRouter {
+		router: reinhardt_urls::routers::ServerRouter,
+	) -> reinhardt_urls::routers::ServerRouter {
 		// CORS is typically handled by middleware, but for simplicity
 		// we return the router as-is. Users should add CORS middleware
 		// to their router if needed.

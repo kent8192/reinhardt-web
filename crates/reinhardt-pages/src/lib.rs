@@ -134,6 +134,8 @@
 
 #![warn(missing_docs)]
 
+pub mod ast;
+
 // Core modules
 pub mod builder;
 pub mod callback;

@@ -13,7 +13,7 @@
 
 use reinhardt_pages::component::{Head, IntoPage, LinkTag, Page, ScriptTag};
 use reinhardt_pages::ssr::SsrRenderer;
-use reinhardt_static::TemplateStaticConfig;
+use reinhardt_utils::r#static::TemplateStaticConfig;
 use std::collections::HashMap;
 
 // ============================================================================

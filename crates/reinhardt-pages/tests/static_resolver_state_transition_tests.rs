@@ -7,7 +7,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod state_transition_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, is_initialized, resolve_static};
-	use reinhardt_static::TemplateStaticConfig;
+	use reinhardt_utils::r#static::TemplateStaticConfig;
 	use rstest::rstest;
 	use serial_test::serial;
 

@@ -93,7 +93,7 @@
 //! Signals will keep those Signals alive - be mindful of circular dependencies.
 
 // Re-export core reactive primitives from reinhardt-reactive
-pub use reinhardt_reactive::{
+pub use reinhardt_core::reactive::{
 	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
 	context, create_context, effect, get_context, memo, provide_context, remove_context, runtime,
 	signal, with_runtime,

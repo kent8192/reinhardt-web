@@ -21,7 +21,7 @@ use super::ServerFnError;
 use super::registration::ServerFnRegistration;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Request, Response};
-use reinhardt_routers::ServerRouter;
+use reinhardt_urls::routers::ServerRouter;
 use std::future::Future;
 use std::pin::Pin;
 

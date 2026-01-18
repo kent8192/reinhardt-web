@@ -18,6 +18,7 @@ urls = []
 debug-hooks = []
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
+ast = []
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
 web-sys-full = [
@@ -63,10 +64,11 @@ web-sys-full = [
 aquamarine = "0.5"
 
 # Core types (Page, PageElement, Head, etc.)
-reinhardt-types = { workspace = true, features = ["page"] }
 
 # Reactive system
-reinhardt-reactive = { workspace = true }
+
+# AST definitions
+reinhardt-pages-ast = { path = "crates/ast" }
 
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
@@ -134,6 +136,10 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
+reinhardt-core = {workspace = true, features = ["reactive", "page"]}
+syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
+quote = "1.0"
+proc-macro2 = "1.0"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.56"
 gloo-net = "0.6"
@@ -144,10 +150,9 @@ reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
-reinhardt-urls = { workspace = true }
-reinhardt-routers = { workspace = true }
+reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-server = { workspace = true }
-reinhardt-static = { workspace = true }
+reinhardt-utils = { workspace = true, features = ["static"] }
 hyper = { workspace = true }
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4"] }

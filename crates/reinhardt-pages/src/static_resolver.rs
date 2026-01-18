@@ -14,7 +14,7 @@
 //!
 //! ```ignore
 //! use reinhardt_pages::static_resolver::init_static_resolver;
-//! use reinhardt_static::TemplateStaticConfig;
+//! use reinhardt_utils::r#static::TemplateStaticConfig;
 //!
 //! // Initialize with basic configuration
 //! init_static_resolver(TemplateStaticConfig::new("/static/".to_string()));
@@ -186,7 +186,7 @@
 use std::sync::OnceLock;
 
 #[cfg(not(target_arch = "wasm32"))]
-use reinhardt_static::TemplateStaticConfig;
+use reinhardt_utils::r#static::TemplateStaticConfig;
 
 /// Global static configuration storage.
 ///
@@ -211,7 +211,7 @@ static STATIC_URL_PREFIX: OnceLock<String> = OnceLock::new();
 ///
 /// ```ignore
 /// use reinhardt_pages::static_resolver::init_static_resolver;
-/// use reinhardt_static::TemplateStaticConfig;
+/// use reinhardt_utils::r#static::TemplateStaticConfig;
 ///
 /// // Basic initialization
 /// init_static_resolver(TemplateStaticConfig::new("/static/".to_string()));

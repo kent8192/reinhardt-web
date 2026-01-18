@@ -10,7 +10,7 @@ use crate::reactive::effect::Effect;
 #[cfg(target_arch = "wasm32")]
 use crate::reactive::runtime::EffectTiming;
 #[cfg(target_arch = "wasm32")]
-use reinhardt_types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
@@ -360,4 +360,4 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 	nodes
 }
 
-// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_types::page
+// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page

@@ -7,7 +7,7 @@ mod property_tests {
 	use proptest::prelude::*;
 	use proptest::proptest;
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_static::TemplateStaticConfig;
+	use reinhardt_utils::r#static::TemplateStaticConfig;
 
 	proptest! {
 		/// Property: resolve_static is idempotent on result (calling it again returns same result)

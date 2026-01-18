@@ -4,18 +4,18 @@
 //! WASM-specific extensions for DOM mounting.
 
 // Re-export core types from reinhardt-types
-pub use reinhardt_types::page::{
+pub use reinhardt_core::types::page::{
 	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
 	ReactiveIf, ScriptTag, StyleTag,
 };
 
 // DummyEvent is only available on non-WASM targets
 #[cfg(not(target_arch = "wasm32"))]
-pub use reinhardt_types::page::DummyEvent;
+pub use reinhardt_core::types::page::DummyEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(target_arch = "wasm32")]
-pub use reinhardt_types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 #[cfg(target_arch = "wasm32")]
 use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};

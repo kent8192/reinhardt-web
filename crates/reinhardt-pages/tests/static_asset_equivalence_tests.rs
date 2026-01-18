@@ -6,7 +6,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod equivalence_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_static::TemplateStaticConfig;
+	use reinhardt_utils::r#static::TemplateStaticConfig;
 	use rstest::rstest;
 
 	/// Test file extension equivalence classes

@@ -97,7 +97,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use reinhardt_pages_ast::PageMacro;
+//! use reinhardt_pages::ast::PageMacro;
 //! use syn::parse2;
 //! use quote::quote;
 //!

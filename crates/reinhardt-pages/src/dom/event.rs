@@ -29,4 +29,4 @@
 //! ```
 
 // Re-export EventType from reinhardt-types
-pub use reinhardt_types::page::EventType;
+pub use reinhardt_core::types::page::EventType;

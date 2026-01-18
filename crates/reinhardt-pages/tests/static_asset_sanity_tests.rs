@@ -6,7 +6,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod sanity_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, is_initialized, resolve_static};
-	use reinhardt_static::TemplateStaticConfig;
+	use reinhardt_utils::r#static::TemplateStaticConfig;
 	use rstest::rstest;
 
 	/// Test that resolve_static returns a non-empty string
