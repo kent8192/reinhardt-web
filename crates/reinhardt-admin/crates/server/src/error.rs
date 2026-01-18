@@ -2,7 +2,7 @@
 //!
 //! This module provides error conversion from AdminError to ServerFnError.
 
-use reinhardt_admin_types::AdminError;
+use reinhardt_admin::types::AdminError;
 use reinhardt_pages::server_fn::ServerFnError;
 
 /// Extension trait for converting AdminError to ServerFnError

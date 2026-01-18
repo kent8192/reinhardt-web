@@ -1,6 +1,6 @@
 //! WASM entry point for Reinhardt Admin Panel
 
-use reinhardt_admin_pages::router;
+use reinhardt_admin::pages::router;
 use reinhardt_pages::Effect;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;

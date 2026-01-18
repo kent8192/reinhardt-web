@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_core::AdminSite;
+/// use reinhardt_admin::core::AdminSite;
 ///
 /// let admin = AdminSite::new("My Application");
 /// assert_eq!(admin.name(), "My Application");
@@ -81,7 +81,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("E-commerce Admin");
 	/// ```
@@ -100,7 +100,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("My Admin");
 	/// assert_eq!(admin.name(), "My Admin");
@@ -114,7 +114,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let mut admin = AdminSite::new("Admin");
 	/// admin.set_url_prefix("/manage");
@@ -134,7 +134,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// admin.set_favicon(vec![0x89, 0x50, 0x4E, 0x47]); // PNG magic bytes
@@ -156,8 +156,8 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
-	/// use reinhardt_admin_core::site::AdminSiteConfig;
+	/// use reinhardt_admin::core::AdminSite;
+	/// use reinhardt_admin::core::site::AdminSiteConfig;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// admin.configure(|config| {
@@ -183,7 +183,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_admin_core::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
 	///
 	/// let admin = AdminSite::new("Admin");
 	///
@@ -209,7 +209,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// // ... register User ...
@@ -227,7 +227,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// assert!(!admin.is_registered("User"));
@@ -241,7 +241,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// // ... register User ...
@@ -259,7 +259,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// assert_eq!(admin.registered_models().len(), 0);
@@ -276,7 +276,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// assert_eq!(admin.model_count(), 0);
@@ -290,7 +290,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin_core::AdminSite;
+	/// use reinhardt_admin::core::AdminSite;
 	///
 	/// let admin = AdminSite::new("Admin");
 	/// admin.clear();
@@ -317,7 +317,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_admin_core::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
 	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -342,7 +342,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_admin_core::{AdminSite, ModelAdminConfig};
+	/// use reinhardt_admin::core::{AdminSite, ModelAdminConfig};
 	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -369,7 +369,7 @@ impl AdminSite {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_admin_core::{AdminSite, AdminDatabase};
+	/// use reinhardt_admin::core::{AdminSite, AdminDatabase};
 	/// use reinhardt_di::SingletonScope;
 	/// use reinhardt_db::orm::DatabaseConnection;
 	/// use std::sync::Arc;

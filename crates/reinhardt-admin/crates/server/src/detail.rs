@@ -2,7 +2,7 @@
 //!
 //! Provides detail view operations for admin models.
 
-use reinhardt_admin_adapters::{AdminDatabase, AdminRecord, AdminSite, DetailResponse};
+use reinhardt_admin::adapters::{AdminDatabase, AdminRecord, AdminSite, DetailResponse};
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
@@ -22,7 +22,7 @@ use super::error::MapServerFnError;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::get_detail;
+/// use reinhardt_admin::server::get_detail;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = get_detail("User".to_string(), "42".to_string()).await?;

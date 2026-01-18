@@ -2,10 +2,10 @@
 //!
 //! Provides delete operations for admin models (single and bulk).
 
-use reinhardt_admin_adapters::{
+use reinhardt_admin::adapters::{
 	AdminDatabase, AdminRecord, AdminSite, BulkDeleteRequest, BulkDeleteResponse,
 };
-use reinhardt_admin_types::MutationResponse;
+use reinhardt_admin::types::MutationResponse;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ use super::error::MapServerFnError;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::delete_record;
+/// use reinhardt_admin::server::delete_record;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = delete_record("User".to_string(), "42".to_string()).await?;
@@ -68,8 +68,8 @@ pub async fn delete_record(
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::bulk_delete_records;
-/// use reinhardt_admin_types::BulkDeleteRequest;
+/// use reinhardt_admin::server::bulk_delete_records;
+/// use reinhardt_admin::types::BulkDeleteRequest;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let request = BulkDeleteRequest {

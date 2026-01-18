@@ -19,8 +19,8 @@
 // Test module - only compile in test configuration
 #![cfg(all(test, feature = "admin"))]
 
-use reinhardt_admin_core::database::AdminRecord;
-use reinhardt_admin_core::{AdminDatabase, AdminError};
+use reinhardt_admin::core::database::AdminRecord;
+use reinhardt_admin::core::{AdminDatabase, AdminError};
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 use reinhardt_test::fixtures::admin_panel::admin_database;
 use reinhardt_test::fixtures::{ColumnDefinition, FieldType, Operation, admin_table_creator};

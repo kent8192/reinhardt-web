@@ -2,7 +2,7 @@
 //!
 //! Provides list view operations for admin models.
 
-use reinhardt_admin_adapters::{
+use reinhardt_admin::adapters::{
 	AdminDatabase, AdminRecord, AdminSite, ColumnInfo, FilterInfo, FilterType, ListQueryParams,
 	ListResponse, ModelAdmin,
 };
@@ -16,7 +16,7 @@ use super::error::MapServerFnError;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::type_inference::{get_field_metadata, infer_admin_field_type, infer_filter_type};
 #[cfg(not(target_arch = "wasm32"))]
-use reinhardt_utils_core::text::humanize_field_name;
+use reinhardt_utils::utils_core::text::humanize_field_name;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn build_filters(model_admin: &Arc<dyn ModelAdmin>) -> Vec<FilterInfo> {
@@ -70,8 +70,8 @@ fn build_columns(model_admin: &Arc<dyn ModelAdmin>) -> Vec<ColumnInfo> {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::get_list;
-/// use reinhardt_admin_types::ListQueryParams;
+/// use reinhardt_admin::server::get_list;
+/// use reinhardt_admin::types::ListQueryParams;
 /// use std::collections::HashMap;
 ///
 /// // Client-side usage (automatically generates HTTP request)

@@ -2,7 +2,7 @@
 //!
 //! Provides import operations for admin models from various formats (JSON, CSV, TSV).
 
-use reinhardt_admin_adapters::{
+use reinhardt_admin::adapters::{
 	AdminDatabase, AdminRecord, AdminSite, ImportFormat, ImportResponse,
 };
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -26,8 +26,8 @@ use super::error::MapServerFnError;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::import_data;
-/// use reinhardt_admin_types::ImportFormat;
+/// use reinhardt_admin::server::import_data;
+/// use reinhardt_admin::types::ImportFormat;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let file_data = vec![/* binary data */];

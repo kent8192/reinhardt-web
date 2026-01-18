@@ -10,20 +10,20 @@
 
 // Server-side: Use actual implementations
 #[cfg(not(target_arch = "wasm32"))]
-pub use reinhardt_admin_core::{
+pub use reinhardt_admin::core::{
 	AdminDatabase, AdminRecord, AdminSite, ExportFormat, ImportBuilder, ImportError, ImportFormat,
 	ImportResult, ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder,
 };
 
 // WASM: Use stub types
 #[cfg(target_arch = "wasm32")]
-pub use reinhardt_admin_types::{
+pub use reinhardt_admin::types::{
 	AdminDatabase, AdminRecord, AdminSite, ExportFormat, ImportBuilder, ImportError, ImportFormat,
 	ImportResult, ModelAdmin,
 };
 
 // Re-export shared types (DTOs) that are always from reinhardt-admin-types
-pub use reinhardt_admin_types::{
+pub use reinhardt_admin::types::{
 	AdminError, BulkDeleteRequest, BulkDeleteResponse, ColumnInfo, DashboardResponse,
 	DetailResponse, ExportFormat as ExportFormatRequest, ExportResponse, FieldInfo, FieldType,
 	FieldsResponse, FilterChoice, FilterInfo, FilterType, ImportResponse, ListQueryParams,

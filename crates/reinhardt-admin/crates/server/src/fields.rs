@@ -2,8 +2,8 @@
 //!
 //! Provides field information for dynamic form generation.
 
-use reinhardt_admin_adapters::{AdminDatabase, AdminRecord, AdminSite, FieldInfo, FieldType};
-use reinhardt_admin_types::FieldsResponse;
+use reinhardt_admin::adapters::{AdminDatabase, AdminRecord, AdminSite, FieldInfo, FieldType};
+use reinhardt_admin::types::FieldsResponse;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use super::error::MapServerFnError;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::type_inference::{get_field_metadata, infer_admin_field_type, infer_required};
 #[cfg(not(target_arch = "wasm32"))]
-use reinhardt_utils_core::text::humanize_field_name;
+use reinhardt_utils::utils_core::text::humanize_field_name;
 
 /// Get field definitions for dynamic form generation
 ///
@@ -27,7 +27,7 @@ use reinhardt_utils_core::text::humanize_field_name;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::get_fields;
+/// use reinhardt_admin::server::get_fields;
 ///
 /// // Client-side usage for create form
 /// let response = get_fields("User".to_string(), None).await?;

@@ -122,7 +122,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 	]);
 
 	let create_result = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, create_data.clone())
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, create_data.clone())
 		.await;
 
 	assert!(create_result.is_ok(), "Create should succeed");
@@ -130,7 +130,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 
 	// 2. READ: Verify the record was created
 	let read_result = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			&record_id.to_string(),
@@ -153,7 +153,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 	let update_data = HashMap::from([("status".to_string(), json!("inactive"))]);
 
 	let update_result = db
-		.update::<reinhardt_admin_core::database::AdminRecord>(
+		.update::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			&record_id.to_string(),
@@ -167,7 +167,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 
 	// 4. READ after UPDATE: Verify the update
 	let read_after_update = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			&record_id.to_string(),
@@ -194,7 +194,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 
 	// 5. DELETE: Remove the record
 	let delete_result = db
-		.delete::<reinhardt_admin_core::database::AdminRecord>(
+		.delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			&record_id.to_string(),
@@ -207,7 +207,7 @@ async fn test_crud_lifecycle_state_transitions(#[future] admin_table_creator: Ad
 
 	// 6. READ after DELETE: Verify deletion
 	let read_after_delete = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			&record_id.to_string(),
@@ -243,7 +243,7 @@ async fn test_multiple_sequential_updates(#[future] admin_table_creator: AdminTa
 	let create_data = HashMap::from([("name".to_string(), json!("Sequential Updates Test"))]);
 
 	let record_id = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, create_data)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, create_data)
 		.await
 		.expect("Create should succeed");
 
@@ -257,7 +257,7 @@ async fn test_multiple_sequential_updates(#[future] admin_table_creator: AdminTa
 
 	for (i, update_data) in updates.into_iter().enumerate() {
 		let update_result = db
-			.update::<reinhardt_admin_core::database::AdminRecord>(
+			.update::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				pk_field,
 				&record_id.to_string(),
@@ -269,7 +269,7 @@ async fn test_multiple_sequential_updates(#[future] admin_table_creator: AdminTa
 
 		// Verify the update took effect
 		let read_result = db
-			.get::<reinhardt_admin_core::database::AdminRecord>(
+			.get::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				pk_field,
 				&record_id.to_string(),
@@ -297,7 +297,7 @@ async fn test_multiple_sequential_updates(#[future] admin_table_creator: AdminTa
 	}
 
 	// Clean up
-	db.delete::<reinhardt_admin_core::database::AdminRecord>(
+	db.delete::<reinhardt_admin::core::database::AdminRecord>(
 		table_name,
 		pk_field,
 		&record_id.to_string(),
@@ -324,20 +324,20 @@ async fn test_interleaved_create_update_operations(
 	// Create first record
 	let data1 = HashMap::from([("name".to_string(), json!("Record 1"))]);
 	let id1 = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, data1)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, data1)
 		.await
 		.expect("First create should succeed");
 
 	// Create second record
 	let data2 = HashMap::from([("name".to_string(), json!("Record 2"))]);
 	let id2 = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, data2)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, data2)
 		.await
 		.expect("Second create should succeed");
 
 	// Update first record
 	let update_data = HashMap::from([("status".to_string(), json!("updated"))]);
-	db.update::<reinhardt_admin_core::database::AdminRecord>(
+	db.update::<reinhardt_admin::core::database::AdminRecord>(
 		table_name,
 		"id",
 		&id1.to_string(),
@@ -348,7 +348,7 @@ async fn test_interleaved_create_update_operations(
 
 	// Verify both records exist with correct states
 	let list_result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], 0, 10)
 		.await
 		.expect("List should succeed");
 
@@ -356,7 +356,7 @@ async fn test_interleaved_create_update_operations(
 
 	// Clean up
 	for id in &[id1, id2] {
-		db.delete::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", &id.to_string())
+		db.delete::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", &id.to_string())
 			.await
 			.expect("Delete should succeed");
 	}
@@ -394,7 +394,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 	let mut created_ids = Vec::new();
 	for record_data in records {
 		let id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, record_data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, record_data)
 			.await
 			.expect("Create should succeed");
 		created_ids.push(id);
@@ -409,7 +409,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 
 	// First, count active records
 	let active_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(
+		.count::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![active_filter.clone()],
 		)
@@ -422,7 +422,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 	// Note: AdminDatabase.update doesn't support filters directly, so we'll
 	// list then update individually for this test
 	let active_records = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![active_filter], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![active_filter], 0, 10)
 		.await
 		.expect("List should succeed");
 
@@ -434,7 +434,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 				serde_json::Value::String(s) => s.clone(),
 				_ => continue,
 			};
-			db.update::<reinhardt_admin_core::database::AdminRecord>(
+			db.update::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				"id",
 				&id_str,
@@ -453,7 +453,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 	};
 
 	let active_count_after = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![active_filter_after])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![active_filter_after])
 		.await
 		.expect("Count should succeed");
 
@@ -470,7 +470,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 	};
 
 	let archived_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![archived_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![archived_filter])
 		.await
 		.expect("Count should succeed");
 
@@ -481,7 +481,7 @@ async fn test_filter_based_state_transitions(#[future] admin_table_creator: Admi
 
 	// Clean up
 	for id in created_ids {
-		db.delete::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", &id.to_string())
+		db.delete::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", &id.to_string())
 			.await
 			.expect("Delete should succeed");
 	}
@@ -509,7 +509,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 		]);
 
 		let id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, data)
 			.await
 			.expect("Create should succeed");
 		created_ids.push(id);
@@ -524,7 +524,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 
 	// Count before transition
 	let count_before = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(
+		.count::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![batch_a_filter.clone()],
 		)
@@ -536,7 +536,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 	// Update each record (simulating bulk update)
 	let update_data = HashMap::from([("batch".to_string(), json!("B"))]);
 	for id in &created_ids {
-		db.update::<reinhardt_admin_core::database::AdminRecord>(
+		db.update::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			&id.to_string(),
@@ -548,7 +548,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 
 	// Verify state transition: No records in batch A
 	let count_after_a = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![batch_a_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![batch_a_filter])
 		.await
 		.expect("Count should succeed");
 
@@ -565,7 +565,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 	};
 
 	let count_after_b = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![batch_b_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![batch_b_filter])
 		.await
 		.expect("Count should succeed");
 
@@ -573,7 +573,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 
 	// Final state transition: Bulk delete all records in batch B
 	let delete_count = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			created_ids.iter().map(|id| id.to_string()).collect(),
@@ -585,7 +585,7 @@ async fn test_bulk_operations_state_transitions(#[future] admin_table_creator: A
 
 	// Verify final state: No records
 	let final_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![])
 		.await
 		.expect("Count should succeed");
 
@@ -608,7 +608,7 @@ async fn test_partial_failure_state_transitions(#[future] admin_table_creator: A
 	// Create initial record
 	let initial_data = HashMap::from([("name".to_string(), json!("Original"))]);
 	let record_id = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, initial_data)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, initial_data)
 		.await
 		.expect("Create should succeed");
 
@@ -621,7 +621,7 @@ async fn test_partial_failure_state_transitions(#[future] admin_table_creator: A
 	]);
 
 	let _update_result = db
-		.update::<reinhardt_admin_core::database::AdminRecord>(
+		.update::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			&record_id.to_string(),
@@ -633,7 +633,7 @@ async fn test_partial_failure_state_transitions(#[future] admin_table_creator: A
 	// Either way, verify the original record is still accessible
 
 	let current_record = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			&record_id.to_string(),
@@ -648,7 +648,7 @@ async fn test_partial_failure_state_transitions(#[future] admin_table_creator: A
 	);
 
 	// Clean up
-	db.delete::<reinhardt_admin_core::database::AdminRecord>(
+	db.delete::<reinhardt_admin::core::database::AdminRecord>(
 		table_name,
 		"id",
 		&record_id.to_string(),
@@ -674,7 +674,7 @@ async fn test_concurrent_operations_state_consistency(
 
 	// Create a record
 	let record_id = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(
+		.create::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			HashMap::from([("name".to_string(), json!("Concurrent Test"))]),
 		)
@@ -692,7 +692,7 @@ async fn test_concurrent_operations_state_consistency(
 	for (field, value) in operations {
 		let update_data = HashMap::from([(field.to_string(), value.clone())]);
 
-		db.update::<reinhardt_admin_core::database::AdminRecord>(
+		db.update::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			&record_id.to_string(),
@@ -703,7 +703,7 @@ async fn test_concurrent_operations_state_consistency(
 
 		// Verify state after each "concurrent" operation
 		let current = db
-			.get::<reinhardt_admin_core::database::AdminRecord>(
+			.get::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				"id",
 				&record_id.to_string(),
@@ -730,7 +730,7 @@ async fn test_concurrent_operations_state_consistency(
 
 	// Final state verification
 	let final_record = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			&record_id.to_string(),
@@ -745,7 +745,7 @@ async fn test_concurrent_operations_state_consistency(
 	assert_eq!(final_record.get("processed_by"), Some(&json!("worker1")));
 
 	// Clean up
-	db.delete::<reinhardt_admin_core::database::AdminRecord>(
+	db.delete::<reinhardt_admin::core::database::AdminRecord>(
 		table_name,
 		"id",
 		&record_id.to_string(),

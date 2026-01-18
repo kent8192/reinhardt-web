@@ -21,7 +21,7 @@ pub use import::{
 	CsvImporter, ImportBuilder, ImportConfig, ImportError, ImportFormat, ImportResult, JsonImporter,
 };
 pub use model_admin::{ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder};
-pub use reinhardt_admin_types::{
+pub use reinhardt_admin::types::{
 	AdminError, AdminResult, BulkDeleteRequest, BulkDeleteResponse, ColumnInfo, DashboardResponse,
 	DetailResponse, ExportFormat as TypesExportFormat, FieldInfo, FieldType, FilterChoice,
 	FilterInfo, FilterType, ImportResponse, ListQueryParams, ListResponse, ModelInfo,

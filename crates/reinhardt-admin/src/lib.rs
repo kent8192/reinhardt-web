@@ -21,6 +21,12 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod adapters;
+pub mod core;
+pub mod pages;
+pub mod server;
+pub mod types;
+
 // Register admin static files for auto-discovery by collectstatic
 #[cfg(not(target_arch = "wasm32"))]
 const _: () = {

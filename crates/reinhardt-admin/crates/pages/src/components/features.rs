@@ -8,7 +8,7 @@
 //! - `Filters` - Filter panel
 //! - `DataTable` - Data table component
 
-use reinhardt_admin_types::{FilterInfo, FilterType, ModelInfo};
+use reinhardt_admin::types::{FilterInfo, FilterType, ModelInfo};
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use std::collections::HashMap;
@@ -26,8 +26,8 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::components::features::dashboard;
-/// use reinhardt_admin_types::ModelInfo;
+/// use reinhardt_admin::pages::components::features::dashboard;
+/// use reinhardt_admin::types::ModelInfo;
 ///
 /// let models = vec![
 ///     ModelInfo { name: "Users".to_string(), list_url: "/admin/users/".to_string() },
@@ -148,7 +148,7 @@ pub struct ListViewData {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::components::features::{list_view, ListViewData, Column};
+/// use reinhardt_admin::pages::components::features::{list_view, ListViewData, Column};
 /// use reinhardt_pages::Signal;
 /// use std::collections::HashMap;
 ///
@@ -305,7 +305,7 @@ pub struct FormField {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::components::features::detail_view;
+/// use reinhardt_admin::pages::components::features::detail_view;
 /// use std::collections::HashMap;
 ///
 /// let mut record = HashMap::new();
@@ -382,7 +382,7 @@ fn detail_table(record: &std::collections::HashMap<String, String>) -> Page {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::components::features::{model_form, FormField};
+/// use reinhardt_admin::pages::components::features::{model_form, FormField};
 ///
 /// let fields = vec![
 ///     FormField {
@@ -619,8 +619,8 @@ fn create_filter_control(
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::components::features::filters;
-/// use reinhardt_admin_types::{FilterInfo, FilterType};
+/// use reinhardt_admin::pages::components::features::filters;
+/// use reinhardt_admin::types::{FilterInfo, FilterType};
 /// use reinhardt_pages::Signal;
 /// use std::collections::HashMap;
 ///

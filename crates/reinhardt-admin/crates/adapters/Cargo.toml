@@ -11,8 +11,8 @@ categories = ["web-programming"]
 
 [dependencies]
 # Shared type definitions (always included)
-reinhardt-admin-types = { workspace = true }
 
 # Server-side only dependencies
+reinhardt-admin = {workspace = true, features = ["types"]}
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reinhardt-admin-core = { workspace = true }

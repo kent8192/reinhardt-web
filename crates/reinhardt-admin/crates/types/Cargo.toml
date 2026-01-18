@@ -12,8 +12,8 @@ categories = ["web-programming"]
 [dependencies]
 anyhow = { workspace = true }
 chrono = { workspace = true }
-reinhardt-exception = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_bytes = { workspace = true }
 thiserror = { workspace = true }
+reinhardt-core = {workspace = true, features = ["exception"]}

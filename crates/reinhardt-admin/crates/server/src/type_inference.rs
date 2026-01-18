@@ -9,13 +9,13 @@
 //! ```text
 //! Database Layer              →  Admin Layer
 //! ─────────────────────────────────────────────────
-//! reinhardt_migrations::FieldType  →  admin_types::FieldType
+//! reinhardt_db::migrations::FieldType  →  admin_types::FieldType
 //! FieldMetadata params (null/blank) →  required: bool
 //! admin_types::FieldType           →  admin_types::FilterType
 //! ```
 
-use reinhardt_admin_types::{FieldType as AdminFieldType, FilterChoice, FilterType};
-use reinhardt_migrations::{
+use reinhardt_admin::types::{FieldType as AdminFieldType, FilterChoice, FilterType};
+use reinhardt_db::migrations::{
 	FieldMetadata, FieldType as DbFieldType, ModelMetadata, global_registry,
 };
 
@@ -27,9 +27,9 @@ use reinhardt_migrations::{
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_server::type_inference::infer_admin_field_type;
-/// use reinhardt_migrations::FieldType as DbFieldType;
-/// use reinhardt_admin_types::FieldType as AdminFieldType;
+/// use reinhardt_admin::server::type_inference::infer_admin_field_type;
+/// use reinhardt_db::migrations::FieldType as DbFieldType;
+/// use reinhardt_admin::types::FieldType as AdminFieldType;
 ///
 /// assert_eq!(infer_admin_field_type(&DbFieldType::VarChar(255)), AdminFieldType::Text);
 /// assert_eq!(infer_admin_field_type(&DbFieldType::Boolean), AdminFieldType::Boolean);
@@ -153,8 +153,8 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_server::type_inference::infer_required;
-/// use reinhardt_migrations::{FieldMetadata, FieldType};
+/// use reinhardt_admin::server::type_inference::infer_required;
+/// use reinhardt_db::migrations::{FieldMetadata, FieldType};
 ///
 /// // Field with null=false, blank=false is required
 /// let meta = FieldMetadata::new(FieldType::VarChar(255));
@@ -192,8 +192,8 @@ pub fn infer_required(meta: &FieldMetadata) -> bool {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin_server::type_inference::infer_filter_type;
-/// use reinhardt_admin_types::{FieldType, FilterType};
+/// use reinhardt_admin::server::type_inference::infer_filter_type;
+/// use reinhardt_admin::types::{FieldType, FilterType};
 ///
 /// assert!(matches!(
 ///     infer_filter_type(&FieldType::Boolean),
@@ -291,7 +291,7 @@ fn default_number_ranges() -> Vec<FilterChoice> {
 ///
 /// Example: "active_user" → "Active User"
 fn humanize_value(value: &str) -> String {
-	reinhardt_utils_core::text::humanize_field_name(value)
+	reinhardt_utils::utils_core::text::humanize_field_name(value)
 }
 
 /// Finds model metadata by table name from the global registry.
@@ -302,7 +302,7 @@ fn humanize_value(value: &str) -> String {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_admin_server::type_inference::find_model_by_table_name;
+/// use reinhardt_admin::server::type_inference::find_model_by_table_name;
 ///
 /// if let Some(metadata) = find_model_by_table_name("auth_user") {
 ///     for (field_name, field_meta) in &metadata.fields {
@@ -325,7 +325,7 @@ pub fn find_model_by_table_name(table_name: &str) -> Option<ModelMetadata> {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_admin_server::type_inference::get_field_metadata;
+/// use reinhardt_admin::server::type_inference::get_field_metadata;
 ///
 /// if let Some(field_meta) = get_field_metadata("auth_user", "email") {
 ///     let admin_type = infer_admin_field_type(&field_meta.field_type);
@@ -609,7 +609,7 @@ mod tests {
 
 	#[test]
 	fn test_infer_admin_field_type_relationship() {
-		use reinhardt_migrations::ForeignKeyAction;
+		use reinhardt_db::migrations::ForeignKeyAction;
 
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::OneToOne {

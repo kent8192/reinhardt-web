@@ -6,7 +6,7 @@
 // Test module - only compile in test configuration
 #![cfg(test)]
 
-use reinhardt_admin_core::{AdminDatabase, AdminSite, ExportFormat, ImportResponse};
+use reinhardt_admin::core::{AdminDatabase, AdminSite, ExportFormat, ImportResponse};
 use reinhardt_test::fixtures::admin_panel::export_import_test_context;
 use rstest::*;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ async fn test_fixture_setup(
 
 	// Fetch records directly using db.list() (bypassing server function for testing)
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list records from database");
 
@@ -120,7 +120,7 @@ async fn test_export_json_happy_path(
 
 	// Fetch all records from the test table
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list records");
 
@@ -213,7 +213,7 @@ async fn test_export_csv_happy_path(
 
 	// Fetch all records from the test table
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list records");
 
@@ -348,14 +348,14 @@ async fn test_import_json_happy_path(
 	for record in new_records {
 		let data: std::collections::HashMap<String, serde_json::Value> =
 			serde_json::from_value(record).expect("Failed to convert JSON to HashMap");
-		db.create::<reinhardt_admin_core::AdminRecord>(&table_name, data)
+		db.create::<reinhardt_admin::core::AdminRecord>(&table_name, data)
 			.await
 			.expect("Failed to import record");
 	}
 
 	// Verify total count is now 7 (5 original + 2 new)
 	let all_records = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list all records");
 
@@ -425,7 +425,7 @@ async fn test_export_nonexistent_model_error(
 	let nonexistent_table = "nonexistent_table_xyz";
 
 	let result = db
-		.list::<reinhardt_admin_core::AdminRecord>(nonexistent_table, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(nonexistent_table, vec![], 0, 100)
 		.await;
 
 	// Verify error is returned
@@ -468,7 +468,7 @@ async fn test_import_invalid_json_error(
 		.expect("Failed to create invalid data");
 
 	let result = db
-		.create::<reinhardt_admin_core::AdminRecord>(&table_name, invalid_data)
+		.create::<reinhardt_admin::core::AdminRecord>(&table_name, invalid_data)
 		.await;
 
 	// Verify error is returned
@@ -513,7 +513,7 @@ async fn test_export_empty_table(
 
 	// Fetch records from empty table
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list records from empty table");
 
@@ -556,14 +556,14 @@ async fn test_import_empty_data(
 	for record in empty_records {
 		let data: std::collections::HashMap<String, serde_json::Value> =
 			serde_json::from_value(record).expect("Failed to convert JSON to HashMap");
-		db.create::<reinhardt_admin_core::AdminRecord>(&table_name, data)
+		db.create::<reinhardt_admin::core::AdminRecord>(&table_name, data)
 			.await
 			.expect("Failed to import record");
 	}
 
 	// Verify record count is unchanged (should still be 5 original records)
 	let all_records = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list all records");
 
@@ -594,7 +594,7 @@ async fn test_export_import_round_trip(
 
 	// Step 1: Export all records
 	let original_records = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to export records");
 
@@ -609,21 +609,21 @@ async fn test_export_import_round_trip(
 
 	// Verify table is empty
 	let empty_check = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to check empty table");
 	assert_eq!(empty_check.len(), 0, "Table should be empty after deletion");
 
 	// Step 3: Import the exported records
 	for record in &original_records {
-		db.create::<reinhardt_admin_core::AdminRecord>(&table_name, record.clone())
+		db.create::<reinhardt_admin::core::AdminRecord>(&table_name, record.clone())
 			.await
 			.expect("Failed to import record");
 	}
 
 	// Step 4: Verify restoration
 	let restored_records = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list restored records");
 
@@ -728,7 +728,7 @@ async fn test_admin_panel_export_use_case(
 	// Step 2: Select CSV format (simulated)
 	// Step 3: Execute export
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to export records");
 
@@ -874,7 +874,7 @@ async fn test_export_format_equivalence(
 
 	// Fetch records
 	let records_map = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 100)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 100)
 		.await
 		.expect("Failed to list records");
 
@@ -978,7 +978,7 @@ async fn test_import_data_size_boundaries(
 		let data: std::collections::HashMap<String, serde_json::Value> =
 			serde_json::from_value(record).expect("Failed to convert JSON to HashMap");
 		let result = db
-			.create::<reinhardt_admin_core::AdminRecord>(&table_name, data)
+			.create::<reinhardt_admin::core::AdminRecord>(&table_name, data)
 			.await;
 
 		if result.is_ok() {
@@ -995,7 +995,7 @@ async fn test_import_data_size_boundaries(
 
 	// Verify count in database (should be original 5 + imported count)
 	let all_records = db
-		.list::<reinhardt_admin_core::AdminRecord>(&table_name, vec![], 0, 10000)
+		.list::<reinhardt_admin::core::AdminRecord>(&table_name, vec![], 0, 10000)
 		.await
 		.expect("Failed to list all records");
 

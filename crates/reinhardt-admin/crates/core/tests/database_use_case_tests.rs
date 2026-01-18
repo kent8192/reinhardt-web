@@ -266,7 +266,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 		]);
 
 		let user_id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, user_data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, user_data)
 			.await
 			.expect("User creation should succeed");
 
@@ -281,7 +281,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	};
 
 	let active_users = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![active_filter], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![active_filter], 0, 50)
 		.await
 		.expect("List active users should succeed");
 
@@ -295,7 +295,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	};
 
 	let admin_users = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![admin_filter], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![admin_filter], 0, 50)
 		.await
 		.expect("List admin users should succeed");
 
@@ -316,7 +316,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	];
 
 	let active_admins = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			active_admin_filters,
 			0,
@@ -329,7 +329,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 
 	// 5. Use case: Bulk update - suspend all users
 	let all_users = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], 0, 50)
 		.await
 		.expect("List all users should succeed");
 
@@ -343,7 +343,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 				_ => continue,
 			};
 			let update_data = HashMap::from([("status".to_string(), json!("suspended"))]);
-			db.update::<reinhardt_admin_core::database::AdminRecord>(
+			db.update::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				"id",
 				&id_str,
@@ -363,7 +363,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	};
 
 	let suspended_users = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![suspended_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![suspended_filter])
 		.await
 		.expect("Count suspended users should succeed");
 
@@ -380,7 +380,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	};
 
 	let domain_users = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![email_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![email_filter])
 		.await
 		.expect("Count domain users should succeed");
 
@@ -389,7 +389,7 @@ async fn use_case_user_management_system(#[future] admin_table_creator: AdminTab
 	// 8. Clean up: Bulk delete all test users
 	let all_user_ids: Vec<String> = user_ids.values().map(|id| id.to_string()).collect();
 	let deleted_count = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", all_user_ids)
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", all_user_ids)
 		.await
 		.expect("Bulk delete should succeed");
 
@@ -436,7 +436,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 		]);
 
 		let product_id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, product_data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, product_data)
 			.await
 			.expect("Product creation should succeed");
 
@@ -451,7 +451,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	};
 
 	let electronics = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![electronics_filter],
 			0,
@@ -470,7 +470,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	};
 
 	let in_stock_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![in_stock_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![in_stock_filter])
 		.await
 		.expect("Count in-stock should succeed");
 
@@ -484,7 +484,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	};
 
 	let out_of_stock = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![out_of_stock_filter],
 			0,
@@ -504,7 +504,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	};
 
 	let laptops = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![laptop_filter], 0, 1)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![laptop_filter], 0, 1)
 		.await
 		.expect("Find laptop should succeed");
 
@@ -525,7 +525,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 					("in_stock".to_string(), json!(new_stock > 0)),
 				]);
 
-				db.update::<reinhardt_admin_core::database::AdminRecord>(
+				db.update::<reinhardt_admin::core::database::AdminRecord>(
 					table_name,
 					"id",
 					&id_str,
@@ -536,7 +536,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 
 				// Verify update
 				let updated = db
-					.get::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", &id_str)
+					.get::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", &id_str)
 					.await
 					.expect("Get updated laptop should succeed")
 					.expect("Laptop should exist");
@@ -565,7 +565,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	];
 
 	let mid_range_products = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, price_filters)
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, price_filters)
 		.await
 		.expect("Count price range should succeed");
 
@@ -582,7 +582,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 	};
 
 	let low_stock_products = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![low_stock_filter.clone()],
 			0,
@@ -607,7 +607,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 					("in_stock".to_string(), json!(true)),
 				]);
 
-				db.update::<reinhardt_admin_core::database::AdminRecord>(
+				db.update::<reinhardt_admin::core::database::AdminRecord>(
 					table_name,
 					"id",
 					&id_str,
@@ -621,7 +621,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 
 	// 8. Verify no low stock products after restock
 	let low_stock_after = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![low_stock_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![low_stock_filter])
 		.await
 		.expect("Count low stock after should succeed");
 
@@ -632,7 +632,7 @@ async fn use_case_product_inventory_management(#[future] admin_table_creator: Ad
 
 	// 9. Clean up
 	let deleted_count = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			product_ids.iter().map(|id| id.to_string()).collect(),
@@ -688,7 +688,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 		]);
 
 		let content_id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, content_data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, content_data)
 			.await
 			.expect("Content creation should succeed");
 
@@ -703,7 +703,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 	};
 
 	let published_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![published_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![published_filter])
 		.await
 		.expect("Count published should succeed");
 
@@ -717,7 +717,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 	};
 
 	let tutorials = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![tutorial_filter],
 			0,
@@ -736,7 +736,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 	};
 
 	let drafts = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![draft_filter], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![draft_filter], 0, 50)
 		.await
 		.expect("List drafts should succeed");
 
@@ -756,7 +756,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 				("published_date".to_string(), json!("2024-02-15")),
 			]);
 
-			db.update::<reinhardt_admin_core::database::AdminRecord>(
+			db.update::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				"id",
 				&id_str,
@@ -767,7 +767,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 
 			// Verify publish
 			let published = db
-				.get::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", &id_str)
+				.get::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", &id_str)
 				.await
 				.expect("Get published should succeed")
 				.expect("Content should exist");
@@ -788,7 +788,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 	};
 
 	let old_content = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![old_content_filter],
 			0,
@@ -808,7 +808,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 			// Skip if already archived
 			if content.get("status") != Some(&json!("archived")) {
 				let update_data = HashMap::from([("status".to_string(), json!("archived"))]);
-				db.update::<reinhardt_admin_core::database::AdminRecord>(
+				db.update::<reinhardt_admin::core::database::AdminRecord>(
 					table_name,
 					"id",
 					&id_str,
@@ -828,7 +828,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 	};
 
 	let search_results = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![search_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![search_filter])
 		.await
 		.expect("Search should succeed");
 
@@ -839,7 +839,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 
 	// 7. Use case: Track views (simulate view counting)
 	let published_items = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![Filter {
 				field: "status".to_string(),
@@ -863,7 +863,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 			if let Some(current_views) = item.get("views").and_then(|v| v.as_i64()) {
 				let new_views = current_views + 1;
 				let update_data = HashMap::from([("views".to_string(), json!(new_views))]);
-				db.update::<reinhardt_admin_core::database::AdminRecord>(
+				db.update::<reinhardt_admin::core::database::AdminRecord>(
 					table_name,
 					"id",
 					&id_str,
@@ -877,7 +877,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 
 	// 8. Use case: Get most viewed content
 	let viewed_items = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], 0, 50)
 		.await
 		.expect("List all for views should succeed");
 
@@ -890,7 +890,7 @@ async fn use_case_content_management_system(#[future] admin_table_creator: Admin
 
 	// 9. Clean up
 	let deleted_count = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			content_ids.iter().map(|id| id.to_string()).collect(),
@@ -980,7 +980,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 		]);
 
 		let audit_id = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, audit_data)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, audit_data)
 			.await
 			.expect("Audit entry creation should succeed");
 
@@ -996,7 +996,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 	};
 
 	let recent_count = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![recent_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![recent_filter])
 		.await
 		.expect("Count recent should succeed");
 
@@ -1010,7 +1010,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 	};
 
 	let critical_events = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![critical_filter],
 			0,
@@ -1029,7 +1029,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 	};
 
 	let user_entries = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![user_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![user_filter])
 		.await
 		.expect("Count user entries should succeed");
 
@@ -1043,7 +1043,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 	};
 
 	let login_entries = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![search_filter], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![search_filter], 0, 50)
 		.await
 		.expect("Search login should succeed");
 
@@ -1057,7 +1057,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 	};
 
 	let old_entries = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![old_filter], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![old_filter], 0, 50)
 		.await
 		.expect("List old entries should succeed");
 
@@ -1071,7 +1071,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 				serde_json::Value::String(s) => s.clone(),
 				_ => continue,
 			};
-			db.delete::<reinhardt_admin_core::database::AdminRecord>(table_name, "id", &id_str)
+			db.delete::<reinhardt_admin::core::database::AdminRecord>(table_name, "id", &id_str)
 				.await
 				.expect("Delete old entry should succeed");
 			deleted_count += 1;
@@ -1083,7 +1083,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 
 	// 7. Use case: Get audit statistics
 	let all_entries = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], 0, 50)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], 0, 50)
 		.await
 		.expect("List all for stats should succeed");
 
@@ -1113,7 +1113,7 @@ async fn use_case_audit_log_system(#[future] admin_table_creator: AdminTableCrea
 
 	// 8. Clean up
 	let deleted_count = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			"id",
 			audit_ids.iter().map(|id| id.to_string()).collect(),

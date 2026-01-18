@@ -1,0 +1,31 @@
+//! Core logic for Reinhardt admin panel
+//!
+//! This crate provides the core business logic for the admin panel,
+//! including:
+//! - ModelAdmin trait and configuration
+//! - AdminSite registry
+//! - Database operations
+//! - Import/Export functionality
+
+pub mod database;
+pub mod export;
+pub mod import;
+pub mod model_admin;
+pub mod router;
+pub mod site;
+
+// Re-exports
+pub use database::{AdminDatabase, AdminRecord};
+pub use export::{CsvExporter, ExportBuilder, ExportConfig, ExportFormat, JsonExporter};
+pub use import::{
+	CsvImporter, ImportBuilder, ImportConfig, ImportError, ImportFormat, ImportResult, JsonImporter,
+};
+pub use model_admin::{ModelAdmin, ModelAdminConfig, ModelAdminConfigBuilder};
+pub use crate::types::{
+	AdminError, AdminResult, BulkDeleteRequest, BulkDeleteResponse, ColumnInfo, DashboardResponse,
+	DetailResponse, ExportFormat as TypesExportFormat, FieldInfo, FieldType, FilterChoice,
+	FilterInfo, FilterType, ImportResponse, ListQueryParams, ListResponse, ModelInfo,
+	MutationRequest, MutationResponse,
+};
+pub use router::{AdminRouter, admin_routes};
+pub use site::{AdminSite, AdminSiteConfig};

@@ -89,7 +89,7 @@ async fn test_list_empty_table(#[future] admin_table_creator: AdminTableCreator)
 
 	// List from empty table (table exists but has no data)
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], 0, 10)
 		.await;
 
 	assert!(result.is_ok(), "Should succeed on empty table");
@@ -122,7 +122,7 @@ async fn test_pagination_edge_cases(
 	let table_name = "test_models";
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![], offset, limit)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![], offset, limit)
 		.await;
 
 	// Should not panic for any offset/limit combination
@@ -153,7 +153,7 @@ async fn test_filter_empty_string(#[future] admin_table_creator: AdminTableCreat
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![empty_filter], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![empty_filter], 0, 10)
 		.await;
 
 	assert!(
@@ -184,7 +184,7 @@ async fn test_filter_long_string(#[future] admin_table_creator: AdminTableCreato
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![long_filter], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![long_filter], 0, 10)
 		.await;
 
 	assert!(
@@ -226,7 +226,7 @@ async fn test_filter_special_characters(
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![special_filter],
 			0,
@@ -259,7 +259,7 @@ async fn test_create_minimal_data(#[future] admin_table_creator: AdminTableCreat
 	let minimal_data = HashMap::from([("name".to_string(), json!("Minimal Test"))]);
 
 	let _result = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, minimal_data)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, minimal_data)
 		.await;
 
 	// Should succeed or fail based on schema requirements
@@ -288,7 +288,7 @@ async fn test_create_many_fields(#[future] admin_table_creator: AdminTableCreato
 	many_fields.insert("name".to_string(), json!("Many Fields Test"));
 
 	let result = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, many_fields)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, many_fields)
 		.await;
 
 	// Should reject non-existent columns with an error
@@ -322,7 +322,7 @@ async fn test_bulk_delete_large_list(#[future] admin_table_creator: AdminTableCr
 	}
 
 	let result = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			large_id_list,
@@ -354,7 +354,7 @@ async fn test_count_empty_result(#[future] admin_table_creator: AdminTableCreato
 	};
 
 	let result = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![impossible_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![impossible_filter])
 		.await;
 
 	assert!(
@@ -392,7 +392,7 @@ async fn test_numeric_filter_boundaries(
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![numeric_filter],
 			0,
@@ -429,7 +429,7 @@ async fn test_boolean_filter_edges(#[future] admin_table_creator: AdminTableCrea
 		};
 
 		let result = db
-			.list::<reinhardt_admin_core::database::AdminRecord>(
+			.list::<reinhardt_admin::core::database::AdminRecord>(
 				table_name,
 				vec![bool_filter],
 				0,
@@ -465,7 +465,7 @@ async fn test_null_filter_edges(#[future] admin_table_creator: AdminTableCreator
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![null_filter], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![null_filter], 0, 10)
 		.await;
 
 	assert!(result.is_ok(), "Should handle null filter without panic");

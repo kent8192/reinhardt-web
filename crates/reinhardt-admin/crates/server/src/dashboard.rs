@@ -2,7 +2,7 @@
 //!
 //! Provides dashboard data retrieval functionality.
 
-use reinhardt_admin_adapters::{AdminSite, DashboardResponse, ModelInfo};
+use reinhardt_admin::adapters::{AdminSite, DashboardResponse, ModelInfo};
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::get_dashboard;
+/// use reinhardt_admin::server::get_dashboard;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let dashboard = get_dashboard().await?;
@@ -51,7 +51,7 @@ pub async fn get_dashboard(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_admin_types::ModelInfo;
+	use reinhardt_admin::types::ModelInfo;
 
 	#[tokio::test]
 	async fn test_dashboard_response_structure() {

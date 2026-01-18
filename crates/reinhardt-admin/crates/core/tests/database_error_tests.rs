@@ -8,7 +8,7 @@
 
 #![cfg(test)]
 
-use reinhardt_admin_core::database::AdminDatabase;
+use reinhardt_admin::core::database::AdminDatabase;
 use reinhardt_db::prelude::{Filter, FilterOperator, FilterValue};
 use reinhardt_test::fixtures::admin_panel::admin_database;
 use rstest::rstest;
@@ -28,7 +28,7 @@ async fn test_invalid_table_name_error(#[future] admin_database: Arc<AdminDataba
 
 	// Attempt to list from non-existent table
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(invalid_table, vec![], 0, 10)
+		.list::<reinhardt_admin::core::database::AdminRecord>(invalid_table, vec![], 0, 10)
 		.await;
 
 	// Should return an error (specific error type depends on implementation)
@@ -60,7 +60,7 @@ async fn test_invalid_column_filter_error(#[future] admin_database: Arc<AdminDat
 	};
 
 	let result = db
-		.list::<reinhardt_admin_core::database::AdminRecord>(
+		.list::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			vec![invalid_filter],
 			0,
@@ -88,7 +88,7 @@ async fn test_invalid_primary_key_error(#[future] admin_database: Arc<AdminDatab
 
 	// Attempt to get record with non-existent ID
 	let result = db
-		.get::<reinhardt_admin_core::database::AdminRecord>(
+		.get::<reinhardt_admin::core::database::AdminRecord>(
 			table_name, pk_field, "999999", // Non-existent ID
 		)
 		.await;
@@ -116,7 +116,7 @@ async fn test_invalid_data_type_error(#[future] admin_database: Arc<AdminDatabas
 	invalid_data.insert("id".to_string(), json!("not_a_number")); // id should be integer
 
 	let _result = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, invalid_data)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, invalid_data)
 		.await;
 
 	// May succeed or fail depending on database schema enforcement
@@ -138,7 +138,7 @@ async fn test_duplicate_primary_key_error(#[future] admin_database: Arc<AdminDat
 	data1.insert("name".to_string(), json!("Test Item"));
 
 	let create_result = db
-		.create::<reinhardt_admin_core::database::AdminRecord>(table_name, data1)
+		.create::<reinhardt_admin::core::database::AdminRecord>(table_name, data1)
 		.await;
 
 	if let Ok(id) = create_result {
@@ -148,7 +148,7 @@ async fn test_duplicate_primary_key_error(#[future] admin_database: Arc<AdminDat
 		data2.insert("name".to_string(), json!("Duplicate Item"));
 
 		let duplicate_result = db
-			.create::<reinhardt_admin_core::database::AdminRecord>(table_name, data2)
+			.create::<reinhardt_admin::core::database::AdminRecord>(table_name, data2)
 			.await;
 
 		// Should fail with duplicate key error
@@ -174,7 +174,7 @@ async fn test_update_nonexistent_record_error(#[future] admin_database: Arc<Admi
 	let update_data = HashMap::from([("name".to_string(), json!("Updated Name"))]);
 
 	let result = db
-		.update::<reinhardt_admin_core::database::AdminRecord>(
+		.update::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			non_existent_id,
@@ -203,7 +203,7 @@ async fn test_delete_nonexistent_record_error(#[future] admin_database: Arc<Admi
 	let non_existent_id = "999999";
 
 	let result = db
-		.delete::<reinhardt_admin_core::database::AdminRecord>(
+		.delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			non_existent_id,
@@ -233,7 +233,7 @@ async fn test_bulk_delete_invalid_ids_error(#[future] admin_database: Arc<AdminD
 	let invalid_ids = vec!["999999".to_string(), "1000000".to_string()];
 
 	let result = db
-		.bulk_delete::<reinhardt_admin_core::database::AdminRecord>(
+		.bulk_delete::<reinhardt_admin::core::database::AdminRecord>(
 			table_name,
 			pk_field,
 			invalid_ids,
@@ -265,7 +265,7 @@ async fn test_count_invalid_filter_error(#[future] admin_database: Arc<AdminData
 	};
 
 	let result = db
-		.count::<reinhardt_admin_core::database::AdminRecord>(table_name, vec![invalid_filter])
+		.count::<reinhardt_admin::core::database::AdminRecord>(table_name, vec![invalid_filter])
 		.await;
 
 	// Should return an error

@@ -2,7 +2,7 @@
 //!
 //! Provides export operations for admin models.
 
-use reinhardt_admin_adapters::{
+use reinhardt_admin::adapters::{
 	AdminDatabase, AdminRecord, AdminSite, ExportFormat, ExportResponse,
 };
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -24,8 +24,8 @@ use super::error::MapServerFnError;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::export_data;
-/// use reinhardt_admin_types::ExportFormat;
+/// use reinhardt_admin::server::export_data;
+/// use reinhardt_admin::types::ExportFormat;
 ///
 /// // Client-side usage (automatically generates HTTP request)
 /// let response = export_data("User".to_string(), ExportFormat::JSON).await?;

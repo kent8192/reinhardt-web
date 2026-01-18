@@ -11,10 +11,10 @@ use crate::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
 };
 #[cfg(target_arch = "wasm32")]
-use reinhardt_admin_server::{get_dashboard, get_model_detail, get_model_fields, list_models};
+use reinhardt_admin::server::{get_dashboard, get_model_detail, get_model_fields, list_models};
 #[cfg(target_arch = "wasm32")]
-use reinhardt_admin_types::ListQueryParams;
-use reinhardt_admin_types::ModelInfo;
+use reinhardt_admin::types::ListQueryParams;
+use reinhardt_admin::types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::router::{Link, Router};
@@ -53,7 +53,7 @@ thread_local! {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::router::init_global_router;
+/// use reinhardt_admin::pages::router::init_global_router;
 ///
 /// init_global_router();
 /// ```
@@ -72,7 +72,7 @@ pub fn init_global_router() {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::router::with_router;
+/// use reinhardt_admin::pages::router::with_router;
 ///
 /// with_router(|router| {
 ///     let params = router.current_params().get();
@@ -473,10 +473,10 @@ fn error_view(message: &str) -> Page {
 
 /// Convert FieldType to HTML input type string
 ///
-/// Maps reinhardt_admin_types::FieldType to HTML input type attributes.
+/// Maps reinhardt_admin::types::FieldType to HTML input type attributes.
 #[cfg(target_arch = "wasm32")]
-fn field_type_to_html_input_type(field_type: &reinhardt_admin_types::FieldType) -> String {
-	use reinhardt_admin_types::FieldType;
+fn field_type_to_html_input_type(field_type: &reinhardt_admin::types::FieldType) -> String {
+	use reinhardt_admin::types::FieldType;
 
 	match field_type {
 		FieldType::Text => "text".to_string(),
@@ -498,7 +498,7 @@ fn field_type_to_html_input_type(field_type: &reinhardt_admin_types::FieldType) 
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_pages::router::init_router;
+/// use reinhardt_admin::pages::router::init_router;
 ///
 /// let router = init_router();
 /// ```

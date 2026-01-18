@@ -2,8 +2,8 @@
 //!
 //! Provides update operations for admin models.
 
-use reinhardt_admin_adapters::{AdminDatabase, AdminRecord, AdminSite};
-use reinhardt_admin_types::{MutationRequest, MutationResponse};
+use reinhardt_admin::adapters::{AdminDatabase, AdminRecord, AdminSite};
+use reinhardt_admin::types::{MutationRequest, MutationResponse};
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
@@ -23,8 +23,8 @@ use super::error::MapServerFnError;
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_admin_server::update_record;
-/// use reinhardt_admin_types::MutationRequest;
+/// use reinhardt_admin::server::update_record;
+/// use reinhardt_admin::types::MutationRequest;
 /// use std::collections::HashMap;
 ///
 /// // Client-side usage (automatically generates HTTP request)
