@@ -54,6 +54,7 @@ pub mod admin;
 pub mod browsable_api;
 pub mod generic;
 pub mod openapi;
+pub mod openapi_inspector;
 
 // Module declarations
 mod core;

@@ -152,6 +152,9 @@ pub mod endpoint_inspector;
 pub mod endpoints;
 pub mod enum_schema;
 pub mod generator;
+// Allow module_inception: Re-exporting openapi submodule from openapi.rs
+// is intentional for compatibility with existing imports (`reinhardt_rest::openapi::OpenAPI`)
+#[allow(clippy::module_inception)]
 pub mod openapi;
 pub mod param_metadata;
 pub mod registry;
@@ -160,8 +163,6 @@ pub mod registry;
 pub mod schema_registration;
 pub mod serde_attrs;
 pub mod swagger;
-// TODO: viewset_inspector disabled to avoid circular dependency with reinhardt-views
-// pub mod viewset_inspector;
 
 use thiserror::Error;
 
@@ -185,8 +186,6 @@ pub use schema_registration::SchemaRegistration;
 pub use serde_attrs::{FieldMetadata, RenameAll, SchemaBuilderExt};
 pub use swagger::{RedocUI, SwaggerUI};
 pub use utoipa::Number;
-// TODO: ViewSetInspector disabled due to circular dependency
-// pub use viewset_inspector::{InspectorConfig, ViewSetInspector};
 
 // Re-export utoipa and inventory for macro-generated code
 pub use inventory;

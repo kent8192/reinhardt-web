@@ -3,13 +3,13 @@
 //! This module provides functionality to extract OpenAPI schema information from ViewSets,
 //! including paths, operations, parameters, and request/response schemas.
 
-use super::{
+use reinhardt_rest::openapi::{
 	Operation, Parameter, PathItem, RefOr, RequestBody, Response,
 	/* Responses, */ Schema,
 };
-use super::openapi::ParameterIn;
+use utoipa::openapi::path::ParameterIn;
 use hyper::Method;
-use reinhardt_views::viewsets::{ActionMetadata, ViewSet};
+use crate::viewsets::{ActionMetadata, ViewSet};
 use std::collections::HashMap;
 use utoipa::openapi::ContentBuilder;
 use utoipa::openapi::path::{HttpMethod, OperationBuilder, ParameterBuilder, PathItemBuilder};
@@ -22,7 +22,7 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// # Example
 ///
 /// ```rust,no_run
-/// # use crate::openapi::ViewSetInspector;
+/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 /// # use reinhardt_views::viewsets::ModelViewSet;
 /// #
 /// # #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::ViewSetInspector;
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// let inspector = ViewSetInspector::new();
 	/// ```
 	pub fn new() -> Self {
@@ -86,7 +86,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::{ViewSetInspector, InspectorConfig};
+	/// # use reinhardt_views::openapi_inspector::{ViewSetInspector, InspectorConfig};
 	/// let config = InspectorConfig {
 	///     include_descriptions: false,
 	///     include_tags: true,
@@ -106,7 +106,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::ViewSetInspector;
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -231,7 +231,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::ViewSetInspector;
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -283,7 +283,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::ViewSetInspector;
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
 	/// let inspector = ViewSetInspector::new();
 	/// let schema = inspector.extract_model_schema("User");
 	///
@@ -333,7 +333,8 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::{ViewSetInspector, ToSchema, Schema};
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
+	/// # use reinhardt_rest::openapi::{ToSchema, Schema};
 	/// # use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -387,7 +388,7 @@ impl ViewSetInspector {
 	///
 	/// You can use the `#[derive(Schema)]` macro (when available) to automatically
 	/// generate the `ToSchema` implementation for your models.
-	pub fn extract_schema<T: crate::ToSchema>(&self) -> Schema {
+	pub fn extract_schema<T: reinhardt_rest::ToSchema>(&self) -> Schema {
 		T::schema()
 	}
 
@@ -408,7 +409,8 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use crate::openapi::{ViewSetInspector, ToSchema, Schema};
+	/// # use reinhardt_views::openapi_inspector::ViewSetInspector;
+	/// # use reinhardt_rest::openapi::{ToSchema, Schema};
 	/// # use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -430,7 +432,7 @@ impl ViewSetInspector {
 	///
 	/// assert_eq!(name, Some("User".to_string()));
 	/// ```
-	pub fn extract_schema_with_name<T: crate::ToSchema>(&self) -> (Schema, Option<String>) {
+	pub fn extract_schema_with_name<T: reinhardt_rest::ToSchema>(&self) -> (Schema, Option<String>) {
 		(T::schema(), T::schema_name())
 	}
 
@@ -681,7 +683,7 @@ impl Default for ViewSetInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_views::viewsets::ModelViewSet;
+	use crate::viewsets::ModelViewSet;
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]
@@ -746,7 +748,7 @@ mod tests {
 
 	#[test]
 	fn test_extract_schema_from_type() {
-		use crate::ToSchema;
+		use reinhardt_rest::ToSchema;
 		use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 
 		// Define a test model with ToSchema implementation
@@ -820,7 +822,7 @@ mod tests {
 
 	#[test]
 	fn test_extract_schema_with_name() {
-		use crate::ToSchema;
+		use reinhardt_rest::ToSchema;
 		use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 
 		#[derive(Debug, Clone)]

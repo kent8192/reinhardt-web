@@ -27,7 +27,7 @@ syntect = { workspace = true }
 once_cell = { workspace = true }
 
 # REST framework for filters/serializers
-reinhardt-rest = {workspace = true, features = ["filters", "serializers"]}
+reinhardt-rest = {workspace = true, features = ["filters", "serializers", "openapi"]}
 reinhardt-auth = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache"] }
 uuid = { workspace = true }
@@ -43,6 +43,7 @@ inventory = "0.3"
 urlencoding = "2.1"
 sea-query = { workspace = true }
 parking_lot = { workspace = true }
+utoipa = { version = "5.4", features = ["url", "uuid", "yaml"] }
 
 [features]
 default = []
