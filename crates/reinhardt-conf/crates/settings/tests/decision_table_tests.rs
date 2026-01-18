@@ -25,12 +25,12 @@
 //! | 100      | 50       | 0        | Source 3        |
 //! | -        | 50       | 0        | Source 3        |
 
-use reinhardt_settings::Settings;
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::prelude::SettingsValidator;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::DefaultSource;
-use reinhardt_settings::validation::SecurityValidator as SecurityValidatorImpl;
+use reinhardt_conf::settings::Settings;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::prelude::SettingsValidator;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::DefaultSource;
+use reinhardt_conf::settings::validation::SecurityValidator as SecurityValidatorImpl;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;

@@ -4,7 +4,7 @@
 //! interpolation scenarios including simple variables, nested variables, circular
 //! references, undefined variables, and escaped dollar signs.
 
-use reinhardt_settings::env_loader::EnvLoader;
+use reinhardt_conf::settings::env_loader::EnvLoader;
 use rstest::*;
 use serial_test::serial;
 use std::env;

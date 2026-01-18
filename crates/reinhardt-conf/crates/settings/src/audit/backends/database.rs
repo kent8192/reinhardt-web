@@ -33,7 +33,7 @@ impl DatabaseAuditBackend {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_settings::audit::backends::DatabaseAuditBackend;
+	/// use reinhardt_conf::settings::audit::backends::DatabaseAuditBackend;
 	///
 	/// let backend = DatabaseAuditBackend::new("sqlite::memory:").await?;
 	/// # Ok(())

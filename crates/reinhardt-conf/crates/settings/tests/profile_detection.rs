@@ -4,7 +4,7 @@
 //! environment from environment variables, with support for development, staging,
 //! production, and custom profiles.
 
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::profile::Profile;
 use rstest::*;
 use serial_test::serial;
 use std::env;

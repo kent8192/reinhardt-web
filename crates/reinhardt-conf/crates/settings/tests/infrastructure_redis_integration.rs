@@ -19,8 +19,8 @@
 
 #[cfg(all(feature = "async", feature = "dynamic-redis"))]
 mod redis_integration_tests {
-	use reinhardt_settings::backends::redis_backend::RedisSettingsBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::redis_backend::RedisSettingsBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use rstest::*;
 	use serial_test::serial;
 	use std::sync::Arc;

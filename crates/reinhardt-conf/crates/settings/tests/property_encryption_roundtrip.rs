@@ -9,7 +9,7 @@
 
 use quickcheck::{Arbitrary, Gen};
 use quickcheck_macros::quickcheck;
-use reinhardt_settings::encryption::ConfigEncryptor;
+use reinhardt_conf::settings::encryption::ConfigEncryptor;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

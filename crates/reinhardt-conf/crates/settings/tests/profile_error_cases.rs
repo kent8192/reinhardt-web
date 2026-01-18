@@ -3,7 +3,7 @@
 //! This test module validates that the Profile enum handles invalid or edge-case
 //! inputs gracefully, including empty strings, whitespace, and missing environment variables.
 
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::profile::Profile;
 use rstest::*;
 use serial_test::serial;
 use std::env;

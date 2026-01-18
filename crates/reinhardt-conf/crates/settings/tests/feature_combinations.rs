@@ -22,7 +22,7 @@ use rstest::*;
 
 // Import traits needed for feature tests
 #[cfg(all(feature = "async", feature = "secret-rotation"))]
-use reinhardt_settings::prelude::SecretProvider;
+use reinhardt_conf::settings::prelude::SecretProvider;
 
 /// Test: async + encryption feature combination
 ///
@@ -33,7 +33,7 @@ use reinhardt_settings::prelude::SecretProvider;
 #[rstest]
 #[tokio::test]
 async fn test_async_with_encryption() {
-	use reinhardt_settings::encryption::ConfigEncryptor;
+	use reinhardt_conf::settings::encryption::ConfigEncryptor;
 
 	// Test: ConfigEncryptor can be initialized in async context
 	let key = vec![42u8; 32]; // 32-byte key for AES-256-GCM
@@ -59,8 +59,8 @@ async fn test_async_with_encryption() {
 #[rstest]
 #[tokio::test]
 async fn test_async_with_dynamic_redis_and_caching() {
-	use reinhardt_settings::backends::memory::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::memory::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use std::sync::Arc;
 
 	// Test: DynamicSettings can be initialized with MemoryBackend (Redis alternative for testing)
@@ -86,8 +86,8 @@ async fn test_async_with_dynamic_redis_and_caching() {
 #[rstest]
 #[tokio::test]
 async fn test_async_with_secret_rotation_and_vault() {
-	use reinhardt_settings::secrets::SecretString;
-	use reinhardt_settings::secrets::providers::memory::MemorySecretProvider;
+	use reinhardt_conf::settings::secrets::SecretString;
+	use reinhardt_conf::settings::secrets::providers::memory::MemorySecretProvider;
 
 	// Test: SecretProvider can be initialized with secret rotation support
 	let provider = MemorySecretProvider::new();
@@ -125,8 +125,8 @@ async fn test_async_with_secret_rotation_and_vault() {
 #[rstest]
 #[tokio::test]
 async fn test_async_with_hot_reload() {
-	use reinhardt_settings::backends::memory::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::memory::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use std::sync::Arc;
 
 	// Test: DynamicSettings with hot reload support
@@ -160,11 +160,11 @@ async fn test_async_with_hot_reload() {
 #[rstest]
 #[tokio::test]
 async fn test_all_features_combination() {
-	use reinhardt_settings::backends::memory::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
-	use reinhardt_settings::encryption::ConfigEncryptor;
-	use reinhardt_settings::secrets::SecretString;
-	use reinhardt_settings::secrets::providers::memory::MemorySecretProvider;
+	use reinhardt_conf::settings::backends::memory::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::encryption::ConfigEncryptor;
+	use reinhardt_conf::settings::secrets::SecretString;
+	use reinhardt_conf::settings::secrets::providers::memory::MemorySecretProvider;
 	use std::sync::Arc;
 
 	// Test: All feature APIs are available and can be initialized together
@@ -207,7 +207,7 @@ async fn test_all_features_combination() {
 )))]
 #[rstest]
 fn test_minimal_features() {
-	use reinhardt_settings::Settings;
+	use reinhardt_conf::settings::Settings;
 
 	// Test: Basic Settings struct is available without optional features
 	let settings = Settings::default();
@@ -224,7 +224,7 @@ fn test_minimal_features() {
 #[cfg(all(feature = "encryption", not(feature = "async")))]
 #[rstest]
 fn test_encryption_without_async() {
-	use reinhardt_settings::encryption::ConfigEncryptor;
+	use reinhardt_conf::settings::encryption::ConfigEncryptor;
 
 	// Test: Encryption works in synchronous context
 	let key = vec![42u8; 32];

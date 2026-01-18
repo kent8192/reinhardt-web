@@ -35,7 +35,7 @@
 //! - Invalid port
 //! - Unknown database type
 
-use reinhardt_settings::env_parser::{parse_cache_url, parse_database_url};
+use reinhardt_conf::settings::env_parser::{parse_cache_url, parse_database_url};
 use rstest::*;
 
 /// Test: SQLite Database URL Equivalence Classes

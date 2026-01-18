@@ -16,12 +16,12 @@ The `reinhardt-conf` crate provides a comprehensive configuration management fra
 - **Secret rotation**: Automatic secret rotation support
 - **Audit logging**: Track all setting changes
 
-## Sub-crates
+## Modules
 
-This crate is organized as a parent crate containing the following sub-crates:
+This crate provides the following modules:
 
-- **`settings`** (`reinhardt-settings`): Core settings management functionality
-- **`settings-cli`** (`reinhardt-settings-cli`): CLI tool for managing settings
+- **`` `settings` ``**: Core settings management functionality
+- **`` `settings-cli` ``**: CLI tool for managing settings
 
 ## Installation
 
@@ -90,7 +90,7 @@ let database_url = settings.get::<String>("DATABASE_URL")?;
 
 ## CLI Tool
 
-The `settings-cli` sub-crate provides a command-line tool for managing settings:
+The `` `settings-cli` `` module provides a command-line tool for managing settings:
 
 ```bash
 # Install the CLI tool
@@ -100,18 +100,17 @@ cargo install --path crates/settings-cli
 reinhardt-settings --help
 ```
 
-## Architecture
+## Module Organization
 
-This parent crate re-exports functionality from its sub-crates:
+`` `reinhardt-conf` `` is organized into the following modules:
 
-```
-reinhardt-conf/
-├── Cargo.toml          # Parent crate definition
-├── src/
-│   └── lib.rs          # Re-exports from sub-crates
-└── crates/
-    ├── settings/       # Core settings functionality
-    └── settings-cli/   # CLI tool
+- `` `settings` `` - Core settings management (builder, validation, encryption)
+- `` `settings-cli` `` - CLI tool for settings operations
+
+### Using Modules
+
+```rust
+use reinhardt::conf::settings::{SettingsBuilder, SettingsConfig};
 ```
 
 ## License

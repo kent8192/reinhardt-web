@@ -11,7 +11,7 @@
 //! - Dict format: key=value (colon syntax NOT supported)
 //! - List delimiters: comma only (semicolon, pipe NOT supported)
 
-use reinhardt_settings::env_parser::{
+use reinhardt_conf::settings::env_parser::{
 	parse_bool, parse_cache_url, parse_database_url, parse_dict, parse_list,
 };
 use rstest::*;

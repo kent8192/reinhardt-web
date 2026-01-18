@@ -3,14 +3,14 @@
 //! This test module validates the integration of secrets providers (Memory, Env)
 //! with secret management functionality, including retrieval, rotation, and audit logging.
 
-use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
-use reinhardt_settings::secrets::audit::{
+use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
+use reinhardt_conf::settings::secrets::audit::{
 	SecretAccessEvent, SecretAuditBackend, SecretAuditLogger,
 };
-use reinhardt_settings::secrets::providers::env::EnvSecretProvider;
-use reinhardt_settings::secrets::providers::memory::MemorySecretProvider;
-use reinhardt_settings::secrets::rotation::{RotationPolicy, SecretRotation};
-use reinhardt_settings::secrets::{SecretProvider, SecretString};
+use reinhardt_conf::settings::secrets::providers::env::EnvSecretProvider;
+use reinhardt_conf::settings::secrets::providers::memory::MemorySecretProvider;
+use reinhardt_conf::settings::secrets::rotation::{RotationPolicy, SecretRotation};
+use reinhardt_conf::settings::secrets::{SecretProvider, SecretString};
 use rstest::*;
 use serial_test::serial;
 use std::env;

@@ -4,8 +4,8 @@
 //! when merging configuration from multiple sources, including empty sources,
 //! null values, arrays, and deeply nested objects.
 
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::sources::DefaultSource;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::sources::DefaultSource;
 use rstest::*;
 use serde_json::{Value, json};
 

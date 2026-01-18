@@ -10,7 +10,7 @@
 //! - Test extreme values (0, MAX, MIN)
 //! - Verify inclusive boundaries behavior
 
-use reinhardt_settings::validation::{RangeValidator, Validator};
+use reinhardt_conf::settings::validation::{RangeValidator, Validator};
 use rstest::*;
 use serde_json::json;
 
@@ -294,8 +294,8 @@ fn test_range_validator_error_messages() {
 
 #[cfg(feature = "async")]
 mod ttl_tests {
-	use reinhardt_settings::backends::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use rstest::*;
 	use std::sync::Arc;
 	use tokio::time::{Duration, sleep};

@@ -3,9 +3,9 @@
 //! This test module validates the integration of multiple configuration sources,
 //! including priority resolution, merging logic, and profile-based configuration.
 
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

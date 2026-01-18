@@ -18,8 +18,8 @@
 
 #[cfg(all(feature = "async", feature = "dynamic-database"))]
 mod database_integration_tests {
-	use reinhardt_settings::backends::database::DatabaseBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::database::DatabaseBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use rstest::*;
 	use sea_query::{Alias, Index, MysqlQueryBuilder};
 	use serial_test::serial;

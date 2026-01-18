@@ -58,7 +58,7 @@ impl EnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::EnvSource;
+	/// use reinhardt_conf::settings::sources::EnvSource;
 	///
 	/// let source = EnvSource::new();
 	// Loads all environment variables
@@ -74,7 +74,7 @@ impl EnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::EnvSource;
+	/// use reinhardt_conf::settings::sources::EnvSource;
 	///
 	/// let source = EnvSource::new()
 	///     .with_prefix("APP_");
@@ -89,7 +89,7 @@ impl EnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::EnvSource;
+	/// use reinhardt_conf::settings::sources::EnvSource;
 	///
 	/// let source = EnvSource::new()
 	///     .with_interpolation(true);
@@ -190,7 +190,7 @@ impl DotEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DotEnvSource;
+	/// use reinhardt_conf::settings::sources::DotEnvSource;
 	///
 	/// let source = DotEnvSource::new();
 	// Loads from .env file
@@ -207,7 +207,7 @@ impl DotEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DotEnvSource;
+	/// use reinhardt_conf::settings::sources::DotEnvSource;
 	/// use std::path::PathBuf;
 	///
 	/// let source = DotEnvSource::new()
@@ -222,8 +222,8 @@ impl DotEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DotEnvSource;
-	/// use reinhardt_settings::profile::Profile;
+	/// use reinhardt_conf::settings::sources::DotEnvSource;
+	/// use reinhardt_conf::settings::profile::Profile;
 	///
 	/// let source = DotEnvSource::new()
 	///     .with_profile(Profile::Production);
@@ -238,7 +238,7 @@ impl DotEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DotEnvSource;
+	/// use reinhardt_conf::settings::sources::DotEnvSource;
 	///
 	/// let source = DotEnvSource::new()
 	///     .with_interpolation(true);
@@ -309,7 +309,7 @@ impl TomlFileSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::TomlFileSource;
+	/// use reinhardt_conf::settings::sources::TomlFileSource;
 	/// use std::path::PathBuf;
 	///
 	/// let source = TomlFileSource::new(PathBuf::from("config.toml"));
@@ -360,7 +360,7 @@ impl JsonFileSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::JsonFileSource;
+	/// use reinhardt_conf::settings::sources::JsonFileSource;
 	/// use std::path::PathBuf;
 	///
 	/// let source = JsonFileSource::new(PathBuf::from("config.json"));
@@ -407,7 +407,7 @@ impl DefaultSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let source = DefaultSource::new()
@@ -424,7 +424,7 @@ impl DefaultSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let source = DefaultSource::new()
@@ -439,7 +439,7 @@ impl DefaultSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	/// use std::collections::HashMap;
 	///
@@ -480,7 +480,7 @@ impl ConfigSource for DefaultSource {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_settings::sources::auto_source;
+/// use reinhardt_conf::settings::sources::auto_source;
 /// use std::path::PathBuf;
 ///
 // Automatically detects TOML source from extension
@@ -516,8 +516,8 @@ pub fn auto_source(path: impl AsRef<Path>) -> Result<Box<dyn ConfigSource>, Sour
 /// # Examples
 ///
 /// ```
-/// use reinhardt_settings::sources::LowPriorityEnvSource;
-/// use reinhardt_settings::builder::SettingsBuilder;
+/// use reinhardt_conf::settings::sources::LowPriorityEnvSource;
+/// use reinhardt_conf::settings::builder::SettingsBuilder;
 ///
 /// let settings = SettingsBuilder::new()
 ///     .add_source(LowPriorityEnvSource::new())
@@ -534,7 +534,7 @@ impl LowPriorityEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::LowPriorityEnvSource;
+	/// use reinhardt_conf::settings::sources::LowPriorityEnvSource;
 	///
 	/// let source = LowPriorityEnvSource::new();
 	/// ```
@@ -549,7 +549,7 @@ impl LowPriorityEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::LowPriorityEnvSource;
+	/// use reinhardt_conf::settings::sources::LowPriorityEnvSource;
 	///
 	/// let source = LowPriorityEnvSource::new()
 	///     .with_prefix("REINHARDT_");
@@ -564,7 +564,7 @@ impl LowPriorityEnvSource {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::sources::LowPriorityEnvSource;
+	/// use reinhardt_conf::settings::sources::LowPriorityEnvSource;
 	///
 	/// let source = LowPriorityEnvSource::new()
 	///     .with_interpolation(true);

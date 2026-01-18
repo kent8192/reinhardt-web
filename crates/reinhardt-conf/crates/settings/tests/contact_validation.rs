@@ -4,7 +4,7 @@
 //! for managing admin and manager contacts, including email validation,
 //! deduplication, and the managers_from_admins utility.
 
-use reinhardt_settings::{Contact, Settings};
+use reinhardt_conf::settings::{Contact, Settings};
 use rstest::*;
 
 /// Test: Contact creation with invalid email format

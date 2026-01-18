@@ -1,6 +1,6 @@
 //! Tests for configuration encryption/decryption
 
-use reinhardt_settings::encryption::{ConfigEncryptor, EncryptedConfig};
+use reinhardt_conf::settings::encryption::{ConfigEncryptor, EncryptedConfig};
 
 #[cfg(feature = "encryption")]
 mod encryption_tests {

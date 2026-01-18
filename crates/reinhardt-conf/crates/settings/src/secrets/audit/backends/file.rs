@@ -5,8 +5,8 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reinhardt_settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
-//! use reinhardt_settings::secrets::audit::backends::FileSecretAuditBackend;
+//! use reinhardt_conf::settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
+//! use reinhardt_conf::settings::secrets::audit::backends::FileSecretAuditBackend;
 //!
 //! # async fn example() -> Result<(), String> {
 //! let backend = FileSecretAuditBackend::new("secret_audit.log")?;
@@ -35,8 +35,8 @@ use std::sync::Arc;
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_settings::secrets::audit::backends::FileSecretAuditBackend;
-/// use reinhardt_settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
+/// use reinhardt_conf::settings::secrets::audit::backends::FileSecretAuditBackend;
+/// use reinhardt_conf::settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
 ///
 /// # async fn example() -> Result<(), String> {
 /// let backend = FileSecretAuditBackend::new("audit.log")?;
@@ -57,7 +57,7 @@ impl FileSecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_settings::secrets::audit::backends::FileSecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::backends::FileSecretAuditBackend;
 	///
 	/// let backend = FileSecretAuditBackend::new("secret_audit.log").unwrap();
 	/// ```
@@ -82,7 +82,7 @@ impl FileSecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_settings::secrets::audit::backends::FileSecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::backends::FileSecretAuditBackend;
 	/// use std::path::Path;
 	///
 	/// let backend = FileSecretAuditBackend::new("audit.log").unwrap();

@@ -25,7 +25,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let mut test_env = TestEnv::new().unwrap();
 	/// test_env.set_var("TEST_KEY", "test_value");
@@ -44,7 +44,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let test_env = TestEnv::new().unwrap();
 	/// let temp_path = test_env.path();
@@ -58,7 +58,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let mut test_env = TestEnv::new().unwrap();
 	/// test_env.set_var("DB_HOST", "localhost");
@@ -85,7 +85,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let mut test_env = TestEnv::new().unwrap();
 	/// test_env.set_var("TEMP_VAR", "value");
@@ -113,7 +113,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let test_env = TestEnv::new().unwrap();
 	/// let env_file = test_env.create_env_file("DEBUG=true\nPORT=8080").unwrap();
@@ -129,7 +129,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let test_env = TestEnv::new().unwrap();
 	/// let config = test_env.create_config_file("app.toml", "[database]\nhost = \"localhost\"").unwrap();
@@ -145,7 +145,7 @@ impl TestEnv {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestEnv;
+	/// use reinhardt_conf::settings::testing::TestEnv;
 	///
 	/// let test_env = TestEnv::new().unwrap();
 	/// test_env.create_env_file("API_KEY=secret123").unwrap();
@@ -195,7 +195,7 @@ impl TestSettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestSettingsBuilder;
+	/// use reinhardt_conf::settings::testing::TestSettingsBuilder;
 	///
 	/// let builder = TestSettingsBuilder::new()
 	///     .env("DATABASE_URL", "sqlite::memory:")
@@ -213,7 +213,7 @@ impl TestSettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestSettingsBuilder;
+	/// use reinhardt_conf::settings::testing::TestSettingsBuilder;
 	///
 	/// let builder = TestSettingsBuilder::new()
 	///     .env("DEBUG", "true")
@@ -228,7 +228,7 @@ impl TestSettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestSettingsBuilder;
+	/// use reinhardt_conf::settings::testing::TestSettingsBuilder;
 	///
 	/// let builder = TestSettingsBuilder::new()
 	///     .config("[database]\nhost = \"localhost\"\nport = 5432");
@@ -242,7 +242,7 @@ impl TestSettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::testing::TestSettingsBuilder;
+	/// use reinhardt_conf::settings::testing::TestSettingsBuilder;
 	///
 	/// let test_env = TestSettingsBuilder::new()
 	///     .env("APP_NAME", "test_app")

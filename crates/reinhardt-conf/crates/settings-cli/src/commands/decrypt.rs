@@ -52,9 +52,9 @@ pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 		let encrypted = std::fs::read(&args.file)?;
 
 		// Decrypt using the encryption module
-		let encrypted_config: reinhardt_settings::encryption::EncryptedConfig =
+		let encrypted_config: reinhardt_conf::settings::encryption::EncryptedConfig =
 			serde_json::from_slice(&encrypted)?;
-		let encryptor = reinhardt_settings::encryption::ConfigEncryptor::new(key_bytes)
+		let encryptor = reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_bytes)
 			.map_err(|e| anyhow::anyhow!(e))?;
 		let decrypted = encryptor
 			.decrypt(&encrypted_config)

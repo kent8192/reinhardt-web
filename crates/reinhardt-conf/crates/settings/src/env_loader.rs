@@ -26,7 +26,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	/// use std::path::PathBuf;
 	///
 	/// let loader = EnvLoader::new()
@@ -48,7 +48,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	/// use std::path::PathBuf;
 	///
 	/// let loader = EnvLoader::new()
@@ -65,7 +65,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	///
 	/// let loader = EnvLoader::new()
 	///     .overwrite(true);
@@ -81,7 +81,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	///
 	/// let loader = EnvLoader::new()
 	///     .interpolate(true);
@@ -97,7 +97,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	/// use std::io::Write;
 	///
 	/// let temp_dir = tempfile::tempdir().unwrap();
@@ -133,7 +133,7 @@ impl EnvLoader {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::env_loader::EnvLoader;
+	/// use reinhardt_conf::settings::env_loader::EnvLoader;
 	/// use std::path::PathBuf;
 	///
 	/// let loader = EnvLoader::new()
@@ -304,7 +304,7 @@ impl Default for EnvLoader {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_settings::env_loader::load_env;
+/// use reinhardt_conf::settings::env_loader::load_env;
 /// use std::io::Write;
 ///
 /// let temp_dir = tempfile::tempdir().unwrap();
@@ -323,7 +323,7 @@ pub fn load_env(path: impl Into<PathBuf>) -> Result<(), EnvError> {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_settings::env_loader::EnvLoader;
+/// use reinhardt_conf::settings::env_loader::EnvLoader;
 /// use std::io::Write;
 ///
 /// let temp_dir = tempfile::tempdir().unwrap();
@@ -351,7 +351,7 @@ pub fn load_env_auto() -> Result<(), EnvError> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_settings::env_loader::load_env_optional;
+/// use reinhardt_conf::settings::env_loader::load_env_optional;
 /// use std::path::PathBuf;
 ///
 // Returns true if loaded, false if not found

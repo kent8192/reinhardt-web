@@ -11,18 +11,82 @@ repository.workspace = true
 
 [dependencies]
 # Internal crates - made optional for re-export
-reinhardt-settings = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.9.8"
+reinhardt-core = { workspace = true, features = ["exception", "validators"] }
+dotenv = "0.15"
+url = "2.5"
+secrecy = "0.10.3"
+zeroize = { version = "1.7", features = ["derive"] }
+subtle = "2.5"
+parking_lot = "0.12"
+indexmap = "2.0"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3.8"
+async-trait = { version = "0.1", optional = true }
+tokio = { workspace = true, features = ["sync"], optional = true }
+redis = { version = "0.32.7", features = [
+  "tokio-comp",
+  "connection-manager",
+], optional = true }
+sqlx = { workspace = true, features = ["any", "runtime-tokio", "tls-rustls", "postgres", "mysql"], optional = true }
+sea-query = { version = "1.0.0-rc.29", features = [
+  "backend-postgres",
+  "backend-mysql",
+  "backend-sqlite",
+  "sqlx-utils",
+], optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
+rand = { version = "0.9.2", optional = true }
+aws-config = { version = "1.5", optional = true }
+aws-sdk-secretsmanager = { version = "1.52", optional = true }
+aws-smithy-runtime = { version = "1.9", optional = true }
+azure_identity = { version = "0.29.0", optional = true }
+azure_security_keyvault_secrets = { version = "0.8.0", optional = true }
+futures = { workspace = true, optional = true }
+aes-gcm = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
+pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
+sha2 = { version = "0.10", optional = true }
+notify = { version = "8.2.0", optional = true }
+moka = { version = "0.12", features = ["future"], optional = true }
+uuid = { version = "1.6", features = ["v4"] }
+reinhardt-utils = {workspace = true, features = ["static"]}
 
 [features]
 default = ["settings"]
-settings = ["reinhardt-settings"]
 
-# Expose internal crate features as-is
-async = ["reinhardt-settings?/async"]
-dynamic-redis = ["reinhardt-settings?/dynamic-redis"]
-dynamic-database = ["reinhardt-settings?/dynamic-database"]
-vault = ["reinhardt-settings?/vault"]
-aws-secrets = ["reinhardt-settings?/aws-secrets"]
-azure-keyvault = ["reinhardt-settings?/azure-keyvault"]
-secret-rotation = ["reinhardt-settings?/secret-rotation"]
-encryption = ["reinhardt-settings?/encryption"]
+# Module features (modules are always compiled, features for backwards compatibility)
+settings = []
+
+# Async and runtime features
+async = ["async-trait", "tokio"]
+dynamic-redis = ["async", "redis"]
+dynamic-database = ["async", "sea-query", "sqlx"]
+vault = ["async", "reqwest"]
+aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "aws-smithy-runtime"]
+azure-keyvault = ["async", "azure_identity", "azure_security_keyvault_secrets", "futures"]
+secret-rotation = ["async", "rand"]
+encryption = ["aes-gcm", "base64", "pbkdf2", "rand", "sha2"]
+hot-reload = ["notify", "tokio", "async"]
+caching = ["moka", "async"]
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+testcontainers = "0.25.0"
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+env_logger = "0.11"
+anyhow = { workspace = true }
+hex = "0.4"
+colored = "3.0.0"
+mockito = "1.5"
+mockall = "0.13"
+rstest = "0.26.1"
+wiremock = "0.6"
+serial_test = { workspace = true }
+quickcheck = "1.0"
+quickcheck_macros = "1.0"

@@ -34,7 +34,7 @@
 //! - Keys with dashes
 //! - Values with special characters
 
-use reinhardt_settings::env_parser::{parse_dict, parse_list};
+use reinhardt_conf::settings::env_parser::{parse_dict, parse_list};
 use rstest::*;
 
 /// Test: Parse List - Content Equivalence Classes

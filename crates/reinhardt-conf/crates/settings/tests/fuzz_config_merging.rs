@@ -14,8 +14,8 @@
 
 use quickcheck::{Arbitrary, Gen};
 use quickcheck_macros::quickcheck;
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::sources::DefaultSource;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::sources::DefaultSource;
 use rstest::*;
 use serde_json::{Value, json};
 

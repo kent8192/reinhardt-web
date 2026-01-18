@@ -9,7 +9,7 @@
 
 #![cfg(feature = "hot-reload")]
 
-use reinhardt_settings::hot_reload::HotReloadManager;
+use reinhardt_conf::settings::hot_reload::HotReloadManager;
 use rstest::*;
 use std::fs;
 use std::sync::Arc;

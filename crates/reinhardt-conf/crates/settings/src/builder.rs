@@ -23,7 +23,7 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
 	///
 	/// let builder = SettingsBuilder::new();
 	/// let settings = builder.build().unwrap();
@@ -43,8 +43,8 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::profile::Profile;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::profile::Profile;
 	///
 	/// let builder = SettingsBuilder::new()
 	///     .profile(Profile::Development);
@@ -61,7 +61,7 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
 	///
 	/// let builder = SettingsBuilder::new()
 	///     .strict(true);
@@ -80,8 +80,8 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::EnvSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::EnvSource;
 	///
 	/// let builder = SettingsBuilder::new()
 	///     .add_source(EnvSource::new());
@@ -97,7 +97,7 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
 	///
 	/// let builder = SettingsBuilder::new()
 	///     .with_env(Some("REINHARDT"));
@@ -116,8 +116,8 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::profile::Profile;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::profile::Profile;
 	///
 	/// let builder = SettingsBuilder::new()
 	///     .profile(Profile::Development)
@@ -137,8 +137,8 @@ impl SettingsBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::{DefaultSource, EnvSource};
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::{DefaultSource, EnvSource};
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()
@@ -199,8 +199,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::{SettingsBuilder, MergedSettings};
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::{SettingsBuilder, MergedSettings};
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()
@@ -241,8 +241,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()
@@ -274,8 +274,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()
@@ -296,8 +296,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()
@@ -320,8 +320,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::profile::Profile;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::profile::Profile;
 	///
 	/// let settings = SettingsBuilder::new()
 	///     .profile(Profile::Production)
@@ -338,8 +338,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde::{Deserialize, Serialize};
 	/// use serde_json::Value;
 	///
@@ -380,8 +380,8 @@ impl MergedSettings {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::builder::SettingsBuilder;
-	/// use reinhardt_settings::sources::DefaultSource;
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
 	/// use serde_json::Value;
 	///
 	/// let settings = SettingsBuilder::new()

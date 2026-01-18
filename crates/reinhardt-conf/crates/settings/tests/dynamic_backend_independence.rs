@@ -13,8 +13,8 @@
 
 #![cfg(feature = "async")]
 
-use reinhardt_settings::backends::MemoryBackend;
-use reinhardt_settings::dynamic::DynamicSettings;
+use reinhardt_conf::settings::backends::MemoryBackend;
+use reinhardt_conf::settings::dynamic::DynamicSettings;
 use rstest::*;
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};

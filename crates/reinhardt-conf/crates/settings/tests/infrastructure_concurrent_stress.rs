@@ -20,8 +20,8 @@
 
 #[cfg(feature = "async")]
 mod concurrent_stress_tests {
-	use reinhardt_settings::backends::memory::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::memory::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use rstest::*;
 	use serial_test::serial;
 	use std::sync::Arc;

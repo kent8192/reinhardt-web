@@ -14,8 +14,8 @@
 //! ```rust
 //! # #[cfg(feature = "async")]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use reinhardt_settings::dynamic::{DynamicSettings, DynamicBackend};
-//! use reinhardt_settings::backends::MemoryBackend;
+//! use reinhardt_conf::settings::dynamic::{DynamicSettings, DynamicBackend};
+//! use reinhardt_conf::settings::backends::MemoryBackend;
 //! use std::sync::Arc;
 //!
 //! # futures::executor::block_on(async {
@@ -85,7 +85,7 @@ pub type DynamicResult<T> = Result<T, DynamicError>;
 /// ```
 /// # #[cfg(feature = "async")]
 /// # async fn example() {
-/// use reinhardt_settings::dynamic::{DynamicBackend, DynamicResult};
+/// use reinhardt_conf::settings::dynamic::{DynamicBackend, DynamicResult};
 /// use async_trait::async_trait;
 /// use std::collections::HashMap;
 /// use parking_lot::RwLock;
@@ -214,8 +214,8 @@ impl CachedValue {
 ///
 /// ```rust
 /// # futures::executor::block_on(async {
-/// use reinhardt_settings::dynamic::DynamicSettings;
-/// use reinhardt_settings::backends::MemoryBackend;
+/// use reinhardt_conf::settings::dynamic::DynamicSettings;
+/// use reinhardt_conf::settings::backends::MemoryBackend;
 /// use std::sync::Arc;
 ///
 /// let backend = Arc::new(MemoryBackend::new());
@@ -265,8 +265,8 @@ impl DynamicSettings {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::dynamic::DynamicSettings;
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());
@@ -293,8 +293,8 @@ impl DynamicSettings {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::dynamic::DynamicSettings;
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	/// use std::sync::Arc;
 	/// use std::time::Duration;
 	///
@@ -319,8 +319,8 @@ impl DynamicSettings {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # futures::executor::block_on(async {
 	/// # let backend = Arc::new(MemoryBackend::new());
@@ -375,8 +375,8 @@ impl DynamicSettings {
 	///
 	/// ```rust
 	/// # futures::executor::block_on(async {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend);
@@ -418,8 +418,8 @@ impl DynamicSettings {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # futures::executor::block_on(async {
 	/// # let backend = Arc::new(MemoryBackend::new());
@@ -456,8 +456,8 @@ impl DynamicSettings {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # futures::executor::block_on(async {
 	/// # let backend = Arc::new(MemoryBackend::new());
@@ -482,8 +482,8 @@ impl DynamicSettings {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # futures::executor::block_on(async {
 	/// # let backend = Arc::new(MemoryBackend::new());
@@ -511,8 +511,8 @@ impl DynamicSettings {
 	///
 	/// ```rust
 	/// # futures::executor::block_on(async {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend);
@@ -539,8 +539,8 @@ impl DynamicSettings {
 	/// ## Example
 	///
 	/// ```rust
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend);
@@ -558,8 +558,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(all(feature = "async", feature = "caching"))]
 	/// # async fn example() {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend);
@@ -580,8 +580,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(all(feature = "async", feature = "caching"))]
 	/// # async fn example() {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend);
@@ -609,8 +609,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "hot-reload")]
 	/// # futures::executor::block_on(async {
-	/// use reinhardt_settings::dynamic::DynamicSettings;
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	/// use std::sync::Arc;
 	/// use std::path::Path;
 	///
@@ -647,8 +647,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(all(feature = "async", feature = "hot-reload"))]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # use std::path::Path;
 	/// # let backend = Arc::new(MemoryBackend::new());
@@ -678,8 +678,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(all(feature = "async", feature = "hot-reload"))]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use reinhardt_settings::dynamic::DynamicSettings;
-	/// # use reinhardt_settings::backends::MemoryBackend;
+	/// # use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// # use reinhardt_conf::settings::backends::MemoryBackend;
 	/// # use std::sync::Arc;
 	/// # let backend = Arc::new(MemoryBackend::new());
 	/// # let settings = DynamicSettings::new(backend).with_hot_reload();
@@ -707,8 +707,8 @@ impl DynamicSettings {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "hot-reload")]
 	/// # {
-	/// use reinhardt_settings::dynamic::DynamicSettings;
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicSettings;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());

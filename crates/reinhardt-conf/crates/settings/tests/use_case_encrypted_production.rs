@@ -8,8 +8,8 @@
 
 #![cfg(feature = "encryption")]
 
-use reinhardt_settings::encryption::{ConfigEncryptor, EncryptedConfig};
-use reinhardt_settings::secrets::types::SecretString;
+use reinhardt_conf::settings::encryption::{ConfigEncryptor, EncryptedConfig};
+use reinhardt_conf::settings::secrets::types::SecretString;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use std::fs;

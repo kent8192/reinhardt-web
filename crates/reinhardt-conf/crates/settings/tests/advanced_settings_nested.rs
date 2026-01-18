@@ -4,7 +4,7 @@
 //! including DatabaseSettings, CacheSettings, SessionSettings, CorsSettings,
 //! EmailSettings, LoggingSettings, and their configuration from environment variables.
 
-use reinhardt_settings::advanced::{
+use reinhardt_conf::settings::advanced::{
 	AdvancedSettings, CacheSettings, CorsSettings, DatabaseSettings, EmailSettings,
 	LoggingSettings, MediaSettings, SessionSettings, StaticSettings,
 };

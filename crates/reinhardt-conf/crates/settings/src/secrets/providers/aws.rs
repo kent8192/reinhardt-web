@@ -19,8 +19,8 @@ use aws_sdk_secretsmanager::Client;
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_settings::secrets::providers::aws::AwsSecretsProvider;
-/// use reinhardt_settings::prelude::SecretProvider;
+/// use reinhardt_conf::settings::secrets::providers::aws::AwsSecretsProvider;
+/// use reinhardt_conf::settings::prelude::SecretProvider;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let provider = AwsSecretsProvider::new(None).await?;
@@ -47,7 +47,7 @@ impl AwsSecretsProvider {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_settings::secrets::providers::aws::AwsSecretsProvider;
+	/// use reinhardt_conf::settings::secrets::providers::aws::AwsSecretsProvider;
 	///
 	// Without prefix
 	/// let provider = AwsSecretsProvider::new(None).await?;

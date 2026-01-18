@@ -12,7 +12,7 @@
 
 use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 use quickcheck_macros::quickcheck;
-use reinhardt_settings::env_parser::{parse_bool, parse_database_url, parse_dict, parse_list};
+use reinhardt_conf::settings::env_parser::{parse_bool, parse_database_url, parse_dict, parse_list};
 use rstest::*;
 
 /// Test: parse_bool never panics on random input

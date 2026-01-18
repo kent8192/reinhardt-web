@@ -15,7 +15,7 @@
 #![cfg(feature = "async")]
 
 use quickcheck_macros::quickcheck;
-use reinhardt_settings::secrets::SecretString;
+use reinhardt_conf::settings::secrets::SecretString;
 use rstest::*;
 use std::fmt::Write as FmtWrite;
 

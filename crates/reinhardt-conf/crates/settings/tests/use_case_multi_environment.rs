@@ -11,10 +11,10 @@
 //! - SecurityValidator enforces production safety requirements
 //! - Database configurations vary by environment
 
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::TomlFileSource;
-use reinhardt_settings::validation::{SecurityValidator, SettingsValidator};
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::TomlFileSource;
+use reinhardt_conf::settings::validation::{SecurityValidator, SettingsValidator};
 use rstest::*;
 use std::collections::HashMap;
 use std::fs;

@@ -2,7 +2,7 @@
 
 use crate::output;
 use clap::Args;
-use reinhardt_settings::prelude::*;
+use reinhardt_conf::settings::prelude::*;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -79,7 +79,7 @@ pub(crate) async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 		};
 
 		// Create validator
-		let _validator = reinhardt_settings::validation::SecurityValidator::new(profile);
+		let _validator = reinhardt_conf::settings::validation::SecurityValidator::new(profile);
 
 		output::info("Profile-specific validation completed");
 	}

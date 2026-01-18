@@ -11,7 +11,7 @@
 //! ```rust,no_run
 //! # #[cfg(feature = "dynamic-redis")]
 //! # async fn example() -> Result<(), String> {
-//! use reinhardt_settings::backends::RedisSettingsBackend;
+//! use reinhardt_conf::settings::backends::RedisSettingsBackend;
 //! use serde_json::json;
 //!
 //! // Create backend
@@ -53,7 +53,7 @@ use async_trait::async_trait;
 /// ```rust,no_run
 /// # #[cfg(feature = "dynamic-redis")]
 /// # async fn example() -> Result<(), String> {
-/// use reinhardt_settings::backends::RedisSettingsBackend;
+/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 ///
 /// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 ///
@@ -87,7 +87,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	/// # Ok(())
@@ -127,7 +127,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	///
@@ -160,7 +160,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	///
@@ -199,7 +199,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	///
@@ -229,7 +229,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	///
@@ -259,7 +259,7 @@ impl RedisSettingsBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-redis")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::RedisSettingsBackend;
+	/// use reinhardt_conf::settings::backends::RedisSettingsBackend;
 	///
 	/// let backend = RedisSettingsBackend::new("redis://localhost:6379").await?;
 	///

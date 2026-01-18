@@ -67,7 +67,7 @@ impl RequiredValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::RequiredValidator;
+	/// use reinhardt_conf::settings::validation::RequiredValidator;
 	///
 	/// let validator = RequiredValidator::new(vec![
 	///     "secret_key".to_string(),
@@ -129,8 +129,8 @@ impl SecurityValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::SecurityValidator;
-	/// use reinhardt_settings::profile::Profile;
+	/// use reinhardt_conf::settings::validation::SecurityValidator;
+	/// use reinhardt_conf::settings::profile::Profile;
 	///
 	/// let validator = SecurityValidator::new(Profile::Production);
 	// Validator will enforce production security requirements
@@ -276,7 +276,7 @@ impl RangeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::RangeValidator;
+	/// use reinhardt_conf::settings::validation::RangeValidator;
 	///
 	/// let validator = RangeValidator::new(Some(0.0), Some(100.0));
 	// Validator will check values are between 0 and 100
@@ -289,7 +289,7 @@ impl RangeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::RangeValidator;
+	/// use reinhardt_conf::settings::validation::RangeValidator;
 	///
 	/// let validator = RangeValidator::min(0.0);
 	// Values must be >= 0
@@ -305,7 +305,7 @@ impl RangeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::RangeValidator;
+	/// use reinhardt_conf::settings::validation::RangeValidator;
 	///
 	/// let validator = RangeValidator::max(100.0);
 	// Values must be <= 100
@@ -321,7 +321,7 @@ impl RangeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::RangeValidator;
+	/// use reinhardt_conf::settings::validation::RangeValidator;
 	///
 	/// let validator = RangeValidator::between(1.0, 10.0);
 	// Values must be between 1 and 10 (inclusive)
@@ -429,7 +429,7 @@ impl PatternValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::PatternValidator;
+	/// use reinhardt_conf::settings::validation::PatternValidator;
 	///
 	/// let validator = PatternValidator::new(r"^\d{3}-\d{3}-\d{4}$").unwrap();
 	// Validates phone number format
@@ -506,7 +506,7 @@ impl ChoiceValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_settings::validation::ChoiceValidator;
+	/// use reinhardt_conf::settings::validation::ChoiceValidator;
 	///
 	/// let validator = ChoiceValidator::new(vec![
 	///     "development".to_string(),

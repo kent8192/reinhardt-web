@@ -5,8 +5,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
-//! use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
+//! use reinhardt_conf::settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
+//! use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
 //!
 //! # async fn example() -> Result<(), String> {
 //! let backend = MemorySecretAuditBackend::new();
@@ -35,8 +35,8 @@ use std::sync::Arc;
 /// ## Example
 ///
 /// ```rust
-/// use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
-/// use reinhardt_settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
+/// use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
+/// use reinhardt_conf::settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
 ///
 /// # async fn example() -> Result<(), String> {
 /// let backend = MemorySecretAuditBackend::new();
@@ -56,7 +56,7 @@ impl MemorySecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
 	///
 	/// let backend = MemorySecretAuditBackend::new();
 	/// ```
@@ -71,8 +71,8 @@ impl MemorySecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
-	/// use reinhardt_settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
+	/// use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::{SecretAuditBackend, SecretAccessEvent};
 	///
 	/// # async fn example() -> Result<(), String> {
 	/// let backend = MemorySecretAuditBackend::new();
@@ -96,7 +96,7 @@ impl MemorySecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
 	///
 	/// let backend = MemorySecretAuditBackend::new();
 	/// assert_eq!(backend.len(), 0);
@@ -110,7 +110,7 @@ impl MemorySecretAuditBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::secrets::audit::backends::MemorySecretAuditBackend;
+	/// use reinhardt_conf::settings::secrets::audit::backends::MemorySecretAuditBackend;
 	///
 	/// let backend = MemorySecretAuditBackend::new();
 	/// assert!(backend.is_empty());

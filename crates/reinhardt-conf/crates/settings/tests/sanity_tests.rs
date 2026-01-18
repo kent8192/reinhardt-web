@@ -14,8 +14,8 @@
 //! 6. **Profile Module**: Profile enum operations
 //! 7. **Feature-gated Modules**: Encryption, dynamic settings, secrets
 
-use reinhardt_settings::prelude::*;
-use reinhardt_settings::profile::Profile;
+use reinhardt_conf::settings::prelude::*;
+use reinhardt_conf::settings::profile::Profile;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -222,7 +222,7 @@ fn sanity_security_validator_production() {
 #[cfg(feature = "encryption")]
 #[rstest]
 fn sanity_encryption_basic() {
-	use reinhardt_settings::encryption::ConfigEncryptor;
+	use reinhardt_conf::settings::encryption::ConfigEncryptor;
 
 	let key = vec![42u8; 32];
 	let encryptor = ConfigEncryptor::new(key).expect("Create encryptor");
@@ -245,8 +245,8 @@ fn sanity_encryption_basic() {
 #[rstest]
 #[tokio::test]
 async fn sanity_dynamic_settings_basic() {
-	use reinhardt_settings::backends::memory::MemoryBackend;
-	use reinhardt_settings::dynamic::DynamicSettings;
+	use reinhardt_conf::settings::backends::memory::MemoryBackend;
+	use reinhardt_conf::settings::dynamic::DynamicSettings;
 	use std::sync::Arc;
 
 	let backend = Arc::new(MemoryBackend::new());
@@ -272,7 +272,7 @@ async fn sanity_dynamic_settings_basic() {
 #[cfg(feature = "async")]
 #[rstest]
 fn sanity_secret_string_basic() {
-	use reinhardt_settings::secrets::SecretString;
+	use reinhardt_conf::settings::secrets::SecretString;
 
 	let secret = SecretString::new("my_secret_value");
 
@@ -315,7 +315,7 @@ fn sanity_merged_settings() {
 /// Why: Verifies Env wrapper works for environment variable access.
 #[rstest]
 fn sanity_env_basic() {
-	use reinhardt_settings::env::Env;
+	use reinhardt_conf::settings::env::Env;
 
 	let env = Env::new();
 	// Just verify it can be created and methods are available

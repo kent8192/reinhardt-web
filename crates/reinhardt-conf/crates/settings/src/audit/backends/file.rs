@@ -5,9 +5,9 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use reinhardt_settings::audit::{AuditEvent, EventType, ChangeRecord};
-//! use reinhardt_settings::audit::backends::FileAuditBackend;
-//! use reinhardt_settings::audit::AuditBackend;
+//! use reinhardt_conf::settings::audit::{AuditEvent, EventType, ChangeRecord};
+//! use reinhardt_conf::settings::audit::backends::FileAuditBackend;
+//! use reinhardt_conf::settings::audit::AuditBackend;
 //! use std::collections::HashMap;
 //! use serde_json::json;
 //!
@@ -44,8 +44,8 @@ use std::sync::Arc;
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_settings::audit::backends::FileAuditBackend;
-/// use reinhardt_settings::audit::{AuditEvent, EventType, AuditBackend};
+/// use reinhardt_conf::settings::audit::backends::FileAuditBackend;
+/// use reinhardt_conf::settings::audit::{AuditEvent, EventType, AuditBackend};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() -> Result<(), String> {
@@ -71,7 +71,7 @@ impl FileAuditBackend {
 	/// ## Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_settings::audit::backends::FileAuditBackend;
+	/// use reinhardt_conf::settings::audit::backends::FileAuditBackend;
 	///
 	/// let backend = FileAuditBackend::new("audit.log").unwrap();
 	/// ```
@@ -96,7 +96,7 @@ impl FileAuditBackend {
 	/// ## Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_settings::audit::backends::FileAuditBackend;
+	/// use reinhardt_conf::settings::audit::backends::FileAuditBackend;
 	/// use std::path::Path;
 	///
 	/// let backend = FileAuditBackend::new("audit.log").unwrap();

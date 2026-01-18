@@ -28,10 +28,8 @@
 
 #![cfg_attr(not(feature = "settings"), allow(unused_imports))]
 
-// Re-export internal crates
-#[cfg(feature = "settings")]
-pub use reinhardt_settings as settings;
+pub mod settings;
 
 // Re-export commonly used types at the crate root for convenience
 #[cfg(feature = "settings")]
-pub use reinhardt_settings::Settings;
+pub use settings::{DatabaseConfig, MiddlewareConfig, Settings, TemplateConfig};

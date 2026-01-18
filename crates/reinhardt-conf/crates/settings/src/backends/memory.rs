@@ -14,8 +14,8 @@
 //! ```rust
 //! # #[cfg(feature = "async")]
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use reinhardt_settings::backends::MemoryBackend;
-//! use reinhardt_settings::dynamic::{DynamicBackend, DynamicSettings};
+//! use reinhardt_conf::settings::backends::MemoryBackend;
+//! use reinhardt_conf::settings::dynamic::{DynamicBackend, DynamicSettings};
 //! use std::sync::Arc;
 //!
 //! # futures::executor::block_on(async {
@@ -83,8 +83,8 @@ impl ValueEntry {
 /// ```
 /// # #[cfg(feature = "async")]
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// use reinhardt_settings::backends::MemoryBackend;
-/// use reinhardt_settings::dynamic::DynamicBackend;
+/// use reinhardt_conf::settings::backends::MemoryBackend;
+/// use reinhardt_conf::settings::dynamic::DynamicBackend;
 /// use std::sync::Arc;
 ///
 /// let backend = Arc::new(MemoryBackend::new());
@@ -124,7 +124,7 @@ impl MemoryBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	///
 	/// let backend = MemoryBackend::new();
 	/// ```
@@ -144,8 +144,8 @@ impl MemoryBackend {
 	///
 	/// ```rust
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-	/// use reinhardt_settings::backends::MemoryBackend;
-	/// use reinhardt_settings::dynamic::DynamicBackend;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicBackend;
 	///
 	/// let backend = MemoryBackend::new();
 	///
@@ -174,8 +174,8 @@ impl MemoryBackend {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_settings::backends::MemoryBackend;
-	/// use reinhardt_settings::dynamic::DynamicBackend;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicBackend;
 	///
 	/// # futures::executor::block_on(async {
 	/// let backend = MemoryBackend::new();
@@ -197,7 +197,7 @@ impl MemoryBackend {
 	/// ## Example
 	///
 	/// ```rust
-	/// use reinhardt_settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
 	///
 	/// let backend = MemoryBackend::new();
 	/// assert!(backend.is_empty());
@@ -213,8 +213,8 @@ impl MemoryBackend {
 	/// ```rust
 	/// # #[cfg(feature = "async")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_settings::backends::MemoryBackend;
-	/// use reinhardt_settings::dynamic::DynamicBackend;
+	/// use reinhardt_conf::settings::backends::MemoryBackend;
+	/// use reinhardt_conf::settings::dynamic::DynamicBackend;
 	///
 	/// # futures::executor::block_on(async {
 	/// let backend = MemoryBackend::new();

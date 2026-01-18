@@ -24,7 +24,7 @@
 //! ```rust,no_run
 //! # #[cfg(feature = "dynamic-database")]
 //! # async fn example() -> Result<(), String> {
-//! use reinhardt_settings::backends::DatabaseBackend;
+//! use reinhardt_conf::settings::backends::DatabaseBackend;
 //! use serde_json::json;
 //!
 //! // Create backend
@@ -73,7 +73,7 @@ use async_trait::async_trait;
 /// ```rust,no_run
 /// # #[cfg(feature = "dynamic-database")]
 /// # async fn example() -> Result<(), String> {
-/// use reinhardt_settings::backends::DatabaseBackend;
+/// use reinhardt_conf::settings::backends::DatabaseBackend;
 /// use serde_json::json;
 ///
 /// let backend = DatabaseBackend::new("postgres://localhost/settings").await?;
@@ -114,7 +114,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	///
 	/// // PostgreSQL
 	/// let backend = DatabaseBackend::new("postgres://user:pass@localhost/db").await?;
@@ -148,7 +148,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
 	///
@@ -232,7 +232,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
 	/// backend.create_table().await?;
@@ -291,7 +291,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use serde_json::json;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
@@ -378,7 +378,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use serde_json::json;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
@@ -450,7 +450,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use serde_json::json;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
@@ -489,7 +489,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use serde_json::json;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
@@ -544,7 +544,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;
 	/// backend.create_table().await?;
@@ -584,7 +584,7 @@ impl DatabaseBackend {
 	/// ```rust,no_run
 	/// # #[cfg(feature = "dynamic-database")]
 	/// # async fn example() -> Result<(), String> {
-	/// use reinhardt_settings::backends::DatabaseBackend;
+	/// use reinhardt_conf::settings::backends::DatabaseBackend;
 	/// use serde_json::json;
 	///
 	/// let backend = DatabaseBackend::new("sqlite::memory:").await?;

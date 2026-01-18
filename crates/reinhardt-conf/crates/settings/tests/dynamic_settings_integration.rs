@@ -3,8 +3,8 @@
 //! This test module validates the integration of DynamicSettings with MemoryBackend,
 //! including basic get/set operations, observer patterns, and concurrent access.
 
-use reinhardt_settings::backends::memory::MemoryBackend;
-use reinhardt_settings::dynamic::DynamicSettings;
+use reinhardt_conf::settings::backends::memory::MemoryBackend;
+use reinhardt_conf::settings::dynamic::DynamicSettings;
 use rstest::*;
 use serde_json::json;
 use serial_test::serial;

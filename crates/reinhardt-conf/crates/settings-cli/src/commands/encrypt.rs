@@ -52,7 +52,7 @@ pub(crate) async fn execute(args: EncryptArgs) -> anyhow::Result<()> {
 		let content = std::fs::read_to_string(&args.file)?;
 
 		// Encrypt using the encryption module
-		let encryptor = reinhardt_settings::encryption::ConfigEncryptor::new(key_bytes)
+		let encryptor = reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_bytes)
 			.map_err(|e| anyhow::anyhow!(e))?;
 		let encrypted_config = encryptor
 			.encrypt(content.as_bytes())

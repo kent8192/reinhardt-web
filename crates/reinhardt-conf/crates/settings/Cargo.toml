@@ -16,7 +16,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = "0.9.8"
 reinhardt-core = { workspace = true, features = ["exception", "validators"] }
-reinhardt-static = { workspace = true }
 
 # Environment variables and URL handling
 dotenv = "0.15"
@@ -77,6 +76,7 @@ moka = { version = "0.12", features = ["future"], optional = true }
 
 # Other dependencies
 uuid = { version = "1.6", features = ["v4"] }
+reinhardt-utils = {workspace = true, features = ["static"]}
 
 [features]
 default = []

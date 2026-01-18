@@ -6,7 +6,7 @@
 
 #![cfg(feature = "encryption")]
 #![allow(clippy::field_reassign_with_default)]
-use reinhardt_settings::encryption::{ConfigEncryptor, EncryptedConfig};
+use reinhardt_conf::settings::encryption::{ConfigEncryptor, EncryptedConfig};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use std::fs;

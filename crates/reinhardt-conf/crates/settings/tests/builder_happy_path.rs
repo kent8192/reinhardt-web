@@ -3,14 +3,14 @@
 //! This test module validates the primary user-facing API for building configuration
 //! from multiple sources with priority resolution, profile switching, and validation.
 
-use reinhardt_settings::Settings;
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::prelude::SettingsValidator;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::{
+use reinhardt_conf::settings::Settings;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::prelude::SettingsValidator;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::{
 	DefaultSource, DotEnvSource, EnvSource, JsonFileSource, TomlFileSource,
 };
-use reinhardt_settings::validation::SecurityValidator;
+use reinhardt_conf::settings::validation::SecurityValidator;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;

@@ -15,7 +15,7 @@
 //! - Numeric false (0)
 //! - Invalid inputs (ambiguous, typo, invalid numbers)
 
-use reinhardt_settings::env_parser::parse_bool;
+use reinhardt_conf::settings::env_parser::parse_bool;
 use rstest::*;
 
 /// Test: Parse Bool - Valid True Equivalence Classes

@@ -10,9 +10,9 @@
 //! 3. **Complex Combinations**: SecurityValidator + RequiredValidator
 //! 4. **Conflicting Rules**: Multiple validators with overlapping or conflicting requirements
 
-use reinhardt_settings::prelude::{SettingsValidator, Validator};
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::validation::{
+use reinhardt_conf::settings::prelude::{SettingsValidator, Validator};
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::validation::{
 	RangeValidator, RequiredValidator, SecurityValidator, ValidationError,
 };
 use rstest::*;

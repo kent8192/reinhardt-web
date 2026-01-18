@@ -4,11 +4,11 @@
 //! messages for various failure scenarios including missing files, invalid formats,
 //! validation failures, and type conflicts.
 
-use reinhardt_settings::builder::SettingsBuilder;
-use reinhardt_settings::prelude::SettingsValidator;
-use reinhardt_settings::profile::Profile;
-use reinhardt_settings::sources::{JsonFileSource, TomlFileSource};
-use reinhardt_settings::validation::SecurityValidator;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::prelude::SettingsValidator;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::{JsonFileSource, TomlFileSource};
+use reinhardt_conf::settings::validation::SecurityValidator;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -215,7 +215,7 @@ secret_key = ""
 	let merged = result.unwrap();
 
 	// Manually create Settings for validation
-	let _settings = reinhardt_settings::Settings {
+	let _settings = reinhardt_conf::settings::Settings {
 		debug: merged.get("debug").unwrap_or(false),
 		secret_key: merged.get("secret_key").unwrap_or_default(),
 		allowed_hosts: vec![],

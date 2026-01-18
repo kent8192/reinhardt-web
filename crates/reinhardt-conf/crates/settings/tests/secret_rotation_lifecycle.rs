@@ -8,7 +8,7 @@
 
 #![cfg(feature = "secret-rotation")]
 
-use reinhardt_settings::secrets::rotation::{RotationEntry, RotationPolicy, SecretRotation};
+use reinhardt_conf::settings::secrets::rotation::{RotationEntry, RotationPolicy, SecretRotation};
 use rstest::*;
 use std::sync::Arc;
 use std::time::Duration;
