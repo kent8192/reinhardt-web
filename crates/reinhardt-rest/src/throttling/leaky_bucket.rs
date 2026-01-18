@@ -237,8 +237,8 @@ impl<B: ThrottleBackend, T: TimeProvider> Throttle for LeakyBucketThrottle<B, T>
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::backend::MemoryBackend;
-	use super::time_provider::MockTimeProvider;
+	use crate::throttling::backend::MemoryBackend;
+	use crate::throttling::time_provider::MockTimeProvider;
 
 	#[tokio::test]
 	async fn test_leaky_bucket_basic() {

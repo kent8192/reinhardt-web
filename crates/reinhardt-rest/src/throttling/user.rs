@@ -118,8 +118,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_request_throttling_expires() {
-		use super::backend::MemoryBackend;
-		use super::time_provider::MockTimeProvider;
+		use crate::throttling::backend::MemoryBackend;
+		use crate::throttling::time_provider::MockTimeProvider;
 		use std::sync::Arc;
 		use tokio::time::Instant;
 

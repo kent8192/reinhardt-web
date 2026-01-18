@@ -160,8 +160,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_scoped_rate_throttle_with_time() {
-		use super::backend::MemoryBackend;
-		use super::time_provider::MockTimeProvider;
+		use crate::throttling::backend::MemoryBackend;
+		use crate::throttling::time_provider::MockTimeProvider;
 		use std::sync::Arc;
 		use tokio::time::Instant;
 

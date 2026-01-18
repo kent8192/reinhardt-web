@@ -42,8 +42,8 @@ pages = []
 json = []
 xml = ["serde-xml-rs"]
 yaml = []
-redis-backend = ["redis"]
-geo-limiting = ["maxminddb"]
+redis-backend = ["reinhardt-throttling/redis-backend"]
+geo-limiting = ["reinhardt-throttling/geo-limiting"]
 
 [dependencies]
 # Core dependencies
@@ -52,6 +52,9 @@ reinhardt-db = { workspace = true, optional = true, features = ["backends", "orm
 
 # Authentication (required for auth types re-export)
 reinhardt-auth = { workspace = true }
+
+# Throttling framework
+reinhardt-throttling = { workspace = true }
 
 # HTTP framework
 reinhardt-http = { workspace = true }

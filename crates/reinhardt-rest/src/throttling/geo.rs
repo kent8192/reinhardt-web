@@ -223,7 +223,7 @@ impl<B: ThrottleBackend> Throttle for GeoRateThrottle<B> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::backend::MemoryBackend;
+	use crate::throttling::backend::MemoryBackend;
 
 	#[tokio::test]
 	async fn test_geo_rate_throttle_without_geoip() {

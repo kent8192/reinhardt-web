@@ -318,8 +318,8 @@ impl<B: ThrottleBackend, T: TimeProvider> Throttle for AdaptiveThrottle<B, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::backend::MemoryBackend;
-	use super::time_provider::MockTimeProvider;
+	use crate::throttling::backend::MemoryBackend;
+	use crate::throttling::time_provider::MockTimeProvider;
 
 	#[test]
 	fn test_load_metrics_calculate_stress() {
