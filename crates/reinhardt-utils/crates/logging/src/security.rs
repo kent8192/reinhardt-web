@@ -12,7 +12,7 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_logging::{Logger, SecurityLogger};
+//! use reinhardt_utils::logging::{Logger, SecurityLogger};
 //! use std::sync::Arc;
 //!
 //! # async fn example() {
@@ -135,7 +135,7 @@ impl SecurityLogger {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_logging::{Logger, SecurityLogger};
+	/// use reinhardt_utils::logging::{Logger, SecurityLogger};
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() {

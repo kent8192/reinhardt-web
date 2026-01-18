@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use reinhardt_cache::{Cache, RedisSentinelCache, RedisSentinelConfig};
+//! use reinhardt_utils::cache::{Cache, RedisSentinelCache, RedisSentinelConfig};
 //! use std::time::Duration;
 //!
 //! #[tokio::main]

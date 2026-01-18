@@ -5,7 +5,7 @@
 #[cfg(feature = "redis-backend")]
 mod redis_pool_integration {
 	use deadpool_redis::Config as PoolConfig;
-	use reinhardt_cache::{Cache, redis_backend::RedisCache};
+	use reinhardt_utils::cache::{Cache, redis_backend::RedisCache};
 	use reinhardt_test::fixtures::redis_container;
 	use rstest::*;
 	use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
 //! Integration tests for template static configuration
 
-use reinhardt_static::storage::{FileSystemStorage, Storage};
-use reinhardt_static::{ManifestStaticFilesStorage, TemplateStaticConfig};
+use reinhardt_utils::r#static::storage::{FileSystemStorage, Storage};
+use reinhardt_utils::r#static::{ManifestStaticFilesStorage, TemplateStaticConfig};
 use tempfile::TempDir;
 
 #[tokio::test]

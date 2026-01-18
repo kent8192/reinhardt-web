@@ -20,7 +20,7 @@ impl LocalStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::{LocalStorage, Storage};
+	/// use reinhardt_utils::storage::{LocalStorage, Storage};
 	///
 	/// let storage = LocalStorage::new("/tmp/storage", "http://localhost/media");
 	/// assert_eq!(storage.url("test.txt"), "http://localhost/media/test.txt");
@@ -36,7 +36,7 @@ impl LocalStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::LocalStorage;
+	/// use reinhardt_utils::storage::LocalStorage;
 	/// use tempfile::TempDir;
 	///
 	/// # tokio_test::block_on(async {

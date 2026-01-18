@@ -3,8 +3,8 @@
 //! Tests for logging security-related events and exceptions.
 //! Based on Django's security logging tests.
 
-use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::{LogLevel, Logger, SecurityError, SecurityLogger};
+use reinhardt_utils::logging::handlers::MemoryHandler;
+use reinhardt_utils::logging::{LogLevel, Logger, SecurityError, SecurityLogger};
 use std::sync::Arc;
 
 #[tokio::test]

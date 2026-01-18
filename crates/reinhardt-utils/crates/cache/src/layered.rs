@@ -46,7 +46,7 @@ type TtlIndex = HashMap<u64, Vec<String>>;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::LayeredCacheStore;
+/// use reinhardt_utils::cache::LayeredCacheStore;
 /// use std::time::Duration;
 ///
 /// # async fn example() {
@@ -96,7 +96,7 @@ impl LayeredCacheStore {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::LayeredCacheStore;
+	/// use reinhardt_utils::cache::LayeredCacheStore;
 	///
 	/// // Sample 50 keys per round, trigger next round if >30% expired
 	/// let store = LayeredCacheStore::with_sampler(50, 0.30);
@@ -267,7 +267,7 @@ impl LayeredCacheStore {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::LayeredCacheStore;
+	/// use reinhardt_utils::cache::LayeredCacheStore;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -342,7 +342,7 @@ impl LayeredCacheStore {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::LayeredCacheStore;
+	/// use reinhardt_utils::cache::LayeredCacheStore;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -397,7 +397,7 @@ impl LayeredCacheStore {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::LayeredCacheStore;
+	/// use reinhardt_utils::cache::LayeredCacheStore;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -422,7 +422,7 @@ impl LayeredCacheStore {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::LayeredCacheStore;
+	/// use reinhardt_utils::cache::LayeredCacheStore;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {

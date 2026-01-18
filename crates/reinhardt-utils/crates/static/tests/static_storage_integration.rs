@@ -21,10 +21,10 @@
 //! - Storage backend switching
 //! - Multi-source file collection
 
-use reinhardt_static::ManifestStaticFilesStorage;
-use reinhardt_static::processing::compress::GzipCompressor;
-use reinhardt_static::processing::{ProcessingConfig, ProcessingPipeline, Processor};
-use reinhardt_static::storage::{FileSystemStorage, HashedFileStorage, Storage};
+use reinhardt_utils::r#static::ManifestStaticFilesStorage;
+use reinhardt_utils::r#static::processing::compress::GzipCompressor;
+use reinhardt_utils::r#static::processing::{ProcessingConfig, ProcessingPipeline, Processor};
+use reinhardt_utils::r#static::storage::{FileSystemStorage, HashedFileStorage, Storage};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -484,7 +484,7 @@ async fn test_processing_pipeline_integration() {
 /// Integration Point: Storage trait polymorphism
 #[tokio::test]
 async fn test_storage_backend_switching() {
-	use reinhardt_static::storage::MemoryStorage;
+	use reinhardt_utils::r#static::storage::MemoryStorage;
 
 	let temp_static_dir = TempDir::new().expect("Failed to create temp directory");
 	let content = b"test content for backend switching";

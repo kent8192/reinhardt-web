@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, FileCache};
+/// use reinhardt_utils::cache::{Cache, FileCache};
 /// use std::path::PathBuf;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -52,7 +52,7 @@ impl FileCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::FileCache;
+	/// use reinhardt_utils::cache::FileCache;
 	/// use std::path::PathBuf;
 	///
 	/// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -77,7 +77,7 @@ impl FileCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{Cache, FileCache};
+	/// use reinhardt_utils::cache::{Cache, FileCache};
 	/// use std::path::PathBuf;
 	/// use std::time::Duration;
 	///
@@ -101,7 +101,7 @@ impl FileCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{Cache, FileCache};
+	/// use reinhardt_utils::cache::{Cache, FileCache};
 	/// use std::path::PathBuf;
 	/// use std::time::Duration;
 	///

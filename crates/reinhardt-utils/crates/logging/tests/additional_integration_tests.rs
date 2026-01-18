@@ -3,8 +3,8 @@
 //! Miscellaneous integration tests including I18n, exception formatting,
 //! settings configuration, and middleware logging.
 
-use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::{LogLevel, LogRecord, Logger};
+use reinhardt_utils::logging::handlers::MemoryHandler;
+use reinhardt_utils::logging::{LogLevel, LogRecord, Logger};
 use std::collections::HashMap;
 use std::sync::Arc;
 

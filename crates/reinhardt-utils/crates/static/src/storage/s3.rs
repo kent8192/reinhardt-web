@@ -40,7 +40,7 @@ impl S3Config {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_static::storage::S3Config;
+	/// use reinhardt_utils::r#static::storage::S3Config;
 	///
 	/// let config = S3Config::new(
 	///     "my-bucket".to_string(),
@@ -103,7 +103,7 @@ impl S3Config {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_static::storage::{S3Storage, S3Config, Storage};
+/// use reinhardt_utils::r#static::storage::{S3Storage, S3Config, Storage};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = S3Config::new(

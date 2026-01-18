@@ -3,8 +3,8 @@
 //! Tests for QueueHandler and QueueListener for non-blocking async logging.
 //! Based on Python's logging.handlers.QueueHandler.
 
-use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::{LogHandler, LogLevel, LogRecord, Logger};
+use reinhardt_utils::logging::handlers::MemoryHandler;
+use reinhardt_utils::logging::{LogHandler, LogLevel, LogRecord, Logger};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;

@@ -1,6 +1,6 @@
 //! Integration tests for ManifestStaticFilesStorage with dependency resolution
 
-use reinhardt_static::ManifestStaticFilesStorage;
+use reinhardt_utils::r#static::ManifestStaticFilesStorage;
 use std::collections::HashMap;
 use tempfile::TempDir;
 

@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, TaggedCache, TaggedCacheWrapper};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, TaggedCache, TaggedCacheWrapper};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -82,7 +82,7 @@ pub trait TaggedCache: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, TaggedCacheWrapper, TaggedCache};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, TaggedCacheWrapper, TaggedCache};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {

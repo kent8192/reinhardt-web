@@ -1,7 +1,7 @@
 //! Tests for HTTP request/response logging
 //! Based on Django's HandlerLoggingTests and LogResponseRealLoggerTests
 
-use reinhardt_logging::{
+use reinhardt_utils::logging::{
 	LogLevel, LogRecord, Logger, escape_control_chars, handlers::MemoryHandler,
 };
 use std::sync::Arc;

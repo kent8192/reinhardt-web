@@ -23,7 +23,7 @@
 //! - Performance under high log volume
 
 use chrono::{DateTime, Utc};
-use reinhardt_logging::{LogLevel, LogRecord};
+use reinhardt_utils::logging::{LogLevel, LogRecord};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde_json::{Value, json};

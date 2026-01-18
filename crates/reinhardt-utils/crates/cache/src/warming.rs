@@ -11,7 +11,7 @@ use reinhardt_core::exception::Result;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, CacheWarmer};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, CacheWarmer};
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
 ///
@@ -60,7 +60,7 @@ pub trait CacheWarmer<C: Cache>: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, FunctionWarmer, CacheWarmer};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, FunctionWarmer, CacheWarmer};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -134,7 +134,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, BatchWarmer, FunctionWarmer, CacheWarmer};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, BatchWarmer, FunctionWarmer, CacheWarmer};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -210,7 +210,7 @@ impl<C: Cache> CacheWarmer<C> for BatchWarmer<C> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_cache::{Cache, InMemoryCache, ParallelWarmer, FunctionWarmer, CacheWarmer};
+/// use reinhardt_utils::cache::{Cache, InMemoryCache, ParallelWarmer, FunctionWarmer, CacheWarmer};
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> reinhardt_core::exception::Result<()> {

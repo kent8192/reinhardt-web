@@ -53,7 +53,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	///
 	/// let cache = InMemoryCache::new();
 	// Cache is ready to use with no default TTL
@@ -86,7 +86,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	///
 	/// let cache = InMemoryCache::with_layered_cleanup();
 	// Use layered cleanup for better performance
@@ -113,7 +113,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	///
 	/// // Sample 50 keys per round, trigger next round if >30% expired
 	/// let cache = InMemoryCache::with_custom_layered_cleanup(50, 0.30);
@@ -134,7 +134,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{InMemoryCache, Cache};
+	/// use reinhardt_utils::cache::{InMemoryCache, Cache};
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -164,7 +164,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{InMemoryCache, Cache};
+	/// use reinhardt_utils::cache::{InMemoryCache, Cache};
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -207,7 +207,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{InMemoryCache, Cache};
+	/// use reinhardt_utils::cache::{InMemoryCache, Cache};
 	///
 	/// # async fn example() {
 	/// let cache = InMemoryCache::new();
@@ -274,7 +274,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{InMemoryCache, Cache};
+	/// use reinhardt_utils::cache::{InMemoryCache, Cache};
 	///
 	/// # async fn example() {
 	/// let cache = InMemoryCache::new();
@@ -324,7 +324,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{Cache, InMemoryCache};
+	/// use reinhardt_utils::cache::{Cache, InMemoryCache};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let cache = InMemoryCache::new();
@@ -373,7 +373,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::{InMemoryCache, Cache};
+	/// use reinhardt_utils::cache::{InMemoryCache, Cache};
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -437,7 +437,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {
@@ -468,7 +468,7 @@ impl InMemoryCache {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_cache::InMemoryCache;
+	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() {

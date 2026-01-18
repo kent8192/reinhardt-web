@@ -7,38 +7,117 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"]}
 serde = { workspace = true }
 thiserror = { workspace = true }
 
 # Core utils (always included)
-reinhardt-utils-core = { workspace = true }
-
-# Internal crates as optional dependencies
-reinhardt-logging = { workspace = true, optional = true }
-reinhardt-cache = { workspace = true, optional = true }
-reinhardt-storage = { workspace = true, optional = true }
-reinhardt-static = { workspace = true, optional = true }
+async-trait = { workspace = true }
+reinhardt-core = { workspace = true, features = ["exception", "types"] }
+reinhardt-http = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+hyper = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+redis = { version = "0.32.7", features = [
+  "tokio-comp",
+  "connection-manager",
+  "cluster",
+  "cluster-async",
+  "sentinel",
+], optional = true }
+deadpool-redis = { version = "0.22.0", optional = true }
+memcache-async = { version = "0.9.0", optional = true }
+tokio-util = { version = "0.7", features = ["compat"], optional = true }
+md5 = { version = "0.10", package = "md-5" }
+rand = "0.9.2"
+anyhow = { workspace = true }
+once_cell = { workspace = true, optional = false }
+http = "1.0"
+mime_guess = "2.0"
+tracing = { workspace = true }
+sha2 = "0.10"
+hex = "0.4"
+md-5 = "0.10"
+regex = "1.10"
+walkdir = "2.4"
+glob = "0.3"
+notify = { version = "8.2.0", optional = true }
+flate2 = "1.0"
+brotli = "8.0.2"
+base64 = "0.22"
+sourcemap = "9.0"
+oxc_allocator = { version = "0.96.0", optional = true }
+oxc_parser = { version = "0.96.0", optional = true }
+oxc_span = { version = "0.96.0", optional = true }
+oxc_minifier = { version = "0.96.0", optional = true }
+oxc_mangler = { version = "0.96.0", optional = true }
+oxc_codegen = { version = "0.96.0", optional = true }
+aws-config = { version = "1.0", optional = true }
+aws-sdk-s3 = { version = "1.0", optional = true }
+azure_storage = { version = "0.21.0", optional = true }
+azure_storage_blobs = { version = "0.21.0", optional = true }
+cloud-storage = { version = "0.11", optional = true }
+oxipng = { version = "9.0", optional = true }
+image = { version = "0.25", optional = true }
+webp = { version = "0.3", optional = true }
+uuid = { workspace = true }
+tempfile = "3.14"
+chrono-tz = { workspace = true }
 
 [features]
 default = []
-logging = ["dep:reinhardt-logging"]
-cache = ["dep:reinhardt-cache"]
-storage = ["dep:reinhardt-storage"]
-static = ["dep:reinhardt-static"]
-all = ["logging", "cache", "storage", "static"]
-utils-full = [
-  "logging",
-  "cache",
-  "storage",
-  "static",
-  "reinhardt-logging/full",
-  "reinhardt-cache/full",
-  "reinhardt-storage/full",
-  "reinhardt-static/full",
+
+# Module features (modules are always compiled, features for backwards compatibility)
+logging = []
+cache = []
+storage = []
+static = []
+utils-core = []
+all = ["logging", "cache", "storage", "static", "utils-core"]
+utils-full = ["logging", "cache", "storage", "static", "utils-core"]
+redis-backend = ["redis", "deadpool-redis"]
+redis-cluster = ["redis-backend"]
+redis-sentinel = ["redis-backend"]
+memcached-backend = ["memcache-async", "tokio-util"]
+all-backends = [
+  "redis-backend",
+  "redis-cluster",
+  "redis-sentinel",
+  "memcached-backend",
 ]
+full = ["advanced-minification", "all-backends", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
+azure = ["dep:azure_storage", "dep:azure_storage_blobs"]
+gcs = ["dep:cloud-storage"]
+processing = []
+image-optimization = ["processing", "dep:oxipng", "dep:image", "dep:webp"]
+source-maps = ["processing"]
+compression = ["processing"]
+advanced-minification = [
+  "processing",
+  "dep:oxc_allocator",
+  "dep:oxc_parser",
+  "dep:oxc_span",
+  "dep:oxc_minifier",
+  "dep:oxc_mangler",
+  "dep:oxc_codegen",
+]
+dev-server = ["dep:notify"]
 
 [dev-dependencies]
 tokio = { workspace = true }
 proptest = "1.8"
 regex = "1.0"
+bytes = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+reinhardt-test = { workspace = true, features = ["static", "testcontainers"] }
+reinhardt-db = { workspace = true, features = ["backends"] }
+uuid = { workspace = true }
+tokio-test = "0.4"
+sqlx = { workspace = true }
+tempfile = "3.8"

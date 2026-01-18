@@ -1,4 +1,4 @@
-use reinhardt_static::storage::{FileSystemStorage, MemoryStorage, Storage};
+use reinhardt_utils::r#static::storage::{FileSystemStorage, MemoryStorage, Storage};
 use tempfile::TempDir;
 
 #[tokio::test]

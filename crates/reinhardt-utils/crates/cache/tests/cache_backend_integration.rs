@@ -30,7 +30,7 @@
 //! - Cache miss handling
 //! - Backend switching and migration
 
-use reinhardt_cache::{
+use reinhardt_utils::cache::{
 	Cache, CacheKeyBuilder, FileCache, InMemoryCache, MemcachedCache, RedisCache,
 };
 use reinhardt_test::containers::MemcachedContainer;

@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use hyper::header::HeaderName;
 use reinhardt_core::exception::Result;
-use reinhardt_core::http::{Request, Response};
+use reinhardt_http::{Request, Response};
 use reinhardt_core::{Handler, Middleware};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -64,7 +64,7 @@ impl CachePolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_static::caching::{CachePolicy, CacheDirective};
+	/// use reinhardt_utils::r#static::caching::{CachePolicy, CacheDirective};
 	/// use std::time::Duration;
 	///
 	/// let policy = CachePolicy::new()
@@ -109,7 +109,7 @@ impl CachePolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_static::caching::CachePolicy;
+	/// use reinhardt_utils::r#static::caching::CachePolicy;
 	///
 	/// let policy = CachePolicy::long_term();
 	/// ```
@@ -125,7 +125,7 @@ impl CachePolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_static::caching::CachePolicy;
+	/// use reinhardt_utils::r#static::caching::CachePolicy;
 	///
 	/// let policy = CachePolicy::short_term();
 	/// ```
@@ -141,7 +141,7 @@ impl CachePolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_static::caching::CachePolicy;
+	/// use reinhardt_utils::r#static::caching::CachePolicy;
 	///
 	/// let policy = CachePolicy::no_cache();
 	/// ```
@@ -200,7 +200,7 @@ impl CacheControlConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_static::caching::CacheControlConfig;
+	/// use reinhardt_utils::r#static::caching::CacheControlConfig;
 	///
 	/// let config = CacheControlConfig::new();
 	/// ```
@@ -317,7 +317,7 @@ impl Default for CacheControlConfig {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_static::caching::{CacheControlMiddleware, CacheControlConfig};
+/// use reinhardt_utils::r#static::caching::{CacheControlMiddleware, CacheControlConfig};
 /// use std::sync::Arc;
 ///
 /// let config = CacheControlConfig::new();

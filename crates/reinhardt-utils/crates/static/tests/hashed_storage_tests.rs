@@ -1,5 +1,5 @@
 use regex::Regex;
-use reinhardt_static::storage::HashedFileStorage;
+use reinhardt_utils::r#static::storage::HashedFileStorage;
 use std::collections::HashMap;
 use tempfile::TempDir;
 

@@ -29,7 +29,7 @@ impl GcsConfig {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_static::storage::GcsConfig;
+	/// use reinhardt_utils::r#static::storage::GcsConfig;
 	///
 	/// let config = GcsConfig::new(
 	///     "my-bucket".to_string(),
@@ -71,7 +71,7 @@ impl GcsConfig {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_static::storage::{GcsStorage, GcsConfig, Storage};
+/// use reinhardt_utils::r#static::storage::{GcsStorage, GcsConfig, Storage};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = GcsConfig::new(

@@ -34,24 +34,17 @@
 //! let ordinal = text::ordinal(1); // "1st"
 //! ```
 
+pub mod cache;
+pub mod logging;
+pub mod r#static;
+pub mod storage;
+pub mod utils_core;
+
 // Core modules
 pub mod humanize;
 
 // Re-export utils-core modules
-pub use reinhardt_utils_core::{dateformat, encoding, html, text, timezone};
-
-// Re-export internal crates
-#[cfg(feature = "logging")]
-pub use reinhardt_logging as logging;
-
-#[cfg(feature = "cache")]
-pub use reinhardt_cache as cache;
-
-#[cfg(feature = "storage")]
-pub use reinhardt_storage as storage;
-
-#[cfg(feature = "static")]
-pub use reinhardt_static as r#static;
+pub use crate::utils_core::{dateformat, encoding, html, text, timezone};
 
 pub use dateformat::format as format_date;
 pub use encoding::{escapejs, slugify, truncate_chars, truncate_words, urldecode, urlencode};

@@ -1,4 +1,4 @@
-use reinhardt_static::storage::{StaticFilesConfig, StaticFilesFinder};
+use reinhardt_utils::r#static::storage::{StaticFilesConfig, StaticFilesFinder};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;

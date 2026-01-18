@@ -3,9 +3,9 @@
 //! Tests for logging SQL execution with Engine echo flags.
 //! Based on SQLAlchemy's engine logging tests.
 
-use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::params::{ReprParamsConfig, repr_params};
-use reinhardt_logging::{LogLevel, Logger};
+use reinhardt_utils::logging::handlers::MemoryHandler;
+use reinhardt_utils::logging::params::{ReprParamsConfig, repr_params};
+use reinhardt_utils::logging::{LogLevel, Logger};
 use serde_json::json;
 use std::sync::Arc;
 

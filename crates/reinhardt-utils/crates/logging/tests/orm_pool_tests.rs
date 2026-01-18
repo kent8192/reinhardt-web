@@ -3,8 +3,8 @@
 //! Tests for logging connection pool events and statistics.
 //! Based on SQLAlchemy's pool logging tests.
 
-use reinhardt_logging::handlers::MemoryHandler;
-use reinhardt_logging::{LogLevel, Logger};
+use reinhardt_utils::logging::handlers::MemoryHandler;
+use reinhardt_utils::logging::{LogLevel, Logger};
 use std::sync::Arc;
 use std::time::Duration;
 

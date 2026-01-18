@@ -54,7 +54,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
 	/// assert_eq!(storage.base_location(), "memory_root");
@@ -74,7 +74,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://localhost/media")
 	///     .with_permissions(Some(0o644), Some(0o755));
@@ -91,7 +91,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("my_location", "http://localhost/media");
 	/// assert_eq!(storage.base_location(), "my_location");
@@ -104,7 +104,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://example.com/files");
 	/// assert_eq!(storage.base_url(), "http://example.com/files");
@@ -117,7 +117,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://localhost/media")
 	///     .with_permissions(Some(0o644), None);
@@ -134,7 +134,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://localhost/media")
 	///     .with_permissions(None, Some(0o755));
@@ -153,7 +153,7 @@ impl InMemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_storage::InMemoryStorage;
+	/// use reinhardt_utils::storage::InMemoryStorage;
 	///
 	/// let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
 	/// let (path, args, kwargs) = storage.deconstruct();

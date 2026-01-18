@@ -30,7 +30,7 @@ impl RedisCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisCache;
+	/// use reinhardt_utils::cache::RedisCache;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let cache = RedisCache::new("redis://localhost:6379").await?;
@@ -57,7 +57,7 @@ impl RedisCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisCache;
+	/// use reinhardt_utils::cache::RedisCache;
 	/// use deadpool_redis::{Config, Runtime};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -89,7 +89,7 @@ impl RedisCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisCache;
+	/// use reinhardt_utils::cache::RedisCache;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -110,7 +110,7 @@ impl RedisCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisCache;
+	/// use reinhardt_utils::cache::RedisCache;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let cache = RedisCache::new("redis://localhost:6379")

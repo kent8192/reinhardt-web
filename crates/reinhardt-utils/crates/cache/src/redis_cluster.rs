@@ -13,7 +13,7 @@
 //! # Examples
 //!
 //! ```no_run
-//! use reinhardt_cache::{Cache, RedisClusterCache};
+//! use reinhardt_utils::cache::{Cache, RedisClusterCache};
 //! use std::time::Duration;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -83,7 +83,7 @@ impl RedisClusterCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisClusterCache;
+	/// use reinhardt_utils::cache::RedisClusterCache;
 	/// use std::time::Duration;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,7 +104,7 @@ impl RedisClusterCache {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_cache::RedisClusterCache;
+	/// use reinhardt_utils::cache::RedisClusterCache;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let cache = RedisClusterCache::new(vec!["redis://node1:6379"])
