@@ -135,16 +135,8 @@ impl RateLimitStore {
 	}
 }
 
-/// Rate Limiting Strategy
-#[derive(Debug, Clone, Copy)]
-pub enum RateLimitStrategy {
-	/// Rate limiting per route
-	PerRoute,
-	/// Rate limiting per user
-	PerUser,
-	/// Rate limiting per IP address
-	PerIp,
-}
+// Re-export RateLimitStrategy from reinhardt-core
+pub use reinhardt_core::RateLimitStrategy;
 
 /// Rate Limiting Configuration
 #[derive(Debug, Clone)]
@@ -390,6 +382,14 @@ impl RateLimitMiddleware {
 			}
 			RateLimitStrategy::PerIp => {
 				format!("ip:{}", self.extract_client_ip(request))
+			}
+			RateLimitStrategy::PerIpAndUser => {
+				let ip = self.extract_client_ip(request);
+				if let Some(user_id) = self.extract_user_id(request) {
+					format!("ip_user:{}:{}", ip, user_id)
+				} else {
+					format!("ip_user:{}:anonymous", ip)
+				}
 			}
 		}
 	}
