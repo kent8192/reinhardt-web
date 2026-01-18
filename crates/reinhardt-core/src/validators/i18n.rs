@@ -560,7 +560,7 @@ pub fn localize_ja<V>(validator: V) -> Result<LocalizedValidator<V>, I18nError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::string::MinLengthValidator;
+	use crate::validators::string::MinLengthValidator;
 
 	#[test]
 	fn test_language_from_code() {

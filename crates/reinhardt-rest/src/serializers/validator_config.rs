@@ -280,7 +280,7 @@ impl<M: Model> Default for ValidatorConfig<M> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::validators::{UniqueTogetherValidator, UniqueValidator};
+	use crate::serializers::validators::{UniqueTogetherValidator, UniqueValidator};
 	use reinhardt_db::orm::FieldSelector;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

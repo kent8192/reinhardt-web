@@ -219,7 +219,7 @@ mod tests {
 	// Test prelude exports
 	#[test]
 	fn test_prelude_exports() {
-		use crate::prelude::*;
+		use crate::validators::*;
 
 		let min = MinLengthValidator::new(1);
 		let max = MaxLengthValidator::new(10);

@@ -51,7 +51,7 @@ pub async fn get_dashboard(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_admin::types::ModelInfo;
+	use crate::types::ModelInfo;
 
 	#[tokio::test]
 	async fn test_dashboard_response_structure() {

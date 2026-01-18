@@ -203,8 +203,8 @@ impl BaseMetadata for SimpleMetadata {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::fields::FieldInfoBuilder;
-	use super::types::{ChoiceInfo, FieldType};
+	use crate::metadata::fields::FieldInfoBuilder;
+	use crate::metadata::types::{ChoiceInfo, FieldType};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 
@@ -429,7 +429,7 @@ mod tests {
 	// Test that serializer fields are properly inspected and converted to metadata
 	#[tokio::test]
 	async fn test_metadata_with_serializer_inspection() {
-		use super::options::SerializerFieldInfo;
+		use crate::metadata::options::SerializerFieldInfo;
 
 		let metadata = SimpleMetadata::new();
 		let request = create_test_request();

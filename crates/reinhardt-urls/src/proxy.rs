@@ -42,6 +42,9 @@ pub mod joins;
 pub mod lazy_url;
 pub mod loading;
 pub mod orm_integration;
+// Allow module_inception: Re-exporting proxy submodule from proxy.rs
+// is intentional for compatibility with existing imports (`reinhardt_urls::proxy::URLProxy`)
+#[allow(clippy::module_inception)]
 pub mod proxy;
 pub mod query;
 pub mod reflection;

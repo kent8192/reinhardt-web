@@ -432,8 +432,8 @@ impl<T: Send + Sync + Clone + 'static> Clone for SignalReplayer<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SignalName;
-	use super::persistence::{MemoryStore, PersistentSignal};
+	use crate::signals::SignalName;
+	use crate::signals::persistence::{MemoryStore, PersistentSignal};
 	use serde::{Deserialize, Serialize};
 	use std::sync::atomic::{AtomicUsize, Ordering};
 

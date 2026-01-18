@@ -167,7 +167,7 @@ impl std::fmt::Display for LazyUrl {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::url_pattern::UrlPattern;
+	use crate::proxy::url_pattern::UrlPattern;
 
 	fn setup_resolver() -> Arc<UrlResolver> {
 		let mut resolver = UrlResolver::new();

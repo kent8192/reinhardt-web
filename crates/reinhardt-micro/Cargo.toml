@@ -12,11 +12,11 @@ default = [
   "routing",
   "di",
   "params",
-] # "schema" temporarily disabled - utoipa API compatibility
+] # TODO: "schema" temporarily disabled - utoipa API compatibility
 routing = ["reinhardt-urls"]
 di = ["reinhardt-di"]
 params = ["di", "reinhardt-di/params"]
-# schema = ["reinhardt-openapi"]  # Temporarily disabled - utoipa API compatibility
+# schema = ["reinhardt-openapi"]  # TODO: Temporarily disabled - utoipa API compatibility
 database = ["reinhardt-db"]
 compression = []
 cors = []

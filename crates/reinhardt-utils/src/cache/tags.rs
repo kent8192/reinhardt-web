@@ -259,7 +259,7 @@ impl<C: Cache> TaggedCache for TaggedCacheWrapper<C> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::InMemoryCache;
+	use crate::cache::InMemoryCache;
 
 	#[tokio::test]
 	async fn test_tagged_cache_basic() {

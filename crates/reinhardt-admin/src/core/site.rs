@@ -420,7 +420,7 @@ impl Injectable for AdminSite {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ModelAdminConfig;
+	use crate::core::ModelAdminConfig;
 	use rstest::rstest;
 
 	#[rstest]

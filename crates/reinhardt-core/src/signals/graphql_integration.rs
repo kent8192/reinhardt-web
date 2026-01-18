@@ -467,7 +467,7 @@ mod tests {
 		let bridge = GraphQLSubscriptionBridge::new();
 		let mut receiver = bridge.subscribe("user_event").await;
 
-		let signal = Signal::<String>::new(crate::core::SignalName::custom("test"));
+		let signal = Signal::<String>::new(crate::signals::SignalName::custom("test"));
 
 		bridge
 			.connect_signal(signal.clone(), "user_event", |data| {

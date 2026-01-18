@@ -518,7 +518,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for DeadLetterQueue<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SignalName;
+	use crate::signals::SignalName;
 	use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 	#[derive(Debug, Clone, PartialEq)]

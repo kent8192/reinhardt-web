@@ -194,7 +194,7 @@ impl AuditBackend for FileAuditBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::super::{ChangeRecord, EventType};
+	use crate::settings::audit::{ChangeRecord, EventType};
 	use serde_json::json;
 	use std::collections::HashMap;
 	use tempfile::NamedTempFile;

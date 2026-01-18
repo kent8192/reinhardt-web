@@ -290,7 +290,7 @@ impl super::runtime::Runtime {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Signal;
+	use crate::reactive::Signal;
 	use serial_test::serial;
 
 	#[test]

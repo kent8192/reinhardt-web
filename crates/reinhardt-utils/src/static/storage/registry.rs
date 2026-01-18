@@ -162,7 +162,7 @@ impl Default for StorageRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::storage::{FileSystemStorage, MemoryStorage};
+	use crate::r#static::{FileSystemStorage, MemoryStorage};
 	use std::path::PathBuf;
 
 	#[test]

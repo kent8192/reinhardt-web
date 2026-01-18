@@ -342,7 +342,7 @@ impl<T: Send + Sync + 'static> Clone for SignalBatcher<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SignalName;
+	use crate::signals::SignalName;
 	use parking_lot::Mutex as ParkingLotMutex;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 

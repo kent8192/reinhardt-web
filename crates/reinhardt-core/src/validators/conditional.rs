@@ -130,7 +130,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{EmailValidator, MaxLengthValidator, MinLengthValidator};
+	use crate::validators::{EmailValidator, MaxLengthValidator, MinLengthValidator};
 
 	// Tests for ConditionalValidator::when
 	#[test]
@@ -222,7 +222,7 @@ mod tests {
 	// Numeric validator tests
 	#[test]
 	fn test_when_with_numeric_validator() {
-		use crate::RangeValidator;
+		use crate::validators::RangeValidator;
 
 		let validator = ConditionalValidator::when(
 			|value: &i32| *value >= 0,

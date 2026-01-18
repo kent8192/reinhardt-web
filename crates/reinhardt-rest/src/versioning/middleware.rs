@@ -156,7 +156,7 @@ impl RequestVersionExt for Request {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{QueryParameterVersioning, URLPathVersioning};
+	use crate::versioning::{QueryParameterVersioning, URLPathVersioning};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
 

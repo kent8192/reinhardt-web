@@ -88,7 +88,7 @@ pub trait SearchableModel: Model {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::field_extensions::FieldOrderingExt;
+	use crate::filters::field_extensions::FieldOrderingExt;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {

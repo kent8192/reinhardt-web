@@ -257,7 +257,7 @@ impl MessageStorage for CookieStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::levels::Level;
+	use crate::messages::levels::Level;
 
 	#[test]
 	fn test_cookie_storage_basic() {

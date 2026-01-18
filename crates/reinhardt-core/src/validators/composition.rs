@@ -127,7 +127,7 @@ impl<T: ?Sized> Validator<T> for OrValidator<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{MaxLengthValidator, MinLengthValidator};
+	use crate::validators::{MaxLengthValidator, MinLengthValidator};
 
 	// AND validator tests
 	#[test]

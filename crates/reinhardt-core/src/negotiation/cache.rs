@@ -324,7 +324,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::MediaType;
+	use crate::negotiation::MediaType;
 
 	#[test]
 	fn test_cache_key_new() {

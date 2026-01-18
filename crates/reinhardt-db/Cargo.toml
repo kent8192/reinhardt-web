@@ -11,8 +11,31 @@ description = "Django-style database layer for Reinhardt framework"
 # Internal crates (optional)
 
 # Database drivers and query builders
-sqlx = { version = "0.8", features = ["any", "chrono", "macros", "migrate", "mysql", "postgres", "runtime-tokio", "sqlite", "tls-rustls", "uuid"] }
-sea-query = { version = "1.0.0-rc.29", features = ["backend-mysql", "backend-postgres", "backend-sqlite", "sqlx-utils", "with-uuid"] }
+sqlx = { version = "0.8", features = [
+  "any",
+  "chrono",
+  "json",
+  "macros",
+  "migrate",
+  "mysql",
+  "postgres",
+  "runtime-tokio",
+  "rust_decimal",
+  "sqlite",
+  "tls-rustls",
+  "uuid",
+] }
+sea-query = { version = "1.0.0-rc.29", features = [
+  "backend-mysql",
+  "backend-postgres",
+  "backend-sqlite",
+  "postgres-array",
+  "sqlx-utils",
+  "with-chrono",
+  "with-json",
+  "with-rust_decimal",
+  "with-uuid",
+] }
 
 # Async runtime
 tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"] }
@@ -39,7 +62,7 @@ clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"
 dialoguer = "0.12.0"
 indicatif = "0.18.0"
-sea-schema = { version = "0.16", features = [
+sea-schema = { version = "0.16.2", features = [
   "sqlx-postgres",
   "sqlx-mysql",
   "sqlx-sqlite",

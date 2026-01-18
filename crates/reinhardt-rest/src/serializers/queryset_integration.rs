@@ -475,7 +475,7 @@ impl Default for CacheAwareSaveContext {
 #[cfg(test)]
 mod cache_aware_tests {
 	use super::*;
-	use crate::InvalidationStrategy;
+	use crate::serializers::InvalidationStrategy;
 
 	#[test]
 	fn test_cache_aware_save_context_without_invalidator() {

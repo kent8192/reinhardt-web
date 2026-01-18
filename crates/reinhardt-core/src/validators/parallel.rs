@@ -617,7 +617,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::string::MinLengthValidator;
+	use crate::validators::string::MinLengthValidator;
 
 	#[test]
 	fn test_parallel_validation_result_new() {

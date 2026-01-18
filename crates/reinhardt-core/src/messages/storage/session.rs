@@ -183,7 +183,7 @@ impl MessageStorage for SessionStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::levels::Level;
+	use crate::messages::levels::Level;
 
 	#[test]
 	fn test_session_storage_creation() {

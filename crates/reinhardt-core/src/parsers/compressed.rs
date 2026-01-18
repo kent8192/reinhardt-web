@@ -215,7 +215,7 @@ impl Parser for CompressedParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::json::JSONParser;
+	use crate::parsers::json::JSONParser;
 	use flate2::Compression;
 	use flate2::write::{DeflateEncoder, GzEncoder};
 	use std::io::Write;

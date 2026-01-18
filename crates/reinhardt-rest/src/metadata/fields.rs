@@ -294,16 +294,16 @@ impl FieldInfoBuilder {
 		self
 	}
 
-	/// Adds a custom validator to the field
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use crate::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
-	///
-	/// let validator = FieldValidator {
-	///     validator_type: "email".to_string(),
-	///     options: None,
+// 	/// Adds a custom validator to the field
+// 	///
+// 	/// # Examples
+// 	///
+// 	/// ```
+// 	/// use crate::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
+// 	///
+// 	/// let validator = FieldValidator {
+// 	///     validator_type: "email".to_string(),
+// 	///     options: None,
 // 	///     message: Some("Invalid email format".to_string()),
 // 	/// };
 // 	///
@@ -419,6 +419,7 @@ impl FieldInfoBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::metadata::FieldValidator;
 
 	#[tokio::test]
 	async fn test_field_info_builder() {

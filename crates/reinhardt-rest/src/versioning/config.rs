@@ -380,7 +380,7 @@ mod tests {
 		// The versioning instance should be created successfully
 		assert!(
 			versioning
-				.determine_version(&crate::test_utils::create_test_request("/", vec![]))
+				.determine_version(&crate::versioning::test_utils::create_test_request("/", vec![]))
 				.await
 				.is_ok()
 		);

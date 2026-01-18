@@ -490,7 +490,7 @@ impl<T: Send + Sync + 'static> SignalMiddleware<T> for SignalProfiler<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Signal, SignalName};
+	use crate::signals::{signal::Signal, SignalName};
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]

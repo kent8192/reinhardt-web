@@ -301,7 +301,7 @@ pub fn include_routes(prefix: impl Into<String>, routes: Vec<Route>) -> Included
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::path;
+	use crate::routers_macros::path;
 
 	#[test]
 	fn test_convert_regex_to_pattern() {

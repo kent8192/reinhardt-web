@@ -326,7 +326,7 @@ mod tests {
 		// Test proper URL reversal using custom UrlReverser implementation
 		struct TestUrlReverser;
 
-		impl crate::hyperlinked::UrlReverser for TestUrlReverser {
+		impl crate::serializers::hyperlinked::UrlReverser for TestUrlReverser {
 			fn reverse(
 				&self,
 				_name: &str,
@@ -339,7 +339,7 @@ mod tests {
 			}
 		}
 
-		let reverser: Arc<dyn crate::hyperlinked::UrlReverser> = Arc::new(TestUrlReverser);
+		let reverser: Arc<dyn crate::serializers::hyperlinked::UrlReverser> = Arc::new(TestUrlReverser);
 		let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", Some(reverser));
 		let model = TestModel {
 			id: Some(42),

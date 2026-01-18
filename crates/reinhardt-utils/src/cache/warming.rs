@@ -291,7 +291,7 @@ impl<C: Cache> CacheWarmer<C> for ParallelWarmer<C> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::InMemoryCache;
+	use crate::cache::InMemoryCache;
 	use std::sync::Arc;
 
 	struct TestWarmer {

@@ -548,7 +548,7 @@ mod tests {
 		let client = Arc::new(MockWebSocketClient::new("client-1"));
 		bridge.add_client(client.clone());
 
-		let signal = Signal::new(crate::core::SignalName::custom("test_signal"));
+		let signal = Signal::new(crate::signals::SignalName::custom("test_signal"));
 		bridge.connect_signal(signal.clone(), "test.event").await;
 
 		signal.send("test payload".to_string()).await.unwrap();

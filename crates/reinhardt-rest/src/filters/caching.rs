@@ -265,7 +265,7 @@ impl CacheStats {
 #[cfg(all(test, feature = "caching"))]
 mod tests {
 	use super::*;
-	use crate::backend::SimpleSearchBackend;
+	use crate::filters::backend::SimpleSearchBackend;
 	use reinhardt_utils::cache::InMemoryCache;
 
 	#[test]

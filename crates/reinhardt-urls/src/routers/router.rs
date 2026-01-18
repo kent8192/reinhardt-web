@@ -624,7 +624,8 @@ impl Handler for ActionHandlerWrapper {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::path;
+	use crate::routers::helpers::path;
+	use crate::routers_macros::path as path_macro;
 	use async_trait::async_trait;
 	use reinhardt_http::{Request, Response, Result};
 
@@ -642,19 +643,19 @@ mod tests {
 		let router = DefaultRouter::new();
 
 		assert_eq!(
-			router.extract_version_from_path(path!("/v1/users/"), "/v{version}/"),
+			router.extract_version_from_path(path_macro!("/v1/users/"), "/v{version}/"),
 			Some("1")
 		);
 		assert_eq!(
-			router.extract_version_from_path(path!("/v2/api/"), "/v{version}/"),
+			router.extract_version_from_path(path_macro!("/v2/api/"), "/v{version}/"),
 			Some("2")
 		);
 		assert_eq!(
-			router.extract_version_from_path(path!("/users/"), "/v{version}/"),
+			router.extract_version_from_path(path_macro!("/users/"), "/v{version}/"),
 			None
 		);
 		assert_eq!(
-			router.extract_version_from_path(path!("/api/v1/users/"), "/api/v{version}/"),
+			router.extract_version_from_path(path_macro!("/api/v1/users/"), "/api/v{version}/"),
 			Some("1")
 		);
 	}
@@ -664,14 +665,14 @@ mod tests {
 		let mut router = DefaultRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
 
-		router.add_route(path(path!("/v1/users/"), handler.clone()).with_namespace("v1"));
-		router.add_route(path(path!("/v2/users/"), handler.clone()).with_namespace("v2"));
-		router.add_route(path(path!("/users/"), handler).with_namespace("no-version"));
+		router.add_route(path(path_macro!("/v1/users/"), handler.clone()).with_namespace("v1"));
+		router.add_route(path(path_macro!("/v2/users/"), handler.clone()).with_namespace("v2"));
+		router.add_route(path(path_macro!("/users/"), handler).with_namespace("no-version"));
 
 		let v_routes = router.find_routes_by_namespace_pattern("/v{version}/");
 		assert_eq!(v_routes.len(), 2);
 
-		let no_version_routes = router.find_routes_by_namespace_pattern(path!("/users/"));
+		let no_version_routes = router.find_routes_by_namespace_pattern(path_macro!("/users/"));
 		assert_eq!(no_version_routes.len(), 1);
 	}
 
@@ -680,9 +681,9 @@ mod tests {
 		let mut router = DefaultRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
 
-		router.add_route(path(path!("/v1/users/"), handler.clone()).with_namespace("v1"));
-		router.add_route(path(path!("/v2/users/"), handler.clone()).with_namespace("v2"));
-		router.add_route(path(path!("/v1/posts/"), handler).with_namespace("v1"));
+		router.add_route(path(path_macro!("/v1/users/"), handler.clone()).with_namespace("v1"));
+		router.add_route(path(path_macro!("/v2/users/"), handler.clone()).with_namespace("v2"));
+		router.add_route(path(path_macro!("/v1/posts/"), handler).with_namespace("v1"));
 
 		let versions = router.get_available_versions("/v{version}/");
 		assert!(versions.contains(&"1".to_string()));

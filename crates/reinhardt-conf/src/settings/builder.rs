@@ -429,7 +429,7 @@ pub enum GetError {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::sources::DefaultSource;
+	use crate::settings::sources::DefaultSource;
 	use serde::Deserialize;
 
 	#[test]

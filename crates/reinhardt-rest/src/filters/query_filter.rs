@@ -447,7 +447,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_ordering() {
-		use crate::field_extensions::FieldOrderingExt;
+		use crate::filters::field_extensions::FieldOrderingExt;
 
 		let filter =
 			QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
@@ -461,7 +461,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_lookup_and_ordering() {
-		use crate::field_extensions::FieldOrderingExt;
+		use crate::filters::field_extensions::FieldOrderingExt;
 
 		let filter = QueryFilter::new()
 			.with_lookup(Field::<TestPost, String>::new(vec!["title"]).icontains("rust"))
@@ -477,7 +477,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_append_to_existing_order_by() {
-		use crate::field_extensions::FieldOrderingExt;
+		use crate::filters::field_extensions::FieldOrderingExt;
 
 		let filter =
 			QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
@@ -493,7 +493,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_append_order_with_limit() {
-		use crate::field_extensions::FieldOrderingExt;
+		use crate::filters::field_extensions::FieldOrderingExt;
 
 		let filter =
 			QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());

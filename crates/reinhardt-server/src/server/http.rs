@@ -488,7 +488,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_http_server_with_middleware() {
-		use reinhardt_core::Middleware;
+		use reinhardt_http::Middleware;
 
 		struct TestMiddleware {
 			prefix: String,
@@ -518,7 +518,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_http_server_multiple_middlewares() {
-		use reinhardt_core::Middleware;
+		use reinhardt_http::Middleware;
 
 		struct PrefixMiddleware {
 			prefix: String,
@@ -553,7 +553,7 @@ mod tests {
 	async fn test_middleware_chain_execution() {
 		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Version};
-		use reinhardt_core::Middleware;
+		use reinhardt_http::Middleware;
 
 		struct PrefixMiddleware {
 			prefix: String,

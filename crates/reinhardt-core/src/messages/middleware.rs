@@ -116,7 +116,7 @@ impl MessagesContainer {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Level;
+	use crate::messages::Level;
 
 	#[test]
 	fn test_messages_container_new() {

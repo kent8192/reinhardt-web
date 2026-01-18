@@ -60,7 +60,7 @@ impl MessageStorage for MemoryStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::levels::Level;
+	use crate::messages::levels::Level;
 
 	#[test]
 	fn test_messages_memory_storage() {

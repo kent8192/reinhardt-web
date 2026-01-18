@@ -280,7 +280,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::InMemoryCache;
+	use crate::cache::InMemoryCache;
 
 	#[tokio::test]
 	async fn test_hybrid_cache_l1_hit() {

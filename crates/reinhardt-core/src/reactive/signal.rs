@@ -197,7 +197,7 @@ impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Signal<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::runtime::NodeType;
+	use crate::reactive::runtime::NodeType;
 	use serial_test::serial;
 
 	#[test]
@@ -274,10 +274,10 @@ mod tests {
 		// With observer, dependency should be tracked
 		with_runtime(|rt| {
 			let observer_id = NodeId::new();
-			rt.push_observer(crate::runtime::Observer {
+			rt.push_observer(crate::reactive::runtime::Observer {
 				id: observer_id,
 				node_type: NodeType::Effect,
-				timing: crate::runtime::EffectTiming::default(),
+				timing: crate::reactive::runtime::EffectTiming::default(),
 				cleanup: None,
 			});
 

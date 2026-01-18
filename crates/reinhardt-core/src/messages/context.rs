@@ -104,7 +104,7 @@ impl MessagesContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Level;
+	use crate::messages::Level;
 
 	#[test]
 	fn test_messages_context_new() {

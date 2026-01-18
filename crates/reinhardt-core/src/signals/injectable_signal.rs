@@ -88,7 +88,7 @@ impl<T: Send + Sync + 'static> InjectableSignal<T> for Signal<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SignalName;
+	use crate::signals::SignalName;
 
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]

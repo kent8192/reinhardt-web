@@ -201,7 +201,7 @@ impl<M: Model> Clone for OrderingField<M> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::field_extensions::FieldOrderingExt;
+	use crate::filters::field_extensions::FieldOrderingExt;
 	use reinhardt_db::orm::Field;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

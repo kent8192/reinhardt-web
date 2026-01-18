@@ -273,8 +273,8 @@ pub fn generate_object_schema(fields: &HashMap<String, FieldInfo>) -> FieldSchem
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use super::fields::FieldInfoBuilder;
-	use super::types::ChoiceInfo;
+	use crate::metadata::fields::FieldInfoBuilder;
+	use crate::metadata::types::ChoiceInfo;
 	use reinhardt_core::serializers::FieldValidator;
 
 	#[test]

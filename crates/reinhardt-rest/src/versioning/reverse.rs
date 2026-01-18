@@ -257,7 +257,7 @@ macro_rules! versioned_url {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{AcceptHeaderVersioning, QueryParameterVersioning, URLPathVersioning};
+	use crate::versioning::{AcceptHeaderVersioning, QueryParameterVersioning, URLPathVersioning};
 
 	#[test]
 	fn test_versioned_url_builder_url_path() {

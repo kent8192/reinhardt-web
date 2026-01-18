@@ -362,7 +362,7 @@ impl<T: Clone + 'static> Drop for Memo<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Signal;
+	use crate::reactive::Signal;
 	use serial_test::serial;
 
 	#[test]

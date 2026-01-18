@@ -534,7 +534,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for SignalHistory<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::SignalName;
+	use crate::signals::SignalName;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

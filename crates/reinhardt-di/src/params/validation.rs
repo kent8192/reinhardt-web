@@ -711,7 +711,7 @@ pub trait WithValidation: Sized {
 #[cfg(feature = "validation")]
 mod tests {
 	use super::*;
-	use super::Path;
+	use crate::params::Path;
 
 	#[test]
 	fn test_validation_constraints_builder() {

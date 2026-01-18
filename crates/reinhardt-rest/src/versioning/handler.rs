@@ -311,7 +311,7 @@ macro_rules! versioned_handler {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{AcceptHeaderVersioning, URLPathVersioning};
+	use crate::versioning::{AcceptHeaderVersioning, URLPathVersioning};
 	use bytes::Bytes;
 
 	// Test handler for testing
@@ -391,13 +391,13 @@ mod tests {
 		let wrapper = VersionedHandlerWrapper::new(Arc::new(handler), versioning);
 
 		// Test with v1 request
-		let request = crate::test_utils::create_test_request("/v1/test", vec![]);
+		let request = crate::versioning::test_utils::create_test_request("/v1/test", vec![]);
 		let response = wrapper.handle(request).await.unwrap();
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body.contains("\"version\": \"1\""));
 
 		// Test with v2 request
-		let request = crate::test_utils::create_test_request("/v2/test", vec![]);
+		let request = crate::versioning::test_utils::create_test_request("/v2/test", vec![]);
 		let response = wrapper.handle(request).await.unwrap();
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body.contains("\"version\": \"2\""));
@@ -446,7 +446,7 @@ mod tests {
 			.build();
 
 		// Test with Accept header versioning
-		let request = crate::test_utils::create_test_request(
+		let request = crate::versioning::test_utils::create_test_request(
 			"/test",
 			vec![(
 				"accept".to_string(),

@@ -162,7 +162,7 @@ impl MessageStorage for FallbackStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::levels::Level;
+	use crate::messages::levels::Level;
 
 	#[test]
 	fn test_fallback_storage_basic() {
