@@ -1,5 +1,5 @@
-use reinhardt_backends::DatabaseConnection;
-use reinhardt_migrations::{
+use reinhardt_db::backends::DatabaseConnection;
+use reinhardt_db::migrations::{
 	ColumnDefinition, DatabaseMigrationExecutor, FieldType, Migration, Operation,
 };
 
@@ -300,7 +300,7 @@ async fn test_executor_with_dependencies() {
 
 #[tokio::test]
 async fn test_executor_migration_recording() {
-	use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
+	use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
 
 	// Test that DatabaseMigrationRecorder properly records migrations to the database
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")

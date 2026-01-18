@@ -13,7 +13,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use reinhardt_orm::ForeignKeyAccessor;
+//! use reinhardt_db::orm::ForeignKeyAccessor;
 //!
 //! // Tweet model has: #[rel(foreign_key)] user: ForeignKeyField<User>
 //!

@@ -75,7 +75,7 @@ impl From<sea_query::ForeignKeyAction> for ForeignKeyAction {
 /// # Examples
 ///
 /// ```rust,ignore
-/// # use reinhardt_migrations::to_snake_case;
+/// # use reinhardt_db::migrations::to_snake_case;
 /// assert_eq!(to_snake_case("User"), "user");
 /// assert_eq!(to_snake_case("BlogPost"), "blog_post");
 /// assert_eq!(to_snake_case("HTTPResponse"), "http_response");
@@ -137,7 +137,7 @@ pub fn to_snake_case(name: &str) -> String {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::autodetector::to_pascal_case;
+/// use reinhardt_db::migrations::autodetector::to_pascal_case;
 ///
 /// assert_eq!(to_pascal_case("user"), "User");
 /// assert_eq!(to_pascal_case("blog_post"), "BlogPost");
@@ -360,7 +360,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::ModelState;
+	/// use reinhardt_db::migrations::ModelState;
 	///
 	/// let model = ModelState::new("myapp", "User");
 	/// assert_eq!(model.app_label, "myapp");
@@ -393,7 +393,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);
@@ -410,7 +410,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);
@@ -429,7 +429,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);
@@ -447,7 +447,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);
@@ -469,7 +469,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, ConstraintDefinition};
+	/// use reinhardt_db::migrations::{ModelState, ConstraintDefinition};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let constraint = ConstraintDefinition {
@@ -515,7 +515,7 @@ impl ModelState {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::{ProjectState, ModelState, FieldState, FieldType};
+/// use reinhardt_db::migrations::{ProjectState, ModelState, FieldState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 /// let mut model = ModelState::new("myapp", "User");
@@ -604,7 +604,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::ProjectState;
+	/// use reinhardt_db::migrations::ProjectState;
 	///
 	/// let state = ProjectState::from_global_registry();
 	/// let schema = state.to_database_schema_for_app("users");
@@ -678,7 +678,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::ProjectState;
+	/// use reinhardt_db::migrations::ProjectState;
 	///
 	/// let state = ProjectState::new();
 	/// assert_eq!(state.models.len(), 0);
@@ -694,7 +694,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// let model = ModelState::new("myapp", "User");
@@ -713,7 +713,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// let model = ModelState::new("myapp", "User");
@@ -733,7 +733,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut state = ProjectState::new();
 	/// let model = ModelState::new("myapp", "User");
@@ -760,7 +760,7 @@ impl ProjectState {
 	///
 	/// ```ignore
 	/// # // This method is private and cannot be called from external code
-	/// use reinhardt_migrations::{ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut state = ProjectState::new();
 	/// let mut model = ModelState::new("myapp", "User");
@@ -818,7 +818,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// let mut model = ModelState::new("myapp", "User");
@@ -846,7 +846,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// state.add_model(ModelState::new("users", "User"));
@@ -874,7 +874,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// let model = ModelState::new("myapp", "User");
@@ -893,7 +893,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{ProjectState, ModelState};
 	///
 	/// let mut state = ProjectState::new();
 	/// let model = ModelState::new("myapp", "User");
@@ -920,7 +920,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::ProjectState;
+	/// use reinhardt_db::migrations::ProjectState;
 	///
 	/// let state = ProjectState::from_global_registry();
 	// state will contain all models registered in the global registry
@@ -1093,7 +1093,7 @@ impl ProjectState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ProjectState, Migration};
+	/// use reinhardt_db::migrations::{ProjectState, Migration};
 	///
 	/// let migrations = vec![/* ... */];
 	/// let state = ProjectState::from_migrations(&migrations);
@@ -1304,7 +1304,7 @@ impl ProjectState {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::SimilarityConfig;
+/// use reinhardt_db::migrations::SimilarityConfig;
 ///
 /// // Default configuration (70% threshold for models, 80% for fields)
 /// let config = SimilarityConfig::default();
@@ -1353,7 +1353,7 @@ impl SimilarityConfig {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::SimilarityConfig;
+	/// use reinhardt_db::migrations::SimilarityConfig;
 	///
 	/// let config = SimilarityConfig::new(0.75, 0.85).unwrap();
 	/// assert_eq!(config.model_threshold(), 0.75);
@@ -1388,7 +1388,7 @@ impl SimilarityConfig {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::SimilarityConfig;
+	/// use reinhardt_db::migrations::SimilarityConfig;
 	///
 	/// // Prefer Jaro-Winkler for prefix matching
 	/// let config = SimilarityConfig::with_weights(0.75, 0.85, 0.8, 0.2).unwrap();
@@ -1489,7 +1489,7 @@ impl Default for SimilarityConfig {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 ///
 /// let mut from_state = ProjectState::new();
 /// let mut to_state = ProjectState::new();
@@ -1572,7 +1572,7 @@ impl DetectedChanges {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{DetectedChanges};
+	/// use reinhardt_db::migrations::{DetectedChanges};
 	/// use std::collections::BTreeMap;
 	///
 	/// let mut changes = DetectedChanges::default();
@@ -1682,7 +1682,7 @@ impl DetectedChanges {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{DetectedChanges};
+	/// use reinhardt_db::migrations::{DetectedChanges};
 	/// use std::collections::BTreeMap;
 	///
 	/// let mut changes = DetectedChanges::default();
@@ -1772,7 +1772,7 @@ impl DetectedChanges {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{DetectedChanges, OperationRef};
+	/// use reinhardt_db::migrations::{DetectedChanges, OperationRef};
 	///
 	/// let mut changes = DetectedChanges::default();
 	/// changes.renamed_models.push((
@@ -1890,7 +1890,7 @@ impl DetectedChanges {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::autodetector::ChangeHistoryEntry;
+/// use reinhardt_db::migrations::autodetector::ChangeHistoryEntry;
 /// use std::time::SystemTime;
 ///
 /// let entry = ChangeHistoryEntry {
@@ -1953,7 +1953,7 @@ pub struct PatternFrequency {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::ChangeTracker;
+/// use reinhardt_db::migrations::ChangeTracker;
 ///
 /// let mut tracker = ChangeTracker::new();
 ///
@@ -2236,7 +2236,7 @@ pub struct PatternMatch {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::PatternMatcher;
+/// use reinhardt_db::migrations::PatternMatcher;
 ///
 /// let mut matcher = PatternMatcher::new();
 /// matcher.add_pattern("User");
@@ -2537,7 +2537,7 @@ pub struct InferenceRule {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_migrations::InferenceEngine;
+/// use reinhardt_db::migrations::InferenceEngine;
 ///
 /// let mut engine = InferenceEngine::new();
 /// engine.add_default_rules();
@@ -2572,7 +2572,7 @@ pub struct InferenceEngine {
 	///
 	/// Example:
 	/// ```rust,ignore
-	/// use reinhardt_migrations::autodetector::InferenceEngine;
+	/// use reinhardt_db::migrations::autodetector::InferenceEngine;
 	/// let mut engine = InferenceEngine::new();
 	/// // Record rename and field addition history
 	/// engine.record_model_rename("blog", "BlogPost", "Post");
@@ -3572,7 +3572,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState};
 	///
 	/// let from_state = ProjectState::new();
 	/// let to_state = ProjectState::new();
@@ -3592,7 +3592,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, SimilarityConfig};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, SimilarityConfig};
 	///
 	/// let from_state = ProjectState::new();
 	/// let to_state = ProjectState::new();
@@ -3619,7 +3619,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState};
 	///
 	/// let from_state = ProjectState::new();
 	/// let mut to_state = ProjectState::new();
@@ -3838,7 +3838,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "OldUser");
@@ -3926,7 +3926,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "User");
@@ -3999,7 +3999,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut from_model = ModelState::new("myapp", "User");
@@ -4081,7 +4081,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let from_state = ProjectState::new();
 	/// let to_state = ProjectState::new();
@@ -4150,7 +4150,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut old_model = ModelState::new("myapp", "User");
@@ -4492,7 +4492,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut to_state = ProjectState::new();
@@ -4694,7 +4694,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut to_state = ProjectState::new();
@@ -5100,7 +5100,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, ManyToManyMetadata};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, ManyToManyMetadata};
 	///
 	/// let from_state = ProjectState::new();
 	/// let mut to_state = ProjectState::new();
@@ -5214,7 +5214,7 @@ impl MigrationAutodetector {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{MigrationAutodetector, ProjectState, ModelState, FieldState, FieldType};
 	///
 	/// let mut from_state = ProjectState::new();
 	/// let mut to_state = ProjectState::new();
@@ -5427,7 +5427,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);
@@ -5446,7 +5446,7 @@ impl ModelState {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{ModelState, FieldState, FieldType};
+	/// use reinhardt_db::migrations::{ModelState, FieldState, FieldType};
 	///
 	/// let mut model = ModelState::new("myapp", "User");
 	/// let field = FieldState::new("email", FieldType::VarChar(255), false);

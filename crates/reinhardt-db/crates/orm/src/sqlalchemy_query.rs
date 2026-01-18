@@ -72,8 +72,8 @@ impl<T: Model> SelectQuery<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::sqlalchemy_query::SelectQuery;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::sqlalchemy_query::SelectQuery;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ impl<T: Model> SelectQuery<T> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -158,7 +158,7 @@ impl<T: Model> SelectQuery<T> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field, typed_join::TypedJoin, sqlalchemy_query::select};
+	/// # use reinhardt_db::orm::{Model, query_fields::Field, typed_join::TypedJoin, sqlalchemy_query::select};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -168,17 +168,17 @@ impl<T: Model> SelectQuery<T> {
 	/// # struct Comment { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct CommentFields;
-	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CommentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -250,13 +250,13 @@ impl<T: Model> SelectQuery<T> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field, sqlalchemy_query::select};
+	/// # use reinhardt_db::orm::{Model, query_fields::Field, sqlalchemy_query::select};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -383,13 +383,13 @@ impl<T: Model> SelectQuery<T> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field, sqlalchemy_query::select};
+	/// # use reinhardt_db::orm::{Model, query_fields::Field, sqlalchemy_query::select};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {

@@ -1,7 +1,7 @@
 //! Tests for hybrid property comparators
 //! Based on PropertyComparatorTest from SQLAlchemy
 
-use reinhardt_hybrid::prelude::*;
+use reinhardt_db::hybrid::prelude::*;
 
 /// Test model representing a database entity
 #[derive(Debug)]

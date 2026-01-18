@@ -14,9 +14,9 @@
 //! **Test Data Schema:**
 //! - employees(id SERIAL PRIMARY KEY, name TEXT NOT NULL, manager_id INT, salary BIGINT)
 
-use reinhardt_orm::cte::{CTE, CTECollection};
-use reinhardt_orm::manager::reinitialize_database;
-use reinhardt_orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
+use reinhardt_db::orm::cte::{CTE, CTECollection};
+use reinhardt_db::orm::manager::reinitialize_database;
+use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

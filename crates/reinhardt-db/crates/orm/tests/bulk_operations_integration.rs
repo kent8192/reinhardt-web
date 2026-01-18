@@ -11,8 +11,8 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container from reinhardt-test
 
-use reinhardt_orm::Model;
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::Model;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Query, Table};

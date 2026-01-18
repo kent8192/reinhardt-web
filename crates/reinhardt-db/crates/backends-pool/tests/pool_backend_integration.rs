@@ -14,8 +14,8 @@
 //! - mysql_suite: Suite-wide MySQL instance
 //!
 //! **Integration Points:**
-//! - reinhardt_pool::ConnectionPool ↔ reinhardt_backends::Backend
-//! - reinhardt_pool::PoolConfig ↔ reinhardt_backends::BackendConfig
+//! - reinhardt_db::pool::ConnectionPool ↔ reinhardt_db::backends::Backend
+//! - reinhardt_db::pool::PoolConfig ↔ reinhardt_db::backends::BackendConfig
 
 use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use reinhardt_test::fixtures::postgres_container;

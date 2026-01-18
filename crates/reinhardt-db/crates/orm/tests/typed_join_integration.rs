@@ -19,7 +19,7 @@
 //! - Comments(id, post_id, content)
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::{Filter, FilterOperator, FilterValue, QuerySet};
+use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -381,7 +381,7 @@ async fn test_join_with_aggregation(
 	let sql = QuerySet::<User>::new()
 		.inner_join::<Post>("id", "user_id")
 		.group_by(|f| {
-			use reinhardt_orm::GroupByFields;
+			use reinhardt_db::orm::GroupByFields;
 			GroupByFields::new().add(&f.id).add(&f.name)
 		})
 		.having_count(|count| count.gte(2))

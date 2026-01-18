@@ -26,7 +26,7 @@ use crate::persistence::PersistenceError;
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let pool = sqlx::AnyPool::connect("sqlite::memory:").await?;
@@ -84,7 +84,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -108,7 +108,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -258,7 +258,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -307,7 +307,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -333,7 +333,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -384,7 +384,7 @@ impl ContentTypeQuery {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::orm_integration::ContentTypeQuery;
+	/// use reinhardt_db::contenttypes::orm_integration::ContentTypeQuery;
 	/// use std::sync::Arc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

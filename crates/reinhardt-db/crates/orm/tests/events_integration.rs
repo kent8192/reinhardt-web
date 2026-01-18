@@ -10,9 +10,9 @@
 //! - postgres_container: PostgreSQL database container
 
 use async_trait::async_trait;
-use reinhardt_orm::Model;
-use reinhardt_orm::events::{EventRegistry, EventResult, MapperEvents, set_active_registry};
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::Model;
+use reinhardt_db::orm::events::{EventRegistry, EventResult, MapperEvents, set_active_registry};
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};

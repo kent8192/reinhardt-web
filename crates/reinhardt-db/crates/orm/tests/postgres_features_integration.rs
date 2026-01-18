@@ -18,7 +18,7 @@
 //! - PostgreSQL Exclusive: Features only available in PostgreSQL
 //! - Tests: 7-9 comprehensive test cases
 
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;

@@ -66,8 +66,8 @@ struct IdentityEntry {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::session::Session;
-/// use reinhardt_orm::query_types::DbBackend;
+/// use reinhardt_db::orm::session::Session;
+/// use reinhardt_db::orm::query_types::DbBackend;
 /// use sqlx::AnyPool;
 /// use std::sync::Arc;
 ///
@@ -107,8 +107,8 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
 	///
@@ -140,12 +140,12 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -155,7 +155,7 @@ impl Session {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -221,12 +221,12 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -236,7 +236,7 @@ impl Session {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -431,12 +431,12 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -446,7 +446,7 @@ impl Session {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -660,12 +660,12 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -675,7 +675,7 @@ impl Session {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -705,10 +705,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -961,8 +961,8 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
 	///
@@ -1028,10 +1028,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1061,10 +1061,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1095,10 +1095,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1127,10 +1127,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1162,12 +1162,12 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::session::Session;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// #[derive(Serialize, Deserialize, Clone)]
 	/// struct User {
@@ -1177,7 +1177,7 @@ impl Session {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -1231,10 +1231,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1253,10 +1253,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1275,10 +1275,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;
@@ -1297,10 +1297,10 @@ impl Session {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::session::Session;
+	/// use reinhardt_db::orm::session::Session;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let pool = AnyPool::connect("sqlite::memory:").await?;

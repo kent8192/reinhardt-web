@@ -31,7 +31,7 @@ pub trait MigrationRegistry: Send + Sync {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_migrations::registry::MigrationRegistry;
+	/// # use reinhardt_db::migrations::registry::MigrationRegistry;
 	/// # fn example(registry: &dyn MigrationRegistry) {
 	/// let polls_migrations = registry.migrations_for_app("polls");
 	/// assert!(polls_migrations.iter().all(|m| m.app_label == "polls"));
@@ -46,7 +46,7 @@ pub trait MigrationRegistry: Send + Sync {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_migrations::registry::MigrationRegistry;
+	/// # use reinhardt_db::migrations::registry::MigrationRegistry;
 	/// # fn example(registry: &dyn MigrationRegistry) {
 	/// let apps = registry.registered_app_labels();
 	/// for app in apps {

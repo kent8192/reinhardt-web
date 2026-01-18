@@ -137,7 +137,7 @@ impl DatabaseSchema {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::schema_diff::DatabaseSchema;
+	/// use reinhardt_db::migrations::schema_diff::DatabaseSchema;
 	///
 	/// let schema = DatabaseSchema::default();
 	/// let filtered = schema.filter_by_app("users");

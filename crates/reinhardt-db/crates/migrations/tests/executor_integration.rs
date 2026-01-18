@@ -14,8 +14,8 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_backends::DatabaseConnection;
-use reinhardt_migrations::{
+use reinhardt_db::backends::DatabaseConnection;
+use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 	recorder::DatabaseMigrationRecorder,
 };

@@ -15,8 +15,8 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm::filtered_relation::{FilteredRelation, FilteredRelationBuilder};
-use reinhardt_orm::query_fields::{LookupType, LookupValue};
+use reinhardt_db::orm::filtered_relation::{FilteredRelation, FilteredRelationBuilder};
+use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};

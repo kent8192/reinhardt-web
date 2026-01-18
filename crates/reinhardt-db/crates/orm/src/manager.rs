@@ -87,7 +87,7 @@ static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 ///
 /// ```no_run
 /// # async fn example() {
-/// use reinhardt_orm::manager::init_database;
+/// use reinhardt_db::orm::manager::init_database;
 ///
 /// init_database("postgres://localhost/mydb").await.unwrap();
 /// # }
@@ -108,7 +108,7 @@ pub async fn init_database(url: &str) -> reinhardt_core::exception::Result<()> {
 ///
 /// ```no_run
 /// # async fn example() {
-/// use reinhardt_orm::manager::init_database_with_pool_size;
+/// use reinhardt_db::orm::manager::init_database_with_pool_size;
 ///
 /// // Use larger pool for high-concurrency tests
 /// init_database_with_pool_size("postgres://localhost/mydb", Some(50)).await.unwrap();
@@ -137,7 +137,7 @@ pub async fn init_database_with_pool_size(
 ///
 /// ```no_run
 /// # async fn example() {
-/// use reinhardt_orm::manager::reinitialize_database;
+/// use reinhardt_db::orm::manager::reinitialize_database;
 ///
 /// reinitialize_database("postgres://localhost/mydb").await.unwrap();
 /// # }
@@ -158,7 +158,7 @@ pub async fn reinitialize_database(url: &str) -> reinhardt_core::exception::Resu
 ///
 /// ```no_run
 /// # async fn example() {
-/// use reinhardt_orm::manager::reinitialize_database_with_pool_size;
+/// use reinhardt_db::orm::manager::reinitialize_database_with_pool_size;
 ///
 /// // Use larger pool for concurrent tests
 /// reinitialize_database_with_pool_size("postgres://localhost/mydb", Some(30)).await.unwrap();
@@ -314,8 +314,8 @@ impl<M: Model> Manager<M> {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_orm::annotation::{Annotation, AnnotationValue};
-	/// use reinhardt_orm::aggregation::Aggregate;
+	/// use reinhardt_db::orm::annotation::{Annotation, AnnotationValue};
+	/// use reinhardt_db::orm::aggregation::Aggregate;
 	///
 	/// let users = User::objects()
 	///     .annotate(Annotation::new("total_orders",
@@ -697,9 +697,9 @@ impl<M: Model> Manager<M> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_orm::manager::get_connection;
+	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
 	/// let tx = TransactionScope::begin(&conn).await?;
@@ -956,9 +956,9 @@ impl<M: Model> Manager<M> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_orm::manager::get_connection;
+	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
 	/// let tx = TransactionScope::begin(&conn).await?;
@@ -1053,9 +1053,9 @@ impl<M: Model> Manager<M> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
 	/// # async fn example<M: Model>(manager: Manager<M>, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_orm::manager::get_connection;
+	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
 	/// let tx = TransactionScope::begin(&conn).await?;
@@ -1117,9 +1117,9 @@ impl<M: Model> Manager<M> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
 	/// # async fn example<M: Model>(manager: Manager<M>) -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_orm::manager::get_connection;
+	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
 	/// let tx = TransactionScope::begin(&conn).await?;

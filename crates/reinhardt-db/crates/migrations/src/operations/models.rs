@@ -6,9 +6,9 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::operations::models::{CreateModel, DeleteModel};
-//! use reinhardt_migrations::operations::FieldDefinition;
-//! use reinhardt_migrations::{ProjectState, FieldType};
+//! use reinhardt_db::migrations::operations::models::{CreateModel, DeleteModel};
+//! use reinhardt_db::migrations::operations::FieldDefinition;
+//! use reinhardt_db::migrations::{ProjectState, FieldType};
 //!
 //! let mut state = ProjectState::new();
 //!
@@ -30,8 +30,8 @@
 //! ```
 
 use crate::{FieldState, ModelState, ProjectState};
-use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-use reinhardt_backends::types::DatabaseType;
+use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_db::backends::types::DatabaseType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -97,8 +97,8 @@ pub type ValidationResult<T> = Result<T, ValidationError>;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::models::quote_identifier;
-/// use reinhardt_backends::types::DatabaseType;
+/// use reinhardt_db::migrations::operations::models::quote_identifier;
+/// use reinhardt_db::backends::types::DatabaseType;
 ///
 /// let postgres_quoted = quote_identifier("user", DatabaseType::Postgres);
 /// assert_eq!(postgres_quoted, "\"user\"");
@@ -126,8 +126,8 @@ pub fn quote_identifier(identifier: &str, database_type: DatabaseType) -> String
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::FieldType;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::FieldType;
 ///
 /// let field = FieldDefinition::new("email", FieldType::VarChar(255), false, false, Some("''"));
 /// assert_eq!(field.name, "email");
@@ -201,8 +201,8 @@ impl FieldDefinition {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
 	///
 	/// let field = FieldDefinition::new("id", FieldType::Integer, true, false, Option::<&str>::None);
 	/// assert_eq!(field.name, "id");
@@ -276,8 +276,8 @@ impl FieldDefinition {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
 	///
 	/// let field = FieldDefinition::new("email", FieldType::VarChar(255), false, true, Some("''"));
 	/// let sql = field.to_sql_definition();
@@ -404,9 +404,9 @@ impl FieldDefinition {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::models::CreateModel;
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::models::CreateModel;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 /// let create = CreateModel::new(
@@ -465,9 +465,9 @@ impl CreateModel {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::models::CreateModel;
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
+	/// use reinhardt_db::migrations::operations::models::CreateModel;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
 	///
 	/// let create = CreateModel::new(
 	///     "post_tags",
@@ -528,9 +528,9 @@ impl CreateModel {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::models::CreateModel;
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
+	/// use reinhardt_db::migrations::operations::models::CreateModel;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
 	///
 	/// let create = CreateModel::new(
 	///     "users",
@@ -661,9 +661,9 @@ impl CreateModel {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::models::{CreateModel, DeleteModel};
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::models::{CreateModel, DeleteModel};
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -701,8 +701,8 @@ impl DeleteModel {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::models::DeleteModel;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::models::DeleteModel;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let delete = DeleteModel::new("users");
 	/// let factory = SchemaEditorFactory::new();
@@ -724,9 +724,9 @@ impl DeleteModel {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::models::{CreateModel, RenameModel};
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::models::{CreateModel, RenameModel};
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -769,8 +769,8 @@ impl RenameModel {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::models::RenameModel;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::models::RenameModel;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameModel::new("users", "customers");
 	/// let factory = SchemaEditorFactory::new();
@@ -801,9 +801,9 @@ impl RenameModel {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::models::{CreateModel, MoveModel};
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::models::{CreateModel, MoveModel};
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -837,7 +837,7 @@ impl MoveModel {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::models::MoveModel;
+	/// use reinhardt_db::migrations::operations::models::MoveModel;
 	///
 	/// let move_op = MoveModel::new("User", "myapp", "auth");
 	/// assert_eq!(move_op.model_name, "User");
@@ -865,7 +865,7 @@ impl MoveModel {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::models::MoveModel;
+	/// use reinhardt_db::migrations::operations::models::MoveModel;
 	///
 	/// let move_op = MoveModel::new("User", "myapp", "auth")
 	///     .with_table_rename("myapp_user", "auth_user");
@@ -935,8 +935,8 @@ impl MoveModel {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::models::MoveModel;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::models::MoveModel;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// // Without table rename
 	/// let move_op1 = MoveModel::new("User", "myapp", "auth");

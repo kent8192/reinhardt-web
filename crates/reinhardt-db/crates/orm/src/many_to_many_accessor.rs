@@ -70,7 +70,7 @@ fn build_delete_sql(
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_orm::{Model, ManyToManyAccessor};
+/// use reinhardt_db::orm::{Model, ManyToManyAccessor};
 ///
 /// let user = User::find_by_id(&db, user_id).await?;
 /// let accessor = ManyToManyAccessor::new(&user, "groups", db.clone());

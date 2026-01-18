@@ -12,8 +12,8 @@
 //! ### Example
 //!
 //! ```rust
-//! use reinhardt_orm::transaction::transaction;
-//! use reinhardt_orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::transaction;
+//! use reinhardt_db::orm::connection::DatabaseConnection;
 //!
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -39,8 +39,8 @@
 //! ### Example
 //!
 //! ```rust
-//! use reinhardt_orm::transaction::TransactionScope;
-//! use reinhardt_orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::TransactionScope;
+//! use reinhardt_db::orm::connection::DatabaseConnection;
 //!
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -62,17 +62,17 @@
 //! ### Migration from atomic() to transaction()
 //!
 //! ```rust
-//! # use reinhardt_orm::connection::DatabaseConnection;
+//! # use reinhardt_db::orm::connection::DatabaseConnection;
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! // Old API (atomic)
-//! use reinhardt_orm::transaction::atomic;
+//! use reinhardt_db::orm::transaction::atomic;
 //! let result = atomic(&conn, || async move {
 //!     Ok(42)
 //! }).await?;
 //!
 //! // New API (transaction) - preferred
-//! use reinhardt_orm::transaction::transaction;
+//! use reinhardt_db::orm::transaction::transaction;
 //! let result = transaction(&conn, |_tx| async move {
 //!     Ok(42)
 //! }).await?;
@@ -97,7 +97,7 @@ impl IsolationLevel {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::IsolationLevel;
+	/// use reinhardt_db::orm::transaction::IsolationLevel;
 	///
 	/// let level = IsolationLevel::Serializable;
 	/// assert_eq!(level.to_sql(), "SERIALIZABLE");
@@ -147,7 +147,7 @@ impl Savepoint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Savepoint;
+	/// use reinhardt_db::orm::transaction::Savepoint;
 	///
 	/// let sp = Savepoint::new("my_savepoint", 1);
 	/// assert_eq!(sp.name, "my_savepoint");
@@ -164,7 +164,7 @@ impl Savepoint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Savepoint;
+	/// use reinhardt_db::orm::transaction::Savepoint;
 	///
 	/// let sp = Savepoint::new("checkpoint_1", 2);
 	/// assert_eq!(sp.to_sql(), "SAVEPOINT checkpoint_1");
@@ -177,7 +177,7 @@ impl Savepoint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Savepoint;
+	/// use reinhardt_db::orm::transaction::Savepoint;
 	///
 	/// let sp = Savepoint::new("checkpoint_1", 2);
 	/// assert_eq!(sp.release_sql(), "RELEASE SAVEPOINT checkpoint_1");
@@ -190,7 +190,7 @@ impl Savepoint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Savepoint;
+	/// use reinhardt_db::orm::transaction::Savepoint;
 	///
 	/// let sp = Savepoint::new("checkpoint_1", 2);
 	/// assert_eq!(sp.rollback_sql(), "ROLLBACK TO SAVEPOINT checkpoint_1");
@@ -215,7 +215,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, TransactionState};
+	/// use reinhardt_db::orm::transaction::{Transaction, TransactionState};
 	///
 	/// let tx = Transaction::new();
 	/// assert_eq!(tx.state().unwrap(), TransactionState::NotStarted);
@@ -234,7 +234,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, IsolationLevel};
+	/// use reinhardt_db::orm::transaction::{Transaction, IsolationLevel};
 	///
 	/// let mut tx = Transaction::new().with_isolation_level(IsolationLevel::Serializable);
 	/// let sql = tx.begin().unwrap();
@@ -249,7 +249,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, TransactionState};
+	/// use reinhardt_db::orm::transaction::{Transaction, TransactionState};
 	///
 	/// let mut tx = Transaction::new();
 	/// let sql = tx.begin().unwrap();
@@ -297,7 +297,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, TransactionState};
+	/// use reinhardt_db::orm::transaction::{Transaction, TransactionState};
 	///
 	/// let mut tx = Transaction::new();
 	/// tx.begin().unwrap();
@@ -334,7 +334,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, TransactionState};
+	/// use reinhardt_db::orm::transaction::{Transaction, TransactionState};
 	///
 	/// let mut tx = Transaction::new();
 	/// tx.begin().unwrap();
@@ -372,7 +372,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Transaction, TransactionState};
+	/// use reinhardt_db::orm::transaction::{Transaction, TransactionState};
 	///
 	/// let tx = Transaction::new();
 	/// assert_eq!(tx.state().unwrap(), TransactionState::NotStarted);
@@ -385,7 +385,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Transaction;
+	/// use reinhardt_db::orm::transaction::Transaction;
 	///
 	/// let mut tx = Transaction::new();
 	/// assert_eq!(tx.depth(), 0);
@@ -440,7 +440,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Transaction;
+	/// use reinhardt_db::orm::transaction::Transaction;
 	///
 	/// let mut tx = Transaction::new();
 	/// assert!(!tx.is_active());
@@ -459,7 +459,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Transaction;
+	/// use reinhardt_db::orm::transaction::Transaction;
 	///
 	/// let mut tx = Transaction::new();
 	/// tx.begin().unwrap();
@@ -491,7 +491,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Transaction;
+	/// use reinhardt_db::orm::transaction::Transaction;
 	///
 	/// let mut tx = Transaction::new();
 	/// tx.begin().unwrap();
@@ -515,7 +515,7 @@ impl Transaction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Transaction;
+	/// use reinhardt_db::orm::transaction::Transaction;
 	///
 	/// let mut tx = Transaction::new();
 	/// tx.begin().unwrap();
@@ -553,7 +553,7 @@ impl<F> Atomic<F> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::Atomic;
+	/// use reinhardt_db::orm::transaction::Atomic;
 	///
 	/// let atomic = Atomic::new(|| {
 	///     // Transaction logic here
@@ -572,7 +572,7 @@ impl<F> Atomic<F> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::transaction::{Atomic, IsolationLevel};
+	/// use reinhardt_db::orm::transaction::{Atomic, IsolationLevel};
 	///
 	/// let atomic = Atomic::new(|| {
 	///     // Transaction logic
@@ -602,8 +602,8 @@ impl<F> Atomic<F> {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::TransactionScope;
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::TransactionScope;
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -640,8 +640,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -676,8 +676,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::{TransactionScope, IsolationLevel};
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::{TransactionScope, IsolationLevel};
 	///
 	/// # async fn example() {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
@@ -703,8 +703,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
@@ -780,8 +780,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -807,8 +807,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -842,8 +842,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() -> Result<(), anyhow::Error> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -886,8 +886,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() -> Result<(), anyhow::Error> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -922,8 +922,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() -> Result<(), anyhow::Error> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -960,8 +960,8 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::TransactionScope;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
 	/// # async fn example() -> Result<(), anyhow::Error> {
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -1065,8 +1065,8 @@ impl Drop for TransactionScope {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::atomic;
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::atomic;
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -1101,8 +1101,8 @@ where
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::{atomic_with_isolation, IsolationLevel};
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::{atomic_with_isolation, IsolationLevel};
 ///
 /// # async fn example() {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -1150,8 +1150,8 @@ where
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::transaction;
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::transaction;
 /// use std::future::Future;
 /// use std::pin::Pin;
 ///
@@ -1183,8 +1183,8 @@ where
 /// If the closure returns an error, the transaction is automatically rolled back:
 ///
 /// ```no_run
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::transaction;
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::transaction;
 ///
 /// # async fn example() -> Result<(), anyhow::Error> {
 /// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -1228,8 +1228,8 @@ where
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::connection::DatabaseConnection;
-/// use reinhardt_orm::transaction::{transaction_with_isolation, IsolationLevel};
+/// use reinhardt_db::orm::connection::DatabaseConnection;
+/// use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
 ///
 /// # async fn example() -> Result<(), anyhow::Error> {
 /// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -1269,10 +1269,10 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_backends::backend::DatabaseBackend as BackendTrait;
-	use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
-	use reinhardt_backends::error::Result;
-	use reinhardt_backends::types::{
+	use reinhardt_db::backends::backend::DatabaseBackend as BackendTrait;
+	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
+	use reinhardt_db::backends::error::Result;
+	use reinhardt_db::backends::types::{
 		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
 	};
 	use rstest::*;
@@ -1768,10 +1768,10 @@ mod transaction_extended_tests {
 	use super::*;
 	// use crate::expressions::{F, Q};
 	// use crate::transaction::*;
-	use reinhardt_backends::backend::DatabaseBackend as BackendTrait;
-	use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
-	use reinhardt_backends::error::Result;
-	use reinhardt_backends::types::{
+	use reinhardt_db::backends::backend::DatabaseBackend as BackendTrait;
+	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
+	use reinhardt_db::backends::error::Result;
+	use reinhardt_db::backends::types::{
 		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
 	};
 	use rstest::*;

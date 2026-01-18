@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use reinhardt_orm::reflection::{ModelReflector, FieldInfo, FieldValue};
-//! use reinhardt_orm::Model;
+//! use reinhardt_db::orm::reflection::{ModelReflector, FieldInfo, FieldValue};
+//! use reinhardt_db::orm::Model;
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,7 +19,7 @@
 //!
 //! # #[derive(Clone)]
 //! # struct UserFields;
-//! # impl reinhardt_orm::model::FieldSelector for UserFields {
+//! # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 //! #     fn with_alias(self, _alias: &str) -> Self { self }
 //! # }
 //! #
@@ -126,7 +126,7 @@ impl FieldValue {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::reflection::FieldValue;
+	/// use reinhardt_db::orm::reflection::FieldValue;
 	///
 	/// let value = FieldValue::Null;
 	/// assert!(value.is_null());
@@ -143,7 +143,7 @@ impl FieldValue {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::reflection::FieldValue;
+	/// use reinhardt_db::orm::reflection::FieldValue;
 	///
 	/// let value = FieldValue::Int(42);
 	/// assert_eq!(value.as_i64(), Some(42));
@@ -257,8 +257,8 @@ impl FieldInfo {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_orm::reflection::ModelReflector;
-/// use reinhardt_orm::Model;
+/// use reinhardt_db::orm::reflection::ModelReflector;
+/// use reinhardt_db::orm::Model;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,7 +270,7 @@ impl FieldInfo {
 ///
 /// # #[derive(Clone)]
 /// # struct ArticleFields;
-/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+/// # impl reinhardt_db::orm::model::FieldSelector for ArticleFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
@@ -316,8 +316,8 @@ impl ModelReflector {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_orm::reflection::ModelReflector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::reflection::ModelReflector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,7 +328,7 @@ impl ModelReflector {
 	///
 	/// # #[derive(Clone)]
 	/// # struct ProductFields;
-	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for ProductFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -399,8 +399,8 @@ impl ModelReflector {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_orm::reflection::ModelReflector;
-	/// use reinhardt_orm::registry::{registry, EntityMapper, ColumnMapping};
+	/// use reinhardt_db::orm::reflection::ModelReflector;
+	/// use reinhardt_db::orm::registry::{registry, EntityMapper, ColumnMapping};
 	///
 	/// // Register a model in the registry
 	/// let mut mapper = EntityMapper::new("users");

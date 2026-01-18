@@ -20,7 +20,7 @@ use crate::reverse::ReverseRelationship;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::OneToMany;
+/// use reinhardt_db::associations::OneToMany;
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -65,7 +65,7 @@ impl<T, K> OneToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToMany;
+	/// use reinhardt_db::associations::OneToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Post {
@@ -91,7 +91,7 @@ impl<T, K> OneToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToMany;
+	/// use reinhardt_db::associations::OneToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Post {
@@ -112,7 +112,7 @@ impl<T, K> OneToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToMany;
+	/// use reinhardt_db::associations::OneToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Post {
@@ -133,7 +133,7 @@ impl<T, K> OneToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToMany;
+	/// use reinhardt_db::associations::OneToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Post {
@@ -185,7 +185,7 @@ impl<T, K> ReverseRelationship for OneToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{OneToMany, ReverseRelationship};
+	/// use reinhardt_db::associations::{OneToMany, ReverseRelationship};
 	///
 	/// #[derive(Clone)]
 	/// struct Post {

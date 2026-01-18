@@ -1,7 +1,7 @@
 //! Pool lifecycle tests
 //! Tests for connection recycling, invalidation, and pool recreation
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use sqlx::Sqlite;
 use std::time::Duration;
 

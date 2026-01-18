@@ -16,7 +16,7 @@ fn quote_mysql_identifier(name: &str) -> String {
 /// # Example
 ///
 /// ```rust
-/// # use reinhardt_backends::drivers::mysql::schema::MySQLSchemaEditor;
+/// # use reinhardt_db::backends::drivers::mysql::schema::MySQLSchemaEditor;
 /// let editor = MySQLSchemaEditor::new();
 /// let sql = editor.rename_table_sql("users", "people");
 /// assert!(sql.contains("ALTER TABLE"));
@@ -32,7 +32,7 @@ impl MySQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_backends::drivers::mysql::schema::MySQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::mysql::schema::MySQLSchemaEditor;
 	/// let editor = MySQLSchemaEditor::new();
 	/// # drop(editor); // Verify it's creatable
 	/// ```

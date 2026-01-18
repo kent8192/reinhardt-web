@@ -71,8 +71,8 @@ use crate::{MigrationError, Result};
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::introspect::{IntrospectConfig, introspect};
-/// use reinhardt_migrations::introspection::PostgresIntrospector;
+/// use reinhardt_db::migrations::introspect::{IntrospectConfig, introspect};
+/// use reinhardt_db::migrations::introspection::PostgresIntrospector;
 ///
 /// let config = IntrospectConfig::from_file("reinhardt-introspect.toml")?;
 /// let introspector = PostgresIntrospector::new(pool);

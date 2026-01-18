@@ -18,7 +18,7 @@
 //! - Boundary Analysis: Edge cases
 //! - Equivalence Partitioning: rstest cases
 
-use reinhardt_orm::validators::{
+use reinhardt_db::orm::validators::{
 	EmailValidator, MaxLengthValidator, MinLengthValidator, RangeValidator, RegexValidator,
 	RequiredValidator, URLValidator, Validator,
 };

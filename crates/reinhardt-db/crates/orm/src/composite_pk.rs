@@ -57,7 +57,7 @@ impl PkValue {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::PkValue;
+	/// use reinhardt_db::orm::composite_pk::PkValue;
 	///
 	/// let value = PkValue::Int(42);
 	/// assert_eq!(value.to_sql_string(), "42");
@@ -172,7 +172,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["user_id".to_string(), "role_id".to_string()]);
 	/// assert!(pk.is_ok());
@@ -199,7 +199,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::with_name(
 	///     vec!["user_id".to_string(), "group_id".to_string()],
@@ -221,7 +221,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["a".to_string(), "b".to_string()]).unwrap();
 	/// assert_eq!(pk.fields(), &["a", "b"]);
@@ -240,7 +240,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["user_id".to_string(), "order_id".to_string()]).unwrap();
 	/// let sql = pk.to_sql();
@@ -262,7 +262,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::{CompositePrimaryKey, PkValue};
+	/// use reinhardt_db::orm::composite_pk::{CompositePrimaryKey, PkValue};
 	/// use std::collections::HashMap;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["id".to_string(), "type".to_string()]).unwrap();
@@ -286,7 +286,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::{CompositePrimaryKey, PkValue};
+	/// use reinhardt_db::orm::composite_pk::{CompositePrimaryKey, PkValue};
 	/// use std::collections::HashMap;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["user_id".to_string(), "role_id".to_string()]).unwrap();
@@ -321,7 +321,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["a".to_string(), "b".to_string()]).unwrap();
 	/// assert!(pk.contains_field("a"));
@@ -337,7 +337,7 @@ impl CompositePrimaryKey {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::composite_pk::CompositePrimaryKey;
+	/// use reinhardt_db::orm::composite_pk::CompositePrimaryKey;
 	///
 	/// let pk = CompositePrimaryKey::new(vec!["a".to_string(), "b".to_string(), "c".to_string()]).unwrap();
 	/// assert_eq!(pk.field_count(), 3);

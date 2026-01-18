@@ -1,7 +1,7 @@
 //! Pool recreation tests
 //! Tests for pool.recreate() functionality
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use sqlx::Sqlite;
 use std::time::Duration;
 
@@ -90,7 +90,7 @@ async fn test_pool_recreate_works_after() {
 async fn test_pool_recreate_resets_first_connect() {
 	// Test that first_connect flag is reset on recreation
 	use async_trait::async_trait;
-	use reinhardt_pool::{PoolEvent, PoolEventListener};
+	use reinhardt_db::pool::{PoolEvent, PoolEventListener};
 	use std::sync::Arc;
 	use tokio::sync::Mutex;
 

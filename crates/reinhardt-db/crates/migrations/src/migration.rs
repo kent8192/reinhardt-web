@@ -76,7 +76,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_initial", "myapp");
 	/// assert_eq!(migration.name, "0001_initial");
@@ -103,7 +103,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{Migration, Operation, ColumnDefinition, FieldType};
+	/// use reinhardt_db::migrations::{Migration, Operation, ColumnDefinition, FieldType};
 	///
 	/// let migration = Migration::new("0001_initial", "myapp")
 	///     .add_operation(Operation::CreateTable {
@@ -126,7 +126,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0002_add_field", "myapp")
 	///     .add_dependency("myapp", "0001_initial");
@@ -148,8 +148,8 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
-	/// use reinhardt_migrations::dependency::SwappableDependency;
+	/// use reinhardt_db::migrations::Migration;
+	/// use reinhardt_db::migrations::dependency::SwappableDependency;
 	///
 	/// let migration = Migration::new("0001_create_profile", "profiles")
 	///     .add_swappable_dependency(SwappableDependency::new(
@@ -174,8 +174,8 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
-	/// use reinhardt_migrations::dependency::{OptionalDependency, DependencyCondition};
+	/// use reinhardt_db::migrations::Migration;
+	/// use reinhardt_db::migrations::dependency::{OptionalDependency, DependencyCondition};
 	///
 	/// let migration = Migration::new("0002_add_location", "geo_app")
 	///     .add_optional_dependency(OptionalDependency::new(
@@ -196,7 +196,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_initial", "myapp")
 	///     .atomic(false);
@@ -212,7 +212,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_initial", "myapp");
 	/// assert_eq!(migration.id(), "myapp.0001_initial");
@@ -226,7 +226,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_initial", "myapp")
 	///     .initial(true);
@@ -243,7 +243,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_state_sync", "myapp")
 	///     .state_only(true);
@@ -261,7 +261,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_db_only", "myapp")
 	///     .database_only(true);
@@ -283,7 +283,7 @@ impl Migration {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// // Explicitly marked as initial
 	/// let migration1 = Migration::new("0001_initial", "myapp")

@@ -3,7 +3,7 @@
 //! These tests are based on Django's many-to-many, many-to-one, one-to-one,
 //! and generic relations tests, adapted for Rust's association proxy pattern.
 
-use reinhardt_associations::prelude::*;
+use reinhardt_db::associations::prelude::*;
 
 // ============================================================================
 // Test Models

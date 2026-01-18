@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::operations::special::RunSQL;
+//! use reinhardt_db::migrations::operations::special::RunSQL;
 //!
 //! // Create a RunSQL operation
 //! let run_sql = RunSQL::new(
@@ -18,8 +18,8 @@
 //! ```
 
 use crate::ProjectState;
-use reinhardt_backends::connection::DatabaseConnection;
-use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_db::backends::connection::DatabaseConnection;
+use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
 use serde::{Deserialize, Serialize};
 
 /// Execute raw SQL
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::special::RunSQL;
+/// use reinhardt_db::migrations::operations::special::RunSQL;
 ///
 // Simple SQL execution
 /// let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)");
@@ -58,7 +58,7 @@ impl RunSQL {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunSQL;
+	/// use reinhardt_db::migrations::operations::special::RunSQL;
 	///
 	/// let sql = RunSQL::new("INSERT INTO config (key, value) VALUES ('version', '1.0')");
 	/// assert!(sql.reverse_sql.is_none());
@@ -76,7 +76,7 @@ impl RunSQL {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunSQL;
+	/// use reinhardt_db::migrations::operations::special::RunSQL;
 	///
 	/// let sql = RunSQL::new_multi(vec![
 	///     "UPDATE users SET active = true WHERE id = 1".to_string(),
@@ -99,7 +99,7 @@ impl RunSQL {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunSQL;
+	/// use reinhardt_db::migrations::operations::special::RunSQL;
 	///
 	/// let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
 	///     .with_reverse_sql("DROP INDEX idx_email");
@@ -134,8 +134,8 @@ impl RunSQL {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::special::RunSQL;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::special::RunSQL;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let sql = RunSQL::new("SELECT 1");
 	/// let factory = SchemaEditorFactory::new();
@@ -154,7 +154,7 @@ impl RunSQL {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunSQL;
+	/// use reinhardt_db::migrations::operations::special::RunSQL;
 	///
 	/// let sql = RunSQL::new("CREATE TABLE temp (id INT)")
 	///     .with_reverse_sql("DROP TABLE temp");
@@ -209,8 +209,8 @@ impl StateOperation {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::special::RunCode;
-/// use reinhardt_backends::connection::DatabaseConnection;
+/// use reinhardt_db::migrations::operations::special::RunCode;
+/// use reinhardt_db::backends::connection::DatabaseConnection;
 ///
 /// // Create a code operation with description
 /// let code = RunCode::new("Update user emails", |connection| {
@@ -242,7 +242,7 @@ impl RunCode {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunCode;
+	/// use reinhardt_db::migrations::operations::special::RunCode;
 	///
 	/// let code = RunCode::new("Update user emails", |connection| {
 	///     // Database operations using connection
@@ -265,7 +265,7 @@ impl RunCode {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::RunCode;
+	/// use reinhardt_db::migrations::operations::special::RunCode;
 	///
 	/// let code = RunCode::new("Update emails", |connection| Ok(()))
 	///     .with_reverse_code(|connection| {
@@ -287,8 +287,8 @@ impl RunCode {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_migrations::operations::special::RunCode;
-	/// use reinhardt_backends::connection::DatabaseConnection;
+	/// use reinhardt_db::migrations::operations::special::RunCode;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let code = RunCode::new("Migrate data", |connection| Ok(()));
 	/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/db").await?;
@@ -306,8 +306,8 @@ impl RunCode {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_migrations::operations::special::RunCode;
-	/// use reinhardt_backends::connection::DatabaseConnection;
+	/// use reinhardt_db::migrations::operations::special::RunCode;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let code = RunCode::new("Migrate data", |_| Ok(()))
 	///     .with_reverse_code(|_| Ok(()));
@@ -434,7 +434,7 @@ mod tests {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::special::DataMigration;
+/// use reinhardt_db::migrations::operations::special::DataMigration;
 ///
 /// let migration = DataMigration::new("users", "Migrate user data")
 ///     .batch_size(1000)
@@ -461,7 +461,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Update user statuses");
 	/// assert_eq!(migration.table, "users");
@@ -482,7 +482,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Migrate data")
 	///     .batch_size(500);
@@ -498,7 +498,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Clean data")
 	///     .add_transformation("UPDATE users SET email = LOWER(email)");
@@ -514,7 +514,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Migrate")
 	///     .use_transactions(false);
@@ -530,7 +530,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Update emails")
 	///     .batch_size(100)
@@ -566,7 +566,7 @@ impl DataMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::special::DataMigration;
+	/// use reinhardt_db::migrations::operations::special::DataMigration;
 	///
 	/// let migration = DataMigration::new("users", "Migrate")
 	///     .add_transformation("UPDATE users SET status = 'active'");

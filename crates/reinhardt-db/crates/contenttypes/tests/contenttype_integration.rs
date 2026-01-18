@@ -12,7 +12,7 @@
 //! - postgres_container: PostgreSQL database container
 
 use ::testcontainers::{ContainerAsync, GenericImage};
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};

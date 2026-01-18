@@ -21,9 +21,9 @@ use crate::{
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_migrations::{MigrationStateLoader, DatabaseMigrationRecorder, FilesystemSource};
-/// async fn example() -> reinhardt_migrations::Result<()> {
-///     let connection = reinhardt_backends::DatabaseConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+/// use reinhardt_db::migrations::{MigrationStateLoader, DatabaseMigrationRecorder, FilesystemSource};
+/// async fn example() -> reinhardt_db::migrations::Result<()> {
+///     let connection = reinhardt_db::backends::DatabaseConnection::connect_sqlite("sqlite::memory:").await.unwrap();
 ///     let recorder = DatabaseMigrationRecorder::new(connection);
 ///     let source = FilesystemSource::new("./migrations");
 ///     let loader = MigrationStateLoader::new(recorder, source);
@@ -325,7 +325,7 @@ mod tests {
 
 	mod build_applied_migration_graph {
 		use super::*;
-		use reinhardt_backends::DatabaseConnection;
+		use reinhardt_db::backends::DatabaseConnection;
 
 		/// Mock migration source for testing
 		#[derive(Clone)]

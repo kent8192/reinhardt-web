@@ -3,7 +3,7 @@
 //! This test file verifies that the Operation enum correctly implements
 //! the MigrationOperation trait for Django-style migration naming.
 
-use reinhardt_migrations::{ColumnDefinition, FieldType, MigrationOperation, Operation};
+use reinhardt_db::migrations::{ColumnDefinition, FieldType, MigrationOperation, Operation};
 
 #[test]
 fn test_create_table_fragment() {

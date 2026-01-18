@@ -27,7 +27,7 @@ impl DatabaseType {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_backends::types::DatabaseType;
+	/// use reinhardt_db::backends::types::DatabaseType;
 	///
 	/// assert!(DatabaseType::Postgres.supports_transactional_ddl());
 	/// assert!(DatabaseType::Sqlite.supports_transactional_ddl());
@@ -283,7 +283,7 @@ impl TryFrom<QueryValue> for Uuid {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_backends::types::{IsolationLevel, DatabaseType};
+/// use reinhardt_db::backends::types::{IsolationLevel, DatabaseType};
 ///
 /// let level = IsolationLevel::Serializable;
 /// let sql = level.to_sql(DatabaseType::Postgres);
@@ -366,7 +366,7 @@ impl IsolationLevel {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_backends::types::Savepoint;
+/// use reinhardt_db::backends::types::Savepoint;
 ///
 /// let sp = Savepoint::new("sp1");
 /// assert_eq!(sp.to_sql(), "SAVEPOINT sp1");

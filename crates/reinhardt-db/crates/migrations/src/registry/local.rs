@@ -17,8 +17,8 @@ use std::sync::RwLock;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_migrations::registry::{LocalRegistry, MigrationRegistry};
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::registry::{LocalRegistry, MigrationRegistry};
+/// use reinhardt_db::migrations::Migration;
 ///
 /// let migration = Migration::new("0001_initial", "test");
 /// let registry = LocalRegistry::new();

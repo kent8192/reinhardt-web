@@ -27,7 +27,7 @@ impl StorageType {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::StorageType;
+	/// use reinhardt_db::orm::generated_field::StorageType;
 	///
 	/// assert_eq!(StorageType::Stored.to_sql(), "STORED");
 	/// assert_eq!(StorageType::Virtual.to_sql(), "VIRTUAL");
@@ -49,7 +49,7 @@ impl StorageType {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 ///
 /// // Virtual generated field (computed on-the-fly)
 /// let full_name = GeneratedField::new(
@@ -80,7 +80,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::new(
 	///     "price * 1.1",
@@ -107,7 +107,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::virtual_field("UPPER(name)");
 	/// assert_eq!(field.storage_type, StorageType::Virtual);
@@ -121,7 +121,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::stored_field("quantity * price");
 	/// assert_eq!(field.storage_type, StorageType::Stored);
@@ -135,7 +135,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::new("price * 1.2", StorageType::Stored);
 	/// assert!(field.to_sql().contains("GENERATED ALWAYS AS"));
@@ -154,7 +154,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::stored_field("first_name || ' ' || last_name");
 	/// assert!(field.to_postgres_sql().contains("GENERATED ALWAYS AS"));
@@ -174,7 +174,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::virtual_field("price * 1.1");
 	/// assert!(field.to_mysql_sql().contains("GENERATED ALWAYS AS"));
@@ -194,7 +194,7 @@ impl GeneratedField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::generated_field::{GeneratedField, StorageType};
+	/// use reinhardt_db::orm::generated_field::{GeneratedField, StorageType};
 	///
 	/// let field = GeneratedField::stored_field("json_extract(data, '$.name')");
 	/// assert!(field.to_sqlite_sql().contains("GENERATED ALWAYS AS"));

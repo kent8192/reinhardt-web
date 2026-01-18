@@ -1,7 +1,7 @@
 //! Basic connection pool tests
 //! Covers pool creation, connection acquisition, and basic operations
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use sqlx::Sqlite;
 
 #[tokio::test]

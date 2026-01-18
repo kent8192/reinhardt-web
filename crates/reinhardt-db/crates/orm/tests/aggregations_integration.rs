@@ -23,8 +23,8 @@
 //! Tests requiring these features still use sqlx directly. See memory:aggregations_group_by_investigation
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::Model;
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::Model;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};

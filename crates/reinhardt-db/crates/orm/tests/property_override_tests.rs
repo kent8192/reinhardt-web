@@ -5,7 +5,7 @@
 //! Tests property override capabilities using Rust's trait and builder patterns
 //! instead of Python's class inheritance.
 
-use reinhardt_hybrid::HybridProperty;
+use reinhardt_db::hybrid::HybridProperty;
 
 /// Base model for property override tests
 #[derive(Debug, Clone)]
@@ -131,7 +131,7 @@ fn test_override_expr() {
 
 	// HybridProperty.with_expression() is already implemented in reinhardt-hybrid
 	// This test verifies that expression override concept works as expected
-	use reinhardt_hybrid::HybridProperty;
+	use reinhardt_db::hybrid::HybridProperty;
 
 	let getter = |p: &Person| format!("{} {}", p.firstname, p.lastname);
 	let prop = HybridProperty::new(getter).with_expression(|| override_expr.to_string());

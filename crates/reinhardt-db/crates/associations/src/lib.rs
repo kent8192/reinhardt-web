@@ -20,7 +20,7 @@
 //! when `related_name` is not explicitly provided:
 //!
 //! ```
-//! use reinhardt_associations::{ForeignKey, ReverseRelationship};
+//! use reinhardt_db::associations::{ForeignKey, ReverseRelationship};
 //!
 //! #[derive(Clone)]
 //! struct User {
@@ -38,7 +38,7 @@
 //! different model types through a single association:
 //!
 //! ```
-//! use reinhardt_associations::PolymorphicAssociation;
+//! use reinhardt_db::associations::PolymorphicAssociation;
 //!
 //! #[derive(Clone)]
 //! struct Comment {

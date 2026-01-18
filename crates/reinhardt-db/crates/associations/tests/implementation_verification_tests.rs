@@ -4,7 +4,7 @@
 //! and is not just a skeleton. They test edge cases, boundary conditions, and
 //! proper behavior of the implementation.
 
-use reinhardt_associations::prelude::*;
+use reinhardt_db::associations::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Article {

@@ -4,7 +4,7 @@
 //! through junction tables. It abstracts CRUD operations on the intermediate table.
 
 use reinhardt_core::exception::Result;
-use reinhardt_orm::{DatabaseConnection, QueryRow};
+use reinhardt_db::orm::{DatabaseConnection, QueryRow};
 use sea_query::{Alias, Asterisk, Expr, ExprTrait, Func, PostgresQueryBuilder, Query};
 use std::fmt::Display;
 use std::marker::PhantomData;
@@ -25,7 +25,7 @@ use std::marker::PhantomData;
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use reinhardt_associations::ManyToManyManager;
+/// use reinhardt_db::associations::ManyToManyManager;
 /// # use uuid::Uuid;
 /// # let user_id = Uuid::new_v4();
 /// # struct Database;

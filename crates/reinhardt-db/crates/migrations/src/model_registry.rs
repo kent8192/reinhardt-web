@@ -90,8 +90,8 @@ impl ModelMetadata {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::model_registry::{ModelMetadata, FieldMetadata};
-	/// use reinhardt_migrations::FieldType;
+	/// use reinhardt_db::migrations::model_registry::{ModelMetadata, FieldMetadata};
+	/// use reinhardt_db::migrations::FieldType;
 	///
 	/// let mut metadata = ModelMetadata::new("myapp", "User", "myapp_user");
 	/// metadata.add_field(

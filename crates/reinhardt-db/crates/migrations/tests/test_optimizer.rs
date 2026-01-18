@@ -1,7 +1,7 @@
 //! Tests for migration optimizer
 //! Adapted from Django's test_optimizer.py
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	ColumnDefinition, Constraint, FieldType, ForeignKeyAction, Migration, Operation,
 	OperationOptimizer,
 };

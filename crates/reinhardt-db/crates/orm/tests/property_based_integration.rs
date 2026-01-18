@@ -14,9 +14,9 @@
 //! - postgres_container: PostgreSQL database container
 
 use chrono::{DateTime, Utc};
-use reinhardt_orm::manager::{get_connection, init_database};
-use reinhardt_orm::query::{Filter, FilterOperator, FilterValue};
-use reinhardt_orm::{Model, SoftDeletable, Timestamped};
+use reinhardt_db::orm::manager::{get_connection, init_database};
+use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+use reinhardt_db::orm::{Model, SoftDeletable, Timestamped};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -862,7 +862,7 @@ async fn test_records_visible_across_connections(
 	assert_eq!(found_users.len(), 1, "Should find user in same connection");
 
 	// Reinitialize connection (simulating new connection)
-	reinhardt_orm::manager::reinitialize_database(&url)
+	reinhardt_db::orm::manager::reinitialize_database(&url)
 		.await
 		.expect("Failed to reinitialize database");
 	let new_conn = get_connection()

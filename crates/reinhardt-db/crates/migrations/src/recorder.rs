@@ -1,7 +1,7 @@
 //! Migration recorder
 
 use chrono::{DateTime, Utc};
-use reinhardt_backends::DatabaseConnection;
+use reinhardt_db::backends::DatabaseConnection;
 
 /// Migration record
 #[derive(Debug, Clone)]
@@ -119,8 +119,8 @@ impl DatabaseMigrationRecorder {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -187,7 +187,7 @@ impl DatabaseMigrationRecorder {
 	/// - MySQL: GET_LOCK() with timeout
 	/// - SQLite: No additional lock needed (handled by transaction isolation)
 	async fn acquire_schema_lock(&self) -> crate::Result<()> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			DatabaseType::Postgres => {
@@ -220,7 +220,7 @@ impl DatabaseMigrationRecorder {
 
 				if !locked {
 					return Err(crate::MigrationError::DatabaseError(
-						reinhardt_backends::DatabaseError::QueryError(
+						reinhardt_db::backends::DatabaseError::QueryError(
 							"Failed to acquire migration lock (timeout)".to_string(),
 						),
 					));
@@ -238,7 +238,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// Should be called after schema operations complete, even if they fail.
 	async fn release_schema_lock(&self) -> crate::Result<()> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 
 		match self.connection.database_type() {
 			DatabaseType::Postgres => {
@@ -268,7 +268,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// This is called by ensure_schema_table() after acquiring the lock.
 	async fn ensure_schema_table_internal(&self) -> crate::Result<()> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, ColumnDef, Expr, Index, MysqlQueryBuilder, PostgresQueryBuilder,
 			SqliteQueryBuilder, Table,
@@ -364,8 +364,8 @@ impl DatabaseMigrationRecorder {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -379,7 +379,7 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn is_applied(&self, app: &str, name: &str) -> crate::Result<bool> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query,
 			SqliteQueryBuilder,
@@ -430,8 +430,8 @@ impl DatabaseMigrationRecorder {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -447,7 +447,7 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn record_applied(&self, app: &str, name: &str) -> crate::Result<()> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, Expr, MysqlQueryBuilder, PostgresQueryBuilder, Query, SqliteQueryBuilder,
 		};
@@ -493,8 +493,8 @@ impl DatabaseMigrationRecorder {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -508,7 +508,7 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn get_applied_migrations(&self) -> crate::Result<Vec<MigrationRecord>> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, MysqlQueryBuilder, Order, PostgresQueryBuilder, Query, SqliteQueryBuilder,
 		};
@@ -555,7 +555,7 @@ impl DatabaseMigrationRecorder {
 						.map(|naive| naive.and_utc())
 						.map_err(|e| {
 							crate::MigrationError::DatabaseError(
-								reinhardt_backends::DatabaseError::TypeError(format!(
+								reinhardt_db::backends::DatabaseError::TypeError(format!(
 									"Failed to parse SQLite timestamp '{}': {}",
 									applied_str, e
 								)),
@@ -577,7 +577,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// Used when rolling back migrations.
 	pub async fn unapply(&self, app: &str, name: &str) -> crate::Result<()> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query,
 			SqliteQueryBuilder,
@@ -611,8 +611,8 @@ impl DatabaseMigrationRecorder {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::recorder::DatabaseMigrationRecorder;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -625,7 +625,7 @@ impl DatabaseMigrationRecorder {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn get_applied_for_app(&self, app: &str) -> crate::Result<Vec<MigrationRecord>> {
-		use reinhardt_backends::types::DatabaseType;
+		use reinhardt_db::backends::types::DatabaseType;
 		use sea_query::{
 			Alias, Expr, ExprTrait, MysqlQueryBuilder, Order, PostgresQueryBuilder, Query,
 			SqliteQueryBuilder,
@@ -671,7 +671,7 @@ impl DatabaseMigrationRecorder {
 						.map(|naive| naive.and_utc())
 						.map_err(|e| {
 							crate::MigrationError::DatabaseError(
-								reinhardt_backends::DatabaseError::TypeError(format!(
+								reinhardt_db::backends::DatabaseError::TypeError(format!(
 									"Failed to parse SQLite timestamp '{}': {}",
 									applied_str, e
 								)),

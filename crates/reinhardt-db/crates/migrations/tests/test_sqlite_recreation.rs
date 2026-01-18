@@ -5,7 +5,7 @@
 //! DROP COLUMN, ALTER COLUMN, and constraint modifications require
 //! a 4-step table recreation process.
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	FieldType, ProjectState,
 	operations::{ColumnDefinition, Constraint, Operation, SqlDialect, SqliteTableRecreation},
 };

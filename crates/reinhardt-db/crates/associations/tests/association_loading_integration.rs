@@ -15,7 +15,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container (reinhardt-test)
 
-use reinhardt_associations::{
+use reinhardt_db::associations::{
 	EagerLoader, ForeignKey, JoinedLoader, LoadingStrategy, OneToMany, SelectInLoader,
 };
 use reinhardt_test::fixtures::postgres_container;

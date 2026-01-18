@@ -48,8 +48,8 @@ pub enum OrderValue {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::order_with_respect_to::OrderedModel;
-/// use reinhardt_orm::query_types::DbBackend;
+/// use reinhardt_db::orm::order_with_respect_to::OrderedModel;
+/// use reinhardt_db::orm::query_types::DbBackend;
 /// use std::collections::HashMap;
 /// use std::sync::Arc;
 /// use sqlx::AnyPool;
@@ -87,8 +87,8 @@ impl OrderedModel {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::order_with_respect_to::OrderedModel;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::order_with_respect_to::OrderedModel;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	/// use std::sync::Arc;
 	/// use sqlx::AnyPool;
 	///
@@ -136,8 +136,8 @@ impl OrderedModel {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::order_with_respect_to::{OrderedModel, OrderValue};
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::order_with_respect_to::{OrderedModel, OrderValue};
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	/// use std::collections::HashMap;
 	/// use std::sync::Arc;
 	/// use sqlx::AnyPool;
@@ -241,8 +241,8 @@ impl OrderedModel {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::order_with_respect_to::OrderedModel;
-	/// use reinhardt_orm::query_types::DbBackend;
+	/// use reinhardt_db::orm::order_with_respect_to::OrderedModel;
+	/// use reinhardt_db::orm::query_types::DbBackend;
 	/// use sqlx::AnyPool;
 	/// use std::sync::Arc;
 	///

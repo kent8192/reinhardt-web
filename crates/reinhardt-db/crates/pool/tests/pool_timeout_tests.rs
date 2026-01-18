@@ -1,7 +1,7 @@
 //! Pool timeout and exhaustion tests
 //! Based on SQLAlchemy's timeout tests
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use sqlx::Sqlite;
 use std::time::{Duration, Instant};
 

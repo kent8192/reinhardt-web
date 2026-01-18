@@ -28,8 +28,8 @@ impl<M: Model, T> Field<M, T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::query_fields::Field;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::Field;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +40,7 @@ impl<M: Model, T> Field<M, T> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -174,8 +174,8 @@ impl<M: Model> Field<M, String> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::query_fields::Field;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::Field;
+	/// use reinhardt_db::orm::Model;
 	/// use reinhardt_core::validators::TableName;
 	///
 	/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -188,7 +188,7 @@ impl<M: Model> Field<M, String> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -214,8 +214,8 @@ impl<M: Model> Field<M, String> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::query_fields::Field;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::Field;
+	/// use reinhardt_db::orm::Model;
 	/// use reinhardt_core::validators::TableName;
 	///
 	/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -228,7 +228,7 @@ impl<M: Model> Field<M, String> {
 	///
 	/// #[derive(Clone)]
 	/// struct ProductFields;
-	/// impl reinhardt_orm::FieldSelector for ProductFields {
+	/// impl reinhardt_db::orm::FieldSelector for ProductFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -254,8 +254,8 @@ impl<M: Model> Field<M, String> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::query_fields::Field;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::Field;
+	/// use reinhardt_db::orm::Model;
 	/// use reinhardt_core::validators::TableName;
 	///
 	/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -268,7 +268,7 @@ impl<M: Model> Field<M, String> {
 	///
 	/// #[derive(Clone)]
 	/// struct CommentFields;
-	/// impl reinhardt_orm::FieldSelector for CommentFields {
+	/// impl reinhardt_db::orm::FieldSelector for CommentFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -295,8 +295,8 @@ impl<M: Model> Field<M, String> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::query_fields::Field;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::Field;
+	/// use reinhardt_db::orm::Model;
 	/// use reinhardt_core::validators::TableName;
 	///
 	/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -309,7 +309,7 @@ impl<M: Model> Field<M, String> {
 	///
 	/// #[derive(Clone)]
 	/// struct PostFields;
-	/// impl reinhardt_orm::FieldSelector for PostFields {
+	/// impl reinhardt_db::orm::FieldSelector for PostFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///

@@ -19,7 +19,7 @@ use crate::{
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_nosql::traits::DocumentBackend;
+/// use reinhardt_db::nosql::traits::DocumentBackend;
 /// use bson::doc;
 ///
 /// async fn find_user(db: &dyn DocumentBackend, email: &str) -> Result<Option<Document>> {

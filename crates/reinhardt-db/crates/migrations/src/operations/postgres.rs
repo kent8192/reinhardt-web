@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::operations::postgres::{CreateExtension, CreateCollation};
+//! use reinhardt_db::migrations::operations::postgres::{CreateExtension, CreateCollation};
 //!
 //! // Create the hstore extension
 //! let ext = CreateExtension::new("hstore");
@@ -21,7 +21,7 @@
 
 use crate::ProjectState;
 use pg_escape::quote_literal;
-use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
 use serde::{Deserialize, Serialize};
 
 /// Create a PostgreSQL extension
@@ -32,8 +32,8 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::postgres::CreateExtension;
-/// use reinhardt_migrations::ProjectState;
+/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
+/// use reinhardt_db::migrations::ProjectState;
 ///
 /// let mut state = ProjectState::new();
 /// let ext = CreateExtension::new("hstore");
@@ -54,7 +54,7 @@ impl CreateExtension {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::postgres::CreateExtension;
+	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
 	///
 	/// let ext = CreateExtension::new("hstore");
 	/// assert_eq!(ext.name, "hstore");
@@ -90,8 +90,8 @@ impl CreateExtension {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::postgres::CreateExtension;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let ext = CreateExtension::new("hstore").with_schema("public");
 	/// let factory = SchemaEditorFactory::new();
@@ -125,8 +125,8 @@ impl CreateExtension {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::postgres::CreateExtension;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let ext = CreateExtension::new("hstore");
 	/// let factory = SchemaEditorFactory::new();
@@ -146,7 +146,7 @@ impl CreateExtension {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::postgres::DropExtension;
+/// use reinhardt_db::migrations::operations::postgres::DropExtension;
 ///
 /// let drop = DropExtension::new("hstore");
 /// ```
@@ -169,8 +169,8 @@ impl DropExtension {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::postgres::DropExtension;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::postgres::DropExtension;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let drop = DropExtension::new("hstore");
 	/// let factory = SchemaEditorFactory::new();
@@ -197,7 +197,7 @@ impl DropExtension {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::postgres::CreateCollation;
+/// use reinhardt_db::migrations::operations::postgres::CreateCollation;
 ///
 /// let collation = CreateCollation::new("german", "de_DE");
 /// ```
@@ -214,7 +214,7 @@ impl CreateCollation {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::postgres::CreateCollation;
+	/// use reinhardt_db::migrations::operations::postgres::CreateCollation;
 	///
 	/// let collation = CreateCollation::new("german", "de_DE");
 	/// assert_eq!(collation.name, "german");
@@ -242,8 +242,8 @@ impl CreateCollation {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::postgres::CreateCollation;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::postgres::CreateCollation;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let collation = CreateCollation::new("german", "de_DE");
 	/// let factory = SchemaEditorFactory::new();
@@ -285,7 +285,7 @@ pub mod extensions {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::operations::postgres::extensions::hstore;
+	/// use reinhardt_db::migrations::operations::postgres::extensions::hstore;
 	///
 	/// let ext = hstore();
 	/// assert_eq!(ext.name, "hstore");

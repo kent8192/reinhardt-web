@@ -3,7 +3,7 @@
 //! These tests use TestContainers to provide an isolated PostgreSQL instance.
 //! No manual setup required - the container is automatically created and destroyed.
 
-use reinhardt_backends::drivers::postgresql::two_phase::PostgresTwoPhaseParticipant;
+use reinhardt_db::backends::drivers::postgresql::two_phase::PostgresTwoPhaseParticipant;
 use reinhardt_test::fixtures::{ColumnDefinition, FieldType, Operation, SqlDialect};
 use rstest::*;
 use serial_test::serial;

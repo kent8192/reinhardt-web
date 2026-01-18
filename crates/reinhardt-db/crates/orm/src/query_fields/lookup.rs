@@ -170,14 +170,14 @@ impl<M: Model> Lookup<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_orm::query_fields::{Lookup, LookupType, LookupValue};
-	/// # use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::query_fields::{Lookup, LookupType, LookupValue};
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {

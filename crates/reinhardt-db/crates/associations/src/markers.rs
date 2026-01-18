@@ -6,9 +6,9 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_orm::Model;
+//! use reinhardt_db::orm::Model;
 //! use reinhardt_macros::model;
-//! use reinhardt_associations::ManyToManyField;
+//! use reinhardt_db::associations::ManyToManyField;
 //! use uuid::Uuid;
 //!
 //! #[model(app_label = "users")]
@@ -35,7 +35,7 @@
 use std::marker::PhantomData;
 
 // Import DatabaseConnection and QueryRow for method signatures
-use reinhardt_orm::{DatabaseConnection, QueryRow};
+use reinhardt_db::orm::{DatabaseConnection, QueryRow};
 
 /// Configuration for ManyToMany relationship operations
 ///
@@ -93,9 +93,9 @@ impl<PK> ManyToManyConfig<PK> {
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use reinhardt_orm::Model;
+/// use reinhardt_db::orm::Model;
 /// use reinhardt_macros::model;
-/// use reinhardt_associations::ManyToManyField;
+/// use reinhardt_db::associations::ManyToManyField;
 /// use uuid::Uuid;
 ///
 /// #[model(app_label = "auth", table_name = "users")]
@@ -122,7 +122,7 @@ impl<PK> ManyToManyConfig<PK> {
 /// }
 ///
 /// // Usage with ManyToManyAccessor:
-/// use reinhardt_orm::ManyToManyAccessor;
+/// use reinhardt_db::orm::ManyToManyAccessor;
 ///
 /// let user = User::find_by_id(&db, user_id).await?;
 /// let accessor = ManyToManyAccessor::new(&user, "groups", ());
@@ -165,7 +165,7 @@ impl<Source, Target, S> ManyToManyField<Source, Target, S> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToManyField;
+	/// use reinhardt_db::associations::ManyToManyField;
 	///
 	/// struct User;
 	/// struct Tag;
@@ -388,7 +388,7 @@ where
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_associations::ForeignKeyField;
+/// use reinhardt_db::associations::ForeignKeyField;
 /// use reinhardt_macros::model;
 ///
 /// #[model(app_label = "blog", table_name = "posts")]
@@ -439,7 +439,7 @@ impl<T> ForeignKeyField<T> {
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_associations::OneToOneField;
+/// use reinhardt_db::associations::OneToOneField;
 /// use reinhardt_macros::model;
 ///
 /// #[model(app_label = "auth", table_name = "profiles")]

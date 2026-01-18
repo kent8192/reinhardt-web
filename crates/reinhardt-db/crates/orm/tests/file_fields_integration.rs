@@ -10,7 +10,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm::file_fields::{FileField, FileFieldError, ImageField};
+use reinhardt_db::orm::file_fields::{FileField, FileFieldError, ImageField};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Query, Table};

@@ -1,7 +1,7 @@
 //! Tests for hybrid property value operations
 //! Based on PropertyValueTest from SQLAlchemy
 
-use reinhardt_hybrid::prelude::*;
+use reinhardt_db::hybrid::prelude::*;
 
 #[derive(Debug)]
 struct Product {

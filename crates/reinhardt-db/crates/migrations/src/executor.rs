@@ -7,7 +7,7 @@ use crate::{
 	MigrationService, Operation, Result, SchemaEditor, operations::SqlDialect,
 };
 use indexmap::IndexMap;
-use reinhardt_backends::{connection::DatabaseConnection, types::DatabaseType};
+use reinhardt_db::backends::{connection::DatabaseConnection, types::DatabaseType};
 use std::collections::HashSet;
 
 #[cfg(feature = "sqlite")]
@@ -185,8 +185,8 @@ impl DatabaseMigrationExecutor {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory
@@ -220,8 +220,8 @@ impl DatabaseMigrationExecutor {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -256,7 +256,7 @@ impl DatabaseMigrationExecutor {
 				// For PostgreSQL, EXISTS returns a boolean value
 				let result = self.connection.fetch_one(&query_str, vec![]).await?;
 				match result.data.get("exists") {
-					Some(reinhardt_backends::types::QueryValue::Bool(b)) => Ok(*b),
+					Some(reinhardt_db::backends::types::QueryValue::Bool(b)) => Ok(*b),
 					_ => Ok(false),
 				}
 			}
@@ -368,8 +368,8 @@ impl DatabaseMigrationExecutor {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::{Migration, executor::DatabaseMigrationExecutor};
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::{Migration, executor::DatabaseMigrationExecutor};
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -431,9 +431,9 @@ impl DatabaseMigrationExecutor {
 
 		// Determine SQL dialect
 		let dialect = match self.connection.database_type() {
-			reinhardt_backends::types::DatabaseType::Postgres => SqlDialect::Postgres,
-			reinhardt_backends::types::DatabaseType::Mysql => SqlDialect::Mysql,
-			reinhardt_backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
+			reinhardt_db::backends::types::DatabaseType::Postgres => SqlDialect::Postgres,
+			reinhardt_db::backends::types::DatabaseType::Mysql => SqlDialect::Mysql,
+			reinhardt_db::backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
 		};
 
 		// Create SchemaEditor for atomic operations
@@ -614,8 +614,8 @@ impl DatabaseMigrationExecutor {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
-	/// use reinhardt_backends::DatabaseConnection;
+	/// use reinhardt_db::migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL
@@ -971,8 +971,8 @@ impl DatabaseMigrationExecutor {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::executor::OperationOptimizer;
-/// use reinhardt_migrations::{Operation, ColumnDefinition, FieldType};
+/// use reinhardt_db::migrations::executor::OperationOptimizer;
+/// use reinhardt_db::migrations::{Operation, ColumnDefinition, FieldType};
 ///
 /// let ops = vec![
 ///     Operation::AddColumn {
@@ -1004,7 +1004,7 @@ impl OperationOptimizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::executor::OperationOptimizer;
+	/// use reinhardt_db::migrations::executor::OperationOptimizer;
 	///
 	/// let optimizer = OperationOptimizer::new();
 	/// ```
@@ -1017,8 +1017,8 @@ impl OperationOptimizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::executor::OperationOptimizer;
-	/// use reinhardt_migrations::{Operation, ColumnDefinition};
+	/// use reinhardt_db::migrations::executor::OperationOptimizer;
+	/// use reinhardt_db::migrations::{Operation, ColumnDefinition};
 	///
 	/// let ops = vec![
 	///     Operation::CreateTable {

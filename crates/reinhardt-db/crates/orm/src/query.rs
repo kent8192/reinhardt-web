@@ -127,7 +127,7 @@ pub enum UpdateValue {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::{Filter, FilterCondition, FilterOperator, FilterValue};
+/// use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 ///
 /// // Simple single filter
 /// let single = FilterCondition::Single(Filter::new(
@@ -193,7 +193,7 @@ impl FilterCondition {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::{Filter, FilterCondition, FilterOperator, FilterValue};
+	/// use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 	///
 	/// let condition = FilterCondition::not(
 	///     FilterCondition::Single(Filter::new(
@@ -218,7 +218,7 @@ impl FilterCondition {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::{Filter, FilterCondition, FilterOperator, FilterValue};
+	/// use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
 	///
 	/// let search_filters = vec![
 	///     Filter::new("name".to_string(), FilterOperator::Contains, FilterValue::String("test".to_string())),
@@ -491,17 +491,17 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, QuerySet};
-	/// # use reinhardt_orm::annotation::{Annotation, AnnotationValue};
-	/// # use reinhardt_orm::aggregation::Aggregate;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
-	/// # use reinhardt_orm::GroupByFields;
+	/// # use reinhardt_db::orm::{Model, QuerySet};
+	/// # use reinhardt_db::orm::annotation::{Annotation, AnnotationValue};
+	/// # use reinhardt_db::orm::aggregation::Aggregate;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::GroupByFields;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Book { id: Option<i64>, author_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -578,13 +578,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -599,7 +599,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -647,13 +647,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -668,7 +668,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -716,13 +716,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -737,7 +737,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -785,13 +785,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -806,7 +806,7 @@ where
 	/// # struct Category { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct CategoryFields;
-	/// # impl reinhardt_orm::model::FieldSelector for CategoryFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for CategoryFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Category {
@@ -848,9 +848,9 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::query_fields::Field;
-	/// # use reinhardt_orm::FieldSelector;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::query_fields::Field;
+	/// # use reinhardt_db::orm::FieldSelector;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -909,13 +909,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -930,7 +930,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -976,13 +976,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -997,7 +997,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -1042,13 +1042,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -1063,7 +1063,7 @@ where
 	/// # struct Post { id: Option<i64>, user_id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -1111,9 +1111,9 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::query_fields::Field;
-	/// # use reinhardt_orm::FieldSelector;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::query_fields::Field;
+	/// # use reinhardt_db::orm::FieldSelector;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -1206,9 +1206,9 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::query_fields::Field;
-	/// # use reinhardt_orm::FieldSelector;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::query_fields::Field;
+	/// # use reinhardt_db::orm::FieldSelector;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -1306,9 +1306,9 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::query_fields::Field;
-	/// # use reinhardt_orm::FieldSelector;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::query_fields::Field;
+	/// # use reinhardt_db::orm::FieldSelector;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -1405,7 +1405,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Book { id: Option<i64> }
@@ -1510,7 +1510,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
@@ -1614,7 +1614,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
@@ -1704,7 +1704,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Product { id: Option<i64> }
@@ -1808,7 +1808,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
@@ -1909,7 +1909,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
+	/// # use reinhardt_db::orm::{Model, query_fields::{Field, GroupByFields}, FieldSelector};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
@@ -2001,14 +2001,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{QuerySet, Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct AuthorFields;
-	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for AuthorFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Author {
@@ -2023,7 +2023,7 @@ where
 	/// # struct Book { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -2068,14 +2068,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{QuerySet, Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct AuthorFields;
-	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for AuthorFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Author {
@@ -2090,7 +2090,7 @@ where
 	/// # struct Book { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -2136,14 +2136,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{QuerySet, Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct AuthorFields;
-	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for AuthorFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Author {
@@ -2158,7 +2158,7 @@ where
 	/// # struct Book { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -2170,7 +2170,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::F;
+	/// use reinhardt_db::orm::F;
 	/// // Find authors who have at least one book
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
@@ -2203,14 +2203,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{QuerySet, Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{QuerySet, Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct AuthorFields;
-	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for AuthorFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Author {
@@ -2225,7 +2225,7 @@ where
 	/// # struct Book { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -2237,7 +2237,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::F;
+	/// use reinhardt_db::orm::F;
 	/// // Find authors who have NO books
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
@@ -2271,14 +2271,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::cte::CTE;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::cte::CTE;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Employee { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct EmployeeFields;
-	/// # impl reinhardt_orm::model::FieldSelector for EmployeeFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for EmployeeFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Employee {
@@ -2330,13 +2330,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Customer { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct CustomerFields;
-	/// # impl reinhardt_orm::model::FieldSelector for CustomerFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for CustomerFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Customer {
@@ -2348,7 +2348,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::lateral_join::{LateralJoin, LateralJoinPatterns};
+	/// use reinhardt_db::orm::lateral_join::{LateralJoin, LateralJoinPatterns};
 	///
 	/// // Get top 3 orders per customer
 	/// let top_orders = LateralJoinPatterns::top_n_per_group(
@@ -2900,7 +2900,7 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64>, author: Author, category: Category }
@@ -2910,7 +2910,7 @@ where
 	/// # struct Category { name: String }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -2947,14 +2947,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -3160,7 +3160,7 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64>, comments: Vec<Comment>, tags: Vec<Tag> }
@@ -3170,7 +3170,7 @@ where
 	/// # struct Tag { name: String }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -3210,13 +3210,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -3346,14 +3346,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3491,14 +3491,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, username: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3542,14 +3542,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, email: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3602,13 +3602,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3620,7 +3620,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # let db = reinhardt_orm::manager::get_connection().await?;
+	/// # let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let users = User::objects()
 	///     .all()
 	///     .all_with_db(&db)
@@ -3724,13 +3724,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3743,9 +3743,9 @@ where
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let user_id = 1;
-	/// let db = reinhardt_orm::manager::get_connection().await?;
+	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("id", reinhardt_orm::FilterOperator::Eq, reinhardt_orm::FilterValue::Integer(user_id))
+	///     .filter("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id))
 	///     .get_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -3776,13 +3776,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3794,9 +3794,9 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let db = reinhardt_orm::manager::get_connection().await?;
+	/// let db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
-	///     .filter("status", reinhardt_orm::FilterOperator::Eq, reinhardt_orm::FilterValue::String("active".to_string()))
+	///     .filter("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string()))
 	///     .first_with_db(&db)
 	///     .await?;
 	/// # Ok(())
@@ -3820,14 +3820,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3895,14 +3895,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -3940,13 +3940,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, username: String, email: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4020,15 +4020,15 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
-	/// # use reinhardt_orm::query::UpdateValue;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::query::UpdateValue;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4094,14 +4094,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4157,15 +4157,15 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::composite_pk::{CompositePrimaryKey, PkValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::composite_pk::{CompositePrimaryKey, PkValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # use std::collections::HashMap;
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct PostTag { post_id: i64, tag_id: i64 }
 	/// # #[derive(Clone)]
 	/// # struct PostTagFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostTagFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostTagFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for PostTag {
@@ -4299,13 +4299,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4317,8 +4317,8 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::annotation::{Annotation, AnnotationValue};
-	/// use reinhardt_orm::aggregation::Aggregate;
+	/// use reinhardt_db::orm::annotation::{Annotation, AnnotationValue};
+	/// use reinhardt_db::orm::aggregation::Aggregate;
 	///
 	/// // Add aggregate annotation
 	/// let users = User::objects()
@@ -4352,15 +4352,15 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
-	/// # use reinhardt_orm::OuterRef;
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::OuterRef;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Author { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct AuthorFields;
-	/// # impl reinhardt_orm::model::FieldSelector for AuthorFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for AuthorFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Author {
@@ -4375,7 +4375,7 @@ where
 	/// # struct Book { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct BookFields;
-	/// # impl reinhardt_orm::model::FieldSelector for BookFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for BookFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Book {
@@ -4432,13 +4432,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Serialize, Deserialize, Clone)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4453,7 +4453,7 @@ where
 	/// # struct Order { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct OrderFields;
-	/// # impl reinhardt_orm::model::FieldSelector for OrderFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for OrderFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Order {
@@ -4465,7 +4465,7 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::aggregation::Aggregate;
+	/// use reinhardt_db::orm::aggregation::Aggregate;
 	///
 	/// // Count all users
 	/// let result = User::objects()
@@ -4741,14 +4741,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4790,13 +4790,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4825,13 +4825,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4872,13 +4872,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4910,13 +4910,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4949,13 +4949,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -4988,14 +4988,14 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
-	/// # use reinhardt_orm::{Filter, FilterOperator, FilterValue};
+	/// # use reinhardt_db::orm::Model;
+	/// # use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -5010,7 +5010,7 @@ where
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -5046,13 +5046,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, username: String, email: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -5087,13 +5087,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, username: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -5133,13 +5133,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Article { id: Option<i64>, title: String }
 	/// # #[derive(Clone)]
 	/// # struct ArticleFields;
-	/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for ArticleFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Article {
@@ -5180,13 +5180,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64>, title: String }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -5227,13 +5227,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Post { id: Option<i64>, title: String }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Post {
@@ -5274,13 +5274,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Product { id: Option<i64>, name: String }
 	/// # #[derive(Clone)]
 	/// # struct ProductFields;
-	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for ProductFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Product {
@@ -5321,13 +5321,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Product { id: Option<i64>, name: String }
 	/// # #[derive(Clone)]
 	/// # struct ProductFields;
-	/// # impl reinhardt_orm::model::FieldSelector for ProductFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for ProductFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Product {
@@ -5368,13 +5368,13 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_orm::Model;
+	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: Option<i64>, name: String }
 	/// # #[derive(Clone)]
 	/// # struct EventFields;
-	/// # impl reinhardt_orm::model::FieldSelector for EventFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for EventFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for Event {

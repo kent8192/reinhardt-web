@@ -12,10 +12,10 @@
 //! - Edge cases: Empty tables, special column names
 //! - Property tests: Generated code contains required elements
 
-use reinhardt_migrations::introspection::{
+use reinhardt_db::migrations::introspection::{
 	ColumnInfo, DatabaseSchema, TableInfo, UniqueConstraintInfo,
 };
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	FieldType, GeneratedOutput, IntrospectConfig, OutputConfig, SchemaCodeGenerator,
 	TableFilterConfig,
 };
@@ -739,7 +739,7 @@ fn test_generated_output_default() {
 fn test_generated_output_add_file() {
 	let mut output = GeneratedOutput::new();
 
-	output.add_file(reinhardt_migrations::GeneratedFile::new(
+	output.add_file(reinhardt_db::migrations::GeneratedFile::new(
 		PathBuf::from("test.rs"),
 		"// test content",
 	));

@@ -23,7 +23,7 @@ use crate::persistence::{ContentTypePersistence, ContentTypePersistenceBackend, 
 /// ## Example
 ///
 /// ```rust,no_run
-/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut manager = MultiDbContentTypeManager::new();
@@ -56,7 +56,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// let manager = MultiDbContentTypeManager::new();
 	/// ```
@@ -73,7 +73,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// let manager = MultiDbContentTypeManager::new()
 	///     .with_default_db("primary");
@@ -95,7 +95,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -133,8 +133,8 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
-	/// use reinhardt_contenttypes::persistence::ContentTypePersistence;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::persistence::ContentTypePersistence;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let persistence = ContentTypePersistence::new("sqlite::memory:?cache=shared").await?;
@@ -166,7 +166,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -191,7 +191,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -236,7 +236,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -284,7 +284,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -334,7 +334,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -371,7 +371,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();
@@ -392,7 +392,7 @@ impl MultiDbContentTypeManager {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_contenttypes::multi_db::MultiDbContentTypeManager;
+	/// use reinhardt_db::contenttypes::multi_db::MultiDbContentTypeManager;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let mut manager = MultiDbContentTypeManager::new();

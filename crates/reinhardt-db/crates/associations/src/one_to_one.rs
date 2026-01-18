@@ -21,7 +21,7 @@ use crate::reverse::{ReverseRelationship, generate_reverse_accessor_singular};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::{OneToOne, CascadeAction};
+/// use reinhardt_db::associations::{OneToOne, CascadeAction};
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -76,7 +76,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -107,7 +107,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -128,7 +128,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -149,7 +149,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{OneToOne, CascadeAction};
+	/// use reinhardt_db::associations::{OneToOne, CascadeAction};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -170,7 +170,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{OneToOne, CascadeAction};
+	/// use reinhardt_db::associations::{OneToOne, CascadeAction};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -191,7 +191,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -212,7 +212,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -233,7 +233,7 @@ impl<T, K> OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::OneToOne;
+	/// use reinhardt_db::associations::OneToOne;
 	///
 	/// #[derive(Clone)]
 	/// struct BaseModel {
@@ -309,7 +309,7 @@ impl<T, K> ReverseRelationship for OneToOne<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{OneToOne, ReverseRelationship};
+	/// use reinhardt_db::associations::{OneToOne, ReverseRelationship};
 	///
 	/// #[derive(Clone)]
 	/// struct User {

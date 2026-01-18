@@ -21,7 +21,7 @@ use crate::foreign_key::CascadeAction;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::PolymorphicAssociation;
+/// use reinhardt_db::associations::PolymorphicAssociation;
 ///
 /// #[derive(Clone)]
 /// struct Comment {
@@ -64,7 +64,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicAssociation;
+	/// use reinhardt_db::associations::PolymorphicAssociation;
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("commentable");
 	/// assert_eq!(rel.association_name(), "commentable");
@@ -89,7 +89,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicAssociation;
+	/// use reinhardt_db::associations::PolymorphicAssociation;
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("taggable")
 	///     .id_field("object_id");
@@ -105,7 +105,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicAssociation;
+	/// use reinhardt_db::associations::PolymorphicAssociation;
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("taggable")
 	///     .type_field("content_type");
@@ -121,7 +121,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{PolymorphicAssociation, CascadeAction};
+	/// use reinhardt_db::associations::{PolymorphicAssociation, CascadeAction};
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("commentable")
 	///     .on_delete(CascadeAction::Cascade);
@@ -137,7 +137,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicAssociation;
+	/// use reinhardt_db::associations::PolymorphicAssociation;
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("commentable")
 	///     .null(true);
@@ -153,7 +153,7 @@ impl<K> PolymorphicAssociation<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicAssociation;
+	/// use reinhardt_db::associations::PolymorphicAssociation;
 	///
 	/// let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("commentable")
 	///     .db_index(false);
@@ -213,7 +213,7 @@ impl<K> Default for PolymorphicAssociation<K> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::PolymorphicManyToMany;
+/// use reinhardt_db::associations::PolymorphicManyToMany;
 ///
 /// #[derive(Clone)]
 /// struct Tag {
@@ -260,7 +260,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable");
 	/// assert_eq!(rel.association_name(), "taggable");
@@ -285,7 +285,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .through("taggings");
@@ -301,7 +301,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .source_field("tag_id");
@@ -317,7 +317,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .target_id_field("object_id");
@@ -333,7 +333,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .target_type_field("content_type");
@@ -349,7 +349,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{PolymorphicManyToMany, CascadeAction};
+	/// use reinhardt_db::associations::{PolymorphicManyToMany, CascadeAction};
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .on_delete(CascadeAction::Restrict);
@@ -365,7 +365,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .lazy(false);
@@ -381,7 +381,7 @@ impl<K> PolymorphicManyToMany<K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::PolymorphicManyToMany;
+	/// use reinhardt_db::associations::PolymorphicManyToMany;
 	///
 	/// let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 	///     .db_constraint_prefix("poly_taggings");

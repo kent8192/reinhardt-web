@@ -55,7 +55,7 @@ use crate::{
 /// # Example
 ///
 /// ```rust,ignore
-/// use reinhardt_nosql::traits::NoSQLBackend;
+/// use reinhardt_db::nosql::traits::NoSQLBackend;
 ///
 /// async fn check_backend_health(backend: &dyn NoSQLBackend) -> Result<()> {
 ///     backend.health_check().await
@@ -89,7 +89,7 @@ pub trait NoSQLBackend: Send + Sync {
 	/// # Example
 	///
 	/// ```rust,ignore
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	///
 	/// if let Some(mongodb) = backend.as_any().downcast_ref::<MongoDBBackend>() {
 	///     // Use MongoDB-specific methods

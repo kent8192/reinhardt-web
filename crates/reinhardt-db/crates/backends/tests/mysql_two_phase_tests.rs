@@ -5,7 +5,7 @@
 
 #![cfg(feature = "mysql")]
 
-use reinhardt_backends::drivers::mysql::two_phase::MySqlTwoPhaseParticipant;
+use reinhardt_db::backends::drivers::mysql::two_phase::MySqlTwoPhaseParticipant;
 use rstest::*;
 use serial_test::serial;
 use sqlx::{MySqlPool, Row};

@@ -13,7 +13,7 @@ use crate::reverse::{ReverseRelationship, generate_reverse_accessor};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::CascadeAction;
+/// use reinhardt_db::associations::CascadeAction;
 ///
 /// let action = CascadeAction::Cascade;
 /// ```
@@ -42,7 +42,7 @@ pub enum CascadeAction {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::{ForeignKey, CascadeAction};
+/// use reinhardt_db::associations::{ForeignKey, CascadeAction};
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -95,7 +95,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -125,7 +125,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -146,7 +146,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -167,7 +167,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{ForeignKey, CascadeAction};
+	/// use reinhardt_db::associations::{ForeignKey, CascadeAction};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -188,7 +188,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{ForeignKey, CascadeAction};
+	/// use reinhardt_db::associations::{ForeignKey, CascadeAction};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -209,7 +209,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -230,7 +230,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -251,7 +251,7 @@ impl<T, K> ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ForeignKey;
+	/// use reinhardt_db::associations::ForeignKey;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -320,7 +320,7 @@ impl<T, K> ReverseRelationship for ForeignKey<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{ForeignKey, ReverseRelationship};
+	/// use reinhardt_db::associations::{ForeignKey, ReverseRelationship};
 	///
 	/// #[derive(Clone)]
 	/// struct User {

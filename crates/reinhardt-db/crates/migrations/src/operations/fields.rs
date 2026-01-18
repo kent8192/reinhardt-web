@@ -6,10 +6,10 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::operations::fields::{AddField, RemoveField};
-//! use reinhardt_migrations::operations::FieldDefinition;
-//! use reinhardt_migrations::operations::models::CreateModel;
-//! use reinhardt_migrations::{ProjectState, FieldType};
+//! use reinhardt_db::migrations::operations::fields::{AddField, RemoveField};
+//! use reinhardt_db::migrations::operations::FieldDefinition;
+//! use reinhardt_db::migrations::operations::models::CreateModel;
+//! use reinhardt_db::migrations::{ProjectState, FieldType};
 //!
 //! let mut state = ProjectState::new();
 //!
@@ -32,7 +32,7 @@
 //! ```
 
 use crate::{FieldState, ProjectState};
-use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
 use serde::{Deserialize, Serialize};
 
 pub use super::models::FieldDefinition;
@@ -42,10 +42,10 @@ pub use super::models::FieldDefinition;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::fields::AddField;
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::operations::models::CreateModel;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::fields::AddField;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::operations::models::CreateModel;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -104,10 +104,10 @@ impl AddField {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::fields::AddField;
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::fields::AddField;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let add = AddField::new("users", FieldDefinition::new("email", FieldType::VarChar(255), false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -132,10 +132,10 @@ impl AddField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::fields::RemoveField;
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::operations::models::CreateModel;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::fields::RemoveField;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::operations::models::CreateModel;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -184,8 +184,8 @@ impl RemoveField {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::fields::RemoveField;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::fields::RemoveField;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let remove = RemoveField::new("users", "email");
 	/// let factory = SchemaEditorFactory::new();
@@ -208,10 +208,10 @@ impl RemoveField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::fields::AlterField;
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::operations::models::CreateModel;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::fields::AlterField;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::operations::models::CreateModel;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -268,10 +268,10 @@ impl AlterField {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::fields::AlterField;
-	/// use reinhardt_migrations::operations::FieldDefinition;
-	/// use reinhardt_migrations::FieldType;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::fields::AlterField;
+	/// use reinhardt_db::migrations::operations::FieldDefinition;
+	/// use reinhardt_db::migrations::FieldType;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let alter = AlterField::new("users", FieldDefinition::new("email", FieldType::VarChar(500), false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -297,10 +297,10 @@ impl AlterField {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::fields::RenameField;
-/// use reinhardt_migrations::operations::FieldDefinition;
-/// use reinhardt_migrations::operations::models::CreateModel;
-/// use reinhardt_migrations::{ProjectState, FieldType};
+/// use reinhardt_db::migrations::operations::fields::RenameField;
+/// use reinhardt_db::migrations::operations::FieldDefinition;
+/// use reinhardt_db::migrations::operations::models::CreateModel;
+/// use reinhardt_db::migrations::{ProjectState, FieldType};
 ///
 /// let mut state = ProjectState::new();
 ///
@@ -355,8 +355,8 @@ impl RenameField {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::operations::fields::RenameField;
-	/// use reinhardt_backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::migrations::operations::fields::RenameField;
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameField::new("users", "email", "email_address");
 	/// let factory = SchemaEditorFactory::new();

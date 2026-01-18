@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_contenttypes::permissions::{ContentTypePermission, PermissionAction};
-//! use reinhardt_contenttypes::ContentType;
+//! use reinhardt_db::contenttypes::permissions::{ContentTypePermission, PermissionAction};
+//! use reinhardt_db::contenttypes::ContentType;
 //!
 //! let ct = ContentType::new("blog", "article");
 //!
@@ -66,7 +66,7 @@ impl PermissionAction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::PermissionAction;
+	/// use reinhardt_db::contenttypes::permissions::PermissionAction;
 	///
 	/// assert_eq!(PermissionAction::View.as_str(), "view");
 	/// assert_eq!(PermissionAction::Add.as_str(), "add");
@@ -88,7 +88,7 @@ impl PermissionAction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::PermissionAction;
+	/// use reinhardt_db::contenttypes::permissions::PermissionAction;
 	///
 	/// let actions = PermissionAction::all();
 	/// assert_eq!(actions.len(), 4);
@@ -107,7 +107,7 @@ impl FromStr for PermissionAction {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::PermissionAction;
+	/// use reinhardt_db::contenttypes::permissions::PermissionAction;
 	/// use std::str::FromStr;
 	///
 	/// assert_eq!(PermissionAction::from_str("view"), Ok(PermissionAction::View));
@@ -149,8 +149,8 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::{ContentTypePermission, PermissionAction};
-	/// use reinhardt_contenttypes::ContentType;
+	/// use reinhardt_db::contenttypes::permissions::{ContentTypePermission, PermissionAction};
+	/// use reinhardt_db::contenttypes::ContentType;
 	///
 	/// let ct = ContentType::new("auth", "user");
 	///
@@ -173,8 +173,8 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::ContentTypePermission;
-	/// use reinhardt_contenttypes::ContentType;
+	/// use reinhardt_db::contenttypes::permissions::ContentTypePermission;
+	/// use reinhardt_db::contenttypes::ContentType;
 	///
 	/// let ct = ContentType::new("blog", "article");
 	///
@@ -196,7 +196,7 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::ContentTypePermission;
+	/// use reinhardt_db::contenttypes::permissions::ContentTypePermission;
 	///
 	/// let parsed = ContentTypePermission::parse("blog.add_article");
 	/// assert_eq!(parsed, Some(("blog".to_string(), "add".to_string(), "article".to_string())));
@@ -236,8 +236,8 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::ContentTypePermission;
-	/// use reinhardt_contenttypes::ContentType;
+	/// use reinhardt_db::contenttypes::permissions::ContentTypePermission;
+	/// use reinhardt_db::contenttypes::ContentType;
 	///
 	/// let ct = ContentType::new("blog", "article");
 	/// let perms = ContentTypePermission::default_permissions(&ct);
@@ -261,8 +261,8 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::{ContentTypePermission, PermissionAction};
-	/// use reinhardt_contenttypes::ContentType;
+	/// use reinhardt_db::contenttypes::permissions::{ContentTypePermission, PermissionAction};
+	/// use reinhardt_db::contenttypes::ContentType;
 	///
 	/// let ct = ContentType::new("blog", "article");
 	///
@@ -283,7 +283,7 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::ContentTypePermission;
+	/// use reinhardt_db::contenttypes::permissions::ContentTypePermission;
 	///
 	/// let ct = ContentTypePermission::extract_content_type("blog.add_article");
 	/// assert!(ct.is_some());
@@ -302,7 +302,7 @@ impl ContentTypePermission {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_contenttypes::permissions::{ContentTypePermission, PermissionAction};
+	/// use reinhardt_db::contenttypes::permissions::{ContentTypePermission, PermissionAction};
 	///
 	/// assert_eq!(
 	///     ContentTypePermission::extract_action("blog.view_article"),

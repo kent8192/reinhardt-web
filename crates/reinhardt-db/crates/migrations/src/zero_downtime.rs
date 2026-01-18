@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
-//! use reinhardt_migrations::Migration;
+//! use reinhardt_db::migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
+//! use reinhardt_db::migrations::Migration;
 //!
 //! // Create a migration with zero-downtime strategy
 //! let migration = Migration::new("0001_add_column", "myapp");
@@ -25,7 +25,7 @@ use crate::{Migration, Operation, Result};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::zero_downtime::Strategy;
+/// use reinhardt_db::migrations::zero_downtime::Strategy;
 ///
 /// let strategy = Strategy::ExpandContractPattern;
 /// assert_eq!(strategy.name(), "Expand-Contract Pattern");
@@ -48,7 +48,7 @@ impl Strategy {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::Strategy;
+	/// use reinhardt_db::migrations::zero_downtime::Strategy;
 	///
 	/// let strategy = Strategy::ExpandContractPattern;
 	/// assert_eq!(strategy.name(), "Expand-Contract Pattern");
@@ -67,7 +67,7 @@ impl Strategy {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::Strategy;
+	/// use reinhardt_db::migrations::zero_downtime::Strategy;
 	///
 	/// let strategy = Strategy::ExpandContractPattern;
 	/// let desc = strategy.description();
@@ -94,8 +94,8 @@ impl Strategy {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::zero_downtime::MigrationPhase;
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::zero_downtime::MigrationPhase;
+/// use reinhardt_db::migrations::Migration;
 ///
 /// let migration = Migration::new("0001_initial", "myapp");
 /// let phase = MigrationPhase::new(1, "Expand", migration);
@@ -119,8 +119,8 @@ impl MigrationPhase {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::MigrationPhase;
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::zero_downtime::MigrationPhase;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_expand", "myapp");
 	/// let phase = MigrationPhase::new(1, "Expand schema", migration);
@@ -139,8 +139,8 @@ impl MigrationPhase {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::MigrationPhase;
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::zero_downtime::MigrationPhase;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_expand", "myapp");
 	/// let phase = MigrationPhase::new(1, "Expand", migration)
@@ -160,8 +160,8 @@ impl MigrationPhase {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
+/// use reinhardt_db::migrations::Migration;
 ///
 /// let migration = Migration::new("0001_add_field", "myapp");
 /// let zd = ZeroDowntimeMigration::new(migration, Strategy::ExpandContractPattern);
@@ -177,8 +177,8 @@ impl ZeroDowntimeMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_rename_column", "myapp");
 	/// let zd = ZeroDowntimeMigration::new(migration, Strategy::ExpandContractPattern);
@@ -195,8 +195,8 @@ impl ZeroDowntimeMigration {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::zero_downtime::{ZeroDowntimeMigration, Strategy};
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration = Migration::new("0001_add_column", "myapp");
 	/// let zd = ZeroDowntimeMigration::new(migration, Strategy::ExpandContractPattern);

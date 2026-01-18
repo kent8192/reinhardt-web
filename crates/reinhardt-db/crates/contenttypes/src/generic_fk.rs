@@ -12,8 +12,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
-//! use reinhardt_contenttypes::ContentType;
+//! use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
+//! use reinhardt_db::contenttypes::ContentType;
 //!
 //! let mut gfk = GenericForeignKeyField::new();
 //! let ct = ContentType::new("blog", "Post").with_id(1);
@@ -36,8 +36,8 @@ use crate::contenttypes::ContentType;
 /// ## Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let mut gfk = GenericForeignKeyField::new();
 /// let ct = ContentType::new("auth", "User").with_id(5);
@@ -61,7 +61,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let gfk = GenericForeignKeyField::new();
 	/// assert!(!gfk.is_set());
@@ -78,7 +78,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let gfk = GenericForeignKeyField::with_values(Some(1), Some(42));
 	/// assert!(gfk.is_set());
@@ -97,8 +97,8 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
-	/// use reinhardt_contenttypes::ContentType;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::ContentType;
 	///
 	/// let mut gfk = GenericForeignKeyField::new();
 	/// let ct = ContentType::new("shop", "Product").with_id(3);
@@ -116,7 +116,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let gfk = GenericForeignKeyField::with_values(Some(5), Some(10));
 	/// assert_eq!(gfk.content_type_id(), Some(5));
@@ -130,7 +130,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let gfk = GenericForeignKeyField::with_values(Some(5), Some(10));
 	/// assert_eq!(gfk.object_id(), Some(10));
@@ -144,7 +144,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let gfk = GenericForeignKeyField::new();
 	/// assert!(!gfk.is_set());
@@ -161,7 +161,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let mut gfk = GenericForeignKeyField::with_values(Some(1), Some(1));
 	/// assert!(gfk.is_set());
@@ -179,7 +179,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let mut gfk = GenericForeignKeyField::new();
 	/// gfk.set_content_type_id(Some(7));
@@ -194,7 +194,7 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
 	///
 	/// let mut gfk = GenericForeignKeyField::new();
 	/// gfk.set_object_id(Some(42));
@@ -209,8 +209,8 @@ impl GenericForeignKeyField {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_contenttypes::generic_fk::GenericForeignKeyField;
-	/// use reinhardt_contenttypes::{ContentType, CONTENT_TYPE_REGISTRY};
+	/// use reinhardt_db::contenttypes::generic_fk::GenericForeignKeyField;
+	/// use reinhardt_db::contenttypes::{ContentType, CONTENT_TYPE_REGISTRY};
 	///
 	/// // Register a content type
 	/// let ct = CONTENT_TYPE_REGISTRY.register(ContentType::new("blog", "Comment"));

@@ -31,7 +31,7 @@ impl MigrationService {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::{MigrationService, MigrationRepository, RegistrySource, FilesystemRepository};
+	/// use reinhardt_db::migrations::{MigrationService, MigrationRepository, RegistrySource, FilesystemRepository};
 	/// use std::sync::Arc;
 	/// let source = Arc::new(RegistrySource::new());
 	/// let repository = Arc::new(tokio::sync::Mutex::new(

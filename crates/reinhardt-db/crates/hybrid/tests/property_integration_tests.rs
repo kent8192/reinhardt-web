@@ -1,7 +1,7 @@
 //! Integration tests for hybrid properties
 //! Based on InplaceCreationTest and SynonymOfPropertyTest from SQLAlchemy
 
-use reinhardt_hybrid::prelude::*;
+use reinhardt_db::hybrid::prelude::*;
 
 #[derive(Debug)]
 struct Article {

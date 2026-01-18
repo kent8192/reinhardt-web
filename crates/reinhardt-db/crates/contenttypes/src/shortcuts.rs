@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::shortcuts::{get_content_type_for_model, format_admin_url};
-//! use reinhardt_contenttypes::{ContentType, ContentTypeRegistry, GenericRelatable};
+//! use reinhardt_db::contenttypes::shortcuts::{get_content_type_for_model, format_admin_url};
+//! use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry, GenericRelatable};
 //!
 //! // Get or create a content type for a model
 //! let mut registry = ContentTypeRegistry::new();
@@ -27,8 +27,8 @@ use crate::{ContentType, ContentTypeRegistry, GenericRelatable};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::get_content_type_for_model;
-/// use reinhardt_contenttypes::ContentTypeRegistry;
+/// use reinhardt_db::contenttypes::shortcuts::get_content_type_for_model;
+/// use reinhardt_db::contenttypes::ContentTypeRegistry;
 ///
 /// let mut registry = ContentTypeRegistry::new();
 /// let ct = get_content_type_for_model(&mut registry, "auth", "user");
@@ -48,8 +48,8 @@ pub fn get_content_type_for_model(
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::get_content_type_for_object;
-/// use reinhardt_contenttypes::{ContentType, GenericRelatable};
+/// use reinhardt_db::contenttypes::shortcuts::get_content_type_for_object;
+/// use reinhardt_db::contenttypes::{ContentType, GenericRelatable};
 ///
 /// struct Article { id: i64 }
 ///
@@ -81,8 +81,8 @@ pub fn get_content_type_for_object<T: GenericRelatable>(_obj: &T) -> ContentType
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::format_admin_url;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::shortcuts::format_admin_url;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let ct = ContentType::new("blog", "article");
 ///
@@ -109,8 +109,8 @@ pub fn format_admin_url(content_type: &ContentType, object_id: Option<i64>) -> S
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::format_admin_add_url;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::shortcuts::format_admin_add_url;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let ct = ContentType::new("blog", "article");
 /// assert_eq!(format_admin_add_url(&ct), "/admin/blog/article/add/");
@@ -129,8 +129,8 @@ pub fn format_admin_add_url(content_type: &ContentType) -> String {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::format_admin_delete_url;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::shortcuts::format_admin_delete_url;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let ct = ContentType::new("blog", "article");
 /// assert_eq!(format_admin_delete_url(&ct, 42), "/admin/blog/article/42/delete/");
@@ -149,8 +149,8 @@ pub fn format_admin_delete_url(content_type: &ContentType, object_id: i64) -> St
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::format_admin_history_url;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::shortcuts::format_admin_history_url;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let ct = ContentType::new("blog", "article");
 /// assert_eq!(format_admin_history_url(&ct, 42), "/admin/blog/article/42/history/");
@@ -167,8 +167,8 @@ pub fn format_admin_history_url(content_type: &ContentType, object_id: i64) -> S
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::matches_model;
-/// use reinhardt_contenttypes::ContentType;
+/// use reinhardt_db::contenttypes::shortcuts::matches_model;
+/// use reinhardt_db::contenttypes::ContentType;
 ///
 /// let ct = ContentType::new("blog", "article");
 /// assert!(matches_model(&ct, "blog", "article"));
@@ -185,7 +185,7 @@ pub fn matches_model(content_type: &ContentType, app_label: &str, model: &str) -
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::parse_qualified_name;
+/// use reinhardt_db::contenttypes::shortcuts::parse_qualified_name;
 ///
 /// assert_eq!(parse_qualified_name("blog.article"), Some(("blog".to_string(), "article".to_string())));
 /// assert_eq!(parse_qualified_name("invalid"), None);
@@ -204,8 +204,8 @@ pub fn parse_qualified_name(qualified_name: &str) -> Option<(String, String)> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::get_by_qualified_name;
-/// use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+/// use reinhardt_db::contenttypes::shortcuts::get_by_qualified_name;
+/// use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 ///
 /// let registry = ContentTypeRegistry::new();
 /// registry.register(ContentType::new("blog", "article"));
@@ -229,8 +229,8 @@ pub fn get_by_qualified_name(
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::group_by_app;
-/// use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+/// use reinhardt_db::contenttypes::shortcuts::group_by_app;
+/// use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 ///
 /// let registry = ContentTypeRegistry::new();
 /// registry.register(ContentType::new("blog", "article"));
@@ -257,8 +257,8 @@ pub fn group_by_app(
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::list_app_labels;
-/// use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+/// use reinhardt_db::contenttypes::shortcuts::list_app_labels;
+/// use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 ///
 /// let registry = ContentTypeRegistry::new();
 /// registry.register(ContentType::new("blog", "article"));
@@ -285,8 +285,8 @@ pub fn list_app_labels(registry: &ContentTypeRegistry) -> Vec<String> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_contenttypes::shortcuts::list_models_for_app;
-/// use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+/// use reinhardt_db::contenttypes::shortcuts::list_models_for_app;
+/// use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 ///
 /// let registry = ContentTypeRegistry::new();
 /// registry.register(ContentType::new("blog", "article"));

@@ -26,7 +26,7 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let field = FieldMetadata::new("username", "CharField");
 	/// assert_eq!(field.name, "username");
@@ -51,8 +51,8 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.set_attributes_from_name("username");
@@ -80,7 +80,7 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let field = FieldMetadata::new("email", "EmailField").nullable(true);
 	/// assert!(field.nullable);
@@ -95,7 +95,7 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let field = FieldMetadata::new("id", "AutoField").primary_key(true);
 	/// assert!(field.primary_key);
@@ -110,7 +110,7 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let field = FieldMetadata::new("username", "CharField").unique(true);
 	/// assert!(field.unique);
@@ -125,7 +125,7 @@ impl FieldMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::FieldMetadata;
+	/// use reinhardt_db::orm::declarative::FieldMetadata;
 	///
 	/// let field = FieldMetadata::new("username", "CharField").max_length(150);
 	/// assert_eq!(field.max_length, Some(150));
@@ -150,7 +150,7 @@ impl ModelMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::ModelMetadata;
+	/// use reinhardt_db::orm::declarative::ModelMetadata;
 	///
 	/// let metadata = ModelMetadata::new("users");
 	/// assert_eq!(metadata.table_name, "users");
@@ -169,7 +169,7 @@ impl ModelMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{ModelMetadata, FieldMetadata};
+	/// use reinhardt_db::orm::declarative::{ModelMetadata, FieldMetadata};
 	///
 	/// let mut metadata = ModelMetadata::new("users");
 	/// let field = FieldMetadata::new("username", "CharField").max_length(150);
@@ -188,7 +188,7 @@ impl ModelMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{ModelMetadata, FieldMetadata};
+	/// use reinhardt_db::orm::declarative::{ModelMetadata, FieldMetadata};
 	///
 	/// let mut metadata = ModelMetadata::new("users");
 	/// let field = FieldMetadata::new("username", "CharField");
@@ -231,7 +231,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::DeclarativeBase;
+	/// use reinhardt_db::orm::declarative::DeclarativeBase;
 	///
 	/// let base = DeclarativeBase::new();
 	/// assert_eq!(base.count(), 0);
@@ -247,7 +247,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata, FieldMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata, FieldMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// let mut metadata = ModelMetadata::new("users");
@@ -276,7 +276,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata, FieldMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata, FieldMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// let mut metadata = ModelMetadata::new("users");
@@ -301,7 +301,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// let metadata = ModelMetadata::new("users");
@@ -331,7 +331,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// base.register_model("User", ModelMetadata::new("users"));
@@ -352,7 +352,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// assert_eq!(base.count(), 0);
@@ -376,7 +376,7 @@ impl DeclarativeBase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::declarative::{DeclarativeBase, ModelMetadata};
+	/// use reinhardt_db::orm::declarative::{DeclarativeBase, ModelMetadata};
 	///
 	/// let base = DeclarativeBase::new();
 	/// base.register_model("User", ModelMetadata::new("users"));

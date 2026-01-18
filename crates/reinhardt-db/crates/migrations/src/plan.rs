@@ -7,7 +7,7 @@ use crate::{Migration, Result};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::plan::TransactionMode;
+/// use reinhardt_db::migrations::plan::TransactionMode;
 ///
 /// let mode = TransactionMode::PerMigration;
 /// assert_eq!(mode.name(), "Per Migration");
@@ -31,7 +31,7 @@ impl TransactionMode {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::plan::TransactionMode;
+	/// use reinhardt_db::migrations::plan::TransactionMode;
 	///
 	/// assert_eq!(TransactionMode::PerMigration.name(), "Per Migration");
 	/// assert_eq!(TransactionMode::All.name(), "All in One");
@@ -62,7 +62,7 @@ impl MigrationPlan {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::MigrationPlan;
+	/// use reinhardt_db::migrations::MigrationPlan;
 	///
 	/// let plan = MigrationPlan::new();
 	/// assert_eq!(plan.migrations.len(), 0);
@@ -80,7 +80,7 @@ impl MigrationPlan {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{MigrationPlan, plan::TransactionMode};
+	/// use reinhardt_db::migrations::{MigrationPlan, plan::TransactionMode};
 	///
 	/// let plan = MigrationPlan::new()
 	///     .with_transaction_mode(TransactionMode::All);
@@ -96,7 +96,7 @@ impl MigrationPlan {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::MigrationPlan;
+	/// use reinhardt_db::migrations::MigrationPlan;
 	///
 	/// let plan = MigrationPlan::new()
 	///     .continue_on_error(true);
@@ -111,7 +111,7 @@ impl MigrationPlan {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{Migration, MigrationPlan};
+	/// use reinhardt_db::migrations::{Migration, MigrationPlan};
 	///
 	/// let migration = Migration::new("0001_initial", "myapp");
 	/// let plan = MigrationPlan::new().with_migration(migration);
@@ -127,7 +127,7 @@ impl MigrationPlan {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{Migration, MigrationPlan};
+	/// use reinhardt_db::migrations::{Migration, MigrationPlan};
 	///
 	/// let migration1 = Migration::new("0001_initial", "myapp");
 	/// let migration2 = Migration::new("0002_add_field", "myapp")

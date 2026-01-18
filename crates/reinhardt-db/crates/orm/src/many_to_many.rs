@@ -35,7 +35,7 @@ impl AssociationTable {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::many_to_many::AssociationTable;
+	/// use reinhardt_db::orm::many_to_many::AssociationTable;
 	/// use sea_query::PostgresQueryBuilder;
 	///
 	/// let table = AssociationTable::new("student_courses", "student_id", "course_id");
@@ -98,7 +98,7 @@ impl AssociationTable {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::many_to_many::AssociationTable;
+	/// use reinhardt_db::orm::many_to_many::AssociationTable;
 	/// use sea_query::PostgresQueryBuilder;
 	///
 	/// let table = AssociationTable::new("student_courses", "student_id", "course_id")
@@ -240,7 +240,7 @@ impl AssociationTable {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::many_to_many::AssociationTable;
+	/// use reinhardt_db::orm::many_to_many::AssociationTable;
 	/// use sea_query::SqliteQueryBuilder;
 	///
 	/// let table = AssociationTable::new("user_roles", "user_id", "role_id");
@@ -278,8 +278,8 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::many_to_many::{AssociationTable, ManyToMany};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::many_to_many::{AssociationTable, ManyToMany};
+	/// use reinhardt_db::orm::Model;
 	/// use sea_query::PostgresQueryBuilder;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -291,13 +291,13 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct StudentFields;
-	/// # impl reinhardt_orm::FieldSelector for StudentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for StudentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
 	/// # #[derive(Clone)]
 	/// # struct CourseFields;
-	/// # impl reinhardt_orm::FieldSelector for CourseFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CourseFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #

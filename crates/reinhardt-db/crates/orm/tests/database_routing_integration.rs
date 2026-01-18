@@ -12,7 +12,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container (2 instances)
 
-use reinhardt_orm::database_routing::DatabaseRouter;
+use reinhardt_db::orm::database_routing::DatabaseRouter;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};

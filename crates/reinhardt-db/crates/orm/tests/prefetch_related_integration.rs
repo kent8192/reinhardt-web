@@ -17,9 +17,9 @@
 // in current tests but are provided for comprehensive test scenarios.
 #![allow(dead_code)]
 
-use reinhardt_orm::manager::reinitialize_database;
-use reinhardt_orm::query::FilterOperator;
-use reinhardt_orm::{Model, QuerySet};
+use reinhardt_db::orm::manager::reinitialize_database;
+use reinhardt_db::orm::query::FilterOperator;
+use reinhardt_db::orm::{Model, QuerySet};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::PostgresQueryBuilder;
@@ -576,7 +576,7 @@ async fn test_prefetch_with_filter(
 	}
 
 	// Create filtered QuerySet with prefetch using Manager API
-	use reinhardt_orm::query::FilterValue;
+	use reinhardt_db::orm::query::FilterValue;
 	let queryset: QuerySet<Author> = Author::objects()
 		.filter(
 			"name",

@@ -46,8 +46,8 @@ impl FieldInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInfo;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInfo;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.set_attributes_from_name("username");
@@ -132,8 +132,8 @@ impl FieldInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInfo;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInfo;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.set_attributes_from_name("username");
@@ -150,8 +150,8 @@ impl FieldInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInfo;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInfo;
 	///
 	/// let mut field = CharField::with_choices(
 	///     10,
@@ -194,8 +194,8 @@ impl RelationInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::RelationInfo;
-	/// use reinhardt_orm::relationship::RelationshipType;
+	/// use reinhardt_db::orm::inspection::RelationInfo;
+	/// use reinhardt_db::orm::relationship::RelationshipType;
 	///
 	/// let info = RelationInfo::new(
 	///     "posts",
@@ -273,8 +273,8 @@ impl IndexInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::indexes::Index;
-	/// use reinhardt_orm::inspection::IndexInfo;
+	/// use reinhardt_db::orm::indexes::Index;
+	/// use reinhardt_db::orm::inspection::IndexInfo;
 	///
 	/// let index = Index::new("email_idx", vec!["email".to_string()]);
 	/// let info = IndexInfo::from_index(&index);
@@ -321,8 +321,8 @@ impl ConstraintInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::CheckConstraint;
-	/// use reinhardt_orm::inspection::{ConstraintInfo, ConstraintType};
+	/// use reinhardt_db::orm::constraints::CheckConstraint;
+	/// use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType};
 	///
 	/// let constraint = CheckConstraint::new("age_check", "age >= 18");
 	/// let info = ConstraintInfo::from_check(&constraint);
@@ -343,8 +343,8 @@ impl ConstraintInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::UniqueConstraint;
-	/// use reinhardt_orm::inspection::{ConstraintInfo, ConstraintType};
+	/// use reinhardt_db::orm::constraints::UniqueConstraint;
+	/// use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType};
 	///
 	/// let constraint = UniqueConstraint::new("email_unique", vec!["email".to_string()]);
 	/// let info = ConstraintInfo::from_unique(&constraint);
@@ -365,8 +365,8 @@ impl ConstraintInfo {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::{ForeignKeyConstraint, OnDelete, OnUpdate};
-	/// use reinhardt_orm::inspection::{ConstraintInfo, ConstraintType};
+	/// use reinhardt_db::orm::constraints::{ForeignKeyConstraint, OnDelete, OnUpdate};
+	/// use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType};
 	///
 	/// let constraint = ForeignKeyConstraint {
 	///     name: "fk_user".to_string(),
@@ -404,8 +404,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -416,7 +416,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// impl Model for User {
@@ -454,8 +454,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -465,7 +465,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::model::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// impl Model for Post {
@@ -501,8 +501,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -512,7 +512,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct ArticleFields;
-	/// # impl reinhardt_orm::model::FieldSelector for ArticleFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for ArticleFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// impl Model for Article {
@@ -556,8 +556,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -568,7 +568,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -609,8 +609,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -620,7 +620,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -662,8 +662,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -673,7 +673,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -716,8 +716,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -727,7 +727,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -770,8 +770,8 @@ impl<M: Model> ModelInspector<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::inspection::ModelInspector;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::inspection::ModelInspector;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Deserialize, Serialize};
 	///
 	/// #[derive(Clone, Serialize, Deserialize)]
@@ -781,7 +781,7 @@ impl<M: Model> ModelInspector<M> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -836,8 +836,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::{FieldInfo, FieldInspector};
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::{FieldInfo, FieldInspector};
 	///
 	/// let mut field = CharField::new(50);
 	/// field.set_attributes_from_name("title");
@@ -855,8 +855,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{IntegerField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{IntegerField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = IntegerField::new();
 	/// field.set_attributes_from_name("count");
@@ -874,8 +874,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{EmailField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{EmailField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = EmailField::new();
 	/// field.set_attributes_from_name("email");
@@ -892,8 +892,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{BooleanField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{BooleanField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = BooleanField::new();
 	/// field.set_attributes_from_name("is_active");
@@ -910,8 +910,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::with_null_blank(100);
 	/// field.set_attributes_from_name("middle_name");
@@ -928,8 +928,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{AutoField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{AutoField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = AutoField::new();
 	/// field.set_attributes_from_name("id");
@@ -946,8 +946,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.base.unique = true;
@@ -965,8 +965,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::with_null_blank(100);
 	/// field.set_attributes_from_name("bio");
@@ -983,8 +983,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.set_attributes_from_name("username");
@@ -1001,8 +1001,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{BooleanField, Field, FieldKwarg};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{BooleanField, Field, FieldKwarg};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = BooleanField::with_default(true);
 	/// field.set_attributes_from_name("is_active");
@@ -1019,8 +1019,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{IntegerField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{IntegerField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = IntegerField::new();
 	/// field.set_attributes_from_name("counter");
@@ -1037,8 +1037,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::new(100);
 	/// field.set_attributes_from_name("first_name");
@@ -1055,8 +1055,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let choices = vec![
 	///     ("M".to_string(), "Male".to_string()),
@@ -1077,8 +1077,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{CharField, Field, FieldKwarg};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{CharField, Field, FieldKwarg};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = CharField::new(255);
 	/// field.set_attributes_from_name("url");
@@ -1095,8 +1095,8 @@ impl FieldInspector {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::fields::{DecimalField, Field};
-	/// use reinhardt_orm::inspection::FieldInspector;
+	/// use reinhardt_db::orm::fields::{DecimalField, Field};
+	/// use reinhardt_db::orm::inspection::FieldInspector;
 	///
 	/// let mut field = DecimalField::new(10, 2);
 	/// field.set_attributes_from_name("price");

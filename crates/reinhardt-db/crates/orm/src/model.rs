@@ -85,7 +85,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	///
 	/// struct User {
 	///     id: i32,
@@ -140,13 +140,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct MyModel { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct MyModelFields;
-	/// # impl reinhardt_orm::model::FieldSelector for MyModelFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for MyModelFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for MyModel {
@@ -184,13 +184,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, name: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -311,13 +311,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64>, name: String }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -419,7 +419,7 @@ impl Timestamps {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::model::Timestamps;
+	/// use reinhardt_db::orm::model::Timestamps;
 	///
 	/// let timestamps = Timestamps::now();
 	/// assert!(timestamps.created_at <= chrono::Utc::now());
@@ -437,7 +437,7 @@ impl Timestamps {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::model::Timestamps;
+	/// use reinhardt_db::orm::model::Timestamps;
 	/// use chrono::Utc;
 	///
 	/// let mut timestamps = Timestamps::now();
@@ -466,7 +466,7 @@ impl SoftDelete {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::model::SoftDelete;
+	/// use reinhardt_db::orm::model::SoftDelete;
 	///
 	/// let soft_delete = SoftDelete::new();
 	/// assert!(soft_delete.deleted_at.is_none());
@@ -479,7 +479,7 @@ impl SoftDelete {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::model::SoftDelete;
+	/// use reinhardt_db::orm::model::SoftDelete;
 	///
 	/// let mut soft_delete = SoftDelete::new();
 	/// assert!(!soft_delete.is_deleted());
@@ -496,7 +496,7 @@ impl SoftDelete {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::model::SoftDelete;
+	/// use reinhardt_db::orm::model::SoftDelete;
 	///
 	/// let mut soft_delete = SoftDelete::new();
 	/// soft_delete.delete();

@@ -51,7 +51,7 @@ impl CascadeOption {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::relationship::CascadeOption;
+	/// use reinhardt_db::orm::relationship::CascadeOption;
 	///
 	/// let options = CascadeOption::parse("all, delete-orphan");
 	/// assert_eq!(options.len(), 2);
@@ -82,7 +82,7 @@ impl CascadeOption {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::relationship::CascadeOption;
+	/// use reinhardt_db::orm::relationship::CascadeOption;
 	///
 	/// let delete_clause = CascadeOption::Delete.to_sql_clause();
 	/// assert_eq!(delete_clause, Some("ON DELETE CASCADE"));
@@ -181,8 +181,8 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::relationship::{Relationship, RelationshipType};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::relationship::{Relationship, RelationshipType};
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,13 +193,13 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #

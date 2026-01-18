@@ -3,7 +3,7 @@
 //!
 //! Django reference: django/tests/migrations/test_autodetector.py
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	ConstraintDefinition, FieldState, FieldType, IndexDefinition, MigrationAutodetector,
 	ModelState, ProjectState,
 };
@@ -647,7 +647,7 @@ fn test_generate_operations_from_changes() {
 	assert!(
 		operations
 			.iter()
-			.any(|op| matches!(op, reinhardt_migrations::Operation::CreateTable { .. }))
+			.any(|op| matches!(op, reinhardt_db::migrations::Operation::CreateTable { .. }))
 	);
 }
 
@@ -688,7 +688,7 @@ fn test_generate_migrations() {
 #[test]
 fn test_similarity_config_default() {
 	// Test default similarity configuration
-	use reinhardt_migrations::SimilarityConfig;
+	use reinhardt_db::migrations::SimilarityConfig;
 
 	let config = SimilarityConfig::default();
 	assert_eq!(config.model_threshold(), 0.7);
@@ -698,7 +698,7 @@ fn test_similarity_config_default() {
 #[test]
 fn test_similarity_config_new() {
 	// Test creating custom similarity configuration
-	use reinhardt_migrations::SimilarityConfig;
+	use reinhardt_db::migrations::SimilarityConfig;
 
 	let config = SimilarityConfig::new(0.75, 0.85).unwrap();
 	assert_eq!(config.model_threshold(), 0.75);
@@ -708,7 +708,7 @@ fn test_similarity_config_new() {
 #[test]
 fn test_similarity_config_validation() {
 	// Test similarity config threshold validation
-	use reinhardt_migrations::SimilarityConfig;
+	use reinhardt_db::migrations::SimilarityConfig;
 
 	// Valid thresholds
 	assert!(SimilarityConfig::new(0.5, 0.5).is_ok());
@@ -727,7 +727,7 @@ fn test_similarity_config_validation() {
 #[test]
 fn test_similarity_config_with_weights() {
 	// Test similarity config with custom algorithm weights
-	use reinhardt_migrations::SimilarityConfig;
+	use reinhardt_db::migrations::SimilarityConfig;
 
 	// Valid weights (sum to 1.0)
 	let config = SimilarityConfig::with_weights(0.75, 0.85, 0.8, 0.2).unwrap();
@@ -746,7 +746,7 @@ fn test_similarity_config_with_weights() {
 #[test]
 fn test_similarity_config_weights_validation() {
 	// Test that weights must sum to 1.0
-	use reinhardt_migrations::SimilarityConfig;
+	use reinhardt_db::migrations::SimilarityConfig;
 
 	// Invalid weights - don't sum to 1.0
 	assert!(SimilarityConfig::with_weights(0.75, 0.85, 0.5, 0.3).is_err());
@@ -914,7 +914,7 @@ fn test_model_dependencies_many_to_many() {
 #[test]
 fn test_topological_sort_simple() {
 	// Test that models are ordered by dependencies
-	use reinhardt_migrations::DetectedChanges;
+	use reinhardt_db::migrations::DetectedChanges;
 	use std::collections::BTreeMap;
 
 	let mut changes = DetectedChanges::default();
@@ -950,7 +950,7 @@ fn test_topological_sort_simple() {
 #[test]
 fn test_topological_sort_complex() {
 	// Test complex dependency chain: A -> B -> C
-	use reinhardt_migrations::DetectedChanges;
+	use reinhardt_db::migrations::DetectedChanges;
 	use std::collections::BTreeMap;
 
 	let mut changes = DetectedChanges::default();
@@ -998,7 +998,7 @@ fn test_topological_sort_complex() {
 #[test]
 fn test_circular_dependency_detection() {
 	// Test that circular dependencies are detected
-	use reinhardt_migrations::DetectedChanges;
+	use reinhardt_db::migrations::DetectedChanges;
 	use std::collections::BTreeMap;
 
 	let mut changes = DetectedChanges::default();
@@ -1026,7 +1026,7 @@ fn test_circular_dependency_detection() {
 #[test]
 fn test_no_circular_dependency() {
 	// Test that non-circular dependencies pass validation
-	use reinhardt_migrations::DetectedChanges;
+	use reinhardt_db::migrations::DetectedChanges;
 	use std::collections::BTreeMap;
 
 	let mut changes = DetectedChanges::default();
@@ -1053,7 +1053,7 @@ fn test_no_circular_dependency() {
 
 #[test]
 fn test_change_tracker_record_model_rename() {
-	use reinhardt_migrations::ChangeTracker;
+	use reinhardt_db::migrations::ChangeTracker;
 
 	let mut tracker = ChangeTracker::new();
 
@@ -1071,7 +1071,7 @@ fn test_change_tracker_record_model_rename() {
 
 #[test]
 fn test_change_tracker_pattern_frequency() {
-	use reinhardt_migrations::ChangeTracker;
+	use reinhardt_db::migrations::ChangeTracker;
 
 	let mut tracker = ChangeTracker::new();
 
@@ -1088,7 +1088,7 @@ fn test_change_tracker_pattern_frequency() {
 
 #[test]
 fn test_change_tracker_cooccurrence() {
-	use reinhardt_migrations::ChangeTracker;
+	use reinhardt_db::migrations::ChangeTracker;
 	use std::time::Duration;
 
 	let mut tracker = ChangeTracker::new();
@@ -1104,7 +1104,7 @@ fn test_change_tracker_cooccurrence() {
 
 #[test]
 fn test_pattern_matcher_basic() {
-	use reinhardt_migrations::PatternMatcher;
+	use reinhardt_db::migrations::PatternMatcher;
 
 	let mut matcher = PatternMatcher::new();
 	matcher.add_pattern("User");
@@ -1121,7 +1121,7 @@ fn test_pattern_matcher_basic() {
 
 #[test]
 fn test_pattern_matcher_contains() {
-	use reinhardt_migrations::PatternMatcher;
+	use reinhardt_db::migrations::PatternMatcher;
 
 	let mut matcher = PatternMatcher::new();
 	matcher.add_patterns(vec!["ForeignKey", "ManyToMany", "OneToOne"]);
@@ -1134,7 +1134,7 @@ fn test_pattern_matcher_contains() {
 
 #[test]
 fn test_pattern_matcher_replace() {
-	use reinhardt_migrations::PatternMatcher;
+	use reinhardt_db::migrations::PatternMatcher;
 	use std::collections::HashMap;
 
 	let mut matcher = PatternMatcher::new();
@@ -1150,7 +1150,7 @@ fn test_pattern_matcher_replace() {
 
 #[test]
 fn test_inference_engine_basic() {
-	use reinhardt_migrations::{InferenceEngine, InferenceRule, RuleCondition};
+	use reinhardt_db::migrations::{InferenceEngine, InferenceRule, RuleCondition};
 
 	let mut engine = InferenceEngine::new();
 
@@ -1186,7 +1186,7 @@ fn test_inference_engine_basic() {
 
 #[test]
 fn test_inference_engine_default_rules() {
-	use reinhardt_migrations::InferenceEngine;
+	use reinhardt_db::migrations::InferenceEngine;
 
 	let mut engine = InferenceEngine::new();
 	engine.add_default_rules();
@@ -1197,7 +1197,7 @@ fn test_inference_engine_default_rules() {
 
 #[test]
 fn test_inference_engine_model_rename_rule() {
-	use reinhardt_migrations::InferenceEngine;
+	use reinhardt_db::migrations::InferenceEngine;
 
 	let mut engine = InferenceEngine::new();
 	engine.add_default_rules();
@@ -1224,7 +1224,7 @@ fn test_inference_engine_model_rename_rule() {
 
 #[test]
 fn test_inference_engine_field_tracking_rule() {
-	use reinhardt_migrations::InferenceEngine;
+	use reinhardt_db::migrations::InferenceEngine;
 
 	let mut engine = InferenceEngine::new();
 	engine.add_default_rules();
@@ -1259,7 +1259,7 @@ fn test_inference_engine_field_tracking_rule() {
 
 #[test]
 fn test_migration_prompt_defaults() {
-	use reinhardt_migrations::MigrationPrompt;
+	use reinhardt_db::migrations::MigrationPrompt;
 
 	let prompt = MigrationPrompt::new();
 	assert_eq!(prompt.auto_accept_threshold(), 0.85);
@@ -1267,7 +1267,7 @@ fn test_migration_prompt_defaults() {
 
 #[test]
 fn test_migration_prompt_custom_threshold() {
-	use reinhardt_migrations::MigrationPrompt;
+	use reinhardt_db::migrations::MigrationPrompt;
 
 	let prompt = MigrationPrompt::with_threshold(0.75);
 	assert_eq!(prompt.auto_accept_threshold(), 0.75);
@@ -1288,7 +1288,7 @@ fn test_migration_prompt_custom_threshold() {
 /// model set produces identical results in the same order.
 #[test]
 fn test_deterministic_migration_generation() {
-	use reinhardt_migrations::{
+	use reinhardt_db::migrations::{
 		FieldState, FieldType, MigrationAutodetector, ModelState, ProjectState,
 	};
 
@@ -1345,7 +1345,7 @@ fn test_deterministic_migration_generation() {
 /// generated in alphabetical order by app_label.
 #[test]
 fn test_migration_sorted_by_app_label() {
-	use reinhardt_migrations::{
+	use reinhardt_db::migrations::{
 		FieldState, FieldType, MigrationAutodetector, ModelState, ProjectState,
 	};
 
@@ -1392,7 +1392,7 @@ fn test_migration_sorted_by_app_label() {
 /// sorted alphabetically by field name.
 #[test]
 fn test_fields_sorted_by_name() {
-	use reinhardt_migrations::{
+	use reinhardt_db::migrations::{
 		FieldState, FieldType, MigrationAutodetector, ModelState, Operation, ProjectState,
 	};
 

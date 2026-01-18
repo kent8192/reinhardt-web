@@ -1,7 +1,7 @@
 //! Tests for project state management
 //! Adapted from Django's test_state.py
 
-use reinhardt_migrations::{FieldState, FieldType, ModelState, ProjectState};
+use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
 
 fn create_field(name: &str, field_type: FieldType, nullable: bool) -> FieldState {
 	FieldState::new(name.to_string(), field_type, nullable)

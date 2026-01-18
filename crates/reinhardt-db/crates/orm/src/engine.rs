@@ -21,7 +21,7 @@
 //! For simpler usage in tests and applications, use `DatabaseEngine` instead.
 //!
 //! ```rust,no_run
-//! use reinhardt_orm::engine::{EngineConfig, create_engine_with_config};
+//! use reinhardt_db::orm::engine::{EngineConfig, create_engine_with_config};
 //!
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
 //! // Create engine with custom pool configuration
@@ -41,7 +41,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use reinhardt_backends::{
+use reinhardt_db::backends::{
 	DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection,
 };
 use sqlx::{Any, AnyPool, pool::PoolOptions};
@@ -169,7 +169,7 @@ impl Engine {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_orm::Engine;
+	/// use reinhardt_db::orm::Engine;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// let engine = Engine::new("sqlite::memory:").await.unwrap();
@@ -274,8 +274,8 @@ impl DatabaseEngine {
 	///
 	/// ```ignore
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::engine::DatabaseEngine;
-	/// use reinhardt_db::reinhardt_backends::drivers::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
+	/// use reinhardt_db::reinhardt_db::backends::drivers::{DatabaseConnection, DatabaseType};
 	///
 	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let engine = DatabaseEngine::new(connection, DatabaseType::Postgres);
@@ -310,12 +310,12 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// // For doctest purposes, using mock connection (feature-gated methods not available)
 	/// // In production with 'postgres' feature: DatabaseEngine::from_postgres(url).await
 	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// assert_eq!(connection.backend(), reinhardt_orm::connection::DatabaseBackend::Postgres);
+	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
@@ -332,12 +332,12 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// // For doctest purposes, using mock connection (feature-gated methods not available)
 	/// // In production with 'sqlite' feature: DatabaseEngine::from_sqlite(":memory:").await
 	/// let connection = DatabaseConnection::connect(":memory:").await?;
-	/// assert_eq!(connection.backend(), reinhardt_orm::connection::DatabaseBackend::Postgres);
+	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
@@ -376,7 +376,7 @@ impl DatabaseEngine {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// // Create mock connection (URL is ignored in current mock implementation)
 	/// let connection = DatabaseConnection::connect("sqlite::memory:").await?;

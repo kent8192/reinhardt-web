@@ -17,7 +17,7 @@
 //! - employee_scores(id SERIAL PRIMARY KEY, employee_id INT NOT NULL, score INT NOT NULL, department TEXT NOT NULL)
 
 use chrono::NaiveDateTime;
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::Iden;

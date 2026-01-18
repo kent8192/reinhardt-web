@@ -15,9 +15,9 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use reinhardt_orm::two_phase_commit::TwoPhaseCoordinator;
+//! use reinhardt_db::orm::two_phase_commit::TwoPhaseCoordinator;
 //! #[cfg(feature = "postgres")]
-//! use reinhardt_orm::PostgresParticipantAdapter;
+//! use reinhardt_db::orm::PostgresParticipantAdapter;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create coordinator
@@ -47,10 +47,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex as TokioMutex;
 
 #[cfg(feature = "postgres")]
-use reinhardt_backends::PostgresTwoPhaseParticipant;
+use reinhardt_db::backends::PostgresTwoPhaseParticipant;
 
 #[cfg(feature = "mysql")]
-use reinhardt_backends::{MySqlTwoPhaseParticipant, XaSessionPrepared, XaSessionStarted};
+use reinhardt_db::backends::{MySqlTwoPhaseParticipant, XaSessionPrepared, XaSessionStarted};
 
 /// Errors that can occur during two-phase commit operations
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -198,7 +198,7 @@ impl Participant {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::Participant;
+	/// use reinhardt_db::orm::two_phase_commit::Participant;
 	///
 	/// let participant = Participant::new("primary_db");
 	/// assert_eq!(participant.db_alias, "primary_db");
@@ -215,12 +215,12 @@ impl Participant {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::Participant;
+	/// use reinhardt_db::orm::two_phase_commit::Participant;
 	///
 	/// let mut participant = Participant::new("db1");
 	/// assert!(!participant.is_prepared());
 	///
-	/// participant.status = reinhardt_orm::two_phase_commit::ParticipantStatus::Prepared;
+	/// participant.status = reinhardt_db::orm::two_phase_commit::ParticipantStatus::Prepared;
 	/// assert!(participant.is_prepared());
 	/// ```
 	pub fn is_prepared(&self) -> bool {
@@ -245,11 +245,11 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let tpc = TwoPhaseCommit::new("txn_001");
 	/// assert_eq!(tpc.transaction_id(), "txn_001");
-	/// assert_eq!(tpc.state().unwrap(), reinhardt_orm::two_phase_commit::TransactionState::NotStarted);
+	/// assert_eq!(tpc.state().unwrap(), reinhardt_db::orm::two_phase_commit::TransactionState::NotStarted);
 	/// ```
 	pub fn new(transaction_id: impl Into<String>) -> Self {
 		Self {
@@ -264,7 +264,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let tpc = TwoPhaseCommit::new("my_transaction");
 	/// assert_eq!(tpc.transaction_id(), "my_transaction");
@@ -278,7 +278,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
+	/// use reinhardt_db::orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_002");
 	/// assert_eq!(tpc.state().unwrap(), TransactionState::NotStarted);
@@ -298,7 +298,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
+	/// use reinhardt_db::orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_003");
 	/// tpc.begin().unwrap();
@@ -325,7 +325,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_004");
 	/// tpc.begin().unwrap();
@@ -359,7 +359,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_005");
 	/// tpc.begin().unwrap();
@@ -377,7 +377,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
+	/// use reinhardt_db::orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_006");
 	/// tpc.begin().unwrap();
@@ -426,7 +426,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
+	/// use reinhardt_db::orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_007");
 	/// tpc.begin().unwrap();
@@ -478,7 +478,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
+	/// use reinhardt_db::orm::two_phase_commit::{TwoPhaseCommit, TransactionState};
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_008");
 	/// tpc.begin().unwrap();
@@ -529,7 +529,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_009");
 	/// tpc.begin().unwrap();
@@ -553,7 +553,7 @@ impl TwoPhaseCommit {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::two_phase_commit::TwoPhaseCommit;
+	/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCommit;
 	///
 	/// let mut tpc = TwoPhaseCommit::new("txn_010");
 	/// tpc.begin().unwrap();
@@ -585,7 +585,7 @@ impl Default for TwoPhaseCommit {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_orm::two_phase_commit::TwoPhaseCoordinator;
+/// use reinhardt_db::orm::two_phase_commit::TwoPhaseCoordinator;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut coordinator = TwoPhaseCoordinator::new("txn_001");
@@ -922,7 +922,7 @@ impl PostgresParticipantAdapter {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::two_phase_commit::PostgresParticipantAdapter;
+	/// use reinhardt_db::orm::two_phase_commit::PostgresParticipantAdapter;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -1040,7 +1040,7 @@ enum XaSessionState {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_orm::two_phase_commit::MySqlParticipantAdapter;
+/// use reinhardt_db::orm::two_phase_commit::MySqlParticipantAdapter;
 /// use sqlx::MySqlPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -1064,7 +1064,7 @@ impl MySqlParticipantAdapter {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::two_phase_commit::MySqlParticipantAdapter;
+	/// use reinhardt_db::orm::two_phase_commit::MySqlParticipantAdapter;
 	/// use sqlx::MySqlPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

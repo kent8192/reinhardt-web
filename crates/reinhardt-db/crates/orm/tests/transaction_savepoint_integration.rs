@@ -16,8 +16,8 @@
 //! - PostgreSQL SAVEPOINT protocol support
 //! - State management across nested transactions
 
-use reinhardt_orm::connection::DatabaseConnection;
-use reinhardt_orm::transaction::TransactionScope;
+use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::transaction::TransactionScope;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use std::sync::Arc;

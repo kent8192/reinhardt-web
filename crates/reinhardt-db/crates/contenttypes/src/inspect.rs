@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::inspect::{ContentTypeInspector, InspectOptions};
-//! use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+//! use reinhardt_db::contenttypes::inspect::{ContentTypeInspector, InspectOptions};
+//! use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 //!
 //! let registry = ContentTypeRegistry::new();
 //! registry.register(ContentType::new("blog", "article"));

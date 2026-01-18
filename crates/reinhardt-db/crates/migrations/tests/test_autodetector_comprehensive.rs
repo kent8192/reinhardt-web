@@ -16,7 +16,7 @@
 //! - Fuzz/Property-based tests
 
 use proptest::prelude::*;
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	ConstraintDefinition, DetectedChanges, FieldState, FieldType, ForeignKeyAction,
 	IndexDefinition, MigrationAutodetector, ModelState, ProjectState, SimilarityConfig,
 };

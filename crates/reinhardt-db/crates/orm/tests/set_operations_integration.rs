@@ -22,7 +22,7 @@
 //! - employees(id SERIAL PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, salary BIGINT NOT NULL)
 //! - contractors(id SERIAL PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, salary BIGINT NOT NULL)
 
-use reinhardt_orm::set_operations::CombinedQuery;
+use reinhardt_db::orm::set_operations::CombinedQuery;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};

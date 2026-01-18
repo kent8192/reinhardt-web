@@ -16,8 +16,8 @@
 //! - postgres_container: PostgreSQL database container
 
 #[cfg(feature = "database")]
-use reinhardt_contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
-use reinhardt_contenttypes::{CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry};
+use reinhardt_db::contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
+use reinhardt_db::contenttypes::{CONTENT_TYPE_REGISTRY, ContentType, ContentTypeRegistry};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;
@@ -500,19 +500,19 @@ async fn test_global_registry_isolation(
 
 // Define test model types
 struct UserModel;
-impl reinhardt_contenttypes::ModelType for UserModel {
+impl reinhardt_db::contenttypes::ModelType for UserModel {
 	const APP_LABEL: &'static str = "auth";
 	const MODEL_NAME: &'static str = "User";
 }
 
 struct PostModel;
-impl reinhardt_contenttypes::ModelType for PostModel {
+impl reinhardt_db::contenttypes::ModelType for PostModel {
 	const APP_LABEL: &'static str = "blog";
 	const MODEL_NAME: &'static str = "Post";
 }
 
 struct ProductModel;
-impl reinhardt_contenttypes::ModelType for ProductModel {
+impl reinhardt_db::contenttypes::ModelType for ProductModel {
 	const APP_LABEL: &'static str = "shop";
 	const MODEL_NAME: &'static str = "Product";
 }

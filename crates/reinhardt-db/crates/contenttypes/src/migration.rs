@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::migration::{ContentTypeMigration, MigrationRecord};
-//! use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+//! use reinhardt_db::contenttypes::migration::{ContentTypeMigration, MigrationRecord};
+//! use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 //!
 //! let registry = ContentTypeRegistry::new();
 //! registry.register(ContentType::new("old_app", "old_model"));

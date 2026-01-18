@@ -5,8 +5,8 @@
 //!
 //! Based on SQLAlchemy's hybrid property DML support.
 
-use reinhardt_backends::backend::DatabaseBackend;
-use reinhardt_hybrid::HybridProperty;
+use reinhardt_db::backends::backend::DatabaseBackend;
+use reinhardt_db::hybrid::HybridProperty;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -42,7 +42,7 @@ impl InsertBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::InsertBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
 	///
 	/// let builder = InsertBuilder::new("users");
 	// Can chain: .value().hybrid_value().build()
@@ -65,7 +65,7 @@ impl InsertBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::InsertBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
 	///
 	/// let builder = InsertBuilder::new("users")
 	///     .value("name", "Alice")
@@ -96,8 +96,8 @@ impl InsertBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::InsertBuilder;
-	/// use reinhardt_hybrid::HybridProperty;
+	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
+	/// use reinhardt_db::hybrid::HybridProperty;
 	///
 	/// struct User { email: String }
 	///
@@ -144,7 +144,7 @@ impl InsertBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::InsertBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
 	///
 	/// let builder = InsertBuilder::new("points")
 	///     .expanded_hybrid(vec![("x", "10"), ("y", "20")]);
@@ -176,7 +176,7 @@ impl InsertBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::InsertBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
 	///
 	/// let builder = InsertBuilder::new("users")
 	///     .value("name", "Bob")
@@ -265,7 +265,7 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("users");
 	// Can chain: .set().where_clause().build()
@@ -289,7 +289,7 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("users")
 	///     .set("name", "Charlie")
@@ -320,8 +320,8 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
-	/// use reinhardt_hybrid::HybridProperty;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::hybrid::HybridProperty;
 	///
 	/// struct User { email: String }
 	///
@@ -368,7 +368,7 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("points")
 	///     .set_expanded(vec![("x", "100"), ("y", "200")])
@@ -400,7 +400,7 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("users")
 	///     .set("status", "active")
@@ -425,7 +425,7 @@ impl UpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::hybrid_dml::UpdateBuilder;
+	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
 	///
 	/// let builder = UpdateBuilder::new("users")
 	///     .set("name", "David")

@@ -77,8 +77,8 @@ pub enum ValidationMode {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
-/// use reinhardt_orm::database_routing::DatabaseRouter;
+/// use reinhardt_db::orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
+/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 /// use std::sync::Arc;
 ///
 /// let router = DatabaseRouter::new("default")
@@ -104,8 +104,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::CrossDbConstraintValidator;
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::CrossDbConstraintValidator;
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default");
@@ -123,8 +123,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default");
@@ -149,8 +149,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::{CrossDbConstraintValidator, ValidationMode};
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default")
@@ -198,8 +198,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::CrossDbConstraintValidator;
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::CrossDbConstraintValidator;
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default")
@@ -248,8 +248,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::CrossDbConstraintValidator;
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::CrossDbConstraintValidator;
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default");
@@ -296,8 +296,8 @@ impl CrossDbConstraintValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::cross_db_constraints::{CrossDbConstraintValidator, RelationshipType};
-	/// use reinhardt_orm::database_routing::DatabaseRouter;
+	/// use reinhardt_db::orm::cross_db_constraints::{CrossDbConstraintValidator, RelationshipType};
+	/// use reinhardt_db::orm::database_routing::DatabaseRouter;
 	/// use std::sync::Arc;
 	///
 	/// let router = DatabaseRouter::new("default")

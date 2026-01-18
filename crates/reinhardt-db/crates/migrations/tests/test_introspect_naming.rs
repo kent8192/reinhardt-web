@@ -13,7 +13,7 @@
 //! - Boundary values: Maximum length identifiers
 //! - Decision table: Naming convention combinations
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	NamingConvention, escape_rust_keyword, sanitize_identifier, to_pascal_case, to_snake_case,
 };
 use rstest::*;

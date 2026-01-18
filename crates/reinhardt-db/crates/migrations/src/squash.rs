@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::squash::{MigrationSquasher, SquashOptions};
-//! use reinhardt_migrations::Migration;
+//! use reinhardt_db::migrations::squash::{MigrationSquasher, SquashOptions};
+//! use reinhardt_db::migrations::Migration;
 //!
 //! // Create migrations to squash
 //! let migration1 = Migration::new("0001_initial", "myapp");
@@ -35,7 +35,7 @@ use std::collections::HashSet;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::squash::SquashOptions;
+/// use reinhardt_db::migrations::squash::SquashOptions;
 ///
 /// let options = SquashOptions {
 ///     optimize: true,
@@ -66,8 +66,8 @@ impl Default for SquashOptions {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::squash::MigrationSquasher;
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::squash::MigrationSquasher;
+/// use reinhardt_db::migrations::Migration;
 ///
 /// let squasher = MigrationSquasher::new();
 /// let migrations = vec![Migration::new("0001_initial", "myapp")];
@@ -83,7 +83,7 @@ impl MigrationSquasher {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::squash::MigrationSquasher;
+	/// use reinhardt_db::migrations::squash::MigrationSquasher;
 	///
 	/// let squasher = MigrationSquasher::new();
 	/// ```
@@ -102,8 +102,8 @@ impl MigrationSquasher {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::squash::{MigrationSquasher, SquashOptions};
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::squash::{MigrationSquasher, SquashOptions};
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration1 = Migration::new("0001_initial", "myapp");
 	/// let migration2 = Migration::new("0002_add_field", "myapp");
@@ -180,8 +180,8 @@ impl MigrationSquasher {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::squash::MigrationSquasher;
-	/// use reinhardt_migrations::{Operation, ColumnDefinition, FieldType};
+	/// use reinhardt_db::migrations::squash::MigrationSquasher;
+	/// use reinhardt_db::migrations::{Operation, ColumnDefinition, FieldType};
 	///
 	/// let squasher = MigrationSquasher::new();
 	///

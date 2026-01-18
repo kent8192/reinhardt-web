@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use reinhardt_nosql::backends::mongodb::MongoDBBackend;
-//! use reinhardt_nosql::traits::DocumentBackend;
+//! use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
+//! use reinhardt_db::nosql::traits::DocumentBackend;
 //! use bson::doc;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,7 +44,7 @@ use crate::{
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Basic connection
@@ -128,7 +128,7 @@ impl MongoDBTransactionExecutor {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let backend = MongoDBBackendBuilder::new()
@@ -162,7 +162,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new();
 	/// // Builder successfully created with default settings
 	/// ```
@@ -181,7 +181,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .url("mongodb://localhost:27017");
 	/// // URL successfully set
@@ -196,7 +196,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .database("mydb");
 	/// // Database name successfully set
@@ -211,7 +211,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .max_pool_size(100);
 	/// // Max pool size successfully set
@@ -226,7 +226,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .min_pool_size(10);
 	/// // Min pool size successfully set
@@ -241,7 +241,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// # use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	/// let builder = MongoDBBackendBuilder::new()
 	///     .max_idle_time_secs(300);
 	/// // Max idle time successfully set
@@ -256,7 +256,7 @@ impl MongoDBBackendBuilder {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackendBuilder;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackendBuilder;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let backend = MongoDBBackendBuilder::new()
@@ -308,7 +308,7 @@ impl MongoDBBackend {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let backend = MongoDBBackend::connect("mongodb://localhost:27017").await?;
@@ -331,7 +331,7 @@ impl MongoDBBackend {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let backend = MongoDBBackend::builder()
@@ -352,7 +352,7 @@ impl MongoDBBackend {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let backend = MongoDBBackend::connect("mongodb://localhost:27017").await?;
@@ -370,7 +370,7 @@ impl MongoDBBackend {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let backend = MongoDBBackend::connect("mongodb://localhost:27017").await?;
@@ -391,7 +391,7 @@ impl MongoDBBackend {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_nosql::backends::mongodb::MongoDBBackend;
+	/// use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 	/// use bson::doc;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

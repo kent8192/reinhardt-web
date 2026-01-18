@@ -9,35 +9,13 @@ description = "Django-style database layer for Reinhardt framework"
 
 [dependencies]
 # Internal crates (optional)
-reinhardt-backends = { workspace = true, optional = true }
-reinhardt-backends-pool = { workspace = true, optional = true }
-reinhardt-pool = { workspace = true, optional = true }
-reinhardt-orm = { workspace = true, optional = true }
-reinhardt-migrations = { workspace = true, optional = true }
-reinhardt-hybrid = { workspace = true, optional = true }
-reinhardt-associations = { workspace = true, optional = true }
-reinhardt-contenttypes = { workspace = true, optional = true }
-reinhardt-nosql = { workspace = true, optional = true }
 
 # Database drivers and query builders
-sqlx = { version = "0.8", features = [
-  "runtime-tokio",
-  "chrono",
-  "sqlite",
-  "postgres",
-  "mysql",
-  "macros",
-  "migrate",
-] }
-sea-query = { version = "1.0.0-rc.29", features = [
-  "backend-postgres",
-  "backend-mysql",
-  "backend-sqlite",
-  "sqlx-utils",
-] }
+sqlx = { version = "0.8", features = ["any", "chrono", "macros", "migrate", "mysql", "postgres", "runtime-tokio", "sqlite", "tls-rustls", "uuid"] }
+sea-query = { version = "1.0.0-rc.29", features = ["backend-mysql", "backend-postgres", "backend-sqlite", "sqlx-utils", "with-uuid"] }
 
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
+tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"] }
 async-trait = "0.1"
 
 # Serialization
@@ -48,6 +26,57 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Error handling
 thiserror = "2.0"
+reinhardt-core = { workspace = true, features = ["exception", "macros", "types", "validators"]}
+tracing = { workspace = true }
+pg_escape = "0.1.1"
+futures = { workspace = true }
+rust_decimal = { workspace = true }
+reinhardt-di = { workspace = true, optional = true }
+reinhardt-conf = { workspace = true, optional = true, features = ["settings"]}
+once_cell = "1.19"
+parking_lot = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+console = "0.16.1"
+dialoguer = "0.12.0"
+indicatif = "0.18.0"
+sea-schema = { version = "0.16", features = [
+  "sqlx-postgres",
+  "sqlx-mysql",
+  "sqlx-sqlite",
+] }
+aho-corasick = "1.1"
+petgraph = "0.8.3"
+regex = "1.11"
+strsim = "0.11"
+indexmap = "2.7"
+linkme = { workspace = true }
+toml = "0.8"
+syn = { version = "2.0", features = ["full", "parsing"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+prettyplease = "0.2"
+walkdir = "2.5"
+aquamarine = { workspace = true }
+mongodb = { version = "3.0", optional = true, features = ["bson-3"] }
+bson = { version = "3.0.0", optional = true }
+redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-async"] }
+cassandra-cpp = { version = "3.0", optional = true }
+aws-sdk-dynamodb = { version = "1.0", optional = true }
+aws-config = { version = "1.0", optional = true }
+neo4rs = { version = "0.7", optional = true }
+anyhow = { workspace = true }
+dashmap = "6.1.0"
+base64 = "0.22"
+lazy_static = "1.4"
+refinery = { workspace = true, optional = true }
+aes-gcm = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+image = { workspace = true }
+flate2 = { workspace = true }
+phonenumber = { workspace = true }
+smallvec = "1.13"
+paste = "1.0"
 
 [features]
 default = [
@@ -60,21 +89,20 @@ default = [
   "associations",
 ]
 
-# Module features
-backends = ["dep:reinhardt-backends"]
-backends-settings = ["backends", "reinhardt-backends/settings"]
+# Module features (modules are always compiled, features for backwards compatibility)
+backends = []
+backends-pool = []
+pool = []
+orm = []
+migrations = ["refinery"]
+hybrid = []
+associations = []
+contenttypes = []
+nosql = []
+backends-settings = ["backends"]
 
 # DI integration - enables Injectable implementation for DatabaseConnection
-di = ["reinhardt-backends/di", "reinhardt-orm/di"]
-
-# Internal crate features
-pool = ["dep:reinhardt-backends-pool", "dep:reinhardt-pool"]
-orm = ["dep:reinhardt-orm"]
-migrations = ["dep:reinhardt-migrations"]
-hybrid = ["dep:reinhardt-hybrid"]
-associations = ["dep:reinhardt-associations"]
-contenttypes = ["dep:reinhardt-contenttypes"]
-nosql = ["dep:reinhardt-nosql"]
+di = ["reinhardt-di"]
 
 # Aggregate all database features
 database-full = [
@@ -88,37 +116,16 @@ database-full = [
   "associations",
   "contenttypes",
   "all-databases",
-  "reinhardt-backends/full",
-  "reinhardt-backends-pool/full",
-  "reinhardt-pool/full",
-  "reinhardt-orm/full",
-  "reinhardt-migrations/full",
-  "reinhardt-hybrid/full",
-  "reinhardt-associations/full",
-  "reinhardt-contenttypes/full",
+  "full",
 ]
 
 # Database-specific features
-postgres = [
-  "sqlx/postgres",
-  "reinhardt-orm/postgres",
-  "reinhardt-migrations/postgres",
-  "reinhardt-backends/postgres",
-]
-sqlite = [
-  "sqlx/sqlite",
-  "reinhardt-orm/sqlite",
-  "reinhardt-migrations/sqlite",
-  "reinhardt-backends/sqlite",
-]
-mysql = [
-  "sqlx/mysql",
-  "reinhardt-orm/mysql",
-  "reinhardt-migrations/mysql",
-  "reinhardt-backends/mysql",
-]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
+mysql = ["sqlx/mysql"]
+
 # NoSQL database features
-nosql-all = ["nosql", "reinhardt-nosql/nosql-all"]
+nosql-all = ["cassandra", "dynamodb", "mongodb", "neo4j", "nosql", "redis"]
 
 cockroachdb-backend = ["postgres"] # CockroachDB uses PostgreSQL protocol
 all-databases = [
@@ -127,6 +134,39 @@ all-databases = [
   "mysql",
   "cockroachdb-backend",
 ]
+full = ["advanced-queries", "all-databases", "database", "db-mysql", "db-postgres", "db-sqlite", "di", "migrations", "mysql", "nosql-all", "pooling", "postgres", "settings", "sqlite"]
+settings = ["dep:reinhardt-conf"]
+database = []
+db-sqlite = []
+db-postgres = []
+db-mysql = []
+mongodb = ["dep:mongodb", "dep:bson"]
+redis = ["dep:redis"]
+cassandra = ["dep:cassandra-cpp"]
+dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
+neo4j = ["dep:neo4rs"]
+nosql-document = ["mongodb"]
+nosql-key-value = ["redis", "dynamodb"]
+nosql-column = ["cassandra"]
+nosql-graph = ["neo4j"]
+pooling = []
+advanced-queries = []
+integration-tests = []
 
 [dev-dependencies]
 tokio-test = "0.4"
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
+tokio = { workspace = true, features = ["full", "macros", "rt", "test-util", "time"]}
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+uuid = { workspace = true }
+serde_json = "1.0"
+sea-query = { workspace = true }
+rust_decimal = { workspace = true }
+tempfile = { workspace = true }
+proptest = "1.5"
+trybuild = "1.0"
+ctor = "0.6.1"

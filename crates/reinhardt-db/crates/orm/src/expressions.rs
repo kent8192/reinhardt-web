@@ -17,7 +17,7 @@ impl F {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	// Reference a field for comparisons or updates
 	/// let price_ref = F::new("price");
@@ -35,7 +35,7 @@ impl F {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let user_id = F::new("user_id");
 	/// assert_eq!(user_id.to_sql(), "user_id");
@@ -67,7 +67,7 @@ impl fmt::Display for F {
 /// # Examples
 ///
 /// ```ignore
-/// use reinhardt_orm::expressions::FieldRef;
+/// use reinhardt_db::orm::expressions::FieldRef;
 /// use reinhardt_core::macros::model;
 /// use serde::{Serialize, Deserialize};
 ///
@@ -101,7 +101,7 @@ impl fmt::Display for F {
 /// assert_eq!(id_ref.to_sql(), "id");
 ///
 /// // Convert to F expression for use in queries:
-/// use reinhardt_orm::expressions::F;
+/// use reinhardt_db::orm::expressions::F;
 /// let f: F = User::field_name().into();
 /// assert_eq!(f.to_sql(), "name");
 /// ```
@@ -124,7 +124,7 @@ impl<M, T> FieldRef<M, T> {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_orm::expressions::FieldRef;
+	/// use reinhardt_db::orm::expressions::FieldRef;
 	///
 	/// const USER_ID: FieldRef<User, i64> = FieldRef::new("id");
 	/// ```
@@ -360,7 +360,7 @@ impl OuterRef {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::OuterRef;
+	/// use reinhardt_db::orm::expressions::OuterRef;
 	///
 	// Reference parent query field in subquery
 	/// let parent_id = OuterRef::new("parent_id");
@@ -381,7 +381,7 @@ impl OuterRef {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::OuterRef;
+	/// use reinhardt_db::orm::expressions::OuterRef;
 	///
 	/// let outer_field = OuterRef::new("category_id");
 	/// assert_eq!(outer_field.to_sql(), "category_id");
@@ -405,7 +405,7 @@ impl Subquery {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Subquery;
+	/// use reinhardt_db::orm::expressions::Subquery;
 	///
 	// Create a subquery for filtering
 	/// let sq = Subquery::new("SELECT id FROM users WHERE active = 1");
@@ -424,7 +424,7 @@ impl Subquery {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Subquery;
+	/// use reinhardt_db::orm::expressions::Subquery;
 	///
 	/// let sq = Subquery::new("SELECT COUNT(*) FROM orders")
 	///     .with_template("ORDER_COUNT = %(subquery)s");
@@ -439,7 +439,7 @@ impl Subquery {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Subquery;
+	/// use reinhardt_db::orm::expressions::Subquery;
 	///
 	/// let sq = Subquery::new("SELECT MAX(price) FROM products");
 	/// assert!(sq.to_sql().starts_with("("));
@@ -461,7 +461,7 @@ impl Exists {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Exists;
+	/// use reinhardt_db::orm::expressions::Exists;
 	///
 	// Check if related records exist
 	/// let exists = Exists::new("SELECT 1 FROM orders WHERE user_id = 123");
@@ -482,7 +482,7 @@ impl Exists {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Exists;
+	/// use reinhardt_db::orm::expressions::Exists;
 	///
 	/// let exists = Exists::new("SELECT 1 FROM tags WHERE item_id = items.id");
 	/// assert!(exists.to_sql().starts_with("EXISTS("));
@@ -514,7 +514,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Value, ValueType};
+	/// use reinhardt_db::orm::expressions::{Value, ValueType};
 	///
 	/// let val = Value::new("active");
 	/// // Verify the value is created successfully
@@ -530,7 +530,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// let status = Value::string("active");
 	/// assert_eq!(status.to_sql(), "'active'");
@@ -545,7 +545,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// let count = Value::int(42);
 	/// assert_eq!(count.to_sql(), "42");
@@ -560,7 +560,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// let price = Value::float(99.99);
 	/// assert_eq!(price.to_sql(), "99.99");
@@ -575,7 +575,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// let is_active = Value::bool(true);
 	/// assert_eq!(is_active.to_sql(), "TRUE");
@@ -590,7 +590,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// let empty = Value::null();
 	/// assert_eq!(empty.to_sql(), "NULL");
@@ -605,7 +605,7 @@ impl Value {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Value;
+	/// use reinhardt_db::orm::expressions::Value;
 	///
 	/// assert_eq!(Value::string("test").to_sql(), "'test'");
 	/// assert_eq!(Value::int(10).to_sql(), "10");
@@ -699,7 +699,7 @@ impl Q {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Q;
+	/// use reinhardt_db::orm::expressions::Q;
 	///
 	// Create a simple condition
 	/// let q = Q::new("age", ">=", "18");
@@ -727,7 +727,7 @@ impl Q {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::Q;
+	/// use reinhardt_db::orm::expressions::Q;
 	///
 	/// let q = Q::from_sql("age > 18");
 	/// let q = Q::from_sql("name LIKE '%John%'");
@@ -2205,7 +2205,7 @@ impl When {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{When, Q, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{When, Q, Value, Expression};
 	///
 	/// let when_clause = When::new(
 	///     Q::new("status", "=", "active"),
@@ -2236,7 +2236,7 @@ impl When {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{When, Q, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{When, Q, Value, Expression};
 	///
 	/// let when = When::new(
 	///     Q::new("age", ">=", "18"),
@@ -2267,7 +2267,7 @@ impl Case {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Case, When, Q, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{Case, When, Q, Value, Expression};
 	///
 	/// let case_expr = Case::new()
 	///     .when(When::new(
@@ -2300,7 +2300,7 @@ impl Case {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Case, When, Q, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{Case, When, Q, Value, Expression};
 	///
 	/// let case = Case::new().when(When::new(
 	///     Q::new("age", ">=", "18"),
@@ -2319,7 +2319,7 @@ impl Case {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Case, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{Case, Value, Expression};
 	///
 	/// let case = Case::new().default(Expression::Value(Value::string("unknown")));
 	/// // Verify the CASE with default value is created successfully
@@ -2335,7 +2335,7 @@ impl Case {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Case, When, Q, Value, Expression};
+	/// use reinhardt_db::orm::expressions::{Case, When, Q, Value, Expression};
 	///
 	/// let case = Case::new()
 	///     .when(When::new(Q::new("x", "=", "1"), Expression::Value(Value::string("one"))))
@@ -2382,7 +2382,7 @@ impl Expression {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::expressions::{Expression, F, Value};
+	/// use reinhardt_db::orm::expressions::{Expression, F, Value};
 	///
 	/// let field_expr = Expression::F(F::new("price"));
 	/// assert_eq!(field_expr.to_sql(), "price");

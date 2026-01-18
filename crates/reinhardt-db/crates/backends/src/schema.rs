@@ -6,7 +6,7 @@
 /// # Example
 ///
 /// ```rust
-/// # use reinhardt_backends::schema::DDLStatement;
+/// # use reinhardt_db::backends::schema::DDLStatement;
 /// let create_table = DDLStatement::CreateTable {
 ///     table: "users".to_string(),
 ///     columns: vec![
@@ -72,7 +72,7 @@ impl DDLStatement {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_backends::schema::DDLStatement;
+	/// # use reinhardt_db::backends::schema::DDLStatement;
 	/// let stmt = DDLStatement::CreateTable {
 	///     table: "users".to_string(),
 	///     columns: vec![],
@@ -129,8 +129,8 @@ pub enum AlterTableChange {
 /// # Example
 ///
 /// ```rust,no_run
-/// # use reinhardt_backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
-/// # use reinhardt_backends::DatabaseType;
+/// # use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
+/// # use reinhardt_db::backends::DatabaseType;
 /// # use async_trait::async_trait;
 /// struct MySchemaEditor;
 ///
@@ -166,8 +166,8 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
-	/// # use reinhardt_backends::DatabaseType;
+	/// # use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResult};
+	/// # use reinhardt_db::backends::DatabaseType;
 	/// # use async_trait::async_trait;
 	/// # use sea_query::PostgresQueryBuilder;
 	/// struct TestEditor;
@@ -341,10 +341,10 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-	/// # use reinhardt_backends::DatabaseType;
+	/// # use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
+	/// # use reinhardt_db::backends::DatabaseType;
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_backends::schema::SchemaEditorResult;
+	/// # use reinhardt_db::backends::schema::SchemaEditorResult;
 	/// struct TestEditor;
 	///
 	/// #[async_trait]
@@ -383,10 +383,10 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
-	/// # use reinhardt_backends::DatabaseType;
+	/// # use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
+	/// # use reinhardt_db::backends::DatabaseType;
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_backends::schema::SchemaEditorResult;
+	/// # use reinhardt_db::backends::schema::SchemaEditorResult;
 	/// struct TestEditor;
 	///
 	/// #[async_trait]

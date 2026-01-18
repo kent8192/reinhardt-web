@@ -110,7 +110,7 @@ impl LoadOption {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::loading::{LoadOption, LoadingStrategy};
+	/// use reinhardt_db::orm::loading::{LoadOption, LoadingStrategy};
 	///
 	/// let option = LoadOption::new("posts", LoadingStrategy::Joined);
 	/// assert_eq!(option.path(), "posts");
@@ -151,7 +151,7 @@ impl<T: Model> LoadOptionBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::{Model, loading::LoadOptionBuilder};
+	/// use reinhardt_db::orm::{Model, loading::LoadOptionBuilder};
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,7 +161,7 @@ impl<T: Model> LoadOptionBuilder<T> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// impl Model for User {
@@ -302,7 +302,7 @@ impl LoadContext {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::loading::LoadContext;
+	/// use reinhardt_db::orm::loading::LoadContext;
 	///
 	/// let context = LoadContext::new();
 	/// ```

@@ -14,7 +14,7 @@
 //! - users(id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, active BOOLEAN NOT NULL)
 //! - products(id SERIAL PRIMARY KEY, name TEXT NOT NULL, price BIGINT NOT NULL)
 
-use reinhardt_orm::lambda_stmt::{CACHE_STATS, LambdaStmt, QUERY_CACHE};
+use reinhardt_db::orm::lambda_stmt::{CACHE_STATS, LambdaStmt, QUERY_CACHE};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{Expr, ExprTrait, Iden, PostgresQueryBuilder, Query};

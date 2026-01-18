@@ -27,7 +27,7 @@ impl FilesystemSource {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::FilesystemSource;
+	/// use reinhardt_db::migrations::FilesystemSource;
 	/// let source = FilesystemSource::new("./migrations");
 	/// ```
 	pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {
@@ -192,7 +192,7 @@ mod tests {
 			"polls",
 			"0001_initial",
 			r#"
-use reinhardt_migrations::prelude::*;
+use reinhardt_db::migrations::prelude::*;
 
 pub fn migration() -> Migration {
 	Migration {
@@ -212,7 +212,7 @@ pub fn migration() -> Migration {
 			"users",
 			"0001_initial",
 			r#"
-use reinhardt_migrations::prelude::*;
+use reinhardt_db::migrations::prelude::*;
 
 pub fn migration() -> Migration {
 	Migration {
@@ -246,7 +246,7 @@ pub fn migration() -> Migration {
 			"polls",
 			"0001_initial",
 			r#"
-use reinhardt_migrations::prelude::*;
+use reinhardt_db::migrations::prelude::*;
 
 pub fn migration() -> Migration {
 	Migration {
@@ -266,7 +266,7 @@ pub fn migration() -> Migration {
 			"polls",
 			"0002_add_field",
 			r#"
-use reinhardt_migrations::prelude::*;
+use reinhardt_db::migrations::prelude::*;
 
 pub fn migration() -> Migration {
 	Migration {
@@ -298,7 +298,7 @@ pub fn migration() -> Migration {
 			"polls",
 			"0001_initial",
 			r#"
-use reinhardt_migrations::prelude::*;
+use reinhardt_db::migrations::prelude::*;
 
 pub fn migration() -> Migration {
 	Migration {

@@ -9,8 +9,8 @@
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
-/// use reinhardt_backends::schema::BaseDatabaseSchemaEditor;
+/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+/// use reinhardt_db::backends::schema::BaseDatabaseSchemaEditor;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), sqlx::Error> {
@@ -42,7 +42,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), sqlx::Error> {
@@ -62,7 +62,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```no_run
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	/// use std::sync::Arc;
 	///
@@ -83,7 +83,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -130,7 +130,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -149,7 +149,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -169,7 +169,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -188,7 +188,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -208,7 +208,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);
@@ -230,7 +230,7 @@ impl PostgreSQLSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").expect("Failed to create lazy pool");
 	/// let editor = PostgreSQLSchemaEditor::new(pool);

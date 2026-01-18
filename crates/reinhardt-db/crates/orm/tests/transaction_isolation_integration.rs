@@ -25,8 +25,8 @@
 //! # Fixtures Used
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_orm::connection::DatabaseConnection;
-use reinhardt_orm::transaction::{IsolationLevel, TransactionScope};
+use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::transaction::{IsolationLevel, TransactionScope};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::PgPool;

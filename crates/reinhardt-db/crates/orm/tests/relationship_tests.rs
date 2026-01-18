@@ -4,7 +4,7 @@
 #[cfg(test)]
 #[allow(dead_code)]
 mod relationship_tests {
-	use reinhardt_orm::{CascadeOption, LoadingStrategy, RelationshipType};
+	use reinhardt_db::orm::{CascadeOption, LoadingStrategy, RelationshipType};
 	use std::collections::HashMap;
 
 	// Test models

@@ -3,7 +3,7 @@
 //! Tests the duplicate migration detection feature that prevents
 //! generating identical migrations multiple times.
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	AutoMigrationError, AutoMigrationGenerator, ColumnDefinition, ColumnSchema, DatabaseSchema,
 	FieldType, FilesystemRepository, Migration, MigrationRepository, Operation, TableSchema,
 };

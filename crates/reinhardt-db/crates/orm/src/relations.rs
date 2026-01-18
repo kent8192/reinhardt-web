@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_orm::relations::GenericRelationSet;
+//! use reinhardt_db::orm::relations::GenericRelationSet;
 //!
 //! // Post model with generic relations to comments
 //! struct Post {
@@ -43,7 +43,7 @@ use crate::Model;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::relations::GenericRelationSet;
+/// use reinhardt_db::orm::relations::GenericRelationSet;
 ///
 /// // Create a relation set configuration
 /// let relation: GenericRelationSet<()> = GenericRelationSet::new(
@@ -84,7 +84,7 @@ impl<T> GenericRelationSet<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_orm::relations::GenericRelationSet;
+	/// use reinhardt_db::orm::relations::GenericRelationSet;
 	///
 	/// let relation: GenericRelationSet<()> = GenericRelationSet::new(
 	///     5, 100, "content_type_id", "object_id"
@@ -112,7 +112,7 @@ impl<T> GenericRelationSet<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_orm::relations::GenericRelationSet;
+	/// use reinhardt_db::orm::relations::GenericRelationSet;
 	///
 	/// let relation: GenericRelationSet<()> = GenericRelationSet::with_defaults(5, 100);
 	/// assert_eq!(relation.ct_field(), "content_type_id");
@@ -147,7 +147,7 @@ impl<T> GenericRelationSet<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_orm::relations::GenericRelationSet;
+	/// use reinhardt_db::orm::relations::GenericRelationSet;
 	///
 	/// let relation: GenericRelationSet<()> = GenericRelationSet::new(
 	///     1, 42, "content_type_id", "object_id"
@@ -171,7 +171,7 @@ impl<T> GenericRelationSet<T> {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_orm::relations::GenericRelationSet;
+	/// use reinhardt_db::orm::relations::GenericRelationSet;
 	///
 	/// let relation: GenericRelationSet<()> = GenericRelationSet::new(
 	///     1, 42, "content_type_id", "object_id"
@@ -289,7 +289,7 @@ impl<T: Model> GenericRelationSet<T> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_orm::relations::GenericRelationConfig;
+/// use reinhardt_db::orm::relations::GenericRelationConfig;
 ///
 /// let config = GenericRelationConfig::new("Comment")
 ///     .ct_field("content_type_id")
@@ -315,7 +315,7 @@ impl GenericRelationConfig {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_orm::relations::GenericRelationConfig;
+	/// use reinhardt_db::orm::relations::GenericRelationConfig;
 	///
 	/// let config = GenericRelationConfig::new("Comment");
 	/// assert_eq!(config.related_model(), "Comment");

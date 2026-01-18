@@ -1,7 +1,7 @@
 //! Tests for hybrid properties with special object types (like Amount)
 //! Based on SpecialObjectTest from SQLAlchemy
 
-use reinhardt_hybrid::prelude::*;
+use reinhardt_db::hybrid::prelude::*;
 use std::cmp::Ordering;
 
 /// Represents a monetary amount with currency

@@ -39,7 +39,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use reinhardt_nosql::{
+//! use reinhardt_db::nosql::{
 //!     backends::mongodb::MongoDBBackend,
 //!     traits::DocumentBackend,
 //! };
@@ -80,7 +80,7 @@ pub use types::{
 /// Import everything from this module to get started quickly:
 ///
 /// ```rust,ignore
-/// use reinhardt_nosql::prelude::*;
+/// use reinhardt_db::nosql::prelude::*;
 /// ```
 pub mod prelude {
 	pub use crate::error::{NoSQLError, Result};

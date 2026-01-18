@@ -2,7 +2,7 @@
 //! Based on SQLAlchemy's pool event tests
 
 use async_trait::async_trait;
-use reinhardt_pool::{ConnectionPool, PoolConfig, PoolEvent, PoolEventListener};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig, PoolEvent, PoolEventListener};
 use rstest::*;
 use sqlx::Sqlite;
 use std::sync::Arc;

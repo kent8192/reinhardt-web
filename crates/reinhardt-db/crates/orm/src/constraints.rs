@@ -20,7 +20,7 @@ impl CheckConstraint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::CheckConstraint;
+	/// use reinhardt_db::orm::constraints::CheckConstraint;
 	///
 	/// let constraint = CheckConstraint::new("age_check", "age >= 18");
 	/// assert_eq!(constraint.name, "age_check");
@@ -58,7 +58,7 @@ impl UniqueConstraint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::UniqueConstraint;
+	/// use reinhardt_db::orm::constraints::UniqueConstraint;
 	///
 	/// let constraint = UniqueConstraint::new("email_unique", vec!["email".to_string()]);
 	/// assert_eq!(constraint.name, "email_unique");
@@ -156,7 +156,7 @@ impl ForeignKeyConstraint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::constraints::ForeignKeyConstraint;
+	/// use reinhardt_db::orm::constraints::ForeignKeyConstraint;
 	///
 	/// let fk = ForeignKeyConstraint::new(
 	///     "user_fk",

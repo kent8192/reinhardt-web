@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::visualization::{MigrationVisualizer, OutputFormat};
-//! use reinhardt_migrations::Migration;
+//! use reinhardt_db::migrations::visualization::{MigrationVisualizer, OutputFormat};
+//! use reinhardt_db::migrations::Migration;
 //!
 //! let migration1 = Migration::new("0001_initial", "myapp");
 //! let migration2 = Migration::new("0002_add_field", "myapp")
@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::visualization::OutputFormat;
+/// use reinhardt_db::migrations::visualization::OutputFormat;
 ///
 /// let format = OutputFormat::Text;
 /// assert_eq!(format.extension(), "txt");
@@ -49,7 +49,7 @@ impl OutputFormat {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::OutputFormat;
+	/// use reinhardt_db::migrations::visualization::OutputFormat;
 	///
 	/// assert_eq!(OutputFormat::Text.extension(), "txt");
 	/// assert_eq!(OutputFormat::Markdown.extension(), "md");
@@ -71,7 +71,7 @@ impl OutputFormat {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::visualization::HistoryEntry;
+/// use reinhardt_db::migrations::visualization::HistoryEntry;
 ///
 /// let entry = HistoryEntry {
 ///     app_label: "myapp".to_string(),
@@ -107,7 +107,7 @@ impl HistoryEntry {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::visualization::MigrationVisualizer;
+/// use reinhardt_db::migrations::visualization::MigrationVisualizer;
 ///
 /// let visualizer = MigrationVisualizer::new();
 /// ```
@@ -121,7 +121,7 @@ impl MigrationVisualizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::MigrationVisualizer;
+	/// use reinhardt_db::migrations::visualization::MigrationVisualizer;
 	///
 	/// let visualizer = MigrationVisualizer::new();
 	/// ```
@@ -134,8 +134,8 @@ impl MigrationVisualizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::{MigrationVisualizer, OutputFormat};
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::visualization::{MigrationVisualizer, OutputFormat};
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migration1 = Migration::new("0001_initial", "myapp");
 	/// let migration2 = Migration::new("0002_add_field", "myapp")
@@ -165,7 +165,7 @@ impl MigrationVisualizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::{MigrationVisualizer, HistoryEntry};
+	/// use reinhardt_db::migrations::visualization::{MigrationVisualizer, HistoryEntry};
 	///
 	/// let entries = vec![
 	///     HistoryEntry {
@@ -200,8 +200,8 @@ impl MigrationVisualizer {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::MigrationVisualizer;
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::visualization::MigrationVisualizer;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
 	/// let visualizer = MigrationVisualizer::new();
@@ -368,8 +368,8 @@ impl Default for MigrationVisualizer {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::visualization::MigrationStats;
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::visualization::MigrationStats;
+/// use reinhardt_db::migrations::Migration;
 ///
 /// let migrations = vec![
 ///     Migration::new("0001_initial", "app1"),
@@ -395,8 +395,8 @@ impl MigrationStats {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::MigrationStats;
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::visualization::MigrationStats;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
 	/// let stats = MigrationStats::from_migrations(&migrations);
@@ -426,8 +426,8 @@ impl MigrationStats {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::visualization::MigrationStats;
-	/// use reinhardt_migrations::Migration;
+	/// use reinhardt_db::migrations::visualization::MigrationStats;
+	/// use reinhardt_db::migrations::Migration;
 	///
 	/// let migrations = vec![Migration::new("0001_initial", "myapp")];
 	/// let stats = MigrationStats::from_migrations(&migrations);

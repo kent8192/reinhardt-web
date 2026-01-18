@@ -19,7 +19,7 @@
 //! - Real database operations with connection pooling
 //! - 10+ comprehensive test cases
 
-use reinhardt_backends::{DatabaseConnection, DatabaseType, QueryValue};
+use reinhardt_db::backends::{DatabaseConnection, DatabaseType, QueryValue};
 use rstest::*;
 use serial_test::serial;
 use sqlx::{MySqlPool, PgPool, SqlitePool};
@@ -847,7 +847,7 @@ async fn test_backend_downcasting(
 	// Verify downcasting works (we can't directly access PostgresBackend without exposing it,
 	// but we can verify the Any trait works)
 	assert!(
-		pg_any.is::<reinhardt_backends::dialect::PostgresBackend>(),
+		pg_any.is::<reinhardt_db::backends::dialect::PostgresBackend>(),
 		"PostgreSQL backend should downcast to PostgresBackend"
 	);
 
@@ -860,17 +860,17 @@ async fn test_backend_downcasting(
 	let sqlite_any = sqlite_backend.as_any();
 
 	assert!(
-		sqlite_any.is::<reinhardt_backends::dialect::SqliteBackend>(),
+		sqlite_any.is::<reinhardt_db::backends::dialect::SqliteBackend>(),
 		"SQLite backend should downcast to SqliteBackend"
 	);
 
 	// Cross-backend downcasting should fail
 	assert!(
-		!pg_any.is::<reinhardt_backends::dialect::SqliteBackend>(),
+		!pg_any.is::<reinhardt_db::backends::dialect::SqliteBackend>(),
 		"PostgreSQL backend should not downcast to SqliteBackend"
 	);
 	assert!(
-		!sqlite_any.is::<reinhardt_backends::dialect::PostgresBackend>(),
+		!sqlite_any.is::<reinhardt_db::backends::dialect::PostgresBackend>(),
 		"SQLite backend should not downcast to PostgresBackend"
 	);
 }

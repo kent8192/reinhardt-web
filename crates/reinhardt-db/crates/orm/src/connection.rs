@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 
 /// Re-export backends types
-pub use reinhardt_backends::connection::DatabaseConnection as BackendsConnection;
-pub use reinhardt_backends::types::{IsolationLevel, QueryValue, Row, TransactionExecutor};
+pub use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
+pub use reinhardt_db::backends::types::{IsolationLevel, QueryValue, Row, TransactionExecutor};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseBackend {
@@ -101,7 +101,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await.unwrap();
 	/// # }
@@ -117,7 +117,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
 	/// # }
@@ -138,7 +138,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect_mysql("mysql://localhost/mydb").await.unwrap();
 	/// # }
@@ -159,7 +159,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect_sqlite("sqlite::memory:").await.unwrap();
 	/// # }
@@ -185,7 +185,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// // Use larger pool for high-concurrency scenarios
 	/// let conn = DatabaseConnection::connect_with_pool_size(
@@ -313,7 +313,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
 	/// let result = conn.begin_transaction().await;
@@ -332,8 +332,8 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
-	/// use reinhardt_orm::transaction::IsolationLevel;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::transaction::IsolationLevel;
 	///
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
 	/// let result = conn.begin_transaction_with_isolation(IsolationLevel::Serializable).await;
@@ -356,7 +356,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
 	/// conn.begin_transaction().await.unwrap();
@@ -377,7 +377,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
 	/// conn.begin_transaction().await.unwrap();
@@ -398,7 +398,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
 	/// conn.begin_transaction().await.unwrap();
@@ -445,7 +445,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let mut tx = conn.begin().await?;
@@ -473,7 +473,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_orm::connection::{DatabaseConnection, IsolationLevel};
+	/// use reinhardt_db::orm::connection::{DatabaseConnection, IsolationLevel};
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let mut tx = conn.begin_with_isolation(IsolationLevel::Serializable).await?;
@@ -511,7 +511,7 @@ impl DatabaseExecutor for DatabaseConnection {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_orm::DatabaseConnection;
+/// use reinhardt_db::orm::DatabaseConnection;
 /// use reinhardt_di::InjectionContext;
 ///
 /// # async fn example() {

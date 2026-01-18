@@ -30,7 +30,7 @@ impl MigrationNamer {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use reinhardt_migrations::{MigrationNamer, Operation};
+	/// # use reinhardt_db::migrations::{MigrationNamer, Operation};
 	/// // Initial migration
 	/// assert_eq!(
 	///     MigrationNamer::generate_name(&[], true),
@@ -55,9 +55,9 @@ impl MigrationNamer {
 	/// let ops = vec![
 	///     Operation::AddColumn {
 	///         table: "users".to_string(),
-	///         column: reinhardt_migrations::ColumnDefinition {
+	///         column: reinhardt_db::migrations::ColumnDefinition {
 	///             name: "email".to_string(),
-	///             type_definition: reinhardt_migrations::FieldType::Custom("VARCHAR(255)".to_string()),
+	///             type_definition: reinhardt_db::migrations::FieldType::Custom("VARCHAR(255)".to_string()),
 	///             not_null: false,
 	///             unique: false,
 	///             primary_key: false,
@@ -68,9 +68,9 @@ impl MigrationNamer {
 	///     },
 	///     Operation::AddColumn {
 	///         table: "users".to_string(),
-	///         column: reinhardt_migrations::ColumnDefinition {
+	///         column: reinhardt_db::migrations::ColumnDefinition {
 	///             name: "phone".to_string(),
-	///             type_definition: reinhardt_migrations::FieldType::Custom("VARCHAR(20)".to_string()),
+	///             type_definition: reinhardt_db::migrations::FieldType::Custom("VARCHAR(20)".to_string()),
 	///             not_null: false,
 	///             unique: false,
 	///             primary_key: false,

@@ -14,7 +14,7 @@ use async_trait::async_trait;
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_migrations::{RegistrySource, MigrationSource};
+/// use reinhardt_db::migrations::{RegistrySource, MigrationSource};
 /// #[tokio::test]
 /// async fn test_registry_source() {
 ///     let source = RegistrySource::new();

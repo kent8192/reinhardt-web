@@ -46,7 +46,7 @@ impl SqlType {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::SqlType;
+	/// use reinhardt_db::orm::functions::SqlType;
 	///
 	/// assert_eq!(SqlType::Integer.to_sql(), "INTEGER");
 	/// assert_eq!(SqlType::Varchar { length: Some(255) }.to_sql(), "VARCHAR(255)");
@@ -89,9 +89,9 @@ impl Cast {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::{Cast, SqlType};
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::{Cast, SqlType};
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let cast = Cast::new(
 	///     AnnotationValue::Field(F::new("price")),
@@ -111,9 +111,9 @@ impl Cast {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::{Cast, SqlType};
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::{Cast, SqlType};
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let cast = Cast::new(
 	///     AnnotationValue::Field(F::new("price")),
@@ -130,9 +130,9 @@ impl Cast {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::{Cast, SqlType};
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::{Cast, SqlType};
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let cast = Cast::new(
 	///     AnnotationValue::Field(F::new("price")),
@@ -148,9 +148,9 @@ impl Cast {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::{Cast, SqlType};
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::{Cast, SqlType};
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let cast = Cast::new(
 	///     AnnotationValue::Field(F::new("id")),
@@ -179,8 +179,8 @@ impl Greatest {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Greatest;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::functions::Greatest;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 	///
 	/// let expr1 = AnnotationValue::Value(Value::Int(10));
 	/// let expr2 = AnnotationValue::Value(Value::Int(20));
@@ -213,8 +213,8 @@ impl Least {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Least;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::functions::Least;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 	///
 	/// let expr1 = AnnotationValue::Value(Value::Int(10));
 	/// let expr2 = AnnotationValue::Value(Value::Int(20));
@@ -248,8 +248,8 @@ impl NullIf {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::NullIf;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::functions::NullIf;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 	///
 	/// let nullif = NullIf::new(
 	///     AnnotationValue::Value(Value::Int(0)),
@@ -304,9 +304,9 @@ impl Concat {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Concat;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Concat;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let concat = Concat::new(vec![
 	///     AnnotationValue::Field(F::new("first_name")),
@@ -326,9 +326,9 @@ impl Concat {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Concat;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Concat;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let concat = Concat::new(vec![
 	///     AnnotationValue::Field(F::new("city")),
@@ -354,9 +354,9 @@ impl Upper {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Upper;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Upper;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let upper = Upper::new(AnnotationValue::Field(F::new("email")));
 	/// assert_eq!(upper.to_sql(), "UPPER(email)");
@@ -371,9 +371,9 @@ impl Upper {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Upper;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Upper;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let upper = Upper::new(AnnotationValue::Field(F::new("name")));
 	/// assert_eq!(upper.to_sql(), "UPPER(name)");
@@ -405,9 +405,9 @@ impl Lower {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Lower;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Lower;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let lower = Lower::new(AnnotationValue::Field(F::new("name")));
 	/// assert_eq!(lower.to_sql(), "LOWER(name)");
@@ -446,9 +446,9 @@ impl Length {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Length;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Length;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let length = Length::new(AnnotationValue::Field(F::new("name")));
 	/// assert_eq!(length.to_sql(), "LENGTH(name)");
@@ -495,9 +495,9 @@ impl Trim {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Trim;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Trim;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let trim = Trim::new(AnnotationValue::Field(F::new("name")));
 	/// assert_eq!(trim.to_sql(), "TRIM(name)");
@@ -555,9 +555,9 @@ impl Substr {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Substr;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Substr;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let substr = Substr::new(
 	///     AnnotationValue::Field(F::new("name")),
@@ -641,9 +641,9 @@ impl Abs {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Abs;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Abs;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let abs = Abs::new(AnnotationValue::Field(F::new("temperature")));
 	/// assert_eq!(abs.to_sql(), "ABS(temperature)");
@@ -682,9 +682,9 @@ impl Ceil {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Ceil;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Ceil;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let ceil = Ceil::new(AnnotationValue::Field(F::new("price")));
 	/// assert_eq!(ceil.to_sql(), "CEIL(price)");
@@ -723,9 +723,9 @@ impl Floor {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Floor;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Floor;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let floor = Floor::new(AnnotationValue::Field(F::new("price")));
 	/// assert_eq!(floor.to_sql(), "FLOOR(price)");
@@ -765,9 +765,9 @@ impl Round {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Round;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Round;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let round = Round::new(AnnotationValue::Field(F::new("price")), Some(2));
 	/// assert_eq!(round.to_sql(), "ROUND(price, 2)");
@@ -812,8 +812,8 @@ impl Mod {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Mod;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::functions::Mod;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 	///
 	/// let mod_op = Mod::new(
 	///     AnnotationValue::Value(Value::Int(10)),
@@ -867,8 +867,8 @@ impl Power {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Power;
-	/// use reinhardt_orm::annotation::{AnnotationValue, Value};
+	/// use reinhardt_db::orm::functions::Power;
+	/// use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 	///
 	/// let power = Power::new(
 	///     AnnotationValue::Value(Value::Int(2)),
@@ -921,9 +921,9 @@ impl Sqrt {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Sqrt;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Sqrt;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let sqrt = Sqrt::new(AnnotationValue::Field(F::new("area")));
 	/// assert_eq!(sqrt.to_sql(), "SQRT(area)");
@@ -1000,9 +1000,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::{Extract, ExtractComponent};
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::{Extract, ExtractComponent};
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let extract = Extract::new(
 	///     AnnotationValue::Field(F::new("created_at")),
@@ -1021,9 +1021,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let year_extract = Extract::year(AnnotationValue::Field(F::new("birth_date")));
 	/// assert_eq!(year_extract.to_sql(), "EXTRACT(YEAR FROM birth_date)");
@@ -1036,9 +1036,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let month_extract = Extract::month(AnnotationValue::Field(F::new("order_date")));
 	/// assert_eq!(month_extract.to_sql(), "EXTRACT(MONTH FROM order_date)");
@@ -1051,9 +1051,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let day_extract = Extract::day(AnnotationValue::Field(F::new("timestamp")));
 	/// assert_eq!(day_extract.to_sql(), "EXTRACT(DAY FROM timestamp)");
@@ -1066,9 +1066,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let hour_extract = Extract::hour(AnnotationValue::Field(F::new("event_time")));
 	/// assert_eq!(hour_extract.to_sql(), "EXTRACT(HOUR FROM event_time)");
@@ -1081,9 +1081,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let minute_extract = Extract::minute(AnnotationValue::Field(F::new("timestamp")));
 	/// assert_eq!(minute_extract.to_sql(), "EXTRACT(MINUTE FROM timestamp)");
@@ -1096,9 +1096,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let second_extract = Extract::second(AnnotationValue::Field(F::new("timestamp")));
 	/// assert_eq!(second_extract.to_sql(), "EXTRACT(SECOND FROM timestamp)");
@@ -1111,9 +1111,9 @@ impl Extract {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Extract;
-	/// use reinhardt_orm::annotation::AnnotationValue;
-	/// use reinhardt_orm::expressions::F;
+	/// use reinhardt_db::orm::functions::Extract;
+	/// use reinhardt_db::orm::annotation::AnnotationValue;
+	/// use reinhardt_db::orm::expressions::F;
 	///
 	/// let extract = Extract::year(AnnotationValue::Field(F::new("created_at")));
 	/// assert!(extract.to_sql().starts_with("EXTRACT("));
@@ -1147,7 +1147,7 @@ impl Now {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::Now;
+	/// use reinhardt_db::orm::functions::Now;
 	///
 	/// let now = Now::new();
 	/// assert_eq!(now.to_sql(), "CURRENT_TIMESTAMP");
@@ -1178,7 +1178,7 @@ impl CurrentDate {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::CurrentDate;
+	/// use reinhardt_db::orm::functions::CurrentDate;
 	///
 	/// let current_date = CurrentDate::new();
 	/// assert_eq!(current_date.to_sql(), "CURRENT_DATE");
@@ -1209,7 +1209,7 @@ impl CurrentTime {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::functions::CurrentTime;
+	/// use reinhardt_db::orm::functions::CurrentTime;
 	///
 	/// let current_time = CurrentTime::new();
 	/// assert_eq!(current_time.to_sql(), "CURRENT_TIME");

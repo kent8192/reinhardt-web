@@ -13,13 +13,13 @@ use crate::model::Model;
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, Func, SelectStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -53,13 +53,13 @@ pub fn build_count_query<M: Model>() -> SelectStatement {
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, SelectStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -104,13 +104,13 @@ where
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, DeleteStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -151,13 +151,13 @@ where
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, InsertStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -219,13 +219,13 @@ pub fn build_insert_query<M: Model>(
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Expr, ExprTrait, UpdateStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -306,13 +306,13 @@ pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 ///
 /// # Example
 /// ```rust
-/// # use reinhardt_orm::Model;
+/// # use reinhardt_db::orm::Model;
 /// # use sea_query::{PostgresQueryBuilder, Query, Alias, Asterisk, Expr, ExprTrait, SelectStatement};
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct User { id: i64 }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {

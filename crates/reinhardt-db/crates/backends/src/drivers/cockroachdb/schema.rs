@@ -12,8 +12,8 @@
 /// # Example
 ///
 /// ```rust,ignore
-/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 /// let pg_editor = PostgreSQLSchemaEditor::new();
 /// let editor = CockroachDBSchemaEditor::new(pg_editor);
 ///
@@ -50,8 +50,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -71,8 +71,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -111,8 +111,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -137,8 +137,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -186,8 +186,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -242,8 +242,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -263,8 +263,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -284,8 +284,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);
@@ -303,8 +303,8 @@ impl CockroachDBSchemaEditor {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
-	/// # use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::cockroachdb::schema::CockroachDBSchemaEditor;
+	/// # use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// # use sqlx::PgPool;
 	/// let pool = PgPool::connect_lazy("postgresql://localhost/test").unwrap();
 	/// let pg_editor = PostgreSQLSchemaEditor::new(pool);

@@ -14,7 +14,7 @@ use syn::parse_quote;
 /// This repository writes migrations to disk in the format:
 /// ```rust,no_run
 /// // <app_label>/migrations/<name>.rs
-/// use reinhardt_migrations::Migration;
+/// use reinhardt_db::migrations::Migration;
 /// // use reinhardt::db::migrations::prelude::*;
 /// // use reinhardt::db::migrations::FieldType;
 ///
@@ -37,7 +37,7 @@ impl FilesystemRepository {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_migrations::FilesystemRepository;
+	/// use reinhardt_db::migrations::FilesystemRepository;
 	/// let repo = FilesystemRepository::new("./migrations");
 	/// ```
 	pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {

@@ -1,7 +1,7 @@
 //! Tests for migration operations
 //! Translated and adapted from Django's test_operations.py
 
-use reinhardt_migrations::{ColumnDefinition, Constraint, FieldType, Operation, SqlDialect};
+use reinhardt_db::migrations::{ColumnDefinition, Constraint, FieldType, Operation, SqlDialect};
 
 #[test]
 fn test_create_table_basic() {
@@ -527,8 +527,8 @@ fn test_migrations_foreign_key_constraint() {
 			columns: vec!["user_id".to_string()],
 			referenced_table: "users".to_string(),
 			referenced_columns: vec!["id".to_string()],
-			on_delete: reinhardt_migrations::ForeignKeyAction::NoAction,
-			on_update: reinhardt_migrations::ForeignKeyAction::NoAction,
+			on_delete: reinhardt_db::migrations::ForeignKeyAction::NoAction,
+			on_update: reinhardt_db::migrations::ForeignKeyAction::NoAction,
 			deferrable: None,
 		}],
 		without_rowid: None,

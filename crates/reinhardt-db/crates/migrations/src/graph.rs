@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+//! use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 //!
 //! let mut graph = MigrationGraph::new();
 //!
@@ -34,7 +34,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::graph::MigrationKey;
+/// use reinhardt_db::migrations::graph::MigrationKey;
 ///
 /// let key = MigrationKey::new("auth", "0001_initial");
 /// assert_eq!(key.app_label, "auth");
@@ -52,7 +52,7 @@ impl MigrationKey {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::MigrationKey;
+	/// use reinhardt_db::migrations::graph::MigrationKey;
 	///
 	/// let key = MigrationKey::new("users", "0001_initial");
 	/// assert_eq!(key.app_label, "users");
@@ -70,7 +70,7 @@ impl MigrationKey {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::MigrationKey;
+	/// use reinhardt_db::migrations::graph::MigrationKey;
 	///
 	/// let key = MigrationKey::new("auth", "0001_initial");
 	/// assert_eq!(key.id(), "auth.0001_initial");
@@ -125,7 +125,7 @@ impl MigrationNode {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 ///
 /// let mut graph = MigrationGraph::new();
 ///
@@ -148,7 +148,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::MigrationGraph;
+	/// use reinhardt_db::migrations::graph::MigrationGraph;
 	///
 	/// let graph = MigrationGraph::new();
 	/// assert!(graph.is_empty());
@@ -164,7 +164,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key = MigrationKey::new("auth", "0001_initial");
@@ -182,7 +182,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key = MigrationKey::new("auth", "0001_initial");
@@ -205,7 +205,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// assert!(graph.is_empty());
@@ -232,7 +232,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key1 = MigrationKey::new("auth", "0001_initial");
@@ -254,7 +254,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key1 = MigrationKey::new("auth", "0001_initial");
@@ -282,7 +282,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	///
@@ -365,7 +365,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	///
@@ -391,7 +391,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	///
@@ -428,7 +428,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let squashed = MigrationKey::new("auth", "0001_squashed_0003");
@@ -458,7 +458,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key1 = MigrationKey::new("auth", "0001_initial");
@@ -545,7 +545,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key1 = MigrationKey::new("auth", "0001_initial");
@@ -638,7 +638,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let old1 = MigrationKey::new("auth", "0001_initial");
@@ -701,7 +701,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let old = MigrationKey::new("auth", "0001_initial");
@@ -725,7 +725,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let old = MigrationKey::new("auth", "0001_initial");
@@ -755,7 +755,7 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
 	///
 	/// let mut graph = MigrationGraph::new();
 	/// let key1 = MigrationKey::new("auth", "0001_initial");
@@ -821,9 +821,9 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::{MigrationGraph, MigrationKey};
-	/// use reinhardt_migrations::Migration;
-	/// use reinhardt_migrations::dependency::{
+	/// use reinhardt_db::migrations::graph::{MigrationGraph, MigrationKey};
+	/// use reinhardt_db::migrations::Migration;
+	/// use reinhardt_db::migrations::dependency::{
 	///     DependencyResolutionContext, SwappableDependency, OptionalDependency, DependencyCondition
 	/// };
 	///
@@ -906,9 +906,9 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::MigrationGraph;
-	/// use reinhardt_migrations::Migration;
-	/// use reinhardt_migrations::dependency::DependencyResolutionContext;
+	/// use reinhardt_db::migrations::graph::MigrationGraph;
+	/// use reinhardt_db::migrations::Migration;
+	/// use reinhardt_db::migrations::dependency::DependencyResolutionContext;
 	///
 	/// let migrations = vec![
 	///     Migration::new("0001_initial", "auth"),
@@ -941,9 +941,9 @@ impl MigrationGraph {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_migrations::graph::MigrationGraph;
-	/// use reinhardt_migrations::Migration;
-	/// use reinhardt_migrations::dependency::DependencyResolutionContext;
+	/// use reinhardt_db::migrations::graph::MigrationGraph;
+	/// use reinhardt_db::migrations::Migration;
+	/// use reinhardt_db::migrations::dependency::DependencyResolutionContext;
 	///
 	/// let migrations = vec![
 	///     Migration::new("0001_initial", "auth"),

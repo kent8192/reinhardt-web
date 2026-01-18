@@ -21,7 +21,7 @@ use crate::reverse::{ReverseRelationship, generate_reverse_accessor};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_associations::ManyToMany;
+/// use reinhardt_db::associations::ManyToMany;
 ///
 /// #[derive(Clone)]
 /// struct Student {
@@ -76,7 +76,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -107,7 +107,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -128,7 +128,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -149,7 +149,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -170,7 +170,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -191,7 +191,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{ManyToMany, CascadeAction};
+	/// use reinhardt_db::associations::{ManyToMany, CascadeAction};
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -212,7 +212,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -233,7 +233,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -255,7 +255,7 @@ impl<T, K> ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::ManyToMany;
+	/// use reinhardt_db::associations::ManyToMany;
 	///
 	/// #[derive(Clone)]
 	/// struct Course {
@@ -331,7 +331,7 @@ impl<T, K> ReverseRelationship for ManyToMany<T, K> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_associations::{ManyToMany, ReverseRelationship};
+	/// use reinhardt_db::associations::{ManyToMany, ReverseRelationship};
 	///
 	/// #[derive(Clone)]
 	/// struct Course {

@@ -17,7 +17,7 @@
 //! - test_schema: Setup test tables with composite PKs
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::{Model, init_database};
+use reinhardt_db::orm::{Model, init_database};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, Iden, PostgresQueryBuilder, Table};

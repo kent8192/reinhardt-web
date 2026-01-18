@@ -35,7 +35,7 @@ pub struct DatabaseConnection {
 /// # #[tokio::main]
 /// # async fn main() {
 /// use reinhardt_di::{InjectionContext, SingletonScope};
-/// use reinhardt_backends::DatabaseConnection;
+/// use reinhardt_db::backends::DatabaseConnection;
 /// use std::sync::Arc;
 ///
 /// // Create and configure the connection
@@ -139,7 +139,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// // Will create 'mydb' if it doesn't exist
 	/// let conn = DatabaseConnection::connect_postgres_or_create(
@@ -438,7 +438,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let url = DatabaseConnection::get_database_url_from_env_or_settings(None)?;
 	/// let conn = DatabaseConnection::connect_sqlite(&url).await?;
@@ -617,7 +617,7 @@ impl DatabaseConnection {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
 	/// let mut tx = conn.begin().await?;
@@ -636,9 +636,9 @@ impl DatabaseConnection {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # async fn example() -> reinhardt_backends::error::Result<()> {
-	/// use reinhardt_backends::connection::DatabaseConnection;
-	/// use reinhardt_backends::types::IsolationLevel;
+	/// # async fn example() -> reinhardt_db::backends::error::Result<()> {
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::types::IsolationLevel;
 	///
 	/// let conn = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await?;
 	/// let mut tx = conn.begin_with_isolation(IsolationLevel::Serializable).await?;

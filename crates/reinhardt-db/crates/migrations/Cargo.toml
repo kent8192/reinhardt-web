@@ -10,7 +10,6 @@ repository.workspace = true
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-reinhardt-backends = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"
 dialoguer = "0.12.0"
@@ -46,7 +45,6 @@ thiserror = "2.0"
 indexmap = "2.7"
 linkme = { workspace = true }
 reinhardt-core = { workspace = true, features = ["exception"] }
-reinhardt-settings = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 futures = { workspace = true }
 tracing = { workspace = true }
@@ -59,6 +57,8 @@ proc-macro2 = "1.0"
 prettyplease = "0.2"
 walkdir = "2.5"
 aquamarine = { workspace = true }
+reinhardt-db = {workspace = true, features = ["backends"]}
+reinhardt-conf = {workspace = true, features = ["settings"]}
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

@@ -1,7 +1,7 @@
 //! Database-specific pool tests
 //! Tests specific to PostgreSQL, MySQL, and SQLite behaviors
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use sqlx::Sqlite;
 use std::time::Duration;
 

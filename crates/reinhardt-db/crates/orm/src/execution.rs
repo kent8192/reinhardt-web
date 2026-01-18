@@ -5,8 +5,8 @@
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
 use crate::Model;
-use reinhardt_backends;
-use reinhardt_backends::types::QueryValue;
+use reinhardt_db::backends;
+use reinhardt_db::backends::types::QueryValue;
 use rust_decimal::prelude::ToPrimitive;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
@@ -31,7 +31,7 @@ pub enum ExecutionResult<T> {
 pub enum ExecutionError {
 	/// Database error
 	#[error("Database error: {0}")]
-	Database(#[from] reinhardt_backends::DatabaseError),
+	Database(#[from] reinhardt_db::backends::DatabaseError),
 
 	/// No result found (for .one())
 	#[error("No result found")]
@@ -270,8 +270,8 @@ impl<T: Model> SelectExecution<T> {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_orm::execution::SelectExecution;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::execution::SelectExecution;
+	/// use reinhardt_db::orm::Model;
 	/// use sea_query::{Alias, Query};
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -283,7 +283,7 @@ impl<T: Model> SelectExecution<T> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -312,8 +312,8 @@ impl<T: Model> SelectExecution<T> {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_orm::execution::SelectExecution;
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::execution::SelectExecution;
+	/// use reinhardt_db::orm::Model;
 	/// use sea_query::{Alias, Expr, Query};
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -325,7 +325,7 @@ impl<T: Model> SelectExecution<T> {
 	///
 	/// #[derive(Clone)]
 	/// struct UserFields;
-	/// impl reinhardt_orm::FieldSelector for UserFields {
+	/// impl reinhardt_db::orm::FieldSelector for UserFields {
 	///     fn with_alias(self, _alias: &str) -> Self { self }
 	/// }
 	///
@@ -646,7 +646,7 @@ impl LoadOption {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::execution::LoadOption;
+	/// use reinhardt_db::orm::execution::LoadOption;
 	///
 	/// let option = LoadOption::JoinedLoad("profile".to_string());
 	/// assert_eq!(option.to_sql_comment(), "/* joinedload(profile) */");
@@ -682,7 +682,7 @@ impl QueryOptions {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::execution::QueryOptions;
+	/// use reinhardt_db::orm::execution::QueryOptions;
 	///
 	/// let options = QueryOptions::new();
 	/// assert_eq!(options.to_sql_comments(), "");
@@ -697,7 +697,7 @@ impl QueryOptions {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::execution::{QueryOptions, LoadOption};
+	/// use reinhardt_db::orm::execution::{QueryOptions, LoadOption};
 	///
 	/// let options = QueryOptions::new()
 	///     .add_option(LoadOption::JoinedLoad("profile".to_string()))
@@ -716,7 +716,7 @@ impl QueryOptions {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::execution::{QueryOptions, LoadOption};
+	/// use reinhardt_db::orm::execution::{QueryOptions, LoadOption};
 	///
 	/// let options = QueryOptions::new()
 	///     .add_option(LoadOption::SelectInLoad("posts".to_string()));

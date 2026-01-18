@@ -13,7 +13,7 @@
 //! - Edge cases: Empty patterns, special characters
 //! - Decision table: Filter include/exclude combinations
 
-use reinhardt_migrations::{
+use reinhardt_db::migrations::{
 	GenerationConfig, IntrospectConfig, NamingConvention, OutputConfig, TableFilterConfig,
 };
 use rstest::*;
@@ -430,7 +430,7 @@ fn test_builder_preserves_defaults() {
 #[rstest]
 #[test]
 fn test_cli_args_override() {
-	use reinhardt_migrations::introspect::CliArgs;
+	use reinhardt_db::migrations::introspect::CliArgs;
 
 	let mut config = IntrospectConfig::default()
 		.with_database_url("postgres://config/db")
@@ -455,7 +455,7 @@ fn test_cli_args_override() {
 #[rstest]
 #[test]
 fn test_cli_args_none_preserves() {
-	use reinhardt_migrations::introspect::CliArgs;
+	use reinhardt_db::migrations::introspect::CliArgs;
 
 	let mut config = IntrospectConfig::default()
 		.with_database_url("postgres://config/db")
@@ -476,7 +476,7 @@ fn test_cli_args_none_preserves() {
 #[rstest]
 #[test]
 fn test_cli_args_output_dir() {
-	use reinhardt_migrations::introspect::CliArgs;
+	use reinhardt_db::migrations::introspect::CliArgs;
 
 	let mut config = IntrospectConfig::default();
 
@@ -496,7 +496,7 @@ fn test_cli_args_output_dir() {
 #[rstest]
 #[test]
 fn test_cli_args_exclude_append() {
-	use reinhardt_migrations::introspect::CliArgs;
+	use reinhardt_db::migrations::introspect::CliArgs;
 
 	let mut config = IntrospectConfig {
 		tables: TableFilterConfig {

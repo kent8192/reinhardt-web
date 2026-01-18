@@ -3,7 +3,7 @@
 //! This module provides bulk update operations that integrate with hybrid properties.
 //! Based on SQLAlchemy's bulk update functionality.
 
-use reinhardt_hybrid::HybridProperty;
+use reinhardt_db::hybrid::HybridProperty;
 use std::collections::HashMap;
 
 /// Strategy for synchronizing session state after bulk update
@@ -31,7 +31,7 @@ impl BulkUpdateBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::bulk_update::BulkUpdateBuilder;
+	/// use reinhardt_db::orm::bulk_update::BulkUpdateBuilder;
 	///
 	/// let builder = BulkUpdateBuilder::new("users");
 	// Can chain: .set().where_clause().build()

@@ -46,7 +46,7 @@ impl From<io::Error> for FileFieldError {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::file_fields::FileField;
+/// use reinhardt_db::orm::file_fields::FileField;
 ///
 /// let field = FileField::new("uploads/documents");
 /// assert_eq!(field.upload_to, "uploads/documents");
@@ -66,7 +66,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::new("uploads/files");
 	/// assert_eq!(field.upload_to, "uploads/files");
@@ -86,7 +86,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::with_max_length("uploads/files", 255);
 	/// assert_eq!(field.max_length, 255);
@@ -105,7 +105,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	/// use std::path::PathBuf;
 	///
 	/// let field = FileField::with_storage("uploads/files", PathBuf::from("/var/www/media"));
@@ -125,7 +125,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::new("uploads/files");
 	/// let content = b"Hello, World!";
@@ -155,7 +155,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::new("uploads/files");
 	/// let url = field.url("uploads/files/example.txt");
@@ -170,7 +170,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::new("uploads/files");
 	/// let exists = field.exists("uploads/files/example.txt");
@@ -188,7 +188,7 @@ impl FileField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::FileField;
+	/// use reinhardt_db::orm::file_fields::FileField;
 	///
 	/// let field = FileField::new("uploads/files");
 	/// field.delete("uploads/files/example.txt").unwrap();
@@ -242,7 +242,7 @@ impl Field for FileField {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::file_fields::ImageField;
+/// use reinhardt_db::orm::file_fields::ImageField;
 ///
 /// let field = ImageField::new("uploads/images");
 /// assert_eq!(field.upload_to, "uploads/images");
@@ -264,7 +264,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// assert_eq!(field.upload_to, "uploads/images");
@@ -285,7 +285,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::with_dimensions("uploads/images", "width", "height");
 	/// assert_eq!(field.width_field, Some("width".to_string()));
@@ -311,7 +311,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	/// use std::path::PathBuf;
 	///
 	/// let field = ImageField::with_storage("uploads/images", PathBuf::from("/var/www/media"));
@@ -333,7 +333,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// // Load image content from a file
@@ -353,7 +353,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// // Load image content from a file
@@ -390,7 +390,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let result = field.validate_dimensions(800, 600, Some(800), Some(600));
@@ -432,7 +432,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let url = field.url("uploads/images/photo.png");
@@ -447,7 +447,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let exists = field.exists("uploads/images/photo.png");
@@ -465,7 +465,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// field.delete("uploads/images/photo.png").unwrap();
@@ -489,7 +489,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let content = std::fs::read("photo.jpg").unwrap();
@@ -522,7 +522,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let content = std::fs::read("photo.jpg").unwrap();
@@ -557,7 +557,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	/// use image::ImageFormat;
 	///
 	/// let field = ImageField::new("uploads/images");
@@ -584,7 +584,7 @@ impl ImageField {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::file_fields::ImageField;
+	/// use reinhardt_db::orm::file_fields::ImageField;
 	///
 	/// let field = ImageField::new("uploads/images");
 	/// let content = std::fs::read("photo.jpg").unwrap();

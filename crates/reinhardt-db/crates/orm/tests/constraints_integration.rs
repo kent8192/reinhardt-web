@@ -30,7 +30,7 @@
 //! | Multiple       | Violate multiple constraints | Error (first violation) |
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_query::{

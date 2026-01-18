@@ -33,10 +33,10 @@ impl<T: Model> AsyncQuery<T> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::{Engine, Model};
-	/// use reinhardt_orm::async_query::AsyncQuery;
-	/// use reinhardt_orm::query_execution::QueryCompiler;
-	/// use reinhardt_orm::types::DatabaseDialect;
+	/// use reinhardt_db::orm::{Engine, Model};
+	/// use reinhardt_db::orm::async_query::AsyncQuery;
+	/// use reinhardt_db::orm::query_execution::QueryCompiler;
+	/// use reinhardt_db::orm::types::DatabaseDialect;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +48,7 @@ impl<T: Model> AsyncQuery<T> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::model::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::model::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self {
 	/// #         self
 	/// #     }
@@ -229,10 +229,10 @@ impl AsyncSession {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_orm::Engine;
-	/// use reinhardt_orm::async_query::AsyncSession;
-	/// use reinhardt_orm::query_execution::QueryCompiler;
-	/// use reinhardt_orm::types::DatabaseDialect;
+	/// use reinhardt_db::orm::Engine;
+	/// use reinhardt_db::orm::async_query::AsyncSession;
+	/// use reinhardt_db::orm::query_execution::QueryCompiler;
+	/// use reinhardt_db::orm::types::DatabaseDialect;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let engine = Engine::new("sqlite::memory:").await?;

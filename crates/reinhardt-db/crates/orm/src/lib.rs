@@ -14,8 +14,8 @@
 //! ### Basic Usage
 //!
 //! ```rust
-//! use reinhardt_orm::connection::DatabaseConnection;
-//! use reinhardt_orm::transaction::transaction;
+//! use reinhardt_db::orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::transaction;
 //!
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -35,8 +35,8 @@
 //! ### With Isolation Level
 //!
 //! ```rust
-//! use reinhardt_orm::transaction::{transaction_with_isolation, IsolationLevel};
-//! # use reinhardt_orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
+//! # use reinhardt_db::orm::connection::DatabaseConnection;
 //!
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -51,8 +51,8 @@
 //! ### Error Handling
 //!
 //! ```rust
-//! use reinhardt_orm::transaction::transaction;
-//! # use reinhardt_orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::transaction;
+//! # use reinhardt_db::orm::connection::DatabaseConnection;
 //!
 //! # async fn example() -> Result<(), anyhow::Error> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
@@ -257,7 +257,7 @@ pub use query_options::{
 	QueryOptions, QueryOptionsBuilder,
 };
 pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
-pub use reinhardt_hybrid::{
+pub use reinhardt_db::hybrid::{
 	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
 };
 pub use relations::{GenericRelationConfig, GenericRelationSet};

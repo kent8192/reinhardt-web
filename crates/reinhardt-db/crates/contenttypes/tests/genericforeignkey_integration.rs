@@ -14,7 +14,7 @@
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
 
-use reinhardt_contenttypes::{
+use reinhardt_db::contenttypes::{
 	ContentType, ContentTypePersistenceBackend, generic_fk::GenericForeignKeyField,
 	persistence::ContentTypePersistence,
 };
@@ -25,7 +25,7 @@ use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
 #[cfg(feature = "database")]
-use reinhardt_contenttypes::generic_fk::constraints::GenericForeignKeyConstraints;
+use reinhardt_db::contenttypes::generic_fk::constraints::GenericForeignKeyConstraints;
 
 // ============================================================================
 // Test Fixtures

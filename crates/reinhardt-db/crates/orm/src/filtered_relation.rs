@@ -12,8 +12,8 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_orm::filtered_relation::{FilteredRelation, FilterCondition};
-//! use reinhardt_orm::query_fields::{LookupType, LookupValue};
+//! use reinhardt_db::orm::filtered_relation::{FilteredRelation, FilterCondition};
+//! use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 //!
 //! // Create a filtered relation for active posts only
 //! let active_posts = FilteredRelation::new("posts")
@@ -50,8 +50,8 @@ impl FilterCondition {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilterCondition;
-	/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+	/// use reinhardt_db::orm::filtered_relation::FilterCondition;
+	/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 	///
 	/// let condition = FilterCondition::new(
 	///     "status",
@@ -87,8 +87,8 @@ impl FilterCondition {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilterCondition;
-	/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+	/// use reinhardt_db::orm::filtered_relation::FilterCondition;
+	/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 	///
 	/// let condition = FilterCondition::new(
 	///     "age",
@@ -187,8 +187,8 @@ impl FilterCondition {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::filtered_relation::FilteredRelation;
-/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+/// use reinhardt_db::orm::filtered_relation::FilteredRelation;
+/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 ///
 /// let filtered = FilteredRelation::new("comments")
 ///     .filter("approved", LookupType::Exact, LookupValue::Bool(true))
@@ -213,7 +213,7 @@ impl FilteredRelation {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilteredRelation;
+	/// use reinhardt_db::orm::filtered_relation::FilteredRelation;
 	///
 	/// let filtered = FilteredRelation::new("posts");
 	/// assert_eq!(filtered.relation_name(), "posts");
@@ -231,8 +231,8 @@ impl FilteredRelation {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilteredRelation;
-	/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+	/// use reinhardt_db::orm::filtered_relation::FilteredRelation;
+	/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 	///
 	/// let filtered = FilteredRelation::new("posts")
 	///     .filter("status", LookupType::Exact, LookupValue::String("published".to_string()));
@@ -254,7 +254,7 @@ impl FilteredRelation {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilteredRelation;
+	/// use reinhardt_db::orm::filtered_relation::FilteredRelation;
 	///
 	/// let filtered = FilteredRelation::new("posts")
 	///     .with_alias("active_posts");
@@ -287,8 +287,8 @@ impl FilteredRelation {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::filtered_relation::FilteredRelation;
-	/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+	/// use reinhardt_db::orm::filtered_relation::FilteredRelation;
+	/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 	///
 	/// let filtered = FilteredRelation::new("posts")
 	///     .filter("status", LookupType::Exact, LookupValue::String("active".to_string()))
@@ -329,8 +329,8 @@ impl FilteredRelation {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::filtered_relation::FilteredRelationBuilder;
-/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+/// use reinhardt_db::orm::filtered_relation::FilteredRelationBuilder;
+/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 ///
 /// let filtered = FilteredRelationBuilder::new("comments")
 ///     .exact("status", "approved")
@@ -418,8 +418,8 @@ impl FilteredRelationBuilder {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_orm::filtered_relation::{FilteredRelation, FilteredRelationRegistry};
-/// use reinhardt_orm::query_fields::{LookupType, LookupValue};
+/// use reinhardt_db::orm::filtered_relation::{FilteredRelation, FilteredRelationRegistry};
+/// use reinhardt_db::orm::query_fields::{LookupType, LookupValue};
 ///
 /// let mut registry = FilteredRelationRegistry::new();
 ///

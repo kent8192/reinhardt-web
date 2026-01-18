@@ -14,11 +14,11 @@
 //! - authors(id SERIAL PRIMARY KEY, name TEXT NOT NULL)
 //! - books(id SERIAL PRIMARY KEY, author_id INT, title TEXT, price INT, publication_year INT)
 
-use reinhardt_orm::lateral_join::{
+use reinhardt_db::orm::lateral_join::{
 	LateralJoin, LateralJoinPatterns, LateralJoinType, LateralJoins,
 };
-use reinhardt_orm::manager::reinitialize_database;
-use reinhardt_orm::query::QuerySet;
+use reinhardt_db::orm::manager::reinitialize_database;
+use reinhardt_db::orm::query::QuerySet;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

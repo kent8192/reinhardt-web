@@ -54,7 +54,7 @@ impl PolymorphicConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicConfig, InheritanceType};
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicConfig, InheritanceType};
 	///
 	/// let config = PolymorphicConfig::new("content_type", "object_id")
 	///     .with_inheritance(InheritanceType::SingleTable);
@@ -123,7 +123,7 @@ impl PolymorphicIdentity {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::PolymorphicIdentity;
+	/// use reinhardt_db::orm::polymorphic::PolymorphicIdentity;
 	///
 	/// let identity = PolymorphicIdentity::new("user", "users", "id");
 	/// assert_eq!(identity.type_id(), "user");
@@ -182,8 +182,8 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicRelation, PolymorphicConfig};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicRelation, PolymorphicConfig};
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,7 +191,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct CommentFields;
-	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CommentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -223,8 +223,8 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicRelation, PolymorphicConfig, PolymorphicIdentity};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicRelation, PolymorphicConfig, PolymorphicIdentity};
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,7 +232,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct CommentFields;
-	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CommentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -287,8 +287,8 @@ impl<P: Model> PolymorphicRelation<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicRelation, PolymorphicConfig, PolymorphicIdentity};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicRelation, PolymorphicConfig, PolymorphicIdentity};
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,7 +296,7 @@ impl<P: Model> PolymorphicRelation<P> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct CommentFields;
-	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CommentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #
@@ -365,7 +365,7 @@ impl PolymorphicRegistry {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::PolymorphicRegistry;
+	/// use reinhardt_db::orm::polymorphic::PolymorphicRegistry;
 	///
 	/// let registry = PolymorphicRegistry::new();
 	/// assert_eq!(registry.count(), 0);
@@ -379,7 +379,7 @@ impl PolymorphicRegistry {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicRegistry, PolymorphicIdentity};
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicRegistry, PolymorphicIdentity};
 	///
 	/// let mut registry = PolymorphicRegistry::new();
 	/// let identity = PolymorphicIdentity::new("user", "users", "id");
@@ -445,8 +445,8 @@ impl<P: Model> PolymorphicQuery<P> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::polymorphic::{PolymorphicQuery, PolymorphicRelation, PolymorphicConfig};
-	/// use reinhardt_orm::Model;
+	/// use reinhardt_db::orm::polymorphic::{PolymorphicQuery, PolymorphicRelation, PolymorphicConfig};
+	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -454,7 +454,7 @@ impl<P: Model> PolymorphicQuery<P> {
 	///
 	/// # #[derive(Clone)]
 	/// # struct CommentFields;
-	/// # impl reinhardt_orm::FieldSelector for CommentFields {
+	/// # impl reinhardt_db::orm::FieldSelector for CommentFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// #

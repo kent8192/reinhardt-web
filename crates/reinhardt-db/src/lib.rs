@@ -115,75 +115,15 @@
 //! - `mysql`: MySQL support
 //! - `all-databases`: Enable all database backends
 
-// Re-export backends with convenient module structure
-#[cfg(feature = "backends")]
-pub mod backends {
-	//! Database backend abstractions and schema editors
-	//!
-	//! This module provides low-level database operations, schema editing,
-	//! and query building capabilities.
-
-	// Re-export all types and modules from backends crate
-	pub use ::reinhardt_backends::*;
-
-	// Re-export drivers module and its submodules for documentation tests
-	pub use ::reinhardt_backends::drivers;
-
-	// Re-export database-specific driver modules at backends level
-	#[cfg(feature = "postgres")]
-	pub use ::reinhardt_backends::drivers::postgresql;
-
-	#[cfg(feature = "mysql")]
-	pub use ::reinhardt_backends::drivers::mysql;
-
-	#[cfg(feature = "sqlite")]
-	pub use ::reinhardt_backends::drivers::sqlite;
-
-	// Deprecated: MongoDB moved to nosql crate, use nosql::backends::mongodb instead
-
-	#[cfg(feature = "cockroachdb-backend")]
-	pub use ::reinhardt_backends::drivers::cockroachdb;
-}
-
-// Re-export pool with convenient module structure
-#[cfg(feature = "pool")]
-pub mod pool {
-	//! Connection pooling with advanced lifecycle management
-	//!
-	//! This module provides SQLAlchemy-inspired connection pooling with
-	//! dependency injection support and event-driven lifecycle hooks.
-
-	// Re-export all backends-pool types (includes DI support)
-	pub use ::reinhardt_backends_pool::*;
-
-	// Also re-export pool-specific types
-	pub use reinhardt_pool::{
-		config::{PoolConfig, PoolOptions},
-		errors::{PoolError, PoolResult},
-		events::{PoolEvent, PoolEventListener},
-		manager::PoolManager,
-		pool::{ConnectionPool, PooledConnection},
-	};
-}
-
-// Re-export internal crates
-#[cfg(feature = "orm")]
-pub use reinhardt_orm as orm;
-
-#[cfg(feature = "migrations")]
-pub use reinhardt_migrations as migrations;
-
-#[cfg(feature = "hybrid")]
-pub use reinhardt_hybrid as hybrid;
-
-#[cfg(feature = "associations")]
-pub use reinhardt_associations as associations;
-
-#[cfg(feature = "contenttypes")]
-pub use reinhardt_contenttypes as contenttypes;
-
-#[cfg(feature = "nosql")]
-pub use reinhardt_nosql as nosql;
+pub mod associations;
+pub mod backends;
+pub mod backends_pool;
+pub mod contenttypes;
+pub mod hybrid;
+pub mod migrations;
+pub mod nosql;
+pub mod orm;
+pub mod pool;
 
 /// Prelude module for convenient imports
 ///

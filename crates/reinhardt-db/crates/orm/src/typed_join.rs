@@ -16,8 +16,8 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```rust,no_run
-/// # use reinhardt_orm::{Model, query_fields::Field};
-/// # use reinhardt_orm::typed_join::TypedJoin;
+/// # use reinhardt_db::orm::{Model, query_fields::Field};
+/// # use reinhardt_db::orm::typed_join::TypedJoin;
 /// # use serde::{Serialize, Deserialize};
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
 /// # struct User { id: Option<i64> }
@@ -25,12 +25,12 @@ use std::marker::PhantomData;
 /// # struct Post { id: Option<i64> }
 /// # #[derive(Clone)]
 /// # struct UserFields;
-/// # impl reinhardt_orm::FieldSelector for UserFields {
+/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # #[derive(Clone)]
 /// # struct PostFields;
-/// # impl reinhardt_orm::FieldSelector for PostFields {
+/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// # impl Model for User {
@@ -90,8 +90,8 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field};
-	/// # use reinhardt_orm::typed_join::TypedJoin;
+	/// # use reinhardt_db::orm::{Model, query_fields::Field};
+	/// # use reinhardt_db::orm::typed_join::TypedJoin;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -99,12 +99,12 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -150,8 +150,8 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field};
-	/// # use reinhardt_orm::typed_join::TypedJoin;
+	/// # use reinhardt_db::orm::{Model, query_fields::Field};
+	/// # use reinhardt_db::orm::typed_join::TypedJoin;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -159,12 +159,12 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -210,8 +210,8 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field};
-	/// # use reinhardt_orm::typed_join::TypedJoin;
+	/// # use reinhardt_db::orm::{Model, query_fields::Field};
+	/// # use reinhardt_db::orm::typed_join::TypedJoin;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -219,12 +219,12 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {
@@ -270,8 +270,8 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_orm::{Model, query_fields::Field};
-	/// # use reinhardt_orm::typed_join::TypedJoin;
+	/// # use reinhardt_db::orm::{Model, query_fields::Field};
+	/// # use reinhardt_db::orm::typed_join::TypedJoin;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -279,12 +279,12 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 	/// # struct Post { id: Option<i64> }
 	/// # #[derive(Clone)]
 	/// # struct UserFields;
-	/// # impl reinhardt_orm::FieldSelector for UserFields {
+	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # #[derive(Clone)]
 	/// # struct PostFields;
-	/// # impl reinhardt_orm::FieldSelector for PostFields {
+	/// # impl reinhardt_db::orm::FieldSelector for PostFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
 	/// # impl Model for User {

@@ -22,7 +22,7 @@
 //! - Books(id, author_id, title, price)
 
 use reinhardt_core::macros::model;
-use reinhardt_orm::{
+use reinhardt_db::orm::{
 	Aggregate, Annotation, AnnotationValue, Filter, FilterOperator, FilterValue, GroupByFields,
 	OuterRef, QuerySet,
 };
@@ -122,7 +122,7 @@ async fn test_subquery_in_where_clause(
 	let sql = QuerySet::<Author>::new()
 		.filter_in_subquery::<Book, _>("id", |subq| {
 			subq.group_by(|f| {
-				use reinhardt_orm::GroupByFields;
+				use reinhardt_db::orm::GroupByFields;
 				GroupByFields::new().add(&f.author_id)
 			})
 			.having_avg(|f| &f.price, |avg| avg.gt(1500.0))

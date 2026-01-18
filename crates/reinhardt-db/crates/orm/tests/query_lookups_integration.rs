@@ -17,9 +17,9 @@
 //! - postgres_container: PostgreSQL database container
 
 use chrono::{DateTime, Utc};
-use reinhardt_orm::Model;
-use reinhardt_orm::manager::{get_connection, init_database};
-use reinhardt_orm::query::{Filter, FilterOperator, FilterValue};
+use reinhardt_db::orm::Model;
+use reinhardt_db::orm::manager::{get_connection, init_database};
+use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

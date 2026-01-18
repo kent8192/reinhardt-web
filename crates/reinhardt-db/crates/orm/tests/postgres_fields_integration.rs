@@ -15,8 +15,8 @@
 //! This test verifies that PostgreSQL-specific types are correctly handled through
 //! the entire stack: ORM → QueryCompiler → SQL generation → PostgreSQL execution
 
-use reinhardt_orm;
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serial_test::serial;

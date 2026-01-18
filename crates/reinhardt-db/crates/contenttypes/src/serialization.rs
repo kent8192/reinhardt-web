@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_contenttypes::serialization::{ContentTypeSerializer, SerializationFormat};
-//! use reinhardt_contenttypes::{ContentType, ContentTypeRegistry};
+//! use reinhardt_db::contenttypes::serialization::{ContentTypeSerializer, SerializationFormat};
+//! use reinhardt_db::contenttypes::{ContentType, ContentTypeRegistry};
 //!
 //! let registry = ContentTypeRegistry::new();
 //! registry.register(ContentType::new("blog", "article"));

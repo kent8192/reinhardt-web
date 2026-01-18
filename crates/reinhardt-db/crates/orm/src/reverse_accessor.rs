@@ -87,7 +87,7 @@ fn build_select_sql(
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_orm::{Model, ReverseAccessor};
+/// use reinhardt_db::orm::{Model, ReverseAccessor};
 ///
 /// let user = User::objects().filter(...).first_with_db(&db).await?;
 /// let accessor = ReverseAccessor::<User, Tweet>::new(&user, "user_id", db.clone());

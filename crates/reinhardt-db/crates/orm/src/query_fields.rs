@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use reinhardt_orm::prelude::*;
+//! use reinhardt_db::orm::prelude::*;
 //! # use reinhardt_core::types::DateTime;
 //!
 //! #[model(app_label = "users", table_name = "users")]

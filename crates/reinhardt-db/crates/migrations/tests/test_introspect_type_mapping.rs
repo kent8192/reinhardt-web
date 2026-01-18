@@ -14,7 +14,7 @@
 //! - Decision table: nullable × auto_increment → `Option<T>`
 //! - Boundary values: VARCHAR lengths, DECIMAL precision
 
-use reinhardt_migrations::{FieldType, ForeignKeyAction, TypeMapper, TypeMappingError};
+use reinhardt_db::migrations::{FieldType, ForeignKeyAction, TypeMapper, TypeMappingError};
 use rstest::*;
 use std::collections::HashMap;
 

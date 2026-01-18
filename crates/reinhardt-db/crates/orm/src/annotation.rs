@@ -86,8 +86,8 @@ impl When {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::annotation::{When, AnnotationValue, Value};
-	/// use reinhardt_orm::Q;
+	/// use reinhardt_db::orm::annotation::{When, AnnotationValue, Value};
+	/// use reinhardt_db::orm::Q;
 	///
 	/// let when = When::new(
 	///     Q::new("status", "=", "active"),
@@ -125,7 +125,7 @@ impl Annotation {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_orm::annotation::{Annotation, AnnotationValue, Value};
+	/// use reinhardt_db::orm::annotation::{Annotation, AnnotationValue, Value};
 	///
 	/// let annotation = Annotation::new("total", AnnotationValue::Value(Value::Int(100)));
 	/// assert_eq!(annotation.alias, "total");

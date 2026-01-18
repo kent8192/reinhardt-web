@@ -121,7 +121,7 @@ impl MigrationRegistry for GlobalRegistry {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_migrations::registry::{global_registry, MigrationRegistry};
+/// use reinhardt_db::migrations::registry::{global_registry, MigrationRegistry};
 /// let registry = global_registry();
 /// let all_migrations = registry.all_migrations();
 /// ```

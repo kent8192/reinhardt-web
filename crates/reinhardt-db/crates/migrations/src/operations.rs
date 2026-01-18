@@ -10,13 +10,13 @@
 //! # Example
 //!
 //! ```rust
-//! use reinhardt_migrations::operations::{
+//! use reinhardt_db::migrations::operations::{
 //!     models::{CreateModel, DeleteModel},
 //!     fields::{AddField, RemoveField},
 //!     special::RunSQL,
 //!     FieldDefinition,
 //! };
-//! use reinhardt_migrations::{ProjectState, FieldType};
+//! use reinhardt_db::migrations::{ProjectState, FieldType};
 //!
 //! let mut state = ProjectState::new();
 //!
@@ -69,7 +69,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_migrations::operations::IndexType;
+/// use reinhardt_db::migrations::operations::IndexType;
 ///
 /// // B-Tree is the default, best for equality and range queries
 /// let btree = IndexType::BTree;
@@ -937,7 +937,7 @@ pub enum Operation {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_migrations::{Operation, BulkLoadSource, BulkLoadFormat, BulkLoadOptions};
+	/// use reinhardt_db::migrations::{Operation, BulkLoadSource, BulkLoadFormat, BulkLoadOptions};
 	///
 	/// // PostgreSQL COPY FROM file
 	/// let op = Operation::BulkLoad {
@@ -2415,7 +2415,7 @@ impl ColumnDefinition {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_migrations::operations::field_type_string_to_field_type;
+/// use reinhardt_db::migrations::operations::field_type_string_to_field_type;
 /// use std::collections::HashMap;
 ///
 /// let mut attrs = HashMap::new();
@@ -3032,61 +3032,61 @@ impl OperationStatement {
 	/// # Arguments
 	///
 	/// * `db_type` - Database type to generate SQL for (PostgreSQL, MySQL, SQLite)
-	pub fn to_sql_string(&self, db_type: reinhardt_backends::types::DatabaseType) -> String {
+	pub fn to_sql_string(&self, db_type: reinhardt_db::backends::types::DatabaseType) -> String {
 		use sea_query::{MysqlQueryBuilder, SqliteQueryBuilder};
 
 		match self {
 			OperationStatement::TableCreate(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
 			OperationStatement::TableDrop(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
 			OperationStatement::TableAlter(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
 			OperationStatement::TableRename(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
 			OperationStatement::IndexCreate(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
 			OperationStatement::IndexDrop(stmt) => match db_type {
-				reinhardt_backends::types::DatabaseType::Postgres => {
+				reinhardt_db::backends::types::DatabaseType::Postgres => {
 					stmt.to_string(PostgresQueryBuilder)
 				}
-				reinhardt_backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-				reinhardt_backends::types::DatabaseType::Sqlite => {
+				reinhardt_db::backends::types::DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+				reinhardt_db::backends::types::DatabaseType::Sqlite => {
 					stmt.to_string(SqliteQueryBuilder)
 				}
 			},
@@ -4032,7 +4032,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE TABLE"),
 			"SQL should contain CREATE TABLE keyword, got: {}",
@@ -4057,7 +4057,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("DROP TABLE"),
 			"SQL should contain DROP TABLE keyword, got: {}",
@@ -4092,7 +4092,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4123,7 +4123,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4165,7 +4165,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4191,7 +4191,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("users"),
 			"SQL should reference old table name 'users', got: {}",
@@ -4213,7 +4213,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4249,7 +4249,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4280,7 +4280,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4318,7 +4318,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE INDEX"),
 			"SQL should contain CREATE INDEX keywords, got: {}",
@@ -4351,7 +4351,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE UNIQUE INDEX"),
 			"SQL should contain CREATE UNIQUE INDEX keywords, got: {}",
@@ -4377,7 +4377,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("DROP INDEX"),
 			"SQL should contain DROP INDEX keywords, got: {}",
@@ -4398,7 +4398,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE EXTENSION"),
 			"SQL should contain CREATE EXTENSION keywords, got: {}",
@@ -4419,7 +4419,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",
@@ -4445,7 +4445,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",
@@ -4471,7 +4471,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -4507,7 +4507,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert_eq!(
 			sql, "",
 			"SQL should be empty for empty unique_together constraint"
@@ -4525,7 +4525,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert_eq!(sql, "", "SQL should be empty for model options operation");
 	}
 
@@ -4547,7 +4547,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("CREATE TABLE"),
 			"SQL should contain CREATE TABLE keywords, got: {}",
@@ -4574,7 +4574,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("ALTER TABLE"),
 			"SQL should contain ALTER TABLE keyword, got: {}",
@@ -5121,7 +5121,7 @@ mod tests {
 		};
 
 		let stmt = op.to_statement();
-		let sql = stmt.to_sql_string(reinhardt_backends::types::DatabaseType::Postgres);
+		let sql = stmt.to_sql_string(reinhardt_db::backends::types::DatabaseType::Postgres);
 		assert!(
 			sql.contains("COMMENT ON TABLE"),
 			"SQL should contain COMMENT ON TABLE keywords, got: {}",

@@ -17,7 +17,7 @@ use std::sync::Arc;
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// use reinhardt_migrations::{RegistrySource, FilesystemSource, CompositeSource};
+/// use reinhardt_db::migrations::{RegistrySource, FilesystemSource, CompositeSource};
 /// let registry = Arc::new(RegistrySource::new());
 /// let filesystem = Arc::new(FilesystemSource::new("./migrations"));
 ///

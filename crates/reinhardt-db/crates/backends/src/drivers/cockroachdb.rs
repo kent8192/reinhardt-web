@@ -16,11 +16,11 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use reinhardt_backends::drivers::cockroachdb::{
+//! use reinhardt_db::backends::drivers::cockroachdb::{
 //!     CockroachDBBackend,
 //!     schema::CockroachDBSchemaEditor,
 //! };
-//! use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+//! use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 //! use sqlx::PgPool;
 //!
 //! // Create a CockroachDB backend
@@ -61,8 +61,8 @@ use crate::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -84,8 +84,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -106,8 +106,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,8 +130,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -151,8 +151,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -172,8 +172,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -208,8 +208,8 @@ impl CockroachDBBackend {
 	/// # Examples
 	///
 	/// ```rust,ignore
-	/// use reinhardt_backends::drivers::cockroachdb::CockroachDBBackend;
-	/// use reinhardt_backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
+	/// use reinhardt_db::backends::drivers::cockroachdb::CockroachDBBackend;
+	/// use reinhardt_db::backends::drivers::postgresql::schema::PostgreSQLSchemaEditor;
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

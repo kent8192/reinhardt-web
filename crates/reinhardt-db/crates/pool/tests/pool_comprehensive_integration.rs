@@ -13,7 +13,7 @@
 //! - validator_test_db: Lightweight test database for simple tests
 //! - mysql_suite: Suite-wide MySQL instance for DB-specific tests
 
-use reinhardt_pool::{ConnectionPool, PoolConfig};
+use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};
