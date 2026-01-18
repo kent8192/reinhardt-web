@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use hyper::{Method, Uri};
 use reinhardt_core::exception::Result;
-use reinhardt_core::http::{Request, Response};
+use reinhardt_http::{Request, Response};
 use reinhardt_core::{Handler, Middleware};
 use std::sync::Arc;
 
@@ -48,7 +48,7 @@ impl BrowsableApiMiddleware {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_browsable_api::middleware::BrowsableApiMiddleware;
+	/// use reinhardt_rest::browsable_api::middleware::BrowsableApiMiddleware;
 	///
 	/// let middleware = BrowsableApiMiddleware::new();
 	/// ```
@@ -68,7 +68,7 @@ impl BrowsableApiMiddleware {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_browsable_api::middleware::{BrowsableApiMiddleware, BrowsableApiConfig};
+	/// use reinhardt_rest::browsable_api::middleware::{BrowsableApiMiddleware, BrowsableApiConfig};
 	///
 	/// let config = BrowsableApiConfig {
 	///     enabled: true,

@@ -2,7 +2,7 @@
 //!
 //! Tests the integration between SerializerMethodField and field/object validation
 
-use reinhardt_serializers::{
+use reinhardt_rest::serializers::{
 	FieldValidator, MethodFieldProvider, MethodFieldRegistry, ObjectValidator,
 	SerializerMethodField, ValidationError, ValidationResult, validate_fields,
 };

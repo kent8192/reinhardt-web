@@ -8,7 +8,7 @@
 //! - Field dependency management
 //! - OPTIONS request integration
 
-use reinhardt_metadata::{
+use reinhardt_rest::metadata::{
 	BaseMetadata, DependencyManager, FieldDependency, FieldInfo, FieldInfoBuilder, FieldType,
 	FieldValidator, MetadataOptions, SerializerFieldInfo, SimpleMetadata, ValidationPattern,
 	generate_field_schema, generate_object_schema,

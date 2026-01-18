@@ -3,7 +3,7 @@
 //! These tests verify that ConnectionPoolManager provides thread-safe
 //! connection pool management for high-concurrency scenarios.
 
-use reinhardt_serializers::ConnectionPoolManager;
+use reinhardt_rest::serializers::ConnectionPoolManager;
 
 #[test]
 fn test_pool_manager_initialization() {
@@ -54,7 +54,7 @@ fn test_pool_manager_concurrent_access() {
 
 #[test]
 fn test_default_pool_config() {
-	use reinhardt_serializers::pool_manager::default_pool_config;
+	use reinhardt_rest::serializers::pool_manager::default_pool_config;
 
 	let config = default_pool_config();
 

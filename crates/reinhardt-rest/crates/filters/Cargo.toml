@@ -36,4 +36,3 @@ rstest = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 testcontainers = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-orm = { workspace = true }

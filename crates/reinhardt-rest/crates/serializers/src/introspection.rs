@@ -61,7 +61,7 @@ impl FieldInfo {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::introspection::{FieldInfo, FieldIntrospector};
+/// use reinhardt_rest::serializers::introspection::{FieldInfo, FieldIntrospector};
 ///
 /// let mut introspector = FieldIntrospector::new();
 ///

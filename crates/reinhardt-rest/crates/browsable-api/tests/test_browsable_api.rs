@@ -6,7 +6,7 @@
 //! These tests verify the BrowsableApiRenderer correctly renders HTML responses
 //! for various authentication and authorization scenarios.
 
-use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
+use reinhardt_rest::browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
 use std::fs;
 use tempfile::TempDir;

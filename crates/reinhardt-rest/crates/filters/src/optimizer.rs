@@ -17,7 +17,7 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_filters::{QueryOptimizer, OptimizationHint};
+//! use reinhardt_rest::filters::{QueryOptimizer, OptimizationHint};
 //!
 //! # async fn example() {
 //! let optimizer = QueryOptimizer::new()
@@ -103,7 +103,7 @@ pub struct QueryAnalysis {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::OptimizationHint;
+/// use reinhardt_rest::filters::OptimizationHint;
 ///
 /// let hint = OptimizationHint::PreferIndexScan;
 /// let seq_scan = OptimizationHint::DisableSeqScan;
@@ -157,7 +157,7 @@ impl OptimizationHint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{OptimizationHint, DatabaseType};
+	/// use reinhardt_rest::filters::{OptimizationHint, DatabaseType};
 	///
 	/// let hint = OptimizationHint::PreferIndexScan;
 	/// let pg_sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
@@ -247,7 +247,7 @@ impl OptimizationHint {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::QueryPlan;
+/// use reinhardt_rest::filters::QueryPlan;
 ///
 /// let plan = QueryPlan::new("Seq Scan on users");
 /// // Verify the query plan is created successfully
@@ -282,7 +282,7 @@ impl QueryPlan {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryPlan;
+	/// use reinhardt_rest::filters::QueryPlan;
 	///
 	/// let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
 	/// // Verify the query plan parsing is correct
@@ -339,7 +339,7 @@ impl QueryPlan {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryPlan;
+	/// use reinhardt_rest::filters::QueryPlan;
 	///
 	/// let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
 	/// let analyzed = plan.analyze();
@@ -432,7 +432,7 @@ impl QueryPlan {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::{FilterBackend, QueryOptimizer, OptimizationHint};
+/// use reinhardt_rest::filters::{FilterBackend, QueryOptimizer, OptimizationHint};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -484,7 +484,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryOptimizer;
+	/// use reinhardt_rest::filters::QueryOptimizer;
 	///
 	/// let optimizer = QueryOptimizer::new();
 	/// // Verify the optimizer is created successfully
@@ -505,7 +505,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{QueryOptimizer, DatabaseType};
+	/// use reinhardt_rest::filters::{QueryOptimizer, DatabaseType};
 	///
 	/// let pg_optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL);
 	/// let mysql_optimizer = QueryOptimizer::for_database(DatabaseType::MySQL);
@@ -530,7 +530,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{QueryOptimizer, OptimizationHint};
+	/// use reinhardt_rest::filters::{QueryOptimizer, OptimizationHint};
 	///
 	/// let optimizer = QueryOptimizer::new()
 	///     .with_hint(OptimizationHint::PreferIndexScan)
@@ -550,7 +550,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryOptimizer;
+	/// use reinhardt_rest::filters::QueryOptimizer;
 	///
 	/// let optimizer = QueryOptimizer::new()
 	///     .enable_analysis(true);
@@ -569,7 +569,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryOptimizer;
+	/// use reinhardt_rest::filters::QueryOptimizer;
 	///
 	/// let optimizer = QueryOptimizer::new()
 	///     .enable_hints(true);
@@ -589,7 +589,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_filters::QueryOptimizer;
+	/// use reinhardt_rest::filters::QueryOptimizer;
 	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	/// use std::sync::Arc;
 	///
@@ -623,7 +623,7 @@ impl QueryOptimizer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::QueryOptimizer;
+	/// use reinhardt_rest::filters::QueryOptimizer;
 	///
 	/// # async fn example() {
 	/// let optimizer = QueryOptimizer::new();

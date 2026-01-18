@@ -11,40 +11,53 @@ pub(crate) fn get_reinhardt_openapi_crate() -> TokenStream {
 
 	// First, try to find reinhardt-openapi directly
 	match crate_name("reinhardt-openapi") {
-		Ok(FoundCrate::Itself) => quote!(crate),
+		Ok(FoundCrate::Itself) => return quote!(crate),
 		Ok(FoundCrate::Name(name)) => {
 			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-			quote!(::#ident)
+			return quote!(::#ident);
 		}
-		Err(_) => {
-			// If reinhardt-openapi is not found directly, try to find it via reinhardt crate
-			match crate_name("reinhardt-web") {
-				Ok(FoundCrate::Itself) => {
-					// reinhardt-web is the current crate
-					quote!(crate::rest::openapi)
-				}
-				Ok(FoundCrate::Name(name)) => {
-					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-					quote!(::#ident::rest::openapi)
-				}
-				Err(_) => {
-					// Also try renamed "reinhardt" crate
-					match crate_name("reinhardt") {
-						Ok(FoundCrate::Itself) => {
-							// reinhardt is the current crate
-							quote!(crate::rest::openapi)
-						}
-						Ok(FoundCrate::Name(name)) => {
-							let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-							quote!(::#ident::rest::openapi)
-						}
-						Err(_) => {
-							// Fallback: assume reinhardt_openapi is available
-							quote!(::reinhardt_openapi)
-						}
-					}
-				}
-			}
-		}
+		Err(_) => {}
 	}
+
+	// Try to find reinhardt-rest (after subcrate consolidation)
+	match crate_name("reinhardt-rest") {
+		Ok(FoundCrate::Itself) => {
+			// reinhardt-rest is the current crate
+			return quote!(crate::openapi);
+		}
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::openapi);
+		}
+		Err(_) => {}
+	}
+
+	// If reinhardt-openapi is not found directly, try to find it via reinhardt crate
+	match crate_name("reinhardt-web") {
+		Ok(FoundCrate::Itself) => {
+			// reinhardt-web is the current crate
+			return quote!(crate::rest::openapi);
+		}
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::rest::openapi);
+		}
+		Err(_) => {}
+	}
+
+	// Also try renamed "reinhardt" crate
+	match crate_name("reinhardt") {
+		Ok(FoundCrate::Itself) => {
+			// reinhardt is the current crate
+			return quote!(crate::rest::openapi);
+		}
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::rest::openapi);
+		}
+		Err(_) => {}
+	}
+
+	// Fallback: assume reinhardt_rest::openapi is available
+	quote!(::reinhardt_rest::openapi)
 }

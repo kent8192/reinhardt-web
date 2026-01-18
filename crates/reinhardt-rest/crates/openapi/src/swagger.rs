@@ -5,7 +5,7 @@
 use crate::{OpenApiSchema, SchemaResult};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use once_cell::sync::Lazy;
-use reinhardt_core::http::{Request, Response, Result};
+use reinhardt_http::{Request, Response, Result};
 use serde::Serialize;
 use std::sync::Arc;
 use tera::Tera;
@@ -64,7 +64,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -80,7 +80,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -110,7 +110,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	/// use reinhardt_apps::Request;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -141,7 +141,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -185,7 +185,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
@@ -202,7 +202,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
@@ -233,7 +233,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	/// use reinhardt_apps::Request;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

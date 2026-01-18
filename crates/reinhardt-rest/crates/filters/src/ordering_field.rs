@@ -23,7 +23,7 @@ pub enum OrderDirection {
 /// # Examples
 ///
 /// ```rust
-/// # use reinhardt_filters::{OrderingField, OrderDirection, field_extensions::FieldOrderingExt};
+/// # use reinhardt_rest::filters::{OrderingField, OrderDirection, field_extensions::FieldOrderingExt};
 /// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 /// #
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -77,7 +77,7 @@ impl<M: Model> OrderingField<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+	/// # use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// #
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -112,7 +112,7 @@ impl<M: Model> OrderingField<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use reinhardt_filters::{OrderDirection, field_extensions::FieldOrderingExt};
+	/// # use reinhardt_rest::filters::{OrderDirection, field_extensions::FieldOrderingExt};
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// #
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -148,7 +148,7 @@ impl<M: Model> OrderingField<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use reinhardt_filters::field_extensions::FieldOrderingExt;
+	/// # use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// #
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -24,7 +24,7 @@ impl BrowsableResponse {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_browsable_api::response::{BrowsableResponse, ResponseMetadata};
+	/// use reinhardt_rest::browsable_api::response::{BrowsableResponse, ResponseMetadata};
 	/// use std::collections::HashMap;
 	///
 	/// let metadata = ResponseMetadata {
@@ -43,7 +43,7 @@ impl BrowsableResponse {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_browsable_api::response::BrowsableResponse;
+	/// use reinhardt_rest::browsable_api::response::BrowsableResponse;
 	///
 	/// let response = BrowsableResponse::success(
 	///     serde_json::json!({"message": "ok"}),

@@ -20,8 +20,8 @@ use std::sync::Arc;
 ///
 /// ```rust,no_run,ignore
 /// use std::collections::HashMap;
-/// use reinhardt_serializers::UrlReverser;
-/// use reinhardt_routers::UrlReverser as RouterUrlReverser;
+/// use reinhardt_rest::serializers::UrlReverser;
+/// use reinhardt_urls::routers::UrlReverser as RouterUrlReverser;
 ///
 /// impl UrlReverser for RouterUrlReverser {
 ///     fn reverse(&self, name: &str, params: &HashMap<String, String>) -> Result<String, String> {
@@ -52,7 +52,7 @@ pub trait UrlReverser: Send + Sync {
 /// # Examples
 ///
 /// ```no_run
-/// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser, Serializer};
+/// # use reinhardt_rest::serializers::{HyperlinkedModelSerializer, UrlReverser, Serializer};
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::sync::Arc;
@@ -120,7 +120,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::{HyperlinkedModelSerializer, UrlReverser};
+	/// # use reinhardt_rest::serializers::{HyperlinkedModelSerializer, UrlReverser};
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use std::sync::Arc;
@@ -169,7 +169,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::HyperlinkedModelSerializer;
+	/// # use reinhardt_rest::serializers::HyperlinkedModelSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -202,7 +202,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 
 	/// Generate URL for a model instance
 	///
-	/// Uses reinhardt_routers::reverse() for proper URL resolution if a reverser
+	/// Uses reinhardt_urls::routers::reverse() for proper URL resolution if a reverser
 	/// is provided, otherwise falls back to simple path-based URL generation.
 	fn get_url(&self, instance: &M) -> Result<String, SerializerError>
 	where

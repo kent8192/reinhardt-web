@@ -14,7 +14,7 @@ use reinhardt_db::orm::{Field, Lookup, Model};
 /// # Examples
 ///
 /// ```rust
-/// # use reinhardt_filters::{MultiTermSearch, SearchableModel};
+/// # use reinhardt_rest::filters::{MultiTermSearch, SearchableModel};
 /// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 /// #
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -147,7 +147,7 @@ impl MultiTermSearch {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::multi_term::MultiTermSearch;
+	/// use reinhardt_rest::filters::multi_term::MultiTermSearch;
 	///
 	/// let terms = MultiTermSearch::parse_search_terms("rust, programming");
 	/// assert_eq!(terms, vec!["rust", "programming"]);
@@ -248,7 +248,7 @@ impl MultiTermSearch {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::multi_term::MultiTermSearch;
+	/// use reinhardt_rest::filters::multi_term::MultiTermSearch;
 	///
 	/// let query = r#"title:"machine learning" AND author:Smith"#;
 	/// let terms = MultiTermSearch::parse_query(query);

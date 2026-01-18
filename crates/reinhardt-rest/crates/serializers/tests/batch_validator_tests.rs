@@ -3,7 +3,7 @@
 //! These tests verify that BatchValidator correctly executes database queries
 //! for unique and unique_together validation checks.
 
-use reinhardt_serializers::BatchValidator;
+use reinhardt_rest::serializers::BatchValidator;
 use reinhardt_test::fixtures::{ColumnDefinition, FieldType, Operation, SqlDialect};
 use sea_orm::{Database, DatabaseConnection};
 use sea_query::{Iden, PostgresQueryBuilder, Query};

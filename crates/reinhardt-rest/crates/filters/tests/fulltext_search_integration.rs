@@ -15,7 +15,7 @@
 //! - postgres_container: PostgreSQL database container (reinhardt-test)
 //! - fulltext_test_db: Custom fixture with test schema and FTS indexes
 
-use reinhardt_filters::{
+use reinhardt_rest::filters::{
 	FullTextSearchFilter, FullTextSearchMode, HtmlHighlighter, SearchHighlighter,
 };
 use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};

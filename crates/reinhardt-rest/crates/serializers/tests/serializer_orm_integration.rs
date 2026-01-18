@@ -23,8 +23,8 @@
 
 use reinhardt_db::orm::manager::init_database;
 use reinhardt_db::orm::query::QuerySet;
-use reinhardt_serializers::queryset_integration::SerializerSaveMixin;
-use reinhardt_serializers::{SerializerError, ValidatorError};
+use reinhardt_rest::serializers::queryset_integration::SerializerSaveMixin;
+use reinhardt_rest::serializers::{SerializerError, ValidatorError};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sea_orm::{ConnectionTrait, Database, DbErr};

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_metadata::{SchemaInferencer, FieldType};
+/// use reinhardt_rest::metadata::{SchemaInferencer, FieldType};
 ///
 /// let inferencer = SchemaInferencer::new();
 /// let schema = inferencer.infer_from_type_name("String");
@@ -33,7 +33,7 @@ impl SchemaInferencer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::SchemaInferencer;
+	/// use reinhardt_rest::metadata::SchemaInferencer;
 	///
 	/// let inferencer = SchemaInferencer::new();
 	/// ```
@@ -81,7 +81,7 @@ impl SchemaInferencer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{SchemaInferencer, FieldType};
+	/// use reinhardt_rest::metadata::{SchemaInferencer, FieldType};
 	///
 	/// let inferencer = SchemaInferencer::new();
 	///
@@ -124,7 +124,7 @@ impl SchemaInferencer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{SchemaInferencer, FieldType};
+	/// use reinhardt_rest::metadata::{SchemaInferencer, FieldType};
 	///
 	/// let mut inferencer = SchemaInferencer::new();
 	/// inferencer.register_type("UserId", FieldType::Uuid);
@@ -159,7 +159,7 @@ impl SchemaInferencer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::SchemaInferencer;
+	/// use reinhardt_rest::metadata::SchemaInferencer;
 	///
 	/// let inferencer = SchemaInferencer::new();
 	/// let schema = inferencer.infer_openapi_schema("String");

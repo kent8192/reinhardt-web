@@ -6,7 +6,7 @@
 //! These tests verify that nested serializers are correctly rendered
 //! in browsable API forms, including proper field naming with dot notation.
 
-use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
+use reinhardt_rest::browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
 
 /// Tests correct rendering of nested serializers in browsable API forms

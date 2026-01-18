@@ -40,7 +40,7 @@
 //! ❌ Validation of nested data (covered by validator tests)
 
 use ::testcontainers::{ContainerAsync, GenericImage};
-use reinhardt_orm::manager::reinitialize_database;
+use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use serde::{Deserialize, Serialize};

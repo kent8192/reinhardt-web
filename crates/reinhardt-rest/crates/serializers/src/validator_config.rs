@@ -23,7 +23,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::validator_config::ValidatorConfig;
+	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
 	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -62,8 +62,8 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::validator_config::ValidatorConfig;
-	/// use reinhardt_serializers::validators::UniqueValidator;
+	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
+	/// use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -99,8 +99,8 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::validator_config::ValidatorConfig;
-	/// use reinhardt_serializers::validators::UniqueTogetherValidator;
+	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
+	/// use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -149,8 +149,8 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::validator_config::ValidatorConfig;
-	/// use reinhardt_serializers::validators::UniqueValidator;
+	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
+	/// use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// use reinhardt_db::orm::Model;
 	/// use serde::{Serialize, Deserialize};
 	///
@@ -207,7 +207,7 @@ impl<M: Model> ValidatorConfig<M> {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_serializers::validator_config::ValidatorConfig;
+	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
 	/// use reinhardt_db::connection::DatabaseConnection;
 	///
 	/// let config = ValidatorConfig::new();

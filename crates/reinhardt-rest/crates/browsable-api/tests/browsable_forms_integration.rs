@@ -8,7 +8,7 @@
 //! - Form submission handling and processing
 //! - Nested form rendering for complex data structures
 
-use reinhardt_browsable_api::{
+use reinhardt_rest::browsable_api::{
 	ApiContext, BrowsableApiRenderer, FormContext, FormField, SelectOption,
 };
 use reinhardt_test::fixtures::*;

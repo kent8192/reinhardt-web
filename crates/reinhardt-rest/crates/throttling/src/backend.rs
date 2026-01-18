@@ -41,7 +41,7 @@ impl MemoryBackend<SystemTimeProvider> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::MemoryBackend;
+	/// use reinhardt_rest::throttling::MemoryBackend;
 	///
 	/// let backend = MemoryBackend::new();
 	// Backend is ready to track rate limits in memory
@@ -102,7 +102,7 @@ impl RedisThrottleBackend {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_throttling::RedisThrottleBackend;
+	/// use reinhardt_rest::throttling::RedisThrottleBackend;
 	///
 	/// let backend = RedisThrottleBackend::new("redis://127.0.0.1:6379").unwrap();
 	// Backend is now connected to Redis for distributed rate limiting

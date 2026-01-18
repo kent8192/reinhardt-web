@@ -15,7 +15,7 @@
 //! - postgres_container: PostgreSQL database container (reinhardt-test)
 //! - filter_chain_test_db: Custom fixture providing database connection with test schema
 
-use reinhardt_filters::{FilterBackend, RangeFilter, SimpleOrderingBackend, SimpleSearchBackend};
+use reinhardt_rest::filters::{FilterBackend, RangeFilter, SimpleOrderingBackend, SimpleSearchBackend};
 use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
 use rstest::*;
 use sqlx::Row;

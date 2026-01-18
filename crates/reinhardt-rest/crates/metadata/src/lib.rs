@@ -16,7 +16,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_metadata::{BaseMetadata, SimpleMetadata, MetadataOptions};
+//! use reinhardt_rest::metadata::{BaseMetadata, SimpleMetadata, MetadataOptions};
 //!
 //! let metadata = SimpleMetadata::new();
 //! let options = MetadataOptions {
@@ -32,7 +32,7 @@
 //! ## OpenAPI Schema Generation Example
 //!
 //! ```rust
-//! use reinhardt_metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
+//! use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
 //!
 //! let field = FieldInfoBuilder::new(FieldType::String)
 //!     .required(true)
@@ -47,7 +47,7 @@
 //! ## Type Inference Example
 //!
 //! ```rust
-//! use reinhardt_metadata::SchemaInferencer;
+//! use reinhardt_rest::metadata::SchemaInferencer;
 //!
 //! let inferencer = SchemaInferencer::new();
 //! let schema = inferencer.infer_openapi_schema("Vec<String>");
@@ -57,7 +57,7 @@
 //! ## Validation Pattern Example
 //!
 //! ```rust
-//! use reinhardt_metadata::ValidationPattern;
+//! use reinhardt_rest::metadata::ValidationPattern;
 //!
 //! let pattern = ValidationPattern::email();
 //! assert!(pattern.is_valid("user@example.com"));
@@ -66,7 +66,7 @@
 //! ## Field Dependencies Example
 //!
 //! ```rust
-//! use reinhardt_metadata::{DependencyManager, FieldDependency};
+//! use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 //!
 //! let mut manager = DependencyManager::new();
 //! manager.add_dependency(FieldDependency::requires("country", vec!["address"]));

@@ -1,6 +1,6 @@
 //! Tests for `#[derive(Schema)]` macro
 
-use reinhardt_openapi::{Schema, ToSchema};
+use reinhardt_rest::openapi::{Schema, ToSchema};
 use utoipa::openapi::{
 	Deprecated,
 	schema::{SchemaFormat, SchemaType, Type},

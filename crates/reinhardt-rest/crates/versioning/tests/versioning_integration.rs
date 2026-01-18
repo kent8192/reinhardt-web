@@ -5,10 +5,10 @@
 
 use bytes::Bytes;
 use hyper::Method;
-use reinhardt_core::http::{Request, Response, Result};
-use reinhardt_routers::ServerRouter;
+use reinhardt_http::{Request, Response, Result};
+use reinhardt_urls::routers::ServerRouter;
 use reinhardt_test::fixtures::{api_client_from_url, test_server_guard};
-use reinhardt_versioning::{
+use reinhardt_rest::versioning::{
 	AcceptHeaderVersioning, BaseVersioning, HostNameVersioning, NamespaceVersioning,
 	QueryParameterVersioning, URLPathVersioning,
 };

@@ -5,7 +5,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_rest::routers::DefaultRouter;
+//! use crate::routers::DefaultRouter;
 //!
 //! let router = DefaultRouter::new();
 //! // Note: To register a viewset, your type must implement the ViewSet trait

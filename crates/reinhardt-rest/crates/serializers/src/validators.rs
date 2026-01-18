@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```no_run
-//! use reinhardt_serializers::validators::{UniqueValidator, UniqueTogetherValidator};
+//! use reinhardt_rest::serializers::validators::{UniqueValidator, UniqueTogetherValidator};
 //! use reinhardt_db::orm::Model;
 //! use reinhardt_db::backends::DatabaseConnection;
 //! use serde::{Serialize, Deserialize};
@@ -53,7 +53,7 @@
 use crate::SerializerError;
 use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Model};
-use reinhardt_exception;
+use reinhardt_core::exception;
 use std::marker::PhantomData;
 use thiserror::Error;
 
@@ -113,7 +113,7 @@ impl From<DatabaseValidatorError> for SerializerError {
 	}
 }
 
-impl From<DatabaseValidatorError> for reinhardt_exception::Error {
+impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 	fn from(err: DatabaseValidatorError) -> Self {
 		match err {
 			DatabaseValidatorError::UniqueConstraintViolation {
@@ -128,7 +128,7 @@ impl From<DatabaseValidatorError> for reinhardt_exception::Error {
 						field, value, table
 					)
 				});
-				reinhardt_exception::Error::Conflict(msg)
+				reinhardt_core::exception::Error::Conflict(msg)
 			}
 			DatabaseValidatorError::UniqueTogetherViolation {
 				fields,
@@ -142,16 +142,16 @@ impl From<DatabaseValidatorError> for reinhardt_exception::Error {
 						fields, values, table
 					)
 				});
-				reinhardt_exception::Error::Conflict(msg)
+				reinhardt_core::exception::Error::Conflict(msg)
 			}
 			DatabaseValidatorError::FieldNotFound { field } => {
-				reinhardt_exception::Error::Validation(format!(
+				reinhardt_core::exception::Error::Validation(format!(
 					"Required field '{}' not found",
 					field
 				))
 			}
 			DatabaseValidatorError::DatabaseError { message, .. } => {
-				reinhardt_exception::Error::Database(message)
+				reinhardt_core::exception::Error::Database(message)
 			}
 		}
 	}
@@ -166,7 +166,7 @@ impl From<DatabaseValidatorError> for reinhardt_exception::Error {
 /// # Examples
 ///
 /// ```no_run
-/// # use reinhardt_serializers::validators::UniqueValidator;
+/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 /// # use reinhardt_db::orm::Model;
 /// # use reinhardt_db::backends::DatabaseConnection;
 /// # use serde::{Serialize, Deserialize};
@@ -217,7 +217,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::validators::UniqueValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -254,7 +254,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::validators::UniqueValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -348,7 +348,7 @@ impl<M: Model> UniqueValidator<M> {
 /// # Examples
 ///
 /// ```no_run
-/// # use reinhardt_serializers::validators::UniqueTogetherValidator;
+/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 /// # use reinhardt_db::orm::Model;
 /// # use reinhardt_db::backends::DatabaseConnection;
 /// # use serde::{Serialize, Deserialize};
@@ -400,7 +400,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::validators::UniqueTogetherValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -437,7 +437,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use reinhardt_serializers::validators::UniqueTogetherValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #

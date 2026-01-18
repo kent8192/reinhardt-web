@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::FullTextSearchMode;
+/// use reinhardt_rest::filters::FullTextSearchMode;
 ///
 /// let natural = FullTextSearchMode::Natural;
 /// let boolean = FullTextSearchMode::Boolean;
@@ -56,7 +56,7 @@ pub enum FullTextSearchMode {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::FullTextSearchFilter;
+/// use reinhardt_rest::filters::FullTextSearchFilter;
 ///
 /// #[derive(Clone)]
 /// struct Article {
@@ -93,7 +93,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -119,7 +119,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -140,7 +140,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -163,7 +163,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -185,7 +185,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{FullTextSearchFilter, FullTextSearchMode};
+	/// use reinhardt_rest::filters::{FullTextSearchFilter, FullTextSearchMode};
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -206,7 +206,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -227,7 +227,7 @@ impl<M> FullTextSearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FullTextSearchFilter;
+	/// use reinhardt_rest::filters::FullTextSearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {

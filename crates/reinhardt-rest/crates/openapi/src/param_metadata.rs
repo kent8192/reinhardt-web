@@ -15,8 +15,8 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_openapi::param_metadata::ParameterMetadata;
-/// use reinhardt_openapi::{Parameter, ParameterLocation, ToSchema, Required};
+/// use reinhardt_rest::openapi::param_metadata::ParameterMetadata;
+/// use reinhardt_rest::openapi::{Parameter, ParameterLocation, ToSchema, Required};
 /// use utoipa::openapi::path::ParameterBuilder;
 ///
 /// struct PathExtractor<T> {

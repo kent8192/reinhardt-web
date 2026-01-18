@@ -80,8 +80,8 @@ pub enum EnumTagging {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_openapi::enum_schema::{EnumSchemaBuilder, EnumTagging};
-/// use reinhardt_openapi::{Schema, SchemaExt};
+/// use reinhardt_rest::openapi::enum_schema::{EnumSchemaBuilder, EnumTagging};
+/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 ///
 /// // Internally tagged enum
 /// let schema = EnumSchemaBuilder::new("Message")
@@ -111,7 +111,7 @@ impl EnumSchemaBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_openapi::enum_schema::EnumSchemaBuilder;
+	/// use reinhardt_rest::openapi::enum_schema::EnumSchemaBuilder;
 	///
 	/// let builder = EnumSchemaBuilder::new("Status");
 	/// ```
@@ -129,7 +129,7 @@ impl EnumSchemaBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_openapi::enum_schema::{EnumSchemaBuilder, EnumTagging};
+	/// use reinhardt_rest::openapi::enum_schema::{EnumSchemaBuilder, EnumTagging};
 	///
 	/// let builder = EnumSchemaBuilder::new("Status")
 	///     .tagging(EnumTagging::Internal {
@@ -146,8 +146,8 @@ impl EnumSchemaBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_openapi::enum_schema::EnumSchemaBuilder;
-	/// use reinhardt_openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::enum_schema::EnumSchemaBuilder;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let builder = EnumSchemaBuilder::new("Status")
 	///     .variant("Active", Schema::object())
@@ -163,7 +163,7 @@ impl EnumSchemaBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_openapi::enum_schema::EnumSchemaBuilder;
+	/// use reinhardt_rest::openapi::enum_schema::EnumSchemaBuilder;
 	///
 	/// let builder = EnumSchemaBuilder::new("Status")
 	///     .description("User status");
@@ -178,8 +178,8 @@ impl EnumSchemaBuilder {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_openapi::enum_schema::EnumSchemaBuilder;
-	/// use reinhardt_openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::enum_schema::EnumSchemaBuilder;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let schema = EnumSchemaBuilder::new("Status")
 	///     .variant("Active", Schema::object())

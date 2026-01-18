@@ -18,10 +18,7 @@ full = ["json", "xml", "yaml"]
 
 [dependencies]
 # Base layer dependency (ORM-agnostic serialization)
-reinhardt-core = { workspace = true, features = ["serializers", "parsers"] }
-reinhardt-exception = { workspace = true }
-reinhardt-negotiation = { workspace = true }
-reinhardt-parsers = { workspace = true }
+reinhardt-core = { workspace = true, features = ["exception", "negotiation", "parsers", "serializers"] }
 
 # REST-specific dependencies
 reinhardt-db = { workspace = true, features = ["pool", "orm"] }
@@ -51,7 +48,6 @@ uuid = { workspace = true }
 testcontainers = { workspace = true }
 sea-orm = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-orm = { workspace = true }
 reinhardt-pages = { workspace = true }
 rstest = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }

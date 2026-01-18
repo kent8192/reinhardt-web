@@ -7,7 +7,7 @@
 //! various form rendering scenarios, including edge cases like posting
 //! list data and rendering forms for views that return lists.
 
-use reinhardt_browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
+use reinhardt_rest::browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
 use serde_json::json;
 
 /// POSTing a list of data to a regular view should not cause the browsable

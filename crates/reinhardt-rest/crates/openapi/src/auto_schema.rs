@@ -13,7 +13,7 @@ use crate::openapi::Schema;
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_openapi::{ToSchema, Schema};
+/// use reinhardt_rest::openapi::{ToSchema, Schema};
 /// use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 ///
 /// struct User {
@@ -241,14 +241,14 @@ impl<T: ToSchema> ToSchema for Vec<T> {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_openapi::ToSchema;
+/// use reinhardt_rest::openapi::ToSchema;
 /// use std::collections::HashMap;
 ///
 /// // Simple HashMap with primitive values
 /// let schema = <HashMap<String, i32>>::schema();
 /// // Verify it's a valid schema
 /// match schema {
-///     reinhardt_openapi::Schema::Object(_) => {},
+///     reinhardt_rest::openapi::Schema::Object(_) => {},
 ///     _ => panic!("Expected Object schema"),
 /// }
 /// ```
@@ -256,13 +256,13 @@ impl<T: ToSchema> ToSchema for Vec<T> {
 /// # Nested HashMaps
 ///
 /// ```rust
-/// use reinhardt_openapi::ToSchema;
+/// use reinhardt_rest::openapi::ToSchema;
 /// use std::collections::HashMap;
 ///
 /// // Nested HashMaps are supported
 /// let schema = <HashMap<String, HashMap<String, String>>>::schema();
 /// match schema {
-///     reinhardt_openapi::Schema::Object(_) => {},
+///     reinhardt_rest::openapi::Schema::Object(_) => {},
 ///     _ => panic!("Expected Object schema"),
 /// }
 /// ```

@@ -10,10 +10,9 @@ authors.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-reinhardt-core = { workspace = true, features = ["serializers", "http"] }
+reinhardt-core = { workspace = true, features = ["serializers"] }
 reinhardt-openapi-macros = { workspace = true }
 reinhardt-urls = { workspace = true }
-reinhardt-viewsets = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9.33"
@@ -33,6 +32,7 @@ base64 = { workspace = true }
 inventory = "0.3"
 regex = { workspace = true }
 reinhardt-pages = { workspace = true, optional = true }
+reinhardt-views = {workspace = true, features = ["viewsets"]}
 
 [features]
 default = []

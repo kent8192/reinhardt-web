@@ -18,8 +18,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_rest::parsers::JSONParser;
-//! use reinhardt_rest::routers::DefaultRouter;
+//! use crate::parsers::JSONParser;
+//! use crate::routers::DefaultRouter;
 //!
 //! // Create a JSON parser
 //! let parser = JSONParser::new();
@@ -34,12 +34,15 @@
 //! This crate contains unit tests for the integrated modules.
 //! Integration tests are located in `tests/integration/`.
 
+pub mod browsable_api;
+pub mod filters;
+pub mod metadata;
+pub mod serializers;
+pub mod throttling;
+pub mod versioning;
+
 // Re-export internal crates (2024 edition module system)
 // These modules represent the internal crates that are now part of reinhardt-rest
-
-// Serializers module - from crates/serializers
-#[cfg(feature = "serializers")]
-pub use reinhardt_serializers as serializers;
 
 // Parsers module - now part of reinhardt-rest
 #[cfg(feature = "parsers")]
@@ -48,15 +51,12 @@ pub use reinhardt_core::parsers;
 // Re-export other internal crates
 pub use reinhardt_core::negotiation;
 pub use reinhardt_core::pagination;
-pub use reinhardt_filters as filters;
-pub use reinhardt_metadata as metadata;
-pub use reinhardt_throttling as throttling;
-pub use reinhardt_versioning as versioning;
 
 // Core modules (merged from rest-core)
 pub mod authentication;
 pub mod response;
-pub mod routers;
+// NOTE: routers module removed to avoid circular dependency with reinhardt-urls
+// Use reinhardt-urls::routers directly instead
 
 #[cfg(feature = "openapi")]
 pub mod schema;
@@ -74,15 +74,12 @@ pub use authentication::{Claims, JwtAuth};
 // Re-export response types
 pub use response::{ApiResponse, IntoApiResponse, PaginatedResponse, ResponseBuilder};
 
-// Re-export router types
-pub use routers::{DefaultRouter, Route, Router, UrlPattern};
-
 // Re-export from specialized crates
-pub use reinhardt_browsable_api::*;
+pub use crate::browsable_api::*;
 
 // Re-export integrated modules at top level for convenience
 #[cfg(feature = "serializers")]
-pub use reinhardt_serializers::{
+pub use crate::serializers::{
 	ContentNegotiator, Deserializer, JsonSerializer, ModelSerializer, Serializer, SerializerError,
 	UniqueTogetherValidator, UniqueValidator,
 };
@@ -93,21 +90,21 @@ pub use reinhardt_core::parsers::{
 	Parser,
 };
 
-// OpenAPI module - from crates/openapi
+// OpenAPI module - integrated from former reinhardt-openapi subcrate
 #[cfg(feature = "openapi")]
-pub use reinhardt_openapi as openapi;
+pub mod openapi;
 
 // Re-export commonly used OpenAPI types
 #[cfg(feature = "openapi")]
-pub use reinhardt_openapi::{
+pub use crate::openapi::{
 	ComponentsExt, EnumSchemaBuilder, EnumTagging, Info, OpenApiSchema, Operation, Parameter,
 	ParameterLocation, PathItem, RequestBody, Response, Schema, SchemaExt, SchemaGenerator,
-	SchemaRegistry, Server, ToSchema, ViewSetInspector,
+	SchemaRegistry, Server, ToSchema,
 };
 
 // Re-export builders
 #[cfg(feature = "openapi")]
-pub use reinhardt_openapi::openapi::{
+pub use crate::openapi::openapi::{
 	ArrayBuilder, ComponentsBuilder, InfoBuilder, ObjectBuilder, OpenApiBuilder, OperationBuilder,
 	ParameterBuilder, PathItemBuilder, PathsBuilder, RequestBodyBuilder, ResponsesBuilder,
 	ServerBuilder, TagBuilder,
@@ -115,11 +112,11 @@ pub use reinhardt_openapi::openapi::{
 
 // Re-export OpenAPI ResponseBuilder with alias to avoid conflict with rest_core::ResponseBuilder
 #[cfg(feature = "openapi")]
-pub use reinhardt_openapi::openapi::ResponseBuilder as OpenApiResponseBuilder;
+pub use crate::openapi::openapi::ResponseBuilder as OpenApiResponseBuilder;
 
 // Re-export UI components
 #[cfg(feature = "openapi")]
-pub use reinhardt_openapi::swagger::SwaggerUI;
+pub use crate::openapi::swagger::SwaggerUI;
 
 #[cfg(test)]
 mod tests {

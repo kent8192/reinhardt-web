@@ -69,7 +69,7 @@ impl AdaptiveConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::adaptive::AdaptiveConfig;
+	/// use reinhardt_rest::throttling::adaptive::AdaptiveConfig;
 	///
 	/// let config = AdaptiveConfig::new(
 	///     (10, 60),   // Min: 10 req/min
@@ -102,7 +102,7 @@ impl Default for AdaptiveConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::adaptive::AdaptiveConfig;
+	/// use reinhardt_rest::throttling::adaptive::AdaptiveConfig;
 	///
 	/// let config = AdaptiveConfig::default();
 	/// assert_eq!(config.min_rate, (10, 60));
@@ -132,8 +132,8 @@ struct AdaptiveState {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig};
-/// use reinhardt_throttling::{MemoryBackend, Throttle};
+/// use reinhardt_rest::throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig};
+/// use reinhardt_rest::throttling::{MemoryBackend, Throttle};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
@@ -155,8 +155,8 @@ impl<B: ThrottleBackend> AdaptiveThrottle<B, SystemTimeProvider> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig};
-	/// use reinhardt_throttling::MemoryBackend;
+	/// use reinhardt_rest::throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig};
+	/// use reinhardt_rest::throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());
@@ -205,8 +205,8 @@ impl<B: ThrottleBackend, T: TimeProvider> AdaptiveThrottle<B, T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig, LoadMetrics};
-	/// use reinhardt_throttling::{MemoryBackend, Throttle};
+	/// use reinhardt_rest::throttling::adaptive::{AdaptiveThrottle, AdaptiveConfig, LoadMetrics};
+	/// use reinhardt_rest::throttling::{MemoryBackend, Throttle};
 	/// use std::sync::Arc;
 	///
 	/// # tokio_test::block_on(async {

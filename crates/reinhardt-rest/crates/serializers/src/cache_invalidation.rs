@@ -31,7 +31,7 @@ pub enum InvalidationStrategy {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::cache_invalidation::{CacheInvalidator, InvalidationStrategy};
+/// use reinhardt_rest::serializers::cache_invalidation::{CacheInvalidator, InvalidationStrategy};
 ///
 /// let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 ///

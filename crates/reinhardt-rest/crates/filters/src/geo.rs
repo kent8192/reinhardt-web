@@ -46,7 +46,7 @@ impl DistanceUnit {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::geo::{DistanceFilter, DistanceUnit};
+/// use reinhardt_rest::filters::geo::{DistanceFilter, DistanceUnit};
 /// use geo_types::Point;
 ///
 /// let center = Point::new(0.0, 0.0);
@@ -68,7 +68,7 @@ impl<M> DistanceFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::geo::{DistanceFilter, DistanceUnit};
+	/// use reinhardt_rest::filters::geo::{DistanceFilter, DistanceUnit};
 	/// use geo_types::Point;
 	///
 	/// let center = Point::new(37.7749, -122.4194); // San Francisco
@@ -133,7 +133,7 @@ impl<M> DistanceFilter<M> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::geo::BoundingBoxFilter;
+/// use reinhardt_rest::filters::geo::BoundingBoxFilter;
 /// use geo_types::Rect;
 ///
 /// let bbox = Rect::new((0.0, 0.0), (10.0, 10.0));
@@ -151,7 +151,7 @@ impl<M> BoundingBoxFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::geo::BoundingBoxFilter;
+	/// use reinhardt_rest::filters::geo::BoundingBoxFilter;
 	/// use geo_types::Rect;
 	///
 	/// // San Francisco Bay Area approximate bounds
@@ -190,7 +190,7 @@ impl<M> BoundingBoxFilter<M> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::geo::PolygonFilter;
+/// use reinhardt_rest::filters::geo::PolygonFilter;
 /// use geo_types::{coord, Polygon};
 ///
 /// let polygon = Polygon::new(
@@ -217,7 +217,7 @@ impl<M> PolygonFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::geo::PolygonFilter;
+	/// use reinhardt_rest::filters::geo::PolygonFilter;
 	/// use geo_types::{coord, Polygon};
 	///
 	/// // Triangle polygon
@@ -278,7 +278,7 @@ impl<M> PolygonFilter<M> {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::geo::{NearbyFilter, DistanceUnit};
+/// use reinhardt_rest::filters::geo::{NearbyFilter, DistanceUnit};
 /// use geo_types::Point;
 ///
 /// let center = Point::new(0.0, 0.0);
@@ -301,7 +301,7 @@ impl<M> NearbyFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::geo::NearbyFilter;
+	/// use reinhardt_rest::filters::geo::NearbyFilter;
 	/// use geo_types::Point;
 	///
 	/// let center = Point::new(37.7749, -122.4194);

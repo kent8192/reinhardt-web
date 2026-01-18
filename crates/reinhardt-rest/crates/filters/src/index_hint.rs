@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
+//! use reinhardt_rest::filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
 //! use std::collections::HashMap;
 //!
 //! # async fn example() {
@@ -35,7 +35,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::IndexStrategy;
+/// use reinhardt_rest::filters::IndexStrategy;
 ///
 /// let strategy = IndexStrategy::Use;
 /// let force_strategy = IndexStrategy::Force;
@@ -68,7 +68,7 @@ pub enum IndexStrategy {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::{IndexHint, IndexStrategy};
+/// use reinhardt_rest::filters::{IndexHint, IndexStrategy};
 ///
 /// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 /// // Verify the index hint is created successfully
@@ -97,7 +97,7 @@ impl IndexHint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHint, IndexStrategy};
+	/// use reinhardt_rest::filters::{IndexHint, IndexStrategy};
 	///
 	/// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 	/// // Verify the hint is created successfully
@@ -119,7 +119,7 @@ impl IndexHint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHint, IndexStrategy};
+	/// use reinhardt_rest::filters::{IndexHint, IndexStrategy};
 	///
 	/// let hint = IndexHint::new("idx_email", IndexStrategy::Use)
 	///     .for_table("users");
@@ -136,7 +136,7 @@ impl IndexHint {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHint, IndexStrategy, DatabaseType};
+	/// use reinhardt_rest::filters::{IndexHint, IndexStrategy, DatabaseType};
 	///
 	/// let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 	/// let mysql_sql = hint.to_sql_hint(DatabaseType::MySQL);
@@ -202,7 +202,7 @@ impl IndexHint {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
+/// use reinhardt_rest::filters::{FilterBackend, IndexHintFilter, IndexStrategy, DatabaseType};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -241,7 +241,7 @@ impl IndexHintFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::IndexHintFilter;
+	/// use reinhardt_rest::filters::IndexHintFilter;
 	///
 	/// let filter = IndexHintFilter::new();
 	/// // Verify the filter is created successfully
@@ -260,7 +260,7 @@ impl IndexHintFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHintFilter, DatabaseType};
+	/// use reinhardt_rest::filters::{IndexHintFilter, DatabaseType};
 	///
 	/// let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL);
 	/// let sqlite_filter = IndexHintFilter::for_database(DatabaseType::SQLite);
@@ -288,7 +288,7 @@ impl IndexHintFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHintFilter, IndexStrategy};
+	/// use reinhardt_rest::filters::{IndexHintFilter, IndexStrategy};
 	///
 	/// let filter = IndexHintFilter::new()
 	///     .with_index("idx_users_email", IndexStrategy::Use)
@@ -306,7 +306,7 @@ impl IndexHintFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHintFilter, IndexHint, IndexStrategy};
+	/// use reinhardt_rest::filters::{IndexHintFilter, IndexHint, IndexStrategy};
 	///
 	/// let hint = IndexHint::new("idx_email", IndexStrategy::Use)
 	///     .for_table("users");
@@ -328,7 +328,7 @@ impl IndexHintFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{IndexHintFilter, IndexStrategy};
+	/// use reinhardt_rest::filters::{IndexHintFilter, IndexStrategy};
 	///
 	/// let filter = IndexHintFilter::new()
 	///     .with_index("idx_users_email", IndexStrategy::Use)

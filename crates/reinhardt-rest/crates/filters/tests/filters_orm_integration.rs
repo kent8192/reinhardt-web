@@ -28,7 +28,7 @@
 //! - filter_test_db: Custom fixture providing database connection with test schema
 
 use reinhardt_db::orm::{Filter, FilterCondition, FilterOperator, FilterValue};
-use reinhardt_filters::{
+use reinhardt_rest::filters::{
 	FilterBackend, FuzzyAlgorithm, FuzzySearchFilter, RangeFilter, SimpleOrderingBackend,
 	SimpleSearchBackend,
 };

@@ -8,7 +8,7 @@ use crate::openapi::{
 	/* Responses, */ Schema,
 };
 use hyper::Method;
-use reinhardt_viewsets::{ActionMetadata, ViewSet};
+use reinhardt_views::viewsets::{ActionMetadata, ViewSet};
 use std::collections::HashMap;
 use utoipa::openapi::ContentBuilder;
 use utoipa::openapi::path::{HttpMethod, OperationBuilder, ParameterBuilder, PathItemBuilder};
@@ -21,8 +21,8 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 /// # Example
 ///
 /// ```rust,no_run
-/// # use reinhardt_openapi::ViewSetInspector;
-/// # use reinhardt_viewsets::ModelViewSet;
+/// # use reinhardt_rest::openapi::ViewSetInspector;
+/// # use reinhardt_views::viewsets::ModelViewSet;
 /// #
 /// # #[derive(Debug, Clone)]
 /// # struct User {
@@ -71,7 +71,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::ViewSetInspector;
+	/// # use reinhardt_rest::openapi::ViewSetInspector;
 	/// let inspector = ViewSetInspector::new();
 	/// ```
 	pub fn new() -> Self {
@@ -85,7 +85,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::{ViewSetInspector, InspectorConfig};
+	/// # use reinhardt_rest::openapi::{ViewSetInspector, InspectorConfig};
 	/// let config = InspectorConfig {
 	///     include_descriptions: false,
 	///     include_tags: true,
@@ -105,8 +105,8 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::ViewSetInspector;
-	/// # use reinhardt_viewsets::ModelViewSet;
+	/// # use reinhardt_rest::openapi::ViewSetInspector;
+	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// #
 	/// # #[derive(Debug, Clone)]
 	/// # struct User { id: i64, username: String }
@@ -230,8 +230,8 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::ViewSetInspector;
-	/// # use reinhardt_viewsets::ModelViewSet;
+	/// # use reinhardt_rest::openapi::ViewSetInspector;
+	/// # use reinhardt_views::viewsets::ModelViewSet;
 	/// #
 	/// # #[derive(Debug, Clone)]
 	/// # struct User { id: i64 }
@@ -282,7 +282,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::ViewSetInspector;
+	/// # use reinhardt_rest::openapi::ViewSetInspector;
 	/// let inspector = ViewSetInspector::new();
 	/// let schema = inspector.extract_model_schema("User");
 	///
@@ -332,7 +332,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::{ViewSetInspector, ToSchema, Schema};
+	/// # use reinhardt_rest::openapi::{ViewSetInspector, ToSchema, Schema};
 	/// # use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -407,7 +407,7 @@ impl ViewSetInspector {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// # use reinhardt_openapi::{ViewSetInspector, ToSchema, Schema};
+	/// # use reinhardt_rest::openapi::{ViewSetInspector, ToSchema, Schema};
 	/// # use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
 	/// #
 	/// # #[derive(Debug, Clone)]
@@ -680,7 +680,7 @@ impl Default for ViewSetInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_viewsets::ModelViewSet;
+	use reinhardt_views::viewsets::ModelViewSet;
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]

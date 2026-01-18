@@ -61,7 +61,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let builder = FieldInfoBuilder::new(FieldType::String);
 	/// let field = builder.build();
@@ -91,7 +91,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .required(true)
@@ -107,7 +107,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::Integer)
 	///     .read_only(true)
@@ -123,7 +123,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .label("Email Address")
@@ -139,7 +139,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::Email)
 	///     .help_text("Enter a valid email address")
@@ -155,7 +155,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .min_length(3)
@@ -171,7 +171,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .max_length(100)
@@ -187,7 +187,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::Integer)
 	///     .min_value(1.0)
@@ -203,7 +203,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::Float)
 	///     .max_value(100.0)
@@ -219,7 +219,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType, ChoiceInfo};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, ChoiceInfo};
 	///
 	/// let choices = vec![
 	///     ChoiceInfo {
@@ -246,7 +246,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let child_field = FieldInfoBuilder::new(FieldType::String)
 	///     .required(true)
@@ -268,7 +268,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	/// use std::collections::HashMap;
 	///
 	/// let mut children = HashMap::new();
@@ -298,7 +298,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType, FieldValidator};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
 	///
 	/// let validator = FieldValidator {
 	///     validator_type: "email".to_string(),
@@ -325,7 +325,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType, FieldValidator};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
 	///
 	/// let validators = vec![
 	///     FieldValidator {
@@ -357,7 +357,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .required(false)
@@ -376,7 +376,7 @@ impl FieldInfoBuilder {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_metadata::{FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType};
 	///
 	/// let field = FieldInfoBuilder::new(FieldType::String)
 	///     .required(true)

@@ -38,7 +38,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Serialize, Deserialize)]
@@ -68,7 +68,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Serialize, Deserialize)]
@@ -97,7 +97,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	///
 	/// let response: ApiResponse<String> = ApiResponse::error("Database connection failed", 500);
 	///
@@ -119,7 +119,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use std::collections::HashMap;
 	///
 	/// let mut errors = HashMap::new();
@@ -146,7 +146,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	///
 	/// let response: ApiResponse<String> = ApiResponse::not_found();
 	///
@@ -168,7 +168,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	///
 	/// let response: ApiResponse<String> = ApiResponse::unauthorized();
 	///
@@ -190,7 +190,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	///
 	/// let response: ApiResponse<String> = ApiResponse::forbidden();
 	///
@@ -212,7 +212,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Serialize, Deserialize)]
@@ -234,7 +234,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Serialize, Deserialize)]
@@ -259,7 +259,7 @@ impl<T> ApiResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ApiResponse;
+	/// use crate::ApiResponse;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Serialize, Deserialize)]
@@ -296,7 +296,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let builder = ResponseBuilder::<String>::new();
 	/// let response = builder.build();
@@ -318,7 +318,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let response = ResponseBuilder::new()
 	///     .data("Success data")
@@ -336,7 +336,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let response = ResponseBuilder::<String>::new()
 	///     .error("Something went wrong")
@@ -355,7 +355,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	/// use std::collections::HashMap;
 	///
 	/// let mut errors = HashMap::new();
@@ -378,7 +378,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let response = ResponseBuilder::<String>::new()
 	///     .status(201)
@@ -395,7 +395,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let response = ResponseBuilder::<String>::new()
 	///     .message("Operation completed successfully")
@@ -412,7 +412,7 @@ impl<T> ResponseBuilder<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::ResponseBuilder;
+	/// use crate::ResponseBuilder;
 	///
 	/// let response = ResponseBuilder::<String>::new()
 	///     .data("Success".to_string())

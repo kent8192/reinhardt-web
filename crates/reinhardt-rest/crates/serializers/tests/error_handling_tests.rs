@@ -3,7 +3,7 @@
 //! These tests verify that errors are properly constructed, formatted,
 //! and provide useful information for debugging and user feedback.
 
-use reinhardt_serializers::{SerializerError, ValidatorError};
+use reinhardt_rest::serializers::{SerializerError, ValidatorError};
 use std::collections::HashMap;
 
 #[test]

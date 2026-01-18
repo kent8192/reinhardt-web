@@ -25,7 +25,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author");
 	/// // Verify the config is created with correct defaults
@@ -48,7 +48,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author").depth(2);
 	/// // Verify the depth is set correctly
@@ -65,7 +65,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author").read_only();
 	/// // Verify read_only flag is set
@@ -82,7 +82,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author").allow_create();
 	/// // Verify allow_create flag is set
@@ -99,7 +99,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author").allow_update();
 	/// // Verify allow_update flag is set
@@ -116,7 +116,7 @@ impl NestedFieldConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedFieldConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedFieldConfig;
 	///
 	/// let config = NestedFieldConfig::new("author").writable();
 	/// // Verify both allow_create and allow_update flags are set
@@ -144,7 +144,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::NestedSerializerConfig;
+	/// use reinhardt_rest::serializers::nested_config::NestedSerializerConfig;
 	///
 	/// let config = NestedSerializerConfig::new();
 	/// // Verify the config is created successfully
@@ -161,7 +161,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author").depth(2));
@@ -178,7 +178,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author"));
@@ -196,7 +196,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author"));
@@ -214,7 +214,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author"));
@@ -233,7 +233,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author"));
@@ -252,7 +252,7 @@ impl NestedSerializerConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
+	/// use reinhardt_rest::serializers::nested_config::{NestedSerializerConfig, NestedFieldConfig};
 	///
 	/// let mut config = NestedSerializerConfig::new();
 	/// config.add_nested_field(NestedFieldConfig::new("author").depth(3));

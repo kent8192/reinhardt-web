@@ -14,8 +14,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_versioning::{BaseVersioning, AcceptHeaderVersioning, QueryParameterVersioning};
-//! use reinhardt_versioning::{VersioningMiddleware, RequestVersionExt};
+//! use reinhardt_rest::versioning::{BaseVersioning, AcceptHeaderVersioning, QueryParameterVersioning};
+//! use reinhardt_rest::versioning::{VersioningMiddleware, RequestVersionExt};
 //!
 //! // Accept header versioning
 //! let accept_versioning = AcceptHeaderVersioning::new()
@@ -45,7 +45,7 @@ pub use handler::{
 pub use middleware::{ApiVersion, RequestVersionExt, VersioningMiddleware};
 use regex::Regex;
 use reinhardt_core::exception::{Error, Result};
-use reinhardt_core::http::Request;
+use reinhardt_http::Request;
 pub use reverse::{
 	ApiDocFormat, ApiDocUrlBuilder, UrlReverseManager, VersionedUrlBuilder,
 	VersioningStrategy as ReverseVersioningStrategy,
@@ -119,7 +119,7 @@ impl AcceptHeaderVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{AcceptHeaderVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{AcceptHeaderVersioning, BaseVersioning};
 	///
 	/// let versioning = AcceptHeaderVersioning::new();
 	/// assert_eq!(versioning.default_version.as_deref(), None);
@@ -137,7 +137,7 @@ impl AcceptHeaderVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{AcceptHeaderVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{AcceptHeaderVersioning, BaseVersioning};
 	///
 	/// let versioning = AcceptHeaderVersioning::new()
 	///     .with_default_version("1.0");
@@ -152,7 +152,7 @@ impl AcceptHeaderVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{AcceptHeaderVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{AcceptHeaderVersioning, BaseVersioning};
 	///
 	/// let versioning = AcceptHeaderVersioning::new()
 	///     .with_allowed_versions(vec!["1.0", "2.0", "3.0"]);
@@ -169,7 +169,7 @@ impl AcceptHeaderVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{AcceptHeaderVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{AcceptHeaderVersioning, BaseVersioning};
 	///
 	/// let versioning = AcceptHeaderVersioning::new()
 	///     .with_version_param("api-version");
@@ -254,7 +254,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{URLPathVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, BaseVersioning};
 	///
 	/// let versioning = URLPathVersioning::new();
 	/// assert_eq!(versioning.default_version.as_deref(), None);
@@ -272,7 +272,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{URLPathVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, BaseVersioning};
 	///
 	/// let versioning = URLPathVersioning::new()
 	///     .with_default_version("1.0");
@@ -287,7 +287,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{URLPathVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, BaseVersioning};
 	///
 	/// let versioning = URLPathVersioning::new()
 	///     .with_allowed_versions(vec!["1", "2", "3"]);
@@ -303,7 +303,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{URLPathVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, BaseVersioning};
 	///
 	/// let versioning = URLPathVersioning::new()
 	///     .with_version_param("v");
@@ -318,7 +318,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::URLPathVersioning;
+	/// use reinhardt_rest::versioning::URLPathVersioning;
 	/// use regex::Regex;
 	///
 	/// let custom_regex = Regex::new(r"/api/v(\d+)").unwrap();
@@ -338,7 +338,7 @@ impl URLPathVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::URLPathVersioning;
+	/// use reinhardt_rest::versioning::URLPathVersioning;
 	///
 	/// let versioning = URLPathVersioning::new()
 	///     .with_pattern("/v{version}/");
@@ -418,7 +418,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::HostNameVersioning;
+	/// use reinhardt_rest::versioning::HostNameVersioning;
 	///
 	/// let versioning = HostNameVersioning::new();
 	/// assert_eq!(versioning.default_version.as_deref(), None);
@@ -436,7 +436,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::HostNameVersioning;
+	/// use reinhardt_rest::versioning::HostNameVersioning;
 	///
 	/// let versioning = HostNameVersioning::new()
 	///     .with_default_version("1.0");
@@ -451,7 +451,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{HostNameVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{HostNameVersioning, BaseVersioning};
 	///
 	/// let versioning = HostNameVersioning::new()
 	///     .with_allowed_versions(vec!["v1", "v2", "v3"]);
@@ -467,7 +467,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::HostNameVersioning;
+	/// use reinhardt_rest::versioning::HostNameVersioning;
 	/// use regex::Regex;
 	///
 	/// let custom_regex = Regex::new(r"^v(\d+)-api\.").unwrap();
@@ -487,7 +487,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::HostNameVersioning;
+	/// use reinhardt_rest::versioning::HostNameVersioning;
 	///
 	/// let versioning = HostNameVersioning::new()
 	///     .with_host_format("{version}.api.example.com");
@@ -511,7 +511,7 @@ impl HostNameVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::HostNameVersioning;
+	/// use reinhardt_rest::versioning::HostNameVersioning;
 	///
 	/// let versioning = HostNameVersioning::new()
 	///     .with_hostname_pattern("v1", "v1.api.example.com")
@@ -595,7 +595,7 @@ impl QueryParameterVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::QueryParameterVersioning;
+	/// use reinhardt_rest::versioning::QueryParameterVersioning;
 	///
 	/// let versioning = QueryParameterVersioning::new();
 	/// assert_eq!(versioning.default_version.as_deref(), None);
@@ -613,7 +613,7 @@ impl QueryParameterVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::QueryParameterVersioning;
+	/// use reinhardt_rest::versioning::QueryParameterVersioning;
 	///
 	/// let versioning = QueryParameterVersioning::new()
 	///     .with_default_version("1.0");
@@ -628,7 +628,7 @@ impl QueryParameterVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{QueryParameterVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{QueryParameterVersioning, BaseVersioning};
 	///
 	/// let versioning = QueryParameterVersioning::new()
 	///     .with_allowed_versions(vec!["1.0", "2.0", "3.0"]);
@@ -644,7 +644,7 @@ impl QueryParameterVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::QueryParameterVersioning;
+	/// use reinhardt_rest::versioning::QueryParameterVersioning;
 	///
 	/// let versioning = QueryParameterVersioning::new()
 	///     .with_version_param("v");
@@ -723,7 +723,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	///
 	/// let versioning = NamespaceVersioning::new();
 	/// assert_eq!(versioning.default_version.as_deref(), None);
@@ -742,7 +742,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_default_version("1.0");
@@ -757,7 +757,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::{NamespaceVersioning, BaseVersioning};
+	/// use reinhardt_rest::versioning::{NamespaceVersioning, BaseVersioning};
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_allowed_versions(vec!["1", "1.0", "2", "2.0"]);
@@ -777,7 +777,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_namespace_prefix("api");
@@ -796,7 +796,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	///
 	/// let versioning = NamespaceVersioning::new()
 	///     .with_pattern("/api/v{version}/");
@@ -872,7 +872,7 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	/// use reinhardt_urls::routers::DefaultRouter;
 	///
 	/// let versioning = NamespaceVersioning::new()
@@ -899,13 +899,13 @@ impl NamespaceVersioning {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_versioning::NamespaceVersioning;
+	/// use reinhardt_rest::versioning::NamespaceVersioning;
 	/// use reinhardt_urls::routers::{DefaultRouter, Router, path};
 	/// use reinhardt_core::Handler;
 	/// use std::sync::Arc;
 	///
 	/// # use async_trait::async_trait;
-	/// # use reinhardt_core::http::{Request, Response, Result};
+	/// # use reinhardt_http::{Request, Response, Result};
 	/// # struct DummyHandler;
 	/// # #[async_trait]
 	/// # impl Handler for DummyHandler {
@@ -938,7 +938,7 @@ pub mod test_utils {
 	use bytes::Bytes;
 	use hyper::header::HeaderName;
 	use hyper::{HeaderMap, Method, Uri, Version};
-	use reinhardt_core::http::Request;
+	use reinhardt_http::Request;
 
 	pub fn create_test_request(uri: &str, headers: Vec<(String, String)>) -> Request {
 		let uri = uri.parse::<Uri>().unwrap();
@@ -1099,7 +1099,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_namespace_versioning_router_integration() {
-		use reinhardt_core::{Handler, http::Response};
+		use reinhardt_http::{Handler, Response};
 		use reinhardt_urls::routers::{DefaultRouter, Router, path};
 		use std::sync::Arc;
 

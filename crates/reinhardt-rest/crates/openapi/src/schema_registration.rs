@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_openapi::{Schema, ToSchema};
+//! use reinhardt_rest::openapi::{Schema, ToSchema};
 //!
 //! #[derive(Schema)]
 //! pub struct User {
@@ -53,7 +53,7 @@ impl SchemaRegistration {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_openapi::{Schema, SchemaExt, SchemaRegistration, ToSchema};
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt, SchemaRegistration, ToSchema};
 	///
 	/// struct User {
 	///     id: i64,

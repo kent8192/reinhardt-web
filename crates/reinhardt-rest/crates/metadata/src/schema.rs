@@ -50,7 +50,7 @@ pub struct OpenApiSchema {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
+/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
 ///
 /// let field = FieldInfoBuilder::new(FieldType::String)
 ///     .required(true)
@@ -222,7 +222,7 @@ pub fn generate_field_schema(field: &FieldInfo) -> OpenApiSchema {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_metadata::{FieldInfoBuilder, FieldType, generate_object_schema};
+/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, generate_object_schema};
 /// use std::collections::HashMap;
 ///
 /// let mut fields = HashMap::new();

@@ -19,7 +19,7 @@ impl UserRateThrottle<MemoryBackend> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::UserRateThrottle;
+	/// use reinhardt_rest::throttling::UserRateThrottle;
 	///
 	// Allow 100 requests per 60 seconds per user
 	/// let throttle = UserRateThrottle::new(100, 60);
@@ -47,7 +47,7 @@ impl<B: ThrottleBackend> UserRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::{UserRateThrottle, MemoryBackend};
+	/// use reinhardt_rest::throttling::{UserRateThrottle, MemoryBackend};
 	///
 	/// let backend = MemoryBackend::new();
 	/// let throttle = UserRateThrottle::with_backend(100, 60, backend);

@@ -120,7 +120,7 @@ impl<T, RelatedItem> Clone for SingleRelationResolverFn<T, RelatedItem> {
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_serializers::relation_fields_orm::PrimaryKeyRelatedFieldORM;
+/// use reinhardt_rest::serializers::relation_fields_orm::PrimaryKeyRelatedFieldORM;
 ///
 /// // Field that references User by ID
 /// let field = PrimaryKeyRelatedFieldORM::<User>::new();
@@ -362,7 +362,7 @@ where
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_serializers::relation_fields_orm::SlugRelatedFieldORM;
+/// use reinhardt_rest::serializers::relation_fields_orm::SlugRelatedFieldORM;
 ///
 /// // Field that references User by username
 /// let field = SlugRelatedFieldORM::<User>::new("username");
@@ -560,7 +560,7 @@ where
 /// # Examples
 ///
 /// ```rust,no_run,ignore
-/// use reinhardt_serializers::relation_fields_orm::QueryOptimizer;
+/// use reinhardt_rest::serializers::relation_fields_orm::QueryOptimizer;
 ///
 /// let optimizer = QueryOptimizer::new()
 ///     .with_select_related(vec!["author", "category"])

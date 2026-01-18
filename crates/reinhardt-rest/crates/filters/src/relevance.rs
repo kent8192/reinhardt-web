@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use reinhardt_filters::{RelevanceScorer, ScoringAlgorithm};
+//! use reinhardt_rest::filters::{RelevanceScorer, ScoringAlgorithm};
 //!
 //! # async fn example() {
 //! let scorer = RelevanceScorer::new()
@@ -28,7 +28,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::ScoringAlgorithm;
+/// use reinhardt_rest::filters::ScoringAlgorithm;
 ///
 /// let tfidf = ScoringAlgorithm::TfIdf;
 /// let bm25 = ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 };
@@ -74,7 +74,7 @@ impl Default for ScoringAlgorithm {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::FieldBoost;
+/// use reinhardt_rest::filters::FieldBoost;
 ///
 /// let boost = FieldBoost::new("title", 2.0);
 /// // Verify the field boost is created successfully
@@ -101,7 +101,7 @@ impl FieldBoost {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::FieldBoost;
+	/// use reinhardt_rest::filters::FieldBoost;
 	///
 	/// let title_boost = FieldBoost::new("title", 2.0);
 	/// let content_boost = FieldBoost::new("content", 1.0);
@@ -126,7 +126,7 @@ impl FieldBoost {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::ScoredResult;
+/// use reinhardt_rest::filters::ScoredResult;
 ///
 /// let result = ScoredResult::new(42, 0.85);
 /// // Verify the scored result is created with correct values
@@ -151,7 +151,7 @@ impl ScoredResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::ScoredResult;
+	/// use reinhardt_rest::filters::ScoredResult;
 	///
 	/// let result = ScoredResult::new(42, 0.85);
 	/// assert_eq!(result.id, 42);
@@ -170,7 +170,7 @@ impl ScoredResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::ScoredResult;
+	/// use reinhardt_rest::filters::ScoredResult;
 	/// use std::collections::HashMap;
 	///
 	/// let mut details = HashMap::new();
@@ -196,7 +196,7 @@ impl ScoredResult {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_filters::{FilterBackend, RelevanceScorer, ScoringAlgorithm};
+/// use reinhardt_rest::filters::{FilterBackend, RelevanceScorer, ScoringAlgorithm};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -232,7 +232,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::RelevanceScorer;
+	/// use reinhardt_rest::filters::RelevanceScorer;
 	///
 	/// let scorer = RelevanceScorer::new();
 	/// // Verify the scorer is created successfully
@@ -252,7 +252,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{RelevanceScorer, ScoringAlgorithm};
+	/// use reinhardt_rest::filters::{RelevanceScorer, ScoringAlgorithm};
 	///
 	/// let scorer = RelevanceScorer::new()
 	///     .with_algorithm(ScoringAlgorithm::TfIdf);
@@ -269,7 +269,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::RelevanceScorer;
+	/// use reinhardt_rest::filters::RelevanceScorer;
 	///
 	/// let scorer = RelevanceScorer::new()
 	///     .with_boost_field("title", 2.0)
@@ -287,7 +287,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::{RelevanceScorer, FieldBoost};
+	/// use reinhardt_rest::filters::{RelevanceScorer, FieldBoost};
 	///
 	/// let boost = FieldBoost::new("title", 2.0);
 	/// let scorer = RelevanceScorer::new()
@@ -307,7 +307,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::RelevanceScorer;
+	/// use reinhardt_rest::filters::RelevanceScorer;
 	///
 	/// let scorer = RelevanceScorer::new()
 	///     .with_min_score(0.3);
@@ -324,7 +324,7 @@ impl RelevanceScorer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_filters::RelevanceScorer;
+	/// use reinhardt_rest::filters::RelevanceScorer;
 	///
 	/// let scorer = RelevanceScorer::new()
 	///     .set_enabled(false);

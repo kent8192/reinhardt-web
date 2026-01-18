@@ -3,7 +3,7 @@
 //! This module tests the integration of various throttling algorithms with MemoryBackend,
 //! focusing on real-world usage patterns and time-based behavior simulation.
 
-use reinhardt_throttling::{
+use reinhardt_rest::throttling::{
 	AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle,
 	adaptive::{AdaptiveConfig, AdaptiveThrottle, LoadMetrics},
 	backend::{MemoryBackend, ThrottleBackend},

@@ -76,7 +76,7 @@ impl BrowsableApiRenderer {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_browsable_api::renderer::BrowsableApiRenderer;
+	/// use reinhardt_rest::browsable_api::renderer::BrowsableApiRenderer;
 	/// let renderer = BrowsableApiRenderer::new();
 	/// ```
 	pub fn new() -> Self {

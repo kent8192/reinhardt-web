@@ -14,7 +14,7 @@ impl ScopedRateThrottle<MemoryBackend> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::ScopedRateThrottle;
+	/// use reinhardt_rest::throttling::ScopedRateThrottle;
 	///
 	/// let throttle = ScopedRateThrottle::new();
 	/// assert_eq!(throttle.scopes.len(), 0);
@@ -39,7 +39,7 @@ impl<B: ThrottleBackend> ScopedRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::{ScopedRateThrottle, MemoryBackend};
+	/// use reinhardt_rest::throttling::{ScopedRateThrottle, MemoryBackend};
 	///
 	/// let backend = MemoryBackend::new();
 	/// let throttle = ScopedRateThrottle::with_backend(backend);
@@ -57,7 +57,7 @@ impl<B: ThrottleBackend> ScopedRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_throttling::ScopedRateThrottle;
+	/// use reinhardt_rest::throttling::ScopedRateThrottle;
 	///
 	/// let throttle = ScopedRateThrottle::new()
 	///     .add_scope("api", 100, 60)

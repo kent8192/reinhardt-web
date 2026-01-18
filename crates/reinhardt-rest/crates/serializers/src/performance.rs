@@ -7,7 +7,7 @@
 //! - Performance monitoring utilities
 
 use crate::{FieldInfo, SerializerError};
-// Note: reinhardt_orm::Model will be needed when database validation is implemented
+// Note: reinhardt_db::orm::Model will be needed when database validation is implemented
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -49,7 +49,7 @@ impl UniqueCheckQuery {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::performance::IntrospectionCache;
+/// use reinhardt_rest::serializers::performance::IntrospectionCache;
 ///
 /// let cache = IntrospectionCache::new();
 ///
@@ -132,7 +132,7 @@ impl Default for IntrospectionCache {
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use reinhardt_serializers::performance::BatchValidator;
+/// use reinhardt_rest::serializers::performance::BatchValidator;
 ///
 /// let mut validator = BatchValidator::new();
 ///
@@ -167,7 +167,7 @@ impl BatchValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_serializers::performance::BatchValidator;
+	/// use reinhardt_rest::serializers::performance::BatchValidator;
 	///
 	/// let mut validator = BatchValidator::new();
 	/// validator.add_unique_check("users", "email", "test@example.com");
@@ -403,7 +403,7 @@ impl Default for BatchValidator {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::performance::QueryCache;
+/// use reinhardt_rest::serializers::performance::QueryCache;
 /// use std::time::Duration;
 ///
 /// let cache = QueryCache::new(Duration::from_secs(300)); // 5 minutes TTL
@@ -498,7 +498,7 @@ impl QueryCache {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::performance::PerformanceMetrics;
+/// use reinhardt_rest::serializers::performance::PerformanceMetrics;
 ///
 /// let metrics = PerformanceMetrics::new();
 ///
@@ -743,7 +743,7 @@ mod tests {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_serializers::performance::N1Detector;
+/// use reinhardt_rest::serializers::performance::N1Detector;
 ///
 /// let mut detector = N1Detector::new();
 ///

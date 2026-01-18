@@ -22,7 +22,7 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use reinhardt_openapi::{SchemaGenerator, OpenApiSchema};
+//! use reinhardt_rest::openapi::{SchemaGenerator, OpenApiSchema};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Generate schema from ViewSets
@@ -44,7 +44,7 @@
 //! ### Basic Usage
 //!
 //! ```rust,ignore
-//! use reinhardt_openapi::Schema;
+//! use reinhardt_rest::openapi::Schema;
 //!
 //! #[derive(Schema)]
 //! struct User {
@@ -77,7 +77,7 @@
 //!
 //! ```rust,ignore
 //! use serde::{Deserialize, Serialize};
-//! use reinhardt_openapi::Schema;
+//! use reinhardt_rest::openapi::Schema;
 //!
 //! #[derive(Serialize, Deserialize, Schema)]
 //! #[serde(rename_all = "camelCase")]
@@ -95,7 +95,7 @@
 //! Support for various enum representations:
 //!
 //! ```rust,ignore
-//! use reinhardt_openapi::Schema;
+//! use reinhardt_rest::openapi::Schema;
 //!
 //! // Simple enum (string schema)
 //! #[derive(Schema)]
@@ -120,7 +120,7 @@
 //! Manage and reference schemas centrally:
 //!
 //! ```rust,ignore
-//! use reinhardt_openapi::SchemaRegistry;
+//! use reinhardt_rest::openapi::SchemaRegistry;
 //!
 //! let mut registry = SchemaRegistry::new();
 //!
@@ -134,7 +134,7 @@
 //! ## Swagger UI Integration
 //!
 //! ```rust,ignore
-//! use reinhardt_openapi::{SwaggerUI, RedocUI};
+//! use reinhardt_rest::openapi::{SwaggerUI, RedocUI};
 //!
 //! // Swagger UI endpoint
 //! let swagger = SwaggerUI::new("/api/openapi.json")
