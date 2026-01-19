@@ -580,7 +580,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_add_field_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let add = AddField::new(
 			"users",
@@ -604,7 +604,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_remove_field_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let remove = RemoveField::new("users", "email");
 		let editor = MockSchemaEditor::new();
@@ -619,7 +619,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_rename_field_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let rename = RenameField::new("users", "email", "email_address");
 		let editor = MockSchemaEditor::new();

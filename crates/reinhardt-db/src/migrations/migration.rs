@@ -319,7 +319,8 @@ impl Migration {
 
 #[cfg(test)]
 mod migrations_extended_tests {
-	use crate::migrations::FieldType;
+	use crate::migrations::operations;
+	use crate::migrations::{FieldType, ForeignKeyAction};
 
 	#[test]
 	// From: Django/migrations
@@ -858,8 +859,8 @@ mod migrations_extended_tests {
 				columns: vec!["author_id".to_string()],
 				referenced_table: "users".to_string(),
 				referenced_columns: vec!["id".to_string()],
-				on_delete: super::ForeignKeyAction::Cascade,
-				on_update: super::ForeignKeyAction::Cascade,
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
 				deferrable: None,
 			}],
 			without_rowid: None,
@@ -1660,7 +1661,7 @@ mod migrations_extended_tests {
 			mysql_options: None,
 			operator_class: None,
 		};
-		let sql = index_op.to_sql(&super::operations::SqlDialect::Postgres);
+		let sql = index_op.to_sql(&operations::SqlDialect::Postgres);
 
 		assert!(sql.contains("CREATE UNIQUE INDEX"));
 		assert!(state.get_model("testapp", "users").is_some());
@@ -1698,7 +1699,7 @@ mod migrations_extended_tests {
 			mysql_options: None,
 			operator_class: None,
 		};
-		let sql = index_op.to_sql(&super::operations::SqlDialect::Sqlite);
+		let sql = index_op.to_sql(&operations::SqlDialect::Sqlite);
 
 		assert!(sql.contains("CREATE UNIQUE INDEX"));
 		assert!(state.get_model("app", "products").is_some());

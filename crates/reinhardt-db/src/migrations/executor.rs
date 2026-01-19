@@ -9,8 +9,8 @@ use super::{
 	DatabaseMigrationRecorder, ForeignKeyAction, Migration, MigrationError, MigrationPlan,
 	MigrationService, Operation, Result, SchemaEditor, operations::SqlDialect,
 };
-use indexmap::IndexMap;
 use crate::backends::{connection::DatabaseConnection, types::DatabaseType};
+use indexmap::IndexMap;
 use std::collections::HashSet;
 
 #[cfg(feature = "sqlite")]

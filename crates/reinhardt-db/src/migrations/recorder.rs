@@ -1,7 +1,7 @@
 //! Migration recorder
 
-use chrono::{DateTime, Utc};
 use crate::backends::DatabaseConnection;
+use chrono::{DateTime, Utc};
 
 /// Migration record
 #[derive(Debug, Clone)]

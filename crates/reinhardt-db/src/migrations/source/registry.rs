@@ -3,7 +3,7 @@
 //! Loads migrations from the compile-time global registry using `linkme`.
 
 use super::super::registry::{MigrationRegistry, global_registry};
-use super::{Migration, MigrationSource, Result};
+use super::{Migration, MigrationError, MigrationSource, Result};
 use async_trait::async_trait;
 
 /// Migration source that loads from the global registry
@@ -55,13 +55,14 @@ impl MigrationSource for RegistrySource {
 		migrations
 			.into_iter()
 			.find(|m| m.name == name)
-			.ok_or_else(|| super::MigrationError::NotFound(format!("{}.{}", app_label, name)))
+			.ok_or_else(|| MigrationError::NotFound(format!("{}.{}", app_label, name)))
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::MigrationError;
 	use serial_test::serial;
 
 	#[tokio::test]
@@ -232,10 +233,7 @@ mod tests {
 		let result = source.get_migration("polls", "0001_nonexistent").await;
 
 		assert!(result.is_err());
-		assert!(matches!(
-			result.unwrap_err(),
-			super::MigrationError::NotFound(_)
-		));
+		assert!(matches!(result.unwrap_err(), MigrationError::NotFound(_)));
 
 		registry.clear();
 	}

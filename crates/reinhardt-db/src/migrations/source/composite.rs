@@ -132,8 +132,8 @@ impl MigrationSource for CompositeSource {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use super::super::Migration;
+	use super::*;
 
 	/// Test source that returns predefined migrations
 	struct TestSource {

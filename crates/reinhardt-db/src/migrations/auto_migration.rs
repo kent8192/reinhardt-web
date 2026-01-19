@@ -368,8 +368,8 @@ impl From<std::io::Error> for AutoMigrationError {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::migrations::{FieldType, Migration};
 	use crate::migrations::repository::MigrationRepository;
+	use crate::migrations::{FieldType, Migration, MigrationError, Result};
 	use async_trait::async_trait;
 	use std::collections::{BTreeMap, HashMap};
 	use tokio::sync::Mutex;
@@ -389,21 +389,21 @@ mod tests {
 
 	#[async_trait]
 	impl MigrationRepository for TestRepository {
-		async fn save(&mut self, migration: &Migration) -> super::Result<()> {
+		async fn save(&mut self, migration: &Migration) -> Result<()> {
 			let key = (migration.app_label.to_string(), migration.name.to_string());
 			self.migrations.insert(key, migration.clone());
 			Ok(())
 		}
 
-		async fn get(&self, app_label: &str, name: &str) -> super::Result<Migration> {
+		async fn get(&self, app_label: &str, name: &str) -> Result<Migration> {
 			let key = (app_label.to_string(), name.to_string());
 			self.migrations
 				.get(&key)
 				.cloned()
-				.ok_or_else(|| super::MigrationError::NotFound(format!("{}.{}", app_label, name)))
+				.ok_or_else(|| MigrationError::NotFound(format!("{}.{}", app_label, name)))
 		}
 
-		async fn list(&self, app_label: &str) -> super::Result<Vec<Migration>> {
+		async fn list(&self, app_label: &str) -> Result<Vec<Migration>> {
 			Ok(self
 				.migrations
 				.values()
@@ -412,7 +412,7 @@ mod tests {
 				.collect())
 		}
 
-		async fn exists(&self, app_label: &str, name: &str) -> super::Result<bool> {
+		async fn exists(&self, app_label: &str, name: &str) -> Result<bool> {
 			Ok(self
 				.get(app_label, name)
 				.await

@@ -2,7 +2,7 @@ use super::{
 	AlterTableOptions, InterleaveSpec, MySqlAlgorithm, MySqlLock, PartitionDef, PartitionOptions,
 	PartitionType, PartitionValues,
 };
-use super::super::{
+use crate::migrations::{
 	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction, IndexType,
 	Operation,
 };
@@ -826,80 +826,80 @@ impl ToTokens for ColumnDefinition {
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
 			// Integer types
-			super::super::FieldType::BigInteger => quote! { FieldType::BigInteger },
-			super::super::FieldType::Integer => quote! { FieldType::Integer },
-			super::super::FieldType::SmallInteger => quote! { FieldType::SmallInteger },
-			super::super::FieldType::TinyInt => quote! { FieldType::TinyInt },
-			super::super::FieldType::MediumInt => quote! { FieldType::MediumInt },
+			FieldType::BigInteger => quote! { FieldType::BigInteger },
+			FieldType::Integer => quote! { FieldType::Integer },
+			FieldType::SmallInteger => quote! { FieldType::SmallInteger },
+			FieldType::TinyInt => quote! { FieldType::TinyInt },
+			FieldType::MediumInt => quote! { FieldType::MediumInt },
 
 			// String types
-			super::super::FieldType::Char(len) => quote! { FieldType::Char(#len) },
-			super::super::FieldType::VarChar(len) => quote! { FieldType::VarChar(#len) },
-			super::super::FieldType::Text => quote! { FieldType::Text },
-			super::super::FieldType::TinyText => quote! { FieldType::TinyText },
-			super::super::FieldType::MediumText => quote! { FieldType::MediumText },
-			super::super::FieldType::LongText => quote! { FieldType::LongText },
+			FieldType::Char(len) => quote! { FieldType::Char(#len) },
+			FieldType::VarChar(len) => quote! { FieldType::VarChar(#len) },
+			FieldType::Text => quote! { FieldType::Text },
+			FieldType::TinyText => quote! { FieldType::TinyText },
+			FieldType::MediumText => quote! { FieldType::MediumText },
+			FieldType::LongText => quote! { FieldType::LongText },
 
 			// Date/Time types
-			super::super::FieldType::Date => quote! { FieldType::Date },
-			super::super::FieldType::Time => quote! { FieldType::Time },
-			super::super::FieldType::DateTime => quote! { FieldType::DateTime },
-			super::super::FieldType::TimestampTz => quote! { FieldType::TimestampTz },
+			FieldType::Date => quote! { FieldType::Date },
+			FieldType::Time => quote! { FieldType::Time },
+			FieldType::DateTime => quote! { FieldType::DateTime },
+			FieldType::TimestampTz => quote! { FieldType::TimestampTz },
 
 			// Numeric types
-			super::super::FieldType::Decimal { precision, scale } => {
+			FieldType::Decimal { precision, scale } => {
 				quote! { FieldType::Decimal { precision: #precision, scale: #scale } }
 			}
-			super::super::FieldType::Float => quote! { FieldType::Float },
-			super::super::FieldType::Double => quote! { FieldType::Double },
-			super::super::FieldType::Real => quote! { FieldType::Real },
+			FieldType::Float => quote! { FieldType::Float },
+			FieldType::Double => quote! { FieldType::Double },
+			FieldType::Real => quote! { FieldType::Real },
 
 			// Boolean
-			super::super::FieldType::Boolean => quote! { FieldType::Boolean },
+			FieldType::Boolean => quote! { FieldType::Boolean },
 
 			// Binary types
-			super::super::FieldType::Binary => quote! { FieldType::Binary },
-			super::super::FieldType::Blob => quote! { FieldType::Blob },
-			super::super::FieldType::TinyBlob => quote! { FieldType::TinyBlob },
-			super::super::FieldType::MediumBlob => quote! { FieldType::MediumBlob },
-			super::super::FieldType::LongBlob => quote! { FieldType::LongBlob },
-			super::super::FieldType::Bytea => quote! { FieldType::Bytea },
+			FieldType::Binary => quote! { FieldType::Binary },
+			FieldType::Blob => quote! { FieldType::Blob },
+			FieldType::TinyBlob => quote! { FieldType::TinyBlob },
+			FieldType::MediumBlob => quote! { FieldType::MediumBlob },
+			FieldType::LongBlob => quote! { FieldType::LongBlob },
+			FieldType::Bytea => quote! { FieldType::Bytea },
 
 			// JSON types
-			super::super::FieldType::Json => quote! { FieldType::Json },
-			super::super::FieldType::JsonBinary => quote! { FieldType::JsonBinary },
+			FieldType::Json => quote! { FieldType::Json },
+			FieldType::JsonBinary => quote! { FieldType::JsonBinary },
 
 			// PostgreSQL-specific types
-			super::super::FieldType::Array(inner) => {
+			FieldType::Array(inner) => {
 				// Generate the inner field type token recursively
 				let inner_token = field_type_to_tokens(inner);
 				quote! { FieldType::Array(Box::new(#inner_token)) }
 			}
-			super::super::FieldType::HStore => quote! { FieldType::HStore },
-			super::super::FieldType::CIText => quote! { FieldType::CIText },
-			super::super::FieldType::Int4Range => quote! { FieldType::Int4Range },
-			super::super::FieldType::Int8Range => quote! { FieldType::Int8Range },
-			super::super::FieldType::NumRange => quote! { FieldType::NumRange },
-			super::super::FieldType::DateRange => quote! { FieldType::DateRange },
-			super::super::FieldType::TsRange => quote! { FieldType::TsRange },
-			super::super::FieldType::TsTzRange => quote! { FieldType::TsTzRange },
-			super::super::FieldType::TsVector => quote! { FieldType::TsVector },
-			super::super::FieldType::TsQuery => quote! { FieldType::TsQuery },
+			FieldType::HStore => quote! { FieldType::HStore },
+			FieldType::CIText => quote! { FieldType::CIText },
+			FieldType::Int4Range => quote! { FieldType::Int4Range },
+			FieldType::Int8Range => quote! { FieldType::Int8Range },
+			FieldType::NumRange => quote! { FieldType::NumRange },
+			FieldType::DateRange => quote! { FieldType::DateRange },
+			FieldType::TsRange => quote! { FieldType::TsRange },
+			FieldType::TsTzRange => quote! { FieldType::TsTzRange },
+			FieldType::TsVector => quote! { FieldType::TsVector },
+			FieldType::TsQuery => quote! { FieldType::TsQuery },
 
 			// UUID and Year
-			super::super::FieldType::Uuid => quote! { FieldType::Uuid },
-			super::super::FieldType::Year => quote! { FieldType::Year },
+			FieldType::Uuid => quote! { FieldType::Uuid },
+			FieldType::Year => quote! { FieldType::Year },
 
 			// Collection types
-			super::super::FieldType::Enum { values } => {
+			FieldType::Enum { values } => {
 				quote! { FieldType::Enum { values: vec![#(#values.to_string()),*] } }
 			}
-			super::super::FieldType::Set { values } => {
+			FieldType::Set { values } => {
 				quote! { FieldType::Set { values: vec![#(#values.to_string()),*] } }
 			}
 
 			// Relationship types
-			super::super::FieldType::OneToOne {
+			FieldType::OneToOne {
 				to,
 				on_delete,
 				on_update,
@@ -912,7 +912,7 @@ impl ToTokens for ColumnDefinition {
 					}
 				}
 			}
-			super::super::FieldType::ManyToMany { to, through } => {
+			FieldType::ManyToMany { to, through } => {
 				let through_token = match through {
 					Some(t) => quote! { Some(#t.to_string()) },
 					None => quote! { None },
@@ -926,10 +926,10 @@ impl ToTokens for ColumnDefinition {
 			}
 
 			// Custom types
-			super::super::FieldType::Custom(s) => quote! { FieldType::Custom(#s.to_string()) },
+			FieldType::Custom(s) => quote! { FieldType::Custom(#s.to_string()) },
 
 			// Foreign key
-			super::super::FieldType::ForeignKey {
+			FieldType::ForeignKey {
 				to_table,
 				to_field,
 				on_delete,

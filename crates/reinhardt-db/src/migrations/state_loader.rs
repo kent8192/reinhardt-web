@@ -346,7 +346,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);
@@ -387,7 +387,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);
@@ -431,7 +431,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);
@@ -476,7 +476,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);
@@ -504,7 +504,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);
@@ -528,7 +528,7 @@ mod tests {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 				.await
 				.expect("Failed to connect");
-			let recorder = crate::DatabaseMigrationRecorder::new(connection);
+			let recorder = crate::migrations::DatabaseMigrationRecorder::new(connection);
 
 			let source = MockMigrationSource { migrations: vec![] };
 			let loader = MigrationStateLoader::new(recorder, source);

@@ -156,6 +156,7 @@ impl MigrationNamer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::{ColumnDefinition, FieldType};
 
 	#[test]
 	fn test_initial_migration() {
@@ -183,9 +184,9 @@ mod tests {
 		let ops = vec![
 			Operation::AddColumn {
 				table: "users".to_string(),
-				column: super::ColumnDefinition {
+				column: ColumnDefinition {
 					name: "email".to_string(),
-					type_definition: super::FieldType::Custom("VARCHAR(255)".to_string()),
+					type_definition: FieldType::Custom("VARCHAR(255)".to_string()),
 					not_null: false,
 					unique: false,
 					primary_key: false,
@@ -196,9 +197,9 @@ mod tests {
 			},
 			Operation::AddColumn {
 				table: "users".to_string(),
-				column: super::ColumnDefinition {
+				column: ColumnDefinition {
 					name: "phone".to_string(),
-					type_definition: super::FieldType::Custom("VARCHAR(20)".to_string()),
+					type_definition: FieldType::Custom("VARCHAR(20)".to_string()),
 					not_null: false,
 					unique: false,
 					primary_key: false,

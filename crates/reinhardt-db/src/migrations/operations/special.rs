@@ -372,7 +372,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_run_sql_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let sql = RunSQL::new("SELECT COUNT(*) FROM users");
 		let editor = MockSchemaEditor::new();

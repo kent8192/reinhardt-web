@@ -1142,7 +1142,7 @@ mod tests {
 	#[cfg(feature = "db-postgres")]
 	#[test]
 	fn test_delete_model_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let delete = DeleteModel::new("users");
 		let editor = MockSchemaEditor::new();
@@ -1155,7 +1155,7 @@ mod tests {
 	#[cfg(feature = "db-postgres")]
 	#[test]
 	fn test_rename_model_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let rename = RenameModel::new("users", "customers");
 		let editor = MockSchemaEditor::new();
@@ -1453,7 +1453,7 @@ mod tests {
 	#[cfg(feature = "db-postgres")]
 	#[test]
 	fn test_move_model_without_table_rename() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let move_op = MoveModel::new("User", "myapp", "auth");
 		let editor = MockSchemaEditor::new();
@@ -1466,7 +1466,7 @@ mod tests {
 	#[cfg(feature = "db-postgres")]
 	#[test]
 	fn test_move_model_with_table_rename() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let move_op =
 			MoveModel::new("User", "myapp", "auth").with_table_rename("myapp_user", "auth_user");
@@ -1481,7 +1481,7 @@ mod tests {
 	#[cfg(feature = "db-postgres")]
 	#[test]
 	fn test_move_model_backward_sql() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let move_op =
 			MoveModel::new("User", "myapp", "auth").with_table_rename("myapp_user", "auth_user");

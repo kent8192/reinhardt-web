@@ -2,11 +2,11 @@
 //!
 //! Generates `#[model(...)]` annotated Rust structs from database schema.
 
+use super::super::introspection::{ColumnInfo, DatabaseSchema, TableInfo};
+use super::super::{MigrationError, Result};
 use super::config::IntrospectConfig;
 use super::naming::{column_to_field_name, sanitize_identifier, table_to_struct_name};
 use super::type_mapping::TypeMapper;
-use super::super::introspection::{ColumnInfo, DatabaseSchema, TableInfo};
-use super::super::{MigrationError, Result};
 use chrono::Utc;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -175,10 +175,7 @@ impl SchemaCodeGenerator {
 		let content = self.format_tokens(tokens)?;
 
 		// Use snake_case for file names
-		let file_name = format!(
-			"{}.rs",
-			super::naming::to_snake_case(&table.name)
-		);
+		let file_name = format!("{}.rs", super::naming::to_snake_case(&table.name));
 		let path = self.config.output.directory.join(file_name);
 
 		Ok(GeneratedFile::new(path, content))
@@ -424,8 +421,8 @@ fn mask_password_in_url(url: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use super::super::super::fields::FieldType;
+	use super::*;
 	use crate::migrations::introspection::{ColumnInfo, TableInfo, UniqueConstraintInfo};
 	use std::collections::HashMap;
 

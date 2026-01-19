@@ -20,8 +20,8 @@
 //! ```
 
 use super::super::ProjectState;
-use pg_escape::quote_literal;
 use crate::backends::schema::BaseDatabaseSchemaEditor;
+use pg_escape::quote_literal;
 use serde::{Deserialize, Serialize};
 
 /// Create a PostgreSQL extension
@@ -391,7 +391,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_create_extension_database_forwards() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let ext = CreateExtension::new("hstore");
 		let editor = MockSchemaEditor::new();
@@ -405,7 +405,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_create_extension_with_schema_sql() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let ext = CreateExtension::new("hstore").with_schema("public");
 		let editor = MockSchemaEditor::new();
@@ -418,7 +418,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_drop_extension() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let drop = DropExtension::new("hstore");
 		let editor = MockSchemaEditor::new();
@@ -432,7 +432,7 @@ mod tests {
 	#[cfg(feature = "postgres")]
 	#[test]
 	fn test_create_collation() {
-		use reinhardt_test::mock::MockSchemaEditor;
+		use crate::backends::schema::test_utils::MockSchemaEditor;
 
 		let collation = CreateCollation::new("german", "de_DE");
 		let editor = MockSchemaEditor::new();
