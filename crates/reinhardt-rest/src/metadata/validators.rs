@@ -15,6 +15,40 @@ pub struct FieldValidator {
 	pub message: Option<String>,
 }
 
+impl FieldValidator {
+	/// Extracts regex pattern from validator options for OpenAPI schema generation
+	///
+	/// # Returns
+	///
+	/// Returns `Some(String)` containing the regex pattern if this is a regex validator
+	/// with a valid pattern option, otherwise returns `None`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_rest::metadata::validators::FieldValidator;
+	/// use serde_json::json;
+	///
+	/// let validator = FieldValidator {
+	///     validator_type: "regex".to_string(),
+	///     options: Some(json!({"pattern": "^[a-zA-Z0-9_]+$"})),
+	///     message: None,
+	/// };
+	///
+	/// assert_eq!(validator.extract_pattern(), Some("^[a-zA-Z0-9_]+$".to_string()));
+	/// ```
+	pub fn extract_pattern(&self) -> Option<String> {
+		if self.validator_type == "regex" {
+			self.options.as_ref()
+				.and_then(|opts| opts.get("pattern"))
+				.and_then(|p| p.as_str())
+				.map(|s| s.to_string())
+		} else {
+			None
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

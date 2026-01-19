@@ -201,20 +201,15 @@ pub fn generate_field_schema(field: &FieldInfo) -> FieldSchema {
 		schema.read_only = Some(true);
 	}
 
-	// TODO: Extract regex pattern from validators
-	// Note: Disabled due to trait object limitations - FieldValidator is now Box<dyn>
-	// and doesn't expose validator_type/options fields
-	// if let Some(validators) = &field.validators {
-	// 	for validator in validators {
-	// 		if validator.validator_type == "regex"
-	// 			&& let Some(options) = &validator.options
-	// 			&& let Some(pattern) = options.get("pattern")
-	// 			&& let Some(pattern_str) = pattern.as_str()
-	// 		{
-	// 			schema.pattern = Some(pattern_str.to_string());
-	// 		}
-	// 	}
-	// }
+	// Extract regex pattern from validators for OpenAPI schema
+	if let Some(validators) = &field.validators {
+		for validator in validators {
+			if let Some(pattern) = validator.extract_pattern() {
+				schema.pattern = Some(pattern);
+				break;
+			}
+		}
+	}
 
 	schema
 }
@@ -275,7 +270,7 @@ mod tests {
 	use super::*;
 	use crate::metadata::fields::FieldInfoBuilder;
 	use crate::metadata::types::ChoiceInfo;
-	use reinhardt_core::serializers::FieldValidator;
+	use crate::metadata::validators::FieldValidator;
 
 	#[test]
 	fn test_generate_string_schema() {

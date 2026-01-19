@@ -1,6 +1,7 @@
 //! Field information and builder for metadata
 
 use super::types::{ChoiceInfo, FieldType};
+use super::validators::FieldValidator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -30,9 +31,8 @@ pub struct FieldInfo {
 	pub child: Option<Box<FieldInfo>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub children: Option<HashMap<String, FieldInfo>>,
-	// TODO: Re-enable validators field after resolving trait object limitations
-	// #[serde(skip)]
-	// pub validators: Option<Vec<Box<dyn FieldValidator>>>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub validators: Option<Vec<FieldValidator>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub default_value: Option<serde_json::Value>,
 }
@@ -51,8 +51,7 @@ pub struct FieldInfoBuilder {
 	choices: Option<Vec<ChoiceInfo>>,
 	child: Option<Box<FieldInfo>>,
 	children: Option<HashMap<String, FieldInfo>>,
-	// TODO: Re-enable validators field
-	// validators: Vec<Box<dyn FieldValidator>>,
+	validators: Option<Vec<FieldValidator>>,
 	default_value: Option<serde_json::Value>,
 }
 
@@ -83,7 +82,7 @@ impl FieldInfoBuilder {
 			choices: None,
 			child: None,
 			children: None,
-			// validators: Vec::new(),
+			validators: None,
 			default_value: None,
 		}
 	}
@@ -294,64 +293,68 @@ impl FieldInfoBuilder {
 		self
 	}
 
-// 	/// Adds a custom validator to the field
-// 	///
-// 	/// # Examples
-// 	///
-// 	/// ```
-// 	/// use crate::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
-// 	///
-// 	/// let validator = FieldValidator {
-// 	///     validator_type: "email".to_string(),
-// 	///     options: None,
-// 	///     message: Some("Invalid email format".to_string()),
-// 	/// };
-// 	///
-// 	/// let field = FieldInfoBuilder::new(FieldType::Email)
-// 	///     .required(true)
-// 	///     .add_validator(validator)
-// 	///     .build();
-// 	///
-// 	/// assert!(field.validators.is_some());
-// 	/// assert_eq!(field.validators.as_ref().unwrap().len(), 1);
-// 	/// assert_eq!(field.validators.as_ref().unwrap()[0].validator_type, "email");
-// 	/// ```
-// 	pub fn add_validator(mut self, validator: Box<dyn FieldValidator>) -> Self {
-// 		self.validators.push(validator);
-// 		self
-// 	}
-// 
-// 	/// Adds multiple validators to the field
-// 	///
-// 	/// # Examples
-// 	///
-// 	/// ```
-// 	/// use crate::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
-// 	///
-// 	/// let validators = vec![
-// 	///     FieldValidator {
-// 	///         validator_type: "min_length".to_string(),
-// 	///         options: Some(serde_json::json!({"min": 3})),
-// 	///         message: Some("Too short".to_string()),
-// 	///     },
-// 	///     FieldValidator {
-// 	///         validator_type: "max_length".to_string(),
-// 	///         options: Some(serde_json::json!({"max": 50})),
-// 	///         message: Some("Too long".to_string()),
-// 	///     },
-// 	/// ];
-// 	///
-// 	/// let field = FieldInfoBuilder::new(FieldType::String)
-// 	///     .validators(validators)
-// 	///     .build();
-// 	///
-// 	/// assert!(field.validators.is_some());
-// 	/// assert_eq!(field.validators.as_ref().unwrap().len(), 2);
-// 	/// ```
-// 	pub fn validators(mut self, validators: Vec<Box<dyn FieldValidator>>) -> Self {
-// 		self.validators = validators;
-// 		self
-// 	}
+	/// Adds a custom validator to the field
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
+	///
+	/// let validator = FieldValidator {
+	///     validator_type: "email".to_string(),
+	///     options: None,
+	///     message: Some("Invalid email format".to_string()),
+	/// };
+	///
+	/// let field = FieldInfoBuilder::new(FieldType::Email)
+	///     .required(true)
+	///     .add_validator(validator)
+	///     .build();
+	///
+	/// assert!(field.validators.is_some());
+	/// assert_eq!(field.validators.as_ref().unwrap().len(), 1);
+	/// assert_eq!(field.validators.as_ref().unwrap()[0].validator_type, "email");
+	/// ```
+	pub fn add_validator(mut self, validator: FieldValidator) -> Self {
+		if let Some(ref mut validators) = self.validators {
+			validators.push(validator);
+		} else {
+			self.validators = Some(vec![validator]);
+		}
+		self
+	}
+
+	/// Adds multiple validators to the field
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, FieldValidator};
+	///
+	/// let validators = vec![
+	///     FieldValidator {
+	///         validator_type: "min_length".to_string(),
+	///         options: Some(serde_json::json!({"min": 3})),
+	///         message: Some("Too short".to_string()),
+	///     },
+	///     FieldValidator {
+	///         validator_type: "max_length".to_string(),
+	///         options: Some(serde_json::json!({"max": 50})),
+	///         message: Some("Too long".to_string()),
+	///     },
+	/// ];
+	///
+	/// let field = FieldInfoBuilder::new(FieldType::String)
+	///     .validators(validators)
+	///     .build();
+	///
+	/// assert!(field.validators.is_some());
+	/// assert_eq!(field.validators.as_ref().unwrap().len(), 2);
+	/// ```
+	pub fn validators(mut self, validators: Vec<FieldValidator>) -> Self {
+		self.validators = Some(validators);
+		self
+	}
 
 	/// Sets the default value for the field
 	///
@@ -406,11 +409,7 @@ impl FieldInfoBuilder {
 			choices: self.choices,
 			child: self.child,
 			children: self.children,
-			// validators: if self.validators.is_empty() {
-			// 	None
-			// } else {
-			// 	Some(self.validators)
-			// },
+			validators: self.validators,
 			default_value: self.default_value,
 		}
 	}
