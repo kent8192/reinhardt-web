@@ -20,6 +20,7 @@ reinhardt = { workspace = true, features = [
     "admin",         # Admin Panel (TodoAdmin usage)
     "commands",      # Management commands
     "client-router", # Client-side routing support (required for #[routes] macro)
+    "test",          # Test utilities (required for TestContainers and fixtures)
 ] }
 
 # Required for collect_migrations! macro
