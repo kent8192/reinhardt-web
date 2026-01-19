@@ -422,11 +422,26 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	let json: Value = serde_json::from_str(&body)
 		.unwrap_or_else(|e| panic!("Failed to parse response as JSON: {}\nBody: {}", e, body));
 
-	// In async-graphql, when a non-nullable field returns Err, the error propagates
-	// and data becomes null. This is the expected GraphQL behavior for field-level errors.
+	// In async-graphql, Result<T, E> fields are nullable. When a nullable field
+	// returns Err, only that field becomes null while other fields return normally.
+	// This is the expected GraphQL behavior for partial errors.
+	let data = json
+		.get("data")
+		.expect("data should exist in response");
 	assert!(
-		json.get("data").map_or(false, |v| v.is_null()),
-		"data should be null when a field errors: {}",
+		!data.is_null(),
+		"data should not be null for nullable field errors: {}",
+		json
+	);
+	assert_eq!(
+		data.get("successField").and_then(|v| v.as_str()),
+		Some("Success"),
+		"successful fields should still return values"
+	);
+	// errorField should be null since it returned Err
+	assert!(
+		data.get("errorField").map_or(true, |v| v.is_null()),
+		"errorField should be null when it returns Err: {}",
 		json
 	);
 
@@ -460,11 +475,25 @@ async fn test_graphql_field_level_errors(data_store: DataStore) {
 	let json: Value = serde_json::from_str(&body)
 		.unwrap_or_else(|e| panic!("Failed to parse response as JSON: {}\nBody: {}", e, body));
 
-	// Conditional error: when one alias fails, async-graphql returns data as null
-	// because the error from `error: conditionalError(shouldFail: true)` propagates up
+	// Conditional error: conditionalError returns Result<T, E> which is nullable.
+	// When one alias fails, only that field becomes null while the successful alias returns normally.
+	let data = json
+		.get("data")
+		.expect("data should exist in response");
 	assert!(
-		json.get("data").map_or(false, |v| v.is_null()),
-		"data should be null when any field errors: {}",
+		!data.is_null(),
+		"data should not be null for nullable field errors: {}",
+		json
+	);
+	assert_eq!(
+		data.get("success").and_then(|v| v.as_str()),
+		Some("No error"),
+		"successful alias should still return value"
+	);
+	// error alias should be null since it returned Err
+	assert!(
+		data.get("error").map_or(true, |v| v.is_null()),
+		"error alias should be null when conditionalError returns Err: {}",
 		json
 	);
 
