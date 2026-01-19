@@ -1,6 +1,6 @@
+use super::postgres_features::{ArrayAgg, JsonbAgg, JsonbBuildObject, StringAgg, TsRank};
 use crate::orm::aggregation::Aggregate;
 use crate::orm::expressions::{F, Q};
-use super::postgres_features::{ArrayAgg, JsonbAgg, JsonbBuildObject, StringAgg, TsRank};
 use serde::{Deserialize, Serialize};
 
 /// Represents an annotation value that can be added to a QuerySet
@@ -346,10 +346,9 @@ mod tests {
 #[cfg(test)]
 mod annotation_extended_tests {
 	use super::*;
-	use crate::orm::query::Filter;
 	use crate::orm::Model;
 	use crate::orm::expressions::Q;
-	use crate::orm::query::QuerySet;
+	use crate::orm::query::{Filter, FilterOperator, FilterValue, QuerySet};
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -362,7 +361,7 @@ mod annotation_extended_tests {
 	#[derive(Clone)]
 	struct TestModelFields;
 
-	impl super::model::FieldSelector for TestModelFields {
+	impl crate::orm::model::FieldSelector for TestModelFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -789,8 +788,8 @@ mod annotation_extended_tests {
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
 				"status".to_string(),
-				super::query::FilterOperator::Eq,
-				super::query::FilterValue::String("active".to_string()),
+				FilterOperator::Eq,
+				FilterValue::String("active".to_string()),
 			))
 			.as_subquery();
 
@@ -817,8 +816,8 @@ mod annotation_extended_tests {
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
 				"id".to_string(),
-				super::query::FilterOperator::Gt,
-				super::query::FilterValue::Int(0),
+				FilterOperator::Gt,
+				FilterValue::Int(0),
 			))
 			.as_subquery();
 
@@ -1011,8 +1010,8 @@ mod annotation_extended_tests {
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
 				"id".to_string(),
-				super::query::FilterOperator::Gt,
-				super::query::FilterValue::Int(0),
+				FilterOperator::Gt,
+				FilterValue::Int(0),
 			))
 			.as_subquery();
 
@@ -1153,8 +1152,8 @@ mod annotation_extended_tests {
 		let subquery = QuerySet::<TestModel>::new()
 			.filter(Filter::new(
 				"rating".to_string(),
-				super::query::FilterOperator::Gt,
-				super::query::FilterValue::Int(3),
+				FilterOperator::Gt,
+				FilterValue::Int(3),
 			))
 			.as_subquery();
 
@@ -1260,8 +1259,8 @@ mod annotation_extended_tests {
 			))
 			.filter(Filter::new(
 				"is_enabled".to_string(),
-				super::query::FilterOperator::Eq,
-				super::query::FilterValue::Bool(true),
+				FilterOperator::Eq,
+				FilterValue::Bool(true),
 			));
 
 		let sql = qs.to_sql();
@@ -1914,8 +1913,8 @@ mod annotation_extended_tests {
 			))
 			.filter(Filter::new(
 				"complex_expr".to_string(),
-				super::query::FilterOperator::Gt,
-				super::query::FilterValue::Int(0),
+				FilterOperator::Gt,
+				FilterValue::Int(0),
 			));
 
 		let sql = qs.to_sql();

@@ -9,9 +9,9 @@
 //! - `set()` - Replace all relationships
 
 use super::Manager;
-use crate::orm::Model;
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
+use crate::orm::Model;
 use sea_query::{
 	Alias, Asterisk, BinOper, DeleteStatement, Expr, ExprTrait, Func, InsertStatement,
 	MysqlQueryBuilder, PostgresQueryBuilder, Query, SelectStatement, SqliteQueryBuilder,
@@ -748,7 +748,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl crate::FieldSelector for TestUserFields {
+	impl crate::orm::model::FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -791,7 +791,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct TestGroupFields;
-	impl super::model::FieldSelector for TestGroupFields {
+	impl crate::orm::model::FieldSelector for TestGroupFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

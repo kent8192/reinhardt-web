@@ -3,11 +3,11 @@
 //! This module provides introspection capabilities for examining model metadata,
 //! field definitions, relationships, indexes, and constraints at runtime.
 
-use crate::orm::Model;
 use super::constraints::{CheckConstraint, Constraint, ForeignKeyConstraint, UniqueConstraint};
 use super::fields::{Field, FieldKwarg};
 use super::indexes::Index;
 use super::relationship::RelationshipType;
+use crate::orm::Model;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -1385,7 +1385,7 @@ mod tests {
 
 		#[derive(Clone)]
 		struct TestModelFields;
-		impl super::model::FieldSelector for TestModelFields {
+		impl crate::orm::model::FieldSelector for TestModelFields {
 			fn with_alias(self, _alias: &str) -> Self {
 				self
 			}
@@ -1427,7 +1427,7 @@ mod tests {
 
 		#[derive(Clone)]
 		struct ArticleFields;
-		impl super::model::FieldSelector for ArticleFields {
+		impl crate::orm::model::FieldSelector for ArticleFields {
 			fn with_alias(self, _alias: &str) -> Self {
 				self
 			}
@@ -1473,7 +1473,7 @@ mod tests {
 
 		#[derive(Clone)]
 		struct UserFields;
-		impl super::model::FieldSelector for UserFields {
+		impl crate::orm::model::FieldSelector for UserFields {
 			fn with_alias(self, _alias: &str) -> Self {
 				self
 			}
@@ -1515,7 +1515,7 @@ mod tests {
 
 		#[derive(Clone)]
 		struct EmptyFields;
-		impl super::model::FieldSelector for EmptyFields {
+		impl crate::orm::model::FieldSelector for EmptyFields {
 			fn with_alias(self, _alias: &str) -> Self {
 				self
 			}
@@ -1557,7 +1557,7 @@ mod tests {
 
 		#[derive(Clone)]
 		struct SimpleFields;
-		impl super::model::FieldSelector for SimpleFields {
+		impl crate::orm::model::FieldSelector for SimpleFields {
 			fn with_alias(self, _alias: &str) -> Self {
 				self
 			}

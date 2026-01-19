@@ -4,8 +4,8 @@
 //!
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
-use crate::orm::Model;
 use super::super::backends::types::QueryValue;
+use crate::orm::Model;
 use rust_decimal::prelude::ToPrimitive;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
@@ -758,7 +758,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct UserFields;
-	impl super::model::FieldSelector for UserFields {
+	impl crate::orm::model::FieldSelector for UserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

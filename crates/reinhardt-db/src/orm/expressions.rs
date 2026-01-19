@@ -1101,14 +1101,14 @@ mod expressions_extended_tests {
 	use super::*;
 	use crate::orm::aggregation::*;
 	// Tests use annotation types directly
-	// use crate::orm::annotation::*;
+	use crate::orm::annotation::Value;
 	use crate::orm::expressions::{F, Q};
 
 	#[test]
 	// From: Django/expressions
 	fn test_values_expression_group_by() {
 		// Test that Value expressions can be used in group by contexts
-		let val = super::annotation::Value::String("test_group".to_string());
+		let val = Value::String("test_group".to_string());
 		assert_eq!(val.to_sql(), "'test_group'");
 	}
 
@@ -1116,7 +1116,7 @@ mod expressions_extended_tests {
 	// From: Django/expressions
 	fn test_values_expression_group_by_1() {
 		// Test that Value expressions can be used in group by contexts
-		let val = super::annotation::Value::Int(42);
+		let val = Value::Int(42);
 		assert_eq!(val.to_sql(), "42");
 	}
 
@@ -1920,7 +1920,7 @@ mod expressions_extended_tests {
 	// From: Django/expressions
 	fn test_mixed_char_date_with_annotate_1() {
 		// Test mixed character and date fields
-		let val_str = super::annotation::Value::String("test".to_string());
+		let val_str = Value::String("test".to_string());
 		let f_date = F::new("birth_date");
 		assert_eq!(val_str.to_sql(), "'test'");
 		assert_eq!(f_date.to_sql(), "birth_date");

@@ -41,9 +41,7 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::backends::{
-	DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection,
-};
+use crate::backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
 use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
 

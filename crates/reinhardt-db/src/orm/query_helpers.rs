@@ -360,7 +360,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct TestModelFields;
-	impl super::model::FieldSelector for TestModelFields {
+	impl crate::orm::model::FieldSelector for TestModelFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

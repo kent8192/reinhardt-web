@@ -6,11 +6,11 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::orm::Model;
 use super::engine::Engine;
+use super::types::DatabaseDialect;
+use crate::orm::Model;
 use crate::orm::expressions::Q;
 use crate::orm::query_execution::QueryCompiler;
-use super::types::DatabaseDialect;
 use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 use std::marker::PhantomData;
 
@@ -277,7 +277,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct TestModelFields;
-	impl super::model::FieldSelector for TestModelFields {
+	impl crate::orm::model::FieldSelector for TestModelFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

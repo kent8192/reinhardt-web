@@ -36,9 +36,9 @@
 //! - **Compile-time checks**: Invalid relationships cause compilation errors
 //! - **Consistent pattern**: Follows the same pattern as ManyToMany accessors
 
-use crate::orm::Model;
 use super::connection::DatabaseConnection;
 use super::reverse_accessor::ReverseAccessor;
+use crate::orm::Model;
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 

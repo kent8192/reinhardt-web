@@ -348,7 +348,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct UserFields;
-	impl super::model::FieldSelector for UserFields {
+	impl crate::orm::model::FieldSelector for UserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

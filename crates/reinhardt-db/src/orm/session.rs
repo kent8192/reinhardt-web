@@ -3,10 +3,10 @@
 //! This module provides a Session object that manages database operations with automatic
 //! object tracking, identity mapping, and transaction management.
 
+use super::transaction::Transaction;
 use crate::orm::model::Model;
 use crate::orm::query::Query;
 use crate::orm::query_types::DbBackend;
-use super::transaction::Transaction;
 use sea_query::{
 	Alias, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
 	SqliteQueryBuilder,
@@ -1386,7 +1386,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl crate::FieldSelector for TestUserFields {
+	impl crate::orm::model::FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

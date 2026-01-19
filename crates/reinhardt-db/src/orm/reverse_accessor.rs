@@ -39,8 +39,8 @@
 //! auto-completion support, as all relationship information is determined
 //! at compile time. No string literals are required.
 
-use crate::orm::Model;
 use super::connection::{DatabaseBackend, DatabaseConnection};
+use crate::orm::Model;
 use sea_query::{
 	Alias, Asterisk, BinOper, Expr, ExprTrait, Func, MysqlQueryBuilder, PostgresQueryBuilder,
 	Query, SelectStatement, SqliteQueryBuilder,
@@ -352,7 +352,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl crate::FieldSelector for TestUserFields {
+	impl crate::orm::model::FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -398,7 +398,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestTweetFields;
 
-	impl crate::FieldSelector for TestTweetFields {
+	impl crate::orm::model::FieldSelector for TestTweetFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

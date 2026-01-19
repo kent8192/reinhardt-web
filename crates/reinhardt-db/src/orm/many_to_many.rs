@@ -465,7 +465,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct StudentFields;
-	impl super::model::FieldSelector for StudentFields {
+	impl crate::orm::model::FieldSelector for StudentFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -502,7 +502,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct CourseFields;
-	impl super::model::FieldSelector for CourseFields {
+	impl crate::orm::model::FieldSelector for CourseFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

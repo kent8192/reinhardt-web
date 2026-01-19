@@ -1641,6 +1641,7 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
+	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
 	use serde::{Deserialize, Serialize};
@@ -1667,7 +1668,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl super::FieldSelector for TestUserFields {
+	impl FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

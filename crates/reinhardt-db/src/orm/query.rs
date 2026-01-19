@@ -5474,7 +5474,7 @@ fn parse_column_reference(field: &str) -> sea_query::ColumnRef {
 #[cfg(test)]
 mod tests {
 	use crate::orm::query::UpdateValue;
-	use crate::orm::{query::Filter, FilterOperator, FilterValue, Model, QuerySet};
+	use crate::orm::{FilterOperator, FilterValue, Model, QuerySet, query::Filter};
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -5499,7 +5499,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl crate::FieldSelector for TestUserFields {
+	impl crate::orm::model::FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -5974,4 +5974,4 @@ mod tests {
 		assert_eq!(sql, "DELETE FROM \"test_users\" WHERE \"id\" = $1");
 		assert_eq!(params, vec!["1"]);
 	}
-
+}

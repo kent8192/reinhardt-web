@@ -1272,9 +1272,9 @@ mod tests {
 	use crate::backends::backend::DatabaseBackend as BackendTrait;
 	use crate::backends::connection::DatabaseConnection as BackendsConnection;
 	use crate::backends::error::Result;
-	use crate::backends::types::{
-		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
-	};
+	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
+	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
+	use crate::prelude::Model;
 	use rstest::*;
 	use std::sync::Arc;
 
@@ -1353,18 +1353,15 @@ mod tests {
 	}
 
 	#[fixture]
-	fn mock_connection() -> super::connection::DatabaseConnection {
+	fn mock_connection() -> DatabaseConnection {
 		let mock_backend = Arc::new(MockBackend);
 		let backends_conn = BackendsConnection::new(mock_backend);
-		super::connection::DatabaseConnection::new(
-			super::connection::DatabaseBackend::Postgres,
-			backends_conn,
-		)
+		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
 	}
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_commit(mock_connection: super::connection::DatabaseConnection) {
+	async fn test_transaction_scope_commit(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let tx = TransactionScope::begin(&conn).await;
@@ -1377,9 +1374,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_rollback(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_transaction_scope_rollback(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let tx = TransactionScope::begin(&conn).await.unwrap();
@@ -1389,9 +1384,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_with_isolation(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_transaction_scope_with_isolation(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let tx = TransactionScope::begin_with_isolation(&conn, IsolationLevel::Serializable).await;
@@ -1402,7 +1395,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_helper(mock_connection: super::connection::DatabaseConnection) {
+	async fn test_atomic_helper(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result = atomic(&conn, || async move { Ok::<_, anyhow::Error>(42) }).await;
@@ -1413,7 +1406,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_helper_with_error(mock_connection: super::connection::DatabaseConnection) {
+	async fn test_atomic_helper_with_error(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result = atomic(&conn, || async move {
@@ -1426,9 +1419,7 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_with_isolation_helper(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_atomic_with_isolation_helper(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result = atomic_with_isolation(&conn, IsolationLevel::Serializable, || async move {
@@ -1578,7 +1569,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct TestItemFields;
-	impl super::model::FieldSelector for TestItemFields {
+	impl crate::orm::model::FieldSelector for TestItemFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -1587,7 +1578,7 @@ mod tests {
 	#[allow(dead_code)]
 	const TEST_ITEM_TABLE: TableName = TableName::new_const("test_items");
 
-	impl super::Model for TestItem {
+	impl Model for TestItem {
 		type PrimaryKey = i64;
 		type Fields = TestItemFields;
 
@@ -1766,14 +1757,13 @@ mod tests {
 #[cfg(test)]
 mod transaction_extended_tests {
 	use super::*;
+	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
 	// use crate::orm::expressions::{F, Q};
 	// use super::transaction::*;
 	use crate::backends::backend::DatabaseBackend as BackendTrait;
 	use crate::backends::connection::DatabaseConnection as BackendsConnection;
 	use crate::backends::error::Result;
-	use crate::backends::types::{
-		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
-	};
+	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::*;
 	use std::sync::Arc;
 
@@ -1861,13 +1851,10 @@ mod transaction_extended_tests {
 	}
 
 	#[fixture]
-	fn mock_connection() -> super::connection::DatabaseConnection {
+	fn mock_connection() -> DatabaseConnection {
 		let mock_backend = Arc::new(MockBackend);
 		let backends_conn = BackendsConnection::new(mock_backend);
-		super::connection::DatabaseConnection::new(
-			super::connection::DatabaseBackend::Postgres,
-			backends_conn,
-		)
+		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
 	}
 
 	#[test]
@@ -2653,9 +2640,7 @@ mod transaction_extended_tests {
 	// Tests for new closure-based transaction API
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_closure_success(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_transaction_closure_success(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result = transaction(&conn, |_tx| async move { Ok(42) }).await;
@@ -2666,9 +2651,7 @@ mod transaction_extended_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_closure_error_rollback(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_transaction_closure_error_rollback(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result: std::result::Result<(), _> =
@@ -2684,9 +2667,7 @@ mod transaction_extended_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_with_isolation_level(
-		mock_connection: super::connection::DatabaseConnection,
-	) {
+	async fn test_transaction_with_isolation_level(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
 		let result = transaction_with_isolation(

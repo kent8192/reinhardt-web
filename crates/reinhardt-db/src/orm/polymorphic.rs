@@ -537,7 +537,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct CommentFields;
 
-	impl crate::FieldSelector for CommentFields {
+	impl crate::orm::model::FieldSelector for CommentFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -581,7 +581,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct PostFields;
 
-	impl crate::FieldSelector for PostFields {
+	impl crate::orm::model::FieldSelector for PostFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

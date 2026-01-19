@@ -477,7 +477,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestUserFields;
 
-	impl crate::FieldSelector for TestUserFields {
+	impl crate::orm::model::FieldSelector for TestUserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

@@ -6,10 +6,10 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::orm::query_fields::{Field, Lookup, QueryFieldCompiler};
 use super::set_operations::CombinedQuery;
 use super::typed_join::TypedJoin;
 use super::{Model, Q};
+use crate::orm::query_fields::{Field, Lookup, QueryFieldCompiler};
 use std::marker::PhantomData;
 
 /// Column reference for SELECT clause
@@ -608,7 +608,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct UserFields;
 
-	impl crate::FieldSelector for UserFields {
+	impl crate::orm::model::FieldSelector for UserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -652,7 +652,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct PostFields;
 
-	impl crate::FieldSelector for PostFields {
+	impl crate::orm::model::FieldSelector for PostFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

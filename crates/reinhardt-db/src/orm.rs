@@ -244,6 +244,9 @@ pub use events::{
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
 // Re-export from reinhardt-hybrid
+pub use crate::hybrid::{
+	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
+};
 pub use loading::{
 	LoadContext, LoadOption, LoadOptionBuilder, LoadingStrategy, joinedload, lazyload, noload,
 	raiseload, selectinload, subqueryload,
@@ -257,9 +260,6 @@ pub use query_options::{
 	QueryOptions, QueryOptionsBuilder,
 };
 pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
-pub use crate::hybrid::{
-	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
-};
 pub use relations::{GenericRelationConfig, GenericRelationSet};
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
 pub use session::{Session, SessionError};

@@ -536,6 +536,7 @@ pub enum JoinType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::types::DatabaseDialect;
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
@@ -550,7 +551,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct UserFields;
 
-	impl crate::FieldSelector for UserFields {
+	impl crate::orm::model::FieldSelector for UserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -593,7 +594,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct PostFields;
 
-	impl crate::FieldSelector for PostFields {
+	impl crate::orm::model::FieldSelector for PostFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -635,7 +636,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct RoleFields;
 
-	impl crate::FieldSelector for RoleFields {
+	impl crate::orm::model::FieldSelector for RoleFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -998,7 +999,7 @@ mod tests {
 			.with_foreign_key("user_id")
 			.with_lazy(LoadingStrategy::Lazy);
 
-		let sql = rel.load_sql(1, super::types::DatabaseDialect::MSSQL);
+		let sql = rel.load_sql(1, DatabaseDialect::MSSQL);
 		assert!(!sql.is_empty());
 		assert!(sql.contains("posts"));
 	}

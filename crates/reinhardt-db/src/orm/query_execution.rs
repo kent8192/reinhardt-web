@@ -6,10 +6,10 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::orm::Model;
 use super::engine::Engine;
-use crate::orm::expressions::{Q, QOperator};
 use super::types::DatabaseDialect;
+use crate::orm::Model;
+use crate::orm::expressions::{Q, QOperator};
 use sea_query::{
 	Alias, Condition, DeleteStatement, Expr, InsertStatement, Query, SelectStatement, SimpleExpr,
 	UpdateStatement,
@@ -347,7 +347,7 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestModelFields;
 
-	impl crate::FieldSelector for TestModelFields {
+	impl crate::orm::model::FieldSelector for TestModelFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}

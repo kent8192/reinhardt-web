@@ -3,9 +3,9 @@
 //! This module provides compile-time type safety for JOIN operations
 //! by leveraging the existing Field<M, T> type system.
 
+use super::sqlalchemy_query::JoinType;
 use crate::orm::Model;
 use crate::orm::query_fields::Field;
-use super::sqlalchemy_query::JoinType;
 use std::marker::PhantomData;
 
 /// Type-safe JOIN condition between two models
@@ -362,7 +362,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct UserFields;
-	impl super::model::FieldSelector for UserFields {
+	impl crate::orm::model::FieldSelector for UserFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
@@ -400,7 +400,7 @@ mod tests {
 
 	#[derive(Clone)]
 	struct PostFields;
-	impl super::model::FieldSelector for PostFields {
+	impl crate::orm::model::FieldSelector for PostFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
