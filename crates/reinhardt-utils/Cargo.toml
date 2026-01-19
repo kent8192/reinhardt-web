@@ -78,12 +78,10 @@ utils-core = []
 all = ["logging", "cache", "storage", "static", "utils-core"]
 utils-full = ["logging", "cache", "storage", "static", "utils-core"]
 redis-backend = ["redis", "deadpool-redis"]
-redis-cluster = ["redis-backend"]
 redis-sentinel = ["redis-backend"]
 memcached-backend = ["memcache-async", "tokio-util"]
 all-backends = [
   "redis-backend",
-  "redis-cluster",
   "redis-sentinel",
   "memcached-backend",
 ]

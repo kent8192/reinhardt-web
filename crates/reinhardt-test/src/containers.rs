@@ -237,9 +237,9 @@ impl MySqlContainer {
 	}
 	/// Create a MySQL container with custom credentials
 	pub async fn with_credentials(username: &str, password: &str, database: &str) -> Self {
-		// Use mysql:8.0-alpine for minimal image size (~160MB vs ~500MB) to prevent CI disk space issues
+		// Use mysql:8.0 image (MySQL does not provide official Alpine images)
 		let image = Mysql::default()
-			.with_tag("8.0-alpine")
+			.with_tag("8.0")
 			.with_env_var("MYSQL_ROOT_PASSWORD", password)
 			.with_env_var("MYSQL_DATABASE", database);
 
@@ -577,102 +577,6 @@ where
 {
 	let container = RedisContainer::new().await;
 	f(container).await
-}
-
-/// Redis Cluster test container with automatic cleanup
-///
-/// This guard ensures the Redis Cluster container is properly cleaned up when dropped.
-/// The cluster configuration uses 6 nodes (17000-17005) with fixed port mapping.
-///
-/// # Automatic Cleanup
-///
-/// The container is automatically stopped and removed when the guard is dropped,
-/// even if the test panics. No manual cleanup is required.
-///
-/// # Example
-/// ```rust,ignore
-/// # use redis::AsyncCommands;
-/// # use reinhardt_test::fixtures::RedisClusterContainer;
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use reinhardt_test::containers::RedisClusterGuard;
-///
-/// # let container = RedisClusterContainer::new().await;
-/// # let urls = vec!["redis://127.0.0.1:7000".to_string()];
-/// let cluster = RedisClusterGuard::new(container, urls).await?;
-/// let mut conn = cluster.get_async_connection().await?;
-/// conn.set("key", "value").await?;
-/// // Cluster is automatically cleaned up when guard drops
-///
-/// # Ok(())
-/// # }
-/// ```
-#[cfg(feature = "testcontainers")]
-pub struct RedisClusterGuard {
-	/// Container is kept alive until guard is dropped
-	#[allow(dead_code)]
-	_container: ContainerAsync<GenericImage>,
-	/// Redis Cluster node URLs (6 nodes: ports 17000-17005)
-	urls: Vec<String>,
-}
-
-#[cfg(feature = "testcontainers")]
-impl RedisClusterGuard {
-	/// Create new guard with container and URLs
-	///
-	/// The container will be automatically cleaned up when this guard is dropped.
-	pub async fn new(
-		container: ContainerAsync<GenericImage>,
-		urls: Vec<String>,
-	) -> Result<Self, Box<dyn std::error::Error>> {
-		// Verify we have 6 cluster nodes
-		if urls.len() != 6 {
-			return Err(format!("Expected 6 cluster URLs, got {}", urls.len()).into());
-		}
-
-		Ok(Self {
-			_container: container,
-			urls,
-		})
-	}
-
-	/// Get cluster node URLs
-	///
-	/// Returns a cloned Vec of 6 URLs for the Redis Cluster nodes (ports 17000-17005).
-	///
-	/// # Note
-	///
-	/// This method returns an owned `Vec<String>` rather than a slice to simplify
-	/// usage with APIs that require owned data (like `RedisClusterCache::new()`).
-	pub fn urls(&self) -> Vec<String> {
-		self.urls.clone()
-	}
-
-	/// Get async cluster connection
-	///
-	/// Creates a new connection to the Redis Cluster using the configured URLs.
-	///
-	/// # Example
-	/// ```ignore
-	/// let mut conn = cluster.get_async_connection().await?;
-	/// conn.set("key", "value").await?;
-	/// let value: String = conn.get("key").await?;
-	/// ```
-	pub async fn get_async_connection(
-		&self,
-	) -> Result<redis::cluster_async::ClusterConnection, redis::RedisError> {
-		let client = redis::cluster::ClusterClient::new(self.urls.clone())?;
-		client.get_async_connection().await
-	}
-}
-
-#[cfg(feature = "testcontainers")]
-impl Drop for RedisClusterGuard {
-	fn drop(&mut self) {
-		eprintln!("🧹 RedisClusterGuard: Automatic cleanup triggered");
-		// _container will be dropped automatically
-		// TestContainers handles container removal
-	}
 }
 
 /// RabbitMQ test container

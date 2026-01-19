@@ -12,7 +12,6 @@
 //! - **RedisCache**: Redis-backed cache (requires redis-backend feature)
 //! - **MemcachedCache**: Memcached-backed cache (requires memcached-backend feature)
 //! - **HybridCache**: Multi-tier caching (memory + distributed)
-//! - **RedisClusterCache**: Redis Cluster support (requires redis-cluster feature)
 //! - **RedisSentinelCache**: Redis Sentinel support (requires redis-sentinel feature)
 //! - **Pub/Sub**: Cache invalidation via Redis channels (requires redis-backend feature)
 //! - **Cache Warming**: Pre-populate cache on startup
@@ -106,9 +105,6 @@ pub mod memcached;
 
 pub mod hybrid;
 
-#[cfg(feature = "redis-cluster")]
-pub mod redis_cluster;
-
 #[cfg(feature = "redis-sentinel")]
 pub mod redis_sentinel;
 
@@ -132,9 +128,6 @@ pub use redis_backend::RedisCache;
 pub use memcached::{MemcachedCache, MemcachedConfig};
 
 pub use hybrid::HybridCache;
-
-#[cfg(feature = "redis-cluster")]
-pub use redis_cluster::RedisClusterCache;
 
 #[cfg(feature = "redis-sentinel")]
 pub use redis_sentinel::{RedisSentinelCache, RedisSentinelConfig};

@@ -658,7 +658,7 @@ async fn try_start_redis_cluster(
 ) -> Result<(ContainerAsync<GenericImage>, Vec<u16>), Box<dyn std::error::Error>> {
 	let cluster = GenericImage::new("grokzen/redis-cluster", "7.0.10")
 		.with_wait_for(WaitFor::message_on_stdout("Cluster state changed: ok"))
-		.with_startup_timeout(std::time::Duration::from_secs(180))
+		.with_startup_timeout(std::time::Duration::from_secs(600))
 		.with_env_var("IP", "0.0.0.0")
 		.with_env_var("INITIAL_PORT", base_port.to_string())
 		.with_mapped_port(base_port, ContainerPort::Tcp(base_port))
@@ -1081,7 +1081,7 @@ pub async fn redis_cluster_fixture() -> (
 			.with_exposed_port(7004.tcp())
 			.with_exposed_port(7005.tcp())
 			.with_wait_for(WaitFor::message_on_stdout("[OK] All 16384 slots covered."))
-			.with_startup_timeout(std::time::Duration::from_secs(180))
+			.with_startup_timeout(std::time::Duration::from_secs(600))
 			.start()
 			.await
 			.expect("Failed to start Redis cluster container");
