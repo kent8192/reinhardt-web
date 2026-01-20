@@ -22,7 +22,7 @@ toml = "0.9.8"
 colored = "3.0.0"
 anyhow = "1.0"
 hex = "0.4"
-reinhardt-conf = {workspace = true, features = ["settings"]}
+reinhardt-conf = {workspace = true, features = ["settings", "encryption"]}
 
 [dev-dependencies]
 tempfile = "3.8"
