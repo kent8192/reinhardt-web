@@ -75,6 +75,7 @@ hot-reload = ["notify", "tokio", "async"]
 caching = ["moka", "async"]
 
 [dev-dependencies]
+futures = { workspace = true }
 tempfile = "3.8"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 testcontainers = "0.25.0"
