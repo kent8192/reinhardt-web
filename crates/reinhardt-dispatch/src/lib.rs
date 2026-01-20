@@ -77,7 +77,7 @@
 //! ```rust
 //! use reinhardt_dispatch::{BaseHandler, MiddlewareChain};
 //! use reinhardt_urls::routers::{DefaultRouter, Router, path};
-//! use reinhardt_core::{Handler, Middleware};
+//! use reinhardt_http::{Handler, Middleware};
 //! use reinhardt_http::{Request, Response};
 //! use std::sync::Arc;
 //! use async_trait::async_trait;

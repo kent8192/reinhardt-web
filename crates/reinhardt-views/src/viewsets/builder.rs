@@ -111,7 +111,7 @@ impl<V: ViewSet + 'static> ViewSetBuilder<V> {
 	///
 	/// # struct Router;
 	/// # impl reinhardt_views::viewsets::builder::RegisterViewSet for Router {
-	/// #     fn register_handler(&mut self, _path: &str, _handler: Arc<dyn reinhardt_core::Handler>) {}
+	/// #     fn register_handler(&mut self, _path: &str, _handler: Arc<dyn reinhardt_http::Handler>) {}
 	/// # }
 	///
 	/// let mut router = Router;

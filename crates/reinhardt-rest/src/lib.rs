@@ -18,8 +18,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use crate::parsers::JSONParser;
-//! use crate::routers::DefaultRouter;
+//! use reinhardt_rest::parsers::JSONParser;
+//! use reinhardt_urls::routers::DefaultRouter;
 //!
 //! // Create a JSON parser
 //! let parser = JSONParser::new();
