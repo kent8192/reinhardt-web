@@ -27,15 +27,15 @@ jobs:
     name: Clippy
     uses: ./.github/workflows/clippy.yml
 
-  # Parallel execution strategy to reduce CI time while maintaining disk safety
   # Phase 1: Unit tests run first to verify basic functionality
   unit-test:
     name: Unit Tests
     uses: ./.github/workflows/unit-test.yml
     needs: [check, fmt, clippy]  # Run after lightweight checks
 
-  # Phase 2: Parallel execution group - integration, doc, and ui tests run simultaneously
-  # Safe because: integration (15-20GB) + doc (2-4GB) + ui (3-5GB) = 22-29GB peak usage
+  # Phase 2: Parallel execution group - tests run simultaneously on independent runners
+  # Note: Each job runs on its own runner (no shared disk)
+  # Disk usage per job: integration (~15-20GB), doc (~5GB), ui (~5GB)
   integration-test:
     name: Integration Tests
     uses: ./.github/workflows/integration-test.yml
