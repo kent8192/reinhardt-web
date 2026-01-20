@@ -9,6 +9,7 @@ env:
   RUST_BACKTRACE: 1
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
+  CARGO_BUILD_JOBS: 1  # Limit concurrent link jobs to prevent OOM
 
 jobs:
   integration-test:
@@ -25,7 +26,7 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false  # Keep swap to prevent linker OOM
 
       - name: Checkout repository
         uses: actions/checkout@v4
