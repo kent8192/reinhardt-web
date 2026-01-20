@@ -8,7 +8,7 @@
 //! ## Apply validator only when condition is true
 //!
 //! ```
-//! use crate::validators::{ConditionalValidator, MinLengthValidator, Validator};
+//! use reinhardt_core::validators::{ConditionalValidator, MinLengthValidator, Validator};
 //!
 //! let validator = ConditionalValidator::when(
 //!     |value: &str| value.starts_with("admin_"),
@@ -26,7 +26,7 @@
 //! ## Apply validator unless condition is true
 //!
 //! ```
-//! use crate::validators::{ConditionalValidator, EmailValidator, Validator};
+//! use reinhardt_core::validators::{ConditionalValidator, EmailValidator, Validator};
 //!
 //! let validator = ConditionalValidator::unless(
 //!     |value: &str| value.starts_with("system:"),
@@ -66,7 +66,7 @@ where
 	/// # Example
 	///
 	/// ```
-	/// use crate::validators::{ConditionalValidator, MinLengthValidator, Validator};
+	/// use reinhardt_core::validators::{ConditionalValidator, MinLengthValidator, Validator};
 	///
 	/// let validator = ConditionalValidator::when(
 	///     |value: &str| value.starts_with("admin_"),
@@ -90,7 +90,7 @@ where
 	/// # Example
 	///
 	/// ```
-	/// use crate::validators::{ConditionalValidator, EmailValidator, Validator};
+	/// use reinhardt_core::validators::{ConditionalValidator, EmailValidator, Validator};
 	///
 	/// let validator = ConditionalValidator::unless(
 	///     |value: &str| value.starts_with("system:"),

@@ -14,7 +14,7 @@ use hyper::Method;
 /// # Example
 ///
 /// ```rust,no_run
-/// use crate::endpoint::EndpointMetadata;
+/// use reinhardt_core::endpoint::EndpointMetadata;
 ///
 /// // Collect all registered endpoints
 /// for metadata in inventory::iter::<EndpointMetadata>() {
@@ -53,7 +53,7 @@ inventory::collect!(EndpointMetadata);
 /// ```rust,ignore
 /// # use reinhardt_core_macros::get;
 /// # use reinhardt_http::Response;
-/// # use crate::endpoint::EndpointInfo;
+/// # use reinhardt_core::endpoint::EndpointInfo;
 /// # use hyper::Method;
 /// #[get("/users/{id}/", name = "get_user")]
 /// pub async fn get_user(id: i64) -> Result<Response, Box<dyn std::error::Error>> {

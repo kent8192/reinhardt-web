@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use crate::signals::websocket_integration::WebSocketSignalBridge;
-//! use crate::signals::post_save;
+//! use reinhardt_core::signals::websocket_integration::WebSocketSignalBridge;
+//! use reinhardt_core::signals::post_save;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), reinhardt_core::signals::SignalError> {
@@ -40,7 +40,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::websocket_integration::WebSocketMessage;
+/// use reinhardt_core::signals::websocket_integration::WebSocketMessage;
 /// use serde_json::json;
 ///
 /// let msg = WebSocketMessage::new("user.created", json!({"id": 123}));
@@ -62,7 +62,7 @@ impl<T> WebSocketMessage<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::WebSocketMessage;
+	/// use reinhardt_core::signals::websocket_integration::WebSocketMessage;
 	///
 	/// let msg = WebSocketMessage::new("notification", "Hello");
 	/// assert_eq!(msg.event_type, "notification");
@@ -103,7 +103,7 @@ pub trait WebSocketClient: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
+/// use reinhardt_core::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
 ///
 /// let client = MockWebSocketClient::new("client-1");
 /// assert_eq!(client.client_id(), "client-1");
@@ -121,7 +121,7 @@ impl MockWebSocketClient {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::MockWebSocketClient;
+	/// use reinhardt_core::signals::websocket_integration::MockWebSocketClient;
 	///
 	/// let client = MockWebSocketClient::new("test-client");
 	/// ```
@@ -138,7 +138,7 @@ impl MockWebSocketClient {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
 	///
 	/// let client = MockWebSocketClient::new("test");
 	/// client.send_message("Hello".to_string()).unwrap();
@@ -156,7 +156,7 @@ impl MockWebSocketClient {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{MockWebSocketClient, WebSocketClient};
 	///
 	/// let client = MockWebSocketClient::new("test");
 	/// assert!(client.is_connected());
@@ -195,7 +195,7 @@ impl WebSocketClient for MockWebSocketClient {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::websocket_integration::WebSocketSignalBridge;
+/// use reinhardt_core::signals::websocket_integration::WebSocketSignalBridge;
 ///
 /// let bridge = WebSocketSignalBridge::new();
 /// ```
@@ -209,7 +209,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::WebSocketSignalBridge;
+	/// use reinhardt_core::signals::websocket_integration::WebSocketSignalBridge;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
 	/// ```
@@ -224,7 +224,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
 	/// use std::sync::Arc;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
@@ -244,7 +244,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
 	/// use std::sync::Arc;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
@@ -263,7 +263,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::WebSocketSignalBridge;
+	/// use reinhardt_core::signals::websocket_integration::WebSocketSignalBridge;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
 	/// assert_eq!(bridge.client_count(), 0);
@@ -277,7 +277,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
 	/// use std::sync::Arc;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
@@ -318,8 +318,8 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::websocket_integration::WebSocketSignalBridge;
-	/// use crate::signals::post_save;
+	/// use reinhardt_core::signals::websocket_integration::WebSocketSignalBridge;
+	/// use reinhardt_core::signals::post_save;
 	/// # use serde::{Serialize, Deserialize};
 	///
 	/// # #[tokio::main]
@@ -363,7 +363,7 @@ impl WebSocketSignalBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, MockWebSocketClient};
 	/// use std::sync::Arc;
 	///
 	/// let bridge = WebSocketSignalBridge::new();
@@ -410,7 +410,7 @@ impl fmt::Debug for WebSocketSignalBridge {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster};
+/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster};
 ///
 /// let bridge = WebSocketSignalBridge::new();
 /// let broadcaster = TypedWebSocketBroadcaster::<String>::new(bridge, "string_event");
@@ -433,7 +433,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster};
 	///
 	/// let bridge = WebSocketSignalBridge::new();
 	/// let broadcaster = TypedWebSocketBroadcaster::<String>::new(bridge, "test");
@@ -451,7 +451,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster, MockWebSocketClient};
+	/// use reinhardt_core::signals::websocket_integration::{WebSocketSignalBridge, TypedWebSocketBroadcaster, MockWebSocketClient};
 	/// use std::sync::Arc;
 	///
 	/// let bridge = WebSocketSignalBridge::new();

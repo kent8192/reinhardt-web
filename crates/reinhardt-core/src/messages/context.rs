@@ -18,8 +18,8 @@ use serde::Serialize;
 /// ## Example
 ///
 /// ```rust
-/// use crate::messages::context::MessagesContext;
-/// use crate::messages::Message;
+/// use reinhardt_core::messages::context::MessagesContext;
+/// use reinhardt_core::messages::Message;
 ///
 /// let messages = vec![Message::info("Hello"), Message::success("Done")];
 /// let context = MessagesContext::new(messages);
@@ -37,8 +37,8 @@ impl MessagesContext {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::context::MessagesContext;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::context::MessagesContext;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let messages = vec![Message::info("Test")];
 	/// let context = MessagesContext::new(messages);
@@ -53,7 +53,7 @@ impl MessagesContext {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::context::MessagesContext;
+	/// use reinhardt_core::messages::context::MessagesContext;
 	///
 	/// let context = MessagesContext::empty();
 	/// assert_eq!(context.messages.len(), 0);
@@ -69,8 +69,8 @@ impl MessagesContext {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::context::MessagesContext;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::context::MessagesContext;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let empty_context = MessagesContext::empty();
 	/// assert!(!empty_context.has_messages());
@@ -87,8 +87,8 @@ impl MessagesContext {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::context::MessagesContext;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::context::MessagesContext;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let context = MessagesContext::new(vec![
 	///     Message::info("One"),

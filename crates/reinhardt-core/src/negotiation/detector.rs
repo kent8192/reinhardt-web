@@ -15,7 +15,7 @@ impl ContentTypeDetector {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::detector::ContentTypeDetector;
+	/// use reinhardt_core::negotiation::detector::ContentTypeDetector;
 	///
 	/// let detector = ContentTypeDetector::new();
 	/// ```
@@ -30,7 +30,7 @@ impl ContentTypeDetector {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{detector::ContentTypeDetector, MediaType};
+	/// use reinhardt_core::negotiation::{detector::ContentTypeDetector, MediaType};
 	///
 	/// let detector = ContentTypeDetector::with_default(
 	///     MediaType::new("text", "plain")
@@ -47,7 +47,7 @@ impl ContentTypeDetector {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::detector::ContentTypeDetector;
+	/// use reinhardt_core::negotiation::detector::ContentTypeDetector;
 	///
 	/// let detector = ContentTypeDetector::new();
 	///

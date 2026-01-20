@@ -26,7 +26,7 @@ use crate::core::View;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use crate::ListAPIView;
+/// use reinhardt_views::ListAPIView;
 /// use reinhardt_db::orm::{Model, QuerySet};
 /// use reinhardt_rest::serializers::JsonSerializer;
 /// use serde::{Serialize, Deserialize};
@@ -82,7 +82,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::ListAPIView;
+	/// use reinhardt_views::ListAPIView;
 	/// use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
@@ -119,7 +119,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::ListAPIView;
+	/// # use reinhardt_views::ListAPIView;
 	/// # use reinhardt_db::orm::{Model, QuerySet};
 	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use serde::{Serialize, Deserialize};
@@ -153,7 +153,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::ListAPIView;
+	/// # use reinhardt_views::ListAPIView;
 	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
@@ -188,8 +188,8 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::ListAPIView;
-	/// # use crate::viewsets::PaginationConfig;
+	/// # use reinhardt_views::ListAPIView;
+	/// # use reinhardt_views::viewsets::PaginationConfig;
 	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
@@ -212,7 +212,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::ListAPIView;
+	/// # use reinhardt_views::ListAPIView;
 	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};

@@ -46,7 +46,7 @@ impl JSONParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::json::JSONParser;
+	/// use reinhardt_core::parsers::json::JSONParser;
 	///
 	/// let parser = JSONParser::new();
 	/// assert!(!parser.allow_empty);
@@ -59,7 +59,7 @@ impl JSONParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::json::JSONParser;
+	/// use reinhardt_core::parsers::json::JSONParser;
 	///
 	/// let parser = JSONParser::new().allow_empty(true);
 	/// assert!(parser.allow_empty);
@@ -72,7 +72,7 @@ impl JSONParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::json::JSONParser;
+	/// use reinhardt_core::parsers::json::JSONParser;
 	///
 	/// let parser = JSONParser::new().strict(false);
 	/// assert!(!parser.strict);

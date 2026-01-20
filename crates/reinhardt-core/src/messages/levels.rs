@@ -23,7 +23,7 @@ impl Level {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Level;
+	/// use reinhardt_core::messages::Level;
 	///
 	/// assert_eq!(Level::Debug.as_str(), "debug");
 	/// assert_eq!(Level::Info.as_str(), "info");
@@ -47,7 +47,7 @@ impl Level {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Level;
+	/// use reinhardt_core::messages::Level;
 	///
 	/// assert_eq!(Level::from_value(10), Level::Debug);
 	/// assert_eq!(Level::from_value(20), Level::Info);
@@ -69,7 +69,7 @@ impl Level {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Level;
+	/// use reinhardt_core::messages::Level;
 	///
 	/// assert_eq!(Level::Debug.value(), 10);
 	/// assert_eq!(Level::Info.value(), 20);
@@ -108,7 +108,7 @@ impl FromStr for Level {
 	///
 	/// ```
 	/// use std::str::FromStr;
-	/// use crate::messages::Level;
+	/// use reinhardt_core::messages::Level;
 	///
 	/// assert_eq!(Level::from_str("debug"), Ok(Level::Debug));
 	/// assert_eq!(Level::from_str("INFO"), Ok(Level::Info));

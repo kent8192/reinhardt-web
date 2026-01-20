@@ -273,7 +273,7 @@ impl DatabaseEngine {
 	/// ```ignore
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_db::orm::engine::DatabaseEngine;
-	/// use reinhardt_db::crate::backends::drivers::{DatabaseConnection, DatabaseType};
+	/// use reinhardt_db::reinhardt_db::backends::drivers::{DatabaseConnection, DatabaseType};
 	///
 	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let engine = DatabaseEngine::new(connection, DatabaseType::Postgres);

@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use crate::openapi::endpoints::{swagger_docs, redoc_docs, openapi_json};
+//! use reinhardt_rest::openapi::endpoints::{swagger_docs, redoc_docs, openapi_json};
 //! use reinhardt_http::{Request, Response};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,7 +88,7 @@ pub fn generate_openapi_schema() -> OpenApiSchema {
 /// ```rust,ignore
 /// use reinhardt::UnifiedRouter;
 /// use reinhardt::Method;
-/// use crate::openapi::endpoints::swagger_docs;
+/// use reinhardt_rest::openapi::endpoints::swagger_docs;
 ///
 /// let router = UnifiedRouter::new()
 ///     .function("/docs", Method::GET, swagger_docs);
@@ -119,7 +119,7 @@ pub async fn swagger_docs(_req: Request) -> Result<Response> {
 /// ```rust,ignore
 /// use reinhardt::UnifiedRouter;
 /// use reinhardt::Method;
-/// use crate::openapi::endpoints::redoc_docs;
+/// use reinhardt_rest::openapi::endpoints::redoc_docs;
 ///
 /// let router = UnifiedRouter::new()
 ///     .function("/docs-redoc", Method::GET, redoc_docs);
@@ -149,7 +149,7 @@ pub async fn redoc_docs(_req: Request) -> Result<Response> {
 /// ```rust,ignore
 /// use reinhardt::UnifiedRouter;
 /// use reinhardt::Method;
-/// use crate::openapi::endpoints::openapi_json;
+/// use reinhardt_rest::openapi::endpoints::openapi_json;
 ///
 /// let router = UnifiedRouter::new()
 ///     .function("/api/openapi.json", Method::GET, openapi_json);

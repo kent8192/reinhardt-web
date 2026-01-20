@@ -16,7 +16,7 @@ use async_trait::async_trait;
 /// # Examples
 ///
 /// ```rust,ignore
-/// use crate::backends::schema::test_utils::MockSchemaEditor;
+/// use reinhardt_db::backends::schema::test_utils::MockSchemaEditor;
 ///
 /// let editor = MockSchemaEditor::new();
 /// let stmt = editor.create_table_statement("users", &[

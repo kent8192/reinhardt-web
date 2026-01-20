@@ -135,7 +135,7 @@ impl RunSQL {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::special::RunSQL;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let sql = RunSQL::new("SELECT 1");
 	/// let factory = SchemaEditorFactory::new();
@@ -210,7 +210,7 @@ impl StateOperation {
 ///
 /// ```rust
 /// use reinhardt_db::migrations::operations::special::RunCode;
-/// use crate::backends::connection::DatabaseConnection;
+/// use reinhardt_db::backends::connection::DatabaseConnection;
 ///
 /// // Create a code operation with description
 /// let code = RunCode::new("Update user emails", |connection| {
@@ -288,7 +288,7 @@ impl RunCode {
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_db::migrations::operations::special::RunCode;
-	/// use crate::backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let code = RunCode::new("Migrate data", |connection| Ok(()));
 	/// let connection = DatabaseConnection::connect_postgres("postgres://localhost/db").await?;
@@ -307,7 +307,7 @@ impl RunCode {
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// use reinhardt_db::migrations::operations::special::RunCode;
-	/// use crate::backends::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::connection::DatabaseConnection;
 	///
 	/// let code = RunCode::new("Migrate data", |_| Ok(()))
 	///     .with_reverse_code(|_| Ok(()));

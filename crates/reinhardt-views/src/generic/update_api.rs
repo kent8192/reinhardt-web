@@ -25,7 +25,7 @@ use crate::core::View;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use crate::UpdateAPIView;
+/// use reinhardt_views::UpdateAPIView;
 /// use reinhardt_db::orm::Model;
 /// use reinhardt_rest::serializers::JsonSerializer;
 /// use serde::{Serialize, Deserialize};
@@ -79,7 +79,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::UpdateAPIView;
+	/// use reinhardt_views::UpdateAPIView;
 	/// use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
@@ -121,7 +121,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::UpdateAPIView;
+	/// # use reinhardt_views::UpdateAPIView;
 	/// # use reinhardt_rest::serializers::JsonSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};

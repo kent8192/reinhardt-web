@@ -7,7 +7,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use crate::signals::orm_integration::OrmSignalAdapter;
+//! use reinhardt_core::signals::orm_integration::OrmSignalAdapter;
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -57,7 +57,7 @@ pub trait OrmEventListener: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::orm_integration::OrmSignalAdapter;
+/// use reinhardt_core::signals::orm_integration::OrmSignalAdapter;
 ///
 /// let adapter = OrmSignalAdapter::<String>::new();
 /// assert_eq!(adapter.signal_count(), 0);
@@ -72,7 +72,7 @@ impl<T: Send + Sync + 'static> OrmSignalAdapter<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::orm_integration::OrmSignalAdapter;
+	/// use reinhardt_core::signals::orm_integration::OrmSignalAdapter;
 	///
 	/// let adapter = OrmSignalAdapter::<String>::new();
 	/// ```
@@ -87,7 +87,7 @@ impl<T: Send + Sync + 'static> OrmSignalAdapter<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::orm_integration::OrmSignalAdapter;
+	/// use reinhardt_core::signals::orm_integration::OrmSignalAdapter;
 	///
 	/// let adapter = OrmSignalAdapter::<String>::new();
 	/// let count = adapter.signal_count();
@@ -115,7 +115,7 @@ impl<T: Send + Sync + 'static> Default for OrmSignalAdapter<T> {
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use crate::signals::orm_integration::dispatch_pre_save;
+/// # use reinhardt_core::signals::orm_integration::dispatch_pre_save;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # #[derive(Clone)] struct User { id: i32, name: String }
@@ -137,7 +137,7 @@ pub async fn dispatch_pre_save<T: Send + Sync + Clone + 'static>(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use crate::signals::orm_integration::dispatch_post_save;
+/// # use reinhardt_core::signals::orm_integration::dispatch_post_save;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # #[derive(Clone)] struct User { id: i32, name: String }
@@ -160,7 +160,7 @@ pub async fn dispatch_post_save<T: Send + Sync + Clone + 'static>(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use crate::signals::orm_integration::dispatch_pre_delete;
+/// # use reinhardt_core::signals::orm_integration::dispatch_pre_delete;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # #[derive(Clone)] struct User { id: i32, name: String }
@@ -182,7 +182,7 @@ pub async fn dispatch_pre_delete<T: Send + Sync + Clone + 'static>(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use crate::signals::orm_integration::dispatch_post_delete;
+/// # use reinhardt_core::signals::orm_integration::dispatch_post_delete;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # #[derive(Clone)] struct User { id: i32, name: String }
@@ -205,7 +205,7 @@ pub async fn dispatch_post_delete<T: Send + Sync + Clone + 'static>(
 /// # Examples
 ///
 /// ```
-/// use crate::signals::orm_integration::connect_orm_signals;
+/// use reinhardt_core::signals::orm_integration::connect_orm_signals;
 ///
 /// # async fn example() {
 /// connect_orm_signals::<String>().await;
@@ -227,7 +227,7 @@ pub async fn connect_orm_signals<T: Send + Sync + 'static>() {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::orm_integration::get_orm_signals;
+/// use reinhardt_core::signals::orm_integration::get_orm_signals;
 ///
 /// let signals = get_orm_signals::<String>();
 /// assert_eq!(signals.len(), 4);

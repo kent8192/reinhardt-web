@@ -14,7 +14,7 @@ use std::net::IpAddr;
 /// ## Basic usage (accepts both IPv4 and IPv6)
 ///
 /// ```
-/// use crate::validators::{IPAddressValidator, Validator};
+/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 ///
 /// let validator = IPAddressValidator::new();
 /// assert!(validator.validate("192.168.1.1").is_ok());
@@ -26,7 +26,7 @@ use std::net::IpAddr;
 /// ## IPv4 only
 ///
 /// ```
-/// use crate::validators::{IPAddressValidator, Validator};
+/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 ///
 /// let validator = IPAddressValidator::ipv4_only();
 /// assert!(validator.validate("192.168.1.1").is_ok());
@@ -36,7 +36,7 @@ use std::net::IpAddr;
 /// ## IPv6 only
 ///
 /// ```
-/// use crate::validators::{IPAddressValidator, Validator};
+/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 ///
 /// let validator = IPAddressValidator::ipv6_only();
 /// assert!(validator.validate("2001:0db8:85a3::8a2e:0370:7334").is_ok());
@@ -46,7 +46,7 @@ use std::net::IpAddr;
 /// ## Custom error message
 ///
 /// ```
-/// use crate::validators::{IPAddressValidator, Validator};
+/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 ///
 /// let validator = IPAddressValidator::new()
 ///     .with_message("Please provide a valid IP address");
@@ -70,7 +70,7 @@ impl IPAddressValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{IPAddressValidator, Validator};
+	/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 	///
 	/// let validator = IPAddressValidator::new();
 	/// assert!(validator.validate("192.168.1.1").is_ok());
@@ -89,7 +89,7 @@ impl IPAddressValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{IPAddressValidator, Validator};
+	/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 	///
 	/// let validator = IPAddressValidator::ipv4_only();
 	/// assert!(validator.validate("192.168.1.1").is_ok());
@@ -109,7 +109,7 @@ impl IPAddressValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{IPAddressValidator, Validator};
+	/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 	///
 	/// let validator = IPAddressValidator::ipv6_only();
 	/// assert!(validator.validate("2001:db8::1").is_ok());
@@ -129,7 +129,7 @@ impl IPAddressValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{IPAddressValidator, Validator};
+	/// use reinhardt_core::validators::{IPAddressValidator, Validator};
 	///
 	/// let validator = IPAddressValidator::new()
 	///     .with_message("Invalid IP address format");

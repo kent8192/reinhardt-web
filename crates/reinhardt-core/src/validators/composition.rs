@@ -8,7 +8,7 @@
 //! ## AND composition - All validators must pass
 //!
 //! ```
-//! use crate::validators::{AndValidator, MinLengthValidator, MaxLengthValidator, Validator};
+//! use reinhardt_core::validators::{AndValidator, MinLengthValidator, MaxLengthValidator, Validator};
 //!
 //! let validator = AndValidator::new(vec![
 //!     Box::new(MinLengthValidator::new(3)),
@@ -23,7 +23,7 @@
 //! ## OR composition - At least one validator must pass
 //!
 //! ```
-//! use crate::validators::{OrValidator, EmailValidator, UrlValidator, Validator};
+//! use reinhardt_core::validators::{OrValidator, EmailValidator, UrlValidator, Validator};
 //!
 //! let validator = OrValidator::new(vec![
 //!     Box::new(EmailValidator::new()),

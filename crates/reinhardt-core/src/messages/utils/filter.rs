@@ -12,8 +12,8 @@ use super::super::message::Message;
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::filter::filter_by_min_level;
-/// use crate::messages::{Message, Level};
+/// use reinhardt_core::messages::utils::filter::filter_by_min_level;
+/// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
 ///     Message::debug("Debug message"),
@@ -41,8 +41,8 @@ pub fn filter_by_min_level(messages: &[Message], min_level: Level) -> Vec<Messag
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::filter::filter_by_level;
-/// use crate::messages::{Message, Level};
+/// use reinhardt_core::messages::utils::filter::filter_by_level;
+/// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
 ///     Message::debug("Debug message"),
@@ -70,8 +70,8 @@ pub fn filter_by_level(messages: &[Message], level: Level) -> Vec<Message> {
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::filter::filter_by_max_level;
-/// use crate::messages::{Message, Level};
+/// use reinhardt_core::messages::utils::filter::filter_by_max_level;
+/// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
 ///     Message::debug("Debug message"),
@@ -99,8 +99,8 @@ pub fn filter_by_max_level(messages: &[Message], max_level: Level) -> Vec<Messag
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::filter::filter_by_level_range;
-/// use crate::messages::{Message, Level};
+/// use reinhardt_core::messages::utils::filter::filter_by_level_range;
+/// use reinhardt_core::messages::{Message, Level};
 ///
 /// let messages = vec![
 ///     Message::debug("Debug message"),
@@ -132,8 +132,8 @@ pub fn filter_by_level_range(
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::filter::filter_by_tag;
-/// use crate::messages::Message;
+/// use reinhardt_core::messages::utils::filter::filter_by_tag;
+/// use reinhardt_core::messages::Message;
 ///
 /// let messages = vec![
 ///     Message::info("Normal message"),

@@ -73,7 +73,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new();
 	/// assert_eq!(paginator.page_size, 10);
@@ -87,7 +87,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new().page_size(20);
 	/// assert_eq!(paginator.page_size, 20);
@@ -101,7 +101,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new()
 	///     .page_size(10)
@@ -117,7 +117,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new()
 	///     .page_size_query_param("limit");
@@ -134,7 +134,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new()
 	///     .page_size(10)
@@ -150,7 +150,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// let paginator = PageNumberPagination::new()
 	///     .allow_empty_first_page(false);
@@ -165,7 +165,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::{PageNumberPagination, ErrorMessages};
+	/// use reinhardt_core::pagination::{PageNumberPagination, ErrorMessages};
 	///
 	/// let messages = ErrorMessages {
 	///     invalid_page: "Invalid page!".to_string(),
@@ -190,7 +190,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::{PageNumberPagination, Page};
+	/// use reinhardt_core::pagination::{PageNumberPagination, Page};
 	///
 	/// let paginator = PageNumberPagination::new().page_size(5);
 	/// let items: Vec<i32> = (1..=20).collect();
@@ -274,7 +274,7 @@ impl PageNumberPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::PageNumberPagination;
+	/// use reinhardt_core::pagination::PageNumberPagination;
 	///
 	/// async fn example() {
 	///     let paginator = PageNumberPagination::new().page_size(5);

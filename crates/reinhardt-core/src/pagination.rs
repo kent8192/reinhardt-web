@@ -28,7 +28,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use crate::pagination::PageNumberPagination;
+//! use reinhardt_core::pagination::PageNumberPagination;
 //!
 //! let paginator = PageNumberPagination::new()
 //!     .page_size(10)
@@ -38,8 +38,8 @@
 //! ## Cursor Pagination Example
 //!
 //! ```rust,no_run
-//! use crate::pagination::CursorPagination;
-//! use crate::pagination::cursor::RelayPagination;
+//! use reinhardt_core::pagination::CursorPagination;
+//! use reinhardt_core::pagination::cursor::RelayPagination;
 //!
 //! // Standard cursor pagination
 //! let paginator = CursorPagination::new()
@@ -55,7 +55,7 @@
 //! ## Database Cursor Pagination Example
 //!
 //! ```rust,no_run
-//! use crate::pagination::{CursorPaginator, HasTimestamp};
+//! use reinhardt_core::pagination::{CursorPaginator, HasTimestamp};
 //!
 //! // Define your model
 //! #[derive(Clone)]

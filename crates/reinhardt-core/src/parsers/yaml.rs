@@ -14,8 +14,8 @@ use serde_json::Value;
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::yaml::YamlParser;
-/// use crate::parsers::parser::Parser;
+/// use reinhardt_core::parsers::yaml::YamlParser;
+/// use reinhardt_core::parsers::parser::Parser;
 /// use bytes::Bytes;
 /// use http::HeaderMap;
 ///
@@ -38,7 +38,7 @@ impl YamlParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::yaml::YamlParser;
+	/// use reinhardt_core::parsers::yaml::YamlParser;
 	///
 	/// let parser = YamlParser::new();
 	/// assert!(!parser.allow_empty);
@@ -52,7 +52,7 @@ impl YamlParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::yaml::YamlParser;
+	/// use reinhardt_core::parsers::yaml::YamlParser;
 	///
 	/// let parser = YamlParser::new().allow_empty(true);
 	/// assert!(parser.allow_empty);

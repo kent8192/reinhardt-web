@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```
-/// use crate::metadata::ValidationPattern;
+/// use reinhardt_rest::metadata::ValidationPattern;
 ///
 /// let pattern = ValidationPattern::email();
 /// assert!(pattern.is_valid("user@example.com"));
@@ -30,7 +30,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::new(
 	///     r"^\d{3}-\d{4}$",
@@ -51,7 +51,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::with_examples(
 	///     r"^\d{3}-\d{4}$",
@@ -77,7 +77,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::email();
 	/// assert!(pattern.is_valid("user@example.com"));
@@ -98,7 +98,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::url();
 	/// assert!(pattern.is_valid("https://example.com"));
@@ -118,7 +118,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::uuid();
 	/// assert!(pattern.is_valid("123e4567-e89b-12d3-a456-426614174000"));
@@ -137,7 +137,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::alphanumeric();
 	/// assert!(pattern.is_valid("abc123"));
@@ -158,7 +158,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::slug();
 	/// assert!(pattern.is_valid("my-blog-post"));
@@ -179,7 +179,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::phone();
 	/// assert!(pattern.is_valid("+1-234-567-8900"));
@@ -199,7 +199,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::hex_color();
 	/// assert!(pattern.is_valid("#FF5733"));
@@ -220,7 +220,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::ipv4();
 	/// assert!(pattern.is_valid("192.168.1.1"));
@@ -245,7 +245,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::date();
 	/// assert!(pattern.is_valid("2023-12-25"));
@@ -266,7 +266,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::time();
 	/// assert!(pattern.is_valid("14:30:00"));
@@ -287,7 +287,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::email();
 	/// assert!(pattern.is_valid("user@example.com"));
@@ -304,7 +304,7 @@ impl ValidationPattern {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::ValidationPattern;
+	/// use reinhardt_rest::metadata::ValidationPattern;
 	///
 	/// let pattern = ValidationPattern::email();
 	/// assert!(pattern.as_openapi_pattern().starts_with('^'));

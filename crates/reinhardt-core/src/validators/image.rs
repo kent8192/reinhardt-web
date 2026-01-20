@@ -11,7 +11,7 @@
 //! ## Validate minimum dimensions
 //!
 //! ```
-//! use crate::validators::ImageDimensionValidator;
+//! use reinhardt_core::validators::ImageDimensionValidator;
 //!
 //! let validator = ImageDimensionValidator::new()
 //!     .with_min_width(800)
@@ -24,7 +24,7 @@
 //! ## Validate aspect ratio
 //!
 //! ```
-//! use crate::validators::ImageDimensionValidator;
+//! use reinhardt_core::validators::ImageDimensionValidator;
 //!
 //! let validator = ImageDimensionValidator::new()
 //!     .with_aspect_ratio(16, 9)
@@ -108,7 +108,7 @@ impl ImageDimensionValidator {
 	/// # Example
 	///
 	/// ```
-	/// use crate::validators::ImageDimensionValidator;
+	/// use reinhardt_core::validators::ImageDimensionValidator;
 	///
 	/// // 16:9 aspect ratio
 	/// let validator = ImageDimensionValidator::new()
@@ -131,7 +131,7 @@ impl ImageDimensionValidator {
 	/// # Example
 	///
 	/// ```
-	/// use crate::validators::ImageDimensionValidator;
+	/// use reinhardt_core::validators::ImageDimensionValidator;
 	///
 	/// let validator = ImageDimensionValidator::new()
 	///     .with_aspect_ratio(16, 9)

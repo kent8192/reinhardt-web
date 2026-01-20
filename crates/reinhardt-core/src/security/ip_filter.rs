@@ -20,7 +20,7 @@ pub enum IpFilterMode {
 /// # Examples
 ///
 /// ```
-/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 /// use std::net::IpAddr;
 ///
 /// let mut config = IpFilterConfig::new(IpFilterMode::Whitelist);
@@ -49,7 +49,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	///
 	/// let config = IpFilterConfig::new(IpFilterMode::Whitelist);
 	/// assert_eq!(config.mode, IpFilterMode::Whitelist);
@@ -67,7 +67,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	///
 	/// let mut config = IpFilterConfig::new(IpFilterMode::Whitelist);
 	/// config.add_allowed_ip("192.168.1.0/24").unwrap();
@@ -99,7 +99,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	///
 	/// let mut config = IpFilterConfig::new(IpFilterMode::Blacklist);
 	/// config.add_blocked_ip("192.168.1.100").unwrap();
@@ -131,7 +131,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	/// use std::net::IpAddr;
 	///
 	/// let mut config = IpFilterConfig::new(IpFilterMode::Whitelist);
@@ -167,7 +167,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	///
 	/// let config = IpFilterConfig::whitelist();
 	/// assert_eq!(config.mode, IpFilterMode::Whitelist);
@@ -181,7 +181,7 @@ impl IpFilterConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::ip_filter::{IpFilterConfig, IpFilterMode};
+	/// use reinhardt_core::security::ip_filter::{IpFilterConfig, IpFilterMode};
 	///
 	/// let config = IpFilterConfig::blacklist();
 	/// assert_eq!(config.mode, IpFilterMode::Blacklist);

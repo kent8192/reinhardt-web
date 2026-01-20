@@ -38,7 +38,7 @@ impl<T> Default for RelationField<T> {
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::PrimaryKeyRelatedField;
+/// # use reinhardt_rest::serializers::PrimaryKeyRelatedField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +66,7 @@ pub type PrimaryKeyRelatedField<T> = RelationField<T>;
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::SlugRelatedField;
+/// # use reinhardt_rest::serializers::SlugRelatedField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +95,7 @@ pub type SlugRelatedField<T> = RelationField<T>;
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::StringRelatedField;
+/// # use reinhardt_rest::serializers::StringRelatedField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +123,7 @@ pub type StringRelatedField<T> = RelationField<T>;
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::HyperlinkedRelatedField;
+/// # use reinhardt_rest::serializers::HyperlinkedRelatedField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,7 +151,7 @@ pub type HyperlinkedRelatedField<T> = RelationField<T>;
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::ManyRelatedField;
+/// # use reinhardt_rest::serializers::ManyRelatedField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,7 +199,7 @@ impl<T> Default for ManyRelatedField<T> {
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::IdentityField;
+/// # use reinhardt_rest::serializers::IdentityField;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]

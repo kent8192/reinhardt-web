@@ -31,7 +31,7 @@ impl<U> AuthResult<U> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::authentication::AuthResult;
+	/// use reinhardt_rest::authentication::AuthResult;
 	///
 	/// let result = AuthResult::<String>::Authenticated("user123".to_string());
 	/// assert!(result.is_authenticated());
@@ -47,7 +47,7 @@ impl<U> AuthResult<U> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::authentication::AuthResult;
+	/// use reinhardt_rest::authentication::AuthResult;
 	///
 	/// let result = AuthResult::Authenticated("user123".to_string());
 	/// assert_eq!(result.user(), Some("user123".to_string()));
@@ -66,7 +66,7 @@ impl<U> AuthResult<U> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::authentication::AuthResult;
+	/// use reinhardt_rest::authentication::AuthResult;
 	///
 	/// let result = AuthResult::<String>::Failed("Invalid credentials".to_string());
 	/// assert_eq!(result.error(), Some("Invalid credentials"));

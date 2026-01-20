@@ -23,7 +23,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::reactive::{Signal, Effect, Memo};
+//! use reinhardt_core::reactive::{Signal, Effect, Memo};
 //!
 //! // Create signals
 //! let count = Signal::new(0);

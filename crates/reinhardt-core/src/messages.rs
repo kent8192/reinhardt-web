@@ -18,7 +18,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use crate::messages::{Message, middleware::MessagesContainer, storage::MemoryStorage};
+//! use reinhardt_core::messages::{Message, middleware::MessagesContainer, storage::MemoryStorage};
 //!
 //! // Create a message container
 //! let container = MessagesContainer::new(vec![]);

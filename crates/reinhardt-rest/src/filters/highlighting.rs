@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::filters::{SearchHighlighter, HtmlHighlighter, PlainTextHighlighter};
+//! use reinhardt_rest::filters::{SearchHighlighter, HtmlHighlighter, PlainTextHighlighter};
 //!
 //! // HTML highlighting
 //! let html = HtmlHighlighter::new();
@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{SearchHighlighter, HtmlHighlighter};
+/// use reinhardt_rest::filters::{SearchHighlighter, HtmlHighlighter};
 ///
 /// let highlighter = HtmlHighlighter::new();
 /// let result = highlighter.highlight("Hello world", "world");
@@ -71,7 +71,7 @@ pub trait SearchHighlighter {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{SearchHighlighter, HtmlHighlighter};
+/// use reinhardt_rest::filters::{SearchHighlighter, HtmlHighlighter};
 ///
 /// let highlighter = HtmlHighlighter::new();
 /// let result = highlighter.highlight("The quick brown fox", "quick");
@@ -89,7 +89,7 @@ impl HtmlHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::HtmlHighlighter;
+	/// use reinhardt_rest::filters::HtmlHighlighter;
 	///
 	/// let highlighter = HtmlHighlighter::new();
 	/// ```
@@ -105,7 +105,7 @@ impl HtmlHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SearchHighlighter, HtmlHighlighter};
+	/// use reinhardt_rest::filters::{SearchHighlighter, HtmlHighlighter};
 	///
 	/// let highlighter = HtmlHighlighter::new().with_tag("strong");
 	/// let result = highlighter.highlight("Hello world", "world");
@@ -121,7 +121,7 @@ impl HtmlHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SearchHighlighter, HtmlHighlighter};
+	/// use reinhardt_rest::filters::{SearchHighlighter, HtmlHighlighter};
 	///
 	/// let highlighter = HtmlHighlighter::new().case_sensitive(true);
 	/// let result = highlighter.highlight("Hello World", "world");
@@ -175,7 +175,7 @@ impl SearchHighlighter for HtmlHighlighter {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{SearchHighlighter, PlainTextHighlighter};
+/// use reinhardt_rest::filters::{SearchHighlighter, PlainTextHighlighter};
 ///
 /// let highlighter = PlainTextHighlighter::new();
 /// let result = highlighter.highlight("The quick brown fox", "quick");
@@ -194,7 +194,7 @@ impl PlainTextHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::PlainTextHighlighter;
+	/// use reinhardt_rest::filters::PlainTextHighlighter;
 	///
 	/// let highlighter = PlainTextHighlighter::new();
 	/// ```
@@ -211,7 +211,7 @@ impl PlainTextHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SearchHighlighter, PlainTextHighlighter};
+	/// use reinhardt_rest::filters::{SearchHighlighter, PlainTextHighlighter};
 	///
 	/// let highlighter = PlainTextHighlighter::new().with_markers(">>", "<<");
 	/// let result = highlighter.highlight("Hello world", "world");
@@ -228,7 +228,7 @@ impl PlainTextHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SearchHighlighter, PlainTextHighlighter};
+	/// use reinhardt_rest::filters::{SearchHighlighter, PlainTextHighlighter};
 	///
 	/// let highlighter = PlainTextHighlighter::new().case_sensitive(true);
 	/// let result = highlighter.highlight("Hello World", "world");
@@ -274,7 +274,7 @@ impl SearchHighlighter for PlainTextHighlighter {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::HighlightedResult;
+/// use reinhardt_rest::filters::HighlightedResult;
 ///
 /// let result = HighlightedResult {
 ///     field: "title".to_string(),
@@ -301,7 +301,7 @@ impl HighlightedResult {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::HighlightedResult;
+	/// use reinhardt_rest::filters::HighlightedResult;
 	///
 	/// let result = HighlightedResult::new(
 	///     "title",
@@ -333,7 +333,7 @@ impl HighlightedResult {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{MultiFieldHighlighter, HtmlHighlighter};
+/// use reinhardt_rest::filters::{MultiFieldHighlighter, HtmlHighlighter};
 /// use std::collections::HashMap;
 ///
 /// let highlighter = MultiFieldHighlighter::new(Box::new(HtmlHighlighter::new()));
@@ -355,7 +355,7 @@ impl MultiFieldHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{MultiFieldHighlighter, HtmlHighlighter};
+	/// use reinhardt_rest::filters::{MultiFieldHighlighter, HtmlHighlighter};
 	///
 	/// let highlighter = MultiFieldHighlighter::new(Box::new(HtmlHighlighter::new()));
 	/// ```
@@ -368,7 +368,7 @@ impl MultiFieldHighlighter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{MultiFieldHighlighter, HtmlHighlighter};
+	/// use reinhardt_rest::filters::{MultiFieldHighlighter, HtmlHighlighter};
 	/// use std::collections::HashMap;
 	///
 	/// let highlighter = MultiFieldHighlighter::new(Box::new(HtmlHighlighter::new()));

@@ -10,7 +10,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::types::page::EventType;
+//! use reinhardt_core::types::page::EventType;
 //!
 //! let event_type = EventType::Click;
 //! assert_eq!(event_type.as_str(), "click");

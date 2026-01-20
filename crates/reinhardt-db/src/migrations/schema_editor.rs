@@ -22,7 +22,7 @@
 //!
 //! ```ignore
 //! use reinhardt_db::migrations::schema_editor::SchemaEditor;
-//! use crate::backends::{DatabaseConnection, DatabaseType};
+//! use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
 //!
 //! let connection = DatabaseConnection::connect_postgres("postgres://...").await?;
 //! let mut editor = SchemaEditor::new(connection.clone(), true, DatabaseType::Postgres).await?;

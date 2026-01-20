@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```rust
-//! use crate::validators::schema::{SchemaValidator, SchemaDraft};
-//! use crate::validators::Validator;
+//! use reinhardt_core::validators::schema::{SchemaValidator, SchemaDraft};
+//! use reinhardt_core::validators::Validator;
 //! use serde_json::json;
 //!
 //! // Create a validator with a schema
@@ -123,8 +123,8 @@ impl From<serde_json::Error> for SchemaError {
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::schema::{SchemaValidator, SchemaDraft};
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::schema::{SchemaValidator, SchemaDraft};
+/// use reinhardt_core::validators::Validator;
 /// use serde_json::json;
 ///
 /// // Using automatic draft detection
@@ -360,7 +360,7 @@ impl SchemaValidatorBuilder {
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::schema::validate_json;
+/// use reinhardt_core::validators::schema::validate_json;
 /// use serde_json::json;
 ///
 /// let schema = json!({"type": "number", "minimum": 0});
@@ -382,7 +382,7 @@ pub fn validate_json(schema: &Value, instance: &Value) -> Result<(), SchemaError
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::schema::is_valid_json;
+/// use reinhardt_core::validators::schema::is_valid_json;
 /// use serde_json::json;
 ///
 /// let schema = json!({"type": "string"});

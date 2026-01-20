@@ -47,7 +47,7 @@ impl std::fmt::Display for CardType {
 /// # Examples
 ///
 /// ```
-/// use crate::validators::{CreditCardValidator, CardType};
+/// use reinhardt_core::validators::{CreditCardValidator, CardType};
 ///
 /// // Accept any valid card
 /// let validator = CreditCardValidator::new();
@@ -69,7 +69,7 @@ impl CreditCardValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::CreditCardValidator;
+	/// use reinhardt_core::validators::CreditCardValidator;
 	///
 	/// let validator = CreditCardValidator::new();
 	/// ```
@@ -85,7 +85,7 @@ impl CreditCardValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CreditCardValidator, CardType};
+	/// use reinhardt_core::validators::{CreditCardValidator, CardType};
 	///
 	/// let validator = CreditCardValidator::with_card_types(vec![
 	///     CardType::Visa,
@@ -104,7 +104,7 @@ impl CreditCardValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CreditCardValidator, CardType};
+	/// use reinhardt_core::validators::{CreditCardValidator, CardType};
 	///
 	/// let validator = CreditCardValidator::new()
 	///     .allow_types(vec![CardType::Visa, CardType::MasterCard]);
@@ -119,7 +119,7 @@ impl CreditCardValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::CreditCardValidator;
+	/// use reinhardt_core::validators::CreditCardValidator;
 	///
 	/// let validator = CreditCardValidator::new()
 	///     .with_message("Please enter a valid credit card number");
@@ -141,7 +141,7 @@ impl CreditCardValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CreditCardValidator, CardType};
+	/// use reinhardt_core::validators::{CreditCardValidator, CardType};
 	///
 	/// let validator = CreditCardValidator::new();
 	/// let card_type = validator.validate("4532-0151-1283-0366").unwrap();

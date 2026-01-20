@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use crate::orm::Model;
+//! use reinhardt_db::orm::Model;
 //! use reinhardt_macros::model;
 //! use reinhardt_db::associations::ManyToManyField;
 //! use uuid::Uuid;
@@ -93,7 +93,7 @@ impl<PK> ManyToManyConfig<PK> {
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use crate::orm::Model;
+/// use reinhardt_db::orm::Model;
 /// use reinhardt_macros::model;
 /// use reinhardt_db::associations::ManyToManyField;
 /// use uuid::Uuid;
@@ -122,7 +122,7 @@ impl<PK> ManyToManyConfig<PK> {
 /// }
 ///
 /// // Usage with ManyToManyAccessor:
-/// use crate::orm::ManyToManyAccessor;
+/// use reinhardt_db::orm::ManyToManyAccessor;
 ///
 /// let user = User::find_by_id(&db, user_id).await?;
 /// let accessor = ManyToManyAccessor::new(&user, "groups", ());

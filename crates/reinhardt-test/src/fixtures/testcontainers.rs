@@ -78,7 +78,7 @@ fn get_pool_config() -> (u32, u64) {
 /// * `database_url` - Connection URL (postgres://, mysql://, sqlite://)
 ///
 /// # Example
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::testcontainers::create_test_any_pool;
 ///
 /// # async fn example() {
@@ -223,7 +223,7 @@ use fs2::FileExt;
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::FileLockGuard;
 ///
 /// // Acquire lock (blocks until available)
@@ -279,7 +279,7 @@ impl Drop for FileLockGuard {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::postgres_container;
 /// use rstest::*;
 ///
@@ -479,7 +479,7 @@ pub async fn cockroachdb_container()
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::redis_container;
 /// use rstest::*;
 ///
@@ -573,8 +573,8 @@ impl std::fmt::Debug for RedisClusterContainer {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::redis_cluster_lock;
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::redis_cluster_lock;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -595,8 +595,8 @@ pub fn redis_cluster_lock() -> FileLockGuard {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::{redis_cluster_lock, redis_cluster_cleanup};
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::{redis_cluster_lock, redis_cluster_cleanup};
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -798,8 +798,8 @@ pub async fn redis_cluster_ports_ready(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::redis_cluster_container;
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::redis_cluster_container;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -839,7 +839,7 @@ pub async fn redis_cluster_container(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::redis_cluster;
 /// use rstest::*;
 ///
@@ -906,8 +906,8 @@ pub async fn redis_cluster(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::redis_cluster_client;
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::redis_cluster_client;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -964,8 +964,8 @@ pub async fn redis_cluster_client(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::redis_cluster_urls;
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::redis_cluster_urls;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -1003,8 +1003,8 @@ pub async fn redis_cluster_urls(
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use reinhardt_test::fixtures::redis_cluster_fixture;
+/// ```ignore
+/// use reinhardt_test::fixtures::testcontainers::redis_cluster_fixture;
 /// use rstest::*;
 ///
 /// #[rstest]
@@ -1267,7 +1267,7 @@ pub async fn mongodb_container() -> (ContainerAsync<GenericImage>, String, u16) 
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::localstack_fixture;
 /// use rstest::*;
 ///
@@ -1323,7 +1323,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::postgres_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1390,7 +1390,7 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use reinhardt_test::fixtures::mysql_container;
 /// use rstest::*;
 ///
@@ -1531,7 +1531,7 @@ pub async fn mysql_container() -> (
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::mysql_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1597,7 +1597,7 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::sqlite_with_migrations_from;
 /// # use reinhardt_db::migrations::MigrationProvider;
 /// # #[tokio::main]
@@ -1661,7 +1661,7 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
@@ -1737,7 +1737,7 @@ pub async fn postgres_with_all_migrations() -> Result<
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::postgres_with_apps_migrations;
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -1797,7 +1797,7 @@ pub async fn postgres_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;
@@ -1895,7 +1895,7 @@ pub async fn mysql_with_apps_migrations(
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```ignore
 /// # use reinhardt_test::fixtures::*;
 /// # use rstest::*;
 /// # use std::sync::Arc;

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::database::Cursor;
+/// use reinhardt_core::pagination::cursor::database::Cursor;
 ///
 /// let cursor = Cursor::new(42, 1234567890);
 /// let encoded = cursor.encode();
@@ -37,7 +37,7 @@ impl Cursor {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::database::Cursor;
+	/// use reinhardt_core::pagination::cursor::database::Cursor;
 	///
 	/// let cursor = Cursor::new(100, 1609459200);
 	/// assert_eq!(cursor.id, 100);
@@ -55,7 +55,7 @@ impl Cursor {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::database::Cursor;
+	/// use reinhardt_core::pagination::cursor::database::Cursor;
 	///
 	/// let cursor = Cursor::new(42, 1234567890);
 	/// let encoded = cursor.encode();
@@ -78,7 +78,7 @@ impl Cursor {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::database::Cursor;
+	/// use reinhardt_core::pagination::cursor::database::Cursor;
 	///
 	/// let cursor = Cursor::new(42, 1234567890);
 	/// let encoded = cursor.encode();
@@ -133,7 +133,7 @@ impl std::error::Error for PaginationError {}
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::database::HasTimestamp;
+/// use reinhardt_core::pagination::cursor::database::HasTimestamp;
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -171,7 +171,7 @@ pub trait HasTimestamp {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::database::{CursorPaginator, HasTimestamp};
+/// use reinhardt_core::pagination::cursor::database::{CursorPaginator, HasTimestamp};
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -203,7 +203,7 @@ impl CursorPaginator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::database::CursorPaginator;
+	/// use reinhardt_core::pagination::cursor::database::CursorPaginator;
 	///
 	/// let paginator = CursorPaginator::new(20);
 	/// ```
@@ -235,7 +235,7 @@ impl CursorPaginator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::database::{CursorPaginator, HasTimestamp};
+	/// use reinhardt_core::pagination::cursor::database::{CursorPaginator, HasTimestamp};
 	///
 	/// #[derive(Clone)]
 	/// struct Item {
@@ -324,7 +324,7 @@ impl CursorPaginator {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::database::CursorPaginatedResponse;
+/// use reinhardt_core::pagination::cursor::database::CursorPaginatedResponse;
 ///
 /// let response: CursorPaginatedResponse<i32> = CursorPaginatedResponse {
 ///     results: vec![1, 2, 3],

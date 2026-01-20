@@ -20,7 +20,7 @@ impl UrlValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{UrlValidator, Validator};
+	/// use reinhardt_core::validators::{UrlValidator, Validator};
 	///
 	/// let validator = UrlValidator::new();
 	/// assert!(validator.validate("http://example.com").is_ok());
@@ -36,7 +36,7 @@ impl UrlValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{UrlValidator, Validator};
+	/// use reinhardt_core::validators::{UrlValidator, Validator};
 	///
 	/// let validator = UrlValidator::new().with_message("Invalid URL");
 	/// let result = validator.validate("not-a-url");

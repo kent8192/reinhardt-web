@@ -17,7 +17,7 @@ impl MemoryStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::MemoryStorage;
+	/// use reinhardt_core::messages::storage::MemoryStorage;
 	///
 	/// let storage = MemoryStorage::new();
 	// Creates a new storage instance with defaults

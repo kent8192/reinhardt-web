@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::dlq::{DeadLetterQueue, DlqConfig, RetryStrategy};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::dlq::{DeadLetterQueue, DlqConfig, RetryStrategy};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //! use std::time::Duration;
 //! use serde::{Deserialize, Serialize};
 //!
@@ -46,7 +46,7 @@ use std::time::{Duration, Instant, SystemTime};
 /// # Examples
 ///
 /// ```
-/// use crate::signals::dlq::RetryStrategy;
+/// use reinhardt_core::signals::dlq::RetryStrategy;
 /// use std::time::Duration;
 ///
 /// let immediate = RetryStrategy::Immediate;
@@ -105,7 +105,7 @@ impl RetryStrategy {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::dlq::{DlqConfig, RetryStrategy};
+/// use reinhardt_core::signals::dlq::{DlqConfig, RetryStrategy};
 /// use std::time::Duration;
 ///
 /// let config = DlqConfig::new()
@@ -247,7 +247,7 @@ impl<T> DlqMessage<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::dlq::DlqStats;
+/// use reinhardt_core::signals::dlq::DlqStats;
 ///
 /// let stats = DlqStats::new();
 /// assert_eq!(stats.queue_size(), 0);
@@ -306,8 +306,8 @@ impl DlqStats {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::dlq::{DeadLetterQueue, DlqConfig};
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::dlq::{DeadLetterQueue, DlqConfig};
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -358,8 +358,8 @@ impl<T: Send + Sync + Clone + 'static> DeadLetterQueue<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::dlq::{DeadLetterQueue, DlqConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::dlq::{DeadLetterQueue, DlqConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -407,8 +407,8 @@ impl<T: Send + Sync + Clone + 'static> DeadLetterQueue<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::dlq::{DeadLetterQueue, DlqConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::dlq::{DeadLetterQueue, DlqConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }

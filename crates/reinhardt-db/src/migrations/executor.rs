@@ -189,7 +189,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```rust,ignore
 	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory
@@ -224,7 +224,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```ignore
 	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let db = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -372,7 +372,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::{Migration, executor::DatabaseMigrationExecutor};
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();
@@ -618,7 +618,7 @@ impl DatabaseMigrationExecutor {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::{MigrationPlan, executor::DatabaseMigrationExecutor};
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 	/// // For doctest purposes, using SQLite in-memory instead of PostgreSQL

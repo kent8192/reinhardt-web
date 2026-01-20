@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::filters::{FilterBackend, FilterResult, CustomFilterBackend};
+//! use reinhardt_rest::filters::{FilterBackend, FilterResult, CustomFilterBackend};
 //! use std::collections::HashMap;
 //! use async_trait::async_trait;
 //!
@@ -45,7 +45,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{FilterBackend, CustomFilterBackend};
+/// use reinhardt_rest::filters::{FilterBackend, CustomFilterBackend};
 /// use std::collections::HashMap;
 /// use async_trait::async_trait;
 ///
@@ -58,7 +58,7 @@ use std::sync::Arc;
 ///         &self,
 ///         query_params: &HashMap<String, String>,
 ///         sql: String,
-///     ) -> crate::filters::FilterResult<String> {
+///     ) -> reinhardt_rest::filters::FilterResult<String> {
 ///         Ok(sql)
 ///     }
 /// }
@@ -69,7 +69,7 @@ use std::sync::Arc;
 ///         &self,
 ///         query_params: &HashMap<String, String>,
 ///         sql: String,
-///     ) -> crate::filters::FilterResult<String> {
+///     ) -> reinhardt_rest::filters::FilterResult<String> {
 ///         Ok(sql)
 ///     }
 /// }
@@ -96,7 +96,7 @@ impl CustomFilterBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::CustomFilterBackend;
+	/// use reinhardt_rest::filters::CustomFilterBackend;
 	///
 	/// let backend = CustomFilterBackend::new();
 	/// // Verify backend is created with no filters
@@ -115,7 +115,7 @@ impl CustomFilterBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{FilterBackend, CustomFilterBackend};
+	/// use reinhardt_rest::filters::{FilterBackend, CustomFilterBackend};
 	/// use std::collections::HashMap;
 	/// use async_trait::async_trait;
 	///
@@ -127,7 +127,7 @@ impl CustomFilterBackend {
 	///         &self,
 	///         query_params: &HashMap<String, String>,
 	///         sql: String,
-	///     ) -> crate::filters::FilterResult<String> {
+	///     ) -> reinhardt_rest::filters::FilterResult<String> {
 	///         Ok(sql)
 	///     }
 	/// }
@@ -146,7 +146,7 @@ impl CustomFilterBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{FilterBackend, CustomFilterBackend};
+	/// use reinhardt_rest::filters::{FilterBackend, CustomFilterBackend};
 	/// use std::collections::HashMap;
 	/// use async_trait::async_trait;
 	///
@@ -158,7 +158,7 @@ impl CustomFilterBackend {
 	///         &self,
 	///         query_params: &HashMap<String, String>,
 	///         sql: String,
-	///     ) -> crate::filters::FilterResult<String> {
+	///     ) -> reinhardt_rest::filters::FilterResult<String> {
 	///         Ok(sql)
 	///     }
 	/// }
@@ -194,7 +194,7 @@ impl FilterBackend for CustomFilterBackend {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{FilterBackend, SimpleSearchBackend};
+/// use reinhardt_rest::filters::{FilterBackend, SimpleSearchBackend};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -224,7 +224,7 @@ impl SimpleSearchBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SimpleSearchBackend;
+	/// use reinhardt_rest::filters::SimpleSearchBackend;
 	///
 	/// let backend = SimpleSearchBackend::new("search");
 	/// // Verify backend is created with the correct parameter name
@@ -242,7 +242,7 @@ impl SimpleSearchBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SimpleSearchBackend;
+	/// use reinhardt_rest::filters::SimpleSearchBackend;
 	///
 	/// let backend = SimpleSearchBackend::new("search")
 	///     .with_field("title")
@@ -329,7 +329,7 @@ impl FilterBackend for SimpleSearchBackend {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{FilterBackend, SimpleOrderingBackend};
+/// use reinhardt_rest::filters::{FilterBackend, SimpleOrderingBackend};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -361,7 +361,7 @@ impl SimpleOrderingBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SimpleOrderingBackend;
+	/// use reinhardt_rest::filters::SimpleOrderingBackend;
 	///
 	/// let backend = SimpleOrderingBackend::new("ordering");
 	/// // Verify backend is created with the correct parameter name
@@ -379,7 +379,7 @@ impl SimpleOrderingBackend {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SimpleOrderingBackend;
+	/// use reinhardt_rest::filters::SimpleOrderingBackend;
 	///
 	/// let backend = SimpleOrderingBackend::new("ordering")
 	///     .allow_field("created_at")

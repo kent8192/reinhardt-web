@@ -28,8 +28,8 @@ impl<B: ThrottleBackend> BurstRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::burst::BurstRateThrottle;
-	/// use crate::throttling::backend::MemoryBackend;
+	/// use reinhardt_rest::throttling::burst::BurstRateThrottle;
+	/// use reinhardt_rest::throttling::backend::MemoryBackend;
 	/// use std::sync::Arc;
 	/// use tokio::sync::Mutex;
 	/// use std::time::Duration;

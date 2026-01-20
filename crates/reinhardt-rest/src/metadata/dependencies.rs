@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use crate::metadata::{FieldDependency, DependencyType};
+/// use reinhardt_rest::metadata::{FieldDependency, DependencyType};
 ///
 /// // Field 'country' requires 'address' to also be present
 /// let dep = FieldDependency::new(
@@ -30,7 +30,7 @@ impl FieldDependency {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{FieldDependency, DependencyType};
+	/// use reinhardt_rest::metadata::{FieldDependency, DependencyType};
 	///
 	/// let dep = FieldDependency::new(
 	///     "zip_code",
@@ -50,7 +50,7 @@ impl FieldDependency {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::FieldDependency;
+	/// use reinhardt_rest::metadata::FieldDependency;
 	///
 	/// let dep = FieldDependency::requires("country", vec!["address"]);
 	/// ```
@@ -71,7 +71,7 @@ impl FieldDependency {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::FieldDependency;
+	/// use reinhardt_rest::metadata::FieldDependency;
 	///
 	/// let dep = FieldDependency::one_of("payment_method", vec!["credit_card", "paypal"]);
 	/// ```
@@ -89,7 +89,7 @@ impl FieldDependency {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::FieldDependency;
+	/// use reinhardt_rest::metadata::FieldDependency;
 	///
 	/// let dep = FieldDependency::all_of("shipping", vec!["address", "city", "zip_code"]);
 	/// ```
@@ -107,7 +107,7 @@ impl FieldDependency {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::FieldDependency;
+	/// use reinhardt_rest::metadata::FieldDependency;
 	///
 	/// // If 'shipping_method' is 'express', then 'express_fee' is required
 	/// let dep = FieldDependency::conditional(
@@ -164,7 +164,7 @@ pub enum DependencyType {
 /// # Examples
 ///
 /// ```
-/// use crate::metadata::{DependencyManager, FieldDependency};
+/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 ///
 /// let mut manager = DependencyManager::new();
 /// manager.add_dependency(FieldDependency::requires("country", vec!["address"]));
@@ -180,7 +180,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::DependencyManager;
+	/// use reinhardt_rest::metadata::DependencyManager;
 	///
 	/// let manager = DependencyManager::new();
 	/// ```
@@ -195,7 +195,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{DependencyManager, FieldDependency};
+	/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 	///
 	/// let mut manager = DependencyManager::new();
 	/// manager.add_dependency(FieldDependency::requires("zip_code", vec!["city"]));
@@ -209,7 +209,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{DependencyManager, FieldDependency};
+	/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 	///
 	/// let mut manager = DependencyManager::new();
 	/// manager.add_dependency(FieldDependency::requires("country", vec!["address"]));
@@ -224,7 +224,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{DependencyManager, FieldDependency};
+	/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 	///
 	/// let mut manager = DependencyManager::new();
 	/// manager.add_dependency(FieldDependency::requires("country", vec!["address"]));
@@ -245,7 +245,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{DependencyManager, FieldDependency};
+	/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 	///
 	/// let mut manager = DependencyManager::new();
 	/// manager.add_dependency(FieldDependency::requires("country", vec!["address"]));
@@ -313,7 +313,7 @@ impl DependencyManager {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{DependencyManager, FieldDependency};
+	/// use reinhardt_rest::metadata::{DependencyManager, FieldDependency};
 	/// use std::collections::HashSet;
 	///
 	/// let mut manager = DependencyManager::new();

@@ -17,7 +17,7 @@ use std::sync::{Arc, RwLock};
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use crate::serializers::pool_manager::ConnectionPoolManager;
+/// use reinhardt_rest::serializers::pool_manager::ConnectionPoolManager;
 /// use reinhardt_db::pool::{ConnectionPool, PoolConfig};
 ///
 /// // Initialize the pool

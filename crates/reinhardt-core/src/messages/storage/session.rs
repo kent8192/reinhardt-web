@@ -22,7 +22,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::new();
 	/// assert_eq!(storage.session_key(), "_messages");
@@ -42,7 +42,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::without_session();
 	/// assert!(!storage.is_session_available());
@@ -60,7 +60,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::new().with_session_key("custom_messages");
 	/// assert_eq!(storage.session_key(), "custom_messages");
@@ -74,7 +74,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::new();
 	/// assert_eq!(storage.session_key(), "_messages");
@@ -87,7 +87,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::new();
 	/// assert!(storage.is_session_available());
@@ -100,7 +100,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{storage::{SessionStorage, MessageStorage}, Message, Level};
+	/// use reinhardt_core::messages::{storage::{SessionStorage, MessageStorage}, Message, Level};
 	///
 	/// let mut storage = SessionStorage::new();
 	/// storage.add(Message::new(Level::Info, "Test"));
@@ -116,7 +116,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{storage::{SessionStorage, MessageStorage}, Message, Level};
+	/// use reinhardt_core::messages::{storage::{SessionStorage, MessageStorage}, Message, Level};
 	///
 	/// let mut storage = SessionStorage::new();
 	/// storage.add(Message::new(Level::Info, "Test"));
@@ -136,7 +136,7 @@ impl SessionStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::storage::SessionStorage;
+	/// use reinhardt_core::messages::storage::SessionStorage;
 	///
 	/// let storage = SessionStorage::new();
 	/// assert!(storage.require_session().is_ok());

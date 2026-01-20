@@ -7,7 +7,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use crate::filters::{CachedFilterBackend, FilterBackend};
+//! use reinhardt_rest::filters::{CachedFilterBackend, FilterBackend};
 //! use reinhardt_utils::cache::InMemoryCache;
 //! use std::time::Duration;
 //! use std::collections::HashMap;
@@ -42,7 +42,7 @@ use std::time::Duration;
 /// # Examples
 ///
 /// ```
-/// use crate::filters::generate_cache_key;
+/// use reinhardt_rest::filters::generate_cache_key;
 /// use std::collections::HashMap;
 ///
 /// let mut params = HashMap::new();
@@ -89,7 +89,7 @@ struct CachedResult {
 /// ```rust,no_run
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use crate::filters::{CachedFilterBackend, FilterBackend};
+/// use reinhardt_rest::filters::{CachedFilterBackend, FilterBackend};
 /// use reinhardt_utils::cache::InMemoryCache;
 /// use std::time::Duration;
 /// use std::collections::HashMap;
@@ -131,7 +131,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::CachedFilterBackend;
+	/// use reinhardt_rest::filters::CachedFilterBackend;
 	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
@@ -151,7 +151,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{CachedFilterBackend, SimpleSearchBackend};
+	/// use reinhardt_rest::filters::{CachedFilterBackend, SimpleSearchBackend};
 	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
@@ -170,7 +170,7 @@ impl<C: Cache> CachedFilterBackend<C> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::CachedFilterBackend;
+	/// use reinhardt_rest::filters::CachedFilterBackend;
 	/// use reinhardt_utils::cache::InMemoryCache;
 	/// use std::time::Duration;
 	///
@@ -241,7 +241,7 @@ impl CacheStats {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::CacheStats;
+	/// use reinhardt_rest::filters::CacheStats;
 	///
 	/// let stats = CacheStats {
 	///     hits: 75,

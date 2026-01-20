@@ -24,7 +24,7 @@ impl TimeRange {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::time_of_day::TimeRange;
+	/// use reinhardt_throttling::time_of_day::TimeRange;
 	///
 	/// // Peak hours: 9 AM to 5 PM
 	/// let peak = TimeRange::new(9, 17);
@@ -70,7 +70,7 @@ impl TimeOfDayConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::time_of_day::{TimeOfDayConfig, TimeRange};
+	/// use reinhardt_throttling::time_of_day::{TimeOfDayConfig, TimeRange};
 	///
 	/// // Peak hours: 9 AM to 5 PM, 50 req/min
 	/// // Off-peak: 100 req/min
@@ -107,8 +107,8 @@ impl TimeOfDayConfig {
 /// # Examples
 ///
 /// ```
-/// use crate::time_of_day::{TimeOfDayThrottle, TimeOfDayConfig, TimeRange};
-/// use crate::{MemoryBackend, Throttle};
+/// use reinhardt_throttling::time_of_day::{TimeOfDayThrottle, TimeOfDayConfig, TimeRange};
+/// use reinhardt_throttling::{MemoryBackend, Throttle};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
@@ -133,8 +133,8 @@ impl<B: ThrottleBackend> TimeOfDayThrottle<B, SystemTimeProvider> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::time_of_day::{TimeOfDayThrottle, TimeOfDayConfig, TimeRange};
-	/// use crate::{MemoryBackend, Throttle};
+	/// use reinhardt_throttling::time_of_day::{TimeOfDayThrottle, TimeOfDayConfig, TimeRange};
+	/// use reinhardt_throttling::{MemoryBackend, Throttle};
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());

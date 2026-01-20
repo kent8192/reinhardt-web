@@ -13,7 +13,7 @@
 //! # Usage
 //!
 //! ```
-//! use crate::serializers::arena::{SerializationArena, FieldValue};
+//! use reinhardt_core::serializers::arena::{SerializationArena, FieldValue};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +36,7 @@
 //! Arena-allocated values have lifetimes tied to the arena:
 //!
 //! ```
-//! use crate::serializers::arena::SerializationArena;
+//! use reinhardt_core::serializers::arena::SerializationArena;
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,7 +106,7 @@ pub enum FieldValue {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::arena::{SerializationArena, FieldValue};
+/// use reinhardt_core::serializers::arena::{SerializationArena, FieldValue};
 /// use std::collections::HashMap;
 ///
 /// let arena = SerializationArena::new();
@@ -138,7 +138,7 @@ impl<'a> SerializationArena<'a> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::arena::SerializationArena;
+	/// use reinhardt_core::serializers::arena::SerializationArena;
 	///
 	/// let arena = SerializationArena::new();
 	/// // Verify the arena is created successfully
@@ -158,7 +158,7 @@ impl<'a> SerializationArena<'a> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::arena::{SerializationArena, FieldValue};
+	/// use reinhardt_core::serializers::arena::{SerializationArena, FieldValue};
 	///
 	/// let arena = SerializationArena::new();
 	/// // Verify field allocation works correctly
@@ -202,7 +202,7 @@ impl<'a> SerializationArena<'a> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::arena::SerializationArena;
+	/// use reinhardt_core::serializers::arena::SerializationArena;
 	/// use serde::{Serialize, Deserialize};
 	///
 	/// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,7 +271,7 @@ impl<'a> SerializationArena<'a> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::arena::{SerializationArena, FieldValue};
+	/// use reinhardt_core::serializers::arena::{SerializationArena, FieldValue};
 	///
 	/// let arena = SerializationArena::new();
 	/// let value = arena.allocate_field(&FieldValue::String("test".to_string()));

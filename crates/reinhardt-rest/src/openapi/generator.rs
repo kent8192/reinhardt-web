@@ -18,8 +18,8 @@ use indexmap::IndexMap;
 /// # Example
 ///
 /// ```rust
-/// use crate::openapi::generator::SchemaGenerator;
-/// use crate::openapi::{Schema, SchemaExt};
+/// use reinhardt_rest::openapi::generator::SchemaGenerator;
+/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 ///
 /// let mut generator = SchemaGenerator::new()
 ///     .title("My API")
@@ -52,7 +52,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new();
 	/// ```
@@ -71,7 +71,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .title("My API");
@@ -86,7 +86,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .version("2.0.0");
@@ -101,7 +101,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .description("My awesome API");
@@ -116,8 +116,8 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let mut generator = SchemaGenerator::new();
 	/// generator.registry().register("User", Schema::object());
@@ -133,7 +133,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new();
 	/// let registry = generator.get_registry();
@@ -151,7 +151,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .title("My API")
@@ -189,8 +189,8 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust,ignore
-	/// use crate::openapi::generator::SchemaGenerator;
-	/// use crate::server_fn::auth::login;  // Import marker constant
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::server_fn::auth::login;  // Import marker constant
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .title("My API")
@@ -303,8 +303,8 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let mut generator = SchemaGenerator::new()
 	///     .title("My API")
@@ -347,7 +347,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .title("My API")
@@ -366,7 +366,7 @@ impl SchemaGenerator {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::generator::SchemaGenerator;
+	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
 	///
 	/// let generator = SchemaGenerator::new()
 	///     .title("My API")

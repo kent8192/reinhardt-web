@@ -6,9 +6,9 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::replay::{SignalReplayer, ReplayConfig, ReplaySpeed};
-//! use crate::signals::persistence::{MemoryStore, PersistentSignal};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::replay::{SignalReplayer, ReplayConfig, ReplaySpeed};
+//! use reinhardt_core::signals::persistence::{MemoryStore, PersistentSignal};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Clone, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ use tokio::time::sleep;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::replay::ReplaySpeed;
+/// use reinhardt_core::signals::replay::ReplaySpeed;
 ///
 /// let instant = ReplaySpeed::Instant;
 /// let realtime = ReplaySpeed::Realtime;
@@ -92,7 +92,7 @@ impl ReplaySpeed {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::replay::{ReplayConfig, ReplaySpeed};
+/// use reinhardt_core::signals::replay::{ReplayConfig, ReplaySpeed};
 ///
 /// let config = ReplayConfig::new()
 ///     .with_speed(ReplaySpeed::Fast)
@@ -187,7 +187,7 @@ impl Default for ReplayConfig {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::replay::ReplayStats;
+/// use reinhardt_core::signals::replay::ReplayStats;
 ///
 /// let stats = ReplayStats::new();
 /// assert_eq!(stats.total_replayed(), 0);
@@ -239,9 +239,9 @@ impl ReplayStats {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::replay::{SignalReplayer, ReplayConfig};
-/// use crate::signals::persistence::MemoryStore;
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::replay::{SignalReplayer, ReplayConfig};
+/// use reinhardt_core::signals::persistence::MemoryStore;
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -286,9 +286,9 @@ impl<T: Send + Sync + Clone + 'static> SignalReplayer<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::replay::{SignalReplayer, ReplayConfig};
-	/// # use crate::signals::persistence::MemoryStore;
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::replay::{SignalReplayer, ReplayConfig};
+	/// # use reinhardt_core::signals::persistence::MemoryStore;
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -313,9 +313,9 @@ impl<T: Send + Sync + Clone + 'static> SignalReplayer<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::replay::{SignalReplayer, ReplayConfig};
-	/// # use crate::signals::persistence::MemoryStore;
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::replay::{SignalReplayer, ReplayConfig};
+	/// # use reinhardt_core::signals::persistence::MemoryStore;
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # use std::time::{SystemTime, Duration};
 	/// # #[derive(Clone, Serialize, Deserialize)]
@@ -354,9 +354,9 @@ impl<T: Send + Sync + Clone + 'static> SignalReplayer<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::replay::{SignalReplayer, ReplayConfig};
-	/// # use crate::signals::persistence::MemoryStore;
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::replay::{SignalReplayer, ReplayConfig};
+	/// # use reinhardt_core::signals::persistence::MemoryStore;
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }

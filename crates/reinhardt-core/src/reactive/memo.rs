@@ -13,7 +13,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::reactive::{Signal, Memo};
+//! use reinhardt_core::reactive::{Signal, Memo};
 //!
 //! let count = Signal::new(5);
 //!
@@ -78,7 +78,7 @@ thread_local! {
 /// ## Example
 ///
 /// ```ignore
-/// use crate::reactive::{Signal, Memo, Effect};
+/// use reinhardt_core::reactive::{Signal, Memo, Effect};
 ///
 /// let first_name = Signal::new("John".to_string());
 /// let last_name = Signal::new("Doe".to_string());

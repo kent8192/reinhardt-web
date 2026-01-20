@@ -21,7 +21,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// let context = SerializationContext::new(3);
 	/// // Verify context is initialized with correct depth settings
@@ -51,7 +51,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// let context = SerializationContext::new(2);
 	/// // Verify depth check works correctly
@@ -69,7 +69,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// struct User { id: i64 }
 	/// let user = User { id: 1 };
@@ -95,7 +95,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// struct User { id: i64 }
 	/// let user = User { id: 1 };
@@ -116,7 +116,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// let context = SerializationContext::new(3);
 	/// let child = context.child();
@@ -138,7 +138,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// let mut context = SerializationContext::new(3);
 	/// let child = context.child();
@@ -159,7 +159,7 @@ impl SerializationContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::SerializationContext;
+	/// use reinhardt_core::serializers::recursive::SerializationContext;
 	///
 	/// let context = SerializationContext::new(3);
 	/// // Verify remaining depth calculation
@@ -241,7 +241,7 @@ pub mod circular {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::{SerializationContext, circular};
+	/// use reinhardt_core::serializers::recursive::{SerializationContext, circular};
 	///
 	/// struct User { id: i64 }
 	/// let user = User { id: 1 };
@@ -303,7 +303,7 @@ pub mod depth {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::{SerializationContext, depth};
+	/// use reinhardt_core::serializers::recursive::{SerializationContext, depth};
 	///
 	/// let context = SerializationContext::new(2);
 	/// // Verify descent check works correctly
@@ -318,7 +318,7 @@ pub mod depth {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::{SerializationContext, depth};
+	/// use reinhardt_core::serializers::recursive::{SerializationContext, depth};
 	///
 	/// let context = SerializationContext::new(2);
 	/// assert!(depth::try_descend(&context).is_ok());
@@ -342,7 +342,7 @@ pub mod depth {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::recursive::{SerializationContext, depth};
+	/// use reinhardt_core::serializers::recursive::{SerializationContext, depth};
 	///
 	/// let context = SerializationContext::new(3);
 	///

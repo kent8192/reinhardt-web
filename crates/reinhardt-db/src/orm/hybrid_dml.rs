@@ -97,7 +97,7 @@ impl InsertBuilder {
 	///
 	/// ```
 	/// use reinhardt_db::orm::hybrid_dml::InsertBuilder;
-	/// use crate::hybrid::HybridProperty;
+	/// use reinhardt_db::hybrid::HybridProperty;
 	///
 	/// struct User { email: String }
 	///
@@ -321,7 +321,7 @@ impl UpdateBuilder {
 	///
 	/// ```
 	/// use reinhardt_db::orm::hybrid_dml::UpdateBuilder;
-	/// use crate::hybrid::HybridProperty;
+	/// use reinhardt_db::hybrid::HybridProperty;
 	///
 	/// struct User { email: String }
 	///

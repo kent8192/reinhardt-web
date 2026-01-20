@@ -91,7 +91,7 @@ impl CreateExtension {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let ext = CreateExtension::new("hstore").with_schema("public");
 	/// let factory = SchemaEditorFactory::new();
@@ -126,7 +126,7 @@ impl CreateExtension {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let ext = CreateExtension::new("hstore");
 	/// let factory = SchemaEditorFactory::new();
@@ -170,7 +170,7 @@ impl DropExtension {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::postgres::DropExtension;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let drop = DropExtension::new("hstore");
 	/// let factory = SchemaEditorFactory::new();
@@ -243,7 +243,7 @@ impl CreateCollation {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::postgres::CreateCollation;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let collation = CreateCollation::new("german", "de_DE");
 	/// let factory = SchemaEditorFactory::new();

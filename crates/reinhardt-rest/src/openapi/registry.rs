@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 /// # Example
 ///
 /// ```rust
-/// use crate::openapi::registry::SchemaRegistry;
-/// use crate::openapi::{Schema, SchemaExt};
+/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 ///
 /// let registry = SchemaRegistry::new();
 ///
@@ -63,8 +63,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -82,8 +82,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -104,8 +104,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt, RefOr};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt, RefOr};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -141,8 +141,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// assert!(!registry.contains("User"));
@@ -160,8 +160,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// assert_eq!(registry.len(), 0);
@@ -179,8 +179,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// assert!(registry.is_empty());
@@ -201,8 +201,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -228,8 +228,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -254,8 +254,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry = SchemaRegistry::new();
 	/// registry.register("User", Schema::object());
@@ -285,8 +285,8 @@ impl SchemaRegistry {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::registry::SchemaRegistry;
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::registry::SchemaRegistry;
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let registry1 = SchemaRegistry::new();
 	/// registry1.register("User", Schema::object());
@@ -871,7 +871,7 @@ use std::sync::LazyLock;
 /// # Example
 ///
 /// ```rust,ignore
-/// use crate::openapi::{Schema, ToSchema};
+/// use reinhardt_rest::openapi::{Schema, ToSchema};
 ///
 /// #[derive(Schema)]
 /// pub struct User {
@@ -885,7 +885,7 @@ use std::sync::LazyLock;
 /// // }
 ///
 /// // Later, access all registered schemas:
-/// use crate::openapi::registry::get_all_schemas;
+/// use reinhardt_rest::openapi::registry::get_all_schemas;
 /// let schemas = get_all_schemas();
 /// assert!(schemas.contains_key("User"));
 /// ```
@@ -909,7 +909,7 @@ pub static GLOBAL_SCHEMA_REGISTRY: LazyLock<HashMap<&'static str, Schema>> = Laz
 /// # Example
 ///
 /// ```rust,no_run
-/// use crate::openapi::registry::get_all_schemas;
+/// use reinhardt_rest::openapi::registry::get_all_schemas;
 ///
 /// let schemas = get_all_schemas();
 /// for (name, schema) in schemas.iter() {

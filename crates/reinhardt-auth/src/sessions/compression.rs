@@ -272,8 +272,6 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-
 	#[cfg(feature = "compression-zstd")]
 	#[tokio::test]
 	async fn test_compressed_backend_above_threshold() {

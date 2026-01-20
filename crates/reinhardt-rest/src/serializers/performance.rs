@@ -50,7 +50,7 @@ impl UniqueCheckQuery {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::performance::IntrospectionCache;
+/// use reinhardt_rest::serializers::performance::IntrospectionCache;
 ///
 /// let cache = IntrospectionCache::new();
 ///
@@ -133,7 +133,7 @@ impl Default for IntrospectionCache {
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use crate::serializers::performance::BatchValidator;
+/// use reinhardt_rest::serializers::performance::BatchValidator;
 ///
 /// let mut validator = BatchValidator::new();
 ///
@@ -168,7 +168,7 @@ impl BatchValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::performance::BatchValidator;
+	/// use reinhardt_rest::serializers::performance::BatchValidator;
 	///
 	/// let mut validator = BatchValidator::new();
 	/// validator.add_unique_check("users", "email", "test@example.com");
@@ -404,7 +404,7 @@ impl Default for BatchValidator {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::performance::QueryCache;
+/// use reinhardt_rest::serializers::performance::QueryCache;
 /// use std::time::Duration;
 ///
 /// let cache = QueryCache::new(Duration::from_secs(300)); // 5 minutes TTL
@@ -499,7 +499,7 @@ impl QueryCache {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::performance::PerformanceMetrics;
+/// use reinhardt_rest::serializers::performance::PerformanceMetrics;
 ///
 /// let metrics = PerformanceMetrics::new();
 ///
@@ -744,7 +744,7 @@ mod tests {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::performance::N1Detector;
+/// use reinhardt_rest::serializers::performance::N1Detector;
 ///
 /// let mut detector = N1Detector::new();
 ///

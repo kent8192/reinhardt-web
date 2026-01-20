@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::{CursorEncoder, Base64CursorEncoder};
+/// use reinhardt_core::pagination::cursor::{CursorEncoder, Base64CursorEncoder};
 ///
 /// let encoder = Base64CursorEncoder::new();
 /// let cursor = encoder.encode(42).unwrap();
@@ -35,7 +35,7 @@ pub trait CursorEncoder: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::{CursorEncoder, Base64CursorEncoder};
+/// use reinhardt_core::pagination::cursor::{CursorEncoder, Base64CursorEncoder};
 ///
 /// let encoder = Base64CursorEncoder::new();
 /// let cursor = encoder.encode(100).unwrap();
@@ -56,7 +56,7 @@ impl Base64CursorEncoder {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::Base64CursorEncoder;
+	/// use reinhardt_core::pagination::cursor::Base64CursorEncoder;
 	///
 	/// let encoder = Base64CursorEncoder::new();
 	/// assert_eq!(encoder.expiry_seconds, 86400);
@@ -72,7 +72,7 @@ impl Base64CursorEncoder {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::Base64CursorEncoder;
+	/// use reinhardt_core::pagination::cursor::Base64CursorEncoder;
 	///
 	/// let encoder = Base64CursorEncoder::new().expiry_seconds(3600); // 1 hour
 	/// assert_eq!(encoder.expiry_seconds, 3600);

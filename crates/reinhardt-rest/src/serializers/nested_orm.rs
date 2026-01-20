@@ -39,7 +39,7 @@ impl NestedSaveContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::nested_orm::NestedSaveContext;
+	/// use reinhardt_rest::serializers::nested_orm::NestedSaveContext;
 	///
 	/// let context = NestedSaveContext::new();
 	/// // Verify context is initialized with default depth settings
@@ -249,7 +249,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::serializers::nested_orm_integration::ManyToManyManager;
+	/// use reinhardt_rest::serializers::nested_orm_integration::ManyToManyManager;
 	///
 	/// // Verify manager is created with junction table configuration
 	/// let manager = ManyToManyManager::<User, Group>::new(
@@ -451,7 +451,7 @@ impl TransactionHelper {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::serializers::nested_orm_integration::TransactionHelper;
+	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
 	///
 	/// // Verify transaction scope with automatic commit/rollback
 	/// let result = TransactionHelper::with_transaction(|_tx| async move {
@@ -500,7 +500,7 @@ impl TransactionHelper {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::serializers::nested_orm_integration::TransactionHelper;
+	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
 	///
 	/// // Verify nested savepoint creation and rollback handling
 	/// let result = TransactionHelper::savepoint(2, |_tx| async move {

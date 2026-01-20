@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::{Signal, SignalName};
-//! use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+//! use reinhardt_core::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 //!
 //! let signal = Signal::<String>::new(SignalName::PRE_SAVE);
 //!
@@ -67,7 +67,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::SignalDocGenerator;
+	/// use reinhardt_core::signals::doc_generator::SignalDocGenerator;
 	///
 	/// let generator = SignalDocGenerator::new();
 	/// ```
@@ -82,7 +82,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -101,7 +101,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation, ReceiverDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation, ReceiverDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -133,7 +133,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -229,7 +229,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -340,7 +340,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -362,7 +362,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::SignalDocGenerator;
+	/// use reinhardt_core::signals::doc_generator::SignalDocGenerator;
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// let json = r#"{"test_signal": {"signal_name": "test_signal", "description": "Test", "receivers": [], "example_usage": null}}"#;
@@ -381,7 +381,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {
@@ -405,7 +405,7 @@ impl SignalDocGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
+	/// use reinhardt_core::signals::doc_generator::{SignalDocGenerator, SignalDocumentation};
 	///
 	/// let mut generator = SignalDocGenerator::new();
 	/// generator.add_signal_doc(SignalDocumentation {

@@ -22,7 +22,7 @@
 //! ## Examples
 //!
 //! ```rust
-//! use crate::serializers::{Serializer, JsonSerializer};
+//! use reinhardt_core::serializers::{Serializer, JsonSerializer};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Serialize, Deserialize)]

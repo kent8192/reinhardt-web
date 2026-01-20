@@ -13,7 +13,7 @@ pub trait FieldOrderingExt<M: Model, T> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::{field_extensions::FieldOrderingExt, OrderDirection};
+	/// # use reinhardt_rest::filters::{field_extensions::FieldOrderingExt, OrderDirection};
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// #
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -48,7 +48,7 @@ pub trait FieldOrderingExt<M: Model, T> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::{field_extensions::FieldOrderingExt, OrderDirection};
+	/// # use reinhardt_rest::filters::{field_extensions::FieldOrderingExt, OrderDirection};
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// #
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

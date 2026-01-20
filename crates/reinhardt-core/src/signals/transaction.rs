@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use crate::signals::transaction::{on_commit, on_rollback, TransactionSignals};
+//! use reinhardt_core::signals::transaction::{on_commit, on_rollback, TransactionSignals};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::TransactionContext;
+/// use reinhardt_core::signals::transaction::TransactionContext;
 ///
 /// let ctx = TransactionContext::new("tx_123");
 /// assert_eq!(ctx.transaction_id, "tx_123");
@@ -59,7 +59,7 @@ impl TransactionContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionContext;
+	/// use reinhardt_core::signals::transaction::TransactionContext;
 	///
 	/// let ctx = TransactionContext::new("my_transaction");
 	/// assert_eq!(ctx.transaction_id, "my_transaction");
@@ -79,7 +79,7 @@ impl TransactionContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionContext;
+	/// use reinhardt_core::signals::transaction::TransactionContext;
 	///
 	/// let ctx = TransactionContext::nested("tx_1", 1, "sp_1");
 	/// assert!(ctx.is_nested);
@@ -104,7 +104,7 @@ impl TransactionContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionContext;
+	/// use reinhardt_core::signals::transaction::TransactionContext;
 	///
 	/// let mut ctx = TransactionContext::new("tx_1");
 	/// ctx.enter_savepoint("checkpoint_1");
@@ -122,7 +122,7 @@ impl TransactionContext {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionContext;
+	/// use reinhardt_core::signals::transaction::TransactionContext;
 	///
 	/// let mut ctx = TransactionContext::nested("tx_1", 2, "sp_2");
 	/// ctx.exit_savepoint();
@@ -146,7 +146,7 @@ impl TransactionContext {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::TransactionSignals;
+/// use reinhardt_core::signals::transaction::TransactionSignals;
 ///
 /// let signals = TransactionSignals::new("transaction_1");
 /// ```
@@ -160,7 +160,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// let signals = TransactionSignals::new("tx_001");
 	/// ```
@@ -175,7 +175,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// let signals = TransactionSignals::nested("tx_001", 1, "savepoint_1");
 	/// ```
@@ -194,7 +194,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// let signals = TransactionSignals::new("tx_001");
 	/// let ctx = signals.context();
@@ -209,7 +209,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -227,7 +227,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -245,7 +245,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -263,7 +263,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -282,7 +282,7 @@ impl TransactionSignals {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::transaction::TransactionSignals;
+	/// use reinhardt_core::signals::transaction::TransactionSignals;
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -302,7 +302,7 @@ impl TransactionSignals {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::on_begin;
+/// use reinhardt_core::signals::transaction::on_begin;
 ///
 /// let signal = on_begin();
 /// ```
@@ -315,7 +315,7 @@ pub fn on_begin() -> Signal<TransactionContext> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::on_commit;
+/// use reinhardt_core::signals::transaction::on_commit;
 ///
 /// let signal = on_commit();
 /// ```
@@ -328,7 +328,7 @@ pub fn on_commit() -> Signal<TransactionContext> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::on_rollback;
+/// use reinhardt_core::signals::transaction::on_rollback;
 ///
 /// let signal = on_rollback();
 /// ```
@@ -341,7 +341,7 @@ pub fn on_rollback() -> Signal<TransactionContext> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::on_savepoint;
+/// use reinhardt_core::signals::transaction::on_savepoint;
 ///
 /// let signal = on_savepoint();
 /// ```
@@ -354,7 +354,7 @@ pub fn on_savepoint() -> Signal<TransactionContext> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::transaction::on_savepoint_release;
+/// use reinhardt_core::signals::transaction::on_savepoint_release;
 ///
 /// let signal = on_savepoint_release();
 /// ```

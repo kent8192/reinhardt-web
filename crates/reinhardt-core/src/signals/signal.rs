@@ -50,7 +50,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::{Signal, SignalName};
 	///
 	/// // Use built-in signal names
 	/// let signal = Signal::<String>::new(SignalName::PRE_SAVE);
@@ -196,7 +196,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -232,7 +232,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use std::sync::Arc;
 	/// # struct User { id: i64 }
 	/// # struct NotificationPayload { user_id: i64 }
@@ -270,7 +270,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
 	/// # struct User { id: Option<i64> }
@@ -313,7 +313,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # #[derive(Clone)]
 	/// # struct User { is_admin: bool }
 	/// # #[tokio::main]
@@ -358,7 +358,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 	///
 	/// # Example
 	/// ```rust,no_run
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use std::sync::Arc;
 	/// # struct User { id: i64 }
 	/// # #[tokio::main]

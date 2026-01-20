@@ -26,7 +26,7 @@ impl FieldValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_rest::metadata::validators::FieldValidator;
+	/// use reinhardt_rest::metadata::FieldValidator;
 	/// use serde_json::json;
 	///
 	/// let validator = FieldValidator {

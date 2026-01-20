@@ -29,7 +29,7 @@ impl CompressionEncoding {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::compressed::CompressionEncoding;
+	/// use reinhardt_core::parsers::compressed::CompressionEncoding;
 	///
 	/// assert_eq!(
 	///     CompressionEncoding::from_header("gzip"),
@@ -90,8 +90,8 @@ impl CompressionEncoding {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::compressed::CompressedParser;
-/// use crate::parsers::json::JSONParser;
+/// use reinhardt_core::parsers::compressed::CompressedParser;
+/// use reinhardt_core::parsers::json::JSONParser;
 /// use std::sync::Arc;
 ///
 /// let json_parser = JSONParser::new();
@@ -107,8 +107,8 @@ impl CompressedParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::compressed::CompressedParser;
-	/// use crate::parsers::json::JSONParser;
+	/// use reinhardt_core::parsers::compressed::CompressedParser;
+	/// use reinhardt_core::parsers::json::JSONParser;
 	/// use std::sync::Arc;
 	///
 	/// let json_parser = JSONParser::new();
@@ -135,8 +135,8 @@ impl CompressedParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::compressed::CompressedParser;
-	/// use crate::parsers::json::JSONParser;
+	/// use reinhardt_core::parsers::compressed::CompressedParser;
+	/// use reinhardt_core::parsers::json::JSONParser;
 	/// use bytes::Bytes;
 	/// use std::sync::Arc;
 	/// use flate2::write::GzEncoder;

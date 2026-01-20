@@ -15,7 +15,7 @@ impl CacheKey {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::CacheKey;
+	/// use reinhardt_core::negotiation::cache::CacheKey;
 	///
 	/// let key = CacheKey::new("application/json");
 	/// ```
@@ -30,7 +30,7 @@ impl CacheKey {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::CacheKey;
+	/// use reinhardt_core::negotiation::cache::CacheKey;
 	///
 	/// let key = CacheKey::from_headers(&[
 	///     ("Accept", "application/json"),
@@ -94,8 +94,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// ```
@@ -112,8 +112,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	/// use std::time::Duration;
 	///
 	/// let cache: NegotiationCache<MediaType> = NegotiationCache::with_ttl(
@@ -133,8 +133,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	/// use std::time::Duration;
 	///
 	/// let cache: NegotiationCache<MediaType> = NegotiationCache::with_config(
@@ -155,8 +155,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::{NegotiationCache, CacheKey};
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::{NegotiationCache, CacheKey};
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// let key = CacheKey::new("application/json");
@@ -184,8 +184,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::{NegotiationCache, CacheKey};
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::{NegotiationCache, CacheKey};
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// let key = CacheKey::new("application/json");
@@ -208,8 +208,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::{NegotiationCache, CacheKey};
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::{NegotiationCache, CacheKey};
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// let key = CacheKey::new("application/json");
@@ -244,8 +244,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// cache.clear_expired();
@@ -259,8 +259,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// cache.clear();
@@ -275,8 +275,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::{NegotiationCache, CacheKey};
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::{NegotiationCache, CacheKey};
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// assert_eq!(cache.len(), 0);
@@ -294,8 +294,8 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::cache::NegotiationCache;
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::cache::NegotiationCache;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let cache: NegotiationCache<MediaType> = NegotiationCache::new();
 	/// assert!(cache.is_empty());

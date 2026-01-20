@@ -15,7 +15,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::reactive::{Signal, Effect, Runtime};
+//! use reinhardt_core::reactive::{Signal, Effect, Runtime};
 //!
 //! // Create a signal
 //! let count = Signal::new(0);
@@ -380,7 +380,7 @@ thread_local! {
 /// # Example
 ///
 /// ```ignore
-/// use crate::reactive::runtime::with_runtime;
+/// use reinhardt_core::reactive::runtime::with_runtime;
 ///
 /// with_runtime(|rt| {
 ///     rt.track_dependency(signal_id);

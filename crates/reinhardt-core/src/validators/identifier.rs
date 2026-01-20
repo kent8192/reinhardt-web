@@ -44,7 +44,7 @@ impl TableName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::TableName;
+	/// use reinhardt_core::validators::TableName;
 	///
 	/// const USER_TABLE: TableName = TableName::new_const("user");
 	/// const PROFILE_TABLE: TableName = TableName::new_const("user_profile");
@@ -66,7 +66,7 @@ impl TableName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::TableName;
+	/// use reinhardt_core::validators::TableName;
 	///
 	/// let table = TableName::new("user").unwrap();
 	/// let profile = TableName::new("user_profile").unwrap();
@@ -173,7 +173,7 @@ impl FieldName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FieldName;
+	/// use reinhardt_core::validators::FieldName;
 	///
 	/// const ID_FIELD: FieldName = FieldName::new_const("id");
 	/// const USERNAME_FIELD: FieldName = FieldName::new_const("username");
@@ -194,7 +194,7 @@ impl FieldName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FieldName;
+	/// use reinhardt_core::validators::FieldName;
 	///
 	/// let field = FieldName::new("username").unwrap();
 	/// let email = FieldName::new("email_address").unwrap();
@@ -290,7 +290,7 @@ impl ConstraintName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ConstraintName;
+	/// use reinhardt_core::validators::ConstraintName;
 	///
 	/// const PK: ConstraintName = ConstraintName::new_const("pk_user");
 	/// const FK: ConstraintName = ConstraintName::new_const("fk_user_profile");
@@ -314,7 +314,7 @@ impl ConstraintName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ConstraintName;
+	/// use reinhardt_core::validators::ConstraintName;
 	///
 	/// let pk = ConstraintName::new("pk_user").unwrap();
 	/// let fk = ConstraintName::new("fk_user_profile").unwrap();

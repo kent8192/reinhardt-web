@@ -19,7 +19,7 @@ impl AnonRateThrottle<MemoryBackend> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::AnonRateThrottle;
+	/// use reinhardt_rest::throttling::AnonRateThrottle;
 	///
 	// Allow 60 requests per hour for anonymous users
 	/// let throttle = AnonRateThrottle::new(60, 3600);
@@ -47,7 +47,7 @@ impl<B: ThrottleBackend> AnonRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::{AnonRateThrottle, MemoryBackend};
+	/// use reinhardt_rest::throttling::{AnonRateThrottle, MemoryBackend};
 	///
 	/// let backend = MemoryBackend::new();
 	/// let throttle = AnonRateThrottle::with_backend(60, 3600, backend);

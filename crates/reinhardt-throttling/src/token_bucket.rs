@@ -31,7 +31,7 @@ impl TokenBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::TokenBucketConfig;
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 100 requests per minute with burst capacity of 100
 	/// let config = TokenBucketConfig::new(100, 100, 60, 1);
@@ -57,7 +57,7 @@ impl TokenBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::TokenBucketConfig;
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// let config = TokenBucketConfig::builder()
 	///     .capacity(50)
@@ -78,7 +78,7 @@ impl TokenBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::TokenBucketConfig;
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 10 requests per second with burst of 20
 	/// let config = TokenBucketConfig::per_second(10, 20);
@@ -99,7 +99,7 @@ impl TokenBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::TokenBucketConfig;
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 100 requests per minute with burst of 150
 	/// let config = TokenBucketConfig::per_minute(100, 150);
@@ -120,7 +120,7 @@ impl TokenBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::TokenBucketConfig;
+	/// use reinhardt_throttling::token_bucket::TokenBucketConfig;
 	///
 	/// // 1000 requests per hour with burst of 1500
 	/// let config = TokenBucketConfig::per_hour(1000, 1500);
@@ -198,8 +198,8 @@ struct BucketState {
 /// # Examples
 ///
 /// ```
-/// use crate::token_bucket::{TokenBucket, TokenBucketConfig};
-/// use crate::{MemoryBackend, Throttle};
+/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
+/// use reinhardt_throttling::{MemoryBackend, Throttle};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
@@ -227,8 +227,8 @@ impl<B: ThrottleBackend> TokenBucket<B, SystemTimeProvider> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::token_bucket::{TokenBucket, TokenBucketConfig};
-	/// use crate::MemoryBackend;
+	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
+	/// use reinhardt_throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());

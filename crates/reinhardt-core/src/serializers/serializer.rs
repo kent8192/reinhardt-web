@@ -16,7 +16,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::{Serializer, JsonSerializer};
+/// use reinhardt_core::serializers::{Serializer, JsonSerializer};
 /// use serde::{Serialize, Deserialize};
 ///
 /// #[derive(Serialize, Deserialize)]
@@ -301,7 +301,7 @@ impl SerializerError {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::{Serializer, JsonSerializer};
+/// use reinhardt_core::serializers::{Serializer, JsonSerializer};
 /// use serde::{Serialize, Deserialize};
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -358,7 +358,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::Deserializer;
+/// use reinhardt_core::serializers::Deserializer;
 /// use serde::{Deserialize, Serialize};
 ///
 /// struct JsonDeserializer;

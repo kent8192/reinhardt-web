@@ -19,7 +19,7 @@ impl Encoding {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::Encoding;
+	/// use reinhardt_core::negotiation::encoding::Encoding;
 	///
 	/// assert_eq!(Encoding::parse("gzip"), Some(Encoding::Gzip));
 	/// assert_eq!(Encoding::parse("br"), Some(Encoding::Brotli));
@@ -43,7 +43,7 @@ impl Encoding {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::Encoding;
+	/// use reinhardt_core::negotiation::encoding::Encoding;
 	///
 	/// assert_eq!(Encoding::Gzip.as_str(), "gzip");
 	/// assert_eq!(Encoding::Brotli.as_str(), "br");
@@ -79,7 +79,7 @@ impl EncodingQuality {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{Encoding, EncodingQuality};
+	/// use reinhardt_core::negotiation::encoding::{Encoding, EncodingQuality};
 	///
 	/// let enc = EncodingQuality::new(Encoding::Gzip);
 	/// assert_eq!(enc.encoding, Encoding::Gzip);
@@ -97,7 +97,7 @@ impl EncodingQuality {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{Encoding, EncodingQuality};
+	/// use reinhardt_core::negotiation::encoding::{Encoding, EncodingQuality};
 	///
 	/// let enc = EncodingQuality::with_quality(Encoding::Gzip, 0.8);
 	/// assert_eq!(enc.quality, 0.8);
@@ -114,7 +114,7 @@ impl EncodingQuality {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{Encoding, EncodingQuality};
+	/// use reinhardt_core::negotiation::encoding::{Encoding, EncodingQuality};
 	///
 	/// let enc = EncodingQuality::parse("gzip;q=0.9").unwrap();
 	/// assert_eq!(enc.encoding, Encoding::Gzip);
@@ -158,7 +158,7 @@ impl EncodingNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::EncodingNegotiator;
+	/// use reinhardt_core::negotiation::encoding::EncodingNegotiator;
 	///
 	/// let negotiator = EncodingNegotiator::new();
 	/// ```
@@ -178,7 +178,7 @@ impl EncodingNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{EncodingNegotiator, Encoding};
+	/// use reinhardt_core::negotiation::encoding::{EncodingNegotiator, Encoding};
 	///
 	/// let negotiator = EncodingNegotiator::with_preference(vec![
 	///     Encoding::Gzip,
@@ -194,7 +194,7 @@ impl EncodingNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{EncodingNegotiator, Encoding};
+	/// use reinhardt_core::negotiation::encoding::{EncodingNegotiator, Encoding};
 	///
 	/// let negotiator = EncodingNegotiator::new();
 	/// let available = vec![Encoding::Gzip, Encoding::Identity];
@@ -240,7 +240,7 @@ impl EncodingNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::EncodingNegotiator;
+	/// use reinhardt_core::negotiation::encoding::EncodingNegotiator;
 	///
 	/// let negotiator = EncodingNegotiator::new();
 	/// let encodings = negotiator.parse_accept_encoding("gzip, deflate;q=0.8, br;q=0.9");
@@ -260,7 +260,7 @@ impl EncodingNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::encoding::{EncodingNegotiator, Encoding};
+	/// use reinhardt_core::negotiation::encoding::{EncodingNegotiator, Encoding};
 	///
 	/// let negotiator = EncodingNegotiator::new();
 	/// let available = vec![Encoding::Gzip, Encoding::Brotli, Encoding::Identity];

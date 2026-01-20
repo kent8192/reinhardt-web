@@ -51,7 +51,7 @@ impl XmlParserConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::xml::XmlParserConfig;
+	/// use reinhardt_core::parsers::xml::XmlParserConfig;
 	///
 	/// let config = XmlParserConfig::new();
 	/// assert!(config.include_attributes);
@@ -66,7 +66,7 @@ impl XmlParserConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::xml::XmlParserConfig;
+	/// use reinhardt_core::parsers::xml::XmlParserConfig;
 	///
 	/// let config = XmlParserConfig::builder()
 	///     .include_attributes(false)
@@ -159,8 +159,8 @@ impl XmlParserConfigBuilder {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::xml::{XMLParser, XmlParserConfig};
-/// use crate::parsers::Parser;
+/// use reinhardt_core::parsers::xml::{XMLParser, XmlParserConfig};
+/// use reinhardt_core::parsers::Parser;
 ///
 /// let parser = XMLParser::new();
 /// assert_eq!(parser.media_types(), vec!["application/xml", "text/xml"]);
@@ -175,7 +175,7 @@ impl XMLParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::xml::XMLParser;
+	/// use reinhardt_core::parsers::xml::XMLParser;
 	///
 	/// let parser = XMLParser::new();
 	/// ```
@@ -190,7 +190,7 @@ impl XMLParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::xml::{XMLParser, XmlParserConfig};
+	/// use reinhardt_core::parsers::xml::{XMLParser, XmlParserConfig};
 	///
 	/// let config = XmlParserConfig::builder()
 	///     .parse_numbers(true)

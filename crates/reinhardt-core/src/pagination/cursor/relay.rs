@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::Edge;
+/// use reinhardt_core::pagination::cursor::Edge;
 ///
 /// let edge = Edge {
 ///     node: "Item 1".to_string(),
@@ -38,7 +38,7 @@ pub struct Edge<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::PageInfo;
+/// use reinhardt_core::pagination::cursor::PageInfo;
 ///
 /// let page_info = PageInfo {
 ///     has_next_page: true,
@@ -66,7 +66,7 @@ pub struct PageInfo {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::{Connection, Edge, PageInfo};
+/// use reinhardt_core::pagination::cursor::{Connection, Edge, PageInfo};
 ///
 /// let connection = Connection {
 ///     edges: vec![
@@ -100,7 +100,7 @@ pub struct Connection<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::RelayPagination;
+/// use reinhardt_core::pagination::cursor::RelayPagination;
 ///
 /// let paginator = RelayPagination::new()
 ///     .default_page_size(10)
@@ -124,7 +124,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::RelayPagination;
+	/// use reinhardt_core::pagination::cursor::RelayPagination;
 	///
 	/// let paginator = RelayPagination::new();
 	/// assert_eq!(paginator.default_page_size, 10);
@@ -143,7 +143,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::RelayPagination;
+	/// use reinhardt_core::pagination::cursor::RelayPagination;
 	///
 	/// let paginator = RelayPagination::new().default_page_size(20);
 	/// assert_eq!(paginator.default_page_size, 20);
@@ -158,7 +158,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::RelayPagination;
+	/// use reinhardt_core::pagination::cursor::RelayPagination;
 	///
 	/// let paginator = RelayPagination::new().max_page_size(50);
 	/// assert_eq!(paginator.max_page_size, Some(50));
@@ -173,7 +173,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::RelayPagination;
+	/// use reinhardt_core::pagination::cursor::RelayPagination;
 	///
 	/// let paginator = RelayPagination::new().include_total_count(false);
 	/// assert!(!paginator.include_total_count);
@@ -188,7 +188,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::{RelayPagination, Base64CursorEncoder};
+	/// use reinhardt_core::pagination::cursor::{RelayPagination, Base64CursorEncoder};
 	///
 	/// let encoder = Base64CursorEncoder::new().expiry_seconds(3600);
 	/// let paginator = RelayPagination::new()
@@ -212,7 +212,7 @@ impl RelayPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::RelayPagination;
+	/// use reinhardt_core::pagination::cursor::RelayPagination;
 	///
 	/// let items: Vec<i32> = (1..=100).collect();
 	/// let paginator = RelayPagination::new();

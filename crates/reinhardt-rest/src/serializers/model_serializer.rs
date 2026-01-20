@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```no_run
-/// # use crate::serializers::{ModelSerializer, Serializer};
+/// # use reinhardt_rest::serializers::{ModelSerializer, Serializer};
 /// # use reinhardt_db::orm::Engine;
 /// # use reinhardt_auth::DefaultUser;
 /// # use uuid::Uuid;
@@ -69,7 +69,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new();
@@ -89,7 +89,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -105,7 +105,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -121,7 +121,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -137,7 +137,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -158,7 +158,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, nested_config::NestedFieldConfig};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, nested_config::NestedFieldConfig};
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -200,7 +200,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, nested_config::NestedFieldConfig};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, nested_config::NestedFieldConfig};
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -238,7 +238,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
@@ -266,7 +266,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
@@ -296,7 +296,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
@@ -324,7 +324,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
@@ -351,7 +351,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, introspection::{FieldIntrospector, FieldInfo}};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let mut introspector = FieldIntrospector::new();
@@ -376,7 +376,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, validators::UniqueValidator};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueValidator};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -392,7 +392,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, validators::UniqueTogetherValidator};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueTogetherValidator};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -411,7 +411,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{ModelSerializer, validators::UniqueValidator};
+	/// # use reinhardt_rest::serializers::{ModelSerializer, validators::UniqueValidator};
 	/// # use reinhardt_auth::DefaultUser;
 	/// #
 	/// let serializer = ModelSerializer::<DefaultUser>::new()
@@ -431,7 +431,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// # use uuid::Uuid;
 	/// #
@@ -467,7 +467,7 @@ where
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use crate::serializers::ModelSerializer;
+	/// # use reinhardt_rest::serializers::ModelSerializer;
 	/// # use reinhardt_auth::DefaultUser;
 	/// # use reinhardt_db::backends::DatabaseConnection;
 	/// # use uuid::Uuid;

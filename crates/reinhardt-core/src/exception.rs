@@ -12,7 +12,7 @@ pub use param_error::{ParamErrorContext, ParamType};
 /// # Examples
 ///
 /// ```
-/// use crate::exception::Error;
+/// use reinhardt_core::exception::Error;
 ///
 // Create an HTTP error
 /// let http_err = Error::Http("Invalid request format".to_string());
@@ -34,7 +34,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Http("Malformed request body".to_string());
 	/// assert_eq!(error.status_code(), 400);
@@ -48,7 +48,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Database("Query execution failed".to_string());
 	/// assert_eq!(error.status_code(), 500);
@@ -62,7 +62,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Serialization("Invalid JSON format".to_string());
 	/// assert_eq!(error.status_code(), 400);
@@ -76,7 +76,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Validation("Email format is invalid".to_string());
 	/// assert_eq!(error.status_code(), 400);
@@ -90,7 +90,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Authentication("Invalid credentials".to_string());
 	/// assert_eq!(error.status_code(), 401);
@@ -104,7 +104,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Authorization("Insufficient permissions".to_string());
 	/// assert_eq!(error.status_code(), 403);
@@ -118,7 +118,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::NotFound("User with ID 123 not found".to_string());
 	/// assert_eq!(error.status_code(), 404);
@@ -139,7 +139,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::MethodNotAllowed("Method PATCH not allowed for /api/articles/1".to_string());
 	/// assert_eq!(error.status_code(), 405);
@@ -157,7 +157,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Conflict("User with this email already exists".to_string());
 	/// assert_eq!(error.status_code(), 409);
@@ -171,7 +171,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::Internal("Unexpected server error".to_string());
 	/// assert_eq!(error.status_code(), 500);
@@ -185,7 +185,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::ImproperlyConfigured("Missing DATABASE_URL".to_string());
 	/// assert_eq!(error.status_code(), 500);
@@ -202,7 +202,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::BodyAlreadyConsumed;
 	/// assert_eq!(error.status_code(), 400);
@@ -216,7 +216,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	/// let error = Error::ParseError("Invalid integer value".to_string());
 	/// assert_eq!(error.status_code(), 400);
@@ -253,7 +253,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::{Error, ParamErrorContext, ParamType};
+	/// use reinhardt_core::exception::{Error, ParamErrorContext, ParamType};
 	///
 	/// let ctx = ParamErrorContext::new(ParamType::Json, "missing field 'email'")
 	///     .with_field("email")
@@ -271,7 +271,7 @@ pub enum Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	/// use anyhow::anyhow;
 	///
 	/// let other_error = anyhow!("Something went wrong");
@@ -290,7 +290,7 @@ pub enum Error {
 /// # Examples
 ///
 /// ```
-/// use crate::exception::{Error, Result};
+/// use reinhardt_core::exception::{Error, Result};
 ///
 /// fn validate_email(email: &str) -> Result<()> {
 ///     if email.contains('@') {
@@ -352,7 +352,7 @@ impl Error {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	///
 	// Client errors (4xx)
 	/// assert_eq!(Error::Http("Bad request".to_string()).status_code(), 400);
@@ -374,7 +374,7 @@ impl Error {
 	/// # Using with anyhow errors
 	///
 	/// ```
-	/// use crate::exception::Error;
+	/// use reinhardt_core::exception::Error;
 	/// use anyhow::anyhow;
 	///
 	/// let anyhow_error = anyhow!("Unexpected error");

@@ -22,7 +22,7 @@ use crate::core::View;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use crate::DestroyAPIView;
+/// use reinhardt_views::DestroyAPIView;
 /// use reinhardt_db::orm::Model;
 /// use serde::{Serialize, Deserialize};
 ///
@@ -72,7 +72,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::DestroyAPIView;
+	/// use reinhardt_views::DestroyAPIView;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,7 +112,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use crate::DestroyAPIView;
+	/// # use reinhardt_views::DestroyAPIView;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::SerializerMethodField;
+/// use reinhardt_rest::serializers::SerializerMethodField;
 /// use serde_json::{json, Value};
 /// use std::collections::HashMap;
 ///
@@ -50,7 +50,7 @@ impl SerializerMethodField {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::SerializerMethodField;
+	/// use reinhardt_rest::serializers::SerializerMethodField;
 	///
 	/// let field = SerializerMethodField::new("get_full_name");
 	/// // Verify the field is created successfully
@@ -69,7 +69,7 @@ impl SerializerMethodField {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::SerializerMethodField;
+	/// use reinhardt_rest::serializers::SerializerMethodField;
 	///
 	/// let field = SerializerMethodField::new("full_name")
 	///     .method_name("compute_full_name");
@@ -164,7 +164,7 @@ impl MethodFieldRegistry {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::method_field::MethodFieldRegistry;
+	/// use reinhardt_rest::serializers::method_field::MethodFieldRegistry;
 	///
 	/// let registry = MethodFieldRegistry::new();
 	/// // Verify the registry is created successfully
@@ -181,7 +181,7 @@ impl MethodFieldRegistry {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::serializers::{SerializerMethodField, method_field::MethodFieldRegistry};
+	/// use reinhardt_rest::serializers::{SerializerMethodField, method_field::MethodFieldRegistry};
 	///
 	/// let mut registry = MethodFieldRegistry::new();
 	/// let field = SerializerMethodField::new("full_name");

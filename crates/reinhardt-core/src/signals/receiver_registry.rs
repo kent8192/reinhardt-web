@@ -87,7 +87,7 @@ inventory::collect!(ReceiverRegistryEntry);
 /// # Examples
 ///
 /// ```rust,no_run
-/// use crate::signals::auto_connect_receivers;
+/// use reinhardt_core::signals::auto_connect_receivers;
 ///
 /// #[tokio::main]
 /// async fn main() {

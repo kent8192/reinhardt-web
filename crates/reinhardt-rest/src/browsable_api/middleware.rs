@@ -48,7 +48,7 @@ impl BrowsableApiMiddleware {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::browsable_api::middleware::BrowsableApiMiddleware;
+	/// use reinhardt_rest::browsable_api::middleware::BrowsableApiMiddleware;
 	///
 	/// let middleware = BrowsableApiMiddleware::new();
 	/// ```
@@ -68,7 +68,7 @@ impl BrowsableApiMiddleware {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::browsable_api::middleware::{BrowsableApiMiddleware, BrowsableApiConfig};
+	/// use reinhardt_rest::browsable_api::middleware::{BrowsableApiMiddleware, BrowsableApiConfig};
 	///
 	/// let config = BrowsableApiConfig {
 	///     enabled: true,

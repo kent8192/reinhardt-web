@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```no_run
-//! use crate::serializers::validators::{UniqueValidator, UniqueTogetherValidator};
+//! use reinhardt_rest::serializers::validators::{UniqueValidator, UniqueTogetherValidator};
 //! use reinhardt_db::orm::Model;
 //! use reinhardt_db::backends::DatabaseConnection;
 //! use serde::{Serialize, Deserialize};
@@ -165,7 +165,7 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// # Examples
 ///
 /// ```no_run
-/// # use crate::serializers::validators::UniqueValidator;
+/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 /// # use reinhardt_db::orm::Model;
 /// # use reinhardt_db::backends::DatabaseConnection;
 /// # use serde::{Serialize, Deserialize};
@@ -216,7 +216,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::validators::UniqueValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -253,7 +253,7 @@ impl<M: Model> UniqueValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::validators::UniqueValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -347,7 +347,7 @@ impl<M: Model> UniqueValidator<M> {
 /// # Examples
 ///
 /// ```no_run
-/// # use crate::serializers::validators::UniqueTogetherValidator;
+/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 /// # use reinhardt_db::orm::Model;
 /// # use reinhardt_db::backends::DatabaseConnection;
 /// # use serde::{Serialize, Deserialize};
@@ -399,7 +399,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::validators::UniqueTogetherValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -436,7 +436,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::validators::UniqueTogetherValidator;
+	/// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #

@@ -10,7 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::validators::serialization::{ValidatorConfig, StringValidatorConfig};
+//! use reinhardt_core::validators::serialization::{ValidatorConfig, StringValidatorConfig};
 //!
 //! // Create a configuration
 //! let config = ValidatorConfig::String(StringValidatorConfig {

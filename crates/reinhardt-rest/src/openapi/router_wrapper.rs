@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use crate::openapi::OpenApiRouter;
+//! use reinhardt_rest::openapi::OpenApiRouter;
 //! use reinhardt_urls::routers::BasicRouter;
 //!
 //! fn main() {
@@ -61,7 +61,7 @@ impl<H> OpenApiRouter<H> {
 	/// # Example
 	///
 	/// ```rust,ignore
-	/// use crate::openapi::OpenApiRouter;
+	/// use reinhardt_rest::openapi::OpenApiRouter;
 	/// use reinhardt_urls::routers::BasicRouter;
 	///
 	/// let router = BasicRouter::new();

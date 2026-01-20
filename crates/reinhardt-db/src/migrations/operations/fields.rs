@@ -107,7 +107,7 @@ impl AddField {
 	/// use reinhardt_db::migrations::operations::fields::AddField;
 	/// use reinhardt_db::migrations::operations::FieldDefinition;
 	/// use reinhardt_db::migrations::FieldType;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let add = AddField::new("users", FieldDefinition::new("email", FieldType::VarChar(255), false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -185,7 +185,7 @@ impl RemoveField {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::fields::RemoveField;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let remove = RemoveField::new("users", "email");
 	/// let factory = SchemaEditorFactory::new();
@@ -271,7 +271,7 @@ impl AlterField {
 	/// use reinhardt_db::migrations::operations::fields::AlterField;
 	/// use reinhardt_db::migrations::operations::FieldDefinition;
 	/// use reinhardt_db::migrations::FieldType;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let alter = AlterField::new("users", FieldDefinition::new("email", FieldType::VarChar(500), false, false, Option::<&str>::None));
 	/// let factory = SchemaEditorFactory::new();
@@ -356,7 +356,7 @@ impl RenameField {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::fields::RenameField;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameField::new("users", "email", "email_address");
 	/// let factory = SchemaEditorFactory::new();

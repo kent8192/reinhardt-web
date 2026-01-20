@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 /// # Examples
 ///
 /// ```
-/// use crate::security::escape_html;
+/// use reinhardt_core::security::escape_html;
 ///
 /// let input = "<script>alert('XSS')</script>";
 /// let escaped = escape_html(input);
@@ -32,7 +32,7 @@ pub fn escape_html(input: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::xss::escape_html_attr;
+/// use reinhardt_core::security::xss::escape_html_attr;
 ///
 /// let attr = r#"value" onload="alert('xss')"#;
 /// let escaped = escape_html_attr(attr);
@@ -56,7 +56,7 @@ pub fn escape_html_attr(input: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::xss::escape_javascript;
+/// use reinhardt_core::security::xss::escape_javascript;
 ///
 /// let script = "'; alert('xss'); var x='";
 /// let escaped = escape_javascript(script);
@@ -83,7 +83,7 @@ pub fn escape_javascript(input: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::xss::escape_url;
+/// use reinhardt_core::security::xss::escape_url;
 ///
 /// let url = "javascript:alert('xss')";
 /// let escaped = escape_url(url);
@@ -119,7 +119,7 @@ fn get_dangerous_patterns() -> &'static Vec<Regex> {
 /// # Examples
 ///
 /// ```
-/// use crate::security::xss::detect_xss_patterns;
+/// use reinhardt_core::security::xss::detect_xss_patterns;
 ///
 /// assert!(detect_xss_patterns("<script>alert(1)</script>"));
 /// assert!(detect_xss_patterns(r#"<img src=x onerror="alert(1)">"#));
@@ -137,7 +137,7 @@ pub fn detect_xss_patterns(input: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use crate::security::sanitize_html;
+/// use reinhardt_core::security::sanitize_html;
 ///
 /// let dangerous = "<script>alert('XSS')</script><b>Bold text</b>";
 /// let sanitized = sanitize_html(dangerous);
@@ -156,7 +156,7 @@ pub fn sanitize_html(input: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::xss::is_safe_url;
+/// use reinhardt_core::security::xss::is_safe_url;
 ///
 /// assert!(is_safe_url("https://example.com"));
 /// assert!(is_safe_url("http://example.com"));

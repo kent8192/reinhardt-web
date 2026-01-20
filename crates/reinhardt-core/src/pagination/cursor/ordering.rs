@@ -25,7 +25,7 @@ pub trait OrderingStrategy: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::{CreatedAtOrdering, OrderingStrategy};
+/// use reinhardt_core::pagination::cursor::{CreatedAtOrdering, OrderingStrategy};
 ///
 /// let ordering = CreatedAtOrdering::new();
 /// assert_eq!(ordering.fields(), vec!["-created_at", "id"]);
@@ -44,7 +44,7 @@ impl CreatedAtOrdering {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::CreatedAtOrdering;
+	/// use reinhardt_core::pagination::cursor::CreatedAtOrdering;
 	///
 	/// let ordering = CreatedAtOrdering::new();
 	/// assert_eq!(ordering.created_field, "created_at");
@@ -62,7 +62,7 @@ impl CreatedAtOrdering {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::CreatedAtOrdering;
+	/// use reinhardt_core::pagination::cursor::CreatedAtOrdering;
 	///
 	/// let ordering = CreatedAtOrdering::new()
 	///     .with_fields("created", "pk");
@@ -99,7 +99,7 @@ impl OrderingStrategy for CreatedAtOrdering {
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::cursor::{IdOrdering, OrderingStrategy};
+/// use reinhardt_core::pagination::cursor::{IdOrdering, OrderingStrategy};
 ///
 /// let ordering = IdOrdering::new();
 /// assert_eq!(ordering.fields(), vec!["id"]);
@@ -121,7 +121,7 @@ impl IdOrdering {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::IdOrdering;
+	/// use reinhardt_core::pagination::cursor::IdOrdering;
 	///
 	/// let ordering = IdOrdering::new();
 	/// assert_eq!(ordering.id_field, "id");
@@ -139,7 +139,7 @@ impl IdOrdering {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::IdOrdering;
+	/// use reinhardt_core::pagination::cursor::IdOrdering;
 	///
 	/// let ordering = IdOrdering::descending();
 	/// assert!(!ordering.ascending);
@@ -156,7 +156,7 @@ impl IdOrdering {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::cursor::IdOrdering;
+	/// use reinhardt_core::pagination::cursor::IdOrdering;
 	///
 	/// let ordering = IdOrdering::new().with_field("pk");
 	/// assert_eq!(ordering.id_field, "pk");

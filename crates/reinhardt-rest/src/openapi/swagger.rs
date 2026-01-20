@@ -56,7 +56,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -72,7 +72,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -102,7 +102,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	/// use reinhardt_apps::Request;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -133,7 +133,7 @@ impl SwaggerUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, SwaggerUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, SwaggerUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let swagger_ui = SwaggerUI::new(schema);
@@ -177,7 +177,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
@@ -194,7 +194,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	///
 	/// let schema = OpenApiSchema::new("My API", "1.0.0");
 	/// let redoc_ui = RedocUI::new(schema);
@@ -225,7 +225,7 @@ impl RedocUI {
 	/// # Examples
 	///
 	/// ```ignore
-	/// use crate::openapi::{OpenApiSchema, RedocUI};
+	/// use reinhardt_rest::openapi::{OpenApiSchema, RedocUI};
 	/// use reinhardt_apps::Request;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

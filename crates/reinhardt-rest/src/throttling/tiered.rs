@@ -26,7 +26,7 @@ impl Tier {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::Tier;
+	/// use reinhardt_rest::throttling::Tier;
 	/// use std::time::Duration;
 	///
 	/// let free_tier = Tier::new("free", 100, Duration::from_secs(3600));
@@ -61,7 +61,7 @@ impl<B: ThrottleBackend> TieredRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::{TieredRateThrottle, MemoryBackend, Tier};
+	/// use reinhardt_rest::throttling::{TieredRateThrottle, MemoryBackend, Tier};
 	/// use std::sync::Arc;
 	/// use tokio::sync::Mutex;
 	/// use std::time::Duration;
@@ -86,7 +86,7 @@ impl<B: ThrottleBackend> TieredRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::{TieredRateThrottle, MemoryBackend, Tier};
+	/// use reinhardt_rest::throttling::{TieredRateThrottle, MemoryBackend, Tier};
 	/// use std::sync::Arc;
 	/// use tokio::sync::Mutex;
 	/// use std::time::Duration;
@@ -110,7 +110,7 @@ impl<B: ThrottleBackend> TieredRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::{TieredRateThrottle, MemoryBackend, Tier};
+	/// use reinhardt_rest::throttling::{TieredRateThrottle, MemoryBackend, Tier};
 	/// use std::sync::Arc;
 	/// use tokio::sync::Mutex;
 	/// use std::time::Duration;

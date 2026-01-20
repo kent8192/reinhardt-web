@@ -17,7 +17,7 @@ impl Language {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::Language;
+	/// use reinhardt_core::negotiation::language::Language;
 	///
 	/// let en = Language::new("en");
 	/// assert_eq!(en.code, "en");
@@ -37,7 +37,7 @@ impl Language {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::Language;
+	/// use reinhardt_core::negotiation::language::Language;
 	///
 	/// let en_us = Language::with_region("en", "US");
 	/// assert_eq!(en_us.code, "en");
@@ -56,7 +56,7 @@ impl Language {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::Language;
+	/// use reinhardt_core::negotiation::language::Language;
 	///
 	/// let lang = Language::parse("en-US;q=0.9").unwrap();
 	/// assert_eq!(lang.code, "en");
@@ -100,7 +100,7 @@ impl Language {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::Language;
+	/// use reinhardt_core::negotiation::language::Language;
 	///
 	/// let en_us = Language::with_region("en", "US");
 	/// let en = Language::new("en");
@@ -131,7 +131,7 @@ impl Language {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::Language;
+	/// use reinhardt_core::negotiation::language::Language;
 	///
 	/// let en_us = Language::with_region("en", "US");
 	/// assert_eq!(en_us.tag(), "en-US");
@@ -159,7 +159,7 @@ impl LanguageNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::LanguageNegotiator;
+	/// use reinhardt_core::negotiation::language::LanguageNegotiator;
 	///
 	/// let negotiator = LanguageNegotiator::new();
 	/// ```
@@ -174,7 +174,7 @@ impl LanguageNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::{LanguageNegotiator, Language};
+	/// use reinhardt_core::negotiation::language::{LanguageNegotiator, Language};
 	///
 	/// let negotiator = LanguageNegotiator::with_fallback(Language::new("ja"));
 	/// ```
@@ -187,7 +187,7 @@ impl LanguageNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::{LanguageNegotiator, Language};
+	/// use reinhardt_core::negotiation::language::{LanguageNegotiator, Language};
 	///
 	/// let negotiator = LanguageNegotiator::new();
 	/// let available = vec![
@@ -230,7 +230,7 @@ impl LanguageNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::LanguageNegotiator;
+	/// use reinhardt_core::negotiation::language::LanguageNegotiator;
 	///
 	/// let negotiator = LanguageNegotiator::new();
 	/// let languages = negotiator.parse_accept_language("en-US, fr;q=0.9, ja;q=0.8");
@@ -251,7 +251,7 @@ impl LanguageNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::language::{LanguageNegotiator, Language};
+	/// use reinhardt_core::negotiation::language::{LanguageNegotiator, Language};
 	///
 	/// let negotiator = LanguageNegotiator::new();
 	/// let available = vec![

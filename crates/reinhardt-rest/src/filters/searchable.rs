@@ -13,7 +13,7 @@ use reinhardt_db::orm::{Field, Model};
 /// # Examples
 ///
 /// ```rust
-/// # use crate::filters::{SearchableModel, field_extensions::FieldOrderingExt, OrderingField};
+/// # use reinhardt_rest::filters::{SearchableModel, field_extensions::FieldOrderingExt, OrderingField};
 /// # use reinhardt_db::orm::{Model, Field, FieldSelector};
 /// #
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

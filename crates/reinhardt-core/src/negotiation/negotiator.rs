@@ -55,7 +55,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::ContentNegotiator;
+	/// use reinhardt_core::negotiation::ContentNegotiator;
 	///
 	/// let negotiator = ContentNegotiator::new();
 	// Default media type is application/json
@@ -70,7 +70,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{ContentNegotiator, MediaType};
+	/// use reinhardt_core::negotiation::{ContentNegotiator, MediaType};
 	///
 	/// let negotiator = ContentNegotiator::new()
 	///     .with_default(MediaType::new("text", "html"));
@@ -88,7 +88,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{ContentNegotiator, MediaType};
+	/// use reinhardt_core::negotiation::{ContentNegotiator, MediaType};
 	///
 	/// let negotiator = ContentNegotiator::new();
 	/// let available = vec![
@@ -115,7 +115,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{ContentNegotiator, MediaType};
+	/// use reinhardt_core::negotiation::{ContentNegotiator, MediaType};
 	///
 	/// let negotiator = ContentNegotiator::new();
 	/// let renderers = vec![
@@ -177,7 +177,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{ContentNegotiator, MediaType, RendererInfo};
+	/// use reinhardt_core::negotiation::{ContentNegotiator, MediaType, RendererInfo};
 	///
 	/// let negotiator = ContentNegotiator::new();
 	/// let renderers = vec![
@@ -220,7 +220,7 @@ impl ContentNegotiator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::{ContentNegotiator, MediaType};
+	/// use reinhardt_core::negotiation::{ContentNegotiator, MediaType};
 	///
 	/// let negotiator = ContentNegotiator::new();
 	/// let available = vec![

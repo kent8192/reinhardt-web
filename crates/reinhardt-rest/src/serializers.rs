@@ -23,7 +23,7 @@
 //! ### Basic Serializer
 //!
 //! ```rust,ignore
-//! use crate::serializers::{Serializer, CharField, IntegerField, EmailField};
+//! use reinhardt_rest::serializers::{Serializer, CharField, IntegerField, EmailField};
 //!
 //! struct UserSerializer {
 //!     id: IntegerField,
@@ -43,7 +43,7 @@
 //! ### Model Serializer
 //!
 //! ```rust,ignore
-//! use crate::serializers::ModelSerializer;
+//! use reinhardt_rest::serializers::ModelSerializer;
 //!
 //! // Automatically generates serializer fields from User model
 //! let serializer = ModelSerializer::<User>::new()
@@ -63,7 +63,7 @@
 //! Handle model relationships:
 //!
 //! ```rust,ignore
-//! use crate::serializers::{
+//! use reinhardt_rest::serializers::{
 //!     PrimaryKeyRelatedField, SlugRelatedField,
 //!     HyperlinkedRelatedField, StringRelatedField
 //! };
@@ -88,7 +88,7 @@
 //! ## Nested Serializers
 //!
 //! ```rust,ignore
-//! use crate::serializers::{NestedSerializer, WritableNestedSerializer, ListSerializer};
+//! use reinhardt_rest::serializers::{NestedSerializer, WritableNestedSerializer, ListSerializer};
 //!
 //! // Read-only nested serializer
 //! let author = NestedSerializer::<AuthorSerializer>::new();
@@ -107,7 +107,7 @@
 //! ### Field-Level Validation
 //!
 //! ```rust,ignore
-//! use crate::serializers::{FieldValidator, ValidationError};
+//! use reinhardt_rest::serializers::{FieldValidator, ValidationError};
 //!
 //! fn validate_username(value: &str) -> Result<(), ValidationError> {
 //!     if value.len() < 3 {
@@ -120,7 +120,7 @@
 //! ### Object-Level Validation
 //!
 //! ```rust,ignore
-//! use crate::serializers::{ObjectValidator, ValidationError};
+//! use reinhardt_rest::serializers::{ObjectValidator, ValidationError};
 //!
 //! fn validate_password_match(data: &Value) -> Result<(), ValidationError> {
 //!     let password = data.get("password");
@@ -135,7 +135,7 @@
 //! ### Database Validators
 //!
 //! ```rust,ignore
-//! use crate::serializers::{UniqueValidator, UniqueTogetherValidator};
+//! use reinhardt_rest::serializers::{UniqueValidator, UniqueTogetherValidator};
 //!
 //! // Ensure email is unique
 //! let email_validator = UniqueValidator::<User>::new("email");
@@ -147,7 +147,7 @@
 //! ## Performance Optimization
 //!
 //! ```rust,ignore
-//! use crate::serializers::{QueryCache, N1Detector, BatchValidator};
+//! use reinhardt_rest::serializers::{QueryCache, N1Detector, BatchValidator};
 //!
 //! // Cache repeated queries
 //! let cache = QueryCache::new();
@@ -168,7 +168,7 @@
 //! ## Content Negotiation
 //!
 //! ```rust,ignore
-//! use crate::serializers::ContentNegotiator;
+//! use reinhardt_rest::serializers::ContentNegotiator;
 //!
 //! let negotiator = ContentNegotiator::new()
 //!     .add_parser("application/json", JsonParser::new())

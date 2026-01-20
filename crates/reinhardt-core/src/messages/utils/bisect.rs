@@ -15,7 +15,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::bisect::bisect_keep_left;
+/// use reinhardt_core::messages::utils::bisect::bisect_keep_left;
 ///
 /// let items = vec!["short".to_string(), "medium text".to_string(), "very long text here".to_string()];
 /// let count = bisect_keep_left(&items, 30, |items| {
@@ -69,7 +69,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use crate::messages::utils::bisect::bisect_keep_right;
+/// use reinhardt_core::messages::utils::bisect::bisect_keep_right;
 ///
 /// let items = vec!["old".to_string(), "older".to_string(), "newest".to_string()];
 /// let count = bisect_keep_right(&items, 20, |items| {

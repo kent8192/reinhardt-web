@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::persistence::{PersistentSignal, MemoryStore};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::persistence::{PersistentSignal, MemoryStore};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,8 +76,8 @@ impl<T> StoredSignal<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::persistence::{SignalStore, StoredSignal};
-/// use crate::signals::error::SignalError;
+/// use reinhardt_core::signals::persistence::{SignalStore, StoredSignal};
+/// use reinhardt_core::signals::error::SignalError;
 /// use async_trait::async_trait;
 ///
 /// struct CustomStore;
@@ -131,7 +131,7 @@ pub trait SignalStore<T: Send + Sync + 'static>: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::persistence::MemoryStore;
+/// use reinhardt_core::signals::persistence::MemoryStore;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -230,8 +230,8 @@ impl<T: Send + Sync + Clone + 'static> SignalStore<T> for MemoryStore<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::persistence::{PersistentSignal, MemoryStore};
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::persistence::{PersistentSignal, MemoryStore};
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -283,8 +283,8 @@ impl<T: Send + Sync + Clone + 'static> PersistentSignal<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::persistence::{PersistentSignal, MemoryStore};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::persistence::{PersistentSignal, MemoryStore};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }

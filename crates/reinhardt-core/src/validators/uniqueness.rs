@@ -21,7 +21,7 @@ pub type UniquenessCheckFn =
 /// # Examples
 ///
 /// ```rust
-/// use crate::validators::UniqueValidator;
+/// use reinhardt_core::validators::UniqueValidator;
 ///
 /// # async fn example() {
 // Create a validator with a database check function

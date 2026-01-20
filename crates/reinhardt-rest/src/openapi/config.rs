@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust
-//! use crate::openapi::config::OpenApiConfig;
+//! use reinhardt_rest::openapi::config::OpenApiConfig;
 //!
 //! // Use default configuration
 //! let config = OpenApiConfig::default();
@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```rust
-/// use crate::openapi::config::OpenApiConfig;
+/// use reinhardt_rest::openapi::config::OpenApiConfig;
 ///
 /// let config = OpenApiConfig::default();
 /// assert!(config.enabled);

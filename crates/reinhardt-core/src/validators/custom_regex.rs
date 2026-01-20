@@ -24,7 +24,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// let validator = CustomRegexValidator::new(r"^\d{3}-\d{4}$").unwrap();
 	/// assert!(validator.validate("123-4567").is_ok());
@@ -49,7 +49,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// let validator = CustomRegexValidator::alphanumeric();
 	/// assert!(validator.validate("abc123").is_ok());
@@ -70,7 +70,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// let validator = CustomRegexValidator::slug();
 	/// assert!(validator.validate("my-valid-slug").is_ok());
@@ -94,7 +94,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// let validator = CustomRegexValidator::username();
 	/// assert!(validator.validate("john_doe").is_ok());
@@ -119,7 +119,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// // Reject strings containing special characters
 	/// let validator = CustomRegexValidator::new(r"[!@#$%^&*()]").unwrap()
@@ -137,7 +137,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator, ValidationError};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator, ValidationError};
 	///
 	/// let validator = CustomRegexValidator::new(r"^\d+$").unwrap()
 	///     .with_message("Value must contain only digits");
@@ -159,7 +159,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{CustomRegexValidator, Validator};
+	/// use reinhardt_core::validators::{CustomRegexValidator, Validator};
 	///
 	/// let validator = CustomRegexValidator::new(r"^\d{3}$").unwrap();
 	/// assert!(validator.validate("123").is_ok());
@@ -195,7 +195,7 @@ impl CustomRegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::CustomRegexValidator;
+	/// use reinhardt_core::validators::CustomRegexValidator;
 	///
 	/// let validator = CustomRegexValidator::new(r"^(\d{3})-(\d{4})$").unwrap();
 	///

@@ -34,14 +34,14 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use crate::pagination::CursorPagination;
+/// use reinhardt_core::pagination::CursorPagination;
 ///
 /// let paginator = CursorPagination::new()
 ///     .page_size(20)
 ///     .max_page_size(100);
 ///
 /// // Use with custom encoder
-/// use crate::pagination::cursor::Base64CursorEncoder;
+/// use reinhardt_core::pagination::cursor::Base64CursorEncoder;
 /// let encoder = Base64CursorEncoder::new();
 /// let paginator = CursorPagination::new()
 ///     .with_encoder(encoder);
@@ -84,7 +84,7 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::CursorPagination;
 	///
 	/// let paginator = CursorPagination::new();
 	/// assert_eq!(paginator.page_size, 10);
@@ -100,7 +100,7 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::CursorPagination;
 	///
 	/// let paginator = CursorPagination::new().page_size(20);
 	/// assert_eq!(paginator.page_size, 20);
@@ -115,7 +115,7 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::CursorPagination;
 	///
 	/// let paginator = CursorPagination::new()
 	///     .page_size(10)
@@ -132,7 +132,7 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::CursorPagination;
 	///
 	/// let paginator = CursorPagination::new()
 	///     .ordering(vec!["-created_at".to_string(), "id".to_string()]);
@@ -148,8 +148,8 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
-	/// use crate::pagination::cursor::Base64CursorEncoder;
+	/// use reinhardt_core::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::cursor::Base64CursorEncoder;
 	///
 	/// let encoder = Base64CursorEncoder::new().expiry_seconds(3600);
 	/// let paginator = CursorPagination::new()
@@ -167,7 +167,7 @@ impl CursorPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::CursorPagination;
+	/// use reinhardt_core::pagination::CursorPagination;
 	///
 	/// let paginator = CursorPagination::new()
 	///     .with_bidirectional();

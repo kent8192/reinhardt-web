@@ -14,7 +14,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use crate::security::{CsrfMiddleware, SecurityHeadersMiddleware};
+//! use reinhardt_core::security::{CsrfMiddleware, SecurityHeadersMiddleware};
 //!
 //! # struct App;
 //! # impl App {

@@ -9,7 +9,7 @@
 //! ```rust,no_run
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+//! use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 //!
 //! // Create a distributed signal with an in-memory broker
 //! let broker = InMemoryBroker::new();
@@ -40,7 +40,7 @@ use tokio::sync::RwLock;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::distributed::DistributedEvent;
+/// use reinhardt_core::signals::distributed::DistributedEvent;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Serialize, Deserialize, Clone)]
@@ -74,7 +74,7 @@ impl<T> DistributedEvent<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::distributed::DistributedEvent;
+	/// use reinhardt_core::signals::distributed::DistributedEvent;
 	///
 	/// let event = DistributedEvent::new("test_signal", "payload", "service-1");
 	/// assert_eq!(event.signal_name, "test_signal");
@@ -131,7 +131,7 @@ type ChannelsMap = std::collections::HashMap<String, Vec<SubscriberFn>>;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::distributed::InMemoryBroker;
+/// use reinhardt_core::signals::distributed::InMemoryBroker;
 ///
 /// let broker = InMemoryBroker::new();
 /// ```
@@ -145,7 +145,7 @@ impl InMemoryBroker {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::distributed::InMemoryBroker;
+	/// use reinhardt_core::signals::distributed::InMemoryBroker;
 	///
 	/// let broker = InMemoryBroker::new();
 	/// ```
@@ -199,7 +199,7 @@ impl MessageBroker for InMemoryBroker {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 ///
 /// # async fn example() {
 /// let broker = InMemoryBroker::new();
@@ -227,7 +227,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// let broker = InMemoryBroker::new();
 	/// let signal = DistributedSignal::<String, _>::new("test", broker, "svc-1");
@@ -246,7 +246,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// let broker = InMemoryBroker::new();
 	/// let signal = DistributedSignal::<String, _>::new("my_signal", broker, "svc-1");
@@ -261,7 +261,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// let broker = InMemoryBroker::new();
 	/// let signal = DistributedSignal::<String, _>::new("test", broker, "service-1");
@@ -276,7 +276,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -300,7 +300,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -335,7 +335,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::distributed::{DistributedSignal, InMemoryBroker};
+	/// use reinhardt_core::signals::distributed::{DistributedSignal, InMemoryBroker};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {

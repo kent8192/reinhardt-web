@@ -110,7 +110,7 @@ impl<T: 'static> GenericViewSet<T> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use reinhardt_views::viewsets::{GenericViewSet, viewset_actions};
+	/// use reinhardt_views::{viewset_actions, viewsets::GenericViewSet};
 	/// use hyper::Method;
 	///
 	/// let viewset = GenericViewSet::new("users", ());

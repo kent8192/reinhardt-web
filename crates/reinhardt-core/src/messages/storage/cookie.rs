@@ -107,7 +107,7 @@ impl CookieStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{CookieStorage, Level, Message, MessageStorage};
+	/// use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage};
 	///
 	/// let mut storage = CookieStorage::new().with_max_size(100);
 	/// storage.add(Message::new(Level::Info, "Short message"));
@@ -135,7 +135,7 @@ impl CookieStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{CookieStorage, Level, Message, MessageStorage};
+	/// use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage};
 	///
 	/// let mut storage = CookieStorage::new();
 	/// storage.add(Message::new(Level::Info, "Test message"));
@@ -163,7 +163,7 @@ impl CookieStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{CookieStorage, Level, Message, MessageStorage};
+	/// use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage};
 	///
 	/// let mut storage = CookieStorage::new();
 	/// storage.add(Message::new(Level::Info, "Test"));
@@ -202,7 +202,7 @@ impl CookieStorage {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::CookieStorage;
+	/// use reinhardt_core::messages::CookieStorage;
 	///
 	/// let text = r#"Test with special chars: , ; \ ""#;
 	/// let encoded = CookieStorage::encode_for_cookie(text);

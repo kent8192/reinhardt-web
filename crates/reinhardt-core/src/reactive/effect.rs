@@ -14,7 +14,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::reactive::{Signal, Effect};
+//! use reinhardt_core::reactive::{Signal, Effect};
 //!
 //! let count = Signal::new(0);
 //!
@@ -74,7 +74,7 @@ pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
 /// ## Example
 ///
 /// ```ignore
-/// use crate::reactive::{Signal, Effect};
+/// use reinhardt_core::reactive::{Signal, Effect};
 ///
 /// let count = Signal::new(0);
 /// let doubled = Signal::new(0);

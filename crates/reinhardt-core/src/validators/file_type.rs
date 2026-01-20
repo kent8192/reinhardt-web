@@ -10,7 +10,7 @@
 //! ## Validate file extensions
 //!
 //! ```
-//! use crate::validators::{FileTypeValidator, Validator};
+//! use reinhardt_core::validators::{FileTypeValidator, Validator};
 //!
 //! let validator = FileTypeValidator::with_extensions(vec![
 //!     "jpg".to_string(),
@@ -24,7 +24,7 @@
 //! ## Validate MIME types
 //!
 //! ```
-//! use crate::validators::{FileTypeValidator, Validator};
+//! use reinhardt_core::validators::{FileTypeValidator, Validator};
 //!
 //! let validator = FileTypeValidator::with_mime_types(vec![
 //!     "image/jpeg".to_string(),
@@ -38,7 +38,7 @@
 //! ## Using preset validators
 //!
 //! ```
-//! use crate::validators::{FileTypeValidator, Validator};
+//! use reinhardt_core::validators::{FileTypeValidator, Validator};
 //!
 //! let validator = FileTypeValidator::images_only();
 //! assert!(validator.validate_filename("photo.jpg").is_ok());
@@ -110,7 +110,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::new();
 	/// assert!(validator.validate_filename("any.file").is_ok());
@@ -131,7 +131,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::with_extensions(vec![
 	///     "jpg".to_string(),
@@ -154,7 +154,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::with_mime_types(vec![
 	///     "image/jpeg".to_string(),
@@ -178,7 +178,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::images_only();
 	/// assert!(validator.validate_filename("photo.jpg").is_ok());
@@ -219,7 +219,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::documents_only();
 	/// assert!(validator.validate_filename("report.pdf").is_ok());
@@ -260,7 +260,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::with_extensions(vec!["jpg".to_string()]);
 	/// assert!(validator.validate_filename("photo.jpg").is_ok());
@@ -308,7 +308,7 @@ impl FileTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::FileTypeValidator;
+	/// use reinhardt_core::validators::FileTypeValidator;
 	///
 	/// let validator = FileTypeValidator::with_mime_types(vec!["image/jpeg".to_string()]);
 	/// assert!(validator.validate_mime_type("image/jpeg").is_ok());
@@ -358,7 +358,7 @@ impl Default for FileTypeValidator {
 /// # Examples
 ///
 /// ```
-/// use crate::validators::{FileSizeValidator, Validator};
+/// use reinhardt_core::validators::{FileSizeValidator, Validator};
 ///
 /// // Minimum size
 /// let validator = FileSizeValidator::min(FileSizeValidator::from_kb(100)); // 100 KB minimum

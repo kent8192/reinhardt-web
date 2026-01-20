@@ -13,7 +13,7 @@ use std::collections::HashSet;
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::meta::SerializerMeta;
+/// use reinhardt_rest::serializers::meta::SerializerMeta;
 /// use std::collections::HashSet;
 ///
 /// struct UserSerializerMeta;
@@ -102,7 +102,7 @@ impl SerializerMeta for DefaultMeta {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::meta::MetaConfig;
+/// use reinhardt_rest::serializers::meta::MetaConfig;
 ///
 /// let config = MetaConfig::new()
 ///     .with_fields(vec!["id".to_string(), "username".to_string()])

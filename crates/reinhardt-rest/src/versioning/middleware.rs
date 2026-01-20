@@ -20,7 +20,7 @@ impl ApiVersion {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::versioning::ApiVersion;
+	/// use reinhardt_rest::versioning::ApiVersion;
 	///
 	/// let version = ApiVersion::new("2.0".to_string());
 	/// assert_eq!(version.as_str(), "2.0");
@@ -34,7 +34,7 @@ impl ApiVersion {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::versioning::ApiVersion;
+	/// use reinhardt_rest::versioning::ApiVersion;
 	///
 	/// let version = ApiVersion::new("1.0".to_string());
 	/// assert_eq!(version.as_str(), "1.0");
@@ -58,7 +58,7 @@ impl std::fmt::Display for ApiVersion {
 /// # Example
 ///
 /// ```rust
-/// use crate::versioning::{URLPathVersioning, VersioningMiddleware};
+/// use reinhardt_rest::versioning::{URLPathVersioning, VersioningMiddleware};
 ///
 /// let versioning = URLPathVersioning::new()
 ///     .with_default_version("1.0")
@@ -76,7 +76,7 @@ impl<V: BaseVersioning> VersioningMiddleware<V> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::versioning::{URLPathVersioning, VersioningMiddleware};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, VersioningMiddleware};
 	///
 	/// let versioning = URLPathVersioning::new()
 	///     .with_default_version("1.0");
@@ -92,7 +92,7 @@ impl<V: BaseVersioning> VersioningMiddleware<V> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::versioning::{URLPathVersioning, VersioningMiddleware, BaseVersioning};
+	/// use reinhardt_rest::versioning::{URLPathVersioning, VersioningMiddleware, BaseVersioning};
 	///
 	/// let url_versioning = URLPathVersioning::new()
 	///     .with_default_version("1.0");

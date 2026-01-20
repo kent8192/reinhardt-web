@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::batching::{BatchConfig, SignalBatcher};
-//! use crate::signals::Signal;
+//! use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+//! use reinhardt_core::signals::Signal;
 //! use std::time::Duration;
 //!
 //! # tokio_test::block_on(async {
@@ -45,7 +45,7 @@ use tokio::time::interval;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::batching::BatchConfig;
+/// use reinhardt_core::signals::batching::BatchConfig;
 /// use std::time::Duration;
 ///
 /// let config = BatchConfig::new()
@@ -153,8 +153,8 @@ impl<T> BatchState<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::batching::{BatchConfig, SignalBatcher};
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use std::time::Duration;
 ///
 /// # tokio_test::block_on(async {
@@ -189,8 +189,8 @@ impl<T: Send + Sync + 'static> SignalBatcher<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::batching::{BatchConfig, SignalBatcher};
-	/// use crate::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+	/// use reinhardt_core::signals::{Signal, SignalName};
 	///
 	/// # tokio_test::block_on(async {
 	/// let signal = Signal::<Vec<String>>::new(SignalName::custom("batch_signal"));
@@ -222,8 +222,8 @@ impl<T: Send + Sync + 'static> SignalBatcher<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::batching::{BatchConfig, SignalBatcher};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let signal = Signal::<Vec<String>>::new(SignalName::custom("test"));
 	/// # let batcher = SignalBatcher::new(signal, BatchConfig::new());
@@ -252,8 +252,8 @@ impl<T: Send + Sync + 'static> SignalBatcher<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::batching::{BatchConfig, SignalBatcher};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let signal = Signal::<Vec<String>>::new(SignalName::custom("test"));
 	/// # let batcher = SignalBatcher::new(signal, BatchConfig::new());
@@ -284,8 +284,8 @@ impl<T: Send + Sync + 'static> SignalBatcher<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::batching::{BatchConfig, SignalBatcher};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::batching::{BatchConfig, SignalBatcher};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let signal = Signal::<Vec<String>>::new(SignalName::custom("test"));
 	/// # let batcher = SignalBatcher::new(signal, BatchConfig::new());

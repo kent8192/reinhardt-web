@@ -120,7 +120,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -365,7 +365,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -431,7 +431,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -494,7 +494,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
@@ -612,7 +612,7 @@ impl DatabaseMigrationRecorder {
 	///
 	/// ```no_run
 	/// use reinhardt_db::migrations::recorder::DatabaseMigrationRecorder;
-	/// use crate::backends::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection;
 	///
 	/// # async fn example() {
 	/// let connection = DatabaseConnection::connect_sqlite(":memory:").await.unwrap();

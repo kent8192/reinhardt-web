@@ -50,7 +50,7 @@ pub struct FieldSchema {
 /// # Examples
 ///
 /// ```
-/// use crate::metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
+/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, generate_field_schema};
 ///
 /// let field = FieldInfoBuilder::new(FieldType::String)
 ///     .required(true)
@@ -219,7 +219,7 @@ pub fn generate_field_schema(field: &FieldInfo) -> FieldSchema {
 /// # Examples
 ///
 /// ```
-/// use crate::metadata::{FieldInfoBuilder, FieldType, generate_object_schema};
+/// use reinhardt_rest::metadata::{FieldInfoBuilder, FieldType, generate_object_schema};
 /// use std::collections::HashMap;
 ///
 /// let mut fields = HashMap::new();

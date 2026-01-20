@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::{Signal, SignalName};
-//! use crate::signals::debugger::SignalDebugger;
+//! use reinhardt_core::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::debugger::SignalDebugger;
 //!
 //! # tokio_test::block_on(async {
 //! let signal = Signal::<String>::new(SignalName::custom("test_signal"));
@@ -84,7 +84,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// let debugger = SignalDebugger::<String>::new();
 	/// ```
@@ -101,8 +101,8 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// # tokio_test::block_on(async {
 	/// let debugger = SignalDebugger::<String>::new();
@@ -125,8 +125,8 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// # tokio_test::block_on(async {
 	/// let debugger = SignalDebugger::<String>::new();
@@ -149,7 +149,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// let debugger = SignalDebugger::<String>::new();
 	/// debugger.clear();
@@ -165,8 +165,8 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// # tokio_test::block_on(async {
 	/// let debugger = SignalDebugger::<String>::new();
@@ -233,7 +233,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	/// use std::time::{SystemTime, Duration};
 	///
 	/// let debugger = SignalDebugger::<String>::new();
@@ -257,8 +257,8 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// # tokio_test::block_on(async {
 	/// let debugger = SignalDebugger::<String>::new();
@@ -286,7 +286,7 @@ impl<T: Send + Sync + 'static> SignalDebugger<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::debugger::SignalDebugger;
+	/// use reinhardt_core::signals::debugger::SignalDebugger;
 	///
 	/// let debugger = SignalDebugger::<String>::new();
 	/// let failed = debugger.failed_events();

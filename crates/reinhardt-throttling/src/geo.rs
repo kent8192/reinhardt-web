@@ -28,7 +28,7 @@ impl GeoRateConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::geo::GeoRateConfig;
+	/// use reinhardt_throttling::geo::GeoRateConfig;
 	/// use std::collections::HashMap;
 	///
 	/// let mut country_rates = HashMap::new();
@@ -64,8 +64,8 @@ impl GeoRateConfig {
 /// # Examples
 ///
 /// ```
-/// use crate::geo::{GeoRateThrottle, GeoRateConfig};
-/// use crate::{MemoryBackend, Throttle};
+/// use reinhardt_throttling::geo::{GeoRateThrottle, GeoRateConfig};
+/// use reinhardt_throttling::{MemoryBackend, Throttle};
 /// use std::collections::HashMap;
 /// use std::sync::Arc;
 ///
@@ -93,8 +93,8 @@ impl<B: ThrottleBackend> GeoRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::geo::{GeoRateThrottle, GeoRateConfig};
-	/// use crate::{MemoryBackend, Throttle};
+	/// use reinhardt_throttling::geo::{GeoRateThrottle, GeoRateConfig};
+	/// use reinhardt_throttling::{MemoryBackend, Throttle};
 	/// use std::collections::HashMap;
 	/// use std::sync::Arc;
 	///
@@ -117,8 +117,8 @@ impl<B: ThrottleBackend> GeoRateThrottle<B> {
 	/// # Examples
 	///
 	/// ```no_run
-	/// use crate::geo::{GeoRateThrottle, GeoRateConfig};
-	/// use crate::{MemoryBackend, Throttle};
+	/// use reinhardt_throttling::geo::{GeoRateThrottle, GeoRateConfig};
+	/// use reinhardt_throttling::{MemoryBackend, Throttle};
 	/// use std::collections::HashMap;
 	/// use std::sync::Arc;
 	///

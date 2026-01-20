@@ -19,9 +19,9 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```rust
-/// # use crate::filters::QueryFilter;
+/// # use reinhardt_rest::filters::QueryFilter;
 /// # use reinhardt_db::orm::{Field, FieldSelector, Model};
-/// # use crate::filters::field_extensions::FieldOrderingExt;
+/// # use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 /// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// # struct Post {
 /// #     id: i64,
@@ -74,7 +74,7 @@ impl<M: Model> QueryFilter<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::QueryFilter;
+	/// # use reinhardt_rest::filters::QueryFilter;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	/// # struct Post {
@@ -118,9 +118,9 @@ impl<M: Model> QueryFilter<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::QueryFilter;
+	/// # use reinhardt_rest::filters::QueryFilter;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
-	/// # use crate::filters::field_extensions::FieldOrderingExt;
+	/// # use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	/// # struct Post {
 	/// #     id: i64,
@@ -161,7 +161,7 @@ impl<M: Model> QueryFilter<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::QueryFilter;
+	/// # use reinhardt_rest::filters::QueryFilter;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	/// # struct Post {
@@ -205,7 +205,7 @@ impl<M: Model> QueryFilter<M> {
 	/// # Examples
 	///
 	/// ```rust
-	/// # use crate::filters::QueryFilter;
+	/// # use reinhardt_rest::filters::QueryFilter;
 	/// # use reinhardt_db::orm::{Field, FieldSelector, Model};
 	/// # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	/// # struct Post {

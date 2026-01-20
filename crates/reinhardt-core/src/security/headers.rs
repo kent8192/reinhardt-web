@@ -51,7 +51,7 @@ impl ContentSecurityPolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::ContentSecurityPolicy;
+	/// use reinhardt_core::security::headers::ContentSecurityPolicy;
 	///
 	/// let csp = ContentSecurityPolicy::new();
 	/// let nonce = csp.generate_nonce();
@@ -66,7 +66,7 @@ impl ContentSecurityPolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::ContentSecurityPolicy;
+	/// use reinhardt_core::security::headers::ContentSecurityPolicy;
 	///
 	/// let csp = ContentSecurityPolicy::new()
 	///     .with_report_uri("/csp-report");
@@ -82,7 +82,7 @@ impl ContentSecurityPolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::ContentSecurityPolicy;
+	/// use reinhardt_core::security::headers::ContentSecurityPolicy;
 	///
 	/// let csp = ContentSecurityPolicy::new()
 	///     .with_report_to("csp-endpoint");
@@ -98,7 +98,7 @@ impl ContentSecurityPolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::ContentSecurityPolicy;
+	/// use reinhardt_core::security::headers::ContentSecurityPolicy;
 	///
 	/// let csp = ContentSecurityPolicy::new()
 	///     .with_auto_nonce(true);
@@ -114,7 +114,7 @@ impl ContentSecurityPolicy {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::ContentSecurityPolicy;
+	/// use reinhardt_core::security::headers::ContentSecurityPolicy;
 	///
 	/// let csp = ContentSecurityPolicy::new();
 	/// let nonce = "abc123";
@@ -220,7 +220,7 @@ impl SecurityHeadersConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::SecurityHeadersConfig;
+	/// use reinhardt_core::security::headers::SecurityHeadersConfig;
 	///
 	/// let config = SecurityHeadersConfig::production();
 	/// assert!(config.x_content_type_options);
@@ -235,7 +235,7 @@ impl SecurityHeadersConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::headers::SecurityHeadersConfig;
+	/// use reinhardt_core::security::headers::SecurityHeadersConfig;
 	///
 	/// let config = SecurityHeadersConfig::development();
 	/// assert_eq!(config.x_frame_options, Some("SAMEORIGIN".to_string()));

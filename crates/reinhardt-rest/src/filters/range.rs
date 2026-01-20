@@ -16,7 +16,7 @@ use std::fmt::Debug;
 /// # Examples
 ///
 /// ```
-/// use crate::filters::RangeFilter;
+/// use reinhardt_rest::filters::RangeFilter;
 ///
 /// // Numeric range
 /// let price_filter: RangeFilter<i32> = RangeFilter::new("price")
@@ -58,7 +58,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("age");
 	/// // Verify the filter is created successfully
@@ -79,7 +79,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("price")
 	///     .gte(100);
@@ -96,7 +96,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("price")
 	///     .gt(100);
@@ -113,7 +113,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("price")
 	///     .lte(500);
@@ -130,7 +130,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("price")
 	///     .lt(500);
@@ -147,7 +147,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let filter: RangeFilter<i32> = RangeFilter::new("price")
 	///     .between(100, 500);
@@ -191,7 +191,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::RangeFilter;
+	/// use reinhardt_rest::filters::RangeFilter;
 	///
 	/// let empty: RangeFilter<i32> = RangeFilter::new("price");
 	/// assert!(!empty.has_bounds());
@@ -211,7 +211,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use crate::filters::DateRangeFilter;
+/// use reinhardt_rest::filters::DateRangeFilter;
 ///
 /// let filter = DateRangeFilter::new("created_at")
 ///     .after("2024-01-01")
@@ -232,7 +232,7 @@ impl DateRangeFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::DateRangeFilter;
+	/// use reinhardt_rest::filters::DateRangeFilter;
 	///
 	/// let filter = DateRangeFilter::new("created_at");
 	/// assert_eq!(filter.field_name(), "created_at");
@@ -248,7 +248,7 @@ impl DateRangeFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::DateRangeFilter;
+	/// use reinhardt_rest::filters::DateRangeFilter;
 	///
 	/// let filter = DateRangeFilter::new("created_at")
 	///     .after("2024-01-01");
@@ -263,7 +263,7 @@ impl DateRangeFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::DateRangeFilter;
+	/// use reinhardt_rest::filters::DateRangeFilter;
 	///
 	/// let filter = DateRangeFilter::new("created_at")
 	///     .before("2024-12-31");
@@ -278,7 +278,7 @@ impl DateRangeFilter {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::DateRangeFilter;
+	/// use reinhardt_rest::filters::DateRangeFilter;
 	///
 	/// let filter = DateRangeFilter::new("created_at")
 	///     .range("2024-01-01", "2024-12-31");
@@ -310,7 +310,7 @@ impl DateRangeFilter {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::NumericRangeFilter;
+/// use reinhardt_rest::filters::NumericRangeFilter;
 ///
 /// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price")
 ///     .min(100)
@@ -334,7 +334,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::NumericRangeFilter;
+	/// use reinhardt_rest::filters::NumericRangeFilter;
 	///
 	/// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price");
 	/// assert_eq!(filter.field_name(), "price");
@@ -350,7 +350,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::NumericRangeFilter;
+	/// use reinhardt_rest::filters::NumericRangeFilter;
 	///
 	/// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price")
 	///     .min(100);
@@ -365,7 +365,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::NumericRangeFilter;
+	/// use reinhardt_rest::filters::NumericRangeFilter;
 	///
 	/// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price")
 	///     .max(500);
@@ -380,7 +380,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::NumericRangeFilter;
+	/// use reinhardt_rest::filters::NumericRangeFilter;
 	///
 	/// let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("price")
 	///     .range(100, 500);

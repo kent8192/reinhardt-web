@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::SignalName;
+/// use reinhardt_core::signals::SignalName;
 ///
 /// // Use built-in signal names
 /// let signal_name = SignalName::PRE_SAVE;
@@ -97,7 +97,7 @@ impl SignalName {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::SignalName;
+	/// use reinhardt_core::signals::SignalName;
 	///
 	/// // Valid custom signal names
 	/// let valid = SignalName::custom_validated("my_custom_signal").unwrap();

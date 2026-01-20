@@ -11,9 +11,9 @@
 //! ## Example
 //!
 //! ```rust
-//! use crate::validators::parallel::{validate_all_parallel, ParallelValidationResult};
-//! use crate::validators::string::MinLengthValidator;
-//! use crate::validators::Validator;
+//! use reinhardt_core::validators::parallel::{validate_all_parallel, ParallelValidationResult};
+//! use reinhardt_core::validators::string::MinLengthValidator;
+//! use reinhardt_core::validators::Validator;
 //!
 //! let validator = MinLengthValidator::new(3);
 //! let values: Vec<String> = vec!["hello", "hi", "world", "ab"]
@@ -229,9 +229,9 @@ impl ParallelValidationOptions {
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::validate_all_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::validate_all_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world"]
@@ -296,9 +296,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::all_valid_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::all_valid_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let valid_values: Vec<String> = vec!["hello", "world", "rust"]
@@ -340,9 +340,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::any_valid_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::any_valid_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hi", "a", "hello"]
@@ -367,9 +367,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::find_first_error_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::find_first_error_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world"]
@@ -397,9 +397,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::count_valid_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::count_valid_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -433,9 +433,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::validate_with_multiple;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::validate_with_multiple;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// // Use validators of the same concrete type
 /// let validators = vec![
@@ -521,9 +521,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::filter_valid_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::filter_valid_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -557,9 +557,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::filter_invalid_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::filter_invalid_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -593,9 +593,9 @@ where
 /// # Example
 ///
 /// ```rust
-/// use crate::validators::parallel::partition_parallel;
-/// use crate::validators::string::MinLengthValidator;
-/// use crate::validators::Validator;
+/// use reinhardt_core::validators::parallel::partition_parallel;
+/// use reinhardt_core::validators::string::MinLengthValidator;
+/// use reinhardt_core::validators::Validator;
 ///
 /// let validator = MinLengthValidator::new(3);
 /// let values: Vec<String> = vec!["hello", "hi", "world", "a"]

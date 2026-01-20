@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::visualization::{SignalGraph, SignalNode, SignalEdge};
+//! use reinhardt_core::signals::visualization::{SignalGraph, SignalNode, SignalEdge};
 //!
 //! let mut graph = SignalGraph::new();
 //!
@@ -77,7 +77,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let graph = SignalGraph::new();
 	/// ```
@@ -93,7 +93,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("user_created", "Sent when user is created");
@@ -116,7 +116,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_receiver_node("send_email", "Sends welcome email", 10);
@@ -139,7 +139,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_middleware_node("logger", "Logs all signals");
@@ -162,7 +162,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_receiver_node("payment_processor", "Process payment", 10);
@@ -179,7 +179,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("user_created", "User created signal");
@@ -200,7 +200,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("user_action", "User action signal");
@@ -221,7 +221,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "First signal");
@@ -291,7 +291,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "First signal");
@@ -346,7 +346,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "Signal");
@@ -417,7 +417,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "Signal 1");
@@ -435,7 +435,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "Signal 1");
@@ -454,7 +454,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "Signal 1");
@@ -483,7 +483,7 @@ impl SignalGraph {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::visualization::SignalGraph;
+	/// use reinhardt_core::signals::visualization::SignalGraph;
 	///
 	/// let mut graph = SignalGraph::new();
 	/// graph.add_signal_node("signal1", "Signal 1");

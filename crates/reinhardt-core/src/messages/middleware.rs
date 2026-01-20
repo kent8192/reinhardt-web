@@ -11,8 +11,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use crate::messages::middleware::MessagesContainer;
-//! use crate::messages::Message;
+//! use reinhardt_core::messages::middleware::MessagesContainer;
+//! use reinhardt_core::messages::Message;
 //!
 //! let container = MessagesContainer::new(vec![]);
 //! container.add(Message::info("Hello"));
@@ -33,8 +33,8 @@ use std::sync::{Arc, Mutex};
 /// ## Example
 ///
 /// ```rust
-/// use crate::messages::middleware::MessagesContainer;
-/// use crate::messages::Message;
+/// use reinhardt_core::messages::middleware::MessagesContainer;
+/// use reinhardt_core::messages::Message;
 ///
 /// let container = MessagesContainer::new(vec![]);
 /// container.add(Message::info("Hello"));
@@ -50,8 +50,8 @@ impl MessagesContainer {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::middleware::MessagesContainer;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::middleware::MessagesContainer;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let messages = vec![Message::info("Initial message")];
 	/// let container = MessagesContainer::new(messages);
@@ -67,8 +67,8 @@ impl MessagesContainer {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::middleware::MessagesContainer;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::middleware::MessagesContainer;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let container = MessagesContainer::new(vec![]);
 	/// container.add(Message::success("Operation completed"));
@@ -83,8 +83,8 @@ impl MessagesContainer {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::middleware::MessagesContainer;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::middleware::MessagesContainer;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let container = MessagesContainer::new(vec![Message::info("Test")]);
 	/// let messages = container.get_messages();
@@ -100,8 +100,8 @@ impl MessagesContainer {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::messages::middleware::MessagesContainer;
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::middleware::MessagesContainer;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let container = MessagesContainer::new(vec![Message::info("Test")]);
 	/// container.clear();

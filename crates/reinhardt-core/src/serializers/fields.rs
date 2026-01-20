@@ -68,7 +68,7 @@ impl std::error::Error for FieldError {}
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::CharField;
+/// use reinhardt_core::serializers::fields::CharField;
 ///
 /// let field = CharField::new()
 ///     .min_length(3)
@@ -100,7 +100,7 @@ impl CharField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::CharField;
+	/// use reinhardt_core::serializers::fields::CharField;
 	///
 	/// let field = CharField::new();
 	/// assert!(field.validate("test").is_ok());
@@ -121,7 +121,7 @@ impl CharField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::CharField;
+	/// use reinhardt_core::serializers::fields::CharField;
 	///
 	/// let field = CharField::new().required(false).allow_blank(true);
 	/// assert!(field.validate("").is_ok());
@@ -148,7 +148,7 @@ impl CharField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::CharField;
+	/// use reinhardt_core::serializers::fields::CharField;
 	///
 	/// let field = CharField::new().min_length(5);
 	/// assert!(field.validate("hello").is_ok());
@@ -164,7 +164,7 @@ impl CharField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::CharField;
+	/// use reinhardt_core::serializers::fields::CharField;
 	///
 	/// let field = CharField::new().max_length(10);
 	/// assert!(field.validate("hello").is_ok());
@@ -186,7 +186,7 @@ impl CharField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::CharField;
+	/// use reinhardt_core::serializers::fields::CharField;
 	///
 	/// let field = CharField::new()
 	///     .min_length(3)
@@ -228,7 +228,7 @@ impl Default for CharField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::IntegerField;
+/// use reinhardt_core::serializers::fields::IntegerField;
 ///
 /// let field = IntegerField::new()
 ///     .min_value(0)
@@ -253,7 +253,7 @@ impl IntegerField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::IntegerField;
+	/// use reinhardt_core::serializers::fields::IntegerField;
 	///
 	/// let field = IntegerField::new();
 	/// assert!(field.validate(42).is_ok());
@@ -285,7 +285,7 @@ impl IntegerField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::IntegerField;
+	/// use reinhardt_core::serializers::fields::IntegerField;
 	///
 	/// let field = IntegerField::new().min_value(0);
 	/// assert!(field.validate(10).is_ok());
@@ -301,7 +301,7 @@ impl IntegerField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::IntegerField;
+	/// use reinhardt_core::serializers::fields::IntegerField;
 	///
 	/// let field = IntegerField::new().max_value(100);
 	/// assert!(field.validate(50).is_ok());
@@ -323,7 +323,7 @@ impl IntegerField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::IntegerField;
+	/// use reinhardt_core::serializers::fields::IntegerField;
 	///
 	/// let field = IntegerField::new()
 	///     .min_value(0)
@@ -361,7 +361,7 @@ impl Default for IntegerField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::FloatField;
+/// use reinhardt_core::serializers::fields::FloatField;
 ///
 /// let field = FloatField::new()
 ///     .min_value(0.0)
@@ -386,7 +386,7 @@ impl FloatField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::FloatField;
+	/// use reinhardt_core::serializers::fields::FloatField;
 	///
 	/// let field = FloatField::new();
 	/// assert!(field.validate(3.15).is_ok());
@@ -418,7 +418,7 @@ impl FloatField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::FloatField;
+	/// use reinhardt_core::serializers::fields::FloatField;
 	///
 	/// let field = FloatField::new().min_value(0.0);
 	/// assert!(field.validate(1.5).is_ok());
@@ -434,7 +434,7 @@ impl FloatField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::FloatField;
+	/// use reinhardt_core::serializers::fields::FloatField;
 	///
 	/// let field = FloatField::new().max_value(10.0);
 	/// assert!(field.validate(5.0).is_ok());
@@ -456,7 +456,7 @@ impl FloatField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::FloatField;
+	/// use reinhardt_core::serializers::fields::FloatField;
 	///
 	/// let field = FloatField::new()
 	///     .min_value(0.0)
@@ -494,7 +494,7 @@ impl Default for FloatField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::BooleanField;
+/// use reinhardt_core::serializers::fields::BooleanField;
 ///
 /// let field = BooleanField::new();
 /// assert!(field.validate(true).is_ok());
@@ -513,7 +513,7 @@ impl BooleanField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::BooleanField;
+	/// use reinhardt_core::serializers::fields::BooleanField;
 	///
 	/// let field = BooleanField::new();
 	/// assert!(field.validate(true).is_ok());
@@ -549,7 +549,7 @@ impl BooleanField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::BooleanField;
+	/// use reinhardt_core::serializers::fields::BooleanField;
 	///
 	/// let field = BooleanField::new();
 	/// assert!(field.validate(true).is_ok());
@@ -572,7 +572,7 @@ impl Default for BooleanField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::EmailField;
+/// use reinhardt_core::serializers::fields::EmailField;
 ///
 /// let field = EmailField::new();
 /// assert!(field.validate("user@example.com").is_ok());
@@ -592,7 +592,7 @@ impl EmailField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::EmailField;
+	/// use reinhardt_core::serializers::fields::EmailField;
 	///
 	/// let field = EmailField::new();
 	/// assert!(field.validate("test@example.com").is_ok());
@@ -635,7 +635,7 @@ impl EmailField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::EmailField;
+	/// use reinhardt_core::serializers::fields::EmailField;
 	///
 	/// let field = EmailField::new();
 	/// assert!(field.validate("user@example.com").is_ok());
@@ -685,7 +685,7 @@ impl Default for EmailField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::URLField;
+/// use reinhardt_core::serializers::fields::URLField;
 ///
 /// let field = URLField::new();
 /// assert!(field.validate("https://example.com").is_ok());
@@ -705,7 +705,7 @@ impl URLField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::URLField;
+	/// use reinhardt_core::serializers::fields::URLField;
 	///
 	/// let field = URLField::new();
 	/// assert!(field.validate("https://example.com").is_ok());
@@ -748,7 +748,7 @@ impl URLField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::URLField;
+	/// use reinhardt_core::serializers::fields::URLField;
 	///
 	/// let field = URLField::new();
 	/// assert!(field.validate("https://example.com").is_ok());
@@ -793,7 +793,7 @@ impl Default for URLField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::ChoiceField;
+/// use reinhardt_core::serializers::fields::ChoiceField;
 ///
 /// let field = ChoiceField::new(vec!["red".to_string(), "green".to_string(), "blue".to_string()]);
 /// assert!(field.validate("red").is_ok());
@@ -814,7 +814,7 @@ impl ChoiceField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::ChoiceField;
+	/// use reinhardt_core::serializers::fields::ChoiceField;
 	///
 	/// let field = ChoiceField::new(vec!["small".to_string(), "medium".to_string(), "large".to_string()]);
 	/// assert!(field.validate("medium").is_ok());
@@ -858,7 +858,7 @@ impl ChoiceField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::ChoiceField;
+	/// use reinhardt_core::serializers::fields::ChoiceField;
 	///
 	/// let field = ChoiceField::new(vec!["red".to_string(), "green".to_string(), "blue".to_string()]);
 	/// assert!(field.validate("red").is_ok());
@@ -887,7 +887,7 @@ impl ChoiceField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::DateField;
+/// use reinhardt_core::serializers::fields::DateField;
 /// use chrono::{NaiveDate, Datelike};
 ///
 /// let field = DateField::new();
@@ -910,7 +910,7 @@ impl DateField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateField;
+	/// use reinhardt_core::serializers::fields::DateField;
 	///
 	/// let field = DateField::new();
 	/// assert!(field.parse("2024-01-15").is_ok());
@@ -941,7 +941,7 @@ impl DateField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateField;
+	/// use reinhardt_core::serializers::fields::DateField;
 	///
 	/// let field = DateField::new().format("%d/%m/%Y");
 	/// assert!(field.parse("15/01/2024").is_ok());
@@ -962,7 +962,7 @@ impl DateField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateField;
+	/// use reinhardt_core::serializers::fields::DateField;
 	/// use chrono::Datelike;
 	///
 	/// let field = DateField::new();
@@ -987,7 +987,7 @@ impl DateField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateField;
+	/// use reinhardt_core::serializers::fields::DateField;
 	///
 	/// let field = DateField::new();
 	/// assert!(field.validate("2024-01-15").is_ok());
@@ -1012,7 +1012,7 @@ impl Default for DateField {
 /// # Example
 ///
 /// ```rust
-/// use crate::serializers::fields::DateTimeField;
+/// use reinhardt_core::serializers::fields::DateTimeField;
 /// use chrono::{NaiveDateTime, Datelike, Timelike};
 ///
 /// let field = DateTimeField::new();
@@ -1037,7 +1037,7 @@ impl DateTimeField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateTimeField;
+	/// use reinhardt_core::serializers::fields::DateTimeField;
 	///
 	/// let field = DateTimeField::new();
 	/// assert!(field.parse("2024-01-15 14:30:00").is_ok());
@@ -1068,7 +1068,7 @@ impl DateTimeField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateTimeField;
+	/// use reinhardt_core::serializers::fields::DateTimeField;
 	///
 	/// let field = DateTimeField::new().format("%d/%m/%Y %H:%M");
 	/// assert!(field.parse("15/01/2024 14:30").is_ok());
@@ -1089,7 +1089,7 @@ impl DateTimeField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateTimeField;
+	/// use reinhardt_core::serializers::fields::DateTimeField;
 	/// use chrono::Timelike;
 	///
 	/// let field = DateTimeField::new();
@@ -1114,7 +1114,7 @@ impl DateTimeField {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::serializers::fields::DateTimeField;
+	/// use reinhardt_core::serializers::fields::DateTimeField;
 	///
 	/// let field = DateTimeField::new();
 	/// assert!(field.validate("2024-01-15 14:30:00").is_ok());

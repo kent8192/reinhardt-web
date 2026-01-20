@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //!
 //! # #[tokio::main]
 //! # async fn main() {
@@ -45,7 +45,7 @@ use tokio::sync::broadcast;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::graphql_integration::SubscriptionEvent;
+/// use reinhardt_core::signals::graphql_integration::SubscriptionEvent;
 /// use serde_json::json;
 ///
 /// let event = SubscriptionEvent::new("userCreated", json!({"id": 1}));
@@ -67,7 +67,7 @@ impl<T> SubscriptionEvent<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::SubscriptionEvent;
+	/// use reinhardt_core::signals::graphql_integration::SubscriptionEvent;
 	///
 	/// let event = SubscriptionEvent::new("taskCompleted", 42);
 	/// assert_eq!(event.subscription_name, "taskCompleted");
@@ -102,7 +102,7 @@ type SubscriptionStream = broadcast::Sender<String>;
 /// # Examples
 ///
 /// ```
-/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 ///
 /// let bridge = GraphQLSubscriptionBridge::new();
 /// ```
@@ -116,7 +116,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// ```
@@ -131,7 +131,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// let stream = bridge.get_or_create_stream("userUpdated");
@@ -152,7 +152,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// # async fn example() {
 	/// let bridge = GraphQLSubscriptionBridge::new();
@@ -173,7 +173,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// # async fn example() {
 	/// let bridge = GraphQLSubscriptionBridge::new();
@@ -197,7 +197,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// assert_eq!(bridge.subscription_count(), 0);
@@ -211,7 +211,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// # async fn example() {
 	/// let bridge = GraphQLSubscriptionBridge::new();
@@ -234,8 +234,8 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
-	/// use crate::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, SubscriptionEvent};
+	/// use reinhardt_core::signals::{Signal, SignalName};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() {
@@ -292,7 +292,7 @@ impl GraphQLSubscriptionBridge {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::GraphQLSubscriptionBridge;
+	/// use reinhardt_core::signals::graphql_integration::GraphQLSubscriptionBridge;
 	///
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// bridge.get_or_create_stream("test");
@@ -335,7 +335,7 @@ impl fmt::Debug for GraphQLSubscriptionBridge {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
+/// use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
 ///
 /// let bridge = GraphQLSubscriptionBridge::new();
 /// let subscription = TypedSubscription::<String>::new(bridge, "stringEvent");
@@ -358,7 +358,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
+	/// use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
 	///
 	/// let bridge = GraphQLSubscriptionBridge::new();
 	/// let subscription = TypedSubscription::<i32>::new(bridge, "numberEvent");
@@ -376,7 +376,7 @@ where
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
+	/// use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription};
 	///
 	/// # #[tokio::main]
 	/// # async fn main() {
@@ -398,7 +398,7 @@ where
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription, SubscriptionEvent};
+	/// use reinhardt_core::signals::graphql_integration::{GraphQLSubscriptionBridge, TypedSubscription, SubscriptionEvent};
 	///
 	/// # async fn example() {
 	/// let bridge = GraphQLSubscriptionBridge::new();

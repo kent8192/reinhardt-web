@@ -21,7 +21,7 @@ impl SafeData {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::SafeData;
+	/// use reinhardt_core::messages::SafeData;
 	///
 	/// let safe = SafeData::new("<b>Bold text</b>");
 	/// assert_eq!(safe.as_str(), "<b>Bold text</b>");
@@ -36,7 +36,7 @@ impl SafeData {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::SafeData;
+	/// use reinhardt_core::messages::SafeData;
 	///
 	/// let safe = SafeData::new("<p>Paragraph</p>");
 	/// assert_eq!(safe.as_str(), "<p>Paragraph</p>");
@@ -49,7 +49,7 @@ impl SafeData {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::SafeData;
+	/// use reinhardt_core::messages::SafeData;
 	///
 	/// let safe = SafeData::new("<div>Content</div>");
 	/// let string = safe.into_string();

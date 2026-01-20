@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```
-/// use crate::filters::FuzzyAlgorithm;
+/// use reinhardt_rest::filters::FuzzyAlgorithm;
 ///
 /// let levenshtein = FuzzyAlgorithm::Levenshtein;
 /// let jaro_winkler = FuzzyAlgorithm::JaroWinkler;
@@ -70,7 +70,7 @@ pub enum FuzzyAlgorithm {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{FuzzySearchFilter, FuzzyAlgorithm};
+/// use reinhardt_rest::filters::{FuzzySearchFilter, FuzzyAlgorithm};
 ///
 /// #[derive(Clone)]
 /// struct User {
@@ -110,7 +110,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct Article {
@@ -137,7 +137,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -158,7 +158,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -179,7 +179,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -200,7 +200,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{FuzzySearchFilter, FuzzyAlgorithm};
+	/// use reinhardt_rest::filters::{FuzzySearchFilter, FuzzyAlgorithm};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -221,7 +221,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -242,7 +242,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -263,7 +263,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -319,7 +319,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{FuzzySearchFilter, FuzzyAlgorithm};
+	/// use reinhardt_rest::filters::{FuzzySearchFilter, FuzzyAlgorithm};
 	///
 	/// #[derive(Clone)]
 	/// struct User {
@@ -359,7 +359,7 @@ impl<M> FuzzySearchFilter<M> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::FuzzySearchFilter;
+	/// use reinhardt_rest::filters::FuzzySearchFilter;
 	///
 	/// #[derive(Clone)]
 	/// struct User {

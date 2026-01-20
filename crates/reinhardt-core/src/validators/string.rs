@@ -17,7 +17,7 @@ impl MinLengthValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MinLengthValidator, Validator};
+	/// use reinhardt_core::validators::{MinLengthValidator, Validator};
 	///
 	/// let validator = MinLengthValidator::new(5);
 	/// assert!(validator.validate("hello").is_ok());
@@ -34,7 +34,7 @@ impl MinLengthValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MinLengthValidator, Validator, ValidationError};
+	/// use reinhardt_core::validators::{MinLengthValidator, Validator, ValidationError};
 	///
 	/// let validator = MinLengthValidator::new(5)
 	///     .with_message("Username must be at least 5 characters");
@@ -93,7 +93,7 @@ impl MaxLengthValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MaxLengthValidator, Validator};
+	/// use reinhardt_core::validators::{MaxLengthValidator, Validator};
 	///
 	/// let validator = MaxLengthValidator::new(10);
 	/// assert!(validator.validate("hello").is_ok());
@@ -110,7 +110,7 @@ impl MaxLengthValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MaxLengthValidator, Validator, ValidationError};
+	/// use reinhardt_core::validators::{MaxLengthValidator, Validator, ValidationError};
 	///
 	/// let validator = MaxLengthValidator::new(10)
 	///     .with_message("Username must be at most 10 characters");
@@ -169,7 +169,7 @@ impl RegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{RegexValidator, Validator};
+	/// use reinhardt_core::validators::{RegexValidator, Validator};
 	///
 	/// let validator = RegexValidator::new(r"^\d{3}-\d{4}$").unwrap();
 	/// assert!(validator.validate("123-4567").is_ok());
@@ -186,7 +186,7 @@ impl RegexValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{RegexValidator, Validator};
+	/// use reinhardt_core::validators::{RegexValidator, Validator};
 	///
 	/// let validator = RegexValidator::new(r"^\d+$")
 	///     .unwrap()
@@ -235,7 +235,7 @@ impl SlugValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{SlugValidator, Validator};
+	/// use reinhardt_core::validators::{SlugValidator, Validator};
 	///
 	/// let validator = SlugValidator::new();
 	/// assert!(validator.validate("my-valid-slug").is_ok());
@@ -254,7 +254,7 @@ impl SlugValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{SlugValidator, Validator};
+	/// use reinhardt_core::validators::{SlugValidator, Validator};
 	///
 	/// let validator = SlugValidator::new().allow_unicode(true);
 	/// assert!(validator.validate("日本語-slug").is_ok());
@@ -269,7 +269,7 @@ impl SlugValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{SlugValidator, Validator, ValidationError};
+	/// use reinhardt_core::validators::{SlugValidator, Validator, ValidationError};
 	///
 	/// let validator = SlugValidator::new()
 	///     .with_message("Invalid URL slug format");
@@ -342,7 +342,7 @@ impl UUIDValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{UUIDValidator, Validator};
+	/// use reinhardt_core::validators::{UUIDValidator, Validator};
 	///
 	/// let validator = UUIDValidator::new();
 	/// assert!(validator.validate("550e8400-e29b-41d4-a716-446655440000").is_ok());
@@ -359,7 +359,7 @@ impl UUIDValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{UUIDValidator, Validator};
+	/// use reinhardt_core::validators::{UUIDValidator, Validator};
 	///
 	/// let validator = UUIDValidator::new().version(4);
 	/// assert!(validator.validate("550e8400-e29b-41d4-a716-446655440000").is_ok());
@@ -374,7 +374,7 @@ impl UUIDValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{UUIDValidator, Validator};
+	/// use reinhardt_core::validators::{UUIDValidator, Validator};
 	///
 	/// let validator = UUIDValidator::new().with_message("Please enter a valid UUID");
 	/// let result = validator.validate("not-a-uuid");
@@ -455,7 +455,7 @@ impl DateValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateValidator, Validator};
+	/// use reinhardt_core::validators::{DateValidator, Validator};
 	///
 	/// let validator = DateValidator::new();
 	/// assert!(validator.validate("2024-01-15").is_ok());
@@ -473,7 +473,7 @@ impl DateValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateValidator, Validator};
+	/// use reinhardt_core::validators::{DateValidator, Validator};
 	///
 	/// let validator = DateValidator::new().with_format("%d/%m/%Y");
 	/// assert!(validator.validate("15/01/2024").is_ok());
@@ -488,7 +488,7 @@ impl DateValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateValidator, Validator};
+	/// use reinhardt_core::validators::{DateValidator, Validator};
 	///
 	/// let validator = DateValidator::new().with_message("Invalid date format");
 	/// let result = validator.validate("not-a-date");
@@ -538,7 +538,7 @@ impl TimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{TimeValidator, Validator};
+	/// use reinhardt_core::validators::{TimeValidator, Validator};
 	///
 	/// let validator = TimeValidator::new();
 	/// assert!(validator.validate("14:30:00").is_ok());
@@ -556,7 +556,7 @@ impl TimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{TimeValidator, Validator};
+	/// use reinhardt_core::validators::{TimeValidator, Validator};
 	///
 	/// let validator = TimeValidator::new().with_format("%H:%M");
 	/// assert!(validator.validate("14:30").is_ok());
@@ -571,7 +571,7 @@ impl TimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{TimeValidator, Validator};
+	/// use reinhardt_core::validators::{TimeValidator, Validator};
 	///
 	/// let validator = TimeValidator::new().with_message("Invalid time format");
 	/// let result = validator.validate("not-a-time");
@@ -621,7 +621,7 @@ impl DateTimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateTimeValidator, Validator};
+	/// use reinhardt_core::validators::{DateTimeValidator, Validator};
 	///
 	/// let validator = DateTimeValidator::new();
 	/// assert!(validator.validate("2024-01-15 14:30:00").is_ok());
@@ -639,7 +639,7 @@ impl DateTimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateTimeValidator, Validator};
+	/// use reinhardt_core::validators::{DateTimeValidator, Validator};
 	///
 	/// let validator = DateTimeValidator::new().with_format("%d/%m/%Y %H:%M");
 	/// assert!(validator.validate("15/01/2024 14:30").is_ok());
@@ -654,7 +654,7 @@ impl DateTimeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{DateTimeValidator, Validator};
+	/// use reinhardt_core::validators::{DateTimeValidator, Validator};
 	///
 	/// let validator = DateTimeValidator::new().with_message("Invalid datetime format");
 	/// let result = validator.validate("not-a-datetime");
@@ -703,7 +703,7 @@ impl JSONValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{JSONValidator, Validator};
+	/// use reinhardt_core::validators::{JSONValidator, Validator};
 	///
 	/// let validator = JSONValidator::new();
 	/// assert!(validator.validate(r#"{"key": "value"}"#).is_ok());
@@ -718,7 +718,7 @@ impl JSONValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{JSONValidator, Validator};
+	/// use reinhardt_core::validators::{JSONValidator, Validator};
 	///
 	/// let validator = JSONValidator::new().with_message("Invalid JSON format");
 	/// let result = validator.validate("not-json");

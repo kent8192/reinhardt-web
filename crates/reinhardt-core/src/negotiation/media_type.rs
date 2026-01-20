@@ -17,7 +17,7 @@ impl MediaType {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let json = MediaType::new("application", "json");
 	/// assert_eq!(json.type_, "application");
@@ -37,7 +37,7 @@ impl MediaType {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mt = MediaType::parse("application/json; q=0.8").unwrap();
 	/// assert_eq!(mt.type_, "application");
@@ -86,7 +86,7 @@ impl MediaType {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let json = MediaType::new("application", "json");
 	/// let wildcard = MediaType::new("*", "*");
@@ -123,7 +123,7 @@ impl MediaType {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let wildcard = MediaType::new("*", "*");
 	/// let app_wildcard = MediaType::new("application", "*");
@@ -159,7 +159,7 @@ impl MediaType {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::negotiation::MediaType;
+	/// use reinhardt_core::negotiation::MediaType;
 	///
 	/// let mut json = MediaType::new("application", "json");
 	/// json.parameters.push(("charset".to_string(), "utf-8".to_string()));

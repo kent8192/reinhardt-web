@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::throttling::{ThrottleConfig, ThrottleStrategy, SignalThrottle};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::throttling::{ThrottleConfig, ThrottleStrategy, SignalThrottle};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //! use std::time::Duration;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 /// # Examples
 ///
 /// ```
-/// use crate::signals::throttling::ThrottleStrategy;
+/// use reinhardt_core::signals::throttling::ThrottleStrategy;
 ///
 /// let fixed = ThrottleStrategy::FixedWindow;
 /// let sliding = ThrottleStrategy::SlidingWindow;
@@ -79,7 +79,7 @@ pub enum ThrottleStrategy {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::throttling::{ThrottleConfig, ThrottleStrategy};
+/// use reinhardt_core::signals::throttling::{ThrottleConfig, ThrottleStrategy};
 /// use std::time::Duration;
 ///
 /// let config = ThrottleConfig::new()
@@ -286,8 +286,8 @@ impl<T> ThrottleState<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::throttling::{ThrottleConfig, SignalThrottle};
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::throttling::{ThrottleConfig, SignalThrottle};
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use std::time::Duration;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -321,8 +321,8 @@ impl<T: Send + Sync + 'static> SignalThrottle<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::throttling::{ThrottleConfig, SignalThrottle};
-	/// use crate::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::throttling::{ThrottleConfig, SignalThrottle};
+	/// use reinhardt_core::signals::{Signal, SignalName};
 	///
 	/// let signal = Signal::<String>::new(SignalName::custom("events"));
 	/// let config = ThrottleConfig::new();
@@ -354,8 +354,8 @@ impl<T: Send + Sync + 'static> SignalThrottle<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::throttling::{ThrottleConfig, SignalThrottle};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::throttling::{ThrottleConfig, SignalThrottle};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let signal = Signal::<String>::new(SignalName::custom("test"));
 	/// # let throttle = SignalThrottle::new(signal, ThrottleConfig::new());
@@ -387,8 +387,8 @@ impl<T: Send + Sync + 'static> SignalThrottle<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::throttling::{ThrottleConfig, SignalThrottle};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::throttling::{ThrottleConfig, SignalThrottle};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # let signal = Signal::<String>::new(SignalName::custom("test"));
 	/// # let throttle = SignalThrottle::new(signal, ThrottleConfig::new());
 	/// let dropped = throttle.dropped_count();
@@ -403,8 +403,8 @@ impl<T: Send + Sync + 'static> SignalThrottle<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::throttling::{ThrottleConfig, SignalThrottle};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::throttling::{ThrottleConfig, SignalThrottle};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # tokio_test::block_on(async {
 	/// # let signal = Signal::<String>::new(SignalName::custom("test"));
 	/// # let config = ThrottleConfig::new().with_drop_on_limit(false);

@@ -6,7 +6,7 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use crate::signals::{Signal, SignalName, SignalError, InjectableSignal};
+//! use reinhardt_core::signals::{Signal, SignalName, SignalError, InjectableSignal};
 //! use std::sync::Arc;
 //!
 //! #[derive(Clone, Debug)]
@@ -52,7 +52,7 @@ pub trait InjectableSignal<T: Send + Sync + 'static> {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use crate::signals::{Signal, SignalName, SignalError, InjectableSignal, ReceiverContext};
+	/// use reinhardt_core::signals::{Signal, SignalName, SignalError, InjectableSignal, ReceiverContext};
 	/// use std::sync::Arc;
 	///
 	/// #[derive(Clone, Debug)]

@@ -45,7 +45,7 @@ use std::marker::PhantomData;
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::NestedSerializer;
+/// # use reinhardt_rest::serializers::NestedSerializer;
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
@@ -114,7 +114,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::NestedSerializer;
+	/// # use reinhardt_rest::serializers::NestedSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -173,7 +173,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::NestedSerializer;
+	/// # use reinhardt_rest::serializers::NestedSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -227,7 +227,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::NestedSerializer;
+	/// # use reinhardt_rest::serializers::NestedSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #
@@ -342,7 +342,7 @@ impl<M: Model, R: Model> NestedSerializer<M, R> {
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::ListSerializer;
+/// # use reinhardt_rest::serializers::ListSerializer;
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #
@@ -435,7 +435,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use crate::serializers::WritableNestedSerializer;
+/// use reinhardt_rest::serializers::WritableNestedSerializer;
 /// use reinhardt_db::orm::{Model, Transaction};
 ///
 /// // Define serializer with permissions
@@ -481,7 +481,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # use serde_json::json;
 /// # use reinhardt_db::orm::{Model, Transaction};
-/// # use crate::serializers::WritableNestedSerializer;
+/// # use reinhardt_rest::serializers::WritableNestedSerializer;
 /// # #[derive(serde::Serialize, serde::Deserialize)]
 /// # struct Author { id: Option<i64>, name: String }
 /// # impl Model for Author {
@@ -534,7 +534,7 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// # Examples
 ///
 /// ```
-/// # use crate::serializers::WritableNestedSerializer;
+/// # use reinhardt_rest::serializers::WritableNestedSerializer;
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// #

@@ -15,7 +15,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use crate::reactive::Signal;
+//! use reinhardt_core::reactive::Signal;
 //!
 //! // Create a signal
 //! let count = Signal::new(0);

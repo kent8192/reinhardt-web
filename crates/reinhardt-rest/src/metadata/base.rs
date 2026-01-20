@@ -34,7 +34,7 @@ impl SimpleMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::SimpleMetadata;
+	/// use reinhardt_rest::metadata::SimpleMetadata;
 	///
 	/// let metadata = SimpleMetadata::new();
 	/// assert!(metadata.include_actions);
@@ -49,7 +49,7 @@ impl SimpleMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::SimpleMetadata;
+	/// use reinhardt_rest::metadata::SimpleMetadata;
 	///
 	/// let metadata = SimpleMetadata::new().with_actions(false);
 	/// assert!(!metadata.include_actions);
@@ -73,7 +73,7 @@ impl SimpleMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{SimpleMetadata, SerializerFieldInfo};
+	/// use reinhardt_rest::metadata::{SimpleMetadata, SerializerFieldInfo};
 	/// use std::collections::HashMap;
 	///
 	/// let metadata = SimpleMetadata::new();
@@ -124,7 +124,7 @@ impl SimpleMetadata {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::metadata::{SimpleMetadata, FieldInfoBuilder, FieldType};
+	/// use reinhardt_rest::metadata::{SimpleMetadata, FieldInfoBuilder, FieldType};
 	/// use std::collections::HashMap;
 	///
 	/// let metadata = SimpleMetadata::new();

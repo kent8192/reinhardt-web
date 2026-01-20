@@ -18,7 +18,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::new(Level::Info, "Hello world");
 	/// assert_eq!(msg.level, Level::Info);
@@ -36,7 +36,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::debug("Debug info");
 	/// assert_eq!(msg.level, Level::Debug);
@@ -50,7 +50,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::info("Information");
 	/// assert_eq!(msg.level, Level::Info);
@@ -64,7 +64,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::success("Operation completed");
 	/// assert_eq!(msg.level, Level::Success);
@@ -78,7 +78,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::warning("Be careful");
 	/// assert_eq!(msg.level, Level::Warning);
@@ -92,7 +92,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::{Message, Level};
+	/// use reinhardt_core::messages::{Message, Level};
 	///
 	/// let msg = Message::error("Something went wrong");
 	/// assert_eq!(msg.level, Level::Error);
@@ -106,7 +106,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let msg = Message::info("Test").with_tags(vec!["urgent".to_string(), "user".to_string()]);
 	/// assert_eq!(msg.extra_tags, vec!["urgent", "user"]);
@@ -120,7 +120,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let mut msg = Message::info("Test");
 	/// msg.add_tag("important".to_string());
@@ -134,7 +134,7 @@ impl Message {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::Message;
+	/// use reinhardt_core::messages::Message;
 	///
 	/// let msg = Message::info("Test").with_tags(vec!["custom".to_string()]);
 	/// let tags = msg.tags();
@@ -159,7 +159,7 @@ impl MessageConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::MessageConfig;
+	/// use reinhardt_core::messages::MessageConfig;
 	///
 	/// let config = MessageConfig::new();
 	/// assert_eq!(config.get_tag(reinhardt_core::messages::Level::Info), Some("info"));
@@ -180,7 +180,7 @@ impl MessageConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::MessageConfig;
+	/// use reinhardt_core::messages::MessageConfig;
 	///
 	/// let mut config = MessageConfig::new();
 	/// config.set_tag(42, "custom".to_string());
@@ -195,7 +195,7 @@ impl MessageConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::MessageConfig;
+	/// use reinhardt_core::messages::MessageConfig;
 	///
 	/// let config = MessageConfig::new();
 	/// assert_eq!(config.get_tag(reinhardt_core::messages::Level::Info), Some("info"));
@@ -210,7 +210,7 @@ impl MessageConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::messages::MessageConfig;
+	/// use reinhardt_core::messages::MessageConfig;
 	///
 	/// let config = MessageConfig::new();
 	/// let tags = config.get_all_tags();

@@ -14,7 +14,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::validators::reserved::is_sql_reserved_word;
+/// use reinhardt_core::validators::reserved::is_sql_reserved_word;
 ///
 /// assert!(is_sql_reserved_word("select"));
 /// assert!(is_sql_reserved_word("table"));

@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::{Signal, SignalName};
-//! use crate::signals::profiler::SignalProfiler;
+//! use reinhardt_core::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::profiler::SignalProfiler;
 //!
 //! # tokio_test::block_on(async {
 //! let signal = Signal::<String>::new(SignalName::custom("user_created"));
@@ -90,8 +90,8 @@ impl ReceiverProfile {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// # tokio_test::block_on(async {
 	/// let profiler = SignalProfiler::<String>::new();
@@ -164,7 +164,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// let profiler = SignalProfiler::<String>::new();
 	/// ```
@@ -183,8 +183,8 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// # tokio_test::block_on(async {
 	/// let profiler = SignalProfiler::<String>::new();
@@ -212,7 +212,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// let profiler = SignalProfiler::<String>::new();
 	/// let profiles = profiler.all_receiver_profiles();
@@ -227,8 +227,8 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// # tokio_test::block_on(async {
 	/// let profiler = SignalProfiler::<String>::new();
@@ -251,7 +251,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// let profiler = SignalProfiler::<String>::new();
 	/// let slowest = profiler.slowest_receivers(5);
@@ -269,7 +269,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// let profiler = SignalProfiler::<String>::new();
 	/// let unreliable = profiler.most_unreliable_receivers(5);
@@ -291,7 +291,7 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// let profiler = SignalProfiler::<String>::new();
 	/// profiler.reset();
@@ -309,8 +309,8 @@ impl<T: Send + Sync + 'static> SignalProfiler<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::signals::{Signal, SignalName};
-	/// use crate::signals::profiler::SignalProfiler;
+	/// use reinhardt_core::signals::{Signal, SignalName};
+	/// use reinhardt_core::signals::profiler::SignalProfiler;
 	///
 	/// # tokio_test::block_on(async {
 	/// let profiler = SignalProfiler::<String>::new();

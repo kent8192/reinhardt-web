@@ -22,7 +22,7 @@ impl PhoneNumberValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{PhoneNumberValidator, Validator};
+	/// use reinhardt_core::validators::{PhoneNumberValidator, Validator};
 	///
 	/// let validator = PhoneNumberValidator::new();
 	/// assert!(validator.validate("+1234567890").is_ok());
@@ -41,7 +41,7 @@ impl PhoneNumberValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{PhoneNumberValidator, Validator};
+	/// use reinhardt_core::validators::{PhoneNumberValidator, Validator};
 	///
 	/// let validator = PhoneNumberValidator::with_countries(vec![
 	///     "1".to_string(),   // US/Canada
@@ -66,7 +66,7 @@ impl PhoneNumberValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{PhoneNumberValidator, Validator};
+	/// use reinhardt_core::validators::{PhoneNumberValidator, Validator};
 	///
 	/// let validator = PhoneNumberValidator::new().with_extensions(true);
 	/// assert!(validator.validate("+1234567890 ext. 123").is_ok());
@@ -83,7 +83,7 @@ impl PhoneNumberValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{PhoneNumberValidator, Validator};
+	/// use reinhardt_core::validators::{PhoneNumberValidator, Validator};
 	///
 	/// let validator = PhoneNumberValidator::new().with_message("Invalid phone number");
 	/// let result = validator.validate("not-a-phone");
@@ -99,7 +99,7 @@ impl PhoneNumberValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{PhoneNumberValidator, Validator};
+	/// use reinhardt_core::validators::{PhoneNumberValidator, Validator};
 	///
 	/// let validator = PhoneNumberValidator::new();
 	/// assert!(validator.validate("+1234567890").is_ok());

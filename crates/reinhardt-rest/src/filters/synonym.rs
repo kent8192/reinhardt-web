@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::filters::{SynonymExpander, SynonymDictionary};
+//! use reinhardt_rest::filters::{SynonymExpander, SynonymDictionary};
 //!
 //! # async fn example() {
 //! let mut dict = SynonymDictionary::new();
@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 /// # Examples
 ///
 /// ```
-/// use crate::filters::SynonymDictionary;
+/// use reinhardt_rest::filters::SynonymDictionary;
 ///
 /// let mut dict = SynonymDictionary::new();
 /// dict.add_synonym("car", "automobile");
@@ -55,7 +55,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let dict = SynonymDictionary::new();
 	/// // Verify the dictionary is created successfully
@@ -77,7 +77,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let dict = SynonymDictionary::with_bidirectional(true);
 	/// // Verify the dictionary is created with bidirectional setting
@@ -100,7 +100,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonym("happy", "joyful");
@@ -129,7 +129,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonyms("big", vec!["large", "huge", "enormous"]);
@@ -152,7 +152,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonym("car", "automobile");
@@ -176,7 +176,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let groups = vec![
 	///     vec!["happy", "joyful", "glad"],
@@ -211,7 +211,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonym("car", "automobile");
@@ -227,7 +227,7 @@ impl SynonymDictionary {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymDictionary;
+	/// use reinhardt_rest::filters::SynonymDictionary;
 	///
 	/// let dict = SynonymDictionary::new();
 	/// assert!(dict.is_empty());
@@ -244,7 +244,7 @@ impl SynonymDictionary {
 /// # Examples
 ///
 /// ```
-/// use crate::filters::{FilterBackend, SynonymExpander, SynonymDictionary};
+/// use reinhardt_rest::filters::{FilterBackend, SynonymExpander, SynonymDictionary};
 /// use std::collections::HashMap;
 ///
 /// # async fn example() {
@@ -277,7 +277,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymExpander;
+	/// use reinhardt_rest::filters::SynonymExpander;
 	///
 	/// let expander = SynonymExpander::new();
 	/// // Verify the expander is created successfully
@@ -297,7 +297,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SynonymExpander, SynonymDictionary};
+	/// use reinhardt_rest::filters::{SynonymExpander, SynonymDictionary};
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonym("car", "automobile");
@@ -321,7 +321,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymExpander;
+	/// use reinhardt_rest::filters::SynonymExpander;
 	///
 	/// let expander = SynonymExpander::new()
 	///     .with_expansion_limit(5);
@@ -340,7 +340,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymExpander;
+	/// use reinhardt_rest::filters::SynonymExpander;
 	///
 	/// let expander = SynonymExpander::new()
 	///     .with_min_term_length(4);
@@ -357,7 +357,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::SynonymExpander;
+	/// use reinhardt_rest::filters::SynonymExpander;
 	///
 	/// let expander = SynonymExpander::new()
 	///     .set_enabled(false);
@@ -382,7 +382,7 @@ impl SynonymExpander {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::filters::{SynonymExpander, SynonymDictionary};
+	/// use reinhardt_rest::filters::{SynonymExpander, SynonymDictionary};
 	///
 	/// let mut dict = SynonymDictionary::new();
 	/// dict.add_synonym("fast", "quick");

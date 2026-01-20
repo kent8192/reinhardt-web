@@ -32,8 +32,8 @@ pub struct StreamChunk {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::streaming::StreamingParser;
-/// use crate::parsers::parser::Parser;
+/// use reinhardt_core::parsers::streaming::StreamingParser;
+/// use reinhardt_core::parsers::parser::Parser;
 /// use bytes::Bytes;
 /// use http::HeaderMap;
 ///
@@ -64,7 +64,7 @@ impl StreamingParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::streaming::StreamingParser;
+	/// use reinhardt_core::parsers::streaming::StreamingParser;
 	///
 	/// // Process in 64KB chunks
 	/// let parser = StreamingParser::new(64 * 1024);
@@ -81,7 +81,7 @@ impl StreamingParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::streaming::StreamingParser;
+	/// use reinhardt_core::parsers::streaming::StreamingParser;
 	///
 	/// // Allow up to 100MB
 	/// let parser = StreamingParser::new(64 * 1024)

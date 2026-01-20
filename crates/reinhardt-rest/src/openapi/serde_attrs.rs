@@ -44,7 +44,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("user_id");
 	/// assert_eq!(metadata.name, "user_id");
@@ -68,7 +68,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("user_id")
 	///     .with_rename("userId");
@@ -85,7 +85,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("internal_field")
 	///     .with_skip(true);
@@ -102,7 +102,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("password")
 	///     .with_skip_serializing(true);
@@ -119,7 +119,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("computed_field")
 	///     .with_skip_deserializing(true);
@@ -136,7 +136,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("optional_field")
 	///     .with_skip_serializing_if("Option::is_none");
@@ -153,7 +153,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("metadata")
 	///     .with_flatten(true);
@@ -170,7 +170,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("count")
 	///     .with_default("default_count");
@@ -187,7 +187,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let metadata = FieldMetadata::new("user_id")
 	///     .with_rename("userId");
@@ -205,7 +205,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let normal = FieldMetadata::new("id");
 	/// assert!(normal.should_include());
@@ -225,7 +225,7 @@ impl FieldMetadata {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::FieldMetadata;
+	/// use reinhardt_rest::openapi::serde_attrs::FieldMetadata;
 	///
 	/// let required = FieldMetadata::new("id");
 	/// assert!(required.is_required());
@@ -246,8 +246,8 @@ impl FieldMetadata {
 /// # Example
 ///
 /// ```rust
-/// use crate::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt};
-/// use crate::openapi::{Schema, SchemaExt};
+/// use reinhardt_rest::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt};
+/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 ///
 /// let fields = vec![
 ///     (
@@ -273,8 +273,8 @@ impl SchemaBuilderExt {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt};
-	/// use crate::openapi::{Schema, SchemaExt};
+	/// use reinhardt_rest::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt};
+	/// use reinhardt_rest::openapi::{Schema, SchemaExt};
 	///
 	/// let fields = vec![
 	///     (FieldMetadata::new("id"), Schema::integer()),
@@ -342,7 +342,7 @@ impl SchemaBuilderExt {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt, RenameAll};
+	/// use reinhardt_rest::openapi::serde_attrs::{FieldMetadata, SchemaBuilderExt, RenameAll};
 	///
 	/// let metadata = vec![
 	///     FieldMetadata::new("user_id"),
@@ -396,7 +396,7 @@ impl RenameAll {
 	/// # Example
 	///
 	/// ```rust
-	/// use crate::openapi::serde_attrs::RenameAll;
+	/// use reinhardt_rest::openapi::serde_attrs::RenameAll;
 	///
 	/// assert_eq!(RenameAll::CamelCase.transform("user_id"), "userId");
 	/// assert_eq!(RenameAll::PascalCase.transform("user_id"), "UserId");

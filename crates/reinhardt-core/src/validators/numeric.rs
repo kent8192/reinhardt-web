@@ -15,7 +15,7 @@ impl<T> MinValueValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MinValueValidator, Validator};
+	/// use reinhardt_core::validators::{MinValueValidator, Validator};
 	///
 	/// let validator = MinValueValidator::new(10);
 	/// assert!(validator.validate(&15).is_ok());
@@ -30,7 +30,7 @@ impl<T> MinValueValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MinValueValidator, Validator};
+	/// use reinhardt_core::validators::{MinValueValidator, Validator};
 	///
 	/// let validator = MinValueValidator::new(10).with_message("Value must be at least 10");
 	/// let result = validator.validate(&5);
@@ -69,7 +69,7 @@ impl<T> MaxValueValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MaxValueValidator, Validator};
+	/// use reinhardt_core::validators::{MaxValueValidator, Validator};
 	///
 	/// let validator = MaxValueValidator::new(20);
 	/// assert!(validator.validate(&15).is_ok());
@@ -84,7 +84,7 @@ impl<T> MaxValueValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{MaxValueValidator, Validator};
+	/// use reinhardt_core::validators::{MaxValueValidator, Validator};
 	///
 	/// let validator = MaxValueValidator::new(20).with_message("Value must be at most 20");
 	/// let result = validator.validate(&25);
@@ -124,7 +124,7 @@ impl<T> RangeValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{RangeValidator, Validator};
+	/// use reinhardt_core::validators::{RangeValidator, Validator};
 	///
 	/// let validator = RangeValidator::new(10, 20);
 	/// assert!(validator.validate(&15).is_ok());
@@ -144,7 +144,7 @@ impl<T> RangeValidator<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{RangeValidator, Validator};
+	/// use reinhardt_core::validators::{RangeValidator, Validator};
 	///
 	/// let validator = RangeValidator::new(10, 20).with_message("Value must be between 10 and 20");
 	/// let result = validator.validate(&5);

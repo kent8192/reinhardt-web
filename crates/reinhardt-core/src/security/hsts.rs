@@ -19,7 +19,7 @@ impl HstsConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::HstsConfig;
+	/// use reinhardt_core::security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(31536000); // 1 year
 	/// assert_eq!(config.max_age, 31536000);
@@ -38,7 +38,7 @@ impl HstsConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::HstsConfig;
+	/// use reinhardt_core::security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(3600).with_subdomains(true);
 	/// assert!(config.include_subdomains);
@@ -52,7 +52,7 @@ impl HstsConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::HstsConfig;
+	/// use reinhardt_core::security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(63072000).with_preload(true);
 	/// assert!(config.preload);
@@ -66,7 +66,7 @@ impl HstsConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::HstsConfig;
+	/// use reinhardt_core::security::HstsConfig;
 	///
 	/// let config = HstsConfig::new(3600);
 	/// assert_eq!(config.build_header(), "max-age=3600");
@@ -106,7 +106,7 @@ impl Default for HstsConfig {
 /// # Examples
 ///
 /// ```
-/// use crate::security::hsts::{HstsMiddleware, HstsConfig};
+/// use reinhardt_core::security::hsts::{HstsMiddleware, HstsConfig};
 ///
 /// let config = HstsConfig::new(31536000)
 ///     .with_subdomains(true)

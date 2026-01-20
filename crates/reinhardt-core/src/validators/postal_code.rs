@@ -16,7 +16,7 @@
 //! ## Validate with country restriction
 //!
 //! ```
-//! use crate::validators::{PostalCodeValidator, Country, Validator};
+//! use reinhardt_core::validators::{PostalCodeValidator, Country, Validator};
 //!
 //! let validator = PostalCodeValidator::with_countries(vec![
 //!     Country::US,
@@ -31,7 +31,7 @@
 //! ## Validate with country detection
 //!
 //! ```
-//! use crate::validators::{PostalCodeValidator, Country, Validator};
+//! use reinhardt_core::validators::{PostalCodeValidator, Country, Validator};
 //!
 //! let validator = PostalCodeValidator::new();
 //!

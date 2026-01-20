@@ -19,9 +19,9 @@ use super::parser::{ParseResult, ParsedData};
 /// ```
 /// use async_trait::async_trait;
 /// use bytes::Bytes;
-/// use crate::parsers::validator::ParserValidator;
-/// use crate::parsers::parser::{ParseResult, ParsedData};
-/// use crate::exception::Error;
+/// use reinhardt_core::parsers::validator::ParserValidator;
+/// use reinhardt_core::parsers::parser::{ParseResult, ParsedData};
+/// use reinhardt_core::exception::Error;
 ///
 /// struct SizeLimitValidator {
 ///     max_size: usize,
@@ -82,7 +82,7 @@ pub trait ParserValidator: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::validator::SizeLimitValidator;
+/// use reinhardt_core::parsers::validator::SizeLimitValidator;
 ///
 /// // Limit requests to 1MB
 /// let validator = SizeLimitValidator::new(1024 * 1024);
@@ -98,7 +98,7 @@ impl SizeLimitValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::validator::SizeLimitValidator;
+	/// use reinhardt_core::parsers::validator::SizeLimitValidator;
 	///
 	/// // Limit to 10KB
 	/// let validator = SizeLimitValidator::new(10 * 1024);
@@ -133,7 +133,7 @@ impl ParserValidator for SizeLimitValidator {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::validator::ContentTypeValidator;
+/// use reinhardt_core::parsers::validator::ContentTypeValidator;
 ///
 /// // Require application/json
 /// let validator = ContentTypeValidator::new(vec!["application/json".to_string()]);
@@ -149,7 +149,7 @@ impl ContentTypeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::validator::ContentTypeValidator;
+	/// use reinhardt_core::parsers::validator::ContentTypeValidator;
 	///
 	/// let validator = ContentTypeValidator::new(vec![
 	///     "application/json".to_string(),
@@ -195,7 +195,7 @@ impl ParserValidator for ContentTypeValidator {
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::validator::{CompositeValidator, SizeLimitValidator, ContentTypeValidator};
+/// use reinhardt_core::parsers::validator::{CompositeValidator, SizeLimitValidator, ContentTypeValidator};
 ///
 /// let validator = CompositeValidator::new()
 ///     .add(SizeLimitValidator::new(1024 * 1024))
@@ -212,7 +212,7 @@ impl CompositeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::validator::CompositeValidator;
+	/// use reinhardt_core::parsers::validator::CompositeValidator;
 	///
 	/// let validator = CompositeValidator::new();
 	/// ```
@@ -225,7 +225,7 @@ impl CompositeValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::validator::{CompositeValidator, SizeLimitValidator};
+	/// use reinhardt_core::parsers::validator::{CompositeValidator, SizeLimitValidator};
 	///
 	/// let validator = CompositeValidator::new()
 	///     .add(SizeLimitValidator::new(1024));

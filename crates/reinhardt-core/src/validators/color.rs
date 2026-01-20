@@ -29,7 +29,7 @@ pub enum ColorFormat {
 /// # Examples
 ///
 /// ```
-/// use crate::validators::{ColorValidator, ColorFormat};
+/// use reinhardt_core::validators::{ColorValidator, ColorFormat};
 ///
 /// // Validate any color format
 /// let validator = ColorValidator::new();
@@ -58,7 +58,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ColorValidator;
+	/// use reinhardt_core::validators::ColorValidator;
 	///
 	/// let validator = ColorValidator::new();
 	/// assert!(validator.validate("#FF0000").is_ok());
@@ -77,7 +77,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ColorValidator;
+	/// use reinhardt_core::validators::ColorValidator;
 	///
 	/// let validator = ColorValidator::hex_only();
 	/// assert!(validator.validate("#FF0000").is_ok());
@@ -93,7 +93,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ColorValidator;
+	/// use reinhardt_core::validators::ColorValidator;
 	///
 	/// let validator = ColorValidator::rgb_only();
 	/// assert!(validator.validate("rgb(255, 0, 0)").is_ok());
@@ -108,7 +108,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{ColorValidator, ColorFormat};
+	/// use reinhardt_core::validators::{ColorValidator, ColorFormat};
 	///
 	/// let validator = ColorValidator::new()
 	///     .allow_formats(vec![ColorFormat::RGB, ColorFormat::RGBA]);
@@ -126,7 +126,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::ColorValidator;
+	/// use reinhardt_core::validators::ColorValidator;
 	///
 	/// let validator = ColorValidator::new()
 	///     .with_message("Invalid color value");
@@ -141,7 +141,7 @@ impl ColorValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{ColorValidator, ColorFormat};
+	/// use reinhardt_core::validators::{ColorValidator, ColorFormat};
 	///
 	/// let validator = ColorValidator::new();
 	/// assert_eq!(validator.validate("#FF0000").unwrap(), ColorFormat::Hex);

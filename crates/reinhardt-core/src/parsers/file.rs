@@ -20,7 +20,7 @@ impl FileUploadParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::file::FileUploadParser;
+	/// use reinhardt_core::parsers::file::FileUploadParser;
 	///
 	/// let parser = FileUploadParser::new("file");
 	/// let disposition = "inline; filename=document.txt";
@@ -105,7 +105,7 @@ impl FileUploadParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::file::FileUploadParser;
+	/// use reinhardt_core::parsers::file::FileUploadParser;
 	///
 	/// let parser = FileUploadParser::new("document");
 	/// assert_eq!(parser.field_name, "document");
@@ -122,7 +122,7 @@ impl FileUploadParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::file::FileUploadParser;
+	/// use reinhardt_core::parsers::file::FileUploadParser;
 	///
 	/// let parser = FileUploadParser::new("file").max_file_size(5 * 1024 * 1024); // 5MB
 	/// assert_eq!(parser.max_file_size, Some(5 * 1024 * 1024));

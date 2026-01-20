@@ -700,7 +700,7 @@ impl ServerRouter {
 	/// # }
 	/// # #[async_trait::async_trait]
 	/// # impl Handler for ListUsers {
-	/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_core::http::Error> {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response, reinhardt_http::Error> {
 	/// #         Ok(Response::ok())
 	/// #     }
 	/// # }

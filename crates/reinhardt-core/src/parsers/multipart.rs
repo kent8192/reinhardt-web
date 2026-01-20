@@ -21,7 +21,7 @@ impl MultiPartParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::multipart::MultiPartParser;
+	/// use reinhardt_core::parsers::multipart::MultiPartParser;
 	///
 	/// let parser = MultiPartParser::new();
 	/// assert!(parser.max_file_size.is_none());
@@ -35,7 +35,7 @@ impl MultiPartParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::multipart::MultiPartParser;
+	/// use reinhardt_core::parsers::multipart::MultiPartParser;
 	///
 	/// let parser = MultiPartParser::new().max_file_size(1024 * 1024); // 1MB
 	/// assert_eq!(parser.max_file_size, Some(1024 * 1024));
@@ -49,7 +49,7 @@ impl MultiPartParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::multipart::MultiPartParser;
+	/// use reinhardt_core::parsers::multipart::MultiPartParser;
 	///
 	/// let parser = MultiPartParser::new().max_total_size(10 * 1024 * 1024); // 10MB
 	/// assert_eq!(parser.max_total_size, Some(10 * 1024 * 1024));

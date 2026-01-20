@@ -26,7 +26,7 @@ impl LeakyBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::leaky_bucket::LeakyBucketConfig;
+	/// use reinhardt_rest::throttling::leaky_bucket::LeakyBucketConfig;
 	///
 	/// // 10 requests per second with queue capacity of 20
 	/// let config = LeakyBucketConfig::new(20, 10.0);
@@ -45,7 +45,7 @@ impl LeakyBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::leaky_bucket::LeakyBucketConfig;
+	/// use reinhardt_rest::throttling::leaky_bucket::LeakyBucketConfig;
 	///
 	/// // 5 requests per second with queue of 10
 	/// let config = LeakyBucketConfig::per_second(5.0, 10);
@@ -64,7 +64,7 @@ impl LeakyBucketConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::leaky_bucket::LeakyBucketConfig;
+	/// use reinhardt_rest::throttling::leaky_bucket::LeakyBucketConfig;
 	///
 	/// // 60 requests per minute with queue of 100
 	/// let config = LeakyBucketConfig::per_minute(60.0, 100);
@@ -93,8 +93,8 @@ struct BucketState {
 /// # Examples
 ///
 /// ```
-/// use crate::throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
-/// use crate::throttling::{MemoryBackend, Throttle};
+/// use reinhardt_rest::throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
+/// use reinhardt_rest::throttling::{MemoryBackend, Throttle};
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
@@ -122,8 +122,8 @@ impl<B: ThrottleBackend> LeakyBucketThrottle<B, SystemTimeProvider> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
-	/// use crate::throttling::MemoryBackend;
+	/// use reinhardt_rest::throttling::leaky_bucket::{LeakyBucketThrottle, LeakyBucketConfig};
+	/// use reinhardt_rest::throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
 	/// let backend = Arc::new(MemoryBackend::new());

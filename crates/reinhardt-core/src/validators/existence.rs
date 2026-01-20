@@ -20,7 +20,7 @@ pub type ExistenceCheckFn =
 /// # Examples
 ///
 /// ```rust
-/// use crate::validators::ExistsValidator;
+/// use reinhardt_core::validators::ExistsValidator;
 ///
 /// # async fn example() {
 /// // Create a validator that checks if a user_id exists

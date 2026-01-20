@@ -39,7 +39,7 @@ impl LimitOffsetPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::LimitOffsetPagination;
+	/// use reinhardt_core::pagination::LimitOffsetPagination;
 	///
 	/// let paginator = LimitOffsetPagination::new();
 	/// assert_eq!(paginator.default_limit, 10);
@@ -54,7 +54,7 @@ impl LimitOffsetPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::LimitOffsetPagination;
+	/// use reinhardt_core::pagination::LimitOffsetPagination;
 	///
 	/// let paginator = LimitOffsetPagination::new().default_limit(25);
 	/// assert_eq!(paginator.default_limit, 25);
@@ -68,7 +68,7 @@ impl LimitOffsetPagination {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::LimitOffsetPagination;
+	/// use reinhardt_core::pagination::LimitOffsetPagination;
 	///
 	/// let paginator = LimitOffsetPagination::new()
 	///     .default_limit(10)

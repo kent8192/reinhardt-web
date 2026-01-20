@@ -27,7 +27,7 @@ use std::collections::HashMap;
 /// ```rust,no_run,ignore
 /// # #[tokio::main]
 /// # async fn main() {
-/// use crate::serializers::{Serializer, SerializerSaveMixin};
+/// use reinhardt_rest::serializers::{Serializer, SerializerSaveMixin};
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct User {
@@ -401,8 +401,8 @@ mod tests {
 /// # Examples
 ///
 /// ```
-/// use crate::serializers::queryset_integration::CacheAwareSaveContext;
-/// use crate::serializers::{CacheInvalidator, InvalidationStrategy};
+/// use reinhardt_rest::serializers::queryset_integration::CacheAwareSaveContext;
+/// use reinhardt_rest::serializers::{CacheInvalidator, InvalidationStrategy};
 ///
 /// let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 /// let context = CacheAwareSaveContext::with_invalidator(invalidator);

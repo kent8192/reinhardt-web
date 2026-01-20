@@ -20,7 +20,7 @@ use std::sync::Arc;
 ///
 /// ```rust,no_run,ignore
 /// use std::collections::HashMap;
-/// use crate::serializers::UrlReverser;
+/// use reinhardt_rest::serializers::UrlReverser;
 /// use reinhardt_urls::routers::UrlReverser as RouterUrlReverser;
 ///
 /// impl UrlReverser for RouterUrlReverser {
@@ -52,7 +52,7 @@ pub trait UrlReverser: Send + Sync {
 /// # Examples
 ///
 /// ```no_run
-/// # use crate::serializers::{HyperlinkedModelSerializer, UrlReverser, Serializer};
+/// # use reinhardt_rest::serializers::{HyperlinkedModelSerializer, UrlReverser, Serializer};
 /// # use reinhardt_db::orm::Model;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::sync::Arc;
@@ -120,7 +120,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::{HyperlinkedModelSerializer, UrlReverser};
+	/// # use reinhardt_rest::serializers::{HyperlinkedModelSerializer, UrlReverser};
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// # use std::sync::Arc;
@@ -169,7 +169,7 @@ impl<M: Model> HyperlinkedModelSerializer<M> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::serializers::HyperlinkedModelSerializer;
+	/// # use reinhardt_rest::serializers::HyperlinkedModelSerializer;
 	/// # use reinhardt_db::orm::Model;
 	/// # use serde::{Serialize, Deserialize};
 	/// #

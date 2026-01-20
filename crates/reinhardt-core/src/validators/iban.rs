@@ -21,7 +21,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use crate::validators::{IBANValidator, Validator};
+/// use reinhardt_core::validators::{IBANValidator, Validator};
 ///
 /// // Basic validation
 /// let validator = IBANValidator::new();
@@ -45,7 +45,7 @@ impl IBANValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::IBANValidator;
+	/// use reinhardt_core::validators::IBANValidator;
 	///
 	/// let validator = IBANValidator::new();
 	/// ```
@@ -62,7 +62,7 @@ impl IBANValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::IBANValidator;
+	/// use reinhardt_core::validators::IBANValidator;
 	///
 	/// let validator = IBANValidator::with_countries(vec!["DE".to_string(), "FR".to_string()]);
 	/// ```
@@ -79,7 +79,7 @@ impl IBANValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{IBANValidator, Validator};
+	/// use reinhardt_core::validators::{IBANValidator, Validator};
 	///
 	/// let validator = IBANValidator::new().with_message("Invalid IBAN");
 	/// let result = validator.validate("not-an-iban");
@@ -255,7 +255,7 @@ impl IBANValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::IBANValidator;
+	/// use reinhardt_core::validators::IBANValidator;
 	///
 	/// let validator = IBANValidator::new();
 	/// // This is tested internally by the validate method

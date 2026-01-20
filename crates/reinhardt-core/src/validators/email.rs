@@ -29,7 +29,7 @@ impl EmailValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::EmailValidator;
+	/// use reinhardt_core::validators::EmailValidator;
 	///
 	/// let validator = EmailValidator::new();
 	/// ```
@@ -42,7 +42,7 @@ impl EmailValidator {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::validators::{EmailValidator, Validator};
+	/// use reinhardt_core::validators::{EmailValidator, Validator};
 	///
 	/// let validator = EmailValidator::new().with_message("Invalid email address");
 	/// let result = validator.validate("not-an-email");

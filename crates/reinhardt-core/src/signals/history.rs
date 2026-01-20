@@ -6,8 +6,8 @@
 //! # Examples
 //!
 //! ```
-//! use crate::signals::history::{SignalHistory, HistoryConfig};
-//! use crate::signals::{Signal, SignalName};
+//! use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+//! use reinhardt_core::signals::{Signal, SignalName};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Clone, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ use std::time::{Duration, SystemTime};
 /// # Examples
 ///
 /// ```
-/// use crate::signals::history::HistoryEntry;
+/// use reinhardt_core::signals::history::HistoryEntry;
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -130,7 +130,7 @@ impl<T> HistoryEntry<T> {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::history::HistoryConfig;
+/// use reinhardt_core::signals::history::HistoryConfig;
 /// use std::time::Duration;
 ///
 /// let config = HistoryConfig::new()
@@ -210,7 +210,7 @@ impl Default for HistoryConfig {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::history::HistoryStats;
+/// use reinhardt_core::signals::history::HistoryStats;
 ///
 /// let stats = HistoryStats::new();
 /// assert_eq!(stats.total_count(), 0);
@@ -275,8 +275,8 @@ impl HistoryStats {
 /// # Examples
 ///
 /// ```
-/// use crate::signals::history::{SignalHistory, HistoryConfig};
-/// use crate::signals::{Signal, SignalName};
+/// use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+/// use reinhardt_core::signals::{Signal, SignalName};
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Clone, Serialize, Deserialize)]
@@ -323,8 +323,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -378,8 +378,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -397,8 +397,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -417,8 +417,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -441,8 +441,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # use std::time::{SystemTime, Duration};
 	/// # #[derive(Clone, Serialize, Deserialize)]
@@ -467,8 +467,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }
@@ -501,8 +501,8 @@ impl<T: Send + Sync + Clone + 'static> SignalHistory<T> {
 	/// # Examples
 	///
 	/// ```
-	/// # use crate::signals::history::{SignalHistory, HistoryConfig};
-	/// # use crate::signals::{Signal, SignalName};
+	/// # use reinhardt_core::signals::history::{SignalHistory, HistoryConfig};
+	/// # use reinhardt_core::signals::{Signal, SignalName};
 	/// # use serde::{Deserialize, Serialize};
 	/// # #[derive(Clone, Serialize, Deserialize)]
 	/// # struct Event { id: i32 }

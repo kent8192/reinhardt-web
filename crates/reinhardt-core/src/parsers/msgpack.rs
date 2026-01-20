@@ -24,8 +24,8 @@ use super::parser::{ParseResult, ParsedData, Parser};
 /// # Examples
 ///
 /// ```
-/// use crate::parsers::msgpack::MessagePackParser;
-/// use crate::parsers::parser::Parser;
+/// use reinhardt_core::parsers::msgpack::MessagePackParser;
+/// use reinhardt_core::parsers::parser::Parser;
 /// use bytes::Bytes;
 /// use http::HeaderMap;
 ///
@@ -50,7 +50,7 @@ impl MessagePackParser {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::parsers::msgpack::MessagePackParser;
+	/// use reinhardt_core::parsers::msgpack::MessagePackParser;
 	///
 	/// let parser = MessagePackParser::new();
 	/// ```

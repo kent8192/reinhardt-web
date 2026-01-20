@@ -98,7 +98,7 @@ pub type ValidationResult<T> = Result<T, ValidationError>;
 ///
 /// ```rust
 /// use reinhardt_db::migrations::operations::models::quote_identifier;
-/// use crate::backends::types::DatabaseType;
+/// use reinhardt_db::backends::types::DatabaseType;
 ///
 /// let postgres_quoted = quote_identifier("user", DatabaseType::Postgres);
 /// assert_eq!(postgres_quoted, "\"user\"");
@@ -702,7 +702,7 @@ impl DeleteModel {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::models::DeleteModel;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let delete = DeleteModel::new("users");
 	/// let factory = SchemaEditorFactory::new();
@@ -770,7 +770,7 @@ impl RenameModel {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::models::RenameModel;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// let rename = RenameModel::new("users", "customers");
 	/// let factory = SchemaEditorFactory::new();
@@ -936,7 +936,7 @@ impl MoveModel {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_db::migrations::operations::models::MoveModel;
-	/// use crate::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
+	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
 	/// // Without table rename
 	/// let move_op1 = MoveModel::new("User", "myapp", "auth");

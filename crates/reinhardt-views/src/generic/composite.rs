@@ -23,7 +23,7 @@ use crate::core::View;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use crate::ListCreateAPIView;
+/// use reinhardt_views::ListCreateAPIView;
 /// use reinhardt_db::orm::Model;
 /// use reinhardt_rest::serializers::JsonSerializer;
 /// use serde::{Serialize, Deserialize};

@@ -108,7 +108,7 @@ impl CsrfConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::csrf::CsrfConfig;
+	/// use reinhardt_core::security::csrf::CsrfConfig;
 	///
 	/// let config = CsrfConfig::production();
 	/// assert!(config.cookie_secure);
@@ -135,7 +135,7 @@ impl CsrfConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::security::csrf::CsrfConfig;
+	/// use reinhardt_core::security::csrf::CsrfConfig;
 	///
 	/// let config = CsrfConfig::default().with_token_rotation(Some(1800));
 	/// assert!(config.enable_token_rotation);
@@ -206,7 +206,7 @@ type HmacSha256 = Hmac<Sha256>;
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::generate_token_hmac;
+/// use reinhardt_core::security::csrf::generate_token_hmac;
 ///
 /// let secret = b"my-secret-key-at-least-32-bytes-long";
 /// let message = "session-id-12345";
@@ -238,7 +238,7 @@ pub fn generate_token_hmac(secret: &[u8], message: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{generate_token_hmac, verify_token_hmac};
+/// use reinhardt_core::security::csrf::{generate_token_hmac, verify_token_hmac};
 ///
 /// let secret = b"my-secret-key-at-least-32-bytes-long";
 /// let message = "session-id-12345";
@@ -269,7 +269,7 @@ pub fn verify_token_hmac(token: &str, secret: &[u8], message: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::get_secret_bytes;
+/// use reinhardt_core::security::csrf::get_secret_bytes;
 ///
 /// let secret = get_secret_bytes();
 /// assert_eq!(secret.len(), 32);
@@ -298,7 +298,7 @@ pub fn get_secret_bytes() -> Vec<u8> {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{get_secret_bytes, get_token_hmac};
+/// use reinhardt_core::security::csrf::{get_secret_bytes, get_token_hmac};
 ///
 /// let secret = get_secret_bytes();
 /// let session_id = "user-session-12345";
@@ -326,7 +326,7 @@ pub fn get_token_hmac(secret_bytes: &[u8], session_id: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{get_secret_bytes, get_token_hmac, check_token_hmac};
+/// use reinhardt_core::security::csrf::{get_secret_bytes, get_token_hmac, check_token_hmac};
 ///
 /// let secret = get_secret_bytes();
 /// let session_id = "user-session-12345";
@@ -399,7 +399,7 @@ pub fn is_same_domain(domain1: &str, domain2: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::get_token_timestamp;
+/// use reinhardt_core::security::csrf::get_token_timestamp;
 ///
 /// let timestamp = get_token_timestamp();
 /// assert!(timestamp > 0);
@@ -416,7 +416,7 @@ pub fn get_token_timestamp() -> u64 {
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{should_rotate_token, get_token_timestamp};
+/// use reinhardt_core::security::csrf::{should_rotate_token, get_token_timestamp};
 ///
 /// let current_time = get_token_timestamp();
 /// let token_time = current_time - 3700; // 1 hour and 1 minute ago
@@ -439,7 +439,7 @@ pub fn should_rotate_token(
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{get_secret_bytes, generate_token_with_timestamp};
+/// use reinhardt_core::security::csrf::{get_secret_bytes, generate_token_with_timestamp};
 ///
 /// let secret = get_secret_bytes();
 /// let session_id = "user-session-12345";
@@ -458,7 +458,7 @@ pub fn generate_token_with_timestamp(secret_bytes: &[u8], session_id: &str) -> S
 /// # Examples
 ///
 /// ```
-/// use crate::security::csrf::{get_secret_bytes, generate_token_with_timestamp, verify_token_with_timestamp};
+/// use reinhardt_core::security::csrf::{get_secret_bytes, generate_token_with_timestamp, verify_token_with_timestamp};
 ///
 /// let secret = get_secret_bytes();
 /// let session_id = "user-session-12345";

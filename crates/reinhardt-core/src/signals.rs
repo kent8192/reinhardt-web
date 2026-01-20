@@ -29,7 +29,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use crate::signals::post_save;
+//! use reinhardt_core::signals::post_save;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), reinhardt_core::signals::SignalError> {
@@ -128,7 +128,7 @@ pub use dispatch::{SyncReceiverFn, SyncSignal};
 /// # Example
 ///
 /// ```rust,no_run
-/// use crate::signals::{connect_receiver, post_save, SignalError};
+/// use reinhardt_core::{connect_receiver, signals::{post_save, SignalError}};
 /// use std::sync::Arc;
 ///
 /// # #[derive(Clone)]

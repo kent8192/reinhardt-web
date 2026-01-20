@@ -27,7 +27,7 @@ impl<T> PaginatedResponse<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::{PaginatedResponse, PaginationMetadata};
+	/// use reinhardt_core::pagination::{PaginatedResponse, PaginationMetadata};
 	///
 	/// let metadata = PaginationMetadata {
 	///     count: 100,
@@ -70,7 +70,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["item1", "item2", "item3"];
 	/// let page = Page::new(items, 1, 10, 30, 3);
@@ -99,7 +99,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["a", "b", "c"];
 	/// let page = Page::new(items, 2, 5, 15, 3);
@@ -117,7 +117,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["a", "b", "c"];
 	/// let page = Page::new(items, 2, 5, 15, 3);
@@ -135,7 +135,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec![1, 2, 3];
 	/// let page = Page::new(items, 2, 5, 50, 10);
@@ -152,7 +152,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec![1, 2, 3];
 	/// let page = Page::new(items, 2, 5, 50, 10);
@@ -169,7 +169,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let middle_page = Page::new(vec![1, 2, 3], 2, 5, 50, 10);
 	/// assert!(middle_page.has_other_pages());
@@ -188,7 +188,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let page = Page::new(vec![1, 2, 3], 2, 5, 50, 10);
 	/// assert_eq!(page.next_page_number().unwrap(), 3);
@@ -213,7 +213,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let page = Page::new(vec![1, 2, 3], 3, 5, 50, 10);
 	/// assert_eq!(page.previous_page_number().unwrap(), 2);
@@ -235,7 +235,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["a", "b", "c"];
 	/// let page = Page::new(items, 1, 3, 10, 5);
@@ -249,7 +249,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let empty_page: Page<i32> = Page::new(vec![], 1, 1, 0, 10);
 	/// assert!(empty_page.is_empty());
@@ -267,7 +267,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let page = Page::new(vec![1], 2, 5, 50, 10);
 	/// let pages: Vec<usize> = page.page_range().collect();
@@ -290,7 +290,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	// For a large page range, ellipsis (None) are added
 	/// let page = Page::new(vec![1], 10, 20, 200, 10);
@@ -350,7 +350,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["a", "b", "c"];
 	/// let page = Page::new(items, 1, 1, 3, 10);
@@ -366,7 +366,7 @@ impl<T: Clone> Page<T> {
 	/// # Examples
 	///
 	/// ```
-	/// use crate::pagination::Page;
+	/// use reinhardt_core::pagination::Page;
 	///
 	/// let items = vec!["a", "b", "c", "d", "e"];
 	/// let page = Page::new(items, 1, 1, 5, 10);

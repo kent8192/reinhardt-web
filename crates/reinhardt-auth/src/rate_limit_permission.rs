@@ -38,7 +38,7 @@ struct RateLimitPermissionConfig {
 /// # Examples
 ///
 /// ```
-/// use reinhardt_auth::{RateLimitPermission, RateLimitStrategy};
+/// use reinhardt_auth::rate_limit_permission::{RateLimitPermission, RateLimitStrategy};
 /// use reinhardt_throttling::MemoryBackend;
 /// use std::sync::Arc;
 ///
@@ -71,7 +71,7 @@ impl<B: ThrottleBackend> RateLimitPermission<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::{RateLimitPermission, RateLimitStrategy};
+	/// use reinhardt_auth::rate_limit_permission::{RateLimitPermission, RateLimitStrategy};
 	/// use reinhardt_throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
@@ -111,7 +111,7 @@ impl<B: ThrottleBackend> RateLimitPermission<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::{RateLimitPermission, RateLimitStrategy};
+	/// use reinhardt_auth::rate_limit_permission::{RateLimitPermission, RateLimitStrategy};
 	/// use reinhardt_throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
@@ -139,7 +139,7 @@ impl<B: ThrottleBackend> RateLimitPermission<B> {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_auth::{RateLimitPermission, RateLimitStrategy};
+	/// use reinhardt_auth::rate_limit_permission::{RateLimitPermission, RateLimitStrategy};
 	/// use reinhardt_throttling::MemoryBackend;
 	/// use std::sync::Arc;
 	///
