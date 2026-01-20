@@ -20,3 +20,6 @@ runs:
     - name: Cache Rust dependencies
       if: inputs.cache == 'true'
       uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          . -> /tmp/cargo_target
