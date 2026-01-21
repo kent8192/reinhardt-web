@@ -37,6 +37,11 @@ jobs:
       - name: Setup protoc
         uses: ./.github/actions/setup-protoc
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+
       - name: Install cargo-make
         uses: taiki-e/install-action@v2
         with:
@@ -63,6 +68,8 @@ jobs:
           df -h
 
       - name: Run integration tests
+        env:
+          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: cargo make integration-test-only
 
       - name: Docker cleanup after integration tests

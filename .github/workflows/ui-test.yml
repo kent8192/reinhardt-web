@@ -10,7 +10,6 @@ env:
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: 1  # Limit concurrent link jobs to prevent OOM
-  RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory"  # Reduce linker memory usage
 
 jobs:
   ui-test:
@@ -38,6 +37,11 @@ jobs:
       - name: Setup protoc
         uses: ./.github/actions/setup-protoc
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+
       - name: Install cargo-make
         uses: taiki-e/install-action@v2
         with:
@@ -64,6 +68,8 @@ jobs:
           df -h
 
       - name: Run UI tests
+        env:
+          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: cargo make ui-test-only
 
       - name: Docker cleanup after UI tests
