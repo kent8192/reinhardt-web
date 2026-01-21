@@ -9,6 +9,7 @@ env:
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
@@ -16,7 +17,7 @@ jobs:
   ui-test:
     name: UI Tests (${{ matrix.partition }}/2)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
