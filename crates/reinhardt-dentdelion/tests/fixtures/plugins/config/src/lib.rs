@@ -20,8 +20,8 @@ impl Guest for ConfigPlugin {
 			description: Some("Test plugin for configuration API".to_string()),
 			authors: vec!["Reinhardt Contributors".to_string()],
 			license: Some("MIT OR Apache-2.0".to_string()),
-			repository: Some("https://github.com/kent8192/reinhardt-rs".to_string()),
-			homepage: Some("https://github.com/kent8192/reinhardt-rs".to_string()),
+			repository: Some("https://github.com/kent8192/reinhardt-web".to_string()),
+			homepage: Some("https://github.com/kent8192/reinhardt-web".to_string()),
 		}
 	}
 
