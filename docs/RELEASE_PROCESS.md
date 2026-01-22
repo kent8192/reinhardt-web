@@ -139,13 +139,35 @@ cargo publish --dry-run -p <crate-name>
 
 #### GitHub Repository Setup
 
-**1. GitHub Secrets**
+**1. Authentication Method**
 
-Add `CARGO_REGISTRY_TOKEN`:
+**Recommended: Trusted Publishing (OIDC)** ⭐⭐⭐⭐⭐
 
-- Settings → Secrets and variables → Actions
-- Name: `CARGO_REGISTRY_TOKEN`
-- Value: crates.io API token (from https://crates.io/settings/tokens)
+- **No long-lived tokens**: Uses short-lived OIDC tokens (15-30 minutes)
+- **No GitHub Secrets**: Authentication via OpenID Connect
+- **Best security**: Industry best practice
+- **Requires**: Initial publication with API token first
+
+**Alternative: API Token** ⭐⭐⭐☆☆
+
+- **For initial publication only**: Required before Trusted Publishing can be enabled
+- **90-day expiration recommended**: Minimize security risk
+- **Migrate to Trusted Publishing**: After first successful publication
+
+**For Initial Publication (API Token)**:
+
+1. Generate token at https://crates.io/settings/tokens
+   - Name: `GitHub Actions - reinhardt-rs`
+   - Expiration: **90 days recommended**
+   - Scope: `publish-update` only
+2. Add to GitHub Secrets:
+   - Settings → Secrets and variables → Actions
+   - Name: `CARGO_REGISTRY_TOKEN`
+   - Value: (generated token)
+
+**For Trusted Publishing (After Initial Publication)**:
+
+See [Trusted Publishing Setup](#trusted-publishing-setup) section below.
 
 **2. GitHub Labels**
 
@@ -291,6 +313,85 @@ git commit -m "chore(release): Bump reinhardt-types v0.2.0 and reinhardt-orm v0.
 ```
 
 **Automatic dependency ordering**: Publishes leaf crates first.
+
+### Trusted Publishing Setup
+
+**Prerequisites**:
+
+- At least one version published to crates.io (using API token)
+- Crate ownership on crates.io
+
+**Benefits**:
+
+- ⭐⭐⭐⭐⭐ Security: Short-lived tokens (15-30 minutes)
+- No GitHub Secrets management
+- No token expiration concerns
+- Industry best practice (PyPI, npm, RubyGems)
+
+#### Step 1: Configure Trusted Publishers (All 41 Crates)
+
+For **each published crate**, configure Trusted Publisher on crates.io:
+
+1. Go to `https://crates.io/crates/[crate-name]/settings`
+2. Navigate to "Trusted Publishing" section
+3. Click "Add Trusted Publisher"
+4. Fill in:
+   - **Provider**: GitHub Actions
+   - **Owner**: `kent8192`
+   - **Repository**: `reinhardt-rs`
+   - **Workflow**: `publish-on-merge.yml`
+   - **Environment**: `release`
+
+**Efficiency Tips**:
+
+- Start with core crates: `reinhardt-macros`, `reinhardt-core`, `reinhardt-orm`
+- Can use GitHub CLI or API for batch configuration
+- Only published crates need configuration (unpublished crates skip this)
+
+#### Step 2: Create GitHub Environment
+
+1. Repository Settings → Environments → "New environment"
+2. **Name**: `release` (must match workflow configuration)
+3. **Protection rules** (recommended):
+   - Required reviewers: Add yourself
+   - Wait timer: 0 minutes
+
+#### Step 3: Verify Workflow Configuration
+
+The workflow is already configured for Trusted Publishing:
+
+```yaml
+environment: release  # Enables OIDC
+permissions:
+  id-token: write  # Required for OIDC
+```
+
+#### Step 4: Test with Next Release
+
+1. Create PR with version bump
+2. Add `release` label
+3. Merge PR → workflow uses OIDC automatically
+4. Verify successful publication
+
+#### Step 5: Clean Up (After Successful Test)
+
+1. **Delete GitHub Secret**: Remove `CARGO_REGISTRY_TOKEN` from repository secrets
+2. **Enable "Trusted Publishing Only"** mode on crates.io (optional):
+   - Crate settings → "Trusted Publishing" → Enable "Require trusted publishing"
+   - Prevents API token publishing (maximum security)
+
+**Migration Summary**:
+
+```
+Before: API Token (90-day expiration) ⭐⭐⭐☆☆
+After:  Trusted Publishing (15-30min tokens) ⭐⭐⭐⭐⭐
+```
+
+**References**:
+
+- Official Guide: https://crates.io/docs/trusted-publishing
+- RFC #3691: https://rust-lang.github.io/rfcs/3691-trusted-publishing-cratesio.html
+- GitHub Action: https://github.com/rust-lang/crates-io-auth-action
 
 ### Emergency Manual Publishing
 
@@ -469,6 +570,34 @@ git reset --hard HEAD~1  # If not pushed
 
 **cargo-workspaces Issues**: Run `cargo ws changed` to check detection; use
 `--force` if needed
+
+### Trusted Publishing Issues
+
+**"please provide a non-empty token" Error**:
+
+- **If using API Token**: Verify `CARGO_REGISTRY_TOKEN` secret is set correctly
+- **If migrating to Trusted Publishing**: Ensure environment name matches (`release`)
+
+**"OIDC token not found" Error**:
+
+1. Verify `environment: release` in workflow
+2. Verify `id-token: write` permission
+3. Check GitHub Environment exists (Settings → Environments)
+
+**"Trusted publisher not configured" Error**:
+
+- Configure Trusted Publisher on crates.io for the specific crate
+- Verify repository, workflow, and environment names match exactly
+
+**Permission Denied**:
+
+- Ensure you have ownership of the crate on crates.io
+- Verify Trusted Publisher configuration uses correct GitHub username/org
+
+**Environment Protection Rules Blocking**:
+
+- Approve the deployment in GitHub Actions UI
+- Adjust protection rules if needed (Settings → Environments → release)
 
 ### Verification Checklist
 
