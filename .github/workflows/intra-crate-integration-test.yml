@@ -14,13 +14,13 @@ env:
 
 jobs:
   intra-crate-integration-test:
-    name: Intra-Crate Integration Tests (${{ matrix.partition }}/2)
+    name: Intra-Crate Integration Tests (${{ matrix.partition }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        partition: [1, 2]
+        partition: [1, 2, 3]
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -69,7 +69,7 @@ jobs:
             --exclude reinhardt-integration-tests \
             -E "not binary(/ui/)" \
             --all-features \
-            --partition hash:${{ matrix.partition }}/2 \
+            --partition hash:${{ matrix.partition }}/3 \
             --no-fail-fast \
             --status-level=none \
             --final-status-level=none
