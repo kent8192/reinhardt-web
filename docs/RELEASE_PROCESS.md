@@ -11,6 +11,7 @@ publishing, and troubleshooting.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Initial Publication (First-Time Release)](#initial-publication-first-time-release)
 - [Version Selection Guidelines](#version-selection-guidelines)
 - [Pre-Release Checklist](#pre-release-checklist)
 - [Automated Publishing with CI/CD](#automated-publishing-with-cicd)
@@ -53,6 +54,298 @@ cargo install cargo-workspaces --version 0.4.1
 - `cargo ws changed` - Detect changed crates
 - `cargo ws publish --dry-run` - Validate
 - `cargo ws publish` - Publish
+
+---
+
+## Initial Publication (First-Time Release)
+
+This section covers the **first-time publication** of all 41 crates in the Reinhardt workspace to crates.io. For subsequent releases, see [Automated Publishing with CI/CD](#automated-publishing-with-cicd).
+
+### Why Dependency Order Matters
+
+crates.io requires all dependencies to be already published. Since Reinhardt crates depend on each other, they must be published in a specific order:
+
+```
+reinhardt-macros → reinhardt-core → reinhardt-http → ...
+```
+
+Publishing out of order will result in:
+```
+error: no matching package named 'reinhardt-macros' found
+location searched: crates.io index
+```
+
+### Dependency Phases
+
+The 41 crates are organized into **7 publication phases** based on their dependencies:
+
+**Phase 1A** (7 crates - no internal dependencies):
+- reinhardt-macros
+- reinhardt-di-macros
+- reinhardt-routers-macros
+- reinhardt-openapi-macros
+- reinhardt-graphql-macros
+- reinhardt-grpc-macros
+- reinhardt-pages-ast
+
+**Phase 1B** (1 crate):
+- reinhardt-pages-macros (depends on reinhardt-pages-ast)
+
+**Phase 2** (5 crates):
+- reinhardt-core (depends on reinhardt-macros)
+- reinhardt-http (depends on reinhardt-core)
+- reinhardt-throttling
+- reinhardt-utils
+- reinhardt-tasks
+
+**Phase 3** (7 crates):
+- reinhardt-di, reinhardt-conf, reinhardt-server, reinhardt-db, reinhardt-forms, reinhardt-mail, reinhardt-grpc
+
+**Phase 4** (5 crates):
+- reinhardt-auth, reinhardt-middleware, reinhardt-apps, reinhardt-rest, reinhardt-pages
+
+**Phase 5** (2 crates):
+- reinhardt-views, reinhardt-urls
+
+**Phase 6** (2 crates):
+- reinhardt-graphql, reinhardt-micro
+
+**Phase 7** (1 crate):
+- reinhardt-test
+
+### Prerequisites
+
+Before starting the publication process:
+
+1. **API Token**: Generate a token at https://crates.io/settings/tokens
+   - Name: `GitHub Actions - reinhardt-rs`
+   - Expiration: **90 days recommended**
+   - Scope: `publish-update` only
+   - Set environment variable: `export CARGO_REGISTRY_TOKEN="your-token"`
+
+2. **Git Configuration**: Ensure Git HTTPS is properly configured
+   ```bash
+   ./scripts/configure-git.sh
+   ```
+
+3. **Verification**: Run readiness checks
+   ```bash
+   ./scripts/verify-publish-readiness.sh
+   ```
+   This will verify:
+   - Metadata completeness (description, license, repository)
+   - Workspace builds successfully
+   - Tests pass
+   - Format and lint checks pass
+   - Dry-run publication tests
+
+### Publication Process
+
+#### Step 1: Verify Readiness
+
+```bash
+# Run comprehensive checks
+./scripts/verify-publish-readiness.sh
+```
+
+**This script checks:**
+- Metadata validation (41 crates)
+- Workspace build
+- Test suite
+- Format compliance
+- Lint compliance
+- Dry-run tests (Phase 1A)
+
+**Expected output:**
+```
+✅ All readiness checks passed!
+```
+
+#### Step 2: Configure Git
+
+```bash
+# Fix Git HTTPS configuration
+./scripts/configure-git.sh
+```
+
+**This resolves:**
+- `config value 'http.cainfo' is not set` warning
+- Automatically detects macOS CA certificate path
+
+#### Step 3: Review Dependency Tree
+
+```bash
+# Display publication phases
+./scripts/show-dependency-tree.sh
+
+# Optional: Show detailed dependencies
+./scripts/show-dependency-tree.sh --detail
+```
+
+**Output includes:**
+- Phase-by-phase crate list
+- Key dependency relationships
+- Publication order confirmation
+
+#### Step 4: Execute Publication
+
+```bash
+# Set API token
+export CARGO_REGISTRY_TOKEN="your-token-here"
+
+# Start publication
+./scripts/publish-crates.sh
+```
+
+**The script will:**
+- Publish 41 crates in 7 phases
+- Perform dry-run validation for each crate
+- Request confirmation before each publication
+- Create Git tags automatically (`[crate-name]@v[version]`)
+- Wait 30 seconds between publications for crates.io synchronization
+- Display progress and estimated time
+
+**Example interaction:**
+```
+=== Publishing reinhardt-macros ===
+
+Step 1/5: Running dry-run validation...
+✓ Dry-run passed
+
+Step 2/5: Requesting user confirmation...
+Publish reinhardt-macros to crates.io? [y/N]: y
+
+Step 3/5: Publishing to crates.io...
+✓ Published successfully
+
+Step 4/5: Creating Git tag...
+✓ Created tag: reinhardt-macros@v0.1.0-alpha.1
+
+Step 5/5: Waiting for crates.io synchronization (30 seconds)...
+✓ Wait completed
+
+✓ Successfully published reinhardt-macros
+```
+
+**Estimated time:** 20-30 minutes for all 41 crates
+
+#### Step 5: Push Git Tags
+
+```bash
+# Push all created tags
+git push origin --tags
+```
+
+#### Step 6: Verify Publication
+
+**crates.io:**
+- Visit https://crates.io/users/kent8192
+- Verify all crates appear
+
+**docs.rs:**
+- Documentation builds in ~5-10 minutes
+- Check https://docs.rs/reinhardt-core
+
+**Local build test:**
+```bash
+cargo clean
+cargo build --workspace --all --all-features
+```
+
+### Error Handling
+
+#### Common Errors
+
+**Error: `no matching package named 'X' found`**
+- **Cause**: Dependency not yet published
+- **Solution**: Ensure Phase order is correct. The script handles this automatically.
+
+**Error: `version already published`**
+- **Cause**: Version already exists on crates.io
+- **Solution**: Increment version in Cargo.toml and retry
+
+**Error: `failed to obtain lock file`**
+- **Cause**: Cargo lock file conflict
+- **Solution**: `rm -f ~/.cargo/.package-cache` and retry
+
+**Error: `missing required metadata`**
+- **Cause**: description/license/repository field missing
+- **Solution**: Add to Cargo.toml
+
+**Error: `please provide a non-empty token`**
+- **Cause**: CARGO_REGISTRY_TOKEN not set
+- **Solution**: `export CARGO_REGISTRY_TOKEN="your-token"`
+
+#### Recovery from Failure
+
+If publication fails mid-process:
+
+1. **Already published crates are safe**: They remain on crates.io
+2. **Re-run the script**: Already published crates will show "version already published" error and can be skipped (respond 'N' when prompted)
+3. **Continue from failure point**: The script will resume from where it stopped
+
+**Alternatively**, manually publish remaining crates:
+```bash
+cargo publish -p <crate-name>
+git tag <crate-name>@v<version> -m "Release <crate-name> v<version>"
+```
+
+### Post-Publication Steps
+
+#### 1. Migrate to Trusted Publishing (Recommended)
+
+After successful initial publication, migrate from API Token to Trusted Publishing (OIDC) for better security:
+
+**For each published crate:**
+1. Visit `https://crates.io/crates/[crate-name]/settings`
+2. Navigate to "Trusted Publishing" section
+3. Add Trusted Publisher:
+   - Provider: GitHub Actions
+   - Owner: `kent8192`
+   - Repository: `reinhardt-rs`
+   - Workflow: `publish-on-merge.yml`
+   - Environment: `release`
+
+See [Trusted Publishing Setup](#trusted-publishing-setup) for detailed instructions.
+
+#### 2. Update CI/CD Workflows
+
+After migration to Trusted Publishing:
+- Remove `CARGO_REGISTRY_TOKEN` from GitHub Secrets
+- Verify `publish-on-merge.yml` uses OIDC
+- Test with a small version bump
+
+#### 3. Document Publication Date
+
+Update each crate's CHANGELOG.md with the actual publication date:
+```markdown
+## [0.1.0-alpha.1] - 2025-01-23
+
+### Added
+- Initial release
+```
+
+### Automation Scripts
+
+The following scripts are available in `scripts/`:
+
+- **configure-git.sh**: Fix Git HTTPS configuration
+- **verify-publish-readiness.sh**: Comprehensive pre-publication checks
+- **show-dependency-tree.sh**: Display dependency phases
+- **publish-crates.sh**: Automated publication in correct order
+
+**All scripts include:**
+- Clear progress indicators
+- Error handling
+- Helpful error messages
+- Recovery suggestions
+
+### Next Steps
+
+After successful initial publication:
+1. Use [Automated Publishing with CI/CD](#automated-publishing-with-cicd) for future releases
+2. Follow [Version Selection Guidelines](#version-selection-guidelines) for SemVer
+3. Maintain [CHANGELOG Management](#changelog-management) practices
 
 ---
 
