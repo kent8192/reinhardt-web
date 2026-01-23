@@ -80,6 +80,153 @@ chore/ci/github-actions-update
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 ```
 
+### PC-4 (MUST): PR Labels
+
+- **MUST** add appropriate labels to every PR
+- Labels help categorize, prioritize, and track PRs
+- Use GitHub CLI or web UI to add labels
+
+**Required Labels by PR Type:**
+
+| PR Type | Required Label | Additional Labels |
+|---------|---------------|-------------------|
+| New feature | `enhancement` | Scope-specific labels |
+| Bug fix | `bug` | Severity labels if available |
+| Documentation | `documentation` | - |
+| Release preparation | `release` | **CRITICAL** - See special notes below |
+| Breaking changes | `enhancement` + custom | Consider adding breaking change indicator |
+
+**Common Labels:**
+
+| Label | Usage | When to Apply |
+|-------|-------|---------------|
+| `enhancement` | New feature or improvement | All feature PRs |
+| `bug` | Bug fix | All bug fix PRs |
+| `documentation` | Documentation changes | Docs-only or significant doc updates |
+| `release` | **Release preparation (SPECIAL)** | **Version bump PRs for crates.io publication** |
+| `good first issue` | Beginner-friendly | Simple, well-defined changes |
+| `help wanted` | Needs additional input | Complex decisions or blocked PRs |
+| `duplicate` | Duplicate PR | When PR duplicates existing work |
+| `invalid` | Invalid PR | When PR doesn't meet standards |
+| `wontfix` | Will not be merged | When PR is rejected |
+
+**CRITICAL: `release` Label Special Behavior:**
+
+The `release` label has special significance and triggers automated workflows:
+
+1. **GitHub Actions Integration:**
+   - PRs with `release` label are automatically processed by release automation
+   - Triggers CI/CD pipeline for crates.io publication preparation
+   - May trigger additional validation and checks
+
+2. **When to Use:**
+   - **ONLY** for PRs that bump crate versions in `Cargo.toml`
+   - **ONLY** for PRs that prepare for crates.io publication
+   - **NEVER** for regular feature or bug fix PRs
+
+3. **Requirements for `release` Label:**
+   - PR title MUST follow format: `chore(release): bump [crate-name] to v[version]`
+   - PR MUST include both `Cargo.toml` version update AND `CHANGELOG.md` updates
+   - PR MUST be from a branch following pattern: `release/[crate-name]/v[version]`
+   - All tests and checks MUST pass before merging
+
+4. **Example Release PR with Label:**
+   ```bash
+   # Create release branch
+   git checkout -b release/reinhardt-core/v0.2.0
+   
+   # Make version changes
+   # ... update Cargo.toml and CHANGELOG.md ...
+   
+   # Create PR with release label
+   gh pr create \
+     --title "chore(release): bump reinhardt-core to v0.2.0" \
+     --label release \
+     --body "$(cat <<'EOF'
+   ## Summary
+   
+   Prepare reinhardt-core for publication to crates.io.
+   
+   Version Changes:
+   - crates/reinhardt-core/Cargo.toml: version 0.1.0 -> 0.2.0
+   - crates/reinhardt-core/CHANGELOG.md: Add release notes for v0.2.0
+   
+   ## Test plan
+   
+   - [x] All tests pass
+   - [x] `cargo publish --dry-run -p reinhardt-core` succeeds
+   - [ ] Ready for publication after merge
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   EOF
+   )"
+   ```
+
+5. **Post-Merge Automation:**
+   - After merging PR with `release` label, automated workflows may:
+     - Create Git tag automatically
+     - Trigger crates.io publication
+     - Generate GitHub Release
+     - Update documentation
+   - **IMPORTANT**: Check repository's `.github/workflows/` for specific automation
+
+6. **DO NOT Use `release` Label For:**
+   - ❌ Regular feature additions
+   - ❌ Bug fixes
+   - ❌ Documentation updates
+   - ❌ Refactoring PRs
+   - ❌ Any PR that doesn't bump crate version
+
+**Label Application Examples:**
+
+```bash
+# Feature PR with label
+gh pr create --title "feat(auth): add JWT validation" \
+  --label enhancement
+
+# Bug fix PR with label
+gh pr create --title "fix(orm): resolve connection leak" \
+  --label bug
+
+# Documentation PR with label
+gh pr create --title "docs(api): update OpenAPI spec" \
+  --label documentation
+
+# Release PR with label (CRITICAL - special handling)
+gh pr create --title "chore(release): bump reinhardt-core to v0.2.0" \
+  --label release
+
+# Multiple labels
+gh pr create --title "feat(auth): add OAuth support" \
+  --label enhancement,help wanted
+```
+
+**Adding Labels to Existing PR:**
+
+```bash
+# Add single label
+gh pr edit <number> --add-label enhancement
+
+# Add multiple labels
+gh pr edit <number> --add-label bug,help wanted
+
+# Remove label
+gh pr edit <number> --remove-label invalid
+
+# CRITICAL: Add release label (use with caution)
+gh pr edit <number> --add-label release
+```
+
+**Label Best Practices:**
+
+- Add labels immediately when creating PR
+- Update labels as PR status changes
+- Use `release` label **ONLY** for version bump PRs (triggers release automation)
+- Combine labels to provide more context (e.g., `enhancement` + `help wanted`)
+- Don't over-label - typically 1-3 labels per PR is sufficient
+- Double-check before adding `release` label - it has special behavior
+- If unsure about `release` label, consult with maintainers first
+
 ---
 
 ## PR Title Format

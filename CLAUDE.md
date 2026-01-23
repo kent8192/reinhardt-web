@@ -348,6 +348,8 @@ Before submitting code:
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Write all PR titles and descriptions in English
 - Write all issue titles and descriptions in English
+- Add appropriate labels to every PR (`enhancement`, `bug`, `documentation`, etc.)
+- Use `release` label ONLY for version bump PRs (triggers automation)
 - Use `rstest` for ALL test cases (no plain `#[test]`)
 - Use `reinhardt-test` fixtures for test setup/teardown
 - Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
@@ -366,6 +368,8 @@ Before submitting code:
 - Commit without user instruction (except Plan Mode approval)
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
+- Create PRs without appropriate labels
+- Use `release` label for non-version-bump PRs (triggers unintended automation)
 - Save files to project directory (use `/tmp`)
 - Leave backup files (`.bak`, `.backup`, `.old`, `~`)
 - Create skeleton tests (tests without assertions)
