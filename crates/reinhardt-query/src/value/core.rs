@@ -1,0 +1,175 @@
+//! Core Value enum definition.
+
+use super::ArrayType;
+
+/// Core value representation for SQL parameters.
+///
+/// This enum represents all possible SQL value types. The enum is designed
+/// to be size-optimized: larger types are boxed to maintain a consistent
+/// enum size of approximately one pointer width.
+///
+/// ## Null Values
+///
+/// All variants use `Option<T>` to represent nullable values. A `None` value
+/// will be rendered as SQL `NULL`.
+///
+/// ## Example
+///
+/// ```rust
+/// use reinhardt_query::Value;
+///
+/// let int_val = Value::Int(Some(42));
+/// let null_int = Value::Int(None);
+/// let string_val = Value::String(Some(Box::new("hello".to_string())));
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+	// -------------------------------------------------------------------------
+	// Primitive types (inline, not boxed)
+	// -------------------------------------------------------------------------
+	/// Boolean value
+	Bool(Option<bool>),
+	/// 8-bit signed integer
+	TinyInt(Option<i8>),
+	/// 16-bit signed integer
+	SmallInt(Option<i16>),
+	/// 32-bit signed integer
+	Int(Option<i32>),
+	/// 64-bit signed integer
+	BigInt(Option<i64>),
+	/// 8-bit unsigned integer
+	TinyUnsigned(Option<u8>),
+	/// 16-bit unsigned integer
+	SmallUnsigned(Option<u16>),
+	/// 32-bit unsigned integer
+	Unsigned(Option<u32>),
+	/// 64-bit unsigned integer
+	BigUnsigned(Option<u64>),
+	/// 32-bit floating point
+	Float(Option<f32>),
+	/// 64-bit floating point
+	Double(Option<f64>),
+	/// Single character
+	Char(Option<char>),
+
+	// -------------------------------------------------------------------------
+	// Heap-allocated types (boxed for size optimization)
+	// -------------------------------------------------------------------------
+	/// String value (boxed)
+	String(Option<Box<String>>),
+	/// Binary data (boxed)
+	Bytes(Option<Box<Vec<u8>>>),
+
+	// -------------------------------------------------------------------------
+	// Feature-gated types: chrono
+	// -------------------------------------------------------------------------
+	/// Chrono NaiveDate
+	#[cfg(feature = "with-chrono")]
+	ChronoDate(Option<Box<chrono::NaiveDate>>),
+	/// Chrono NaiveTime
+	#[cfg(feature = "with-chrono")]
+	ChronoTime(Option<Box<chrono::NaiveTime>>),
+	/// Chrono NaiveDateTime
+	#[cfg(feature = "with-chrono")]
+	ChronoDateTime(Option<Box<chrono::NaiveDateTime>>),
+	/// Chrono DateTime with UTC timezone
+	#[cfg(feature = "with-chrono")]
+	ChronoDateTimeUtc(Option<Box<chrono::DateTime<chrono::Utc>>>),
+	/// Chrono DateTime with Local timezone
+	#[cfg(feature = "with-chrono")]
+	ChronoDateTimeLocal(Option<Box<chrono::DateTime<chrono::Local>>>),
+	/// Chrono DateTime with fixed offset timezone
+	#[cfg(feature = "with-chrono")]
+	ChronoDateTimeWithTimeZone(Option<Box<chrono::DateTime<chrono::FixedOffset>>>),
+
+	// -------------------------------------------------------------------------
+	// Feature-gated types: uuid
+	// -------------------------------------------------------------------------
+	/// UUID value
+	#[cfg(feature = "with-uuid")]
+	Uuid(Option<Box<uuid::Uuid>>),
+
+	// -------------------------------------------------------------------------
+	// Feature-gated types: json
+	// -------------------------------------------------------------------------
+	/// JSON value
+	#[cfg(feature = "with-json")]
+	Json(Option<Box<serde_json::Value>>),
+
+	// -------------------------------------------------------------------------
+	// Feature-gated types: decimal
+	// -------------------------------------------------------------------------
+	/// Rust Decimal value
+	#[cfg(feature = "with-rust_decimal")]
+	Decimal(Option<Box<rust_decimal::Decimal>>),
+
+	/// BigDecimal value
+	#[cfg(feature = "with-bigdecimal")]
+	BigDecimal(Option<Box<bigdecimal::BigDecimal>>),
+
+	// -------------------------------------------------------------------------
+	// Array type
+	// -------------------------------------------------------------------------
+	/// Array of values with element type information
+	Array(ArrayType, Option<Box<Vec<Value>>>),
+}
+
+impl Value {
+	/// Returns `true` if this value is null.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_query::Value;
+	///
+	/// assert!(Value::Int(None).is_null());
+	/// assert!(!Value::Int(Some(42)).is_null());
+	/// ```
+	#[must_use]
+	pub fn is_null(&self) -> bool {
+		match self {
+			Self::Bool(v) => v.is_none(),
+			Self::TinyInt(v) => v.is_none(),
+			Self::SmallInt(v) => v.is_none(),
+			Self::Int(v) => v.is_none(),
+			Self::BigInt(v) => v.is_none(),
+			Self::TinyUnsigned(v) => v.is_none(),
+			Self::SmallUnsigned(v) => v.is_none(),
+			Self::Unsigned(v) => v.is_none(),
+			Self::BigUnsigned(v) => v.is_none(),
+			Self::Float(v) => v.is_none(),
+			Self::Double(v) => v.is_none(),
+			Self::Char(v) => v.is_none(),
+			Self::String(v) => v.is_none(),
+			Self::Bytes(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDate(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoTime(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTime(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeUtc(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeLocal(v) => v.is_none(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeWithTimeZone(v) => v.is_none(),
+			#[cfg(feature = "with-uuid")]
+			Self::Uuid(v) => v.is_none(),
+			#[cfg(feature = "with-json")]
+			Self::Json(v) => v.is_none(),
+			#[cfg(feature = "with-rust_decimal")]
+			Self::Decimal(v) => v.is_none(),
+			#[cfg(feature = "with-bigdecimal")]
+			Self::BigDecimal(v) => v.is_none(),
+			Self::Array(_, v) => v.is_none(),
+		}
+	}
+}
+
+impl Default for Value {
+	/// Returns the default value, which is a null string.
+	fn default() -> Self {
+		Self::String(None)
+	}
+}
