@@ -1,0 +1,45 @@
+[package]
+name = "reinhardt-query"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "SQL query builder for Reinhardt framework, compatible with SeaQuery API"
+
+[dependencies]
+# Core dependencies
+thiserror = { workspace = true }
+
+# Feature-gated dependencies
+chrono = { workspace = true, optional = true }
+uuid = { version = "1.0", optional = true }
+serde_json = { workspace = true, optional = true }
+rust_decimal = { version = "1.0", optional = true }
+bigdecimal = { version = "0.4", optional = true }
+
+[features]
+default = []
+
+# Thread-safe mode (uses Arc instead of Rc)
+thread-safe = []
+
+# Optional type support
+with-chrono = ["dep:chrono"]
+with-uuid = ["dep:uuid"]
+with-json = ["dep:serde_json"]
+with-rust_decimal = ["dep:rust_decimal"]
+with-bigdecimal = ["dep:bigdecimal"]
+
+# All optional features
+full = [
+	"with-chrono",
+	"with-uuid",
+	"with-json",
+	"with-rust_decimal",
+	"with-bigdecimal",
+]
+
+[dev-dependencies]
+rstest = { workspace = true }
+pretty_assertions = "1.4"
