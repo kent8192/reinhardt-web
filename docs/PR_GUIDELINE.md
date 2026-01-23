@@ -93,6 +93,7 @@ gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 | New feature | `enhancement` | Scope-specific labels |
 | Bug fix | `bug` | Severity labels if available |
 | Documentation | `documentation` | - |
+| Dependency updates | `dependencies` | - |
 | Release preparation | `release` | **CRITICAL** - See special notes below |
 | Breaking changes | `enhancement` + custom | Consider adding breaking change indicator |
 
@@ -103,6 +104,7 @@ gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 | `enhancement` | New feature or improvement | All feature PRs |
 | `bug` | Bug fix | All bug fix PRs |
 | `documentation` | Documentation changes | Docs-only or significant doc updates |
+| `dependencies` | Dependency updates | Automated or manual dependency version bumps |
 | `release` | **Release preparation (SPECIAL)** | **Version bump PRs for crates.io publication** |
 | `good first issue` | Beginner-friendly | Simple, well-defined changes |
 | `help wanted` | Needs additional input | Complex decisions or blocked PRs |
@@ -192,6 +194,10 @@ gh pr create --title "fix(orm): resolve connection leak" \
 # Documentation PR with label
 gh pr create --title "docs(api): update OpenAPI spec" \
   --label documentation
+
+# Dependency update PR with label
+gh pr create --title "chore(deps): bump tokio from 1.0 to 1.1" \
+  --label dependencies
 
 # Release PR with label (CRITICAL - special handling)
 gh pr create --title "chore(release): bump reinhardt-core to v0.2.0" \
