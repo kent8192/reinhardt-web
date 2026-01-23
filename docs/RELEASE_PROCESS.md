@@ -412,6 +412,11 @@ impl Pool {
 - [ ] CHANGELOG.md prepared
 - [ ] Code examples tested: `cargo test --doc`
 
+### Version Cascade
+
+- [ ] Main crate (`reinhardt-web`) version updated if sub-crate version changed
+- [ ] Main crate CHANGELOG.md references sub-crate changes
+
 ### Metadata
 
 - [ ] `description`, `license`, `repository` fields present
