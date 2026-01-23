@@ -2573,4 +2573,162 @@ mod tests {
 		assert!(sql.contains("INNER JOIN `high_value_customers` AS `hvc`"));
 		assert_eq!(values.len(), 1);
 	}
+
+	#[test]
+	fn test_cte_with_where_and_params() {
+		let builder = MySqlQueryBuilder::new();
+
+		let mut cte_query = Query::select();
+		cte_query
+			.column("id")
+			.column("total")
+			.from("orders")
+			.and_where(Expr::col("status").eq("completed"))
+			.and_where(Expr::col("amount").gt(1000));
+
+		let mut stmt = Query::select();
+		stmt.with_cte("large_orders", cte_query)
+			.column("id")
+			.column("total")
+			.from("large_orders");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH"));
+		assert!(sql.contains("`large_orders` AS"));
+		assert!(sql.contains("`status` = ?"));
+		assert!(sql.contains("`amount` > ?"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_cte_used_in_join() {
+		use crate::types::TableRef;
+
+		let builder = MySqlQueryBuilder::new();
+
+		let mut cte_query = Query::select();
+		cte_query
+			.column("user_id")
+			.column("order_count")
+			.from("orders")
+			.group_by("user_id");
+
+		let mut stmt = Query::select();
+		stmt.with_cte("user_orders", cte_query)
+			.column(("users", "name"))
+			.column(("uo", "order_count"))
+			.from("users")
+			.inner_join(
+				TableRef::table_alias("user_orders", "uo"),
+				Expr::col(("users", "id")).eq(Expr::col(("uo", "user_id"))),
+			);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH"));
+		assert!(sql.contains("`user_orders` AS"));
+		assert!(sql.contains("INNER JOIN `user_orders` AS `uo`"));
+		assert!(sql.contains("`users`.`id` = `uo`.`user_id`"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_cte_with_aggregation() {
+		use crate::expr::SimpleExpr;
+		use crate::types::{ColumnRef, IntoIden};
+
+		let builder = MySqlQueryBuilder::new();
+
+		let mut cte_query = Query::select();
+		cte_query
+			.column("category")
+			.expr(SimpleExpr::FunctionCall(
+				"COUNT".into_iden(),
+				vec![SimpleExpr::Column(ColumnRef::Asterisk)],
+			))
+			.expr(SimpleExpr::FunctionCall(
+				"SUM".into_iden(),
+				vec![SimpleExpr::Column(ColumnRef::column("price"))],
+			))
+			.from("products")
+			.group_by("category");
+
+		let mut stmt = Query::select();
+		stmt.with_cte("category_stats", cte_query)
+			.column("category")
+			.from("category_stats");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH"));
+		assert!(sql.contains("`category_stats` AS"));
+		assert!(sql.contains("COUNT(*)"));
+		assert!(sql.contains("SUM(`price`)"));
+		assert!(sql.contains("GROUP BY `category`"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_cte_with_subquery() {
+		let builder = MySqlQueryBuilder::new();
+
+		let mut sub = Query::select();
+		sub.column("user_id").from("vip_users");
+
+		let mut cte_query = Query::select();
+		cte_query
+			.column("id")
+			.column("total")
+			.from("orders")
+			.and_where(Expr::col("user_id").in_subquery(sub))
+			.and_where(Expr::col("status").eq("shipped"));
+
+		let mut stmt = Query::select();
+		stmt.with_cte("vip_orders", cte_query)
+			.column("id")
+			.column("total")
+			.from("vip_orders");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH"));
+		assert!(sql.contains("`vip_orders` AS"));
+		assert!(sql.contains("IN"));
+		assert!(sql.contains("SELECT `user_id` FROM `vip_users`"));
+		assert!(sql.contains("`status` = ?"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_multiple_recursive_and_regular_ctes() {
+		let builder = MySqlQueryBuilder::new();
+
+		// Regular CTE
+		let mut regular_cte = Query::select();
+		regular_cte
+			.column("id")
+			.column("name")
+			.from("departments")
+			.and_where(Expr::col("active").eq(true));
+
+		// Recursive CTE
+		let mut recursive_cte = Query::select();
+		recursive_cte
+			.column("id")
+			.column("name")
+			.column("parent_id")
+			.from("categories");
+
+		// Main query
+		let mut stmt = Query::select();
+		stmt.with_cte("active_depts", regular_cte)
+			.with_recursive_cte("category_tree", recursive_cte)
+			.column("name")
+			.from("category_tree");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH RECURSIVE"));
+		assert!(sql.contains("`active_depts` AS"));
+		assert!(sql.contains("`category_tree` AS"));
+		assert!(sql.contains("`active` = ?"));
+		assert!(sql.contains("FROM `category_tree`"));
+		assert_eq!(values.len(), 1);
+	}
 }
