@@ -219,6 +219,24 @@ impl SqliteQueryBuilder {
 				// Merge the values from the subquery
 				writer.append_values(&subquery_values);
 			}
+			SimpleExpr::Window { func, window } => {
+				// Write the function
+				self.write_simple_expr(writer, func);
+				writer.push_space();
+				writer.push_keyword("OVER");
+				writer.push_space();
+				writer.push("(");
+				self.write_window_statement(writer, window);
+				writer.push(")");
+			}
+			SimpleExpr::WindowNamed { func, name } => {
+				// Write the function
+				self.write_simple_expr(writer, func);
+				writer.push_space();
+				writer.push_keyword("OVER");
+				writer.push_space();
+				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			}
 			_ => {
 				// TODO: Handle other expression types
 				writer.push("(EXPR)");
@@ -322,6 +340,108 @@ impl SqliteQueryBuilder {
 				writer.push(".");
 				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			}
+		}
+	}
+
+	/// Write a window statement (PARTITION BY ... ORDER BY ... frame_clause)
+	fn write_window_statement(
+		&self,
+		writer: &mut SqlWriter,
+		window: &crate::types::WindowStatement,
+	) {
+		// PARTITION BY clause
+		if !window.partition_by.is_empty() {
+			writer.push_keyword("PARTITION BY");
+			writer.push_space();
+			writer.push_list(&window.partition_by, ", ", |w, expr| {
+				self.write_simple_expr(w, expr);
+			});
+			writer.push_space();
+		}
+
+		// ORDER BY clause
+		if !window.order_by.is_empty() {
+			writer.push_keyword("ORDER BY");
+			writer.push_space();
+			writer.push_list(&window.order_by, ", ", |w, order_expr| {
+				use crate::types::OrderExprKind;
+				match &order_expr.expr {
+					OrderExprKind::Column(iden) => {
+						w.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+					}
+					OrderExprKind::TableColumn(table, col) => {
+						w.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+						w.push(".");
+						w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+					}
+					OrderExprKind::Expr(expr) => {
+						self.write_simple_expr(w, expr);
+					}
+				}
+				match order_expr.order {
+					crate::types::Order::Asc => {
+						w.push_keyword("ASC");
+					}
+					crate::types::Order::Desc => {
+						w.push_keyword("DESC");
+					}
+				}
+				if let Some(nulls) = order_expr.nulls {
+					w.push_space();
+					w.push(nulls.as_str());
+				}
+			});
+			writer.push_space();
+		}
+
+		// Frame clause
+		if let Some(frame) = &window.frame {
+			self.write_frame_clause(writer, frame);
+		}
+	}
+
+	/// Write a frame clause (ROWS/RANGE BETWEEN ... AND ...)
+	fn write_frame_clause(&self, writer: &mut SqlWriter, frame: &crate::types::FrameClause) {
+		use crate::types::FrameType;
+
+		// Frame type (ROWS, RANGE)
+		match frame.frame_type {
+			FrameType::Rows => writer.push_keyword("ROWS"),
+			FrameType::Range => writer.push_keyword("RANGE"),
+			FrameType::Groups => {
+				panic!("SQLite does not support GROUPS frame type. Use ROWS or RANGE instead.");
+			}
+		}
+		writer.push_space();
+
+		// Frame specification
+		if let Some(end) = &frame.end {
+			writer.push_keyword("BETWEEN");
+			writer.push_space();
+			self.write_frame_boundary(writer, &frame.start);
+			writer.push_keyword("AND");
+			writer.push_space();
+			self.write_frame_boundary(writer, end);
+		} else {
+			self.write_frame_boundary(writer, &frame.start);
+		}
+	}
+
+	/// Write a frame boundary (UNBOUNDED PRECEDING, CURRENT ROW, etc.)
+	fn write_frame_boundary(&self, writer: &mut SqlWriter, frame: &crate::types::Frame) {
+		use crate::types::Frame;
+		match frame {
+			Frame::UnboundedPreceding => writer.push("UNBOUNDED PRECEDING"),
+			Frame::Preceding(n) => {
+				writer.push(&n.to_string());
+				writer.push(" PRECEDING");
+			}
+			Frame::CurrentRow => writer.push("CURRENT ROW"),
+			Frame::Following(n) => {
+				writer.push(&n.to_string());
+				writer.push(" FOLLOWING");
+			}
+			Frame::UnboundedFollowing => writer.push("UNBOUNDED FOLLOWING"),
 		}
 	}
 }
@@ -474,6 +594,21 @@ impl QueryBuilder for SqliteQueryBuilder {
 						w.push_keyword("DESC");
 					}
 				}
+			});
+		}
+
+		// WINDOW clause (named windows)
+		if !stmt.windows.is_empty() {
+			writer.push_keyword("WINDOW");
+			writer.push_space();
+			writer.push_list(&stmt.windows, ", ", |w, (name, window)| {
+				w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				w.push_space();
+				w.push_keyword("AS");
+				w.push_space();
+				w.push("(");
+				self.write_window_statement(w, window);
+				w.push(")");
 			});
 		}
 
@@ -702,6 +837,7 @@ mod tests {
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
+		types::IntoIden,
 	};
 
 	#[test]
@@ -1393,5 +1529,558 @@ mod tests {
 		assert!(sql.contains("AS"));
 		assert!(sql.contains("SELECT \"id\", \"name\", \"manager_id\" FROM \"employees\""));
 		assert!(sql.contains("SELECT \"name\" FROM \"employee_hierarchy\""));
+	}
+
+
+	// Window function tests
+
+	#[test]
+	fn test_window_row_number_with_partition_and_order() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("department").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("salary".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::row_number().over(window))
+			.column("name")
+			.from("employees");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT ROW_NUMBER() OVER ( PARTITION BY "department" ORDER BY "salary" DESC ), "name" FROM "employees""#
+		);
+	}
+
+	#[test]
+	fn test_window_rank_basic() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("score".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::rank().over(window))
+			.column("name")
+			.from("students");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT RANK() OVER ( ORDER BY "score" DESC ), "name" FROM "students""#
+		);
+	}
+
+	#[test]
+	fn test_window_dense_rank_with_partition() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("league").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("points".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::dense_rank().over(window))
+			.column("player")
+			.from("scores");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT DENSE_RANK() OVER ( PARTITION BY "league" ORDER BY "points" DESC ), "player" FROM "scores""#
+		);
+	}
+
+	#[test]
+	fn test_window_ntile_four_buckets() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("salary".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::ntile(4).over(window))
+			.column("name")
+			.from("employees");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT NTILE(?) OVER ( ORDER BY "salary" ASC ), "name" FROM "employees""#
+		);
+	}
+
+	#[test]
+	fn test_window_lead_basic() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("date".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::lead(Expr::col("price").into_simple_expr(), None, None).over(window))
+			.column("date")
+			.from("stocks");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT LEAD("price") OVER ( ORDER BY "date" ASC ), "date" FROM "stocks""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_window_lag_with_offset_and_default() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("product").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("month".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(
+			Expr::lag(
+				Expr::col("revenue").into_simple_expr(),
+				Some(2),
+				Some(0.0.into())
+			).over(window)
+		)
+		.column("month")
+		.from("sales");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LAG"));
+		assert!(sql.contains("OVER"));
+		assert!(sql.contains(r#"PARTITION BY "product""#));
+		assert!(sql.contains(r#"ORDER BY "month" ASC"#));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_window_first_value() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("category").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("price".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::first_value(Expr::col("name").into_simple_expr()).over(window))
+			.column("name")
+			.from("products");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT FIRST_VALUE("name") OVER ( PARTITION BY "category" ORDER BY "price" ASC ), "name" FROM "products""#
+		);
+	}
+
+	#[test]
+	fn test_window_last_value() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("category").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("price".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::last_value(Expr::col("name").into_simple_expr()).over(window))
+			.column("name")
+			.from("products");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT LAST_VALUE("name") OVER ( PARTITION BY "category" ORDER BY "price" DESC ), "name" FROM "products""#
+		);
+	}
+
+	#[test]
+	fn test_window_nth_value() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("department").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("salary".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::nth_value(Expr::col("name").into_simple_expr(), 2).over(window))
+			.column("name")
+			.from("employees");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("NTH_VALUE"));
+		assert!(sql.contains(r#"PARTITION BY "department""#));
+		assert!(sql.contains(r#"ORDER BY "salary" DESC"#));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_window_row_number_order_only() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("id".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::row_number().over(window)).from("users");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(sql, r#"SELECT ROW_NUMBER() OVER ( ORDER BY "id" ASC ) FROM "users""#);
+	}
+
+	#[test]
+	fn test_window_rank_order_only() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("score".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::rank().over(window))
+			.column("name")
+			.from("students");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT RANK() OVER ( ORDER BY "score" DESC ), "name" FROM "students""#
+		);
+	}
+
+	#[test]
+	fn test_window_rank_with_partition() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("class").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("score".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::rank().over(window))
+			.column("name")
+			.from("students");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT RANK() OVER ( PARTITION BY "class" ORDER BY "score" DESC ), "name" FROM "students""#
+		);
+	}
+
+	#[test]
+	fn test_window_dense_rank_basic() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("points".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::dense_rank().over(window))
+			.column("player")
+			.from("scores");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT DENSE_RANK() OVER ( ORDER BY "points" DESC ), "player" FROM "scores""#
+		);
+	}
+
+	#[test]
+	fn test_window_ntile_custom_buckets() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("department").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("salary".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::ntile(3).over(window))
+			.column("name")
+			.from("employees");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT NTILE(?) OVER ( PARTITION BY "department" ORDER BY "salary" DESC ), "name" FROM "employees""#
+		);
+	}
+
+	#[test]
+	fn test_window_lead_with_offset_and_default() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("ticker").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("date".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(
+			Expr::lead(
+				Expr::col("price").into_simple_expr(),
+				Some(2),
+				Some(0.0.into())
+			).over(window)
+		)
+		.column("date")
+		.from("stocks");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LEAD"));
+		assert!(sql.contains("OVER"));
+		assert!(sql.contains(r#"PARTITION BY "ticker""#));
+		assert!(sql.contains(r#"ORDER BY "date" ASC"#));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_window_lag_basic() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("month".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::lag(Expr::col("revenue").into_simple_expr(), None, None).over(window))
+			.column("month")
+			.from("sales");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT LAG("revenue") OVER ( ORDER BY "month" ASC ), "month" FROM "sales""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_window_lag_with_different_offset() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("product").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("month".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(
+			Expr::lag(
+				Expr::col("revenue").into_simple_expr(),
+				Some(3),
+				Some(0.0.into())
+			).over(window)
+		)
+		.column("month")
+		.from("sales");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LAG"));
+		assert!(sql.contains("OVER"));
+		assert!(sql.contains(r#"PARTITION BY "product""#));
+		assert!(sql.contains(r#"ORDER BY "month" ASC"#));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_window_first_value_with_partition() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("category").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("price".into_iden()),
+				order: Order::Asc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::first_value(Expr::col("name").into_simple_expr()).over(window))
+			.column("name")
+			.from("products");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT FIRST_VALUE("name") OVER ( PARTITION BY "category" ORDER BY "price" ASC ), "name" FROM "products""#
+		);
+	}
+
+	#[test]
+	fn test_window_last_value_with_partition() {
+		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		
+		let window = WindowStatement {
+			partition_by: vec![Expr::col("category").into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::Column("price".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.expr(Expr::last_value(Expr::col("name").into_simple_expr()).over(window))
+			.column("name")
+			.from("products");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT LAST_VALUE("name") OVER ( PARTITION BY "category" ORDER BY "price" DESC ), "name" FROM "products""#
+		);
 	}
 }
