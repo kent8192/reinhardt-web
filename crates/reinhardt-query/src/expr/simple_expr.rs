@@ -4,7 +4,7 @@
 //! abstract syntax tree (AST). All expression operations eventually produce
 //! a `SimpleExpr`.
 
-use crate::types::{BinOper, ColumnRef, DynIden, UnOper};
+use crate::types::{BinOper, ColumnRef, DynIden, UnOper, WindowStatement};
 use crate::value::Value;
 
 /// Subquery operators used in SQL expressions
@@ -101,6 +101,33 @@ pub enum SimpleExpr {
 
 	/// A CAST expression (e.g., `CAST(x AS INTEGER)`)
 	Cast(Box<SimpleExpr>, DynIden),
+
+	/// A window function with inline window specification
+	///
+	/// Represents expressions like:
+	/// ```sql
+	/// ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC)
+	/// ```
+	Window {
+		/// The function expression
+		func: Box<SimpleExpr>,
+		/// The window specification
+		window: WindowStatement,
+	},
+
+	/// A window function with named window reference
+	///
+	/// Represents expressions like:
+	/// ```sql
+	/// ROW_NUMBER() OVER window_name
+	/// ```
+	/// where `window_name` is defined in the WINDOW clause.
+	WindowNamed {
+		/// The function expression
+		func: Box<SimpleExpr>,
+		/// The window name
+		name: DynIden,
+	},
 }
 
 /// SQL keywords that can appear as constants.

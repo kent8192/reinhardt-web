@@ -4,8 +4,8 @@
 //! It provides a fluent API for building complex expressions.
 
 use super::simple_expr::{CaseStatement, Keyword, SimpleExpr};
-use crate::types::{ColumnRef, DynIden, IntoColumnRef, IntoIden};
-use crate::value::IntoValue;
+use crate::types::{ColumnRef, DynIden, IntoColumnRef, IntoIden, WindowStatement};
+use crate::value::{IntoValue, Value};
 
 /// Expression builder for creating SQL expressions.
 ///
@@ -306,6 +306,308 @@ impl Expr {
 	/// Create a CURRENT_TIME expression.
 	pub fn current_time() -> Self {
 		Self(SimpleExpr::Constant(Keyword::CurrentTime))
+	}
+
+	// Window function methods
+
+	/// Apply a window specification to this expression.
+	///
+	/// This creates a window function call with an inline window specification.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![Expr::col("department_id").into_simple_expr()],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::row_number().over(window);
+	/// ```
+	#[must_use]
+	pub fn over(self, window: WindowStatement) -> SimpleExpr {
+		SimpleExpr::Window {
+			func: Box::new(self.0),
+			window,
+		}
+	}
+
+	/// Apply a named window to this expression.
+	///
+	/// This creates a window function call that references a named window
+	/// defined in the WINDOW clause.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let expr = Expr::row_number().over_named("w");
+	/// ```
+	#[must_use]
+	pub fn over_named<T: IntoIden>(self, name: T) -> SimpleExpr {
+		SimpleExpr::WindowNamed {
+			func: Box::new(self.0),
+			name: name.into_iden(),
+		}
+	}
+
+	/// Create a ROW_NUMBER() window function.
+	///
+	/// Returns a sequential number for each row within a partition.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::row_number().over(window);
+	/// ```
+	pub fn row_number() -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"ROW_NUMBER".into_iden(),
+			Vec::new(),
+		))
+	}
+
+	/// Create a RANK() window function.
+	///
+	/// Returns the rank of each row within a partition, with gaps in ranking
+	/// for tied values.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::rank().over(window);
+	/// ```
+	pub fn rank() -> Self {
+		Self(SimpleExpr::FunctionCall("RANK".into_iden(), Vec::new()))
+	}
+
+	/// Create a DENSE_RANK() window function.
+	///
+	/// Returns the rank of each row within a partition, without gaps in ranking
+	/// for tied values.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::dense_rank().over(window);
+	/// ```
+	pub fn dense_rank() -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"DENSE_RANK".into_iden(),
+			Vec::new(),
+		))
+	}
+
+	/// Create an NTILE(n) window function.
+	///
+	/// Divides the rows in a partition into `buckets` number of groups.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::ntile(4).over(window); // Divide into quartiles
+	/// ```
+	pub fn ntile(buckets: i64) -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"NTILE".into_iden(),
+			vec![SimpleExpr::Value(Value::BigInt(Some(buckets)))],
+		))
+	}
+
+	/// Create a LEAD() window function.
+	///
+	/// Returns the value of the expression evaluated at the row that is `offset`
+	/// rows after the current row within the partition.
+	///
+	/// # Arguments
+	///
+	/// * `expr` - The expression to evaluate
+	/// * `offset` - Number of rows after the current row (default is 1 if `None`)
+	/// * `default` - Default value if the lead row doesn't exist (default is NULL if `None`)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// // Get next salary value
+	/// let expr = Expr::lead(Expr::col("salary").into_simple_expr(), Some(1), None).over(window);
+	/// ```
+	pub fn lead(expr: SimpleExpr, offset: Option<i64>, default: Option<Value>) -> Self {
+		let mut args = vec![expr];
+		if let Some(off) = offset {
+			args.push(SimpleExpr::Value(Value::BigInt(Some(off))));
+			if let Some(def) = default {
+				args.push(SimpleExpr::Value(def));
+			}
+		}
+		Self(SimpleExpr::FunctionCall("LEAD".into_iden(), args))
+	}
+
+	/// Create a LAG() window function.
+	///
+	/// Returns the value of the expression evaluated at the row that is `offset`
+	/// rows before the current row within the partition.
+	///
+	/// # Arguments
+	///
+	/// * `expr` - The expression to evaluate
+	/// * `offset` - Number of rows before the current row (default is 1 if `None`)
+	/// * `default` - Default value if the lag row doesn't exist (default is NULL if `None`)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// // Get previous salary value
+	/// let expr = Expr::lag(Expr::col("salary").into_simple_expr(), Some(1), None).over(window);
+	/// ```
+	pub fn lag(expr: SimpleExpr, offset: Option<i64>, default: Option<Value>) -> Self {
+		let mut args = vec![expr];
+		if let Some(off) = offset {
+			args.push(SimpleExpr::Value(Value::BigInt(Some(off))));
+			if let Some(def) = default {
+				args.push(SimpleExpr::Value(def));
+			}
+		}
+		Self(SimpleExpr::FunctionCall("LAG".into_iden(), args))
+	}
+
+	/// Create a FIRST_VALUE() window function.
+	///
+	/// Returns the first value in a window frame.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::first_value(Expr::col("salary").into_simple_expr()).over(window);
+	/// ```
+	pub fn first_value(expr: SimpleExpr) -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"FIRST_VALUE".into_iden(),
+			vec![expr],
+		))
+	}
+
+	/// Create a LAST_VALUE() window function.
+	///
+	/// Returns the last value in a window frame.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// let expr = Expr::last_value(Expr::col("salary").into_simple_expr()).over(window);
+	/// ```
+	pub fn last_value(expr: SimpleExpr) -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"LAST_VALUE".into_iden(),
+			vec![expr],
+		))
+	}
+
+	/// Create an NTH_VALUE() window function.
+	///
+	/// Returns the value of the expression at the nth row of the window frame.
+	///
+	/// # Arguments
+	///
+	/// * `expr` - The expression to evaluate
+	/// * `n` - The row number (1-based) within the frame
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![],
+	///     order_by: vec![],
+	///     frame: None,
+	/// };
+	///
+	/// // Get the 3rd salary value in the frame
+	/// let expr = Expr::nth_value(Expr::col("salary").into_simple_expr(), 3).over(window);
+	/// ```
+	pub fn nth_value(expr: SimpleExpr, n: i64) -> Self {
+		Self(SimpleExpr::FunctionCall(
+			"NTH_VALUE".into_iden(),
+			vec![expr, SimpleExpr::Value(Value::BigInt(Some(n)))],
+		))
 	}
 
 	// Conversion methods
