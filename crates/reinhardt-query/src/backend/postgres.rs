@@ -1112,7 +1112,10 @@ mod tests {
 		stmt.column("users.name")
 			.column("orders.amount")
 			.from("users")
-			.inner_join("orders", Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))));
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			);
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains("FROM \"users\""));
@@ -1127,7 +1130,10 @@ mod tests {
 		stmt.column("users.name")
 			.column("profiles.bio")
 			.from("users")
-			.left_join("profiles", Expr::col(("users", "id")).eq(Expr::col(("profiles", "user_id"))));
+			.left_join(
+				"profiles",
+				Expr::col(("users", "id")).eq(Expr::col(("profiles", "user_id"))),
+			);
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains("LEFT JOIN \"profiles\""));
@@ -1141,7 +1147,10 @@ mod tests {
 		stmt.column("users.name")
 			.column("orders.amount")
 			.from("users")
-			.right_join("orders", Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))));
+			.right_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			);
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains("RIGHT JOIN \"orders\""));
@@ -1155,7 +1164,10 @@ mod tests {
 		stmt.column("users.name")
 			.column("orders.amount")
 			.from("users")
-			.full_outer_join("orders", Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))));
+			.full_outer_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			);
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains("FULL OUTER JOIN \"orders\""));
@@ -1184,8 +1196,14 @@ mod tests {
 			.column("orders.amount")
 			.column("products.title")
 			.from("users")
-			.inner_join("orders", Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))))
-			.inner_join("products", Expr::col(("orders", "product_id")).eq(Expr::col(("products", "id"))));
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			)
+			.inner_join(
+				"products",
+				Expr::col(("orders", "product_id")).eq(Expr::col(("products", "id"))),
+			);
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains("INNER JOIN \"orders\""));
@@ -1617,7 +1635,6 @@ mod tests {
 		assert!(sql.contains("SELECT \"name\" FROM \"employee_hierarchy\""));
 	}
 
-
 	// Window function tests
 
 	#[test]
@@ -1626,7 +1643,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1654,7 +1671,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1668,7 +1685,10 @@ mod tests {
 		stmt.expr(Expr::row_number().over(window)).from("users");
 
 		let (sql, _values) = builder.build_select(&stmt);
-		assert_eq!(sql, r#"SELECT ROW_NUMBER() OVER ( ORDER BY "id" ASC ) FROM "users""#);
+		assert_eq!(
+			sql,
+			r#"SELECT ROW_NUMBER() OVER ( ORDER BY "id" ASC ) FROM "users""#
+		);
 	}
 
 	#[test]
@@ -1677,7 +1697,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1705,7 +1725,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("class").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1733,7 +1753,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1761,7 +1781,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("league").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1789,7 +1809,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1817,7 +1837,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1845,7 +1865,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1874,7 +1894,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("ticker").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1889,8 +1909,9 @@ mod tests {
 			Expr::lead(
 				Expr::col("price").into_simple_expr(),
 				Some(2),
-				Some(0.0.into())
-			).over(window)
+				Some(0.0.into()),
+			)
+			.over(window),
 		)
 		.column("date")
 		.from("stocks");
@@ -1909,7 +1930,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1938,7 +1959,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("product").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1953,8 +1974,9 @@ mod tests {
 			Expr::lag(
 				Expr::col("revenue").into_simple_expr(),
 				Some(3),
-				Some(0.0.into())
-			).over(window)
+				Some(0.0.into()),
+			)
+			.over(window),
 		)
 		.column("month")
 		.from("sales");
@@ -1973,7 +1995,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2001,7 +2023,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2029,7 +2051,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2057,7 +2079,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![
 				Expr::col("country").into_simple_expr(),
@@ -2088,7 +2110,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("region").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2116,7 +2138,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -2144,7 +2166,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("sensor_id").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2173,7 +2195,7 @@ mod tests {
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window1 = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -2200,9 +2222,279 @@ mod tests {
 			.from("employees");
 
 		let (sql, _values) = builder.build_select(&stmt);
-		assert!(sql.contains(r#"ROW_NUMBER() OVER ( PARTITION BY "department" ORDER BY "salary" DESC )"#));
+		assert!(
+			sql.contains(
+				r#"ROW_NUMBER() OVER ( PARTITION BY "department" ORDER BY "salary" DESC )"#
+			)
+		);
 		assert!(sql.contains(r#"RANK() OVER ( ORDER BY "hire_date" ASC )"#));
 		assert!(sql.contains(r#""name""#));
 		assert!(sql.contains(r#"FROM "employees""#));
+	}
+
+	// JOIN enhancement tests
+
+	#[test]
+	fn test_join_three_tables() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.column(("orders", "order_date"))
+			.column(("products", "product_name"))
+			.from("users")
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			)
+			.inner_join(
+				"products",
+				Expr::col(("orders", "product_id")).eq(Expr::col(("products", "id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert_eq!(
+			sql,
+			r#"SELECT "users"."name", "orders"."order_date", "products"."product_name" FROM "users" INNER JOIN "orders" ON "users"."id" = "orders"."user_id" INNER JOIN "products" ON "orders"."product_id" = "products"."id""#
+		);
+	}
+
+	#[test]
+	fn test_self_join() {
+		use crate::types::TableRef;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("e1", "name"))
+			.column(("e2", "name"))
+			.from(TableRef::table_alias("employees", "e1"))
+			.inner_join(
+				TableRef::table_alias("employees", "e2"),
+				Expr::col(("e1", "manager_id")).eq(Expr::col(("e2", "id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#"FROM "employees" AS "e1""#));
+		assert!(sql.contains(r#"INNER JOIN "employees" AS "e2""#));
+		assert!(sql.contains(r#"ON "e1"."manager_id" = "e2"."id""#));
+	}
+
+	#[test]
+	fn test_join_complex_conditions() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.from("orders").left_join(
+			"customers",
+			Expr::col(("orders", "customer_id"))
+				.eq(Expr::col(("customers", "id")))
+				.and(Expr::col(("customers", "active")).eq(true))
+				.and(
+					Expr::col(("orders", "created_at"))
+						.gt(Expr::col(("customers", "registered_at"))),
+				),
+		);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LEFT JOIN \"customers\""));
+		assert!(sql.contains("\"orders\".\"customer_id\" = \"customers\".\"id\""));
+		assert!(sql.contains("AND \"customers\".\"active\" = $"));
+		assert!(sql.contains("AND \"orders\".\"created_at\" > \"customers\".\"registered_at\""));
+		assert_eq!(values.len(), 1); // true value
+	}
+
+	#[test]
+	fn test_join_with_subquery_in_condition() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut subquery = Query::select();
+		subquery.expr(Expr::col("max_id")).from("user_stats");
+
+		let mut stmt = Query::select();
+		stmt.from("users").inner_join(
+			"profiles",
+			Expr::col(("users", "id"))
+				.eq(Expr::col(("profiles", "user_id")))
+				.and(Expr::col(("users", "id")).in_subquery(subquery)),
+		);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("INNER JOIN \"profiles\""));
+		assert!(sql.contains("\"users\".\"id\" = \"profiles\".\"user_id\""));
+		assert!(sql.contains("IN"));
+		assert!(sql.contains("SELECT \"max_id\" FROM \"user_stats\""));
+	}
+
+	#[test]
+	fn test_multiple_left_joins() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.column(("profiles", "bio"))
+			.column(("addresses", "city"))
+			.column(("phone_numbers", "number"))
+			.from("users")
+			.left_join(
+				"profiles",
+				Expr::col(("users", "id")).eq(Expr::col(("profiles", "user_id"))),
+			)
+			.left_join(
+				"addresses",
+				Expr::col(("users", "id")).eq(Expr::col(("addresses", "user_id"))),
+			)
+			.left_join(
+				"phone_numbers",
+				Expr::col(("users", "id")).eq(Expr::col(("phone_numbers", "user_id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("LEFT JOIN \"profiles\""));
+		assert!(sql.contains("LEFT JOIN \"addresses\""));
+		assert!(sql.contains("LEFT JOIN \"phone_numbers\""));
+	}
+
+	#[test]
+	fn test_mixed_join_types() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.from("users")
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			)
+			.left_join(
+				"reviews",
+				Expr::col(("orders", "id")).eq(Expr::col(("reviews", "order_id"))),
+			)
+			.right_join(
+				"refunds",
+				Expr::col(("orders", "id")).eq(Expr::col(("refunds", "order_id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("INNER JOIN \"orders\""));
+		assert!(sql.contains("LEFT JOIN \"reviews\""));
+		assert!(sql.contains("RIGHT JOIN \"refunds\""));
+	}
+
+	#[test]
+	fn test_join_with_group_by() {
+		use crate::expr::SimpleExpr;
+		use crate::types::{BinOper, ColumnRef, IntoIden};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		let count_expr = SimpleExpr::FunctionCall(
+			"COUNT".into_iden(),
+			vec![SimpleExpr::Column(ColumnRef::Asterisk)],
+		);
+
+		stmt.column(("users", "name"))
+			.expr(count_expr.clone())
+			.from("users")
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			)
+			.group_by(("users", "name"))
+			.and_having(SimpleExpr::Binary(
+				Box::new(count_expr),
+				BinOper::GreaterThan,
+				Box::new(SimpleExpr::Value(5.into())),
+			));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("INNER JOIN \"orders\""));
+		assert!(sql.contains("GROUP BY \"users\".\"name\""));
+		assert!(sql.contains("HAVING"));
+		assert!(sql.contains("COUNT(*) > $"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_join_with_window_function() {
+		use crate::types::{IntoIden, Order, OrderExpr, OrderExprKind, WindowStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+
+		let window = WindowStatement {
+			partition_by: vec![Expr::col(("departments", "name")).into_simple_expr()],
+			order_by: vec![OrderExpr {
+				expr: OrderExprKind::TableColumn("employees".into_iden(), "salary".into_iden()),
+				order: Order::Desc,
+				nulls: None,
+			}],
+			frame: None,
+		};
+
+		stmt.column(("employees", "name"))
+			.expr(Expr::row_number().over(window))
+			.from("employees")
+			.inner_join(
+				"departments",
+				Expr::col(("employees", "department_id")).eq(Expr::col(("departments", "id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("INNER JOIN \"departments\""));
+		assert!(sql.contains("ROW_NUMBER() OVER"));
+		assert!(sql.contains(r#"PARTITION BY "departments"."name""#));
+	}
+
+	#[test]
+	fn test_four_table_join() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.column(("orders", "order_date"))
+			.column(("products", "product_name"))
+			.column(("categories", "category_name"))
+			.from("users")
+			.inner_join(
+				"orders",
+				Expr::col(("users", "id")).eq(Expr::col(("orders", "user_id"))),
+			)
+			.inner_join(
+				"products",
+				Expr::col(("orders", "product_id")).eq(Expr::col(("products", "id"))),
+			)
+			.inner_join(
+				"categories",
+				Expr::col(("products", "category_id")).eq(Expr::col(("categories", "id"))),
+			);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("FROM \"users\""));
+		assert!(sql.contains("INNER JOIN \"orders\""));
+		assert!(sql.contains("INNER JOIN \"products\""));
+		assert!(sql.contains("INNER JOIN \"categories\""));
+	}
+
+	#[test]
+	fn test_join_with_cte() {
+		use crate::types::TableRef;
+
+		let builder = PostgresQueryBuilder::new();
+
+		let mut cte = Query::select();
+		cte.column("user_id")
+			.expr(Expr::col("total"))
+			.from("order_totals")
+			.and_where(Expr::col("total").gt(1000));
+
+		let mut stmt = Query::select();
+		stmt.with_cte("high_value_customers", cte)
+			.column(("users", "name"))
+			.column(("hvc", "total"))
+			.from("users")
+			.inner_join(
+				TableRef::table_alias("high_value_customers", "hvc"),
+				Expr::col(("users", "id")).eq(Expr::col(("hvc", "user_id"))),
+			);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WITH \"high_value_customers\" AS"));
+		assert!(sql.contains("INNER JOIN \"high_value_customers\" AS \"hvc\""));
+		assert_eq!(values.len(), 1); // 1000
 	}
 }
