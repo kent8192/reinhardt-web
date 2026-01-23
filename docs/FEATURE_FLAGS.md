@@ -88,7 +88,6 @@ reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["
 
 **Binary**: ~5-10 MB | **Compile**: Very fast
 
-**Equivalent to**: `reinhardt-micro` functionality (routing, DI, params, server)
 
 ---
 
@@ -480,7 +479,6 @@ See [Task Backends Documentation](../crates/reinhardt-tasks/README.md#backend-co
 
 | Crate | Default Features | Key Features |
 |-------|------------------|--------------|
-| `reinhardt-micro` | `routing`, `params`, `di` | `database`, middleware options |
 | `reinhardt-di` | None | `params`, `dev-tools`, `generator` |
 | `reinhardt-db` | `backends`, `pool`, `postgres`, `orm`, `migrations` | `sqlite`, `mysql`, `contenttypes` |
 | `reinhardt-auth` | None | `jwt`, `session`, `oauth`, `token`, `argon2-hasher` |
@@ -504,7 +502,7 @@ See [Task Backends Documentation](../crates/reinhardt-tasks/README.md#backend-co
 
 | Use Case | Configuration | Binary |
 |----------|---------------|--------|
-| Microservice | `reinhardt-micro = "0.1.0-alpha.1"` | ~5-10 MB |
+| Microservice | `default-features = false, features = ["minimal"]` | ~5-10 MB |
 | REST API | `features = ["api-only", "db-postgres", "auth-jwt"]` | ~20-25 MB |
 | GraphQL/WebSocket | `features = ["graphql", "websockets", "db-postgres"]` | ~30-35 MB |
 | Full-Featured | `features = ["full"]` | ~50+ MB |
@@ -572,7 +570,6 @@ features = ["minimal"]
 
 **Now (v0.1.0-alpha.2):**
 ```toml
-# minimal includes: core, di, server (equivalent to reinhardt-micro)
 features = ["minimal"]
 ```
 
@@ -581,7 +578,6 @@ features = ["minimal"]
 - ✅ **Backward compatible**: Adding features is non-breaking
 
 **Equivalent to:**
-- `reinhardt-micro` functionality
 - Routing, DI, params, server, core
 
 #### 3. `standard` Now Includes PostgreSQL by Default

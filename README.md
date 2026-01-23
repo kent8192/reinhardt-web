@@ -106,10 +106,6 @@ Lightweight and fast, perfect for simple APIs:
 
 ```toml
 [dependencies]
-# Standalone crate
-reinhardt-micro = "0.1.0-alpha.1"
-
-# Or via main crate
 reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
@@ -984,7 +980,6 @@ Reinhardt offers modular components you can mix and match:
 | Configuration       | `reinhardt-conf`          | Settings management, environment loading    |
 | Commands            | `reinhardt-commands`      | Management CLI tools (startproject, etc.)   |
 | Shortcuts           | `reinhardt-shortcuts`     | Common utility functions                    |
-| Microservices       | `reinhardt-micro`         | All-in-one minimal setup (HTTP + routing + DI) |
 | **Database**        |                           |                                             |
 | ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc integration             |
 | **Authentication**  |                           |                                             |
