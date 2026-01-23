@@ -19,6 +19,7 @@ mod join;
 mod operators;
 mod order;
 mod table_ref;
+mod window;
 
 pub use alias::Alias;
 pub use column_ref::{ColumnRef, IntoColumnRef};
@@ -27,6 +28,7 @@ pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
 pub use operators::{BinOper, LogicalChainOper, SubQueryOper, UnOper};
 pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
 pub use table_ref::{IntoTableRef, TableRef};
+pub use window::{Frame, FrameClause, FrameType, WindowStatement};
 
 #[cfg(test)]
 mod tests;
