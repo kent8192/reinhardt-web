@@ -643,7 +643,7 @@ For **each published crate**, configure Trusted Publisher on crates.io:
 **Efficiency Tips**:
 
 - Start with core crates: `reinhardt-macros`, `reinhardt-core`, `reinhardt-orm`
-- Can use GitHub CLI or API for batch configuration
+- Can use GitHub MCP tools, GitHub CLI, or API for batch configuration
 - Only published crates need configuration (unpublished crates skip this)
 
 #### Step 2: Create GitHub Environment
