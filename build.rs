@@ -6,6 +6,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		return Ok(());
 	}
 
+	// Skip proto compilation when proto files are not available
+	// (e.g., when building from crates.io where tests/ is not included)
+	let proto_dir = std::path::Path::new("tests/proto");
+	if !proto_dir.exists() {
+		return Ok(());
+	}
+
 	// Compile proto files for gRPC integration tests
 	tonic_prost_build::configure()
 		.build_server(true)
