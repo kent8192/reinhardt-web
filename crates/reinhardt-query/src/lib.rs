@@ -1,40 +1,88 @@
 //! # reinhardt-query
 //!
-//! SQL query builder for Reinhardt framework, compatible with SeaQuery API.
+//! A type-safe SQL query builder for the Reinhardt framework.
 //!
-//! This crate provides a type-safe, fluent API for building SQL queries that can be
-//! executed against PostgreSQL, MySQL, and SQLite databases.
+//! This crate provides a fluent API for constructing SQL queries that target
+//! PostgreSQL, MySQL, and SQLite databases. It generates parameterized queries
+//! with proper identifier escaping and value placeholders for each backend.
+//!
+//! ## Features
+//!
+//! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
+//! - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
+//! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
+//! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
+//! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
 //!
 //! ## Architecture
 //!
 //! The crate is organized into several modules:
 //!
 //! - [`value`]: Core value types for representing SQL values
-//! - [`types`]: Identifier, column reference, and table reference types
-//! - [`expr`]: Expression building and the expression trait system
-//! - [`query`]: Query builders (SELECT, INSERT, UPDATE, DELETE)
-//! - [`schema`]: Schema builders (CREATE, ALTER, DROP TABLE)
-//! - [`backend`]: Database backend implementations (PostgreSQL, MySQL, SQLite)
-//! - [`func`]: SQL function support
+//! - [`types`]: Identifier, column reference, table reference, and operator types
+//! - [`expr`]: Expression building with the [`ExprTrait`](expr::ExprTrait) system
+//! - [`query`]: Query builders ([`SelectStatement`](query::SelectStatement),
+//!   [`InsertStatement`](query::InsertStatement), [`UpdateStatement`](query::UpdateStatement),
+//!   [`DeleteStatement`](query::DeleteStatement))
+//! - [`backend`]: Database backend implementations
+//!   ([`PostgresQueryBuilder`](backend::PostgresQueryBuilder),
+//!   [`MySqlQueryBuilder`](backend::MySqlQueryBuilder),
+//!   [`SqliteQueryBuilder`](backend::SqliteQueryBuilder))
 //!
-//! ## Example
+//! ## Quick Start
 //!
-//! ```rust,ignore
+//! ```rust
 //! use reinhardt_query::prelude::*;
 //!
 //! // Build a SELECT query
-//! let query = Query::select()
-//!     .column(Expr::col(Users::Id))
-//!     .column(Expr::col(Users::Name))
-//!     .from(Users::Table)
-//!     .and_where(Expr::col(Users::Active).eq(true))
-//!     .order_by(Users::Name, Order::Asc)
+//! let mut stmt = Query::select();
+//! stmt.column("name")
+//!     .column("email")
+//!     .from("users")
+//!     .and_where(Expr::col("active").eq(true))
+//!     .order_by("name", Order::Asc)
 //!     .limit(10);
 //!
 //! // Generate SQL for PostgreSQL
-//! let (sql, values) = query.build(PostgresQueryBuilder);
-//! // sql = "SELECT \"id\", \"name\" FROM \"users\" WHERE \"active\" = $1 ORDER BY \"name\" ASC LIMIT $2"
-//! // values = [true, 10]
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, values) = builder.build_select(&stmt);
+//! assert_eq!(
+//!     sql,
+//!     r#"SELECT "name", "email" FROM "users" WHERE "active" = $1 ORDER BY "name" ASC LIMIT $2"#
+//! );
+//! assert_eq!(values.len(), 2);
+//! ```
+//!
+//! ## Backend Differences
+//!
+//! | Feature | PostgreSQL | MySQL | SQLite |
+//! |---------|-----------|-------|--------|
+//! | Identifier quoting | `"name"` | `` `name` `` | `"name"` |
+//! | Placeholders | `$1, $2, ...` | `?, ?, ...` | `?, ?, ...` |
+//! | NULLS FIRST/LAST | Native | Not supported | Native |
+//! | DISTINCT ON | Supported | Not supported | Not supported |
+//! | Window functions | Full support | Full support | Full support |
+//! | CTEs (WITH) | Supported | Supported | Supported |
+//!
+//! ## Expression Examples
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // Arithmetic expressions
+//! let expr = Expr::col("price").mul(Expr::col("quantity"));
+//!
+//! // Comparison with chaining
+//! let cond = Expr::col("age").gte(18i32).and(Expr::col("active").eq(true));
+//!
+//! // CASE WHEN expressions
+//! let case_expr = Expr::case()
+//!     .when(Expr::col("score").gte(90i32), "A")
+//!     .when(Expr::col("score").gte(80i32), "B")
+//!     .else_result("C");
+//!
+//! // LIKE pattern matching
+//! let like_expr = Expr::col("email").like("%@example.com");
 //! ```
 //!
 //! ## Feature Flags
@@ -47,29 +95,26 @@
 //! - `with-bigdecimal`: Enable BigDecimal type in `Value`
 //! - `full`: Enable all optional features
 
-// Core modules (Phase 1)
+// Core modules
 pub mod types;
 pub mod value;
 
-// Expression module (Phase 2)
+// Expression module
 pub mod expr;
 
-// Query builders (Phase 3)
+// Query builders
 pub mod query;
 
-// Schema builders (Phase 4 - placeholder)
-// pub mod schema;
-
-// Backend implementations (Phase 5)
+// Backend implementations
 pub mod backend;
 
-// SQL functions (Phase 6 - placeholder)
-// pub mod func;
-
-// SQL writer infrastructure
-// pub mod prepare;
-
-/// Prelude module for convenient imports
+/// Prelude module for convenient imports.
+///
+/// Import everything from this module to get started quickly:
+///
+/// ```rust
+/// use reinhardt_query::prelude::*;
+/// ```
 pub mod prelude {
 	pub use crate::backend::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter, SqliteQueryBuilder,
@@ -83,7 +128,7 @@ pub mod prelude {
 		QueryStatementWriter, SelectStatement, UpdateStatement,
 	};
 	pub use crate::types::{
-		Alias, ColumnRef, DynIden, Iden, IdenStatic, IntoColumnRef, IntoIden, IntoTableRef,
+		Alias, ColumnRef, DynIden, Iden, IdenStatic, IntoColumnRef, IntoIden, IntoTableRef, Order,
 		TableRef,
 	};
 	pub use crate::value::{ArrayType, IntoValue, Value, ValueTuple, Values};

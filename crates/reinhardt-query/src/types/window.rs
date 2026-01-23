@@ -50,7 +50,7 @@ pub enum Frame {
 /// # Examples
 ///
 /// ```rust
-/// use reinhardt_query::types::window::{FrameClause, FrameType, Frame};
+/// use reinhardt_query::types::{FrameClause, FrameType, Frame};
 ///
 /// // ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 /// let frame = FrameClause {
@@ -87,8 +87,7 @@ pub struct FrameClause {
 ///
 /// ```rust
 /// use reinhardt_query::{
-///     types::window::{WindowStatement, FrameClause, FrameType, Frame},
-///     types::order::{OrderExpr, Order},
+///     types::{WindowStatement, FrameClause, FrameType, Frame, OrderExpr, Order},
 ///     expr::Expr,
 /// };
 ///
