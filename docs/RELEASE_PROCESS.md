@@ -15,7 +15,8 @@ publishing, and troubleshooting.
 - [Pre-Release Checklist](#pre-release-checklist)
 - [Automated Publishing with CI/CD](#automated-publishing-with-cicd)
 - [CHANGELOG Management](#changelog-management)
-- [Multi-Crate Releases](#multi-crate-releases)
+- [Version Cascade Releases](#version-cascade-releases)
+- [Multi-Crate Releases (Independent Updates)](#multi-crate-releases-independent-updates)
 - [Rollback Procedures](#rollback-procedures)
 - [Troubleshooting](#troubleshooting)
 - [Quick Reference](#quick-reference)
@@ -487,7 +488,145 @@ should omit empty sections.
 
 ---
 
-## Multi-Crate Releases
+## Version Cascade Releases
+
+### What is Version Cascade?
+
+When a sub-crate's version is updated, the main crate (`reinhardt-web`) version **MUST** also be updated according to the Version Cascade Policy. This ensures:
+
+- **Traceability**: All dependency changes are tracked in the main crate
+- **SemVer Compliance**: Breaking changes in sub-crates propagate to the main crate
+- **CHANGELOG Consistency**: All changes are documented centrally
+
+### When Version Cascade Applies
+
+Version Cascade applies when:
+
+1. **Any sub-crate version is bumped** (MAJOR, MINOR, or PATCH)
+2. **Multiple sub-crates are updated simultaneously**
+3. **Sub-crate changes affect the main crate's API surface**
+
+### Version Mapping Rules
+
+#### Single Sub-Crate Update
+
+Main crate version change MUST match sub-crate's change level:
+
+| Sub-Crate Change | Main Crate Change | Example |
+|------------------|-------------------|---------|
+| MAJOR (X.0.0) | MAJOR (X.0.0) | `reinhardt-orm` 2.0.0 → `reinhardt-web` 1.0.0 |
+| MINOR (0.X.0) | MINOR (0.X.0) | `reinhardt-rest` 0.2.0 → `reinhardt-web` 0.2.0 |
+| PATCH (0.0.X) | PATCH (0.0.X) | `reinhardt-core` 0.1.1 → `reinhardt-web` 0.1.1 |
+
+#### Multiple Sub-Crates Update
+
+Main crate version follows the **highest priority** change:
+
+**Priority**: MAJOR > MINOR > PATCH
+
+**Example**:
+- `reinhardt-orm` 0.1.0 → 0.2.0 (MINOR)
+- `reinhardt-database` 0.1.0 → 0.1.1 (PATCH)
+- **Result**: `reinhardt-web` 0.1.0 → 0.2.0 (MINOR wins)
+
+### Quick Workflow
+
+**3-Step Process**:
+
+1. **Update Sub-Crate(s)**
+   ```bash
+   # Update Cargo.toml and CHANGELOG.md
+   git add crates/[crate-name]/Cargo.toml crates/[crate-name]/CHANGELOG.md
+   git commit -m "chore(release): bump [crate-name] to v[version]"
+   ```
+
+2. **Apply Version Cascade to Main Crate**
+   ```bash
+   # Update Cargo.toml and CHANGELOG.md (add Sub-Crate Updates section)
+   git add Cargo.toml CHANGELOG.md
+   git commit -m "chore(release): bump reinhardt-web to v[version] (cascade: [crate-name])"
+   ```
+
+3. **Create Atomic PR**
+   ```bash
+   git push origin [branch-name]
+   gh pr create --title "chore(release): version cascade for [crate-name] v[version]" --label release
+   ```
+
+### CHANGELOG Reference Format
+
+Main crate's `CHANGELOG.md` MUST include a **Sub-Crate Updates** subsection:
+
+```markdown
+## [0.2.0] - 2026-01-24
+
+### Sub-Crate Updates
+
+- `reinhardt-orm` updated to v0.2.0 ([CHANGELOG](crates/reinhardt-orm/CHANGELOG.md#020---2026-01-24))
+  - Added support for complex JOIN queries
+  - Fixed connection pool leak issue
+```
+
+**Key Elements**:
+- Crate name with backticks
+- Version number
+- Link to sub-crate CHANGELOG with anchor: `#[version]---YYYY-MM-DD`
+- Brief summary (1-3 bullet points)
+
+### Complete Example
+
+**Scenario**: `reinhardt-orm` adds new features (0.1.0 → 0.2.0)
+
+**Steps**:
+
+1. **Update Sub-Crate**:
+   ```bash
+   cd crates/reinhardt-orm
+   # Edit Cargo.toml: version = "0.2.0"
+   # Edit CHANGELOG.md: Add [0.2.0] section
+   git add Cargo.toml CHANGELOG.md
+   git commit -m "chore(release): bump reinhardt-orm to v0.2.0"
+   ```
+
+2. **Update Main Crate (Version Cascade)**:
+   ```bash
+   cd ../..  # Back to repository root
+   # Edit Cargo.toml: version = "0.2.0"
+   # Edit CHANGELOG.md: Add [0.2.0] section with Sub-Crate Updates
+   git add Cargo.toml CHANGELOG.md
+   git commit -m "chore(release): bump reinhardt-web to v0.2.0 (cascade: reinhardt-orm)"
+   ```
+
+   **Commit Message Body**:
+   ```
+   Version Cascade triggered by:
+   - reinhardt-orm v0.1.0 → v0.2.0 (MINOR)
+
+   Version Mapping: MINOR → MINOR
+
+   Changes:
+   - Added support for complex JOIN queries
+   - Fixed connection pool leak issue
+   ```
+
+3. **Create PR**:
+   ```bash
+   git push origin feature/update-orm
+   gh pr create --title "chore(release): version cascade for reinhardt-orm v0.2.0" \
+                --label release \
+                --body "See commits for details"
+   ```
+
+### For Detailed Implementation Guide
+
+For comprehensive rules, edge cases, and automation considerations, see:
+[docs/VERSION_CASCADE.md](VERSION_CASCADE.md)
+
+---
+
+## Multi-Crate Releases (Independent Updates)
+
+**Note**: This section covers **independent multi-crate updates** where crates are updated in parallel without triggering Version Cascade. For dependency-driven updates, see [Version Cascade Releases](#version-cascade-releases) above.
 
 ### When to Release Multiple Crates
 

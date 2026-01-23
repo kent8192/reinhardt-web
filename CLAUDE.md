@@ -182,9 +182,15 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Push commits and tags AFTER successful publish
 
 **Version Cascade Policy:**
-- When a sub-crate's version changes, the main crate (`reinhardt-web`) version MUST also be updated appropriately
-- The main crate's CHANGELOG.md MUST reference the sub-crate changes
-- Version bump level follows SemVer: sub-crate breaking change → main crate breaking change
+- When a sub-crate's version changes, the main crate (`reinhardt-web`) version MUST be updated following the version mapping rules:
+  - Single sub-crate update: Main crate version change MUST match sub-crate's change level (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH)
+  - Multiple sub-crates update: Main crate version follows the highest priority change (MAJOR > MINOR > PATCH)
+- The main crate's CHANGELOG.md MUST include a "Sub-Crate Updates" subsection with:
+  - Sub-crate name, version, and CHANGELOG link (using anchor format: `#[version]---YYYY-MM-DD`)
+  - Brief summary (1-3 bullet points) of key changes
+- Each crate version bump MUST be committed individually (sub-crates first, main crate last)
+- Main crate commit message MUST include `cascade:` keyword indicating Version Cascade
+- See [docs/VERSION_CASCADE.md](docs/VERSION_CASCADE.md) for complete implementation guide
 
 **Publishing Workflow:**
 1. Update crate version in `Cargo.toml`
@@ -372,6 +378,12 @@ Before submitting code:
 - Update crate's CHANGELOG.md with version changes
 - Write CHANGELOG.md in English (no exceptions)
 - Update main crate (`reinhardt-web`) version when any sub-crate version changes
+- Apply Version Cascade Policy: version mapping (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH) for single sub-crate updates
+- For multiple sub-crates updates, follow highest priority: MAJOR > MINOR > PATCH
+- Commit each crate version bump individually (sub-crates first, main crate last)
+- Include `cascade:` keyword in main crate commit message for Version Cascade
+- Use standardized CHANGELOG reference format: `#[version]---YYYY-MM-DD` for sub-crate links
+- Add "Sub-Crate Updates" subsection in main crate CHANGELOG.md with brief summary
 - Prefer GitHub MCP tools when available; fall back to `gh` CLI otherwise
 - Write all PR titles and descriptions in English
 - Write all issue titles and descriptions in English
@@ -412,6 +424,11 @@ Before submitting code:
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
 - Update sub-crate version without updating main crate version
+- Use inappropriate version level in Version Cascade (e.g., MAJOR sub-crate → PATCH main crate)
+- Batch multiple crate version bumps into single commit (must commit individually)
+- Omit `cascade:` keyword in main crate version bump commit message
+- Use non-standard CHANGELOG anchor format for sub-crate links
+- Skip "Sub-Crate Updates" subsection in main crate CHANGELOG.md
 - Change `Cargo.toml` version without updating corresponding CHANGELOG.md
 - Make breaking changes without MAJOR version bump
 - Start commit description with uppercase letter

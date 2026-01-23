@@ -216,6 +216,147 @@ After committing the version bump:
 - ✅ ALWAYS wait for user confirmation between steps
 - ✅ ALWAYS update CHANGELOG.md in the same commit as Cargo.toml
 
+### CE-5.1 (MUST): Version Cascade Commits
+
+**When Applicable:**
+
+When a sub-crate's version is updated, the main crate (`reinhardt-web`) version MUST also be updated following the Version Cascade Policy (see [docs/VERSION_CASCADE.md](VERSION_CASCADE.md)).
+
+**Commit Order:**
+
+Version Cascade requires **individual commits** in the following order:
+
+1. **Sub-crate commits** (in dependency order, leaf-first)
+2. **Main crate commit** (last, indicating cascade)
+
+**Sub-Crate Commit Format:**
+
+Same as CE-5 standard release commit format:
+
+```
+chore(release): bump [sub-crate-name] to v[version]
+
+Prepare [sub-crate-name] for publication to crates.io.
+
+Version Changes:
+- crates/[sub-crate-name]/Cargo.toml: version [old] -> [new]
+- crates/[sub-crate-name]/CHANGELOG.md: Add release notes for v[new]
+
+[List changes as per CE-5]
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Main Crate Commit Format (with `cascade:` keyword):**
+
+**Subject Line:**
+```
+chore(release): bump reinhardt-web to v[version] (cascade: [sub-crate-list])
+
+Examples:
+chore(release): bump reinhardt-web to v0.2.0 (cascade: reinhardt-orm)
+chore(release): bump reinhardt-web to v0.3.0 (cascade: reinhardt-database, reinhardt-orm, reinhardt-rest)
+```
+
+**Body Format:**
+```
+Version Cascade triggered by:
+- [crate-name] v[old] → v[new] ([MAJOR|MINOR|PATCH])
+- [crate-name-2] v[old] → v[new] ([MAJOR|MINOR|PATCH])  # If multiple
+
+Version Mapping: [change-level] → [change-level]
+
+Changes:
+- [crate-name]: Brief summary of key changes
+- [crate-name-2]: Brief summary of key changes  # If multiple
+
+Version Changes:
+- Cargo.toml: version [old] -> [new]
+- CHANGELOG.md: Add Sub-Crate Updates section for v[new]
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Complete Example (Single Sub-Crate Update):**
+
+```
+chore(release): bump reinhardt-web to v0.2.0 (cascade: reinhardt-orm)
+
+Version Cascade triggered by:
+- reinhardt-orm v0.1.0 → v0.2.0 (MINOR)
+
+Version Mapping: MINOR → MINOR
+
+Changes:
+- reinhardt-orm: Added support for complex JOIN queries, fixed connection pool leak
+
+Version Changes:
+- Cargo.toml: version 0.1.0 -> 0.2.0
+- CHANGELOG.md: Add Sub-Crate Updates section for v0.2.0
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Complete Example (Multiple Sub-Crates Update):**
+
+```
+chore(release): bump reinhardt-web to v0.3.0 (cascade: reinhardt-database, reinhardt-orm, reinhardt-rest)
+
+Version Cascade triggered by:
+- reinhardt-database v0.1.0 → v0.2.0 (MINOR)
+- reinhardt-orm v0.2.0 → v0.3.0 (MINOR)
+- reinhardt-rest v0.2.0 → v0.2.1 (PATCH)
+
+Version Mapping: MINOR (highest priority) → MINOR
+
+Changes:
+- reinhardt-database: Migrated to SeaQuery 1.0.0-rc.2
+- reinhardt-orm: BREAKING - Changed Model trait signature, added async/await support
+- reinhardt-rest: Fixed JSON serialization bug
+
+Version Changes:
+- Cargo.toml: version 0.2.0 -> 0.3.0
+- CHANGELOG.md: Add Sub-Crate Updates section for v0.3.0
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Requirements:**
+
+- ✅ MUST commit each crate version bump individually (sub-crates first, main crate last)
+- ✅ MUST include `cascade:` keyword in main crate commit subject
+- ✅ MUST list all triggering sub-crates in subject (alphabetical order if multiple)
+- ✅ MUST specify version mapping in commit body (e.g., "MINOR → MINOR")
+- ✅ MUST include brief summary of sub-crate changes in commit body
+- ✅ MUST update main crate's CHANGELOG.md with "Sub-Crate Updates" subsection
+- ✅ MUST create all Version Cascade commits in a single PR (atomic PR)
+- ✅ MUST use correct CHANGELOG anchor format: `#[version]---YYYY-MM-DD`
+
+**Prohibited Actions:**
+
+- ❌ NEVER batch multiple crate version bumps into a single commit
+- ❌ NEVER omit `cascade:` keyword in main crate commit subject
+- ❌ NEVER skip version mapping information in commit body
+- ❌ NEVER use incorrect version level (e.g., MAJOR sub-crate → PATCH main crate)
+- ❌ NEVER create separate PRs for sub-crate and main crate commits
+- ❌ NEVER use non-standard CHANGELOG anchor format
+
+**For Detailed Implementation Guide:**
+
+See [docs/VERSION_CASCADE.md](VERSION_CASCADE.md) for:
+- Version mapping rules (VCR-1, VCR-2, VCR-3)
+- CHANGELOG reference format (CRF-1, CRF-2, CRF-3)
+- Complete workflow examples
+- Edge case handling
+
 ---
 
 ## Commit Message Structure

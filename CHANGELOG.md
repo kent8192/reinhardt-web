@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Sub-Crate Updates
+
+<!-- Add sub-crate updates here following the format:
+- `[crate-name]` updated to v[version] ([CHANGELOG](crates/[crate-name]/CHANGELOG.md#[anchor]))
+  - Brief summary of key changes
+-->
+
 ## [0.1.0-alpha.1] - 2026-01-23
+
+### Sub-Crate Updates
+
+- `reinhardt-shortcuts` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-shortcuts/CHANGELOG.md#010-alpha2---2026-01-23))
+  - Initial release with keyboard shortcut support
+- `reinhardt-i18n` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-i18n/CHANGELOG.md#010-alpha2---2026-01-23))
+  - Initial release with internationalization support
 
 ### Added
 
@@ -16,3 +30,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fine-grained feature flags for authentication, database backends, middleware, and more
 - WASM target support via conditional compilation
 - Re-exports of all Reinhardt sub-crates through a unified API
+
+---
+
+## Sub-Crate CHANGELOGs
+
+For detailed changes in individual sub-crates, refer to their respective CHANGELOG files:
+
+### Core & Foundation
+- [reinhardt-core](crates/reinhardt-core/CHANGELOG.md) - Core framework types and traits
+- [reinhardt-utils](crates/reinhardt-utils/CHANGELOG.md) - Utility functions and macros
+- [reinhardt-conf](crates/reinhardt-conf/CHANGELOG.md) - Configuration management
+
+### Database & ORM
+- [reinhardt-db](crates/reinhardt-db/CHANGELOG.md) - Database connection and query building
+
+### Dependency Injection
+- [reinhardt-di](crates/reinhardt-di/CHANGELOG.md) - Dependency injection container
+- [reinhardt-dentdelion](crates/reinhardt-dentdelion/CHANGELOG.md) - DI macros and utilities
+
+### HTTP & REST
+- [reinhardt-http](crates/reinhardt-http/CHANGELOG.md) - HTTP server and request handling
+- [reinhardt-rest](crates/reinhardt-rest/CHANGELOG.md) - REST API framework
+- [reinhardt-middleware](crates/reinhardt-middleware/CHANGELOG.md) - HTTP middleware
+- [reinhardt-server](crates/reinhardt-server/CHANGELOG.md) - Server runtime
+
+### GraphQL & gRPC
+- [reinhardt-graphql](crates/reinhardt-graphql/CHANGELOG.md) - GraphQL server implementation
+- [reinhardt-graphql-macros](crates/reinhardt-graphql/macros/CHANGELOG.md) - GraphQL procedural macros
+- [reinhardt-grpc](crates/reinhardt-grpc/CHANGELOG.md) - gRPC server implementation
+
+### WebSockets & Real-time
+- [reinhardt-websockets](crates/reinhardt-websockets/CHANGELOG.md) - WebSocket support
+
+### Authentication & Authorization
+- [reinhardt-auth](crates/reinhardt-auth/CHANGELOG.md) - Authentication and authorization
+
+### Views & Forms
+- [reinhardt-views](crates/reinhardt-views/CHANGELOG.md) - View rendering and templates
+- [reinhardt-forms](crates/reinhardt-forms/CHANGELOG.md) - Form handling and validation
+
+### Routing & Dispatch
+- [reinhardt-urls](crates/reinhardt-urls/CHANGELOG.md) - URL routing
+- [reinhardt-dispatch](crates/reinhardt-dispatch/CHANGELOG.md) - Request dispatcher
+- [reinhardt-commands](crates/reinhardt-commands/CHANGELOG.md) - Command pattern implementation
+
+### Background Tasks & Messaging
+- [reinhardt-tasks](crates/reinhardt-tasks/CHANGELOG.md) - Background task queue
+- [reinhardt-mail](crates/reinhardt-mail/CHANGELOG.md) - Email sending
+
+### Internationalization & Shortcuts
+- [reinhardt-i18n](crates/reinhardt-i18n/CHANGELOG.md) - Internationalization support
+- [reinhardt-shortcuts](crates/reinhardt-shortcuts/CHANGELOG.md) - Keyboard shortcuts
+
+### Admin & CLI
+- [reinhardt-admin](crates/reinhardt-admin/CHANGELOG.md) - Admin interface
+- [reinhardt-admin-cli](crates/reinhardt-admin-cli/CHANGELOG.md) - Admin CLI tools
+
+### Testing
+- [reinhardt-test](crates/reinhardt-test/CHANGELOG.md) - Testing utilities and fixtures
