@@ -96,6 +96,8 @@ See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Planned features go in `lib.rs` header, NOT in README.md
 - Test all code examples
 - Verify all links are valid
+- **ALWAYS** update crate's `CHANGELOG.md` when `Cargo.toml` version changes (same commit)
+- **CHANGELOG.md MUST be written in English** (no exceptions)
 - **NEVER** document user requests or AI assistant interactions in project documentation
   - Documentation must describe technical reasons, design decisions, and implementation details
   - Avoid phrases like "User requested...", "As requested by...", "User asked..."
@@ -165,6 +167,11 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
   - `cargo publish --dry-run -p <crate-name>`
 - Commit version bump and CHANGELOG updates BEFORE creating tag
 - Push commits and tags AFTER successful publish
+
+**Version Cascade Policy:**
+- When a sub-crate's version changes, the main crate (`reinhardt-web`) version MUST also be updated appropriately
+- The main crate's CHANGELOG.md MUST reference the sub-crate changes
+- Version bump level follows SemVer: sub-crate breaking change → main crate breaking change
 
 **Publishing Workflow:**
 1. Update crate version in `Cargo.toml`
@@ -345,6 +352,8 @@ Before submitting code:
 - Verify with `--dry-run` before publishing to crates.io
 - Commit version bump before creating tags
 - Update crate's CHANGELOG.md with version changes
+- Write CHANGELOG.md in English (no exceptions)
+- Update main crate (`reinhardt-web`) version when any sub-crate version changes
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Write all PR titles and descriptions in English
 - Write all issue titles and descriptions in English
@@ -384,6 +393,8 @@ Before submitting code:
 - Publish to crates.io without explicit user authorization
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
+- Update sub-crate version without updating main crate version
+- Change `Cargo.toml` version without updating corresponding CHANGELOG.md
 - Make breaking changes without MAJOR version bump
 - Start commit description with uppercase letter
 - End commit description with a period
