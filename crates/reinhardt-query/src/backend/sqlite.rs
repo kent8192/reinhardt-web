@@ -267,6 +267,27 @@ impl SqliteQueryBuilder {
 				});
 				writer.push(")");
 			}
+			SimpleExpr::Case(case) => {
+				writer.push_keyword("CASE");
+				for (condition, result) in &case.when_clauses {
+					writer.push_space();
+					writer.push_keyword("WHEN");
+					writer.push_space();
+					self.write_simple_expr(writer, condition);
+					writer.push_space();
+					writer.push_keyword("THEN");
+					writer.push_space();
+					self.write_simple_expr(writer, result);
+				}
+				if let Some(else_result) = &case.else_clause {
+					writer.push_space();
+					writer.push_keyword("ELSE");
+					writer.push_space();
+					self.write_simple_expr(writer, else_result);
+				}
+				writer.push_space();
+				writer.push_keyword("END");
+			}
 			_ => {
 				writer.push("(EXPR)");
 			}
@@ -2827,5 +2848,119 @@ mod tests {
 		assert!(sql.contains(r#""active" = ?"#));
 		assert!(sql.contains(r#"FROM "category_tree""#));
 		assert_eq!(values.len(), 1);
+	}
+
+	// CASE expression tests
+
+	#[test]
+	fn test_case_simple_when_else() {
+		let builder = SqliteQueryBuilder::new();
+
+		let case_expr = Expr::case()
+			.when(Expr::col("status").eq("active"), "Active")
+			.else_result("Inactive");
+
+		let mut stmt = Query::select();
+		stmt.expr_as(case_expr, "status_label").from("users");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("CASE"));
+		assert!(sql.contains("WHEN"));
+		assert!(sql.contains(r#""status" = ?"#));
+		assert!(sql.contains("THEN"));
+		assert!(sql.contains("ELSE"));
+		assert!(sql.contains("END"));
+		assert!(sql.contains(r#"AS "status_label""#));
+		assert_eq!(values.len(), 3);
+	}
+
+	#[test]
+	fn test_case_multiple_when_clauses() {
+		let builder = SqliteQueryBuilder::new();
+
+		let case_expr = Expr::case()
+			.when(Expr::col("score").gte(90), "A")
+			.when(Expr::col("score").gte(80), "B")
+			.when(Expr::col("score").gte(70), "C")
+			.else_result("F");
+
+		let mut stmt = Query::select();
+		stmt.expr_as(case_expr, "grade").from("students");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("CASE"));
+		let when_count = sql.matches("WHEN").count();
+		assert_eq!(when_count, 3);
+		let then_count = sql.matches("THEN").count();
+		assert_eq!(then_count, 3);
+		assert!(sql.contains("ELSE"));
+		assert!(sql.contains("END"));
+		assert_eq!(values.len(), 7);
+	}
+
+	#[test]
+	fn test_case_without_else() {
+		let builder = SqliteQueryBuilder::new();
+
+		let case_expr = Expr::case()
+			.when(Expr::col("type").eq("admin"), "Administrator")
+			.when(Expr::col("type").eq("user"), "Regular User")
+			.build();
+
+		let mut stmt = Query::select();
+		stmt.expr_as(case_expr, "type_label").from("accounts");
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("CASE"));
+		assert!(sql.contains("WHEN"));
+		assert!(sql.contains("THEN"));
+		assert!(!sql.contains("ELSE"));
+		assert!(sql.contains("END"));
+		assert_eq!(values.len(), 4);
+	}
+
+	#[test]
+	fn test_case_in_where_clause() {
+		let builder = SqliteQueryBuilder::new();
+
+		let case_expr = Expr::case()
+			.when(Expr::col("role").eq("admin"), 1)
+			.else_result(0);
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(case_expr.eq(1));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WHERE"));
+		assert!(sql.contains("CASE"));
+		assert!(sql.contains("WHEN"));
+		assert!(sql.contains("END"));
+		assert!(values.len() >= 3);
+	}
+
+	#[test]
+	fn test_case_in_order_by() {
+		let builder = SqliteQueryBuilder::new();
+
+		let case_expr = Expr::case()
+			.when(Expr::col("priority").eq("high"), 1)
+			.when(Expr::col("priority").eq("medium"), 2)
+			.else_result(3);
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.column("priority")
+			.from("tasks")
+			.order_by_expr(case_expr, crate::types::Order::Asc);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains("CASE"));
+		assert!(sql.contains("WHEN"));
+		assert!(sql.contains("END"));
+		assert!(sql.contains("ASC"));
+		assert_eq!(values.len(), 5);
 	}
 }
