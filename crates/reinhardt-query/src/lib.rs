@@ -20,14 +20,14 @@
 //!
 //! - [`value`]: Core value types for representing SQL values
 //! - [`types`]: Identifier, column reference, table reference, and operator types
-//! - [`expr`]: Expression building with the [`ExprTrait`](expr::ExprTrait) system
-//! - [`query`]: Query builders ([`SelectStatement`](query::SelectStatement),
-//!   [`InsertStatement`](query::InsertStatement), [`UpdateStatement`](query::UpdateStatement),
-//!   [`DeleteStatement`](query::DeleteStatement))
+//! - [`expr`]: Expression building with the [`ExprTrait`] system
+//! - [`query`]: Query builders ([`SelectStatement`],
+//!   [`InsertStatement`], [`UpdateStatement`],
+//!   [`DeleteStatement`])
 //! - [`backend`]: Database backend implementations
-//!   ([`PostgresQueryBuilder`](backend::PostgresQueryBuilder),
-//!   [`MySqlQueryBuilder`](backend::MySqlQueryBuilder),
-//!   [`SqliteQueryBuilder`](backend::SqliteQueryBuilder))
+//!   ([`PostgresQueryBuilder`],
+//!   [`MySqlQueryBuilder`],
+//!   [`SqliteQueryBuilder`])
 //!
 //! ## Quick Start
 //!

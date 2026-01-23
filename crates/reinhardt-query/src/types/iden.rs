@@ -16,6 +16,10 @@ use std::fmt::Write;
 #[cfg(feature = "thread-safe")]
 pub type SeaRc<T> = std::sync::Arc<T>;
 
+/// Reference-counted smart pointer for identifier storage.
+///
+/// When the `thread-safe` feature is disabled, this uses `Rc` for lower overhead
+/// in single-threaded contexts.
 #[cfg(not(feature = "thread-safe"))]
 pub type SeaRc<T> = std::rc::Rc<T>;
 

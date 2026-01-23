@@ -23,7 +23,7 @@ use crate::value::{Value, Values};
 /// writer.push_space();
 /// writer.push_identifier("name", |s| format!("\"{}\"", s));
 ///
-/// let sql = writer.to_string();
+/// let sql = writer.into_string();
 /// // sql: "SELECT \"id\", \"name\""
 /// ```
 #[derive(Debug, Clone)]
@@ -131,8 +131,8 @@ impl SqlWriter {
 		(self.sql, self.values)
 	}
 
-	/// Convert to string (consuming self)
-	pub fn to_string(self) -> String {
+	/// Convert to string (consuming self).
+	pub fn into_string(self) -> String {
 		self.sql
 	}
 

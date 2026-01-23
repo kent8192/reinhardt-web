@@ -10,7 +10,7 @@ use crate::value::Value;
 /// Trait for expression operations.
 ///
 /// This trait provides methods for building complex expressions through
-/// operator chaining. It is implemented for [`Expr`] and [`SimpleExpr`].
+/// operator chaining. It is implemented for [`Expr`](crate::expr::Expr) and [`SimpleExpr`].
 ///
 /// # Example
 ///
@@ -26,6 +26,9 @@ use crate::value::Value;
 /// // Arithmetic
 /// let expr = Expr::col("price").mul(Expr::col("quantity"));
 /// ```
+// Expression trait methods consume self for builder-pattern chaining,
+// so is_*/as_* methods intentionally take self by value.
+#[allow(clippy::wrong_self_convention)]
 pub trait ExprTrait: Sized {
 	/// Build the final SimpleExpr.
 	fn into_simple_expr(self) -> SimpleExpr;

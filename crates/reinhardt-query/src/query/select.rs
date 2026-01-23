@@ -75,10 +75,12 @@ pub enum SelectDistinct {
 	DistinctOn(Vec<ColumnRef>),
 }
 
-/// Select expression used in select statement
+/// Select expression used in select statement.
 #[derive(Debug, Clone)]
 pub struct SelectExpr {
+	/// The expression to select.
 	pub expr: SimpleExpr,
+	/// Optional alias for the expression (AS clause).
 	pub alias: Option<DynIden>,
 }
 

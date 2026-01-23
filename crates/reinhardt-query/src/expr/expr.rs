@@ -258,7 +258,7 @@ impl Expr {
 		}
 	}
 
-	/// Create a value expression (alias for [`val`]).
+	/// Create a value expression (alias for [`Expr::val`]).
 	pub fn value<V>(val: V) -> Self
 	where
 		V: IntoValue,
@@ -289,6 +289,8 @@ impl Expr {
 	}
 
 	/// Create a DEFAULT constant expression.
+	// Intentional factory method for SQL DEFAULT keyword, not std::default::Default
+	#[allow(clippy::should_implement_trait)]
 	pub fn default() -> Self {
 		Self(SimpleExpr::Constant(Keyword::Default))
 	}

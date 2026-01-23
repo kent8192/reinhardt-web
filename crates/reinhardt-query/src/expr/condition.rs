@@ -81,6 +81,8 @@ impl Condition {
 
 	/// Add a condition expression.
 	#[must_use]
+	// Intentional builder-pattern method, not std::ops::Add
+	#[allow(clippy::should_implement_trait)]
 	pub fn add<C>(mut self, condition: C) -> Self
 	where
 		C: IntoCondition,
@@ -104,6 +106,8 @@ impl Condition {
 
 	/// Negate the entire condition.
 	#[must_use]
+	// Intentional builder-pattern method, not std::ops::Not
+	#[allow(clippy::should_implement_trait)]
 	pub fn not(mut self) -> Self {
 		self.negate = !self.negate;
 		self
