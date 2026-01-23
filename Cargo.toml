@@ -1,11 +1,19 @@
 [package]
 name = "reinhardt-web"
-version.workspace = true
+version = "0.1.0-alpha.1"
 edition.workspace = true
 license.workspace = true
 description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
 repository.workspace = true
 authors.workspace = true
+include = [
+  "src/**",
+  "build.rs",
+  "README.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  "CHANGELOG.md",
+]
 
 [lib]
 name = "reinhardt"
@@ -342,8 +350,8 @@ default-members = [
 version = "0.1.0-alpha.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/kent8192/reinhardt-rs"
-homepage = "https://github.com/kent8192/reinhardt-rs"
+repository = "https://github.com/kent8192/reinhardt-web"
+homepage = "https://github.com/kent8192/reinhardt-web"
 authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
 
 [workspace.lints]
@@ -389,9 +397,9 @@ reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alph
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
-reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.1" }
+reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.2" }
 reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-alpha.1" }
-reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.1" }
+reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.2" }
 reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.1" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.1" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.1" }
