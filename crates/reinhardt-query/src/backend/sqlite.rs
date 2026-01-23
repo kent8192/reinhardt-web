@@ -1573,6 +1573,94 @@ mod tests {
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
 	}
 
+	// --- Phase 5: NULL Handling Tests ---
+
+	#[test]
+	fn test_where_is_null() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("deleted_at").is_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""deleted_at" IS"#));
+		assert!(sql.to_uppercase().contains("NULL"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_where_is_not_null() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("email").is_not_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""email" IS NOT"#));
+		assert!(sql.to_uppercase().contains("NULL"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_is_null_combined_with_other_conditions() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("deleted_at").is_null())
+			.and_where(Expr::col("email").is_not_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""active" = ?"#));
+		assert!(sql.contains(r#""deleted_at" IS"#));
+		assert!(sql.contains(r#""email" IS NOT"#));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_is_null_with_join() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.from("users")
+			.left_join(
+				"profiles",
+				Expr::col(("users", "id")).eq(Expr::col(("profiles", "user_id"))),
+			)
+			.and_where(Expr::col(("profiles", "id")).is_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#"LEFT JOIN "profiles""#));
+		assert!(sql.contains(r#""profiles"."id" IS"#));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_with_null_value() {
+		use crate::value::Value;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(vec!["name", "email", "phone"])
+			.values(vec![
+				Value::String(Some(Box::new("John".to_string()))),
+				Value::String(Some(Box::new("john@example.com".to_string()))),
+				Value::String(None),
+			])
+			.unwrap();
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains(r#"INSERT INTO "users""#));
+		assert!(sql.contains(r#""name""#));
+		assert!(sql.contains(r#""email""#));
+		assert!(sql.contains(r#""phone""#));
+		assert_eq!(values.len(), 3);
+	}
+
 	#[test]
 	fn test_select_with_single_cte() {
 		// Note: CTE (WITH clause) is supported in SQLite 3.8.3+

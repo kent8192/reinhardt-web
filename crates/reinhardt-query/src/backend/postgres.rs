@@ -1678,6 +1678,94 @@ mod tests {
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
 	}
 
+	// --- Phase 5: NULL Handling Tests ---
+
+	#[test]
+	fn test_where_is_null() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("deleted_at").is_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("\"deleted_at\" IS"));
+		assert!(sql.to_uppercase().contains("NULL"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_where_is_not_null() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("email").is_not_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("\"email\" IS NOT"));
+		assert!(sql.to_uppercase().contains("NULL"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_is_null_combined_with_other_conditions() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("deleted_at").is_null())
+			.and_where(Expr::col("email").is_not_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("\"active\" = $"));
+		assert!(sql.contains("\"deleted_at\" IS"));
+		assert!(sql.contains("\"email\" IS NOT"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_is_null_with_join() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column(("users", "name"))
+			.from("users")
+			.left_join(
+				"profiles",
+				Expr::col(("users", "id")).eq(Expr::col(("profiles", "user_id"))),
+			)
+			.and_where(Expr::col(("profiles", "id")).is_null());
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LEFT JOIN \"profiles\""));
+		assert!(sql.contains("\"profiles\".\"id\" IS"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_with_null_value() {
+		use crate::value::Value;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(vec!["name", "email", "phone"])
+			.values(vec![
+				Value::String(Some(Box::new("John".to_string()))),
+				Value::String(Some(Box::new("john@example.com".to_string()))),
+				Value::String(None),
+			])
+			.unwrap();
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("\"name\""));
+		assert!(sql.contains("\"email\""));
+		assert!(sql.contains("\"phone\""));
+		assert_eq!(values.len(), 3);
+	}
+
 	#[test]
 	fn test_select_with_single_cte() {
 		let builder = PostgresQueryBuilder::new();
