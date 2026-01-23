@@ -1,0 +1,28 @@
+[package]
+name = "reinhardt-deeplink"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Deeplink (Universal Links / App Links) support for Reinhardt framework"
+keywords = ["deeplink", "universal-links", "app-links", "mobile", "web-framework"]
+categories = ["web-programming", "development-tools"]
+
+[dependencies]
+reinhardt-urls = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-core = { workspace = true, features = ["exception"] }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+hyper = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1.41", features = ["full"] }
+rstest = { workspace = true }
+
+[features]
+default = []
+full = []
