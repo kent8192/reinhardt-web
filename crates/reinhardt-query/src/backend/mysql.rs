@@ -1434,7 +1434,6 @@ mod tests {
 		assert!(sql.contains("SELECT `name` FROM `employee_hierarchy`"));
 	}
 
-
 	// Window function tests
 
 	#[test]
@@ -1443,7 +1442,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1471,7 +1470,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1499,7 +1498,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("league").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1527,7 +1526,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1555,7 +1554,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1584,7 +1583,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("product").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1599,8 +1598,9 @@ mod tests {
 			Expr::lag(
 				Expr::col("revenue").into_simple_expr(),
 				Some(2),
-				Some(0.0.into())
-			).over(window)
+				Some(0.0.into()),
+			)
+			.over(window),
 		)
 		.column("month")
 		.from("sales");
@@ -1619,7 +1619,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1647,7 +1647,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1675,7 +1675,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1703,7 +1703,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1717,7 +1717,10 @@ mod tests {
 		stmt.expr(Expr::row_number().over(window)).from("users");
 
 		let (sql, _values) = builder.build_select(&stmt);
-		assert_eq!(sql, "SELECT ROW_NUMBER() OVER ( ORDER BY `id` ASC ) FROM `users`");
+		assert_eq!(
+			sql,
+			"SELECT ROW_NUMBER() OVER ( ORDER BY `id` ASC ) FROM `users`"
+		);
 	}
 
 	#[test]
@@ -1726,7 +1729,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1754,7 +1757,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("class").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1782,7 +1785,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1810,7 +1813,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("department").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1838,7 +1841,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("ticker").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1853,8 +1856,9 @@ mod tests {
 			Expr::lead(
 				Expr::col("price").into_simple_expr(),
 				Some(2),
-				Some(0.0.into())
-			).over(window)
+				Some(0.0.into()),
+			)
+			.over(window),
 		)
 		.column("date")
 		.from("stocks");
@@ -1873,7 +1877,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![],
 			order_by: vec![OrderExpr {
@@ -1902,7 +1906,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("product").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1917,8 +1921,9 @@ mod tests {
 			Expr::lag(
 				Expr::col("revenue").into_simple_expr(),
 				Some(3),
-				Some(0.0.into())
-			).over(window)
+				Some(0.0.into()),
+			)
+			.over(window),
 		)
 		.column("month")
 		.from("sales");
@@ -1937,7 +1942,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
@@ -1965,7 +1970,7 @@ mod tests {
 
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
-		
+
 		let window = WindowStatement {
 			partition_by: vec![Expr::col("category").into_simple_expr()],
 			order_by: vec![OrderExpr {
