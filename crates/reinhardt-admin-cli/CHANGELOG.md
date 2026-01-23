@@ -28,7 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - N/A
 
-## [0.1.0] - 2025-11-16
+## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
-- Initial release with django-style management command-line tool for project scaffolding and code generation
+- Initial release of `reinhardt-admin` CLI tool
+- `startproject` command for scaffolding new Reinhardt projects
+- `startapp` command for generating application modules
+- `plugin` subcommands: install, remove, list, search, enable, disable, update, info
+- `fmt` command for code formatting with rustfmt integration
+- Verbose output support with `-v` flag
