@@ -663,6 +663,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 						w.push_keyword("DESC");
 					}
 				}
+				if let Some(nulls) = order_expr.nulls {
+					w.push_space();
+					w.push(nulls.as_str());
+				}
 			});
 		}
 
@@ -3073,9 +3077,7 @@ mod tests {
 			.else_result(0);
 
 		let mut stmt = Query::select();
-		stmt.column("name")
-			.from("users")
-			.and_where(case_expr.eq(1));
+		stmt.column("name").from("users").and_where(case_expr.eq(1));
 
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("WHERE"));
@@ -3107,5 +3109,80 @@ mod tests {
 		assert!(sql.contains("END"));
 		assert!(sql.contains("ASC"));
 		assert_eq!(values.len(), 5);
+	}
+
+	// ORDER BY / LIMIT edge case tests
+
+	#[test]
+	fn test_order_by_multiple_columns_mixed() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.column("age")
+			.column("score")
+			.from("students")
+			.order_by("name", crate::types::Order::Asc)
+			.order_by("age", crate::types::Order::Desc)
+			.order_by("score", crate::types::Order::Asc);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains(r#""name" ASC"#));
+		assert!(sql.contains(r#""age" DESC"#));
+		assert!(sql.contains(r#""score" ASC"#));
+	}
+
+	#[test]
+	fn test_order_by_nulls_first() {
+		use crate::types::{IntoColumnRef, NullOrdering, OrderExpr, OrderExprKind};
+
+		let builder = PostgresQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("name").column("created_at").from("events");
+		stmt.orders.push(OrderExpr {
+			expr: OrderExprKind::Expr(Box::new(SimpleExpr::Column("created_at".into_column_ref()))),
+			order: crate::types::Order::Desc,
+			nulls: Some(NullOrdering::First),
+		});
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains("DESC"));
+		assert!(sql.contains("NULLS FIRST"));
+	}
+
+	#[test]
+	fn test_order_by_nulls_last() {
+		use crate::types::{IntoColumnRef, NullOrdering, OrderExpr, OrderExprKind};
+
+		let builder = PostgresQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("name").column("updated_at").from("posts");
+		stmt.orders.push(OrderExpr {
+			expr: OrderExprKind::Expr(Box::new(SimpleExpr::Column("updated_at".into_column_ref()))),
+			order: crate::types::Order::Asc,
+			nulls: Some(NullOrdering::Last),
+		});
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains("ASC"));
+		assert!(sql.contains("NULLS LAST"));
+	}
+
+	#[test]
+	fn test_limit_without_offset() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("id").from("items").limit(5);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LIMIT"));
+		assert!(!sql.contains("OFFSET"));
+		assert_eq!(values.len(), 1);
 	}
 }

@@ -651,6 +651,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 						w.push_keyword("DESC");
 					}
 				}
+				if let Some(nulls) = order_expr.nulls {
+					w.push_space();
+					w.push(nulls.as_str());
+				}
 			});
 		}
 
@@ -2831,9 +2835,7 @@ mod tests {
 			.else_result(0);
 
 		let mut stmt = Query::select();
-		stmt.column("name")
-			.from("users")
-			.and_where(case_expr.eq(1));
+		stmt.column("name").from("users").and_where(case_expr.eq(1));
 
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("WHERE"));
@@ -2865,5 +2867,59 @@ mod tests {
 		assert!(sql.contains("END"));
 		assert!(sql.contains("ASC"));
 		assert_eq!(values.len(), 5);
+	}
+
+	// ORDER BY / LIMIT edge case tests
+
+	#[test]
+	fn test_order_by_desc_multiple() {
+		let builder = MySqlQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.column("created_at")
+			.from("posts")
+			.order_by("created_at", crate::types::Order::Desc)
+			.order_by("name", crate::types::Order::Asc);
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains("`created_at` DESC"));
+		assert!(sql.contains("`name` ASC"));
+	}
+
+	#[test]
+	fn test_limit_zero() {
+		let builder = MySqlQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("id").from("items").limit(0);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("LIMIT"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_combined_where_order_limit_offset() {
+		let builder = MySqlQueryBuilder::new();
+
+		let mut stmt = Query::select();
+		stmt.column("id")
+			.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.order_by("name", crate::types::Order::Asc)
+			.limit(10)
+			.offset(20);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("WHERE"));
+		assert!(sql.contains("`active` = ?"));
+		assert!(sql.contains("ORDER BY"));
+		assert!(sql.contains("`name` ASC"));
+		assert!(sql.contains("LIMIT"));
+		assert!(sql.contains("OFFSET"));
+		assert_eq!(values.len(), 3);
 	}
 }
