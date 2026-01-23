@@ -25,11 +25,12 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 
 ## PR Creation Policy
 
-### PC-1 (MUST): Use GitHub CLI
+### PC-1 (MUST): Use GitHub MCP or CLI
 
-- **MUST** use GitHub CLI (`gh`) for creating pull requests
-- **NEVER** use web browser UI for PR creation when CLI is available
-- CLI ensures consistency and can be automated
+- **MUST** prefer GitHub MCP tools (`create_pull_request`) for creating pull requests when available
+- **Fallback**: Use GitHub CLI (`gh pr create`) when GitHub MCP is not available
+- **NEVER** use web browser UI for PR creation when MCP or CLI is available
+- MCP and CLI both ensure consistency and can be automated
 
 **Example:**
 ```bash
@@ -84,7 +85,7 @@ gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 
 - **MUST** add appropriate labels to every PR
 - Labels help categorize, prioritize, and track PRs
-- Use GitHub CLI or web UI to add labels
+- Use GitHub MCP (`update_pull_request`), GitHub CLI, or web UI to add labels
 
 **Required Labels by PR Type:**
 
@@ -499,7 +500,7 @@ docs(readme): add installation instructions
 
 ### ✅ MUST DO
 - Write all PR content in English
-- Use `gh pr create` for creating PRs
+- Use GitHub MCP (`create_pull_request`) or `gh pr create` for creating PRs
 - Follow Conventional Commits format for titles
 - Include Summary and Test plan sections
 - Run all checks before requesting review
@@ -521,4 +522,5 @@ docs(readme): add installation instructions
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
 - **Commit Guidelines**: @docs/COMMIT_GUIDELINE.md
 - **Release Process**: @docs/RELEASE_PROCESS.md
-- **GitHub CLI Documentation**: https://cli.github.com/manual/
+- **GitHub MCP Tools**: Available when GitHub MCP server is configured
+- **GitHub CLI Documentation (fallback)**: https://cli.github.com/manual/

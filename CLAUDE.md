@@ -120,13 +120,26 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - **NEVER** execute batch commits without user confirmation
 
 **GitHub Integration:**
-- **MUST** use GitHub CLI (`gh`) for all GitHub operations
-- Use `gh pr create` for creating pull requests
-- Use `gh pr view` for viewing PR details
-- Use `gh issue create` for creating issues
-- Use `gh issue view` for viewing issue details
-- Use `gh api` for accessing GitHub API
-- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
+- **MUST** prefer GitHub MCP tools when available for all GitHub operations
+- **Fallback**: Use GitHub CLI (`gh`) when GitHub MCP is not available
+- **Priority order**: GitHub MCP > GitHub CLI (`gh`) > raw API
+- **NEVER** use raw `curl` or web browser for GitHub operations when MCP or `gh` is available
+
+**GitHub MCP Tool Mapping:**
+
+| Operation | GitHub MCP Tool | gh CLI Fallback |
+|-----------|----------------|-----------------|
+| Create PR | `create_pull_request` | `gh pr create` |
+| View PR | `pull_request_read` (method: get) | `gh pr view` |
+| List PRs | `list_pull_requests` | `gh pr list` |
+| Create Issue | `issue_write` (method: create) | `gh issue create` |
+| View Issue | `issue_read` (method: get) | `gh issue view` |
+| List Issues | `list_issues` | `gh issue list` |
+| Search Code | `search_code` | `gh api search/code` |
+| Get File | `get_file_contents` | `gh api repos/.../contents` |
+| Create Branch | `create_branch` | `gh api refs` |
+| List Commits | `list_commits` | `gh api commits` |
+| List Releases | `list_releases` | `gh release list` |
 - **MUST** write all PR titles and descriptions in English
 - **MUST** write all issue titles and descriptions in English
 
@@ -238,7 +251,12 @@ docker ps
 # Docker daemon should be running automatically on most systems
 ```
 
-**GitHub Operations (using GitHub CLI):**
+**GitHub Operations:**
+
+When GitHub MCP is available, use MCP tools directly (preferred).
+When unavailable, fall back to GitHub CLI.
+
+**GitHub CLI Fallback:**
 ```bash
 # Pull Requests
 gh pr create --title "feat: Add feature" --body "Description" --label enhancement
@@ -354,7 +372,7 @@ Before submitting code:
 - Update crate's CHANGELOG.md with version changes
 - Write CHANGELOG.md in English (no exceptions)
 - Update main crate (`reinhardt-web`) version when any sub-crate version changes
-- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
+- Prefer GitHub MCP tools when available; fall back to `gh` CLI otherwise
 - Write all PR titles and descriptions in English
 - Write all issue titles and descriptions in English
 - Add appropriate labels to every PR (`enhancement`, `bug`, `documentation`, etc.)
