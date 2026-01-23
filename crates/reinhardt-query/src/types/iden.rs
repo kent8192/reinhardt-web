@@ -141,6 +141,7 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	#[allow(dead_code)]
 	#[derive(Debug, Clone, Copy)]
 	enum TestTable {
 		Table,
