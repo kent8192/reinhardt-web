@@ -1548,6 +1548,136 @@ mod tests {
 		assert!(sql.contains("SELECT \"id\" FROM \"banned_users\""));
 	}
 
+	// --- Phase 5: Subquery Edge Case Tests ---
+
+	#[test]
+	fn test_not_in_subquery() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut subquery = Query::select();
+		subquery
+			.column("user_id")
+			.from("blocked_users")
+			.and_where(Expr::col("reason").eq("spam"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("id").not_in_subquery(subquery));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("NOT IN"));
+		assert!(sql.contains("SELECT \"user_id\" FROM \"blocked_users\""));
+		assert!(sql.contains("\"reason\" = $"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_subquery_in_select_list() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut subquery = Query::select();
+		subquery
+			.expr(Expr::col("count"))
+			.from("order_counts")
+			.and_where(
+				Expr::col(("order_counts", "user_id")).eq(Expr::col(("users", "id"))),
+			);
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.expr(Expr::subquery(subquery))
+			.from("users");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("\"name\""));
+		assert!(sql.contains("(SELECT \"count\" FROM \"order_counts\""));
+		assert!(sql.contains("\"order_counts\".\"user_id\" = \"users\".\"id\""));
+	}
+
+	#[test]
+	fn test_multiple_exists_conditions() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut sub1 = Query::select();
+		sub1.column("id")
+			.from("orders")
+			.and_where(Expr::col(("orders", "user_id")).eq(Expr::col(("users", "id"))));
+
+		let mut sub2 = Query::select();
+		sub2.column("id")
+			.from("reviews")
+			.and_where(
+				Expr::col(("reviews", "user_id")).eq(Expr::col(("users", "id"))),
+			);
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::exists(sub1))
+			.and_where(Expr::exists(sub2));
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains("EXISTS (SELECT \"id\" FROM \"orders\""));
+		assert!(sql.contains("EXISTS (SELECT \"id\" FROM \"reviews\""));
+	}
+
+	#[test]
+	fn test_nested_subquery() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut inner_subquery = Query::select();
+		inner_subquery
+			.column("department_id")
+			.from("top_departments")
+			.and_where(Expr::col("revenue").gt(1000000));
+
+		let mut outer_subquery = Query::select();
+		outer_subquery
+			.column("id")
+			.from("employees")
+			.and_where(Expr::col("department_id").in_subquery(inner_subquery));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("employee_id").in_subquery(outer_subquery));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("IN (SELECT \"id\" FROM \"employees\""));
+		assert!(sql.contains("IN (SELECT \"department_id\" FROM \"top_departments\""));
+		assert!(sql.contains("\"revenue\" > $"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_subquery_with_complex_where() {
+		let builder = PostgresQueryBuilder::new();
+
+		let mut subquery = Query::select();
+		subquery
+			.column("product_id")
+			.from("inventory")
+			.and_where(Expr::col("quantity").gt(0))
+			.and_where(Expr::col("warehouse").eq("main"))
+			.and_where(Expr::col("status").eq("available"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.column("price")
+			.from("products")
+			.and_where(Expr::col("id").in_subquery(subquery))
+			.and_where(Expr::col("active").eq(true));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("IN (SELECT \"product_id\" FROM \"inventory\""));
+		assert!(sql.contains("\"quantity\" > $"));
+		assert!(sql.contains("\"warehouse\" = $"));
+		assert!(sql.contains("\"status\" = $"));
+		assert!(sql.contains("\"active\" = $"));
+		assert_eq!(values.len(), 4); // 0, "main", "available", true
+	}
+
 	#[test]
 	fn test_select_with_single_cte() {
 		let builder = PostgresQueryBuilder::new();
