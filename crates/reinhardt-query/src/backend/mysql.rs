@@ -6,7 +6,7 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
-	types::{ColumnRef, TableRef},
+	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
 };
 
@@ -150,13 +150,36 @@ impl MySqlQueryBuilder {
 			SimpleExpr::Value(value) => {
 				writer.push_value(value.clone(), |_i| self.placeholder(0));
 			}
-			SimpleExpr::Binary(left, op, right) => {
-				self.write_simple_expr(writer, left);
-				writer.push_space();
-				writer.push(op.as_str());
-				writer.push_space();
-				self.write_simple_expr(writer, right);
-			}
+			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
+				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
+					if items.len() == 2 =>
+				{
+					self.write_simple_expr(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push_space();
+					self.write_simple_expr(writer, &items[0]);
+					writer.push(" AND ");
+					self.write_simple_expr(writer, &items[1]);
+				}
+				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
+					self.write_simple_expr(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push(" (");
+					writer.push_list(items, ", ", |w, item| {
+						self.write_simple_expr(w, item);
+					});
+					writer.push(")");
+				}
+				_ => {
+					self.write_simple_expr(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push_space();
+					self.write_simple_expr(writer, right);
+				}
+			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
@@ -171,7 +194,7 @@ impl MySqlQueryBuilder {
 				writer.push(")");
 			}
 			SimpleExpr::Constant(val) => {
-				writer.push(&format!("{:?}", val));
+				writer.push(val.as_str());
 			}
 			SimpleExpr::SubQuery(op, select_stmt) => {
 				use crate::expr::SubQueryOper;
@@ -236,8 +259,14 @@ impl MySqlQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::Tuple(items) => {
+				writer.push("(");
+				writer.push_list(items, ", ", |w, item| {
+					self.write_simple_expr(w, item);
+				});
+				writer.push(")");
+			}
 			_ => {
-				// TODO: Handle other expression types
 				writer.push("(EXPR)");
 			}
 		}
@@ -1376,9 +1405,7 @@ mod tests {
 		subquery
 			.expr(Expr::col("count"))
 			.from("order_counts")
-			.and_where(
-				Expr::col(("order_counts", "user_id")).eq(Expr::col(("users", "id"))),
-			);
+			.and_where(Expr::col(("order_counts", "user_id")).eq(Expr::col(("users", "id"))));
 
 		let mut stmt = Query::select();
 		stmt.column("name")
@@ -1403,9 +1430,7 @@ mod tests {
 		let mut sub2 = Query::select();
 		sub2.column("id")
 			.from("reviews")
-			.and_where(
-				Expr::col(("reviews", "user_id")).eq(Expr::col(("users", "id"))),
-			);
+			.and_where(Expr::col(("reviews", "user_id")).eq(Expr::col(("users", "id"))));
 
 		let mut stmt = Query::select();
 		stmt.column("name")
@@ -1540,6 +1565,79 @@ mod tests {
 	}
 
 	#[test]
+	// --- Phase 5: Complex WHERE Clause Tests ---
+	#[test]
+	fn test_where_or_condition() {
+		use crate::expr::Condition;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("users").cond_where(
+			Condition::any()
+				.add(Expr::col("status").eq("active"))
+				.add(Expr::col("status").eq("pending")),
+		);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`status` = ?"));
+		assert!(sql.contains(" OR "));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_where_between() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("products")
+			.and_where(Expr::col("price").between(100, 500));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`price` BETWEEN ?"));
+		assert!(sql.contains("AND ?"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_where_not_between() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("products")
+			.and_where(Expr::col("price").not_between(0, 10));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`price` NOT BETWEEN ?"));
+		assert!(sql.contains("AND ?"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_where_like() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("email").like("%@gmail.com"));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`email` LIKE ?"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_where_in_values() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("role").is_in(vec!["admin", "moderator", "editor"]));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`role` IN"));
+		assert_eq!(values.len(), 3);
+	}
+
 	fn test_insert_with_null_value() {
 		use crate::value::Value;
 
@@ -2275,9 +2373,7 @@ mod tests {
 		assert!(sql.contains("LEFT JOIN `customers`"));
 		assert!(sql.contains("`orders`.`customer_id` = `customers`.`id`"));
 		assert!(sql.contains("AND `customers`.`active` = ?"));
-		assert!(sql.contains(
-			"AND `orders`.`created_at` > `customers`.`registered_at`"
-		));
+		assert!(sql.contains("AND `orders`.`created_at` > `customers`.`registered_at`"));
 		assert_eq!(values.len(), 1);
 	}
 
@@ -2400,10 +2496,7 @@ mod tests {
 		let window = WindowStatement {
 			partition_by: vec![Expr::col(("departments", "name")).into_simple_expr()],
 			order_by: vec![OrderExpr {
-				expr: OrderExprKind::TableColumn(
-					"employees".into_iden(),
-					"salary".into_iden(),
-				),
+				expr: OrderExprKind::TableColumn("employees".into_iden(), "salary".into_iden()),
 				order: Order::Desc,
 				nulls: None,
 			}],
@@ -2415,8 +2508,7 @@ mod tests {
 			.from("employees")
 			.inner_join(
 				"departments",
-				Expr::col(("employees", "department_id"))
-					.eq(Expr::col(("departments", "id"))),
+				Expr::col(("employees", "department_id")).eq(Expr::col(("departments", "id"))),
 			);
 
 		let (sql, _values) = builder.build_select(&stmt);
@@ -2444,8 +2536,7 @@ mod tests {
 			)
 			.inner_join(
 				"categories",
-				Expr::col(("products", "category_id"))
-					.eq(Expr::col(("categories", "id"))),
+				Expr::col(("products", "category_id")).eq(Expr::col(("categories", "id"))),
 			);
 
 		let (sql, _values) = builder.build_select(&stmt);
