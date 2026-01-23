@@ -6,7 +6,7 @@ use crate::{
 	expr::{Condition, ConditionHolder, IntoCondition, SimpleExpr},
 	types::{
 		ColumnRef, DynIden, IntoColumnRef, IntoIden, IntoTableRef, JoinExpr, JoinType, Order,
-		OrderExpr, TableRef,
+		OrderExpr, TableRef, WindowStatement,
 	},
 	value::{IntoValue, Value, Values},
 };
@@ -45,6 +45,7 @@ pub struct SelectStatement {
 	pub(crate) limit: Option<Value>,
 	pub(crate) offset: Option<Value>,
 	pub(crate) lock: Option<LockClause>,
+	pub(crate) windows: Vec<(DynIden, WindowStatement)>,
 }
 
 /// Common Table Expression (CTE) for WITH clause
@@ -106,6 +107,8 @@ pub enum LockBehavior {
 }
 
 /// Lock clause for SELECT ... FOR UPDATE/SHARE
+// NOTE: FOR UPDATE/SHARE は現在未実装のため、フィールドが未使用となっている
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LockClause {
 	pub(crate) r#type: LockType,
@@ -161,6 +164,7 @@ impl SelectStatement {
 			limit: self.limit.take(),
 			offset: self.offset.take(),
 			lock: self.lock.take(),
+			windows: std::mem::take(&mut self.windows),
 		}
 	}
 
@@ -672,6 +676,42 @@ impl SelectStatement {
 			query: Box::new(query),
 			recursive: true,
 		});
+		self
+	}
+
+	// WINDOW methods
+
+	/// Add a named window specification to the WINDOW clause
+	///
+	/// Named windows can be referenced by window functions using `OVER window_name`.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::window::WindowStatement;
+	///
+	/// let window = WindowStatement {
+	///     partition_by: vec![Expr::col("department_id").into_simple_expr()],
+	///     order_by: vec![OrderExpr {
+	///         expr: Expr::col("salary").into_simple_expr(),
+	///         order: Order::Desc,
+	///         nulls: None,
+	///     }],
+	///     frame: None,
+	/// };
+	///
+	/// let query = Query::select()
+	///     .column("name")
+	///     .expr_as(Expr::row_number().over_named("w"), "rank")
+	///     .from("employees")
+	///     .window_as("w", window);
+	/// ```
+	pub fn window_as<T>(&mut self, name: T, window: WindowStatement) -> &mut Self
+	where
+		T: IntoIden,
+	{
+		self.windows.push((name.into_iden(), window));
 		self
 	}
 
