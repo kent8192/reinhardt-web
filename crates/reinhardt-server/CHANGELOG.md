@@ -34,7 +34,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial crates.io release
 
-## [0.1.0] - 2025-11-16
-
-### Added
-- Initial release with hTTP server implementation with async request handling and connection management
