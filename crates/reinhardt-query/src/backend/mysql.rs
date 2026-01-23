@@ -2922,4 +2922,45 @@ mod tests {
 		assert!(sql.contains("OFFSET"));
 		assert_eq!(values.len(), 3);
 	}
+
+	// Arithmetic / string operation tests
+
+	#[test]
+	fn test_arithmetic_in_where() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("products");
+		stmt.and_where(Expr::col("price").sub(Expr::col("discount")).gt(50i32));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`price` - `discount`"));
+		assert!(sql.contains("> ?"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_like_not_like() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("users");
+		stmt.and_where(Expr::col("name").like("John%"));
+		stmt.and_where(Expr::col("email").not_like("%spam%"));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`name` LIKE ?"));
+		assert!(sql.contains("`email` NOT LIKE ?"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_between_values() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("products");
+		stmt.and_where(Expr::col("price").between(10i32, 100i32));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains("`price` BETWEEN ? AND ?"));
+		assert_eq!(values.len(), 2);
+	}
 }

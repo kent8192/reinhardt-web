@@ -3024,4 +3024,51 @@ mod tests {
 		assert!(sql.contains("OFFSET"));
 		assert_eq!(values.len(), 2);
 	}
+
+	// Arithmetic / string operation tests
+
+	#[test]
+	fn test_arithmetic_in_select() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("price").mul(Expr::col("quantity")));
+		stmt.from("order_items");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""price" * "quantity""#));
+		assert!(sql.contains(r#"FROM "order_items""#));
+	}
+
+	#[test]
+	fn test_modulo_operator() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("id").from("numbers");
+		stmt.and_where(Expr::col("value").modulo(2i32).eq(0i32));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""value" % ?"#));
+		assert!(sql.contains("= ?"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_complex_arithmetic_where() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("products");
+		stmt.and_where(
+			Expr::col("price")
+				.mul(Expr::col("quantity"))
+				.sub(Expr::col("discount"))
+				.gt(500i32),
+		);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""price" * "quantity""#));
+		assert!(sql.contains("- "));
+		assert!(sql.contains(r#""discount""#));
+		assert!(sql.contains("> ?"));
+		assert_eq!(values.len(), 1);
+	}
 }

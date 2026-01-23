@@ -25,7 +25,7 @@ pub use alias::Alias;
 pub use column_ref::{ColumnRef, IntoColumnRef};
 pub use iden::{DynIden, Iden, IdenStatic, IntoIden, SeaRc};
 pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
-pub use operators::{BinOper, LogicalChainOper, SubQueryOper, UnOper};
+pub use operators::{BinOper, LogicalChainOper, PgBinOper, SubQueryOper, UnOper};
 pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
 pub use table_ref::{IntoTableRef, TableRef};
 pub use window::{Frame, FrameClause, FrameType, WindowStatement};

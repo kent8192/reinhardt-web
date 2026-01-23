@@ -3185,4 +3185,64 @@ mod tests {
 		assert!(!sql.contains("OFFSET"));
 		assert_eq!(values.len(), 1);
 	}
+
+	// Arithmetic / string operation tests
+
+	#[test]
+	fn test_arithmetic_add_sub() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("products");
+		stmt.and_where(Expr::col("price").add(10i32).gt(100i32));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""price" + $1"#));
+		assert!(sql.contains("> $2"));
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_arithmetic_mul_div_mod() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("items");
+		stmt.and_where(
+			Expr::col("quantity")
+				.mul(Expr::col("unit_price"))
+				.gt(1000i32),
+		);
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""quantity" * "unit_price""#));
+		assert!(sql.contains("> $1"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_like_ilike_pattern() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name").from("users");
+		stmt.and_where(Expr::col("email").like("%@example.com"));
+
+		let (sql, values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""email" LIKE $1"#));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_pg_concat_operator() {
+		use crate::types::{BinOper, IntoColumnRef, PgBinOper};
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(SimpleExpr::Binary(
+			Box::new(SimpleExpr::Column("first_name".into_column_ref())),
+			BinOper::PgOperator(PgBinOper::Concatenate),
+			Box::new(SimpleExpr::Column("last_name".into_column_ref())),
+		));
+		stmt.from("users");
+
+		let (sql, _values) = builder.build_select(&stmt);
+		assert!(sql.contains(r#""first_name" || "last_name""#));
+	}
 }
