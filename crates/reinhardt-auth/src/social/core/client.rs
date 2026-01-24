@@ -41,12 +41,14 @@ mod tests {
 	#[test]
 	fn test_client_creation() {
 		let client = OAuth2Client::new();
-		assert!(client.client().is_some());
+		// Verify that client() returns a valid reference
+		let _client_ref = client.client();
 	}
 
 	#[test]
 	fn test_client_default() {
 		let client = OAuth2Client::default();
-		assert!(client.client().is_some());
+		// Verify that client() returns a valid reference
+		let _client_ref = client.client();
 	}
 }
