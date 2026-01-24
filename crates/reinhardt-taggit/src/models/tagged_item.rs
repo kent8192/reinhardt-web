@@ -1,0 +1,106 @@
+//! TaggedItem model definition
+//!
+//! Junction table for polymorphic many-to-many relationships between tags and arbitrary models.
+
+use chrono::{DateTime, Utc};
+use reinhardt_db::prelude::*;
+use serde::{Deserialize, Serialize};
+
+/// Junction table for many-to-many relationship between tags and arbitrary models
+///
+/// Implements a polymorphic relationship pattern using content_type and object_id fields.
+/// This allows any model implementing the `` `Taggable` `` trait to be tagged.
+///
+/// # Database Schema
+///
+/// ```sql
+/// CREATE TABLE tagged_items (
+///     id BIGSERIAL PRIMARY KEY,
+///     tag_id BIGINT NOT NULL,
+///     content_type VARCHAR(255) NOT NULL,
+///     object_id BIGINT NOT NULL,
+///     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+///     UNIQUE(tag_id, content_type, object_id),
+///     FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+/// );
+/// ```
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use reinhardt_taggit::TaggedItem;
+///
+/// let tagged_item = TaggedItem {
+///     id: None,
+///     tag_id: 1,
+///     content_type: "Food".to_string(),
+///     object_id: 42,
+///     created_at: Utc::now(),
+/// };
+/// ```
+#[model(app_label = "taggit", table_name = "tagged_items")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaggedItem {
+	/// Primary key
+	#[field(primary_key = true)]
+	pub id: Option<i64>,
+
+	/// Foreign key to tags table
+	#[field(foreign_key = "Tag")]
+	pub tag_id: i64,
+
+	/// Content type discriminator (e.g., "Food", "Recipe")
+	/// This identifies the type of model being tagged
+	#[field(max_length = 255)]
+	pub content_type: String,
+
+	/// Foreign key to the tagged object (polymorphic)
+	/// This is the primary key of the object being tagged
+	#[field]
+	pub object_id: i64,
+
+	/// Creation timestamp
+	#[field(auto_now_add = true)]
+	pub created_at: DateTime<Utc>,
+}
+
+impl TaggedItem {
+	/// Create a new TaggedItem instance
+	///
+	/// Note: This does not save to the database. Use `` `save()` `` or `` `objects().create()` ``.
+	///
+	/// # Arguments
+	///
+	/// * `tag_id` - Foreign key to the tag
+	/// * `content_type` - Model type name (e.g., "Food")
+	/// * `object_id` - Primary key of the tagged object
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// let tagged_item = TaggedItem::new(1, "Food", 42);
+	/// ```
+	pub fn new(tag_id: i64, content_type: impl Into<String>, object_id: i64) -> Self {
+		Self {
+			id: None,
+			tag_id,
+			content_type: content_type.into(),
+			object_id,
+			created_at: Utc::now(),
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_tagged_item_creation() {
+		let item = TaggedItem::new(1, "Food", 42);
+		assert_eq!(item.tag_id, 1);
+		assert_eq!(item.content_type, "Food");
+		assert_eq!(item.object_id, 42);
+		assert!(item.id.is_none());
+	}
+}
