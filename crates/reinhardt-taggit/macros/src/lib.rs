@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{Data, DeriveInput, parse_macro_input};
 
 /// Attribute macro to make a model taggable
 ///
@@ -44,7 +44,7 @@ use syn::{parse_macro_input, Data, DeriveInput};
 #[proc_macro_attribute]
 pub fn taggable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(item as DeriveInput);
-	let name = &input.ident;
+	let _name = &input.ident; // 将来の実装で使用予定
 
 	// Ensure it's a struct
 	let Data::Struct(_) = &input.data else {

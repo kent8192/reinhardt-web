@@ -9,6 +9,7 @@ description = "Simple tagging system for Reinhardt framework - inspired by djang
 
 [dependencies]
 # Reinhardt ecosystem
+reinhardt-core = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
 
 # Macros
@@ -23,6 +24,7 @@ sea-query = { workspace = true, features = ["backend-postgres", "backend-mysql",
 
 # Utilities
 chrono = { workspace = true, features = ["serde"] }
+ctor = { workspace = true }
 slug = "0.1"
 thiserror = { workspace = true }
 tracing = { workspace = true }

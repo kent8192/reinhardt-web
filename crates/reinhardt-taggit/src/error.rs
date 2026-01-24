@@ -29,7 +29,10 @@ pub enum TaggitError {
 
 	/// Object not found
 	#[error("Object not found: {content_type}#{object_id}")]
-	ObjectNotFound { content_type: String, object_id: i64 },
+	ObjectNotFound {
+		content_type: String,
+		object_id: i64,
+	},
 
 	/// Duplicate tag assignment
 	#[error("Duplicate tag assignment: {content_type}#{object_id} already has tag '{tag_name}'")]
