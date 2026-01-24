@@ -9,6 +9,7 @@
 //! ## Features
 //!
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
+//! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
 //! - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -24,6 +25,8 @@
 //! - [`query`]: Query builders ([`SelectStatement`],
 //!   [`InsertStatement`], [`UpdateStatement`],
 //!   [`DeleteStatement`])
+//! - [`dcl`]: DCL (Data Control Language) builders ([`GrantStatement`],
+//!   [`RevokeStatement`], [`Privilege`], [`ObjectType`], [`Grantee`])
 //! - [`backend`]: Database backend implementations
 //!   ([`PostgresQueryBuilder`],
 //!   [`MySqlQueryBuilder`],
@@ -63,6 +66,7 @@
 //! | DISTINCT ON | Supported | Not supported | Not supported |
 //! | Window functions | Full support | Full support | Full support |
 //! | CTEs (WITH) | Supported | Supported | Supported |
+//! | DCL (GRANT/REVOKE) | Full support | Full support | Not supported (panics) |
 //!
 //! ## Expression Examples
 //!
@@ -83,6 +87,34 @@
 //!
 //! // LIKE pattern matching
 //! let like_expr = Expr::col("email").like("%@example.com");
+//! ```
+//!
+//! ## DCL Examples
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // GRANT privileges
+//! let grant_stmt = Query::grant()
+//!     .privilege(Privilege::Select)
+//!     .privilege(Privilege::Insert)
+//!     .on_table("users")
+//!     .to("app_user")
+//!     .with_grant_option(true);
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, values) = builder.build_grant(&grant_stmt);
+//! // sql = r#"GRANT SELECT, INSERT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+//!
+//! // REVOKE privileges
+//! let revoke_stmt = Query::revoke()
+//!     .privilege(Privilege::Insert)
+//!     .from_table("users")
+//!     .from("app_user")
+//!     .cascade(true);
+//!
+//! let (sql, values) = builder.build_revoke(&revoke_stmt);
+//! // sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
 //! ```
 //!
 //! ## Feature Flags
@@ -108,6 +140,9 @@ pub mod query;
 // Backend implementations
 pub mod backend;
 
+// DCL (Data Control Language) module
+pub mod dcl;
+
 /// Prelude module for convenient imports.
 ///
 /// Import everything from this module to get started quickly:
@@ -118,6 +153,13 @@ pub mod backend;
 pub mod prelude {
 	pub use crate::backend::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter, SqliteQueryBuilder,
+	};
+	pub use crate::dcl::{
+		AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
+		DefaultRoleSpec, DropRoleStatement, DropUserStatement, GrantRoleStatement, GrantStatement,
+		Grantee, ObjectType, Privilege, RenameUserStatement, ResetRoleStatement,
+		RevokeRoleStatement, RevokeStatement, RoleAttribute, RoleSpecification, RoleTarget,
+		SetDefaultRoleStatement, SetRoleStatement, UserOption,
 	};
 	pub use crate::expr::{
 		CaseExprBuilder, CaseStatement, Cond, Condition, ConditionExpression, ConditionHolder,
