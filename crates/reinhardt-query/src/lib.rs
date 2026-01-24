@@ -197,6 +197,9 @@ pub mod expr;
 // Query builders
 pub mod query;
 
+// DCL (Data Control Language)
+pub mod dcl;
+
 // Backend implementations
 pub mod backend;
 

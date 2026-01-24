@@ -4,6 +4,12 @@
 //! MySQL, SQLite, and CockroachDB.
 
 use crate::{
+	dcl::{
+		AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
+		DropRoleStatement, DropUserStatement, GrantRoleStatement, GrantStatement,
+		RenameUserStatement, ResetRoleStatement, RevokeRoleStatement, RevokeStatement,
+		SetDefaultRoleStatement, SetRoleStatement,
+	},
 	query::{
 		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
 		AlterProcedureStatement, AlterSchemaStatement, AlterSequenceStatement, AlterTableStatement,
@@ -113,6 +119,191 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_delete(&self, stmt: &DeleteStatement) -> (String, Values);
+
+	/// Build GRANT statement
+	///
+	/// Generates SQL and parameter values for a GRANT statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The GRANT statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_grant(&self, stmt: &GrantStatement) -> (String, Values);
+
+	/// Build REVOKE statement
+	///
+	/// Generates SQL and parameter values for a REVOKE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The REVOKE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_revoke(&self, stmt: &RevokeStatement) -> (String, Values);
+
+	/// Build GRANT role membership statement
+	///
+	/// Generates SQL and parameter values for a GRANT role membership statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The GRANT role statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_grant_role(&self, stmt: &GrantRoleStatement) -> (String, Values);
+
+	/// Build REVOKE role membership statement
+	///
+	/// Generates SQL and parameter values for a REVOKE role membership statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The REVOKE role statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_revoke_role(&self, stmt: &RevokeRoleStatement) -> (String, Values);
+
+	/// Build CREATE ROLE statement
+	///
+	/// Generates SQL and parameter values for a CREATE ROLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_role(&self, stmt: &CreateRoleStatement) -> (String, Values);
+
+	/// Build DROP ROLE statement
+	///
+	/// Generates SQL and parameter values for a DROP ROLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_role(&self, stmt: &DropRoleStatement) -> (String, Values);
+
+	/// Build ALTER ROLE statement
+	///
+	/// Generates SQL and parameter values for an ALTER ROLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_role(&self, stmt: &AlterRoleStatement) -> (String, Values);
+
+	/// Build CREATE USER statement
+	///
+	/// Generates SQL and parameter values for a CREATE USER statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE USER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_user(&self, stmt: &CreateUserStatement) -> (String, Values);
+
+	/// Build DROP USER statement
+	///
+	/// Generates SQL and parameter values for a DROP USER statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP USER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_user(&self, stmt: &DropUserStatement) -> (String, Values);
+
+	/// Build ALTER USER statement
+	///
+	/// Generates SQL and parameter values for an ALTER USER statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER USER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_user(&self, stmt: &AlterUserStatement) -> (String, Values);
+
+	/// Build RENAME USER statement
+	///
+	/// Generates SQL and parameter values for a RENAME USER statement.
+	/// This is MySQL-only; PostgreSQL and SQLite will panic.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The RENAME USER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_rename_user(&self, stmt: &RenameUserStatement) -> (String, Values);
+
+	/// Build SET ROLE statement
+	///
+	/// Generates SQL and parameter values for a SET ROLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The SET ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_set_role(&self, stmt: &SetRoleStatement) -> (String, Values);
+
+	/// Build RESET ROLE statement
+	///
+	/// Generates SQL and parameter values for a RESET ROLE statement.
+	/// This is PostgreSQL-only; MySQL and SQLite will panic.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The RESET ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_reset_role(&self, stmt: &ResetRoleStatement) -> (String, Values);
+
+	/// Build SET DEFAULT ROLE statement
+	///
+	/// Generates SQL and parameter values for a SET DEFAULT ROLE statement.
+	/// This is MySQL-only; PostgreSQL and SQLite will panic.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The SET DEFAULT ROLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_set_default_role(&self, stmt: &SetDefaultRoleStatement) -> (String, Values);
 
 	/// Escape an identifier (table name, column name, etc.)
 	///
