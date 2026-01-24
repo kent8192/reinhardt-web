@@ -134,7 +134,7 @@ pub enum OdmError {
 
 	/// Deserialization error.
 	#[cfg(feature = "mongodb")]
-	Deserialization(bson::de::Error),
+	Deserialization(bson::error::Error),
 }
 
 impl fmt::Display for OdmError {
@@ -168,8 +168,8 @@ impl From<mongodb::error::Error> for OdmError {
 }
 
 #[cfg(feature = "mongodb")]
-impl From<bson::de::Error> for OdmError {
-	fn from(err: bson::de::Error) -> Self {
+impl From<bson::error::Error> for OdmError {
+	fn from(err: bson::error::Error) -> Self {
 		OdmError::Deserialization(err)
 	}
 }
