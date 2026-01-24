@@ -62,8 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RevokeRoleStatement` - REVOKE role membership statement builder
 - `RoleSpecification` enum - Role specifications (RoleName, CurrentRole, CurrentUser, SessionUser)
 - `DropBehavior` enum - Drop behavior for REVOKE (Cascade, Restrict)
-- `Privilege` enum - 14 privilege types (SELECT, INSERT, UPDATE, DELETE, REFERENCES, CREATE, ALL, TRUNCATE, TRIGGER, MAINTAIN, USAGE, CONNECT, TEMPORARY, EXECUTE)
-- `ObjectType` enum - 4 database object types (Table, Database, Schema, Sequence)
+- `Privilege` enum - 16 privilege types (SELECT, INSERT, UPDATE, DELETE, REFERENCES, CREATE, ALL, TRUNCATE, TRIGGER, MAINTAIN, USAGE, CONNECT, TEMPORARY, EXECUTE, SET, ALTER SYSTEM)
+  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
+- `ObjectType` enum - 15 database object types (Table, Database, Schema, Sequence, Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
+  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
+  - **Extended PostgreSQL Support**: Added 11 PostgreSQL-specific object types (Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
+  - Convenience methods: `on_function()`, `on_procedure()`, `on_routine()`, `on_type()`, `on_domain()`, `on_foreign_data_wrapper()`, `on_foreign_server()`, `on_language()`, `on_large_object()`, `on_tablespace()`, `on_parameter()` for GrantStatement
+  - Convenience methods: `from_function()`, `from_procedure()`, `from_routine()`, `from_type()`, `from_domain()`, `from_foreign_data_wrapper()`, `from_foreign_server()`, `from_language()`, `from_large_object()`, `from_tablespace()`, `from_parameter()` for RevokeStatement
 - `Grantee` enum - 6 grantee types (Role, User with host, Public, CurrentRole, CurrentUser, SessionUser)
 - Privilege-object validation logic
 - WITH GRANT OPTION support (object privileges)
