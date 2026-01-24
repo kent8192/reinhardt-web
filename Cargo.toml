@@ -310,6 +310,7 @@ members = [
   "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
   "crates/reinhardt-db",
+  "crates/reinhardt-db-macros",
   "crates/reinhardt-dispatch",
   "crates/reinhardt-shortcuts",
   "crates/reinhardt-forms",
@@ -395,6 +396,7 @@ reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.1" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.1" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.1" }
+reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.1.0-alpha.1" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.2" }

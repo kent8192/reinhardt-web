@@ -1,0 +1,7 @@
+error: unsupported backend `redis`, expected `mongodb`
+ --> tests/ui/fail/unsupported_backend.rs:5:1
+  |
+5 | #[document(collection = "users", backend = "redis")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `document` (in Nightly builds, run with -Z macro-backtrace for more info)
