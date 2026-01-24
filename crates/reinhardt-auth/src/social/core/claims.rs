@@ -1,8 +1,8 @@
 //! OIDC claims types
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// OIDC ID Token claims
 #[derive(Debug, Clone, Serialize, Deserialize)]

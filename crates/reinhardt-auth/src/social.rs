@@ -37,48 +37,38 @@
 //! }
 //! ```
 
+pub mod backend;
 pub mod core;
 pub mod flow;
 pub mod oidc;
 pub mod providers;
-pub mod backend;
-pub mod user_mapping;
 pub mod storage;
+pub mod user_mapping;
 
 // Re-export core types
 pub use core::{
-	OAuthProvider, OAuth2Client, SocialAuthError,
-	OAuthToken, TokenResponse, IdToken, StandardClaims,
-	ProviderConfig, OIDCConfig, OAuth2Config,
+	IdToken, OAuth2Client, OAuth2Config, OAuthProvider, OAuthToken, OIDCConfig, ProviderConfig,
+	SocialAuthError, StandardClaims, TokenResponse,
 };
 
 // Re-export flow types
 pub use flow::{
-	AuthorizationFlow, TokenExchangeFlow, RefreshFlow,
-	PkceFlow, StateStore, StateData,
+	AuthorizationFlow, PkceFlow, RefreshFlow, StateData, StateStore, TokenExchangeFlow,
 };
 
 // Re-export OIDC types
 pub use oidc::{
-	DiscoveryClient, OIDCDiscovery,
-	IdTokenValidator,
-	JwksCache, Jwk, JwkSet,
-	UserInfoClient,
+	DiscoveryClient, IdTokenValidator, Jwk, JwkSet, JwksCache, OIDCDiscovery, UserInfoClient,
 };
 
 // Re-export providers
-pub use providers::{
-	GoogleProvider,
-	GitHubProvider,
-	AppleProvider,
-	MicrosoftProvider,
-};
+pub use providers::{AppleProvider, GitHubProvider, GoogleProvider, MicrosoftProvider};
 
 // Re-export backend
 pub use backend::SocialAuthBackend;
 
 // Re-export user mapping
-pub use user_mapping::{UserMapper, DefaultUserMapper};
+pub use user_mapping::{DefaultUserMapper, UserMapper};
 
 // Re-export storage
 pub use storage::{SocialAccount, SocialAccountStorage};

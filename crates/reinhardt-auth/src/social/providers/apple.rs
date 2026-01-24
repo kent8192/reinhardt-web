@@ -1,6 +1,8 @@
 //! Apple OIDC provider
 
-use crate::social::core::{OAuthProvider, SocialAuthError, TokenResponse, IdToken, StandardClaims, ProviderConfig};
+use crate::social::core::{
+	OAuthProvider, ProviderConfig, SocialAuthError, StandardClaims, TokenResponse,
+};
 use async_trait::async_trait;
 
 /// Apple OIDC provider
@@ -10,7 +12,7 @@ pub struct AppleProvider {
 
 impl AppleProvider {
 	/// Create a new Apple provider
-	pub async fn new(config: ProviderConfig) -> Result<Self, SocialAuthError> {
+	pub async fn new(_config: ProviderConfig) -> Result<Self, SocialAuthError> {
 		todo!("TASK-017: Implement AppleProvider")
 	}
 }
@@ -42,17 +44,11 @@ impl OAuthProvider for AppleProvider {
 		todo!()
 	}
 
-	async fn refresh_token(
-		&self,
-		_refresh_token: &str,
-	) -> Result<TokenResponse, SocialAuthError> {
+	async fn refresh_token(&self, _refresh_token: &str) -> Result<TokenResponse, SocialAuthError> {
 		todo!()
 	}
 
-	async fn get_user_info(
-		&self,
-		_access_token: &str,
-	) -> Result<StandardClaims, SocialAuthError> {
+	async fn get_user_info(&self, _access_token: &str) -> Result<StandardClaims, SocialAuthError> {
 		todo!()
 	}
 }

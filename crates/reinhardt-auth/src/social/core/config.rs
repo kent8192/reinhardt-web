@@ -72,7 +72,8 @@ impl ProviderConfig {
 				"profile".to_string(),
 			],
 			oidc: Some(OIDCConfig {
-				discovery_url: "https://accounts.google.com/.well-known/openid-configuration".to_string(),
+				discovery_url: "https://accounts.google.com/.well-known/openid-configuration"
+					.to_string(),
 				use_nonce: true,
 			}),
 			oauth2: None,
@@ -97,15 +98,26 @@ impl ProviderConfig {
 	}
 
 	/// Create an Apple OIDC provider configuration
-	pub fn apple(client_id: String, redirect_uri: String, team_id: String, key_id: String) -> Self {
+	pub fn apple(
+		client_id: String,
+		redirect_uri: String,
+		_team_id: String,
+		_key_id: String,
+	) -> Self {
+		// TODO: Use team_id and key_id to generate client_secret JWT for Apple Sign In
 		Self {
 			name: "apple".to_string(),
 			client_id,
-			client_secret: String::new(), // Will be generated dynamically
+			client_secret: String::new(), // Will be generated dynamically using team_id and key_id
 			redirect_uri,
-			scopes: vec!["openid".to_string(), "email".to_string(), "name".to_string()],
+			scopes: vec![
+				"openid".to_string(),
+				"email".to_string(),
+				"name".to_string(),
+			],
 			oidc: Some(OIDCConfig {
-				discovery_url: "https://appleid.apple.com/.well-known/openid-configuration".to_string(),
+				discovery_url: "https://appleid.apple.com/.well-known/openid-configuration"
+					.to_string(),
 				use_nonce: true,
 			}),
 			oauth2: None,
@@ -113,7 +125,12 @@ impl ProviderConfig {
 	}
 
 	/// Create a Microsoft OIDC provider configuration
-	pub fn microsoft(client_id: String, client_secret: String, redirect_uri: String, tenant: String) -> Self {
+	pub fn microsoft(
+		client_id: String,
+		client_secret: String,
+		redirect_uri: String,
+		tenant: String,
+	) -> Self {
 		let discovery_url = format!(
 			"https://login.microsoftonline.com/{}/v2.0/.well-known/openid-configuration",
 			tenant

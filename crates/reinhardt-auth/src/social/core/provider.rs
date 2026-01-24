@@ -1,6 +1,6 @@
 //! OAuth2/OIDC provider trait
 
-use crate::social::core::{SocialAuthError, TokenResponse, IdToken, StandardClaims};
+use crate::social::core::{IdToken, SocialAuthError, StandardClaims, TokenResponse};
 use async_trait::async_trait;
 
 /// OAuth2/OIDC provider trait
@@ -72,10 +72,7 @@ pub trait OAuthProvider: Send + Sync {
 	/// # Arguments
 	///
 	/// * `refresh_token` - Refresh token
-	async fn refresh_token(
-		&self,
-		refresh_token: &str,
-	) -> Result<TokenResponse, SocialAuthError>;
+	async fn refresh_token(&self, refresh_token: &str) -> Result<TokenResponse, SocialAuthError>;
 
 	/// Validate ID token (OIDC only)
 	///
@@ -85,10 +82,12 @@ pub trait OAuthProvider: Send + Sync {
 	/// * `nonce` - Expected nonce value
 	async fn validate_id_token(
 		&self,
-		id_token: &str,
-		nonce: Option<&str>,
+		_id_token: &str,
+		_nonce: Option<&str>,
 	) -> Result<IdToken, SocialAuthError> {
-		Err(SocialAuthError::NotSupported("OIDC not supported by this provider".into()))
+		Err(SocialAuthError::NotSupported(
+			"OIDC not supported by this provider".into(),
+		))
 	}
 
 	/// Get user info
@@ -96,17 +95,14 @@ pub trait OAuthProvider: Send + Sync {
 	/// # Arguments
 	///
 	/// * `access_token` - Access token
-	async fn get_user_info(
-		&self,
-		access_token: &str,
-	) -> Result<StandardClaims, SocialAuthError>;
+	async fn get_user_info(&self, access_token: &str) -> Result<StandardClaims, SocialAuthError>;
 
 	/// Revoke token (optional)
 	///
 	/// # Arguments
 	///
 	/// * `token` - Token to revoke
-	async fn revoke_token(&self, token: &str) -> Result<(), SocialAuthError> {
+	async fn revoke_token(&self, _token: &str) -> Result<(), SocialAuthError> {
 		// Default implementation: no-op
 		Ok(())
 	}

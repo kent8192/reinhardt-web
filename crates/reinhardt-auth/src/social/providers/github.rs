@@ -1,6 +1,8 @@
 //! GitHub OAuth2 provider
 
-use crate::social::core::{OAuthProvider, SocialAuthError, TokenResponse, StandardClaims, ProviderConfig};
+use crate::social::core::{
+	OAuthProvider, ProviderConfig, SocialAuthError, StandardClaims, TokenResponse,
+};
 use async_trait::async_trait;
 
 /// GitHub OAuth2 provider
@@ -10,7 +12,7 @@ pub struct GitHubProvider {
 
 impl GitHubProvider {
 	/// Create a new GitHub provider
-	pub async fn new(config: ProviderConfig) -> Result<Self, SocialAuthError> {
+	pub async fn new(_config: ProviderConfig) -> Result<Self, SocialAuthError> {
 		todo!("TASK-016: Implement GitHubProvider")
 	}
 }
@@ -42,17 +44,11 @@ impl OAuthProvider for GitHubProvider {
 		todo!()
 	}
 
-	async fn refresh_token(
-		&self,
-		_refresh_token: &str,
-	) -> Result<TokenResponse, SocialAuthError> {
+	async fn refresh_token(&self, _refresh_token: &str) -> Result<TokenResponse, SocialAuthError> {
 		todo!()
 	}
 
-	async fn get_user_info(
-		&self,
-		_access_token: &str,
-	) -> Result<StandardClaims, SocialAuthError> {
+	async fn get_user_info(&self, _access_token: &str) -> Result<StandardClaims, SocialAuthError> {
 		todo!()
 	}
 }

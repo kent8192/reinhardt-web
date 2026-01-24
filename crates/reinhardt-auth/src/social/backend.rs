@@ -2,8 +2,6 @@
 //!
 //! Orchestrates OAuth2/OIDC flows and integrates with reinhardt-auth.
 
-use crate::AuthenticationBackend;
-
 /// Social authentication backend
 pub struct SocialAuthBackend {
 	// Implementation pending

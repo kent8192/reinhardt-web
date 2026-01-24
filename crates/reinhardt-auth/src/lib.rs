@@ -51,8 +51,6 @@ pub mod mfa;
 pub mod model_permissions;
 #[cfg(feature = "oauth")]
 pub mod oauth2;
-#[cfg(feature = "social")]
-pub mod social;
 pub mod object_permissions;
 #[cfg(feature = "rate-limit")]
 pub mod rate_limit_permission;
@@ -60,6 +58,8 @@ pub mod remote_user;
 pub mod rest_authentication;
 #[cfg(feature = "sessions")]
 pub mod session;
+#[cfg(feature = "social")]
+pub mod social;
 pub mod time_based_permission;
 #[cfg(any(feature = "jwt", feature = "token"))]
 pub mod token_blacklist;
@@ -93,15 +93,14 @@ pub use oauth2::{
 	AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
 	OAuth2Authentication, OAuth2TokenStore, SimpleUserRepository, UserRepository,
 };
-#[cfg(feature = "social")]
-pub use social::{
-	SocialAuthBackend, OAuthProvider, SocialAuthError,
-	GoogleProvider, GitHubProvider, AppleProvider, MicrosoftProvider,
-	OAuthToken, TokenResponse, IdToken, StandardClaims,
-	ProviderConfig, PkceFlow, StateStore,
-};
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
+#[cfg(feature = "social")]
+pub use social::{
+	AppleProvider, GitHubProvider, GoogleProvider, IdToken, MicrosoftProvider, OAuthProvider,
+	OAuthToken, PkceFlow, ProviderConfig, SocialAuthBackend, SocialAuthError, StandardClaims,
+	StateStore, TokenResponse,
+};
 
 #[cfg(feature = "rate-limit")]
 pub use rate_limit_permission::{RateLimitPermission, RateLimitPermissionBuilder};
