@@ -9,6 +9,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 ## Features
 
 - **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE
+- **DCL (Data Control Language) support** - GRANT and REVOKE statements
 - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 - **Expression system** - Arithmetic, comparison, logical, and pattern matching operators
 - **Advanced SQL** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -144,6 +145,69 @@ stmt.column("name")
     });
 ```
 
+### GRANT (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::grant()
+    .privilege(Privilege::Select)
+    .privilege(Privilege::Insert)
+    .on_table("users")
+    .to("app_user")
+    .with_grant_option(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT SELECT, INSERT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+```
+
+### REVOKE (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::revoke()
+    .privilege(Privilege::Insert)
+    .from_table("users")
+    .from("app_user")
+    .cascade(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke(&stmt);
+// sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
+```
+
+### GRANT Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{GrantRoleStatement, RoleSpecification};
+
+let stmt = GrantRoleStatement::new()
+    .role("developer")
+    .to(RoleSpecification::new("alice"))
+    .with_admin_option();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant_role(&stmt);
+// sql = r#"GRANT "developer" TO alice WITH ADMIN OPTION"#
+```
+
+### REVOKE Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{RevokeRoleStatement, RoleSpecification};
+
+let stmt = RevokeRoleStatement::new()
+    .role("developer")
+    .from(RoleSpecification::new("alice"))
+    .cascade();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke_role(&stmt);
+// sql = r#"REVOKE "developer" FROM alice CASCADE"#
+```
+
 ## Backend Differences
 
 | Feature | PostgreSQL | MySQL | SQLite |
@@ -156,6 +220,7 @@ stmt.column("name")
 | CTEs (WITH) | Supported | Supported | Supported |
 | Recursive CTEs | Supported | Supported | Supported |
 | `||` concatenation | Native | Not supported | Native |
+| DCL (GRANT/REVOKE) | Full support | Full support | Not supported (panics) |
 
 ## Feature Flags
 

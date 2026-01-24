@@ -46,7 +46,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InsertStatement` with table, columns, values (single and multi-row)
 - `UpdateStatement` with table, SET, WHERE
 - `DeleteStatement` with table, WHERE
-- `Query` factory with `select()`, `insert()`, `update()`, `delete()`
+- `Query` factory with `select()`, `insert()`, `update()`, `delete()`, `grant()`, `revoke()`
+
+#### DCL (Data Control Language) Builders
+- `GrantStatement` - GRANT statement builder with fluent API for object privileges
+- `RevokeStatement` - REVOKE statement builder with fluent API for object privileges
+- `GrantRoleStatement` - GRANT role membership statement builder
+- `RevokeRoleStatement` - REVOKE role membership statement builder
+- `RoleSpecification` enum - Role specifications (RoleName, CurrentRole, CurrentUser, SessionUser)
+- `DropBehavior` enum - Drop behavior for REVOKE (Cascade, Restrict)
+- `Privilege` enum - 14 privilege types (SELECT, INSERT, UPDATE, DELETE, REFERENCES, CREATE, ALL, TRUNCATE, TRIGGER, MAINTAIN, USAGE, CONNECT, TEMPORARY, EXECUTE)
+- `ObjectType` enum - 4 database object types (Table, Database, Schema, Sequence)
+- `Grantee` enum - 6 grantee types (Role, User with host, Public, CurrentRole, CurrentUser, SessionUser)
+- Privilege-object validation logic
+- WITH GRANT OPTION support (object privileges)
+- WITH ADMIN OPTION support (role membership)
+- ADMIN OPTION FOR support (role membership revocation)
+- GRANTED BY clause support (PostgreSQL)
+- CASCADE and RESTRICT support (PostgreSQL)
+- PostgreSQL and MySQL full support
+- SQLite not supported (panics with error message)
 
 #### Advanced SELECT Features
 - JOIN support (INNER, LEFT, RIGHT, FULL OUTER, CROSS) with ON/USING
@@ -72,13 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Backends
 - `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
-  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST
+  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
+  GRANT/REVOKE with GRANTED BY and CASCADE support,
+  GRANT/REVOKE role membership with all PostgreSQL features
 - `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE
+  DISTINCT ROW, INSERT IGNORE, GRANT/REVOKE with User@Host format,
+  GRANT/REVOKE role membership with WITH ADMIN OPTION
 - `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
-  NULLS FIRST/LAST, `||` concatenation
+  NULLS FIRST/LAST, `||` concatenation, DCL not supported (panics)
 - `SqlWriter` infrastructure for SQL string construction
-- `QueryBuilder` trait for backend-agnostic query generation
+- `QueryBuilder` trait for backend-agnostic query generation with `build_grant()`, `build_revoke()`, `build_grant_role()`, and `build_revoke_role()` methods
 
 #### Operators
 - `BinOper` for binary operators (arithmetic, comparison, logical, pattern)
