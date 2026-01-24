@@ -48,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeleteStatement` with table, WHERE
 - `Query` factory with `select()`, `insert()`, `update()`, `delete()`
 
+#### DDL Operations
+- `CreateTableStatement` with columns, constraints, indexes, IF NOT EXISTS
+- `AlterTableStatement` with ADD/DROP/RENAME COLUMN, ADD/DROP CONSTRAINT, RENAME TABLE
+- `DropTableStatement` with multiple tables, IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
+- `CreateIndexStatement` with UNIQUE, IF NOT EXISTS, WHERE clause (partial indexes), USING method
+- `DropIndexStatement` with IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
+- `ColumnDef` for column definitions with type, constraints, default, check
+- `ColumnType` enum with 30+ SQL types (Integer, String, Text, JSON, Array, etc.)
+- `TableConstraint` enum (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
+- `IndexMethod` enum (BTree, Hash, Gist, Gin, Brin, FullText, Spatial)
+- `AlterTableOperation` enum for ALTER TABLE operations
+- `Query` factory extensions: `create_table()`, `alter_table()`, `drop_table()`, `create_index()`, `drop_index()`
+
 #### Advanced SELECT Features
 - JOIN support (INNER, LEFT, RIGHT, FULL OUTER, CROSS) with ON/USING
 - GROUP BY with multiple columns
@@ -72,13 +85,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Backends
 - `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
-  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST
+  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
+  DDL with CASCADE/RESTRICT support
 - `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE
+  DISTINCT ROW, INSERT IGNORE, DDL with table-qualified DROP INDEX
 - `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
-  NULLS FIRST/LAST, `||` concatenation
+  NULLS FIRST/LAST, `||` concatenation, DDL support
 - `SqlWriter` infrastructure for SQL string construction
-- `QueryBuilder` trait for backend-agnostic query generation
+- `QueryBuilder` trait for backend-agnostic query generation (DML and DDL)
 
 #### Operators
 - `BinOper` for binary operators (arithmetic, comparison, logical, pattern)

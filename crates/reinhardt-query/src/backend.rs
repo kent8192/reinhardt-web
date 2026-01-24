@@ -4,7 +4,10 @@
 //! MySQL, and SQLite.
 
 use crate::{
-	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
+	query::{
+		AlterTableStatement, CreateIndexStatement, CreateTableStatement, DeleteStatement,
+		DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement, UpdateStatement,
+	},
 	value::Values,
 };
 
@@ -133,4 +136,69 @@ pub trait QueryBuilder {
 	/// - MySQL: `format_placeholder(1)` -> `?`
 	/// - SQLite: `format_placeholder(1)` -> `?`
 	fn format_placeholder(&self, index: usize) -> String;
+
+	/// Build CREATE TABLE statement
+	///
+	/// Generates SQL and parameter values for a CREATE TABLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values);
+
+	/// Build ALTER TABLE statement
+	///
+	/// Generates SQL and parameter values for an ALTER TABLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values);
+
+	/// Build DROP TABLE statement
+	///
+	/// Generates SQL and parameter values for a DROP TABLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values);
+
+	/// Build CREATE INDEX statement
+	///
+	/// Generates SQL and parameter values for a CREATE INDEX statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE INDEX statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values);
+
+	/// Build DROP INDEX statement
+	///
+	/// Generates SQL and parameter values for a DROP INDEX statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP INDEX statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values);
 }

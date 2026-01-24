@@ -14,6 +14,7 @@
 
 mod alias;
 mod column_ref;
+mod ddl;
 mod iden;
 mod join;
 mod operators;
@@ -23,6 +24,7 @@ mod window;
 
 pub use alias::Alias;
 pub use column_ref::{ColumnRef, IntoColumnRef};
+pub use ddl::{ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint};
 pub use iden::{DynIden, Iden, IdenStatic, IntoIden, SeaRc};
 pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
 pub use operators::{BinOper, LogicalChainOper, PgBinOper, SubQueryOper, UnOper};

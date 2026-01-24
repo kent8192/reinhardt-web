@@ -5,7 +5,11 @@
 use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
-	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
+	query::{
+		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
+		UpdateStatement,
+	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
 };
@@ -903,12 +907,522 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("CREATE TABLE");
+		writer.push_space();
+
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.push_space();
+		writer.push("(");
+
+		// Columns
+		let mut first = true;
+		for column in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Column name
+			writer.push_identifier(&column.name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+
+			// Column type
+			if let Some(col_type) = &column.column_type {
+				writer.push(&self.column_type_to_sql(col_type));
+			}
+
+			// NOT NULL
+			if column.not_null {
+				writer.push_space();
+				writer.push_keyword("NOT NULL");
+			}
+
+			// UNIQUE
+			if column.unique {
+				writer.push_space();
+				writer.push_keyword("UNIQUE");
+			}
+
+			// PRIMARY KEY
+			if column.primary_key {
+				writer.push_space();
+				writer.push_keyword("PRIMARY KEY");
+			}
+
+			// DEFAULT
+			if let Some(default_expr) = &column.default {
+				writer.push_space();
+				writer.push_keyword("DEFAULT");
+				writer.push_space();
+				self.write_simple_expr(&mut writer, default_expr);
+			}
+
+			// CHECK
+			if let Some(check_expr) = &column.check {
+				writer.push_space();
+				writer.push_keyword("CHECK");
+				writer.push_space();
+				writer.push("(");
+				self.write_simple_expr(&mut writer, check_expr);
+				writer.push(")");
+			}
+		}
+
+		// Table constraints
+		for constraint in &stmt.constraints {
+			writer.push(", ");
+			self.write_table_constraint(&mut writer, constraint);
+		}
+
+		writer.push(")");
+
+		writer.finish()
+	}
+
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// ALTER TABLE table_name
+		writer.push("ALTER TABLE");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// Process operations
+		let mut first = true;
+		for operation in &stmt.operations {
+			if !first {
+				writer.push(",");
+			}
+			first = false;
+			writer.push_space();
+
+			match operation {
+				AlterTableOperation::AddColumn(column_def) => {
+					writer.push("ADD COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if column_def.unique {
+						writer.push(" UNIQUE");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+					if let Some(check) = &column_def.check {
+						writer.push(" CHECK (");
+						self.write_simple_expr(&mut writer, check);
+						writer.push(")");
+					}
+				}
+				AlterTableOperation::DropColumn { name, if_exists } => {
+					writer.push("DROP COLUMN");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameColumn { old, new } => {
+					writer.push("RENAME COLUMN");
+					writer.push_space();
+					writer.push_identifier(&old.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					writer.push("TO");
+					writer.push_space();
+					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::ModifyColumn(column_def) => {
+					// PostgreSQL uses ALTER COLUMN instead of MODIFY COLUMN
+					writer.push("ALTER COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+
+					// TYPE change
+					if let Some(col_type) = &column_def.column_type {
+						writer.push("TYPE");
+						writer.push_space();
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+
+					// NOT NULL / NULL
+					if column_def.not_null {
+						writer.push(", ALTER COLUMN ");
+						writer
+							.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+						writer.push(" SET NOT NULL");
+					}
+
+					// DEFAULT
+					if let Some(default) = &column_def.default {
+						writer.push(", ALTER COLUMN ");
+						writer
+							.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+						writer.push(" SET DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+				}
+				AlterTableOperation::AddConstraint(constraint) => {
+					writer.push("ADD ");
+					self.write_table_constraint(&mut writer, constraint);
+				}
+				AlterTableOperation::DropConstraint { name, if_exists } => {
+					writer.push("DROP CONSTRAINT");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameTable(new_name) => {
+					writer.push("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP TABLE
+		writer.push("DROP TABLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE UNIQUE INDEX IF NOT EXISTS
+		writer.push("CREATE");
+		writer.push_space();
+		if stmt.unique {
+			writer.push_keyword("UNIQUE");
+			writer.push_space();
+		}
+		writer.push_keyword("INDEX");
+		writer.push_space();
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+		writer.push_space();
+
+		// USING method
+		if let Some(method) = &stmt.using {
+			writer.push_keyword("USING");
+			writer.push_space();
+			writer.push(self.index_method_to_sql(method));
+			writer.push_space();
+		}
+
+		// (column1 ASC, column2 DESC, ...)
+		writer.push("(");
+		let mut first = true;
+		for col in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(order) = &col.order {
+				writer.push_space();
+				match order {
+					crate::types::Order::Asc => writer.push("ASC"),
+					crate::types::Order::Desc => writer.push("DESC"),
+				}
+			}
+		}
+		writer.push(")");
+
+		// WHERE clause (partial index)
+		if let Some(where_expr) = &stmt.r#where {
+			writer.push_space();
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, where_expr);
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP INDEX
+		writer.push("DROP INDEX");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+}
+
+// Helper methods for DDL operations
+impl PostgresQueryBuilder {
+	/// Convert ColumnType to PostgreSQL SQL type string
+	///
+	/// Note: The `self` parameter is used in recursive calls for Array types (e.g., INTEGER[]).
+	/// The clippy::only_used_in_recursion warning is allowed because this is the intended design
+	/// for handling nested array types, and keeping `self` maintains consistency with other
+	/// backend implementations.
+	#[allow(clippy::only_used_in_recursion)]
+	fn column_type_to_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		match col_type {
+			ColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			ColumnType::String(len) => {
+				if let Some(l) = len {
+					format!("VARCHAR({})", l)
+				} else {
+					"VARCHAR".to_string()
+				}
+			}
+			ColumnType::Text => "TEXT".to_string(),
+			ColumnType::TinyInteger => "SMALLINT".to_string(),
+			ColumnType::SmallInteger => "SMALLINT".to_string(),
+			ColumnType::Integer => "INTEGER".to_string(),
+			ColumnType::BigInteger => "BIGINT".to_string(),
+			ColumnType::Float => "REAL".to_string(),
+			ColumnType::Double => "DOUBLE PRECISION".to_string(),
+			ColumnType::Decimal(precision) => {
+				if let Some((p, s)) = precision {
+					format!("DECIMAL({}, {})", p, s)
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			ColumnType::DateTime => "TIMESTAMP".to_string(),
+			ColumnType::Timestamp => "TIMESTAMP".to_string(),
+			ColumnType::TimestampWithTimeZone => "TIMESTAMP WITH TIME ZONE".to_string(),
+			ColumnType::Time => "TIME".to_string(),
+			ColumnType::Date => "DATE".to_string(),
+			ColumnType::Binary(len) => {
+				if let Some(l) = len {
+					format!("BYTEA({})", l)
+				} else {
+					"BYTEA".to_string()
+				}
+			}
+			ColumnType::VarBinary(len) => format!("BYTEA({})", len),
+			ColumnType::Blob => "BYTEA".to_string(),
+			ColumnType::Boolean => "BOOLEAN".to_string(),
+			ColumnType::Json => "JSON".to_string(),
+			ColumnType::JsonBinary => "JSONB".to_string(),
+			ColumnType::Uuid => "UUID".to_string(),
+			ColumnType::Array(inner_type) => {
+				format!("{}[]", self.column_type_to_sql(inner_type))
+			}
+			ColumnType::Custom(name) => name.clone(),
+		}
+	}
+
+	fn write_table_constraint(
+		&self,
+		writer: &mut SqlWriter,
+		constraint: &crate::types::TableConstraint,
+	) {
+		use crate::types::TableConstraint;
+		match constraint {
+			TableConstraint::PrimaryKey { name, columns } => {
+				if let Some(n) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&n.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("PRIMARY KEY");
+				writer.push_space();
+				writer.push("(");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			TableConstraint::Unique { name, columns } => {
+				if let Some(n) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&n.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("UNIQUE");
+				writer.push_space();
+				writer.push("(");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			TableConstraint::ForeignKey {
+				name,
+				columns,
+				ref_table,
+				ref_columns,
+				on_delete,
+				on_update,
+			} => {
+				if let Some(n) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&n.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("FOREIGN KEY");
+				writer.push_space();
+				writer.push("(");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+				writer.push_space();
+				writer.push_keyword("REFERENCES");
+				writer.push_space();
+				self.write_table_ref(writer, ref_table);
+				writer.push_space();
+				writer.push("(");
+				writer.push_list(ref_columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+				if let Some(action) = on_delete {
+					writer.push_space();
+					writer.push_keyword("ON DELETE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+				if let Some(action) = on_update {
+					writer.push_space();
+					writer.push_keyword("ON UPDATE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+			}
+			TableConstraint::Check { name, expr } => {
+				if let Some(n) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&n.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("CHECK");
+				writer.push_space();
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
+		}
+	}
+
+	fn foreign_key_action_to_sql(&self, action: &crate::types::ForeignKeyAction) -> &'static str {
+		use crate::types::ForeignKeyAction;
+		match action {
+			ForeignKeyAction::Restrict => "RESTRICT",
+			ForeignKeyAction::Cascade => "CASCADE",
+			ForeignKeyAction::SetNull => "SET NULL",
+			ForeignKeyAction::SetDefault => "SET DEFAULT",
+			ForeignKeyAction::NoAction => "NO ACTION",
+		}
+	}
+
+	fn index_method_to_sql(&self, method: &crate::query::IndexMethod) -> &'static str {
+		use crate::query::IndexMethod;
+		match method {
+			IndexMethod::BTree => "BTREE",
+			IndexMethod::Hash => "HASH",
+			IndexMethod::Gist => "GIST",
+			IndexMethod::Gin => "GIN",
+			IndexMethod::Brin => "BRIN",
+			IndexMethod::FullText => "GIN", // PostgreSQL uses GIN for full-text search
+			IndexMethod::Spatial => "GIST", // PostgreSQL uses GIST for spatial indexes
+		}
 	}
 }
 
@@ -3244,5 +3758,718 @@ mod tests {
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains(r#""first_name" || "last_name""#));
+	}
+
+	// DDL Tests
+
+	#[test]
+	fn test_drop_table_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE IF EXISTS \"users\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").cascade();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\" CASCADE");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_restrict() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").restrict();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\" RESTRICT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_multiple() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\", \"posts\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email");
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX \"idx_email\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").if_exists();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX IF EXISTS \"idx_email\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").cascade();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX \"idx_email\" CASCADE");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_restrict() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").restrict();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX \"idx_email\" RESTRICT");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE TABLE tests
+
+	#[test]
+	fn test_create_table_basic() {
+		use crate::types::{ColumnDef, ColumnType, IntoTableRef};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "name".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE \"users\""));
+		assert!(sql.contains("\"id\" INTEGER"));
+		assert!(sql.contains("\"name\" VARCHAR(255)"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_if_not_exists() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users").if_not_exists();
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE IF NOT EXISTS \"users\""));
+		assert!(sql.contains("\"id\" INTEGER"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_primary_key() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE \"users\""));
+		assert!(sql.contains("\"id\" INTEGER PRIMARY KEY"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_not_null() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "email".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: true,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("\"email\" VARCHAR(255) NOT NULL"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_unique() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "username".into_iden(),
+			column_type: Some(ColumnType::String(Some(50))),
+			not_null: false,
+			unique: true,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("\"username\" VARCHAR(50) UNIQUE"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_default() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "active".into_iden(),
+			column_type: Some(ColumnType::Boolean),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: Some(Expr::value(true).into_simple_expr()),
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("\"active\" BOOLEAN DEFAULT"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_create_table_with_check() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "age".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: Some(Expr::col("age").gte(0).into_simple_expr()),
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("\"age\" INTEGER CHECK"));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_create_table_with_table_constraint() {
+		use crate::types::{ColumnDef, ColumnType, TableConstraint};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "email".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.constraints.push(TableConstraint::PrimaryKey {
+			name: Some("pk_users".into_iden()),
+			columns: vec!["id".into_iden()],
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CONSTRAINT \"pk_users\" PRIMARY KEY (\"id\")"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_foreign_key() {
+		use crate::types::{
+			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
+		};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("posts");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "user_id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.constraints.push(TableConstraint::ForeignKey {
+			name: Some("fk_user".into_iden()),
+			columns: vec!["user_id".into_iden()],
+			ref_table: "users".into_table_ref(),
+			ref_columns: vec!["id".into_iden()],
+			on_delete: Some(ForeignKeyAction::Cascade),
+			on_update: Some(ForeignKeyAction::Restrict),
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CONSTRAINT \"fk_user\" FOREIGN KEY (\"user_id\")"));
+		assert!(sql.contains("REFERENCES \"users\" (\"id\")"));
+		assert!(sql.contains("ON DELETE CASCADE"));
+		assert!(sql.contains("ON UPDATE RESTRICT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_basic() {
+		use crate::query::IndexColumn;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_email" ON "users" ("email")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_unique() {
+		use crate::query::IndexColumn;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_username");
+		stmt.table("users");
+		stmt.unique = true;
+		stmt.columns.push(IndexColumn {
+			name: "username".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE UNIQUE INDEX "idx_users_username" ON "users" ("username")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_if_not_exists() {
+		use crate::query::IndexColumn;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.if_not_exists = true;
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX IF NOT EXISTS "idx_users_email" ON "users" ("email")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_order() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_created");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "created_at".into_iden(),
+			order: Some(Order::Desc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_created" ON "users" ("created_at" DESC)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_multiple_columns() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_name");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "last_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+		stmt.columns.push(IndexColumn {
+			name: "first_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_name" ON "users" ("last_name" ASC, "first_name" ASC)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_btree() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_id");
+		stmt.table("users");
+		stmt.using = Some(IndexMethod::BTree);
+		stmt.columns.push(IndexColumn {
+			name: "id".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_id" ON "users" USING BTREE ("id")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_gin() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_posts_tags");
+		stmt.table("posts");
+		stmt.using = Some(IndexMethod::Gin);
+		stmt.columns.push(IndexColumn {
+			name: "tags".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_posts_tags" ON "posts" USING GIN ("tags")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_partial_with_where() {
+		use crate::query::IndexColumn;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_active_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_active_email" ON "users" ("email") WHERE "active" = $1"#
+		);
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_alter_table_add_column() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::AddColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::Integer),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" ADD COLUMN "age" INTEGER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropColumn {
+			name: "age".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" DROP COLUMN "age""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_column_if_exists() {
+		use crate::query::AlterTableOperation;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropColumn {
+			name: "age".into_iden(),
+			if_exists: true,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" DROP COLUMN IF EXISTS "age""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::RenameColumn {
+			old: "email".into_iden(),
+			new: "email_address".into_iden(),
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" RENAME COLUMN "email" TO "email_address""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_modify_column_type() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::ModifyColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::BigInteger),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" ALTER COLUMN "age" TYPE BIGINT"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_constraint() {
+		use crate::query::AlterTableOperation;
+		use crate::types::TableConstraint;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::AddConstraint(
+			TableConstraint::Unique {
+				name: Some("unique_email".into_iden()),
+				columns: vec!["email".into_iden()],
+			},
+		));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" ADD CONSTRAINT "unique_email" UNIQUE ("email")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_constraint() {
+		use crate::query::AlterTableOperation;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropConstraint {
+			name: "unique_email".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" DROP CONSTRAINT "unique_email""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_table() {
+		use crate::query::AlterTableOperation;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::RenameTable("accounts".into_iden()));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" RENAME TO "accounts""#);
+		assert_eq!(values.len(), 0);
 	}
 }

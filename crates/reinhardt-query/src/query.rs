@@ -1,13 +1,22 @@
 //! Query statement builders
 //!
-//! This module provides builders for SQL query statements (SELECT, INSERT, UPDATE, DELETE).
+//! This module provides builders for SQL query statements (SELECT, INSERT, UPDATE, DELETE)
+//! and DDL statements (CREATE TABLE, ALTER TABLE, DROP TABLE).
 //!
-//! # Usage
+//! # DML Usage
 //!
 //! - Query Select: [`SelectStatement`]
 //! - Query Insert: [`InsertStatement`]
 //! - Query Update: [`UpdateStatement`]
 //! - Query Delete: [`DeleteStatement`]
+//!
+//! # DDL Usage
+//!
+//! - Create Table: [`CreateTableStatement`]
+//! - Alter Table: [`AlterTableStatement`]
+//! - Drop Table: [`DropTableStatement`]
+//! - Create Index: [`CreateIndexStatement`]
+//! - Drop Index: [`DropIndexStatement`]
 //!
 //! # Examples
 //!
@@ -38,14 +47,24 @@
 //!     .and_where(Expr::col("active").eq(false));
 //! ```
 
+mod alter_table;
+mod create_index;
+mod create_table;
 mod delete;
+mod drop_index;
+mod drop_table;
 mod insert;
 mod returning;
 mod select;
 mod traits;
 mod update;
 
+pub use alter_table::*;
+pub use create_index::*;
+pub use create_table::*;
 pub use delete::*;
+pub use drop_index::*;
+pub use drop_table::*;
 pub use insert::*;
 pub use returning::*;
 pub use select::{
@@ -140,6 +159,94 @@ impl Query {
 	/// ```
 	pub fn delete() -> DeleteStatement {
 		DeleteStatement::new()
+	}
+
+	/// Construct a new [`CreateTableStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::ddl::{ColumnDef, ColumnType};
+	///
+	/// let query = Query::create_table()
+	///     .table("users")
+	///     .if_not_exists()
+	///     .col(
+	///         ColumnDef::new("id")
+	///             .column_type(ColumnType::Integer)
+	///             .primary_key(true)
+	///     );
+	/// ```
+	pub fn create_table() -> CreateTableStatement {
+		CreateTableStatement::new()
+	}
+
+	/// Construct a new [`AlterTableStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::ddl::{ColumnDef, ColumnType};
+	///
+	/// let query = Query::alter_table()
+	///     .table("users")
+	///     .add_column(
+	///         ColumnDef::new("age")
+	///             .column_type(ColumnType::Integer)
+	///     );
+	/// ```
+	pub fn alter_table() -> AlterTableStatement {
+		AlterTableStatement::new()
+	}
+
+	/// Construct a new [`DropTableStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_table()
+	///     .table("users")
+	///     .if_exists();
+	/// ```
+	pub fn drop_table() -> DropTableStatement {
+		DropTableStatement::new()
+	}
+
+	/// Construct a new [`CreateIndexStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::create_index()
+	///     .name("idx_email")
+	///     .table("users")
+	///     .col("email")
+	///     .unique();
+	/// ```
+	pub fn create_index() -> CreateIndexStatement {
+		CreateIndexStatement::new()
+	}
+
+	/// Construct a new [`DropIndexStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_index()
+	///     .name("idx_email")
+	///     .table("users")
+	///     .if_exists();
+	/// ```
+	pub fn drop_index() -> DropIndexStatement {
+		DropIndexStatement::new()
 	}
 }
 

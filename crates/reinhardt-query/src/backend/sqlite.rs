@@ -5,7 +5,11 @@
 use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
-	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
+	query::{
+		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
+		UpdateStatement,
+	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
 };
@@ -876,12 +880,436 @@ impl QueryBuilder for SqliteQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE TABLE
+		writer.push("CREATE TABLE");
+		writer.push_space();
+
+		// IF NOT EXISTS clause
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Table name
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.push_space();
+		writer.push("(");
+
+		// Column definitions
+		let mut first = true;
+		for column in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Column name
+			writer.push_identifier(&column.name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+
+			// Column type
+			if let Some(col_type) = &column.column_type {
+				writer.push(&self.column_type_to_sql(col_type));
+			}
+
+			// PRIMARY KEY
+			if column.primary_key {
+				writer.push(" PRIMARY KEY");
+			}
+
+			// AUTOINCREMENT (SQLite-specific, only for INTEGER PRIMARY KEY)
+			if column.auto_increment {
+				writer.push(" AUTOINCREMENT");
+			}
+
+			// NOT NULL
+			if column.not_null {
+				writer.push(" NOT NULL");
+			}
+
+			// UNIQUE
+			if column.unique {
+				writer.push(" UNIQUE");
+			}
+
+			// DEFAULT
+			if let Some(default) = &column.default {
+				writer.push(" DEFAULT ");
+				self.write_simple_expr(&mut writer, default);
+			}
+
+			// CHECK constraint
+			if let Some(check) = &column.check {
+				writer.push(" CHECK (");
+				self.write_simple_expr(&mut writer, check);
+				writer.push(")");
+			}
+		}
+
+		// Table constraints
+		for constraint in &stmt.constraints {
+			writer.push(", ");
+			self.write_table_constraint(&mut writer, constraint);
+		}
+
+		writer.push(")");
+
+		writer.finish()
+	}
+
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// ALTER TABLE table_name
+		writer.push("ALTER TABLE");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// SQLite has very limited ALTER TABLE support
+		// Only single operation per statement is allowed
+		if stmt.operations.len() > 1 {
+			panic!("SQLite does not support multiple ALTER TABLE operations in a single statement");
+		}
+
+		if let Some(operation) = stmt.operations.first() {
+			writer.push_space();
+
+			match operation {
+				AlterTableOperation::AddColumn(column_def) => {
+					writer.push("ADD COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+					if let Some(check) = &column_def.check {
+						writer.push(" CHECK (");
+						self.write_simple_expr(&mut writer, check);
+						writer.push(")");
+					}
+				}
+				AlterTableOperation::DropColumn { name, if_exists: _ } => {
+					// SQLite 3.35.0+ only
+					writer.push("DROP COLUMN");
+					writer.push_space();
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameColumn { old, new } => {
+					// SQLite 3.25.0+ only
+					writer.push("RENAME COLUMN");
+					writer.push_space();
+					writer.push_identifier(&old.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					writer.push("TO");
+					writer.push_space();
+					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameTable(new_name) => {
+					writer.push("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::ModifyColumn(_) => {
+					panic!("SQLite does not support MODIFY COLUMN - table recreation required");
+				}
+				AlterTableOperation::AddConstraint(_) => {
+					panic!(
+						"SQLite does not support ADD CONSTRAINT - constraints must be defined during table creation"
+					);
+				}
+				AlterTableOperation::DropConstraint { .. } => {
+					panic!("SQLite does not support DROP CONSTRAINT - table recreation required");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("DROP TABLE");
+		writer.push_space();
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// Note: SQLite does not support CASCADE or RESTRICT for DROP TABLE
+
+		writer.finish()
+	}
+
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE UNIQUE INDEX IF NOT EXISTS
+		writer.push("CREATE");
+		writer.push_space();
+		if stmt.unique {
+			writer.push_keyword("UNIQUE");
+			writer.push_space();
+		}
+		writer.push_keyword("INDEX");
+		writer.push_space();
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+		writer.push_space();
+
+		// (column1 ASC, column2 DESC, ...)
+		writer.push("(");
+		let mut first = true;
+		for col in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(order) = &col.order {
+				writer.push_space();
+				match order {
+					crate::types::Order::Asc => writer.push("ASC"),
+					crate::types::Order::Desc => writer.push("DESC"),
+				}
+			}
+		}
+		writer.push(")");
+
+		// WHERE clause (partial index - supported in SQLite)
+		if let Some(where_expr) = &stmt.r#where {
+			writer.push_space();
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, where_expr);
+		}
+
+		// USING method is NOT supported in SQLite - ignore stmt.using
+
+		writer.finish()
+	}
+
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("DROP INDEX");
+		writer.push_space();
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Note: SQLite does not support CASCADE or RESTRICT for DROP INDEX
+
+		writer.finish()
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+}
+
+// Helper methods for CREATE TABLE
+impl SqliteQueryBuilder {
+	/// Convert ColumnType to SQLite SQL type string
+	fn column_type_to_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(len) => {
+				if let Some(l) = len {
+					format!("VARCHAR({})", l)
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			Text => "TEXT".to_string(),
+			TinyInteger => "INTEGER".to_string(),
+			SmallInteger => "INTEGER".to_string(),
+			Integer => "INTEGER".to_string(),
+			BigInteger => "INTEGER".to_string(),
+			Float => "REAL".to_string(),
+			Double => "REAL".to_string(),
+			Decimal(_) => "REAL".to_string(), // SQLite doesn't have DECIMAL, use REAL
+			Boolean => "INTEGER".to_string(), // SQLite doesn't have BOOLEAN, use INTEGER (0/1)
+			Date => "TEXT".to_string(),       // SQLite stores dates as TEXT or INTEGER
+			Time => "TEXT".to_string(),
+			DateTime => "TEXT".to_string(),
+			Timestamp => "INTEGER".to_string(), // Usually stored as UNIX timestamp
+			TimestampWithTimeZone => "TEXT".to_string(), // ISO 8601 format
+			Binary(len) => {
+				if let Some(l) = len {
+					format!("BLOB({})", l)
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			VarBinary(len) => format!("BLOB({})", len),
+			Blob => "BLOB".to_string(),
+			Uuid => "TEXT".to_string(), // UUID as TEXT (36 chars)
+			Json => "TEXT".to_string(), // SQLite JSON1 extension stores JSON as TEXT
+			JsonBinary => "TEXT".to_string(),
+			Array(_) => "TEXT".to_string(), // SQLite doesn't have ARRAY, use TEXT (JSON)
+			Custom(name) => name.clone(),
+		}
+	}
+
+	/// Write table constraint to SQL writer
+	fn write_table_constraint(
+		&self,
+		writer: &mut SqlWriter,
+		constraint: &crate::types::TableConstraint,
+	) {
+		use crate::types::TableConstraint;
+		use TableConstraint::*;
+
+		match constraint {
+			PrimaryKey { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("PRIMARY KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			ForeignKey {
+				name,
+				columns,
+				ref_table,
+				ref_columns,
+				on_delete,
+				on_update,
+			} => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("FOREIGN KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+				writer.push_space();
+				writer.push_keyword("REFERENCES");
+				writer.push_space();
+				self.write_table_ref(writer, ref_table);
+				writer.push(" (");
+				writer.push_list(ref_columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+
+				if let Some(action) = on_delete {
+					writer.push_space();
+					writer.push_keyword("ON DELETE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+
+				if let Some(action) = on_update {
+					writer.push_space();
+					writer.push_keyword("ON UPDATE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+			}
+			Unique { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("UNIQUE");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			Check { name, expr } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("CHECK");
+				writer.push(" (");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Convert ForeignKeyAction to SQL keyword
+	fn foreign_key_action_to_sql(&self, action: &crate::types::ForeignKeyAction) -> &'static str {
+		use crate::types::ForeignKeyAction;
+		use ForeignKeyAction::*;
+
+		match action {
+			Cascade => "CASCADE",
+			Restrict => "RESTRICT",
+			SetNull => "SET NULL",
+			SetDefault => "SET DEFAULT",
+			NoAction => "NO ACTION",
+		}
 	}
 }
 
@@ -3070,5 +3498,455 @@ mod tests {
 		assert!(sql.contains(r#""discount""#));
 		assert!(sql.contains("> ?"));
 		assert_eq!(values.len(), 1);
+	}
+
+	// DDL Tests
+
+	#[test]
+	fn test_drop_table_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_if_exists() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE IF EXISTS \"users\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_multiple() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE \"users\", \"posts\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email");
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX \"idx_email\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_if_exists() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").if_exists();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX IF EXISTS \"idx_email\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE TABLE tests
+
+	#[test]
+	fn test_create_table_basic() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "name".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE \"users\""));
+		assert!(sql.contains("\"id\" INTEGER"));
+		assert!(sql.contains("\"name\" VARCHAR(255)"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_autoincrement() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: true,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("\"id\" INTEGER PRIMARY KEY AUTOINCREMENT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_foreign_key() {
+		use crate::types::{
+			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
+		};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("posts");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "user_id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.constraints.push(TableConstraint::ForeignKey {
+			name: Some("fk_user".into_iden()),
+			columns: vec!["user_id".into_iden()],
+			ref_table: "users".into_table_ref(),
+			ref_columns: vec!["id".into_iden()],
+			on_delete: Some(ForeignKeyAction::Cascade),
+			on_update: Some(ForeignKeyAction::Restrict),
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CONSTRAINT \"fk_user\" FOREIGN KEY (\"user_id\")"));
+		assert!(sql.contains("REFERENCES \"users\" (\"id\")"));
+		assert!(sql.contains("ON DELETE CASCADE"));
+		assert!(sql.contains("ON UPDATE RESTRICT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_basic() {
+		use crate::query::IndexColumn;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_email" ON "users" ("email")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_unique() {
+		use crate::query::IndexColumn;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_username");
+		stmt.table("users");
+		stmt.unique = true;
+		stmt.columns.push(IndexColumn {
+			name: "username".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE UNIQUE INDEX "idx_users_username" ON "users" ("username")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_if_not_exists() {
+		use crate::query::IndexColumn;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.if_not_exists = true;
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX IF NOT EXISTS "idx_users_email" ON "users" ("email")"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_order() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_created");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "created_at".into_iden(),
+			order: Some(Order::Desc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_created" ON "users" ("created_at" DESC)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_multiple_columns() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_name");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "last_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+		stmt.columns.push(IndexColumn {
+			name: "first_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_name" ON "users" ("last_name" ASC, "first_name" ASC)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_partial_with_where() {
+		use crate::query::IndexColumn;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_active_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE INDEX "idx_users_active_email" ON "users" ("email") WHERE "active" = ?"#
+		);
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_alter_table_add_column() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::AddColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::Integer),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" ADD COLUMN "age" INTEGER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropColumn {
+			name: "age".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" DROP COLUMN "age""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::RenameColumn {
+			old: "email".into_iden(),
+			new: "email_address".into_iden(),
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" RENAME COLUMN "email" TO "email_address""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_table() {
+		use crate::query::AlterTableOperation;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::RenameTable("accounts".into_iden()));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, r#"ALTER TABLE "users" RENAME TO "accounts""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support MODIFY COLUMN")]
+	fn test_alter_table_modify_column_panics() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::ModifyColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::BigInteger),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let _ = builder.build_alter_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support ADD CONSTRAINT")]
+	fn test_alter_table_add_constraint_panics() {
+		use crate::query::AlterTableOperation;
+		use crate::types::TableConstraint;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::AddConstraint(
+			TableConstraint::Unique {
+				name: Some("unique_email".into_iden()),
+				columns: vec!["email".into_iden()],
+			},
+		));
+
+		let _ = builder.build_alter_table(&stmt);
+	}
+
+	#[test]
+	fn test_create_table_with_boolean_type() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("settings");
+		stmt.columns.push(ColumnDef {
+			name: "active".into_iden(),
+			column_type: Some(ColumnType::Boolean),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		// SQLite uses INTEGER for BOOLEAN
+		assert!(sql.contains("\"active\" INTEGER"));
+		assert_eq!(values.len(), 0);
 	}
 }

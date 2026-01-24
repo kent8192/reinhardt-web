@@ -9,6 +9,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 ## Features
 
 - **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE
+- **DDL operations** - CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE INDEX, DROP INDEX
 - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 - **Expression system** - Arithmetic, comparison, logical, and pattern matching operators
 - **Advanced SQL** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -89,6 +90,104 @@ let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_delete(&stmt);
 ```
 
+### CREATE TABLE
+
+```rust
+use reinhardt_query::prelude::*;
+use reinhardt_query::types::{ColumnDef, ColumnType};
+
+let mut stmt = Query::create_table();
+stmt.table("users")
+    .if_not_exists()
+    .column(ColumnDef {
+        name: "id".into_iden(),
+        column_type: ColumnType::Integer,
+        not_null: true,
+        primary_key: true,
+        auto_increment: true,
+        ..Default::default()
+    })
+    .column(ColumnDef {
+        name: "email".into_iden(),
+        column_type: ColumnType::String(Some(255)),
+        not_null: true,
+        unique: true,
+        ..Default::default()
+    });
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_create_table(&stmt);
+// sql = r#"CREATE TABLE IF NOT EXISTS "users" ("id" INTEGER NOT NULL PRIMARY KEY, "email" VARCHAR(255) NOT NULL UNIQUE)"#
+```
+
+### ALTER TABLE
+
+```rust
+use reinhardt_query::prelude::*;
+use reinhardt_query::query::AlterTableOperation;
+use reinhardt_query::types::{ColumnDef, ColumnType};
+
+let mut stmt = Query::alter_table();
+stmt.table("users")
+    .add_column(ColumnDef {
+        name: "created_at".into_iden(),
+        column_type: ColumnType::Timestamp,
+        not_null: true,
+        ..Default::default()
+    })
+    .rename_column("email", "email_address");
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_alter_table(&stmt);
+// sql = r#"ALTER TABLE "users" ADD COLUMN "created_at" TIMESTAMP NOT NULL, RENAME COLUMN "email" TO "email_address""#
+```
+
+### DROP TABLE
+
+```rust
+use reinhardt_query::prelude::*;
+
+let mut stmt = Query::drop_table();
+stmt.table("users")
+    .if_exists()
+    .cascade();  // PostgreSQL only
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_drop_table(&stmt);
+// sql = "DROP TABLE IF EXISTS \"users\" CASCADE"
+```
+
+### CREATE INDEX
+
+```rust
+use reinhardt_query::prelude::*;
+
+let mut stmt = Query::create_index();
+stmt.name("idx_email")
+    .table("users")
+    .col("email")
+    .unique()
+    .if_not_exists();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_create_index(&stmt);
+// sql = r#"CREATE UNIQUE INDEX IF NOT EXISTS "idx_email" ON "users" ("email")"#
+```
+
+### DROP INDEX
+
+```rust
+use reinhardt_query::prelude::*;
+
+let mut stmt = Query::drop_index();
+stmt.name("idx_email")
+    .if_exists();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_drop_index(&stmt);
+// sql = "DROP INDEX IF EXISTS \"idx_email\""
+```
+
 ### JOINs
 
 ```rust
@@ -156,6 +255,9 @@ stmt.column("name")
 | CTEs (WITH) | Supported | Supported | Supported |
 | Recursive CTEs | Supported | Supported | Supported |
 | `||` concatenation | Native | Not supported | Native |
+| DROP TABLE CASCADE/RESTRICT | Supported | Not supported | Not supported |
+| DROP INDEX CASCADE/RESTRICT | Supported | Not supported | Not supported |
+| DROP INDEX requires table | No | Yes (ON clause) | No |
 
 ## Feature Flags
 

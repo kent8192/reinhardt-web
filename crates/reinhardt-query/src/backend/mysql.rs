@@ -5,7 +5,11 @@
 use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
-	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
+	query::{
+		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
+		UpdateStatement,
+	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
 };
@@ -844,12 +848,495 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE TABLE
+		writer.push("CREATE TABLE");
+		writer.push_space();
+
+		// IF NOT EXISTS clause
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Table name
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.push_space();
+		writer.push("(");
+
+		// Column definitions
+		let mut first = true;
+		for column in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Column name
+			writer.push_identifier(&column.name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+
+			// Column type
+			if let Some(col_type) = &column.column_type {
+				writer.push(&self.column_type_to_sql(col_type));
+			}
+
+			// NOT NULL
+			if column.not_null {
+				writer.push(" NOT NULL");
+			}
+
+			// AUTO_INCREMENT
+			if column.auto_increment {
+				writer.push(" AUTO_INCREMENT");
+			}
+
+			// UNIQUE
+			if column.unique {
+				writer.push(" UNIQUE");
+			}
+
+			// PRIMARY KEY
+			if column.primary_key {
+				writer.push(" PRIMARY KEY");
+			}
+
+			// DEFAULT
+			if let Some(default) = &column.default {
+				writer.push(" DEFAULT ");
+				self.write_simple_expr(&mut writer, default);
+			}
+
+			// CHECK constraint
+			if let Some(check) = &column.check {
+				writer.push(" CHECK (");
+				self.write_simple_expr(&mut writer, check);
+				writer.push(")");
+			}
+
+			// COMMENT
+			if let Some(comment) = &column.comment {
+				writer.push(" COMMENT ");
+				writer.push_value(comment.clone().into(), |_| "?".to_string());
+			}
+		}
+
+		// Table constraints
+		for constraint in &stmt.constraints {
+			writer.push(", ");
+			self.write_table_constraint(&mut writer, constraint);
+		}
+
+		writer.push(")");
+
+		writer.finish()
+	}
+
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// ALTER TABLE table_name
+		writer.push("ALTER TABLE");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// Process operations
+		let mut first = true;
+		for operation in &stmt.operations {
+			if !first {
+				writer.push(",");
+			}
+			first = false;
+			writer.push_space();
+
+			match operation {
+				AlterTableOperation::AddColumn(column_def) => {
+					writer.push("ADD COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if column_def.unique {
+						writer.push(" UNIQUE");
+					}
+					if column_def.auto_increment {
+						writer.push(" AUTO_INCREMENT");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+					if let Some(check) = &column_def.check {
+						writer.push(" CHECK (");
+						self.write_simple_expr(&mut writer, check);
+						writer.push(")");
+					}
+					if let Some(comment) = &column_def.comment {
+						writer.push(" COMMENT ");
+						writer.push_value(comment.clone().into(), |_| "?".to_string());
+					}
+				}
+				AlterTableOperation::DropColumn { name, if_exists } => {
+					writer.push("DROP COLUMN");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameColumn { old, new } => {
+					// MySQL 8.0+ supports RENAME COLUMN
+					writer.push("RENAME COLUMN");
+					writer.push_space();
+					writer.push_identifier(&old.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					writer.push("TO");
+					writer.push_space();
+					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::ModifyColumn(column_def) => {
+					// MySQL uses MODIFY COLUMN instead of ALTER COLUMN
+					writer.push("MODIFY COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+				}
+				AlterTableOperation::AddConstraint(constraint) => {
+					writer.push("ADD ");
+					self.write_table_constraint(&mut writer, constraint);
+				}
+				AlterTableOperation::DropConstraint { name, if_exists } => {
+					writer.push("DROP CONSTRAINT");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameTable(new_name) => {
+					writer.push("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP TABLE
+		writer.push("DROP TABLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// Note: MySQL does not support CASCADE/RESTRICT for DROP TABLE
+
+		writer.finish()
+	}
+
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE UNIQUE INDEX IF NOT EXISTS
+		writer.push("CREATE");
+		writer.push_space();
+		if stmt.unique {
+			writer.push_keyword("UNIQUE");
+			writer.push_space();
+		}
+		writer.push_keyword("INDEX");
+		writer.push_space();
+
+		// IF NOT EXISTS (MySQL 5.7.4+)
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+		writer.push_space();
+
+		// (column1 ASC, column2 DESC, ...)
+		writer.push("(");
+		let mut first = true;
+		for col in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(order) = &col.order {
+				writer.push_space();
+				match order {
+					crate::types::Order::Asc => writer.push("ASC"),
+					crate::types::Order::Desc => writer.push("DESC"),
+				}
+			}
+		}
+		writer.push(")");
+
+		// USING method (MySQL: BTREE, HASH, FULLTEXT)
+		if let Some(method) = &stmt.using {
+			writer.push_space();
+			writer.push_keyword("USING");
+			writer.push_space();
+			writer.push(self.index_method_to_sql(method));
+		}
+
+		// WHERE clause is NOT supported in MySQL - ignore stmt.where
+
+		writer.finish()
+	}
+
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP INDEX index_name ON table_name
+		writer.push("DROP INDEX");
+		writer.push_space();
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// ON table_name (required in MySQL)
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			writer.push_keyword("ON");
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.finish()
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+}
+
+// Helper methods for CREATE TABLE
+impl MySqlQueryBuilder {
+	/// Convert ColumnType to MySQL SQL type string
+	fn column_type_to_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(len) => format!("VARCHAR({})", len.unwrap_or(255)),
+			Text => "TEXT".to_string(),
+			TinyInteger => "TINYINT".to_string(),
+			SmallInteger => "SMALLINT".to_string(),
+			Integer => "INT".to_string(),
+			BigInteger => "BIGINT".to_string(),
+			Float => "FLOAT".to_string(),
+			Double => "DOUBLE".to_string(),
+			Decimal(precision) => {
+				if let Some((p, s)) = precision {
+					format!("DECIMAL({}, {})", p, s)
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			Boolean => "TINYINT(1)".to_string(),
+			Date => "DATE".to_string(),
+			Time => "TIME".to_string(),
+			DateTime => "DATETIME".to_string(),
+			Timestamp => "TIMESTAMP".to_string(),
+			TimestampWithTimeZone => "TIMESTAMP".to_string(), // MySQL TIMESTAMP handles timezone
+			Binary(len) => {
+				if let Some(l) = len {
+					format!("BLOB({})", l)
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			VarBinary(len) => format!("VARBINARY({})", len),
+			Blob => "BLOB".to_string(),
+			Uuid => "CHAR(36)".to_string(), // UUID as CHAR(36) in MySQL
+			Json => "JSON".to_string(),
+			JsonBinary => "JSON".to_string(), // MySQL JSON is binary
+			Array(_) => "JSON".to_string(),   // MySQL doesn't have ARRAY, use JSON
+			Custom(name) => name.clone(),
+		}
+	}
+
+	/// Write table constraint to SQL writer
+	fn write_table_constraint(
+		&self,
+		writer: &mut SqlWriter,
+		constraint: &crate::types::TableConstraint,
+	) {
+		use crate::types::TableConstraint;
+		use TableConstraint::*;
+
+		match constraint {
+			PrimaryKey { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("PRIMARY KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			ForeignKey {
+				name,
+				columns,
+				ref_table,
+				ref_columns,
+				on_delete,
+				on_update,
+			} => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("FOREIGN KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+				writer.push_space();
+				writer.push_keyword("REFERENCES");
+				writer.push_space();
+				self.write_table_ref(writer, ref_table);
+				writer.push(" (");
+				writer.push_list(ref_columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+
+				if let Some(action) = on_delete {
+					writer.push_space();
+					writer.push_keyword("ON DELETE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+
+				if let Some(action) = on_update {
+					writer.push_space();
+					writer.push_keyword("ON UPDATE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+			}
+			Unique { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("UNIQUE");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			Check { name, expr } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("CHECK");
+				writer.push(" (");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Convert ForeignKeyAction to SQL keyword
+	fn foreign_key_action_to_sql(&self, action: &crate::types::ForeignKeyAction) -> &'static str {
+		use crate::types::ForeignKeyAction;
+		use ForeignKeyAction::*;
+
+		match action {
+			Cascade => "CASCADE",
+			Restrict => "RESTRICT",
+			SetNull => "SET NULL",
+			SetDefault => "SET DEFAULT",
+			NoAction => "NO ACTION",
+		}
+	}
+
+	fn index_method_to_sql(&self, method: &crate::query::IndexMethod) -> &'static str {
+		use crate::query::IndexMethod;
+		match method {
+			IndexMethod::BTree => "BTREE",
+			IndexMethod::Hash => "HASH",
+			IndexMethod::FullText => "FULLTEXT",
+			// MySQL doesn't support GIST, GIN, BRIN, Spatial - use BTREE as default
+			IndexMethod::Gist | IndexMethod::Gin | IndexMethod::Brin | IndexMethod::Spatial => {
+				"BTREE"
+			}
+		}
 	}
 }
 
@@ -2962,5 +3449,473 @@ mod tests {
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("`price` BETWEEN ? AND ?"));
 		assert_eq!(values.len(), 2);
+	}
+
+	// DDL Tests
+
+	#[test]
+	fn test_drop_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE IF EXISTS `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_multiple() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").table("users");
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX `idx_email` ON `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_if_exists_not_supported() {
+		// Note: MySQL supports IF EXISTS for DROP INDEX, but showing it works
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		// Note: Our implementation doesn't add IF EXISTS for MySQL (not standard)
+		assert_eq!(sql, "DROP INDEX `idx_email` ON `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE TABLE tests
+
+	#[test]
+	fn test_create_table_basic() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "name".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE `users`"));
+		assert!(sql.contains("`id` INT"));
+		assert!(sql.contains("`name` VARCHAR(255)"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_auto_increment() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: true,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("`id` INT AUTO_INCREMENT PRIMARY KEY"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_foreign_key() {
+		use crate::types::{
+			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
+		};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("posts");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "user_id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.constraints.push(TableConstraint::ForeignKey {
+			name: Some("fk_user".into_iden()),
+			columns: vec!["user_id".into_iden()],
+			ref_table: "users".into_table_ref(),
+			ref_columns: vec!["id".into_iden()],
+			on_delete: Some(ForeignKeyAction::Cascade),
+			on_update: Some(ForeignKeyAction::Restrict),
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CONSTRAINT `fk_user` FOREIGN KEY (`user_id`)"));
+		assert!(sql.contains("REFERENCES `users` (`id`)"));
+		assert!(sql.contains("ON DELETE CASCADE"));
+		assert!(sql.contains("ON UPDATE RESTRICT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_basic() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(sql, "CREATE INDEX `idx_users_email` ON `users` (`email`)");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_unique() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_username");
+		stmt.table("users");
+		stmt.unique = true;
+		stmt.columns.push(IndexColumn {
+			name: "username".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE UNIQUE INDEX `idx_users_username` ON `users` (`username`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_if_not_exists() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.if_not_exists = true;
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX IF NOT EXISTS `idx_users_email` ON `users` (`email`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_order() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_created");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "created_at".into_iden(),
+			order: Some(Order::Desc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_created` ON `users` (`created_at` DESC)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_multiple_columns() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_name");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "last_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+		stmt.columns.push(IndexColumn {
+			name: "first_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_name` ON `users` (`last_name` ASC, `first_name` ASC)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_btree() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_id");
+		stmt.table("users");
+		stmt.using = Some(IndexMethod::BTree);
+		stmt.columns.push(IndexColumn {
+			name: "id".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_id` ON `users` (`id`) USING BTREE"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_fulltext() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_posts_content");
+		stmt.table("posts");
+		stmt.using = Some(IndexMethod::FullText);
+		stmt.columns.push(IndexColumn {
+			name: "content".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_posts_content` ON `posts` (`content`) USING FULLTEXT"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_column() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::AddColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::Integer),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` ADD COLUMN `age` INT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropColumn {
+			name: "age".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` DROP COLUMN `age`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::RenameColumn {
+			old: "email".into_iden(),
+			new: "email_address".into_iden(),
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` RENAME COLUMN `email` TO `email_address`"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_modify_column_type() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::ModifyColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::BigInteger),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `age` BIGINT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_constraint() {
+		use crate::query::AlterTableOperation;
+		use crate::types::TableConstraint;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::AddConstraint(
+			TableConstraint::Unique {
+				name: Some("unique_email".into_iden()),
+				columns: vec!["email".into_iden()],
+			},
+		));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` ADD CONSTRAINT `unique_email` UNIQUE (`email`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_constraint() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropConstraint {
+			name: "unique_email".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` DROP CONSTRAINT `unique_email`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_table() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::RenameTable("accounts".into_iden()));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` RENAME TO `accounts`");
+		assert_eq!(values.len(), 0);
 	}
 }
