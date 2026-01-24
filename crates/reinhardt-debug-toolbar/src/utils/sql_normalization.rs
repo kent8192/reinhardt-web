@@ -60,10 +60,8 @@ pub fn detect_n_plus_one(queries: &[crate::context::SqlQuery]) -> Vec<String> {
 		*normalized_counts.entry(normalized.clone()).or_insert(0) += 1;
 
 		// If a normalized query appears more than 3 times, it's likely N+1
-		if normalized_counts[&normalized] > 3 {
-			if !n_plus_one_patterns.contains(&normalized) {
-				n_plus_one_patterns.push(normalized);
-			}
+		if normalized_counts[&normalized] > 3 && !n_plus_one_patterns.contains(&normalized) {
+			n_plus_one_patterns.push(normalized);
 		}
 	}
 

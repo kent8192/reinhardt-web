@@ -119,14 +119,12 @@ where
 /// Extract client IP from request
 fn extract_client_ip(req: &Request<Body>) -> IpAddr {
 	// Check X-Forwarded-For header
-	if let Some(forwarded) = req.headers().get("x-forwarded-for") {
-		if let Ok(forwarded_str) = forwarded.to_str() {
-			if let Some(ip_str) = forwarded_str.split(',').next() {
-				if let Ok(ip) = ip_str.trim().parse() {
-					return ip;
-				}
-			}
-		}
+	if let Some(forwarded) = req.headers().get("x-forwarded-for")
+		&& let Ok(forwarded_str) = forwarded.to_str()
+		&& let Some(ip_str) = forwarded_str.split(',').next()
+		&& let Ok(ip) = ip_str.trim().parse()
+	{
+		return ip;
 	}
 
 	// Fallback to localhost
