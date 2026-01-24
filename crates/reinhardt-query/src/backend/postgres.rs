@@ -903,12 +903,588 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_grant(&self, stmt: &crate::dcl::GrantStatement) -> (String, Values) {
+		use crate::dcl::Grantee;
+
+		let mut writer = SqlWriter::new();
+
+		// GRANT keyword
+		writer.push("GRANT");
+		writer.push_space();
+
+		// Privileges
+		writer.push_list(&stmt.privileges, ", ", |w, privilege| {
+			w.push(privilege.as_sql());
+		});
+
+		// ON clause
+		writer.push_keyword("ON");
+		writer.push_space();
+		writer.push(stmt.object_type.as_sql());
+		writer.push_space();
+
+		// Objects
+		writer.push_list(&stmt.objects, ", ", |w, obj| {
+			w.push_identifier(&obj.to_string(), |s| self.escape_iden(s));
+		});
+
+		// TO clause
+		writer.push_keyword("TO");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			match grantee {
+				Grantee::Role(name) => {
+					w.push_identifier(name, |s| self.escape_iden(s));
+				}
+				Grantee::User(_, _) => {
+					// MySQL-specific, not supported in PostgreSQL
+					w.push_identifier("(UNSUPPORTED_USER)", |s| self.escape_iden(s));
+				}
+				Grantee::Public => {
+					w.push("PUBLIC");
+				}
+				Grantee::CurrentRole => {
+					w.push("CURRENT_ROLE");
+				}
+				Grantee::CurrentUser => {
+					w.push("CURRENT_USER");
+				}
+				Grantee::SessionUser => {
+					w.push("SESSION_USER");
+				}
+			}
+		});
+
+		// WITH GRANT OPTION
+		if stmt.with_grant_option {
+			writer.push_keyword("WITH GRANT OPTION");
+		}
+
+		// GRANTED BY clause
+		if let Some(grantor) = &stmt.granted_by {
+			writer.push_keyword("GRANTED BY");
+			writer.push_space();
+			match grantor {
+				Grantee::Role(name) => {
+					writer.push_identifier(name, |s| self.escape_iden(s));
+				}
+				Grantee::User(_, _) => {
+					writer.push_identifier("(UNSUPPORTED_USER)", |s| self.escape_iden(s));
+				}
+				Grantee::Public => {
+					writer.push("PUBLIC");
+				}
+				Grantee::CurrentRole => {
+					writer.push("CURRENT_ROLE");
+				}
+				Grantee::CurrentUser => {
+					writer.push("CURRENT_USER");
+				}
+				Grantee::SessionUser => {
+					writer.push("SESSION_USER");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_revoke(&self, stmt: &crate::dcl::RevokeStatement) -> (String, Values) {
+		use crate::dcl::Grantee;
+
+		let mut writer = SqlWriter::new();
+
+		// REVOKE keyword
+		writer.push("REVOKE");
+		writer.push_space();
+
+		// GRANT OPTION FOR (if specified)
+		if stmt.grant_option_for {
+			writer.push("GRANT OPTION FOR");
+			writer.push_space();
+		}
+
+		// Privileges
+		writer.push_list(&stmt.privileges, ", ", |w, privilege| {
+			w.push(privilege.as_sql());
+		});
+
+		// ON clause
+		writer.push_keyword("ON");
+		writer.push_space();
+		writer.push(stmt.object_type.as_sql());
+		writer.push_space();
+
+		// Objects
+		writer.push_list(&stmt.objects, ", ", |w, obj| {
+			w.push_identifier(&obj.to_string(), |s| self.escape_iden(s));
+		});
+
+		// FROM clause
+		writer.push_keyword("FROM");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			match grantee {
+				Grantee::Role(name) => {
+					w.push_identifier(name, |s| self.escape_iden(s));
+				}
+				Grantee::User(_, _) => {
+					// MySQL-specific, not supported in PostgreSQL
+					w.push_identifier("(UNSUPPORTED_USER)", |s| self.escape_iden(s));
+				}
+				Grantee::Public => {
+					w.push("PUBLIC");
+				}
+				Grantee::CurrentRole => {
+					w.push("CURRENT_ROLE");
+				}
+				Grantee::CurrentUser => {
+					w.push("CURRENT_USER");
+				}
+				Grantee::SessionUser => {
+					w.push("SESSION_USER");
+				}
+			}
+		});
+
+		// CASCADE / RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		}
+
+		writer.finish()
+	}
+
+	fn build_grant_role(&self, stmt: &crate::dcl::GrantRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// GRANT keyword
+		writer.push("GRANT");
+		writer.push_space();
+
+		// Roles (comma-separated list)
+		writer.push_list(&stmt.roles, ", ", |w, role| {
+			w.push_identifier(role, |s| self.escape_iden(s));
+		});
+
+		// TO clause
+		writer.push_keyword("TO");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			w.push(Self::format_role_specification(grantee));
+		});
+
+		// WITH ADMIN OPTION
+		if stmt.with_admin_option {
+			writer.push_keyword("WITH ADMIN OPTION");
+		}
+
+		// GRANTED BY
+		if let Some(ref grantor) = stmt.granted_by {
+			writer.push_keyword("GRANTED BY");
+			writer.push_space();
+			writer.push(Self::format_role_specification(grantor));
+		}
+
+		writer.finish()
+	}
+
+	fn build_revoke_role(&self, stmt: &crate::dcl::RevokeRoleStatement) -> (String, Values) {
+		use crate::dcl::DropBehavior;
+
+		let mut writer = SqlWriter::new();
+
+		// REVOKE keyword
+		writer.push("REVOKE");
+		writer.push_space();
+
+		// ADMIN OPTION FOR
+		if stmt.admin_option_for {
+			writer.push("ADMIN OPTION FOR");
+			writer.push_space();
+		}
+
+		// Roles (comma-separated list)
+		writer.push_list(&stmt.roles, ", ", |w, role| {
+			w.push_identifier(role, |s| self.escape_iden(s));
+		});
+
+		// FROM clause
+		writer.push_keyword("FROM");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			w.push(Self::format_role_specification(grantee));
+		});
+
+		// GRANTED BY
+		if let Some(ref grantor) = stmt.granted_by {
+			writer.push_keyword("GRANTED BY");
+			writer.push_space();
+			writer.push(Self::format_role_specification(grantor));
+		}
+
+		// CASCADE / RESTRICT
+		if let Some(behavior) = stmt.drop_behavior {
+			match behavior {
+				DropBehavior::Cascade => writer.push_keyword("CASCADE"),
+				DropBehavior::Restrict => writer.push_keyword("RESTRICT"),
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_role(&self, stmt: &crate::dcl::CreateRoleStatement) -> (String, Values) {
+		use crate::dcl::RoleAttribute;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE ROLE keyword
+		writer.push("CREATE ROLE");
+		writer.push_space();
+
+		// Role name
+		writer.push_identifier(&stmt.role_name, |s| self.escape_iden(s));
+
+		// WITH keyword (optional but commonly used)
+		if !stmt.attributes.is_empty() {
+			writer.push_keyword("WITH");
+		}
+
+		// Attributes
+		for attr in &stmt.attributes {
+			writer.push_space();
+			match attr {
+				RoleAttribute::SuperUser => writer.push("SUPERUSER"),
+				RoleAttribute::NoSuperUser => writer.push("NOSUPERUSER"),
+				RoleAttribute::CreateDb => writer.push("CREATEDB"),
+				RoleAttribute::NoCreateDb => writer.push("NOCREATEDB"),
+				RoleAttribute::CreateRole => writer.push("CREATEROLE"),
+				RoleAttribute::NoCreateRole => writer.push("NOCREATEROLE"),
+				RoleAttribute::Inherit => writer.push("INHERIT"),
+				RoleAttribute::NoInherit => writer.push("NOINHERIT"),
+				RoleAttribute::Login => writer.push("LOGIN"),
+				RoleAttribute::NoLogin => writer.push("NOLOGIN"),
+				RoleAttribute::Replication => writer.push("REPLICATION"),
+				RoleAttribute::NoReplication => writer.push("NOREPLICATION"),
+				RoleAttribute::BypassRls => writer.push("BYPASSRLS"),
+				RoleAttribute::NoBypassRls => writer.push("NOBYPASSRLS"),
+				RoleAttribute::ConnectionLimit(limit) => {
+					writer.push("CONNECTION LIMIT");
+					writer.push_space();
+					writer.push(&limit.to_string());
+				}
+				RoleAttribute::Password(pwd) => {
+					writer.push("PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::EncryptedPassword(pwd) => {
+					writer.push("ENCRYPTED PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::UnencryptedPassword(pwd) => {
+					writer.push("UNENCRYPTED PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::ValidUntil(timestamp) => {
+					writer.push("VALID UNTIL");
+					writer.push_space();
+					writer.push("'");
+					writer.push(timestamp);
+					writer.push("'");
+				}
+				RoleAttribute::InRole(roles) => {
+					writer.push("IN ROLE");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+				RoleAttribute::Role(roles) => {
+					writer.push("ROLE");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+				RoleAttribute::Admin(roles) => {
+					writer.push("ADMIN");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_role(&self, stmt: &crate::dcl::DropRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP ROLE keyword
+		writer.push("DROP ROLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Role names (comma-separated)
+		writer.push_list(&stmt.role_names, ", ", |w, role_name| {
+			w.push_identifier(role_name, |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
+	fn build_alter_role(&self, stmt: &crate::dcl::AlterRoleStatement) -> (String, Values) {
+		use crate::dcl::RoleAttribute;
+
+		let mut writer = SqlWriter::new();
+
+		// Check for RENAME TO (special case in PostgreSQL)
+		if let Some(ref new_name) = stmt.rename_to {
+			writer.push("ALTER ROLE");
+			writer.push_space();
+			writer.push_identifier(&stmt.role_name, |s| self.escape_iden(s));
+			writer.push_keyword("RENAME TO");
+			writer.push_space();
+			writer.push_identifier(new_name, |s| self.escape_iden(s));
+			return writer.finish();
+		}
+
+		// ALTER ROLE keyword
+		writer.push("ALTER ROLE");
+		writer.push_space();
+
+		// Role name
+		writer.push_identifier(&stmt.role_name, |s| self.escape_iden(s));
+
+		// WITH keyword (optional but commonly used)
+		if !stmt.attributes.is_empty() {
+			writer.push_keyword("WITH");
+		}
+
+		// Attributes (same as CREATE ROLE)
+		for attr in &stmt.attributes {
+			writer.push_space();
+			match attr {
+				RoleAttribute::SuperUser => writer.push("SUPERUSER"),
+				RoleAttribute::NoSuperUser => writer.push("NOSUPERUSER"),
+				RoleAttribute::CreateDb => writer.push("CREATEDB"),
+				RoleAttribute::NoCreateDb => writer.push("NOCREATEDB"),
+				RoleAttribute::CreateRole => writer.push("CREATEROLE"),
+				RoleAttribute::NoCreateRole => writer.push("NOCREATEROLE"),
+				RoleAttribute::Inherit => writer.push("INHERIT"),
+				RoleAttribute::NoInherit => writer.push("NOINHERIT"),
+				RoleAttribute::Login => writer.push("LOGIN"),
+				RoleAttribute::NoLogin => writer.push("NOLOGIN"),
+				RoleAttribute::Replication => writer.push("REPLICATION"),
+				RoleAttribute::NoReplication => writer.push("NOREPLICATION"),
+				RoleAttribute::BypassRls => writer.push("BYPASSRLS"),
+				RoleAttribute::NoBypassRls => writer.push("NOBYPASSRLS"),
+				RoleAttribute::ConnectionLimit(limit) => {
+					writer.push("CONNECTION LIMIT");
+					writer.push_space();
+					writer.push(&limit.to_string());
+				}
+				RoleAttribute::Password(pwd) => {
+					writer.push("PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::EncryptedPassword(pwd) => {
+					writer.push("ENCRYPTED PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::UnencryptedPassword(pwd) => {
+					writer.push("UNENCRYPTED PASSWORD");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				RoleAttribute::ValidUntil(timestamp) => {
+					writer.push("VALID UNTIL");
+					writer.push_space();
+					writer.push("'");
+					writer.push(timestamp);
+					writer.push("'");
+				}
+				RoleAttribute::InRole(roles) => {
+					writer.push("IN ROLE");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+				RoleAttribute::Role(roles) => {
+					writer.push("ROLE");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+				RoleAttribute::Admin(roles) => {
+					writer.push("ADMIN");
+					writer.push_space();
+					writer.push_list(roles, ", ", |w, role| {
+						w.push_identifier(role, |s| self.escape_iden(s));
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_user(&self, stmt: &crate::dcl::CreateUserStatement) -> (String, Values) {
+		use crate::dcl::{CreateRoleStatement, RoleAttribute};
+
+		// PostgreSQL CREATE USER is CREATE ROLE WITH LOGIN
+		let mut create_role = CreateRoleStatement::new()
+			.role(&stmt.user_name)
+			.attribute(RoleAttribute::Login);
+
+		// Add all attributes from CREATE USER
+		for attr in &stmt.attributes {
+			create_role = create_role.attribute(attr.clone());
+		}
+
+		// Use build_create_role to generate the SQL
+		self.build_create_role(&create_role)
+	}
+
+	fn build_drop_user(&self, stmt: &crate::dcl::DropUserStatement) -> (String, Values) {
+		use crate::dcl::DropRoleStatement;
+
+		// PostgreSQL DROP USER is DROP ROLE
+		let mut drop_role = DropRoleStatement::new();
+		drop_role.role_names = stmt.user_names.clone();
+		drop_role.if_exists = stmt.if_exists;
+
+		// Use build_drop_role to generate the SQL
+		self.build_drop_role(&drop_role)
+	}
+
+	fn build_alter_user(&self, stmt: &crate::dcl::AlterUserStatement) -> (String, Values) {
+		use crate::dcl::AlterRoleStatement;
+
+		// PostgreSQL ALTER USER is ALTER ROLE
+		let mut alter_role = AlterRoleStatement::new().role(&stmt.user_name);
+
+		// Add all attributes from ALTER USER
+		for attr in &stmt.attributes {
+			alter_role = alter_role.attribute(attr.clone());
+		}
+
+		// Use build_alter_role to generate the SQL
+		self.build_alter_role(&alter_role)
+	}
+
+	fn build_rename_user(&self, _stmt: &crate::dcl::RenameUserStatement) -> (String, Values) {
+		panic!("RENAME USER is not supported by PostgreSQL. Use ALTER USER ... RENAME TO instead.");
+	}
+
+	fn build_set_role(&self, stmt: &crate::dcl::SetRoleStatement) -> (String, Values) {
+		use crate::dcl::RoleTarget;
+
+		let mut writer = SqlWriter::new();
+
+		writer.push("SET ROLE");
+		writer.push_space();
+
+		match &stmt.target {
+			Some(RoleTarget::Named(name)) => {
+				writer.push_identifier(name, |s| self.escape_iden(s));
+			}
+			Some(RoleTarget::None) => {
+				writer.push("NONE");
+			}
+			Some(RoleTarget::All) => {
+				panic!("SET ROLE ALL is not supported by PostgreSQL (MySQL only)");
+			}
+			Some(RoleTarget::AllExcept(_)) => {
+				panic!("SET ROLE ALL EXCEPT is not supported by PostgreSQL (MySQL only)");
+			}
+			Some(RoleTarget::Default) => {
+				panic!("SET ROLE DEFAULT is not supported by PostgreSQL (MySQL only)");
+			}
+			None => {
+				panic!("SET ROLE requires a role target");
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_reset_role(&self, _stmt: &crate::dcl::ResetRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+		writer.push("RESET ROLE");
+		writer.finish()
+	}
+
+	fn build_set_default_role(
+		&self,
+		_stmt: &crate::dcl::SetDefaultRoleStatement,
+	) -> (String, Values) {
+		panic!("SET DEFAULT ROLE is not supported by PostgreSQL (MySQL only)");
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+}
+
+impl PostgresQueryBuilder {
+	/// Format a role specification for PostgreSQL
+	///
+	/// # Arguments
+	///
+	/// * `spec` - The role specification to format
+	///
+	/// # Returns
+	///
+	/// The SQL representation of the role specification
+	fn format_role_specification(spec: &crate::dcl::RoleSpecification) -> &str {
+		use crate::dcl::RoleSpecification;
+
+		match spec {
+			RoleSpecification::RoleName(name) => name,
+			RoleSpecification::CurrentRole => "CURRENT_ROLE",
+			RoleSpecification::CurrentUser => "CURRENT_USER",
+			RoleSpecification::SessionUser => "SESSION_USER",
+		}
 	}
 }
 
@@ -3244,5 +3820,683 @@ mod tests {
 
 		let (sql, _values) = builder.build_select(&stmt);
 		assert!(sql.contains(r#""first_name" || "last_name""#));
+	}
+
+	// DCL (Data Control Language) Tests
+
+	#[test]
+	fn test_grant_single_privilege_on_table() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT SELECT ON TABLE "users" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_multiple_privileges() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privileges(vec![
+				Privilege::Select,
+				Privilege::Insert,
+				Privilege::Update,
+			])
+			.on_table("users")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT SELECT, INSERT, UPDATE ON TABLE "users" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_multiple_objects() {
+		use crate::dcl::{GrantStatement, ObjectType, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.object_type(ObjectType::Table)
+			.object("users")
+			.object("posts")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT SELECT ON TABLE "users", "posts" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_multiple_grantees() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.grantee(Grantee::role("app_user"))
+			.grantee(Grantee::role("readonly_user"));
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT SELECT ON TABLE "users" TO "app_user", "readonly_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_with_grant_option() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user")
+			.with_grant_option(true);
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT SELECT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_with_granted_by() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user")
+			.granted_by(Grantee::role("admin"));
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT SELECT ON TABLE "users" TO "app_user" GRANTED BY "admin""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_on_database() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Create)
+			.on_database("mydb")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT CREATE ON DATABASE "mydb" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_on_schema() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_schema("public")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT USAGE ON SCHEMA "public" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_on_sequence() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_sequence("user_id_seq")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT USAGE ON SEQUENCE "user_id_seq" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_all_privileges() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::All)
+			.on_table("users")
+			.to("admin");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT ALL PRIVILEGES ON TABLE "users" TO "admin""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_to_public() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("public_data")
+			.grantee(Grantee::Public);
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT SELECT ON TABLE "public_data" TO PUBLIC"#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_to_current_user() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.grantee(Grantee::CurrentUser);
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT SELECT ON TABLE "users" TO CURRENT_USER"#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_complex() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privileges(vec![
+				Privilege::Select,
+				Privilege::Insert,
+				Privilege::Update,
+			])
+			.on_table("users")
+			.on_table("posts")
+			.grantee(Grantee::role("app_user"))
+			.grantee(Grantee::role("readonly_user"))
+			.with_grant_option(true)
+			.granted_by(Grantee::role("admin"));
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert!(sql.starts_with("GRANT SELECT, INSERT, UPDATE ON TABLE"));
+		assert!(sql.contains(r#""users", "posts""#));
+		assert!(sql.contains(r#"TO "app_user", "readonly_user""#));
+		assert!(sql.contains("WITH GRANT OPTION"));
+		assert!(sql.contains(r#"GRANTED BY "admin""#));
+		assert!(values.is_empty());
+	}
+
+	// REVOKE tests
+
+	#[test]
+	fn test_revoke_single_privilege() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Insert)
+			.from_table("users")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE INSERT ON TABLE "users" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_multiple_privileges() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privileges(vec![
+				Privilege::Select,
+				Privilege::Insert,
+				Privilege::Update,
+			])
+			.from_table("users")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE SELECT, INSERT, UPDATE ON TABLE "users" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_with_cascade() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::All)
+			.from_table("users")
+			.from("app_user")
+			.cascade(true);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE ALL PRIVILEGES ON TABLE "users" FROM "app_user" CASCADE"#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_grant_option_for() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_table("users")
+			.from("app_user")
+			.grant_option_for(true);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE GRANT OPTION FOR SELECT ON TABLE "users" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_database() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Create)
+			.from_database("mydb")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE CREATE ON DATABASE "mydb" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_schema() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_schema("public")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE USAGE ON SCHEMA "public" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_sequence() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_sequence("user_id_seq")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE USAGE ON SEQUENCE "user_id_seq" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_public() {
+		use crate::dcl::{Grantee, Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_table("public_data")
+			.grantee(Grantee::Public);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE SELECT ON TABLE "public_data" FROM PUBLIC"#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_current_user() {
+		use crate::dcl::{Grantee, Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_table("users")
+			.grantee(Grantee::CurrentUser);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE SELECT ON TABLE "users" FROM CURRENT_USER"#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_complex() {
+		use crate::dcl::{Grantee, Privilege, RevokeStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privileges(vec![Privilege::Select, Privilege::Insert])
+			.from_table("users")
+			.from_table("posts")
+			.grantee(Grantee::role("app_user"))
+			.grantee(Grantee::role("readonly_user"))
+			.cascade(true);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert!(sql.starts_with("REVOKE SELECT, INSERT ON TABLE"));
+		assert!(sql.contains(r#""users", "posts""#));
+		assert!(sql.contains(r#"FROM "app_user", "readonly_user""#));
+		assert!(sql.contains("CASCADE"));
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_simple() {
+		use crate::dcl::CreateRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = CreateRoleStatement::new().role("developer");
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(sql, r#"CREATE ROLE "developer""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_with_login() {
+		use crate::dcl::{CreateRoleStatement, RoleAttribute};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = CreateRoleStatement::new()
+			.role("app_user")
+			.attribute(RoleAttribute::Login)
+			.attribute(RoleAttribute::Password("secret".to_string()));
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD 'secret'"#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_with_multiple_attributes() {
+		use crate::dcl::{CreateRoleStatement, RoleAttribute};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = CreateRoleStatement::new()
+			.role("superuser")
+			.attribute(RoleAttribute::SuperUser)
+			.attribute(RoleAttribute::CreateDb)
+			.attribute(RoleAttribute::CreateRole)
+			.attribute(RoleAttribute::ConnectionLimit(10));
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE ROLE "superuser" WITH SUPERUSER CREATEDB CREATEROLE CONNECTION LIMIT 10"#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_simple() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = DropRoleStatement::new().role("old_role");
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, r#"DROP ROLE "old_role""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_if_exists() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = DropRoleStatement::new().role("old_role").if_exists(true);
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, r#"DROP ROLE IF EXISTS "old_role""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_multiple() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = DropRoleStatement::new()
+			.role("role1")
+			.role("role2")
+			.role("role3");
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, r#"DROP ROLE "role1", "role2", "role3""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_alter_role_with_attributes() {
+		use crate::dcl::{AlterRoleStatement, RoleAttribute};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = AlterRoleStatement::new()
+			.role("developer")
+			.attribute(RoleAttribute::NoLogin)
+			.attribute(RoleAttribute::ConnectionLimit(5));
+
+		let (sql, values) = builder.build_alter_role(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER ROLE "developer" WITH NOLOGIN CONNECTION LIMIT 5"#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_alter_role_rename_to() {
+		use crate::dcl::AlterRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = AlterRoleStatement::new()
+			.role("old_name")
+			.rename_to("new_name");
+
+		let (sql, values) = builder.build_alter_role(&stmt);
+		assert_eq!(sql, r#"ALTER ROLE "old_name" RENAME TO "new_name""#);
+		assert!(values.is_empty());
+	}
+
+	// CREATE USER tests
+	#[test]
+	fn test_create_user_basic() {
+		use crate::dcl::CreateUserStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = CreateUserStatement::new().user("app_user");
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, r#"CREATE ROLE "app_user" WITH LOGIN"#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_user_with_password() {
+		use crate::dcl::{CreateUserStatement, RoleAttribute};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = CreateUserStatement::new()
+			.user("app_user")
+			.attribute(RoleAttribute::Password("secret".to_string()));
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD 'secret'"#
+		);
+		assert!(values.is_empty());
+	}
+
+	// DROP USER tests
+	#[test]
+	fn test_drop_user_basic() {
+		use crate::dcl::DropUserStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = DropUserStatement::new().user("app_user");
+
+		let (sql, values) = builder.build_drop_user(&stmt);
+		assert_eq!(sql, r#"DROP ROLE "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_user_if_exists() {
+		use crate::dcl::DropUserStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = DropUserStatement::new().user("app_user").if_exists(true);
+
+		let (sql, values) = builder.build_drop_user(&stmt);
+		assert_eq!(sql, r#"DROP ROLE IF EXISTS "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	// ALTER USER tests
+	#[test]
+	fn test_alter_user_basic() {
+		use crate::dcl::{AlterUserStatement, RoleAttribute};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = AlterUserStatement::new()
+			.user("app_user")
+			.attribute(RoleAttribute::Password("new_secret".to_string()));
+
+		let (sql, values) = builder.build_alter_user(&stmt);
+		assert_eq!(sql, r#"ALTER ROLE "app_user" WITH PASSWORD 'new_secret'"#);
+		assert!(values.is_empty());
+	}
+
+	// RENAME USER panic test
+	#[test]
+	#[should_panic(expected = "RENAME USER is not supported by PostgreSQL")]
+	fn test_rename_user_panics() {
+		use crate::dcl::RenameUserStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RenameUserStatement::new().rename("old", "new");
+
+		builder.build_rename_user(&stmt);
+	}
+
+	// SET ROLE tests
+	#[test]
+	fn test_set_role_named() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::Named("admin".to_string()));
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, r#"SET ROLE "admin""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_role_none() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::None);
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, "SET ROLE NONE");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	#[should_panic(expected = "SET ROLE ALL is not supported by PostgreSQL")]
+	fn test_set_role_all_panics() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::All);
+
+		builder.build_set_role(&stmt);
+	}
+
+	// RESET ROLE test
+	#[test]
+	fn test_reset_role() {
+		use crate::dcl::ResetRoleStatement;
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = ResetRoleStatement::new();
+
+		let (sql, values) = builder.build_reset_role(&stmt);
+		assert_eq!(sql, "RESET ROLE");
+		assert!(values.is_empty());
+	}
+
+	// SET DEFAULT ROLE panic test
+	#[test]
+	#[should_panic(expected = "SET DEFAULT ROLE is not supported by PostgreSQL")]
+	fn test_set_default_role_panics() {
+		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("app_user");
+
+		builder.build_set_default_role(&stmt);
 	}
 }
