@@ -7,9 +7,9 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
+		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
+		SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1255,6 +1255,138 @@ impl QueryBuilder for SqliteQueryBuilder {
 		if let Some(table_ref) = stmt.tables.first() {
 			self.write_table_ref(&mut writer, table_ref);
 		}
+
+		writer.finish()
+	}
+
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		// SQLite only supports a single event per trigger
+		if stmt.events.len() > 1 {
+			panic!("SQLite does not support multiple events in a single trigger");
+		}
+
+		// SQLite only supports FOR EACH ROW (implicit)
+		if matches!(stmt.scope, Some(TriggerScope::Statement)) {
+			panic!("SQLite only supports FOR EACH ROW triggers");
+		}
+
+		// SQLite does not support FOLLOWS/PRECEDES
+		if stmt.order.is_some() {
+			panic!("SQLite does not support FOLLOWS/PRECEDES syntax");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE TRIGGER
+		writer.push("CREATE TRIGGER");
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Timing: BEFORE / AFTER / INSTEAD OF
+		if let Some(timing) = stmt.timing {
+			writer.push_space();
+			match timing {
+				TriggerTiming::Before => writer.push("BEFORE"),
+				TriggerTiming::After => writer.push("AFTER"),
+				TriggerTiming::InsteadOf => writer.push("INSTEAD OF"),
+			}
+		}
+
+		// Event: INSERT / UPDATE [OF columns] / DELETE
+		if let Some(event) = stmt.events.first() {
+			writer.push_space();
+			match event {
+				TriggerEvent::Insert => writer.push("INSERT"),
+				TriggerEvent::Update { columns } => {
+					writer.push("UPDATE");
+					if let Some(cols) = columns {
+						writer.push(" OF ");
+						writer.push_list(cols.iter(), ", ", |w, col| {
+							w.push_identifier(col, |s| self.escape_iden(s));
+						});
+					}
+				}
+				TriggerEvent::Delete => writer.push("DELETE"),
+			}
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// FOR EACH ROW (optional in SQLite, but we can include it for clarity)
+		if matches!(stmt.scope, Some(TriggerScope::Row)) {
+			writer.push_keyword("FOR EACH ROW");
+		}
+
+		// WHEN (condition)
+		if let Some(when_cond) = &stmt.when_condition {
+			writer.push_keyword("WHEN");
+			writer.push(" ");
+			self.write_simple_expr(&mut writer, when_cond);
+		}
+
+		// BEGIN ... END block
+		if let Some(body) = &stmt.body {
+			writer.push_space();
+			match body {
+				TriggerBody::Single(sql) => {
+					writer.push("BEGIN ");
+					writer.push(sql.as_str());
+					writer.push("; END");
+				}
+				TriggerBody::Multiple(statements) => {
+					writer.push("BEGIN ");
+					for (i, stmt_sql) in statements.iter().enumerate() {
+						if i > 0 {
+							writer.push(" ");
+						}
+						writer.push(stmt_sql);
+						writer.push(";");
+					}
+					writer.push(" END");
+				}
+				TriggerBody::PostgresFunction(_) => {
+					panic!("SQLite does not support EXECUTE FUNCTION syntax");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values) {
+		// SQLite does not support CASCADE/RESTRICT
+		if stmt.cascade || stmt.restrict {
+			panic!("SQLite does not support CASCADE/RESTRICT for DROP TRIGGER");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// DROP TRIGGER
+		writer.push("DROP TRIGGER");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Note: SQLite does not require or support ON table in DROP TRIGGER
 
 		writer.finish()
 	}
@@ -4239,5 +4371,222 @@ mod tests {
 		stmt.table("users").restrict();
 
 		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	fn test_create_trigger_basic() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit_insert")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single(
+				"INSERT INTO audit_log (action) VALUES ('insert')",
+			));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE TRIGGER \"audit_insert\" AFTER INSERT ON \"users\" FOR EACH ROW BEGIN INSERT INTO audit_log (action) VALUES ('insert'); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_instead_of() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("view_insert")
+			.timing(TriggerTiming::InsteadOf)
+			.event(TriggerEvent::Insert)
+			.on_table("user_view")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single(
+				"INSERT INTO users (name) VALUES (NEW.name)",
+			));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE TRIGGER \"view_insert\" INSTEAD OF INSERT ON \"user_view\" FOR EACH ROW BEGIN INSERT INTO users (name) VALUES (NEW.name); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_with_when() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("conditional_update")
+			.timing(TriggerTiming::Before)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.when_condition(Expr::col("status").eq("active"))
+			.body(TriggerBody::single("SELECT 1"));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert!(sql.contains("CREATE TRIGGER"));
+		assert!(sql.contains("BEFORE UPDATE"));
+		assert!(sql.contains("WHEN"));
+		assert!(sql.contains("BEGIN"));
+		assert!(sql.contains("END"));
+		assert_eq!(values.len(), 1); // "active" value
+	}
+
+	#[test]
+	fn test_create_trigger_update_of_columns() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("status_change")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Update {
+				columns: Some(vec!["status".to_string(), "updated_at".to_string()]),
+			})
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single("SELECT 1"));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert!(sql.contains("UPDATE OF"));
+		assert!(sql.contains("\"status\""));
+		assert!(sql.contains("\"updated_at\""));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_multiple_statements() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("multi_action")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Delete)
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::multiple(vec![
+				"INSERT INTO deleted_users SELECT *",
+				"UPDATE stats SET count = count - 1",
+			]));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert!(sql.contains("BEGIN"));
+		assert!(sql.contains("INSERT INTO deleted_users SELECT *;"));
+		assert!(sql.contains("UPDATE stats SET count = count - 1;"));
+		assert!(sql.contains("END"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_trigger_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_insert");
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, "DROP TRIGGER \"audit_insert\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_trigger_if_exists() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_insert").if_exists();
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, "DROP TRIGGER IF EXISTS \"audit_insert\"");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support multiple events in a single trigger")]
+	fn test_create_trigger_multiple_events_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("multi_event")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single("SELECT 1"));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite only supports FOR EACH ROW triggers")]
+	fn test_create_trigger_for_each_statement_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("statement_trigger")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Statement)
+			.body(TriggerBody::single("SELECT 1"));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support FOLLOWS/PRECEDES syntax")]
+	fn test_create_trigger_follows_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerOrder, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("ordered_trigger")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.order(TriggerOrder::Follows("other_trigger".to_string()))
+			.body(TriggerBody::single("SELECT 1"));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support EXECUTE FUNCTION syntax")]
+	fn test_create_trigger_postgres_function_panics() {
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("function_trigger")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.execute_function("audit_function");
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support CASCADE/RESTRICT for DROP TRIGGER")]
+	fn test_drop_trigger_cascade_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_insert").cascade();
+
+		let _ = builder.build_drop_trigger(&stmt);
 	}
 }

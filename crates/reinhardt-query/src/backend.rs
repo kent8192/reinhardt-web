@@ -5,9 +5,10 @@
 
 use crate::{
 	query::{
-		AlterTableStatement, CreateIndexStatement, CreateTableStatement, CreateViewStatement,
-		DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement,
-		InsertStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		AlterTableStatement, CreateIndexStatement, CreateTableStatement, CreateTriggerStatement,
+		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
+		DropTriggerStatement, DropViewStatement, InsertStatement, SelectStatement,
+		TruncateTableStatement, UpdateStatement,
 	},
 	value::Values,
 };
@@ -241,4 +242,30 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values);
+
+	/// Build CREATE TRIGGER statement
+	///
+	/// Generates SQL and parameter values for a CREATE TRIGGER statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE TRIGGER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values);
+
+	/// Build DROP TRIGGER statement
+	///
+	/// Generates SQL and parameter values for a DROP TRIGGER statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP TRIGGER statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values);
 }

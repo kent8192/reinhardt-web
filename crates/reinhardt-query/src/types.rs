@@ -20,6 +20,7 @@ mod join;
 mod operators;
 mod order;
 mod table_ref;
+mod trigger;
 mod window;
 
 pub use alias::Alias;
@@ -30,6 +31,7 @@ pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
 pub use operators::{BinOper, LogicalChainOper, PgBinOper, SubQueryOper, UnOper};
 pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
 pub use table_ref::{IntoTableRef, TableRef};
+pub use trigger::*;
 pub use window::{Frame, FrameClause, FrameType, WindowStatement};
 
 #[cfg(test)]

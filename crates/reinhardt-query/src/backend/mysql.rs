@@ -7,9 +7,9 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
+		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
+		SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1262,6 +1262,155 @@ impl QueryBuilder for MySqlQueryBuilder {
 		// Table name (single table only)
 		if let Some(table_ref) = stmt.tables.first() {
 			self.write_table_ref(&mut writer, table_ref);
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerOrder, TriggerScope, TriggerTiming};
+
+		// MySQL only supports a single event per trigger
+		if stmt.events.len() > 1 {
+			panic!("MySQL does not support multiple events in a single trigger");
+		}
+
+		// MySQL does not support INSTEAD OF triggers
+		if matches!(stmt.timing, Some(TriggerTiming::InsteadOf)) {
+			panic!("MySQL does not support INSTEAD OF triggers");
+		}
+
+		// MySQL only supports FOR EACH ROW
+		if matches!(stmt.scope, Some(TriggerScope::Statement)) {
+			panic!("MySQL only supports FOR EACH ROW triggers");
+		}
+
+		// MySQL does not support WHEN clause
+		if stmt.when_condition.is_some() {
+			panic!("MySQL does not support WHEN clause in triggers");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE TRIGGER
+		writer.push("CREATE TRIGGER");
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Timing: BEFORE / AFTER
+		if let Some(timing) = stmt.timing {
+			writer.push_space();
+			match timing {
+				TriggerTiming::Before => writer.push("BEFORE"),
+				TriggerTiming::After => writer.push("AFTER"),
+				TriggerTiming::InsteadOf => unreachable!(), // Already checked above
+			}
+		}
+
+		// Event: INSERT / UPDATE / DELETE (single event only)
+		if let Some(event) = stmt.events.first() {
+			writer.push_space();
+			match event {
+				TriggerEvent::Insert => writer.push("INSERT"),
+				TriggerEvent::Update { columns } => {
+					writer.push("UPDATE");
+					if columns.is_some() {
+						panic!("MySQL does not support UPDATE OF columns syntax");
+					}
+				}
+				TriggerEvent::Delete => writer.push("DELETE"),
+			}
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// FOR EACH ROW
+		writer.push_keyword("FOR EACH ROW");
+
+		// FOLLOWS / PRECEDES (MySQL-specific)
+		if let Some(order) = &stmt.order {
+			writer.push_space();
+			match order {
+				TriggerOrder::Follows(trigger_name) => {
+					writer.push("FOLLOWS ");
+					writer.push_identifier(trigger_name.as_str(), |s| self.escape_iden(s));
+				}
+				TriggerOrder::Precedes(trigger_name) => {
+					writer.push("PRECEDES ");
+					writer.push_identifier(trigger_name.as_str(), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		// BEGIN ... END block
+		if let Some(body) = &stmt.body {
+			writer.push_space();
+			match body {
+				TriggerBody::Single(sql) => {
+					writer.push("BEGIN ");
+					writer.push(sql.as_str());
+					writer.push("; END");
+				}
+				TriggerBody::Multiple(statements) => {
+					writer.push("BEGIN ");
+					for (i, stmt) in statements.iter().enumerate() {
+						if i > 0 {
+							writer.push(" ");
+						}
+						writer.push(stmt);
+						writer.push(";");
+					}
+					writer.push(" END");
+				}
+				TriggerBody::PostgresFunction(_) => {
+					panic!("MySQL does not support EXECUTE FUNCTION syntax");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values) {
+		// MySQL requires table name for DROP TRIGGER
+		if stmt.table.is_none() {
+			panic!("MySQL requires table name (ON table) for DROP TRIGGER");
+		}
+
+		// MySQL does not support CASCADE/RESTRICT
+		if stmt.cascade || stmt.restrict {
+			panic!("MySQL does not support CASCADE/RESTRICT for DROP TRIGGER");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// DROP TRIGGER
+		writer.push("DROP TRIGGER");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// table.trigger_name (MySQL syntax)
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+			writer.push(".");
+		}
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 		}
 
 		writer.finish()
@@ -4200,5 +4349,111 @@ mod tests {
 		stmt.table("users").cascade();
 
 		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	fn test_create_trigger_basic() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("update_timestamp")
+			.timing(TriggerTiming::Before)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single("SET NEW.updated_at = NOW()"));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TRIGGER `update_timestamp` BEFORE UPDATE ON `users` FOR EACH ROW BEGIN SET NEW.updated_at = NOW(); END"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support multiple events in a single trigger")]
+	fn test_create_trigger_multiple_events_panics() {
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.execute_function("audit_log");
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support INSTEAD OF triggers")]
+	fn test_create_trigger_instead_of_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("view_insert")
+			.timing(TriggerTiming::InsteadOf)
+			.event(TriggerEvent::Insert)
+			.on_table("view_name")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single(
+				"INSERT INTO base_table VALUES (NEW.id)",
+			));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL only supports FOR EACH ROW triggers")]
+	fn test_create_trigger_for_statement_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Statement)
+			.body(TriggerBody::single("INSERT INTO audit_log VALUES (NOW())"));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	fn test_drop_trigger_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp").on_table("users");
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, r#"DROP TRIGGER `users`.`update_timestamp`"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL requires table name (ON table) for DROP TRIGGER")]
+	fn test_drop_trigger_no_table_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp");
+
+		let _ = builder.build_drop_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP TRIGGER")]
+	fn test_drop_trigger_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp").on_table("users").cascade();
+
+		let _ = builder.build_drop_trigger(&stmt);
 	}
 }

@@ -52,10 +52,12 @@
 mod alter_table;
 mod create_index;
 mod create_table;
+mod create_trigger;
 mod create_view;
 mod delete;
 mod drop_index;
 mod drop_table;
+mod drop_trigger;
 mod drop_view;
 mod insert;
 mod returning;
@@ -67,10 +69,12 @@ mod update;
 pub use alter_table::*;
 pub use create_index::*;
 pub use create_table::*;
+pub use create_trigger::*;
 pub use create_view::*;
 pub use delete::*;
 pub use drop_index::*;
 pub use drop_table::*;
+pub use drop_trigger::*;
 pub use drop_view::*;
 pub use insert::*;
 pub use returning::*;
@@ -304,6 +308,42 @@ impl Query {
 	/// ```
 	pub fn truncate_table() -> TruncateTableStatement {
 		TruncateTableStatement::new()
+	}
+
+	/// Construct a new [`CreateTriggerStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::{TriggerTiming, TriggerEvent, TriggerScope};
+	///
+	/// let query = Query::create_trigger()
+	///     .name("audit_insert")
+	///     .timing(TriggerTiming::After)
+	///     .event(TriggerEvent::Insert)
+	///     .on_table("users")
+	///     .for_each(TriggerScope::Row)
+	///     .execute_function("audit_log_insert");
+	/// ```
+	pub fn create_trigger() -> CreateTriggerStatement {
+		CreateTriggerStatement::new()
+	}
+
+	/// Construct a new [`DropTriggerStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_trigger()
+	///     .name("audit_insert")
+	///     .on_table("users")
+	///     .if_exists();
+	/// ```
+	pub fn drop_trigger() -> DropTriggerStatement {
+		DropTriggerStatement::new()
 	}
 }
 

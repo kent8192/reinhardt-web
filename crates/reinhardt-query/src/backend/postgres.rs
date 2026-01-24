@@ -7,9 +7,9 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
+		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
+		SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1335,6 +1335,134 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("CASCADE");
 		} else if stmt.restrict {
 			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE TRIGGER
+		writer.push("CREATE TRIGGER");
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Timing: BEFORE / AFTER / INSTEAD OF
+		if let Some(timing) = stmt.timing {
+			writer.push_space();
+			match timing {
+				TriggerTiming::Before => writer.push("BEFORE"),
+				TriggerTiming::After => writer.push("AFTER"),
+				TriggerTiming::InsteadOf => writer.push("INSTEAD OF"),
+			}
+		}
+
+		// Events: INSERT / UPDATE [OF columns] / DELETE
+		if !stmt.events.is_empty() {
+			writer.push_space();
+			let mut first = true;
+			for event in &stmt.events {
+				if !first {
+					writer.push(" OR ");
+				}
+				first = false;
+
+				match event {
+					TriggerEvent::Insert => writer.push("INSERT"),
+					TriggerEvent::Update { columns } => {
+						writer.push("UPDATE");
+						if let Some(cols) = columns {
+							writer.push(" OF ");
+							writer.push_list(cols.iter(), ", ", |w, col| {
+								w.push_identifier(col, |s| self.escape_iden(s));
+							});
+						}
+					}
+					TriggerEvent::Delete => writer.push("DELETE"),
+				}
+			}
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// FOR EACH ROW / FOR EACH STATEMENT
+		if let Some(scope) = stmt.scope {
+			writer.push_space();
+			match scope {
+				TriggerScope::Row => writer.push("FOR EACH ROW"),
+				TriggerScope::Statement => writer.push("FOR EACH STATEMENT"),
+			}
+		}
+
+		// WHEN (condition)
+		if let Some(when_cond) = &stmt.when_condition {
+			writer.push_keyword("WHEN");
+			writer.push(" (");
+			self.write_simple_expr(&mut writer, when_cond);
+			writer.push(")");
+		}
+
+		// EXECUTE FUNCTION function_name() or EXECUTE PROCEDURE (older syntax)
+		if let Some(body) = &stmt.body {
+			writer.push_space();
+			match body {
+				TriggerBody::PostgresFunction(func_name) => {
+					writer.push("EXECUTE FUNCTION ");
+					writer.push(func_name.as_str());
+					writer.push("()");
+				}
+				TriggerBody::Single(_) | TriggerBody::Multiple(_) => {
+					panic!(
+						"PostgreSQL triggers require EXECUTE FUNCTION, not inline SQL statements"
+					);
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP TRIGGER
+		writer.push("DROP TRIGGER");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// ON table (optional in PostgreSQL, but recommended)
+		if let Some(table) = &stmt.table {
+			writer.push_keyword("ON");
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// CASCADE / RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
 			writer.push_keyword("RESTRICT");
 		}
 
@@ -4643,6 +4771,102 @@ mod tests {
 
 		let (sql, values) = builder.build_truncate_table(&stmt);
 		assert_eq!(sql, r#"TRUNCATE TABLE "users" RESTART IDENTITY CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_basic() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit_log")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.execute_function("log_user_insert");
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TRIGGER "audit_log" AFTER INSERT ON "users" FOR EACH ROW EXECUTE FUNCTION log_user_insert()"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_before_update() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("update_timestamp")
+			.timing(TriggerTiming::Before)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.execute_function("update_modified_at");
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TRIGGER "update_timestamp" BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE FUNCTION update_modified_at()"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_trigger_delete_for_statement() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit_delete")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Delete)
+			.on_table("users")
+			.for_each(TriggerScope::Statement)
+			.execute_function("log_bulk_delete");
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TRIGGER "audit_delete" AFTER DELETE ON "users" FOR EACH STATEMENT EXECUTE FUNCTION log_bulk_delete()"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_trigger_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_log").on_table("users");
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, r#"DROP TRIGGER "audit_log" ON "users""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_trigger_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_log").on_table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, r#"DROP TRIGGER IF EXISTS "audit_log" ON "users""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_trigger_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("audit_log").on_table("users").cascade();
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, r#"DROP TRIGGER "audit_log" ON "users" CASCADE"#);
 		assert_eq!(values.len(), 0);
 	}
 }
