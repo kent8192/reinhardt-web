@@ -4183,7 +4183,7 @@ mod tests {
 
 	#[test]
 	fn test_create_table_basic() {
-		use crate::types::{ColumnDef, ColumnType, IntoTableRef};
+		use crate::types::{ColumnDef, ColumnType};
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_table();
