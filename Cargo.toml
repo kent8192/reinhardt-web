@@ -323,6 +323,7 @@ members = [
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
+  "crates/reinhardt-payment",                          # Payment integration (Stripe/BasisTheory)
   # Integration tests
   "tests",
   "tests/integration",
