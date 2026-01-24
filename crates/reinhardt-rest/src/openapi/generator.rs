@@ -288,7 +288,6 @@ impl SchemaGenerator {
 	//
 	// 		self
 	// 	}
-
 	/// Add a single server function endpoint (no-op when pages feature is disabled)
 	#[cfg(not(feature = "pages"))]
 	pub fn add_server_fn<S>(self, _marker: S) -> Self {
