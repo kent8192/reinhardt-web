@@ -8,7 +8,8 @@ use crate::{
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
 		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
+		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1229,6 +1230,39 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.push_list(stmt.names.iter(), ", ", |w, name| {
 			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 		});
+
+		writer.finish()
+	}
+
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
+		// MySQL does not support truncating multiple tables in a single statement
+		if stmt.tables.len() > 1 {
+			panic!(
+				"MySQL does not support truncating multiple tables in a single TRUNCATE statement"
+			);
+		}
+
+		// MySQL does not support RESTART IDENTITY, CASCADE, or RESTRICT for TRUNCATE TABLE
+		if stmt.restart_identity {
+			panic!("MySQL does not support RESTART IDENTITY for TRUNCATE TABLE");
+		}
+		if stmt.cascade {
+			panic!("MySQL does not support CASCADE for TRUNCATE TABLE");
+		}
+		if stmt.restrict {
+			panic!("MySQL does not support RESTRICT for TRUNCATE TABLE");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// TRUNCATE TABLE
+		writer.push("TRUNCATE TABLE");
+		writer.push_space();
+
+		// Table name (single table only)
+		if let Some(table_ref) = stmt.tables.first() {
+			self.write_table_ref(&mut writer, table_ref);
+		}
 
 		writer.finish()
 	}
@@ -4121,5 +4155,50 @@ mod tests {
 		let (sql, values) = builder.build_drop_view(&stmt);
 		assert_eq!(sql, "DROP VIEW `view1`, `view2`, `view3`");
 		assert_eq!(values.len(), 0);
+	}
+
+	// TRUNCATE TABLE tests
+
+	#[test]
+	fn test_truncate_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, "TRUNCATE TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "MySQL does not support truncating multiple tables in a single TRUNCATE statement"
+	)]
+	fn test_truncate_table_multiple_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").table("posts");
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support RESTART IDENTITY for TRUNCATE TABLE")]
+	fn test_truncate_table_restart_identity_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restart_identity();
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE for TRUNCATE TABLE")]
+	fn test_truncate_table_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").cascade();
+
+		let _ = builder.build_truncate_table(&stmt);
 	}
 }

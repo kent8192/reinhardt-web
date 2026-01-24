@@ -8,7 +8,8 @@ use crate::{
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
 		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
+		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1304,6 +1305,36 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if stmt.cascade {
 			writer.push_keyword("CASCADE");
 		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// TRUNCATE TABLE
+		writer.push("TRUNCATE TABLE");
+		writer.push_space();
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// RESTART IDENTITY clause (PostgreSQL-specific)
+		if stmt.restart_identity {
+			writer.push_space();
+			writer.push_keyword("RESTART IDENTITY");
+		}
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
 			writer.push_keyword("RESTRICT");
 		}
 
@@ -4544,6 +4575,74 @@ mod tests {
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, r#"ALTER TABLE "users" RENAME TO "accounts""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	// TRUNCATE TABLE tests
+
+	#[test]
+	fn test_truncate_table_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_truncate_table_multiple() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").table("posts").table("comments");
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users", "posts", "comments""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_truncate_table_restart_identity() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restart_identity();
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users" RESTART IDENTITY"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_truncate_table_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").cascade();
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users" CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_truncate_table_restrict() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restrict();
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users" RESTRICT"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_truncate_table_restart_identity_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restart_identity().cascade();
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"TRUNCATE TABLE "users" RESTART IDENTITY CASCADE"#);
 		assert_eq!(values.len(), 0);
 	}
 }

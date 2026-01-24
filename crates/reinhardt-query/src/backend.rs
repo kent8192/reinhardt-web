@@ -7,7 +7,7 @@ use crate::{
 	query::{
 		AlterTableStatement, CreateIndexStatement, CreateTableStatement, CreateViewStatement,
 		DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement,
-		InsertStatement, SelectStatement, UpdateStatement,
+		InsertStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	value::Values,
 };
@@ -228,4 +228,17 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values);
+
+	/// Build TRUNCATE TABLE statement
+	///
+	/// Generates SQL and parameter values for a TRUNCATE TABLE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The TRUNCATE TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values);
 }

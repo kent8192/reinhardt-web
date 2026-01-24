@@ -8,7 +8,8 @@ use crate::{
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
 		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
+		DropViewStatement, InsertStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1219,6 +1220,40 @@ impl QueryBuilder for SqliteQueryBuilder {
 		if let Some(name) = stmt.names.first() {
 			writer.push_space();
 			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
+		// SQLite does not support the TRUNCATE keyword
+		// We use DELETE FROM instead, which has similar effect but doesn't reset AUTO_INCREMENT
+
+		// SQLite does not support RESTART IDENTITY, CASCADE, or RESTRICT for TRUNCATE/DELETE
+		if stmt.restart_identity {
+			panic!("SQLite does not support RESTART IDENTITY for TRUNCATE TABLE");
+		}
+		if stmt.cascade {
+			panic!("SQLite does not support CASCADE for TRUNCATE TABLE");
+		}
+		if stmt.restrict {
+			panic!("SQLite does not support RESTRICT for TRUNCATE TABLE");
+		}
+
+		// SQLite only supports truncating one table at a time
+		if stmt.tables.len() > 1 {
+			panic!("SQLite only supports truncating one table at a time");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// Use DELETE FROM instead of TRUNCATE TABLE
+		writer.push("DELETE FROM");
+		writer.push_space();
+
+		// Table name (single table only)
+		if let Some(table_ref) = stmt.tables.first() {
+			self.write_table_ref(&mut writer, table_ref);
 		}
 
 		writer.finish()
@@ -4151,5 +4186,58 @@ mod tests {
 		stmt.names(vec!["user_view".into_iden()]).materialized(true);
 
 		let _ = builder.build_drop_view(&stmt);
+	}
+
+	// TRUNCATE TABLE tests
+
+	#[test]
+	fn test_truncate_table_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, r#"DELETE FROM "users""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite only supports truncating one table at a time")]
+	fn test_truncate_table_multiple_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.tables(vec!["users", "posts"]);
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support RESTART IDENTITY for TRUNCATE TABLE")]
+	fn test_truncate_table_restart_identity_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restart_identity();
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support CASCADE for TRUNCATE TABLE")]
+	fn test_truncate_table_cascade_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").cascade();
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support RESTRICT for TRUNCATE TABLE")]
+	fn test_truncate_table_restrict_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restrict();
+
+		let _ = builder.build_truncate_table(&stmt);
 	}
 }

@@ -61,6 +61,7 @@ mod insert;
 mod returning;
 mod select;
 mod traits;
+mod truncate_table;
 mod update;
 
 pub use alter_table::*;
@@ -78,6 +79,7 @@ pub use select::{
 	SelectStatement, UnionType,
 };
 pub use traits::*;
+pub use truncate_table::*;
 pub use update::*;
 
 /// Shorthand for constructing any table query
@@ -288,6 +290,20 @@ impl Query {
 	/// ```
 	pub fn drop_view() -> DropViewStatement {
 		DropViewStatement::new()
+	}
+
+	/// Construct a new [`TruncateTableStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::truncate_table()
+	///     .table("users");
+	/// ```
+	pub fn truncate_table() -> TruncateTableStatement {
+		TruncateTableStatement::new()
 	}
 }
 
