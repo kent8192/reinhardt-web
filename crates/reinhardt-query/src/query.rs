@@ -49,6 +49,7 @@
 //!     .and_where(Expr::col("active").eq(false));
 //! ```
 
+mod alter_index;
 mod alter_table;
 mod create_index;
 mod create_table;
@@ -66,6 +67,7 @@ mod traits;
 mod truncate_table;
 mod update;
 
+pub use alter_index::*;
 pub use alter_table::*;
 pub use create_index::*;
 pub use create_table::*;
@@ -344,6 +346,28 @@ impl Query {
 	/// ```
 	pub fn drop_trigger() -> DropTriggerStatement {
 		DropTriggerStatement::new()
+	}
+
+	/// Construct a new [`AlterIndexStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // PostgreSQL: Rename index
+	/// let query = Query::alter_index()
+	///     .name("idx_users_email")
+	///     .rename_to("idx_users_email_new");
+	///
+	/// // MySQL: Rename index (requires table name)
+	/// let query = Query::alter_index()
+	///     .table("users")
+	///     .name("idx_email")
+	///     .rename_to("idx_email_new");
+	/// ```
+	pub fn alter_index() -> AlterIndexStatement {
+		AlterIndexStatement::new()
 	}
 }
 
