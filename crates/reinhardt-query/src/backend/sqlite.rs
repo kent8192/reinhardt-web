@@ -2404,7 +2404,6 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
 	// --- Phase 5: Complex WHERE Clause Tests ---
 	#[test]
 	fn test_where_or_condition() {
@@ -2478,6 +2477,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
+	#[test]
 	fn test_insert_with_null_value() {
 		use crate::value::Value;
 
