@@ -1471,12 +1471,14 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_alter_index(&self, stmt: &AlterIndexStatement) -> (String, Values) {
+		use crate::types::Iden;
+
 		let mut writer = SqlWriter::new();
 		writer.push_keyword("ALTER INDEX");
 		writer.push_space();
 
 		if let Some(ref name) = stmt.name {
-			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
 		} else {
 			panic!("ALTER INDEX requires an index name");
 		}
@@ -1486,7 +1488,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			writer.push_keyword("RENAME TO");
 			writer.push_space();
-			writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+			writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| self.escape_iden(s));
 		}
 
 		// SET TABLESPACE clause
@@ -1494,13 +1496,15 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			writer.push_keyword("SET TABLESPACE");
 			writer.push_space();
-			writer.push_identifier(&tablespace.to_string(), |s| self.escape_iden(s));
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| self.escape_iden(s));
 		}
 
 		writer.finish()
 	}
 
 	fn build_reindex(&self, stmt: &ReindexStatement) -> (String, Values) {
+		use crate::types::Iden;
+
 		let mut writer = SqlWriter::new();
 		writer.push_keyword("REINDEX");
 
@@ -1513,7 +1517,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			options.push("VERBOSE".to_string());
 		}
 		if let Some(ref tablespace) = stmt.tablespace {
-			let escaped = self.escape_iden(&tablespace.to_string());
+			let escaped = self.escape_iden(&Iden::to_string(tablespace.as_ref()));
 			options.push(format!("TABLESPACE {}", escaped));
 		}
 
@@ -1542,7 +1546,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 		// Name
 		writer.push_space();
 		if let Some(ref name) = stmt.name {
-			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
 		} else {
 			panic!("REINDEX requires a name");
 		}
