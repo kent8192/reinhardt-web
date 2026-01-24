@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bson::Document as BsonDocument;
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::error::{OdmResult, ValidationError};
+use super::error::OdmResult;
 
 /// Core trait for MongoDB documents.
 ///
