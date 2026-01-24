@@ -6,10 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
-		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
-		SelectStatement, TruncateTableStatement, UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
+		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
+		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
+		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1414,6 +1415,54 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		writer.finish()
+	}
+
+	fn build_alter_index(&self, stmt: &AlterIndexStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		// MySQL does not support SET TABLESPACE for indexes
+		if stmt.set_tablespace.is_some() {
+			panic!("MySQL does not support SET TABLESPACE for indexes");
+		}
+
+		// MySQL requires table name for RENAME INDEX
+		let table = stmt.table.as_ref().expect("MySQL requires table name for ALTER INDEX RENAME");
+
+		// MySQL only supports RENAME INDEX via ALTER TABLE
+		if let Some(ref new_name) = stmt.rename_to {
+			let mut writer = SqlWriter::new();
+
+			// ALTER TABLE
+			writer.push_keyword("ALTER TABLE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+
+			// RENAME INDEX
+			writer.push_space();
+			writer.push_keyword("RENAME INDEX");
+			writer.push_space();
+
+			// Old index name
+			if let Some(ref name) = stmt.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+			} else {
+				panic!("ALTER INDEX requires an index name");
+			}
+
+			// TO new_name
+			writer.push_space();
+			writer.push_keyword("TO");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| self.escape_iden(s));
+
+			writer.finish()
+		} else {
+			panic!("MySQL ALTER INDEX only supports RENAME operation");
+		}
+	}
+
+	fn build_reindex(&self, _stmt: &ReindexStatement) -> (String, Values) {
+		panic!("MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead.");
 	}
 
 	fn escape_identifier(&self, ident: &str) -> String {

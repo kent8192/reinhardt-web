@@ -6,10 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
-		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
-		SelectStatement, TruncateTableStatement, UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
+		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
+		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
+		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1387,6 +1388,49 @@ impl QueryBuilder for SqliteQueryBuilder {
 		}
 
 		// Note: SQLite does not require or support ON table in DROP TRIGGER
+
+		writer.finish()
+	}
+
+	fn build_alter_index(&self, _stmt: &AlterIndexStatement) -> (String, Values) {
+		panic!("SQLite does not support ALTER INDEX. Drop and recreate the index instead.");
+	}
+
+	fn build_reindex(&self, stmt: &ReindexStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		// SQLite does not support options (concurrently, verbose, tablespace)
+		if stmt.concurrently {
+			panic!("SQLite does not support CONCURRENTLY option for REINDEX");
+		}
+		if stmt.verbose {
+			panic!("SQLite does not support VERBOSE option for REINDEX");
+		}
+		if stmt.tablespace.is_some() {
+			panic!("SQLite does not support TABLESPACE option for REINDEX");
+		}
+
+		// SQLite only supports REINDEX for INDEX or TABLE (not SCHEMA, DATABASE, SYSTEM)
+		if let Some(target) = stmt.target {
+			use crate::query::ReindexTarget;
+			match target {
+				ReindexTarget::Schema | ReindexTarget::Database | ReindexTarget::System => {
+					panic!("SQLite only supports REINDEX INDEX or REINDEX TABLE");
+				}
+				_ => {}
+			}
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// REINDEX
+		writer.push_keyword("REINDEX");
+
+		// Name (optional in SQLite - reindexes all if omitted)
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
 
 		writer.finish()
 	}
