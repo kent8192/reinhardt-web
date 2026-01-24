@@ -61,7 +61,8 @@ impl TokenResponse {
 			Utc::now() + chrono::Duration::hours(1)
 		};
 
-		let scopes = self.scope
+		let scopes = self
+			.scope
 			.as_ref()
 			.map(|s| s.split_whitespace().map(String::from).collect())
 			.unwrap_or_default();
