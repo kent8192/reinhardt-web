@@ -155,7 +155,8 @@ impl AuthUser for PagesAuthUser {
 /// let user = authenticator.authenticate_from_cookies(cookie_header).await?;
 /// ```
 pub struct PagesAuthenticator {
-	// TODO: Add session store reference when reinhardt-pages session management is ready
+	// Session store reference will be added when reinhardt-pages session management is ready
+	// See: https://github.com/kent8192/reinhardt-web/issues/22
 }
 
 impl PagesAuthenticator {
@@ -182,32 +183,27 @@ impl PagesAuthenticator {
 	///
 	/// # Errors
 	///
-	/// Returns `AuthError::AuthenticationFailed` if authentication fails.
+	/// Returns `AuthError::AuthenticationFailed` if authentication fails or if
+	/// session store integration is not yet available.
+	///
+	/// # Current Limitations
+	///
+	/// Session store integration with reinhardt-pages is not yet implemented.
+	/// This method will return an error indicating the feature is unavailable.
+	/// Track progress at: <https://github.com/kent8192/reinhardt-web/issues/22>
 	pub async fn authenticate_from_cookies(&self, cookies: &str) -> AuthResult<Box<dyn AuthUser>> {
 		// Extract session ID from cookies
 		let session_id = self.extract_session_id(cookies)?;
 
-		// TODO: Validate session and retrieve user information from session store
-		// For now, return a placeholder error
-		// This will be implemented when reinhardt-pages session management is integrated
-
-		// Placeholder implementation - replace with actual session validation
-		if session_id.is_empty() {
-			return Err(AuthError::AuthenticationFailed(
-				"Invalid session ID".to_string(),
-			));
-		}
-
-		// TODO: Replace with actual session store lookup
-		// let user_data = session_store.get(&session_id).await?;
-		// let user = PagesAuthUser {
-		//     user_id: user_data.user_id,
-		//     username: user_data.username,
-		//     permissions: user_data.permissions,
-		//     is_superuser: user_data.is_superuser,
-		// };
-
-		todo!("Implement session store integration with reinhardt-pages")
+		// Session store integration is not yet implemented
+		// See: https://github.com/kent8192/reinhardt-web/issues/22
+		let _ = session_id; // Acknowledge session ID was extracted
+		Err(AuthError::AuthenticationFailed(
+			"Session store integration not yet available. \
+			 This feature requires reinhardt-pages session management. \
+			 See https://github.com/kent8192/reinhardt-web/issues/22 for progress."
+				.to_string(),
+		))
 	}
 
 	/// Extract session ID from Cookie header
@@ -329,5 +325,40 @@ mod tests {
 		let cookies = "sessionid=test123";
 		let session_id = auth.extract_session_id(cookies).unwrap();
 		assert_eq!(session_id, "test123");
+	}
+
+	#[tokio::test]
+	async fn test_authenticate_from_cookies_returns_error() {
+		let auth = PagesAuthenticator::new();
+		let cookies = "sessionid=valid_session_id";
+		let result = auth.authenticate_from_cookies(cookies).await;
+
+		// Should return error indicating feature not available
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		match err {
+			AuthError::AuthenticationFailed(msg) => {
+				assert!(msg.contains("Session store integration not yet available"));
+				assert!(msg.contains("https://github.com/kent8192/reinhardt-web/issues/22"));
+			}
+			_ => panic!("Expected AuthenticationFailed error"),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_authenticate_from_cookies_missing_session_id() {
+		let auth = PagesAuthenticator::new();
+		let cookies = "csrftoken=xyz789"; // No sessionid
+		let result = auth.authenticate_from_cookies(cookies).await;
+
+		// Should return error for missing session ID
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		match err {
+			AuthError::AuthenticationFailed(msg) => {
+				assert!(msg.contains("Session ID not found"));
+			}
+			_ => panic!("Expected AuthenticationFailed error"),
+		}
 	}
 }
