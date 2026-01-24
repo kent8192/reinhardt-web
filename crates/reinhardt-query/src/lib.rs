@@ -10,6 +10,7 @@
 //!
 //! ### DML (Data Manipulation Language)
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
+//! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
 //!
@@ -41,6 +42,8 @@
 //! - [`query`]: Query builders ([`SelectStatement`],
 //!   [`InsertStatement`], [`UpdateStatement`],
 //!   [`DeleteStatement`])
+//! - [`dcl`]: DCL (Data Control Language) builders ([`GrantStatement`],
+//!   [`RevokeStatement`], [`Privilege`], [`ObjectType`], [`Grantee`])
 //! - [`backend`]: Database backend implementations
 //!   ([`PostgresQueryBuilder`],
 //!   [`MySqlQueryBuilder`],
@@ -96,6 +99,11 @@
 //! | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
 //! | VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
 //! | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
+//!
+//! ### DCL Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | GRANT/REVOKE | ✅ | ✅ | ❌ | ✅ |
 //!
 //! ## Expression Examples
 //!
@@ -177,6 +185,34 @@
 //!     .comment("Stores user account information");
 //! ```
 //!
+//! ## DCL Examples
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // GRANT privileges
+//! let grant_stmt = Query::grant()
+//!     .privilege(Privilege::Select)
+//!     .privilege(Privilege::Insert)
+//!     .on_table("users")
+//!     .to("app_user")
+//!     .with_grant_option(true);
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, values) = builder.build_grant(&grant_stmt);
+//! // sql = r#"GRANT SELECT, INSERT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+//!
+//! // REVOKE privileges
+//! let revoke_stmt = Query::revoke()
+//!     .privilege(Privilege::Insert)
+//!     .from_table("users")
+//!     .from("app_user")
+//!     .cascade(true);
+//!
+//! let (sql, values) = builder.build_revoke(&revoke_stmt);
+//! // sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
+//! ```
+//!
 //! ## Feature Flags
 //!
 //! - `thread-safe`: Use `Arc` instead of `Rc` for `DynIden` (enables thread-safe identifiers)
@@ -213,6 +249,13 @@ pub mod backend;
 pub mod prelude {
 	pub use crate::backend::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter, SqliteQueryBuilder,
+	};
+	pub use crate::dcl::{
+		AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
+		DefaultRoleSpec, DropRoleStatement, DropUserStatement, GrantRoleStatement, GrantStatement,
+		Grantee, ObjectType, Privilege, RenameUserStatement, ResetRoleStatement,
+		RevokeRoleStatement, RevokeStatement, RoleAttribute, RoleSpecification, RoleTarget,
+		SetDefaultRoleStatement, SetRoleStatement, UserOption,
 	};
 	pub use crate::expr::{
 		CaseExprBuilder, CaseStatement, Cond, Condition, ConditionExpression, ConditionHolder,
