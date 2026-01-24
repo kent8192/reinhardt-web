@@ -319,6 +319,7 @@ members = [
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
+  "crates/reinhardt-payment",                          # Payment integration (Stripe/BasisTheory)
   # Integration tests
   "tests",
   "tests/integration",
