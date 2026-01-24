@@ -105,3 +105,114 @@ impl From<redis::RedisError> for NoSQLError {
 		}
 	}
 }
+
+// ============================================================================
+// ODM-specific error types
+// ============================================================================
+
+/// Result type for ODM operations.
+pub type OdmResult<T> = std::result::Result<T, OdmError>;
+
+/// Error type for ODM operations.
+#[derive(Debug)]
+pub enum OdmError {
+	/// Validation failed.
+	Validation(ValidationError),
+
+	/// MongoDB error.
+	#[cfg(feature = "mongodb")]
+	Mongo(mongodb::error::Error),
+
+	/// Document not found.
+	NotFound,
+
+	/// Duplicate key error.
+	DuplicateKey { field: String },
+
+	/// Serialization error.
+	Serialization(String),
+
+	/// Deserialization error.
+	#[cfg(feature = "mongodb")]
+	Deserialization(bson::de::Error),
+}
+
+impl fmt::Display for OdmError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			OdmError::Validation(err) => write!(f, "Validation failed: {}", err),
+			#[cfg(feature = "mongodb")]
+			OdmError::Mongo(err) => write!(f, "MongoDB error: {}", err),
+			OdmError::NotFound => write!(f, "Document not found"),
+			OdmError::DuplicateKey { field } => write!(f, "Duplicate key: {}", field),
+			OdmError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+			#[cfg(feature = "mongodb")]
+			OdmError::Deserialization(err) => write!(f, "Deserialization error: {}", err),
+		}
+	}
+}
+
+impl std::error::Error for OdmError {}
+
+impl From<ValidationError> for OdmError {
+	fn from(err: ValidationError) -> Self {
+		OdmError::Validation(err)
+	}
+}
+
+#[cfg(feature = "mongodb")]
+impl From<mongodb::error::Error> for OdmError {
+	fn from(err: mongodb::error::Error) -> Self {
+		OdmError::Mongo(err)
+	}
+}
+
+#[cfg(feature = "mongodb")]
+impl From<bson::de::Error> for OdmError {
+	fn from(err: bson::de::Error) -> Self {
+		OdmError::Deserialization(err)
+	}
+}
+
+/// Validation error type.
+#[derive(Debug)]
+pub enum ValidationError {
+	/// Required field is missing or empty.
+	Required(&'static str),
+
+	/// Invalid email format.
+	InvalidEmail,
+
+	/// Invalid URL format.
+	InvalidUrl,
+
+	/// Value out of range.
+	OutOfRange {
+		field: &'static str,
+		min: i64,
+		max: i64,
+	},
+
+	/// Custom validation error.
+	Custom(String),
+}
+
+impl fmt::Display for ValidationError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ValidationError::Required(field) => write!(f, "Field required: {}", field),
+			ValidationError::InvalidEmail => write!(f, "Invalid email format"),
+			ValidationError::InvalidUrl => write!(f, "Invalid URL format"),
+			ValidationError::OutOfRange { field, min, max } => {
+				write!(
+					f,
+					"Value out of range: {} must be between {} and {}",
+					field, min, max
+				)
+			}
+			ValidationError::Custom(msg) => write!(f, "Custom validation failed: {}", msg),
+		}
+	}
+}
+
+impl std::error::Error for ValidationError {}
