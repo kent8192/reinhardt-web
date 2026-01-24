@@ -46,6 +46,10 @@ pub enum Privilege {
 	Temporary,
 	/// EXECUTE privilege - Execute functions/procedures (PostgreSQL-specific)
 	Execute,
+	/// SET privilege - Set configuration parameters (PostgreSQL-specific)
+	Set,
+	/// ALTER SYSTEM privilege - Alter system configuration (PostgreSQL-specific)
+	AlterSystem,
 }
 
 impl Privilege {
@@ -75,6 +79,8 @@ impl Privilege {
 			Privilege::Connect => "CONNECT",
 			Privilege::Temporary => "TEMPORARY",
 			Privilege::Execute => "EXECUTE",
+			Privilege::Set => "SET",
+			Privilege::AlterSystem => "ALTER SYSTEM",
 		}
 	}
 
@@ -101,6 +107,8 @@ impl Privilege {
 				| Privilege::Connect
 				| Privilege::Temporary
 				| Privilege::Execute
+				| Privilege::Set
+				| Privilege::AlterSystem
 		)
 	}
 
