@@ -170,12 +170,20 @@ impl QueryStatementBuilder for ReindexStatement {
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
 		use std::any::Any;
 
-		if let Some(postgres) = (query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>() {
+		if let Some(postgres) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>()
+		{
 			use crate::backend::QueryBuilder;
 			postgres.build_reindex(self)
-		} else if let Some(_mysql) = (query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>() {
-			panic!("MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead.");
-		} else if let Some(sqlite) = (query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>() {
+		} else if let Some(_mysql) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
+		{
+			panic!(
+				"MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead."
+			);
+		} else if let Some(sqlite) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
+		{
 			use crate::backend::QueryBuilder;
 			sqlite.build_reindex(self)
 		} else {

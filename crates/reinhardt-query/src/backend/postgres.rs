@@ -1496,7 +1496,9 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			writer.push_keyword("SET TABLESPACE");
 			writer.push_space();
-			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| self.escape_iden(s));
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+				self.escape_iden(s)
+			});
 		}
 
 		writer.finish()

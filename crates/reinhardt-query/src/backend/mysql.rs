@@ -1426,7 +1426,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// MySQL requires table name for RENAME INDEX
-		let table = stmt.table.as_ref().expect("MySQL requires table name for ALTER INDEX RENAME");
+		let table = stmt
+			.table
+			.as_ref()
+			.expect("MySQL requires table name for ALTER INDEX RENAME");
 
 		// MySQL only supports RENAME INDEX via ALTER TABLE
 		if let Some(ref new_name) = stmt.rename_to {

@@ -111,13 +111,19 @@ impl QueryStatementBuilder for AlterIndexStatement {
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
 		use std::any::Any;
 
-		if let Some(postgres) = (query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>() {
+		if let Some(postgres) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>()
+		{
 			use crate::backend::QueryBuilder;
 			postgres.build_alter_index(self)
-		} else if let Some(mysql) = (query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>() {
+		} else if let Some(mysql) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
+		{
 			use crate::backend::QueryBuilder;
 			mysql.build_alter_index(self)
-		} else if let Some(_sqlite) = (query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>() {
+		} else if let Some(_sqlite) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
+		{
 			panic!("SQLite does not support ALTER INDEX. Drop and recreate the index instead.");
 		} else {
 			panic!("Unsupported query builder type");
