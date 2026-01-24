@@ -14,6 +14,7 @@
 /// assert_eq!(object_type.as_sql(), "TABLE");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ObjectType {
 	/// Database tables
 	Table,

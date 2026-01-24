@@ -16,6 +16,7 @@ use super::ObjectType;
 /// assert_eq!(privilege.as_sql(), "SELECT");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Privilege {
 	/// SELECT privilege - Read data from tables/views
 	Select,
