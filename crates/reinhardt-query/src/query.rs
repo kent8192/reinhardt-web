@@ -17,6 +17,8 @@
 //! - Drop Table: [`DropTableStatement`]
 //! - Create Index: [`CreateIndexStatement`]
 //! - Drop Index: [`DropIndexStatement`]
+//! - Create View: [`CreateViewStatement`]
+//! - Drop View: [`DropViewStatement`]
 //!
 //! # Examples
 //!
@@ -50,9 +52,11 @@
 mod alter_table;
 mod create_index;
 mod create_table;
+mod create_view;
 mod delete;
 mod drop_index;
 mod drop_table;
+mod drop_view;
 mod insert;
 mod returning;
 mod select;
@@ -62,9 +66,11 @@ mod update;
 pub use alter_table::*;
 pub use create_index::*;
 pub use create_table::*;
+pub use create_view::*;
 pub use delete::*;
 pub use drop_index::*;
 pub use drop_table::*;
+pub use drop_view::*;
 pub use insert::*;
 pub use returning::*;
 pub use select::{
@@ -247,6 +253,41 @@ impl Query {
 	/// ```
 	pub fn drop_index() -> DropIndexStatement {
 		DropIndexStatement::new()
+	}
+
+	/// Construct a new [`CreateViewStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let select = Query::select()
+	///     .column(Expr::col("name"))
+	///     .from("users");
+	///
+	/// let query = Query::create_view()
+	///     .name("user_names")
+	///     .as_select(select)
+	///     .if_not_exists();
+	/// ```
+	pub fn create_view() -> CreateViewStatement {
+		CreateViewStatement::new()
+	}
+
+	/// Construct a new [`DropViewStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_view()
+	///     .name("user_names")
+	///     .if_exists();
+	/// ```
+	pub fn drop_view() -> DropViewStatement {
+		DropViewStatement::new()
 	}
 }
 

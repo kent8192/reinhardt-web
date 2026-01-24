@@ -7,8 +7,8 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
-		UpdateStatement,
+		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
+		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1230,6 +1230,80 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("CASCADE");
 		} else if stmt.restrict {
 			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("CREATE");
+
+		if stmt.or_replace {
+			writer.push_keyword("OR REPLACE");
+		}
+
+		if stmt.materialized {
+			writer.push_keyword("MATERIALIZED");
+		}
+
+		writer.push_keyword("VIEW");
+
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		if !stmt.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(stmt.columns.iter(), ", ", |w, col| {
+				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		writer.push_keyword("AS");
+
+		if let Some(select) = &stmt.select {
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push_space();
+			writer.push(&select_sql);
+			writer.append_values(&select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("DROP");
+
+		if stmt.materialized {
+			writer.push_keyword("MATERIALIZED");
+		}
+
+		writer.push_keyword("VIEW");
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		writer.push_space();
+		writer.push_list(stmt.names.iter(), ", ", |w, name| {
+			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		});
+
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
 			writer.push_keyword("RESTRICT");
 		}
 

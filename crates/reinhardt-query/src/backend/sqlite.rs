@@ -7,8 +7,8 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
-		UpdateStatement,
+		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
+		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1141,6 +1141,85 @@ impl QueryBuilder for SqliteQueryBuilder {
 		}
 
 		// Note: SQLite does not support CASCADE or RESTRICT for DROP INDEX
+
+		writer.finish()
+	}
+
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// SQLite does not support OR REPLACE for views
+		if stmt.or_replace {
+			panic!("SQLite does not support OR REPLACE for CREATE VIEW");
+		}
+
+		// SQLite does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("SQLite does not support MATERIALIZED views");
+		}
+
+		writer.push("CREATE");
+		writer.push_keyword("VIEW");
+
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		if !stmt.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(stmt.columns.iter(), ", ", |w, col| {
+				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		writer.push_keyword("AS");
+
+		if let Some(select) = &stmt.select {
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push_space();
+			writer.push(&select_sql);
+			writer.append_values(&select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// SQLite does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("SQLite does not support MATERIALIZED views");
+		}
+
+		// SQLite only supports dropping one view at a time
+		if stmt.names.len() > 1 {
+			panic!("SQLite only supports dropping one view at a time");
+		}
+
+		// SQLite does not support CASCADE/RESTRICT for DROP VIEW
+		if stmt.cascade || stmt.restrict {
+			panic!("SQLite does not support CASCADE/RESTRICT for DROP VIEW");
+		}
+
+		writer.push("DROP");
+		writer.push_keyword("VIEW");
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		if let Some(name) = stmt.names.first() {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
 
 		writer.finish()
 	}
@@ -3948,5 +4027,129 @@ mod tests {
 		// SQLite uses INTEGER for BOOLEAN
 		assert!(sql.contains("\"active\" INTEGER"));
 		assert_eq!(values.len(), 0);
+	}
+
+	// VIEW tests
+
+	#[test]
+	fn test_create_view_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden());
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW"));
+		assert!(sql.contains(r#""user_view""#));
+		assert!(sql.contains("AS"));
+		assert!(sql.contains(r#"SELECT "id", "name" FROM "users""#));
+	}
+
+	#[test]
+	fn test_create_view_if_not_exists() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).if_not_exists();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW IF NOT EXISTS"));
+		assert!(sql.contains(r#""user_view""#));
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support OR REPLACE for CREATE VIEW")]
+	fn test_create_view_or_replace_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).or_replace();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let _ = builder.build_create_view(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support MATERIALIZED views")]
+	fn test_create_view_materialized_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).materialized(true);
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let _ = builder.build_create_view(&stmt);
+	}
+
+	#[test]
+	fn test_create_view_with_columns() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden())
+			.columns(vec!["user_id".into_iden(), "user_name".into_iden()]);
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains(r#""user_view" ("user_id", "user_name")"#));
+	}
+
+	#[test]
+	fn test_drop_view_basic() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]);
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, r#"DROP VIEW "user_view""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_view_if_exists() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).if_exists();
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, r#"DROP VIEW IF EXISTS "user_view""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite only supports dropping one view at a time")]
+	fn test_drop_view_multiple_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["view1".into_iden(), "view2".into_iden()]);
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support CASCADE/RESTRICT for DROP VIEW")]
+	fn test_drop_view_cascade_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).cascade();
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support MATERIALIZED views")]
+	fn test_drop_view_materialized_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).materialized(true);
+
+		let _ = builder.build_drop_view(&stmt);
 	}
 }

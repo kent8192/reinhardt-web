@@ -7,8 +7,8 @@ use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
 		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		DeleteStatement, DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement,
-		UpdateStatement,
+		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
+		DropViewStatement, InsertStatement, SelectStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1155,6 +1155,80 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push_space();
 			self.write_table_ref(&mut writer, table);
 		}
+
+		writer.finish()
+	}
+
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// MySQL does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("MySQL does not support MATERIALIZED views");
+		}
+
+		writer.push("CREATE");
+
+		if stmt.or_replace {
+			writer.push_keyword("OR REPLACE");
+		}
+
+		writer.push_keyword("VIEW");
+
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		if !stmt.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(stmt.columns.iter(), ", ", |w, col| {
+				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		writer.push_keyword("AS");
+
+		if let Some(select) = &stmt.select {
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push_space();
+			writer.push(&select_sql);
+			writer.append_values(&select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// MySQL does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("MySQL does not support MATERIALIZED views");
+		}
+
+		// MySQL does not support CASCADE/RESTRICT for DROP VIEW
+		if stmt.cascade || stmt.restrict {
+			panic!("MySQL does not support CASCADE/RESTRICT for DROP VIEW");
+		}
+
+		writer.push("DROP");
+		writer.push_keyword("VIEW");
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		writer.push_space();
+		writer.push_list(stmt.names.iter(), ", ", |w, name| {
+			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		});
 
 		writer.finish()
 	}
@@ -3916,6 +3990,136 @@ mod tests {
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, "ALTER TABLE `users` RENAME TO `accounts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// VIEW tests
+
+	#[test]
+	fn test_create_view_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden());
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW"));
+		assert!(sql.contains("`user_view`"));
+		assert!(sql.contains("AS"));
+		assert!(sql.contains("SELECT `id`, `name` FROM `users`"));
+	}
+
+	#[test]
+	fn test_create_view_or_replace() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).or_replace();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE OR REPLACE VIEW"));
+		assert!(sql.contains("`user_view`"));
+	}
+
+	#[test]
+	fn test_create_view_if_not_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).if_not_exists();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW IF NOT EXISTS"));
+		assert!(sql.contains("`user_view`"));
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
+	fn test_create_view_materialized_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).materialized(true);
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let _ = builder.build_create_view(&stmt);
+	}
+
+	#[test]
+	fn test_create_view_with_columns() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden())
+			.columns(vec!["user_id".into_iden(), "user_name".into_iden()]);
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("`user_view` (`user_id`, `user_name`)"));
+	}
+
+	#[test]
+	fn test_drop_view_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]);
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW `user_view`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_view_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).if_exists();
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW IF EXISTS `user_view`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP VIEW")]
+	fn test_drop_view_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).cascade();
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
+	fn test_drop_view_materialized_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).materialized(true);
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	fn test_drop_view_multiple() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec![
+			"view1".into_iden(),
+			"view2".into_iden(),
+			"view3".into_iden(),
+		]);
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW `view1`, `view2`, `view3`");
 		assert_eq!(values.len(), 0);
 	}
 }

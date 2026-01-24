@@ -5,8 +5,9 @@
 
 use crate::{
 	query::{
-		AlterTableStatement, CreateIndexStatement, CreateTableStatement, DeleteStatement,
-		DropIndexStatement, DropTableStatement, InsertStatement, SelectStatement, UpdateStatement,
+		AlterTableStatement, CreateIndexStatement, CreateTableStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, DropViewStatement,
+		InsertStatement, SelectStatement, UpdateStatement,
 	},
 	value::Values,
 };
@@ -201,4 +202,30 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values);
+
+	/// Build CREATE VIEW statement
+	///
+	/// Generates SQL and parameter values for a CREATE VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values);
+
+	/// Build DROP VIEW statement
+	///
+	/// Generates SQL and parameter values for a DROP VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values);
 }
