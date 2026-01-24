@@ -61,6 +61,7 @@ mod drop_table;
 mod drop_trigger;
 mod drop_view;
 mod insert;
+mod reindex;
 mod returning;
 mod select;
 mod traits;
@@ -79,6 +80,7 @@ pub use drop_table::*;
 pub use drop_trigger::*;
 pub use drop_view::*;
 pub use insert::*;
+pub use reindex::*;
 pub use returning::*;
 pub use select::{
 	CommonTableExpr, LockBehavior, LockClause, LockType, SelectDistinct, SelectExpr,
@@ -368,6 +370,25 @@ impl Query {
 	/// ```
 	pub fn alter_index() -> AlterIndexStatement {
 		AlterIndexStatement::new()
+	}
+
+	/// Construct a new [`ReindexStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // Reindex a specific index
+	/// let query = Query::reindex()
+	///     .index("idx_users_email");
+	///
+	/// // Reindex all indexes in a table
+	/// let query = Query::reindex()
+	///     .table("users");
+	/// ```
+	pub fn reindex() -> ReindexStatement {
+		ReindexStatement::new()
 	}
 }
 
