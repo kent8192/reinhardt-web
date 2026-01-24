@@ -318,6 +318,7 @@ members = [
   "crates/reinhardt-graphql",
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
+  "crates/reinhardt-storages",                          # Cloud storage abstraction
   "crates/reinhardt-dentdelion",                        # Plugin system
   # Integration tests
   "tests",
@@ -403,6 +404,7 @@ reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.2" }
 reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.1" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.1" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.1" }
+reinhardt-storages = { path = "crates/reinhardt-storages", version = "0.1.0" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.1" }
 
 # Core subcrates
