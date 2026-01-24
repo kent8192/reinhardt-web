@@ -844,12 +844,893 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_grant(&self, stmt: &crate::dcl::GrantStatement) -> (String, Values) {
+		use crate::dcl::Grantee;
+
+		let mut writer = SqlWriter::new();
+
+		// GRANT keyword
+		writer.push("GRANT");
+		writer.push_space();
+
+		// Privileges
+		writer.push_list(&stmt.privileges, ", ", |w, privilege| {
+			w.push(privilege.as_sql());
+		});
+
+		// ON clause
+		writer.push_keyword("ON");
+		writer.push_space();
+		writer.push(stmt.object_type.as_sql());
+		writer.push_space();
+
+		// Objects
+		writer.push_list(&stmt.objects, ", ", |w, obj| {
+			w.push_identifier(&obj.to_string(), |s| self.escape_iden(s));
+		});
+
+		// TO clause
+		writer.push_keyword("TO");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			match grantee {
+				Grantee::Role(name) => {
+					w.push_identifier(name, |s| self.escape_iden(s));
+				}
+				Grantee::User(username, host) => {
+					// MySQL-specific: 'username'@'host' format
+					w.push_identifier(username, |s| self.escape_iden(s));
+					w.push("@");
+					w.push_identifier(host, |s| self.escape_iden(s));
+				}
+				Grantee::Public => {
+					w.push("PUBLIC");
+				}
+				Grantee::CurrentRole => {
+					w.push("CURRENT_ROLE");
+				}
+				Grantee::CurrentUser => {
+					w.push("CURRENT_USER");
+				}
+				Grantee::SessionUser => {
+					w.push("SESSION_USER");
+				}
+			}
+		});
+
+		// WITH GRANT OPTION
+		if stmt.with_grant_option {
+			writer.push_keyword("WITH GRANT OPTION");
+		}
+
+		// GRANTED BY clause - NOT SUPPORTED in MySQL
+		if stmt.granted_by.is_some() {
+			// Silently ignore - MySQL doesn't support GRANTED BY
+		}
+
+		writer.finish()
+	}
+
+	fn build_revoke(&self, stmt: &crate::dcl::RevokeStatement) -> (String, Values) {
+		use crate::dcl::Grantee;
+
+		let mut writer = SqlWriter::new();
+
+		// REVOKE keyword
+		writer.push("REVOKE");
+		writer.push_space();
+
+		// GRANT OPTION FOR (if specified)
+		if stmt.grant_option_for {
+			writer.push("GRANT OPTION FOR");
+			writer.push_space();
+		}
+
+		// Privileges
+		writer.push_list(&stmt.privileges, ", ", |w, privilege| {
+			w.push(privilege.as_sql());
+		});
+
+		// ON clause
+		writer.push_keyword("ON");
+		writer.push_space();
+		writer.push(stmt.object_type.as_sql());
+		writer.push_space();
+
+		// Objects
+		writer.push_list(&stmt.objects, ", ", |w, obj| {
+			w.push_identifier(&obj.to_string(), |s| self.escape_iden(s));
+		});
+
+		// FROM clause
+		writer.push_keyword("FROM");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			match grantee {
+				Grantee::Role(name) => {
+					w.push_identifier(name, |s| self.escape_iden(s));
+				}
+				Grantee::User(username, host) => {
+					// MySQL-specific: 'username'@'host' format
+					w.push_identifier(username, |s| self.escape_iden(s));
+					w.push("@");
+					w.push_identifier(host, |s| self.escape_iden(s));
+				}
+				Grantee::Public => {
+					w.push("PUBLIC");
+				}
+				Grantee::CurrentRole => {
+					w.push("CURRENT_ROLE");
+				}
+				Grantee::CurrentUser => {
+					w.push("CURRENT_USER");
+				}
+				Grantee::SessionUser => {
+					w.push("SESSION_USER");
+				}
+			}
+		});
+
+		// CASCADE is NOT SUPPORTED in MySQL REVOKE
+		// Silently ignore cascade flag
+
+		writer.finish()
+	}
+
+	fn build_grant_role(&self, stmt: &crate::dcl::GrantRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// GRANT keyword
+		writer.push("GRANT");
+		writer.push_space();
+
+		// Roles (comma-separated list)
+		writer.push_list(&stmt.roles, ", ", |w, role| {
+			w.push_identifier(role, |s| self.escape_iden(s));
+		});
+
+		// TO clause
+		writer.push_keyword("TO");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			w.push(Self::format_role_specification(grantee));
+		});
+
+		// WITH ADMIN OPTION
+		if stmt.with_admin_option {
+			writer.push_keyword("WITH ADMIN OPTION");
+		}
+
+		// GRANTED BY is NOT SUPPORTED in MySQL
+		// Silently ignore granted_by field
+
+		writer.finish()
+	}
+
+	fn build_revoke_role(&self, stmt: &crate::dcl::RevokeRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// REVOKE keyword
+		writer.push("REVOKE");
+		writer.push_space();
+
+		// ADMIN OPTION FOR
+		if stmt.admin_option_for {
+			writer.push("ADMIN OPTION FOR");
+			writer.push_space();
+		}
+
+		// Roles (comma-separated list)
+		writer.push_list(&stmt.roles, ", ", |w, role| {
+			w.push_identifier(role, |s| self.escape_iden(s));
+		});
+
+		// FROM clause
+		writer.push_keyword("FROM");
+		writer.push_space();
+
+		// Grantees
+		writer.push_list(&stmt.grantees, ", ", |w, grantee| {
+			w.push(Self::format_role_specification(grantee));
+		});
+
+		// GRANTED BY is NOT SUPPORTED in MySQL
+		// Silently ignore granted_by field
+
+		// CASCADE / RESTRICT is NOT SUPPORTED in MySQL
+		// Silently ignore drop_behavior field
+
+		writer.finish()
+	}
+
+	fn build_create_role(&self, stmt: &crate::dcl::CreateRoleStatement) -> (String, Values) {
+		use crate::dcl::UserOption;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE ROLE keyword
+		writer.push("CREATE ROLE");
+		writer.push_space();
+
+		// IF NOT EXISTS clause (MySQL specific)
+		if stmt.if_not_exists {
+			writer.push("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Role name
+		writer.push_identifier(&stmt.role_name, |s| self.escape_iden(s));
+
+		// MySQL user options
+		for option in &stmt.options {
+			writer.push_space();
+			match option {
+				UserOption::Password(pwd) => {
+					writer.push("IDENTIFIED BY");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				UserOption::AuthPlugin { plugin, by, as_ } => {
+					writer.push("IDENTIFIED WITH");
+					writer.push_space();
+					writer.push(plugin);
+					if let Some(auth) = by {
+						writer.push_space();
+						writer.push("BY");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					} else if let Some(auth) = as_ {
+						writer.push_space();
+						writer.push("AS");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					}
+				}
+				UserOption::AccountLock => {
+					writer.push("ACCOUNT LOCK");
+				}
+				UserOption::AccountUnlock => {
+					writer.push("ACCOUNT UNLOCK");
+				}
+				UserOption::PasswordExpire => {
+					writer.push("PASSWORD EXPIRE");
+				}
+				UserOption::PasswordExpireDefault => {
+					writer.push("PASSWORD EXPIRE DEFAULT");
+				}
+				UserOption::PasswordExpireNever => {
+					writer.push("PASSWORD EXPIRE NEVER");
+				}
+				UserOption::PasswordExpireInterval(days) => {
+					writer.push("PASSWORD EXPIRE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordHistoryDefault => {
+					writer.push("PASSWORD HISTORY DEFAULT");
+				}
+				UserOption::PasswordHistory(count) => {
+					writer.push("PASSWORD HISTORY");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordReuseIntervalDefault => {
+					writer.push("PASSWORD REUSE INTERVAL DEFAULT");
+				}
+				UserOption::PasswordReuseInterval(days) => {
+					writer.push("PASSWORD REUSE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordRequireCurrentDefault => {
+					writer.push("PASSWORD REQUIRE CURRENT DEFAULT");
+				}
+				UserOption::PasswordRequireCurrentOptional => {
+					writer.push("PASSWORD REQUIRE CURRENT OPTIONAL");
+				}
+				UserOption::PasswordRequireCurrent => {
+					writer.push("PASSWORD REQUIRE CURRENT");
+				}
+				UserOption::FailedLoginAttempts(count) => {
+					writer.push("FAILED_LOGIN_ATTEMPTS");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordLockTime(days) => {
+					writer.push("PASSWORD_LOCK_TIME");
+					writer.push_space();
+					writer.push(&days.to_string());
+				}
+				UserOption::PasswordLockTimeUnbounded => {
+					writer.push("PASSWORD_LOCK_TIME UNBOUNDED");
+				}
+				UserOption::Comment(text) => {
+					writer.push("COMMENT");
+					writer.push_space();
+					writer.push("'");
+					writer.push(text);
+					writer.push("'");
+				}
+				UserOption::Attribute(json) => {
+					writer.push("ATTRIBUTE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(json);
+					writer.push("'");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_role(&self, stmt: &crate::dcl::DropRoleStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP ROLE keyword
+		writer.push("DROP ROLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Role names (comma-separated)
+		writer.push_list(&stmt.role_names, ", ", |w, role_name| {
+			w.push_identifier(role_name, |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
+	fn build_alter_role(&self, stmt: &crate::dcl::AlterRoleStatement) -> (String, Values) {
+		use crate::dcl::UserOption;
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER ROLE keyword (MySQL doesn't support ALTER ROLE, only ALTER USER)
+		// But we'll implement it for consistency
+		writer.push("ALTER ROLE");
+		writer.push_space();
+
+		// Role name
+		writer.push_identifier(&stmt.role_name, |s| self.escape_iden(s));
+
+		// MySQL user options (same as CREATE ROLE)
+		for option in &stmt.options {
+			writer.push_space();
+			match option {
+				UserOption::Password(pwd) => {
+					writer.push("IDENTIFIED BY");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				UserOption::AuthPlugin { plugin, by, as_ } => {
+					writer.push("IDENTIFIED WITH");
+					writer.push_space();
+					writer.push(plugin);
+					if let Some(auth) = by {
+						writer.push_space();
+						writer.push("BY");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					} else if let Some(auth) = as_ {
+						writer.push_space();
+						writer.push("AS");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					}
+				}
+				UserOption::AccountLock => {
+					writer.push("ACCOUNT LOCK");
+				}
+				UserOption::AccountUnlock => {
+					writer.push("ACCOUNT UNLOCK");
+				}
+				UserOption::PasswordExpire => {
+					writer.push("PASSWORD EXPIRE");
+				}
+				UserOption::PasswordExpireDefault => {
+					writer.push("PASSWORD EXPIRE DEFAULT");
+				}
+				UserOption::PasswordExpireNever => {
+					writer.push("PASSWORD EXPIRE NEVER");
+				}
+				UserOption::PasswordExpireInterval(days) => {
+					writer.push("PASSWORD EXPIRE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordHistoryDefault => {
+					writer.push("PASSWORD HISTORY DEFAULT");
+				}
+				UserOption::PasswordHistory(count) => {
+					writer.push("PASSWORD HISTORY");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordReuseIntervalDefault => {
+					writer.push("PASSWORD REUSE INTERVAL DEFAULT");
+				}
+				UserOption::PasswordReuseInterval(days) => {
+					writer.push("PASSWORD REUSE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordRequireCurrentDefault => {
+					writer.push("PASSWORD REQUIRE CURRENT DEFAULT");
+				}
+				UserOption::PasswordRequireCurrentOptional => {
+					writer.push("PASSWORD REQUIRE CURRENT OPTIONAL");
+				}
+				UserOption::PasswordRequireCurrent => {
+					writer.push("PASSWORD REQUIRE CURRENT");
+				}
+				UserOption::FailedLoginAttempts(count) => {
+					writer.push("FAILED_LOGIN_ATTEMPTS");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordLockTime(days) => {
+					writer.push("PASSWORD_LOCK_TIME");
+					writer.push_space();
+					writer.push(&days.to_string());
+				}
+				UserOption::PasswordLockTimeUnbounded => {
+					writer.push("PASSWORD_LOCK_TIME UNBOUNDED");
+				}
+				UserOption::Comment(text) => {
+					writer.push("COMMENT");
+					writer.push_space();
+					writer.push("'");
+					writer.push(text);
+					writer.push("'");
+				}
+				UserOption::Attribute(json) => {
+					writer.push("ATTRIBUTE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(json);
+					writer.push("'");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_user(&self, stmt: &crate::dcl::CreateUserStatement) -> (String, Values) {
+		use crate::dcl::UserOption;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE USER keyword
+		writer.push("CREATE USER");
+		writer.push_space();
+
+		// IF NOT EXISTS
+		if stmt.if_not_exists {
+			writer.push("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// User name (with optional @host)
+		writer.push_identifier(&stmt.user_name, |s| self.escape_iden(s));
+
+		// User options (same as CREATE ROLE)
+		for option in &stmt.options {
+			writer.push_space();
+			match option {
+				UserOption::Password(pwd) => {
+					writer.push("IDENTIFIED BY");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				UserOption::AuthPlugin { plugin, by, as_ } => {
+					writer.push("IDENTIFIED WITH");
+					writer.push_space();
+					writer.push(plugin);
+					if let Some(auth) = by {
+						writer.push_space();
+						writer.push("BY");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					} else if let Some(auth) = as_ {
+						writer.push_space();
+						writer.push("AS");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					}
+				}
+				UserOption::AccountLock => writer.push("ACCOUNT LOCK"),
+				UserOption::AccountUnlock => writer.push("ACCOUNT UNLOCK"),
+				UserOption::PasswordExpire => writer.push("PASSWORD EXPIRE"),
+				UserOption::PasswordExpireDefault => writer.push("PASSWORD EXPIRE DEFAULT"),
+				UserOption::PasswordExpireNever => writer.push("PASSWORD EXPIRE NEVER"),
+				UserOption::PasswordExpireInterval(days) => {
+					writer.push("PASSWORD EXPIRE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordHistoryDefault => writer.push("PASSWORD HISTORY DEFAULT"),
+				UserOption::PasswordHistory(count) => {
+					writer.push("PASSWORD HISTORY");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordReuseIntervalDefault => {
+					writer.push("PASSWORD REUSE INTERVAL DEFAULT")
+				}
+				UserOption::PasswordReuseInterval(days) => {
+					writer.push("PASSWORD REUSE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordRequireCurrentDefault => {
+					writer.push("PASSWORD REQUIRE CURRENT DEFAULT")
+				}
+				UserOption::PasswordRequireCurrentOptional => {
+					writer.push("PASSWORD REQUIRE CURRENT OPTIONAL")
+				}
+				UserOption::PasswordRequireCurrent => writer.push("PASSWORD REQUIRE CURRENT"),
+				UserOption::FailedLoginAttempts(count) => {
+					writer.push("FAILED_LOGIN_ATTEMPTS");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordLockTime(days) => {
+					writer.push("PASSWORD_LOCK_TIME");
+					writer.push_space();
+					writer.push(&days.to_string());
+				}
+				UserOption::PasswordLockTimeUnbounded => {
+					writer.push("PASSWORD_LOCK_TIME UNBOUNDED")
+				}
+				UserOption::Comment(text) => {
+					writer.push("COMMENT");
+					writer.push_space();
+					writer.push("'");
+					writer.push(text);
+					writer.push("'");
+				}
+				UserOption::Attribute(json) => {
+					writer.push("ATTRIBUTE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(json);
+					writer.push("'");
+				}
+			}
+		}
+
+		// DEFAULT ROLE clause
+		if !stmt.default_roles.is_empty() {
+			writer.push_space();
+			writer.push("DEFAULT ROLE");
+			writer.push_space();
+			writer.push_list(&stmt.default_roles, ", ", |w, role| {
+				w.push_identifier(role, |s| self.escape_iden(s));
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_user(&self, stmt: &crate::dcl::DropUserStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP USER keyword
+		writer.push("DROP USER");
+		writer.push_space();
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push("IF EXISTS");
+			writer.push_space();
+		}
+
+		// User names (comma-separated)
+		writer.push_list(&stmt.user_names, ", ", |w, user| {
+			w.push_identifier(user, |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
+	fn build_alter_user(&self, stmt: &crate::dcl::AlterUserStatement) -> (String, Values) {
+		use crate::dcl::UserOption;
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER USER keyword
+		writer.push("ALTER USER");
+		writer.push_space();
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push("IF EXISTS");
+			writer.push_space();
+		}
+
+		// User name (with optional @host)
+		writer.push_identifier(&stmt.user_name, |s| self.escape_iden(s));
+
+		// User options (same as ALTER ROLE)
+		for option in &stmt.options {
+			writer.push_space();
+			match option {
+				UserOption::Password(pwd) => {
+					writer.push("IDENTIFIED BY");
+					writer.push_space();
+					writer.push("'");
+					writer.push(pwd);
+					writer.push("'");
+				}
+				UserOption::AuthPlugin { plugin, by, as_ } => {
+					writer.push("IDENTIFIED WITH");
+					writer.push_space();
+					writer.push(plugin);
+					if let Some(auth) = by {
+						writer.push_space();
+						writer.push("BY");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					} else if let Some(auth) = as_ {
+						writer.push_space();
+						writer.push("AS");
+						writer.push_space();
+						writer.push("'");
+						writer.push(auth);
+						writer.push("'");
+					}
+				}
+				UserOption::AccountLock => writer.push("ACCOUNT LOCK"),
+				UserOption::AccountUnlock => writer.push("ACCOUNT UNLOCK"),
+				UserOption::PasswordExpire => writer.push("PASSWORD EXPIRE"),
+				UserOption::PasswordExpireDefault => writer.push("PASSWORD EXPIRE DEFAULT"),
+				UserOption::PasswordExpireNever => writer.push("PASSWORD EXPIRE NEVER"),
+				UserOption::PasswordExpireInterval(days) => {
+					writer.push("PASSWORD EXPIRE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordHistoryDefault => writer.push("PASSWORD HISTORY DEFAULT"),
+				UserOption::PasswordHistory(count) => {
+					writer.push("PASSWORD HISTORY");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordReuseIntervalDefault => {
+					writer.push("PASSWORD REUSE INTERVAL DEFAULT")
+				}
+				UserOption::PasswordReuseInterval(days) => {
+					writer.push("PASSWORD REUSE INTERVAL");
+					writer.push_space();
+					writer.push(&days.to_string());
+					writer.push_space();
+					writer.push("DAY");
+				}
+				UserOption::PasswordRequireCurrentDefault => {
+					writer.push("PASSWORD REQUIRE CURRENT DEFAULT")
+				}
+				UserOption::PasswordRequireCurrentOptional => {
+					writer.push("PASSWORD REQUIRE CURRENT OPTIONAL")
+				}
+				UserOption::PasswordRequireCurrent => writer.push("PASSWORD REQUIRE CURRENT"),
+				UserOption::FailedLoginAttempts(count) => {
+					writer.push("FAILED_LOGIN_ATTEMPTS");
+					writer.push_space();
+					writer.push(&count.to_string());
+				}
+				UserOption::PasswordLockTime(days) => {
+					writer.push("PASSWORD_LOCK_TIME");
+					writer.push_space();
+					writer.push(&days.to_string());
+				}
+				UserOption::PasswordLockTimeUnbounded => {
+					writer.push("PASSWORD_LOCK_TIME UNBOUNDED")
+				}
+				UserOption::Comment(text) => {
+					writer.push("COMMENT");
+					writer.push_space();
+					writer.push("'");
+					writer.push(text);
+					writer.push("'");
+				}
+				UserOption::Attribute(json) => {
+					writer.push("ATTRIBUTE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(json);
+					writer.push("'");
+				}
+			}
+		}
+
+		// DEFAULT ROLE clause
+		if !stmt.default_roles.is_empty() {
+			writer.push_space();
+			writer.push("DEFAULT ROLE");
+			writer.push_space();
+			writer.push_list(&stmt.default_roles, ", ", |w, role| {
+				w.push_identifier(role, |s| self.escape_iden(s));
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_rename_user(&self, stmt: &crate::dcl::RenameUserStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// RENAME USER keyword
+		writer.push("RENAME USER");
+		writer.push_space();
+
+		// Rename pairs (comma-separated)
+		writer.push_list(&stmt.renames, ", ", |w, (old, new)| {
+			w.push_identifier(old, |s| self.escape_iden(s));
+			w.push_space();
+			w.push("TO");
+			w.push_space();
+			w.push_identifier(new, |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
+	fn build_set_role(&self, stmt: &crate::dcl::SetRoleStatement) -> (String, Values) {
+		use crate::dcl::RoleTarget;
+
+		let mut writer = SqlWriter::new();
+
+		writer.push("SET ROLE");
+		writer.push_space();
+
+		match &stmt.target {
+			Some(RoleTarget::Named(name)) => {
+				writer.push_identifier(name, |s| self.escape_iden(s));
+			}
+			Some(RoleTarget::None) => {
+				writer.push("NONE");
+			}
+			Some(RoleTarget::All) => {
+				writer.push("ALL");
+			}
+			Some(RoleTarget::AllExcept(roles)) => {
+				writer.push("ALL EXCEPT");
+				writer.push_space();
+				writer.push_list(roles, ", ", |w, role| {
+					w.push_identifier(role, |s| self.escape_iden(s));
+				});
+			}
+			Some(RoleTarget::Default) => {
+				writer.push("DEFAULT");
+			}
+			None => {
+				panic!("SET ROLE requires a role target");
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_reset_role(&self, _stmt: &crate::dcl::ResetRoleStatement) -> (String, Values) {
+		panic!("RESET ROLE is not supported by MySQL (PostgreSQL only)");
+	}
+
+	fn build_set_default_role(
+		&self,
+		stmt: &crate::dcl::SetDefaultRoleStatement,
+	) -> (String, Values) {
+		use crate::dcl::DefaultRoleSpec;
+
+		let mut writer = SqlWriter::new();
+
+		writer.push("SET DEFAULT ROLE");
+		writer.push_space();
+
+		match &stmt.role_spec {
+			Some(DefaultRoleSpec::RoleList(roles)) => {
+				writer.push_list(roles, ", ", |w, role| {
+					w.push_identifier(role, |s| self.escape_iden(s));
+				});
+			}
+			Some(DefaultRoleSpec::All) => {
+				writer.push("ALL");
+			}
+			Some(DefaultRoleSpec::None) => {
+				writer.push("NONE");
+			}
+			None => {
+				panic!("SET DEFAULT ROLE requires a role specification");
+			}
+		}
+
+		writer.push_space();
+		writer.push("TO");
+		writer.push_space();
+
+		// User names (comma-separated)
+		writer.push_list(&stmt.user_names, ", ", |w, user| {
+			w.push_identifier(user, |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+}
+
+impl MySqlQueryBuilder {
+	/// Format a role specification for MySQL
+	///
+	/// # Arguments
+	///
+	/// * `spec` - The role specification to format
+	///
+	/// # Returns
+	///
+	/// The SQL representation of the role specification
+	fn format_role_specification(spec: &crate::dcl::RoleSpecification) -> &str {
+		use crate::dcl::RoleSpecification;
+
+		match spec {
+			RoleSpecification::RoleName(name) => name,
+			// MySQL does not support CURRENT_ROLE or SESSION_USER
+			// Use CURRENT_USER as fallback
+			RoleSpecification::CurrentRole => "CURRENT_USER",
+			RoleSpecification::CurrentUser => "CURRENT_USER",
+			RoleSpecification::SessionUser => "CURRENT_USER",
+		}
 	}
 }
 
@@ -2962,5 +3843,522 @@ mod tests {
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("`price` BETWEEN ? AND ?"));
 		assert_eq!(values.len(), 2);
+	}
+
+	// DCL (Data Control Language) Tests
+
+	#[test]
+	fn test_grant_single_privilege() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, "GRANT SELECT ON TABLE `users` TO `app_user`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_to_user_with_host() {
+		use crate::dcl::{GrantStatement, Grantee, Privilege};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.grantee(Grantee::user("app_user", "localhost"));
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			"GRANT SELECT ON TABLE `users` TO `app_user`@`localhost`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_with_grant_option() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user")
+			.with_grant_option(true);
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			"GRANT SELECT ON TABLE `users` TO `app_user` WITH GRANT OPTION"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_multiple_privileges() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privileges(vec![
+				Privilege::Select,
+				Privilege::Insert,
+				Privilege::Update,
+			])
+			.on_table("users")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			"GRANT SELECT, INSERT, UPDATE ON TABLE `users` TO `app_user`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_grant_on_database() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Create)
+			.on_database("mydb")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, "GRANT CREATE ON DATABASE `mydb` TO `app_user`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_single_privilege() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Insert)
+			.from_table("users")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, "REVOKE INSERT ON TABLE `users` FROM `app_user`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_from_user_with_host() {
+		use crate::dcl::{Grantee, Privilege, RevokeStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_table("users")
+			.grantee(Grantee::user("app_user", "localhost"));
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			"REVOKE SELECT ON TABLE `users` FROM `app_user`@`localhost`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_grant_option_for() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_table("users")
+			.from("app_user")
+			.grant_option_for(true);
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			"REVOKE GRANT OPTION FOR SELECT ON TABLE `users` FROM `app_user`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_revoke_multiple_privileges() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privileges(vec![
+				Privilege::Select,
+				Privilege::Insert,
+				Privilege::Update,
+			])
+			.from_table("users")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			"REVOKE SELECT, INSERT, UPDATE ON TABLE `users` FROM `app_user`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_simple() {
+		use crate::dcl::CreateRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateRoleStatement::new().role("app_role");
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(sql, "CREATE ROLE `app_role`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_if_not_exists() {
+		use crate::dcl::CreateRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateRoleStatement::new()
+			.role("app_role")
+			.if_not_exists(true);
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(sql, "CREATE ROLE IF NOT EXISTS `app_role`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_role_with_options() {
+		use crate::dcl::{CreateRoleStatement, UserOption};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateRoleStatement::new()
+			.role("app_role")
+			.option(UserOption::Password("secret".to_string()))
+			.option(UserOption::AccountLock)
+			.option(UserOption::Comment("Application role".to_string()));
+
+		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE ROLE `app_role` IDENTIFIED BY 'secret' ACCOUNT LOCK COMMENT 'Application role'"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_simple() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = DropRoleStatement::new().role("old_role");
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, "DROP ROLE `old_role`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_if_exists() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = DropRoleStatement::new().role("old_role").if_exists(true);
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, "DROP ROLE IF EXISTS `old_role`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_role_multiple() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = DropRoleStatement::new()
+			.role("role1")
+			.role("role2")
+			.role("role3");
+
+		let (sql, values) = builder.build_drop_role(&stmt);
+		assert_eq!(sql, "DROP ROLE `role1`, `role2`, `role3`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_alter_role_with_options() {
+		use crate::dcl::{AlterRoleStatement, UserOption};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = AlterRoleStatement::new()
+			.role("app_role")
+			.option(UserOption::AccountUnlock)
+			.option(UserOption::PasswordExpireNever);
+
+		let (sql, values) = builder.build_alter_role(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER ROLE `app_role` ACCOUNT UNLOCK PASSWORD EXPIRE NEVER"
+		);
+		assert!(values.is_empty());
+	}
+
+	// CREATE USER tests
+	#[test]
+	fn test_create_user_basic() {
+		use crate::dcl::CreateUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateUserStatement::new().user("app_user@localhost");
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, "CREATE USER `app_user@localhost`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_user_if_not_exists() {
+		use crate::dcl::CreateUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateUserStatement::new()
+			.user("app_user")
+			.if_not_exists(true);
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, "CREATE USER IF NOT EXISTS `app_user`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_user_with_password() {
+		use crate::dcl::{CreateUserStatement, UserOption};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateUserStatement::new()
+			.user("app_user")
+			.option(UserOption::Password("secret".to_string()));
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, "CREATE USER `app_user` IDENTIFIED BY 'secret'");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_create_user_with_default_role() {
+		use crate::dcl::CreateUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = CreateUserStatement::new()
+			.user("app_user")
+			.default_role(vec!["app_role".to_string()]);
+
+		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, "CREATE USER `app_user` DEFAULT ROLE `app_role`");
+		assert!(values.is_empty());
+	}
+
+	// DROP USER tests
+	#[test]
+	fn test_drop_user_basic() {
+		use crate::dcl::DropUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = DropUserStatement::new().user("app_user@localhost");
+
+		let (sql, values) = builder.build_drop_user(&stmt);
+		assert_eq!(sql, "DROP USER `app_user@localhost`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_drop_user_if_exists() {
+		use crate::dcl::DropUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = DropUserStatement::new().user("app_user").if_exists(true);
+
+		let (sql, values) = builder.build_drop_user(&stmt);
+		assert_eq!(sql, "DROP USER IF EXISTS `app_user`");
+		assert!(values.is_empty());
+	}
+
+	// ALTER USER tests
+	#[test]
+	fn test_alter_user_basic() {
+		use crate::dcl::{AlterUserStatement, UserOption};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = AlterUserStatement::new()
+			.user("app_user")
+			.option(UserOption::AccountUnlock);
+
+		let (sql, values) = builder.build_alter_user(&stmt);
+		assert_eq!(sql, "ALTER USER `app_user` ACCOUNT UNLOCK");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_alter_user_with_default_role() {
+		use crate::dcl::AlterUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = AlterUserStatement::new()
+			.user("app_user")
+			.default_role(vec!["app_role".to_string()]);
+
+		let (sql, values) = builder.build_alter_user(&stmt);
+		assert_eq!(sql, "ALTER USER `app_user` DEFAULT ROLE `app_role`");
+		assert!(values.is_empty());
+	}
+
+	// RENAME USER tests
+	#[test]
+	fn test_rename_user_basic() {
+		use crate::dcl::RenameUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RenameUserStatement::new().rename("old_user@localhost", "new_user@localhost");
+
+		let (sql, values) = builder.build_rename_user(&stmt);
+		assert_eq!(
+			sql,
+			"RENAME USER `old_user@localhost` TO `new_user@localhost`"
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_rename_user_multiple() {
+		use crate::dcl::RenameUserStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = RenameUserStatement::new()
+			.rename("user1", "renamed1")
+			.rename("user2", "renamed2");
+
+		let (sql, values) = builder.build_rename_user(&stmt);
+		assert_eq!(
+			sql,
+			"RENAME USER `user1` TO `renamed1`, `user2` TO `renamed2`"
+		);
+		assert!(values.is_empty());
+	}
+
+	// SET ROLE tests
+	#[test]
+	fn test_set_role_named() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::Named("admin".to_string()));
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, "SET ROLE `admin`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_role_all() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::All);
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, "SET ROLE ALL");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_role_all_except() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt =
+			SetRoleStatement::new().role(RoleTarget::AllExcept(vec!["restricted".to_string()]));
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, "SET ROLE ALL EXCEPT `restricted`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_role_default() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::Default);
+
+		let (sql, values) = builder.build_set_role(&stmt);
+		assert_eq!(sql, "SET ROLE DEFAULT");
+		assert!(values.is_empty());
+	}
+
+	// RESET ROLE panic test
+	#[test]
+	#[should_panic(expected = "RESET ROLE is not supported by MySQL")]
+	fn test_reset_role_panics() {
+		use crate::dcl::ResetRoleStatement;
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = ResetRoleStatement::new();
+
+		builder.build_reset_role(&stmt);
+	}
+
+	// SET DEFAULT ROLE tests
+	#[test]
+	fn test_set_default_role_all() {
+		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("app_user@localhost");
+
+		let (sql, values) = builder.build_set_default_role(&stmt);
+		assert_eq!(sql, "SET DEFAULT ROLE ALL TO `app_user@localhost`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_default_role_none() {
+		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::None)
+			.user("app_user");
+
+		let (sql, values) = builder.build_set_default_role(&stmt);
+		assert_eq!(sql, "SET DEFAULT ROLE NONE TO `app_user`");
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_set_default_role_list() {
+		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
+
+		let builder = MySqlQueryBuilder::new();
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::RoleList(vec![
+				"role1".to_string(),
+				"role2".to_string(),
+			]))
+			.user("app_user");
+
+		let (sql, values) = builder.build_set_default_role(&stmt);
+		assert_eq!(sql, "SET DEFAULT ROLE `role1`, `role2` TO `app_user`");
+		assert!(values.is_empty());
 	}
 }
