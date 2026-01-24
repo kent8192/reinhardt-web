@@ -1459,6 +1459,73 @@ impl QueryBuilder for SqliteQueryBuilder {
 		)
 	}
 
+	fn build_grant(&self, _stmt: &crate::dcl::GrantStatement) -> (String, Values) {
+		panic!(
+			"SQLite does not support DCL (GRANT/REVOKE) statements. Use file-based permissions instead."
+		);
+	}
+
+	fn build_revoke(&self, _stmt: &crate::dcl::RevokeStatement) -> (String, Values) {
+		panic!(
+			"SQLite does not support DCL (GRANT/REVOKE) statements. Use file-based permissions instead."
+		);
+	}
+
+	fn build_grant_role(&self, _stmt: &crate::dcl::GrantRoleStatement) -> (String, Values) {
+		panic!(
+			"SQLite does not support DCL (GRANT role) statements. Use file-based permissions instead."
+		);
+	}
+
+	fn build_revoke_role(&self, _stmt: &crate::dcl::RevokeRoleStatement) -> (String, Values) {
+		panic!(
+			"SQLite does not support DCL (REVOKE role) statements. Use file-based permissions instead."
+		);
+	}
+
+	fn build_create_role(&self, _stmt: &crate::dcl::CreateRoleStatement) -> (String, Values) {
+		panic!("SQLite does not support CREATE ROLE statement")
+	}
+
+	fn build_drop_role(&self, _stmt: &crate::dcl::DropRoleStatement) -> (String, Values) {
+		panic!("SQLite does not support DROP ROLE statement")
+	}
+
+	fn build_alter_role(&self, _stmt: &crate::dcl::AlterRoleStatement) -> (String, Values) {
+		panic!("SQLite does not support ALTER ROLE statement")
+	}
+
+	fn build_create_user(&self, _stmt: &crate::dcl::CreateUserStatement) -> (String, Values) {
+		panic!("SQLite does not support CREATE USER statement")
+	}
+
+	fn build_drop_user(&self, _stmt: &crate::dcl::DropUserStatement) -> (String, Values) {
+		panic!("SQLite does not support DROP USER statement")
+	}
+
+	fn build_alter_user(&self, _stmt: &crate::dcl::AlterUserStatement) -> (String, Values) {
+		panic!("SQLite does not support ALTER USER statement")
+	}
+
+	fn build_rename_user(&self, _stmt: &crate::dcl::RenameUserStatement) -> (String, Values) {
+		panic!("SQLite does not support RENAME USER statement")
+	}
+
+	fn build_set_role(&self, _stmt: &crate::dcl::SetRoleStatement) -> (String, Values) {
+		panic!("SQLite does not support SET ROLE statement")
+	}
+
+	fn build_reset_role(&self, _stmt: &crate::dcl::ResetRoleStatement) -> (String, Values) {
+		panic!("SQLite does not support RESET ROLE statement")
+	}
+
+	fn build_set_default_role(
+		&self,
+		_stmt: &crate::dcl::SetDefaultRoleStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support SET DEFAULT ROLE statement")
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
@@ -4900,5 +4967,153 @@ mod tests {
 		stmt.table("users");
 
 		let _ = builder.build_check_table(&stmt);
+	}
+
+	// DCL (Data Control Language) Tests
+	// SQLite does not support DCL - these tests verify panic behavior
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support DCL")]
+	fn test_grant_panics() {
+		use crate::dcl::{GrantStatement, Privilege};
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_table("users")
+			.to("app_user");
+
+		// Should panic with "SQLite does not support DCL" message
+		let _ = builder.build_grant(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support DCL")]
+	fn test_revoke_panics() {
+		use crate::dcl::{Privilege, RevokeStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Insert)
+			.from_table("users")
+			.from("app_user");
+
+		// Should panic with "SQLite does not support DCL" message
+		let _ = builder.build_revoke(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support CREATE ROLE statement")]
+	fn test_create_role_panics() {
+		use crate::dcl::CreateRoleStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = CreateRoleStatement::new().role("developer");
+
+		// Should panic with "SQLite does not support CREATE ROLE statement" message
+		let _ = builder.build_create_role(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support DROP ROLE statement")]
+	fn test_drop_role_panics() {
+		use crate::dcl::DropRoleStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = DropRoleStatement::new().role("old_role");
+
+		// Should panic with "SQLite does not support DROP ROLE statement" message
+		let _ = builder.build_drop_role(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support ALTER ROLE statement")]
+	fn test_alter_role_panics() {
+		use crate::dcl::AlterRoleStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = AlterRoleStatement::new().role("developer");
+
+		// Should panic with "SQLite does not support ALTER ROLE statement" message
+		let _ = builder.build_alter_role(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support CREATE USER statement")]
+	fn test_create_user_panics() {
+		use crate::dcl::CreateUserStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = CreateUserStatement::new().user("app_user");
+
+		let _ = builder.build_create_user(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support DROP USER statement")]
+	fn test_drop_user_panics() {
+		use crate::dcl::DropUserStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = DropUserStatement::new().user("app_user");
+
+		let _ = builder.build_drop_user(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support ALTER USER statement")]
+	fn test_alter_user_panics() {
+		use crate::dcl::AlterUserStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = AlterUserStatement::new().user("app_user");
+
+		let _ = builder.build_alter_user(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support RENAME USER statement")]
+	fn test_rename_user_panics() {
+		use crate::dcl::RenameUserStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = RenameUserStatement::new().rename("old", "new");
+
+		let _ = builder.build_rename_user(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support SET ROLE statement")]
+	fn test_set_role_panics() {
+		use crate::dcl::{RoleTarget, SetRoleStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = SetRoleStatement::new().role(RoleTarget::Named("admin".to_string()));
+
+		let _ = builder.build_set_role(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support RESET ROLE statement")]
+	fn test_reset_role_panics() {
+		use crate::dcl::ResetRoleStatement;
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = ResetRoleStatement::new();
+
+		let _ = builder.build_reset_role(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support SET DEFAULT ROLE statement")]
+	fn test_set_default_role_panics() {
+		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
+
+		let builder = SqliteQueryBuilder::new();
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("app_user");
+
+		let _ = builder.build_set_default_role(&stmt);
 	}
 }
