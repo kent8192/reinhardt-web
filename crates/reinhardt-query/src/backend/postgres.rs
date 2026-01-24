@@ -12,7 +12,7 @@ use crate::{
 		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
 		UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef},
+	types::{BinOper, ColumnRef, TableRef, TriggerBody},
 	value::Values,
 };
 
@@ -1343,7 +1343,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
-		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
 		let mut writer = SqlWriter::new();
 
@@ -4861,7 +4861,7 @@ mod tests {
 
 	#[test]
 	fn test_create_trigger_basic() {
-		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_trigger();
@@ -4882,7 +4882,7 @@ mod tests {
 
 	#[test]
 	fn test_create_trigger_before_update() {
-		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_trigger();
@@ -4903,7 +4903,7 @@ mod tests {
 
 	#[test]
 	fn test_create_trigger_delete_for_statement() {
-		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_trigger();
