@@ -3826,7 +3826,7 @@ mod tests {
 
 	#[test]
 	fn test_grant_single_privilege_on_table() {
-		use crate::dcl::{GrantStatement, Grantee, Privilege};
+		use crate::dcl::{GrantStatement, Privilege};
 
 		let builder = PostgresQueryBuilder::new();
 		let stmt = GrantStatement::new()
