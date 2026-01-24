@@ -412,6 +412,44 @@ let (sql, values) = builder.build_revoke_role(&stmt);
 // sql = r#"REVOKE "developer" FROM alice CASCADE"#
 ```
 
+### Extended Object Types (PostgreSQL)
+
+PostgreSQL supports additional object types beyond tables and databases:
+
+```rust
+use reinhardt_query::prelude::*;
+
+// Grant EXECUTE on function
+let stmt = Query::grant()
+    .privilege(Privilege::Execute)
+    .on_function("calculate_total")
+    .to("app_user");
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT EXECUTE ON FUNCTION "calculate_total" TO "app_user""#
+
+// Grant USAGE on type
+let stmt = Query::grant()
+    .privilege(Privilege::Usage)
+    .on_type("custom_type")
+    .to("app_user");
+
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT USAGE ON TYPE "custom_type" TO "app_user""#
+
+// Grant SET on parameter
+let stmt = Query::grant()
+    .privilege(Privilege::Set)
+    .on_parameter("work_mem")
+    .to("app_user");
+
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT SET ON PARAMETER "work_mem" TO "app_user""#
+```
+
+Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter
+
 ## Backend Differences
 
 ### DML Features
