@@ -1,8 +1,46 @@
 //! Data Control Language (DCL) support for reinhardt-query
 //!
-//! This module provides type-safe builders for GRANT and REVOKE statements.
+//! This module provides type-safe builders for DCL statements including:
+//! - GRANT and REVOKE privileges
+//! - CREATE, DROP, and ALTER for roles and users
+//! - Session management (SET ROLE, RESET ROLE, SET DEFAULT ROLE)
+//! - User renaming (MySQL only)
 //!
-//! # Examples
+//! # Role and User Management
+//!
+//! ## Creating Roles and Users
+//!
+//! ```
+//! use reinhardt_query::dcl::{CreateRoleStatement, RoleAttribute};
+//! use reinhardt_query::backend::{PostgresQueryBuilder, QueryBuilder};
+//!
+//! // PostgreSQL: Create a role with attributes
+//! let stmt = CreateRoleStatement::new()
+//!     .role("app_user")
+//!     .attribute(RoleAttribute::Login)
+//!     .attribute(RoleAttribute::CreateDb);
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, _values) = builder.build_create_role(&stmt);
+//! // Generates: CREATE ROLE "app_user" WITH LOGIN CREATEDB
+//! ```
+//!
+//! ## Session Management
+//!
+//! ```
+//! use reinhardt_query::dcl::{SetRoleStatement, RoleTarget};
+//! use reinhardt_query::backend::{PostgresQueryBuilder, QueryBuilder};
+//!
+//! // Set current session role
+//! let stmt = SetRoleStatement::new()
+//!     .role(RoleTarget::Named("admin".to_string()));
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, _values) = builder.build_set_role(&stmt);
+//! // Generates: SET ROLE "admin"
+//! ```
+//!
+//! # Privileges and Permissions
 //!
 //! ```
 //! use reinhardt_query::dcl::{Privilege, ObjectType, Grantee};
@@ -18,6 +56,52 @@
 //! // Create grantee
 //! let grantee = Grantee::role("app_user");
 //! ```
+//!
+//! # Security Considerations
+//!
+//! ## Password Handling
+//!
+//! **IMPORTANT**: Passwords are stored in plain text within statement structures
+//! and are only escaped during SQL generation. For production use:
+//!
+//! - Never log or display statement structures containing passwords
+//! - Use encrypted password variants when possible (`` `RoleAttribute::EncryptedPassword` ``)
+//! - Ensure secure transmission of SQL statements to the database
+//! - Consider using external authentication plugins (`` `UserOption::AuthPlugin` ``)
+//! - Rotate passwords regularly using ALTER ROLE/USER statements
+//!
+//! ## SQL Injection Prevention
+//!
+//! This module automatically prevents SQL injection through:
+//!
+//! - **Identifier escaping**: All role names, user names, and identifiers are
+//!   properly quoted using backend-specific quoting (e.g., `"role"` for PostgreSQL,
+//!   `` `role` `` for MySQL)
+//! - **Value parameterization**: All values (passwords, timestamps, etc.) are
+//!   converted to parameterized placeholders (`$1`, `$2` for PostgreSQL; `?` for MySQL)
+//! - **Type safety**: Rust's type system prevents invalid combinations of attributes
+//!   and options
+//!
+//! However, you should still:
+//!
+//! - Validate user input before constructing statements
+//! - Use the provided builder methods instead of constructing raw SQL
+//! - Review generated SQL in development to ensure correctness
+//!
+//! # Database Support
+//!
+//! | Feature | PostgreSQL | MySQL | SQLite |
+//! |---------|-----------|-------|--------|
+//! | CREATE/DROP/ALTER ROLE | ✓ | ✓ | ✗ (panics) |
+//! | CREATE/DROP/ALTER USER | ✓ | ✓ | ✗ (panics) |
+//! | RENAME USER | ✗ (use ALTER ROLE) | ✓ | ✗ (panics) |
+//! | SET ROLE | ✓ | ✓ | ✗ (panics) |
+//! | RESET ROLE | ✓ | ✗ (panics) | ✗ (panics) |
+//! | SET DEFAULT ROLE | ✗ (panics) | ✓ | ✗ (panics) |
+//! | GRANT/REVOKE | ✓ | ✓ | ✗ (panics) |
+//!
+//! SQLite does not support DCL operations. Attempting to use DCL builders
+//! with `` `SqliteQueryBuilder` `` will panic with a descriptive error message.
 
 mod alter_role;
 mod alter_user;

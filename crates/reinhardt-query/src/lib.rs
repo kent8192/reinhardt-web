@@ -104,6 +104,12 @@
 //! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
 //! |---------|-----------|-------|--------|-------------|
 //! | GRANT/REVOKE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/DROP/ALTER ROLE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/DROP/ALTER USER | ✅ | ✅ | ❌ | ✅ |
+//! | RENAME USER | ❌ | ✅ | ❌ | ❌ |
+//! | SET ROLE | ✅ | ✅ | ❌ | ✅ |
+//! | RESET ROLE | ✅ | ❌ | ❌ | ✅ |
+//! | SET DEFAULT ROLE | ❌ | ✅ | ❌ | ❌ |
 //!
 //! ## Expression Examples
 //!
@@ -187,6 +193,8 @@
 //!
 //! ## DCL Examples
 //!
+//! ### Privilege Management
+//!
 //! ```rust
 //! use reinhardt_query::prelude::*;
 //!
@@ -211,6 +219,92 @@
 //!
 //! let (sql, values) = builder.build_revoke(&revoke_stmt);
 //! // sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
+//! ```
+//!
+//! ### Role Management
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // PostgreSQL: CREATE ROLE with attributes
+//! let create_role = Query::create_role()
+//!     .role("app_admin")
+//!     .attribute(RoleAttribute::Login)
+//!     .attribute(RoleAttribute::CreateDb)
+//!     .attribute(RoleAttribute::Password("secure_password".to_string()));
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, _) = builder.build_create_role(&create_role);
+//! // sql = r#"CREATE ROLE "app_admin" WITH LOGIN CREATEDB PASSWORD $1"#
+//!
+//! // ALTER ROLE
+//! let alter_role = Query::alter_role()
+//!     .role("app_admin")
+//!     .attribute(RoleAttribute::CreateRole);
+//!
+//! let (sql, _) = builder.build_alter_role(&alter_role);
+//! // sql = r#"ALTER ROLE "app_admin" WITH CREATEROLE"#
+//!
+//! // DROP ROLE
+//! let drop_role = Query::drop_role()
+//!     .role("app_admin")
+//!     .if_exists(true);
+//!
+//! let (sql, _) = builder.build_drop_role(&drop_role);
+//! // sql = r#"DROP ROLE IF EXISTS "app_admin""#
+//! ```
+//!
+//! ### User Management
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // MySQL: CREATE USER with options
+//! let create_user = Query::create_user()
+//!     .user("webapp@localhost")
+//!     .if_not_exists(true)
+//!     .option(UserOption::Password("webapp_pass".to_string()))
+//!     .option(UserOption::AccountUnlock);
+//!
+//! let builder = MySqlQueryBuilder::new();
+//! let (sql, _) = builder.build_create_user(&create_user);
+//! // sql = r#"CREATE USER IF NOT EXISTS `webapp@localhost` IDENTIFIED BY ? ACCOUNT UNLOCK"#
+//!
+//! // MySQL: RENAME USER
+//! let rename = Query::rename_user()
+//!     .rename("old_user", "new_user");
+//!
+//! let (sql, _) = builder.build_rename_user(&rename);
+//! // sql = r#"RENAME USER `old_user` TO `new_user`"#
+//! ```
+//!
+//! ### Session Management
+//!
+//! ```rust
+//! use reinhardt_query::prelude::*;
+//!
+//! // PostgreSQL: SET ROLE
+//! let set_role = Query::set_role()
+//!     .role(RoleTarget::Named("admin".to_string()));
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let (sql, _) = builder.build_set_role(&set_role);
+//! // sql = r#"SET ROLE "admin""#
+//!
+//! // PostgreSQL: RESET ROLE
+//! let reset_role = Query::reset_role();
+//!
+//! let (sql, _) = builder.build_reset_role(&reset_role);
+//! // sql = r#"RESET ROLE"#
+//!
+//! // MySQL: SET DEFAULT ROLE
+//! let set_default = Query::set_default_role()
+//!     .roles(DefaultRoleSpec::All)
+//!     .user("webapp");
+//!
+//! let builder = MySqlQueryBuilder::new();
+//! let (sql, _) = builder.build_set_default_role(&set_default);
+//! // sql = r#"SET DEFAULT ROLE ALL TO `webapp`"#
 //! ```
 //!
 //! ## Feature Flags

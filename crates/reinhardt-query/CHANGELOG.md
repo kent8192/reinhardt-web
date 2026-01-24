@@ -46,9 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InsertStatement` with table, columns, values (single and multi-row)
 - `UpdateStatement` with table, SET, WHERE
 - `DeleteStatement` with table, WHERE
-- `Query` factory with `select()`, `insert()`, `update()`, `delete()`, `grant()`, `revoke()`
+- `Query` factory with methods:
+  - DML: `select()`, `insert()`, `update()`, `delete()`
+  - DCL Privileges: `grant()`, `revoke()`, `grant_role()`, `revoke_role()`
+  - DCL Roles: `create_role()`, `drop_role()`, `alter_role()`
+  - DCL Users: `create_user()`, `drop_user()`, `alter_user()`, `rename_user()`
+  - DCL Session: `set_role()`, `reset_role()`, `set_default_role()`
 
 #### DCL (Data Control Language) Builders
+
+**Privilege Management:**
 - `GrantStatement` - GRANT statement builder with fluent API for object privileges
 - `RevokeStatement` - REVOKE statement builder with fluent API for object privileges
 - `GrantRoleStatement` - GRANT role membership statement builder
@@ -64,8 +71,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ADMIN OPTION FOR support (role membership revocation)
 - GRANTED BY clause support (PostgreSQL)
 - CASCADE and RESTRICT support (PostgreSQL)
-- PostgreSQL and MySQL full support
-- SQLite not supported (panics with error message)
+
+**Role and User Management:**
+- `CreateRoleStatement` - CREATE ROLE statement builder with fluent API
+- `DropRoleStatement` - DROP ROLE statement builder with IF EXISTS support
+- `AlterRoleStatement` - ALTER ROLE statement builder with attribute modification and RENAME TO (PostgreSQL)
+- `CreateUserStatement` - CREATE USER statement builder (PostgreSQL alias, MySQL native)
+- `DropUserStatement` - DROP USER statement builder with IF EXISTS support
+- `AlterUserStatement` - ALTER USER statement builder (PostgreSQL alias, MySQL native)
+- `RenameUserStatement` - RENAME USER statement builder (MySQL only)
+- `RoleAttribute` enum - PostgreSQL role attributes (SUPERUSER, CREATEDB, CREATEROLE, INHERIT, LOGIN, REPLICATION, BYPASSRLS, CONNECTION LIMIT, PASSWORD, VALID UNTIL, IN ROLE, ROLE, ADMIN)
+- `UserOption` enum - MySQL user options (IDENTIFIED BY, IDENTIFIED WITH, ACCOUNT LOCK/UNLOCK, PASSWORD EXPIRE, PASSWORD HISTORY, PASSWORD REUSE INTERVAL, PASSWORD REQUIRE CURRENT, FAILED_LOGIN_ATTEMPTS, PASSWORD_LOCK_TIME, COMMENT, ATTRIBUTE)
+
+**Session Management:**
+- `SetRoleStatement` - SET ROLE statement builder with support for specific roles, NONE, ALL, ALL EXCEPT (MySQL)
+- `ResetRoleStatement` - RESET ROLE statement builder (PostgreSQL only)
+- `SetDefaultRoleStatement` - SET DEFAULT ROLE statement builder (MySQL only)
+- `RoleTarget` enum - Role targets for SET ROLE (Named, None, All, AllExcept, Default)
+- `DefaultRoleSpec` enum - Default role specifications (RoleList, All, None)
+
+**Database Support:**
+- PostgreSQL and MySQL full support for all DCL operations
+- SQLite not supported (panics with descriptive error messages)
 
 #### DDL Operations
 - `CreateTableStatement` with columns, constraints, indexes, IF NOT EXISTS
@@ -105,11 +132,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Backends
 - `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
   DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
-  DDL with CASCADE/RESTRICT support, GRANT/REVOKE with GRANTED BY and CASCADE support,
-  GRANT/REVOKE role membership with all PostgreSQL features
+  DDL with CASCADE/RESTRICT support, Full DCL support:
+  - GRANT/REVOKE with GRANTED BY and CASCADE support
+  - GRANT/REVOKE role membership with all PostgreSQL features
+  - CREATE/DROP/ALTER ROLE with all PostgreSQL role attributes
+  - CREATE/DROP/ALTER USER (aliases for ROLE operations)
+  - SET ROLE and RESET ROLE for session management
 - `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE, DDL with table-qualified DROP INDEX, GRANT/REVOKE with User@Host format,
-  GRANT/REVOKE role membership with WITH ADMIN OPTION
+  DISTINCT ROW, INSERT IGNORE, DDL with table-qualified DROP INDEX, Full DCL support:
+  - GRANT/REVOKE with User@Host format
+  - GRANT/REVOKE role membership with WITH ADMIN OPTION
+  - CREATE/DROP/ALTER ROLE with MySQL-specific options
+  - CREATE/DROP/ALTER USER with user@host specification
+  - RENAME USER for user renaming
+  - SET ROLE and SET DEFAULT ROLE for session management
 - `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
   NULLS FIRST/LAST, `||` concatenation, DDL support, DCL not supported (panics)
 - `SqlWriter` infrastructure for SQL string construction
