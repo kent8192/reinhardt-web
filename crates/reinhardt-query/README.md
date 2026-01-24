@@ -10,6 +10,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 
 ### DML (Data Manipulation Language)
 - **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE
+- **DCL (Data Control Language) support** - GRANT and REVOKE statements
 - **Expression system** - Arithmetic, comparison, logical, and pattern matching operators
 - **Advanced SQL** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
 - **Parameterized queries** - `$1` for PostgreSQL/CockroachDB, `?` for MySQL/SQLite
@@ -348,6 +349,69 @@ let (sql, _) = builder.build_comment(&stmt);
 // sql = r#"COMMENT ON TABLE "users" IS 'Stores user account information'"#
 ```
 
+### GRANT (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::grant()
+    .privilege(Privilege::Select)
+    .privilege(Privilege::Insert)
+    .on_table("users")
+    .to("app_user")
+    .with_grant_option(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT SELECT, INSERT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+```
+
+### REVOKE (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::revoke()
+    .privilege(Privilege::Insert)
+    .from_table("users")
+    .from("app_user")
+    .cascade(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke(&stmt);
+// sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
+```
+
+### GRANT Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{GrantRoleStatement, RoleSpecification};
+
+let stmt = GrantRoleStatement::new()
+    .role("developer")
+    .to(RoleSpecification::new("alice"))
+    .with_admin_option();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant_role(&stmt);
+// sql = r#"GRANT "developer" TO alice WITH ADMIN OPTION"#
+```
+
+### REVOKE Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{RevokeRoleStatement, RoleSpecification};
+
+let stmt = RevokeRoleStatement::new()
+    .role("developer")
+    .from(RoleSpecification::new("alice"))
+    .cascade();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke_role(&stmt);
+// sql = r#"REVOKE "developer" FROM alice CASCADE"#
+```
+
 ## Backend Differences
 
 ### DML Features
@@ -374,6 +438,11 @@ let (sql, _) = builder.build_comment(&stmt);
 | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
 | VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
 | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
+
+### DCL Features
+| Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+|---------|-----------|-------|--------|-------------|
+| GRANT/REVOKE | ✅ | ✅ | ❌ | ✅ |
 
 ## Feature Flags
 
