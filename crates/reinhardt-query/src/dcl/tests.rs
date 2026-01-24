@@ -101,6 +101,132 @@ mod privilege_tests {
 		assert!(!Privilege::Delete.is_valid_for_object(ObjectType::Sequence));
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Sequence));
 	}
+
+	#[test]
+	fn test_privilege_valid_for_function() {
+		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Function));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Function));
+
+		// Invalid for function
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Function));
+		assert!(!Privilege::Usage.is_valid_for_object(ObjectType::Function));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Function));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_procedure() {
+		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Procedure));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Procedure));
+
+		// Invalid for procedure
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Procedure));
+		assert!(!Privilege::Usage.is_valid_for_object(ObjectType::Procedure));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Procedure));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_routine() {
+		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Routine));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Routine));
+
+		// Invalid for routine
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Routine));
+		assert!(!Privilege::Usage.is_valid_for_object(ObjectType::Routine));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Routine));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_type() {
+		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Type));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Type));
+
+		// Invalid for type
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Type));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::Type));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Type));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_domain() {
+		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Domain));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Domain));
+
+		// Invalid for domain
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Domain));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::Domain));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Domain));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_foreign_data_wrapper() {
+		assert!(Privilege::Usage.is_valid_for_object(ObjectType::ForeignDataWrapper));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::ForeignDataWrapper));
+
+		// Invalid for foreign data wrapper
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::ForeignDataWrapper));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::ForeignDataWrapper));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::ForeignDataWrapper));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_foreign_server() {
+		assert!(Privilege::Usage.is_valid_for_object(ObjectType::ForeignServer));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::ForeignServer));
+
+		// Invalid for foreign server
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::ForeignServer));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::ForeignServer));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::ForeignServer));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_language() {
+		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Language));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Language));
+
+		// Invalid for language
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Language));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::Language));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Language));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_large_object() {
+		assert!(Privilege::Select.is_valid_for_object(ObjectType::LargeObject));
+		assert!(Privilege::Update.is_valid_for_object(ObjectType::LargeObject));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::LargeObject));
+
+		// Invalid for large object
+		assert!(!Privilege::Insert.is_valid_for_object(ObjectType::LargeObject));
+		assert!(!Privilege::Delete.is_valid_for_object(ObjectType::LargeObject));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::LargeObject));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::LargeObject));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_tablespace() {
+		assert!(Privilege::Create.is_valid_for_object(ObjectType::Tablespace));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Tablespace));
+
+		// Invalid for tablespace
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Tablespace));
+		assert!(!Privilege::Usage.is_valid_for_object(ObjectType::Tablespace));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::Tablespace));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Tablespace));
+	}
+
+	#[test]
+	fn test_privilege_valid_for_parameter() {
+		assert!(Privilege::Set.is_valid_for_object(ObjectType::Parameter));
+		assert!(Privilege::AlterSystem.is_valid_for_object(ObjectType::Parameter));
+		assert!(Privilege::All.is_valid_for_object(ObjectType::Parameter));
+
+		// Invalid for parameter
+		assert!(!Privilege::Select.is_valid_for_object(ObjectType::Parameter));
+		assert!(!Privilege::Usage.is_valid_for_object(ObjectType::Parameter));
+		assert!(!Privilege::Execute.is_valid_for_object(ObjectType::Parameter));
+		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Parameter));
+	}
 }
 
 #[cfg(test)]

@@ -155,6 +155,52 @@ impl Privilege {
 			(Privilege::Update, ObjectType::Sequence) => true,
 			(Privilege::All, ObjectType::Sequence) => true,
 
+			// FUNCTION privileges
+			(Privilege::Execute, ObjectType::Function) => true,
+			(Privilege::All, ObjectType::Function) => true,
+
+			// PROCEDURE privileges
+			(Privilege::Execute, ObjectType::Procedure) => true,
+			(Privilege::All, ObjectType::Procedure) => true,
+
+			// ROUTINE privileges
+			(Privilege::Execute, ObjectType::Routine) => true,
+			(Privilege::All, ObjectType::Routine) => true,
+
+			// TYPE privileges
+			(Privilege::Usage, ObjectType::Type) => true,
+			(Privilege::All, ObjectType::Type) => true,
+
+			// DOMAIN privileges
+			(Privilege::Usage, ObjectType::Domain) => true,
+			(Privilege::All, ObjectType::Domain) => true,
+
+			// FOREIGN DATA WRAPPER privileges
+			(Privilege::Usage, ObjectType::ForeignDataWrapper) => true,
+			(Privilege::All, ObjectType::ForeignDataWrapper) => true,
+
+			// FOREIGN SERVER privileges
+			(Privilege::Usage, ObjectType::ForeignServer) => true,
+			(Privilege::All, ObjectType::ForeignServer) => true,
+
+			// LANGUAGE privileges
+			(Privilege::Usage, ObjectType::Language) => true,
+			(Privilege::All, ObjectType::Language) => true,
+
+			// LARGE OBJECT privileges
+			(Privilege::Select, ObjectType::LargeObject) => true,
+			(Privilege::Update, ObjectType::LargeObject) => true,
+			(Privilege::All, ObjectType::LargeObject) => true,
+
+			// TABLESPACE privileges
+			(Privilege::Create, ObjectType::Tablespace) => true,
+			(Privilege::All, ObjectType::Tablespace) => true,
+
+			// PARAMETER privileges
+			(Privilege::Set, ObjectType::Parameter) => true,
+			(Privilege::AlterSystem, ObjectType::Parameter) => true,
+			(Privilege::All, ObjectType::Parameter) => true,
+
 			// Invalid combinations
 			_ => false,
 		}
