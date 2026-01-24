@@ -2,9 +2,9 @@
 
 use proc_macro2::Span;
 use syn::{
+	Error, Ident, Lit, Result, Token,
 	parse::{Parse, ParseStream},
 	punctuated::Punctuated,
-	Error, Ident, Lit, Result, Token,
 };
 
 /// Parsed attributes from `#[field(...)]`.
@@ -45,7 +45,10 @@ impl Parse for FieldAttrs {
 					match name_str.as_str() {
 						"primary_key" => {
 							if result.primary_key {
-								return Err(Error::new(name.span(), "duplicate `primary_key` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `primary_key` attribute",
+								));
 							}
 							result.primary_key = true;
 						}
@@ -57,13 +60,19 @@ impl Parse for FieldAttrs {
 						}
 						"unique" => {
 							if result.unique {
-								return Err(Error::new(name.span(), "duplicate `unique` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `unique` attribute",
+								));
 							}
 							result.unique = true;
 						}
 						"required" => {
 							if result.required {
-								return Err(Error::new(name.span(), "duplicate `required` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `required` attribute",
+								));
 							}
 							result.required = true;
 						}
@@ -80,19 +89,28 @@ impl Parse for FieldAttrs {
 					match name_str.as_str() {
 						"default" => {
 							if result.default.is_some() {
-								return Err(Error::new(name.span(), "duplicate `default` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `default` attribute",
+								));
 							}
 							result.default = Some(lit_to_string(&value)?);
 						}
 						"rename" => {
 							if result.rename.is_some() {
-								return Err(Error::new(name.span(), "duplicate `rename` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `rename` attribute",
+								));
 							}
 							result.rename = Some(lit_to_string(&value)?);
 						}
 						"validate" => {
 							if result.validate.is_some() {
-								return Err(Error::new(name.span(), "duplicate `validate` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `validate` attribute",
+								));
 							}
 							result.validate = Some(lit_to_string(&value)?);
 						}
@@ -110,7 +128,10 @@ impl Parse for FieldAttrs {
 						}
 						"references" => {
 							if result.references.is_some() {
-								return Err(Error::new(name.span(), "duplicate `references` attribute"));
+								return Err(Error::new(
+									name.span(),
+									"duplicate `references` attribute",
+								));
 							}
 							result.references = Some(lit_to_string(&value)?);
 						}
@@ -234,10 +255,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("duplicate `primary_key` attribute"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("duplicate `primary_key` attribute")
+		);
 	}
 
 	#[test]
@@ -247,10 +270,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("duplicate `default` attribute"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("duplicate `default` attribute")
+		);
 	}
 
 	#[test]
@@ -258,10 +283,12 @@ mod tests {
 		let result: Result<FieldAttrs> = syn::parse2(parse_quote! { unknown_flag });
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("unknown flag attribute `unknown_flag`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("unknown flag attribute `unknown_flag`")
+		);
 	}
 
 	#[test]
@@ -271,9 +298,11 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("unknown attribute `unknown`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("unknown attribute `unknown`")
+		);
 	}
 }

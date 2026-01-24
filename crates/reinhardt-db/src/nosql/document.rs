@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use bson::Document as BsonDocument;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::error::{OdmResult, ValidationError};
 

@@ -2,9 +2,9 @@
 
 use proc_macro2::Span;
 use syn::{
+	Error, Ident, LitStr, Result, Token,
 	parse::{Parse, ParseStream},
 	punctuated::Punctuated,
-	Error, Ident, LitStr, Result, Token,
 };
 
 /// Parsed attributes from `#[document(...)]`.
@@ -40,13 +40,19 @@ impl Parse for DocumentAttrs {
 				}
 				"backend" => {
 					if backend.is_some() {
-						return Err(Error::new(attr.name.span(), "duplicate `backend` attribute"));
+						return Err(Error::new(
+							attr.name.span(),
+							"duplicate `backend` attribute",
+						));
 					}
 					backend = Some(attr.value.value());
 				}
 				"database" => {
 					if database.is_some() {
-						return Err(Error::new(attr.name.span(), "duplicate `database` attribute"));
+						return Err(Error::new(
+							attr.name.span(),
+							"duplicate `database` attribute",
+						));
 					}
 					database = Some(attr.value.value());
 				}
@@ -61,15 +67,11 @@ impl Parse for DocumentAttrs {
 
 		// Validate required attributes
 		let collection = collection.ok_or_else(|| {
-			Error::new(
-				Span::call_site(),
-				"missing required attribute `collection`",
-			)
+			Error::new(Span::call_site(), "missing required attribute `collection`")
 		})?;
 
-		let backend = backend.ok_or_else(|| {
-			Error::new(Span::call_site(), "missing required attribute `backend`")
-		})?;
+		let backend = backend
+			.ok_or_else(|| Error::new(Span::call_site(), "missing required attribute `backend`"))?;
 
 		// Validate backend value
 		if backend != "mongodb" {
@@ -138,10 +140,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("missing required attribute `collection`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("missing required attribute `collection`")
+		);
 	}
 
 	#[test]
@@ -151,10 +155,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("missing required attribute `backend`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("missing required attribute `backend`")
+		);
 	}
 
 	#[test]
@@ -164,10 +170,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("unsupported backend `redis`, expected `mongodb`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("unsupported backend `redis`, expected `mongodb`")
+		);
 	}
 
 	#[test]
@@ -177,10 +185,12 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("duplicate `collection` attribute"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("duplicate `collection` attribute")
+		);
 	}
 
 	#[test]
@@ -190,9 +200,11 @@ mod tests {
 		});
 
 		assert!(result.is_err());
-		assert!(result
-			.unwrap_err()
-			.to_string()
-			.contains("unknown attribute `unknown`"));
+		assert!(
+			result
+				.unwrap_err()
+				.to_string()
+				.contains("unknown attribute `unknown`")
+		);
 	}
 }
