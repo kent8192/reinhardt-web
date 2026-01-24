@@ -20,6 +20,8 @@ mod privilege_tests {
 		assert_eq!(Privilege::Connect.as_sql(), "CONNECT");
 		assert_eq!(Privilege::Temporary.as_sql(), "TEMPORARY");
 		assert_eq!(Privilege::Execute.as_sql(), "EXECUTE");
+		assert_eq!(Privilege::Set.as_sql(), "SET");
+		assert_eq!(Privilege::AlterSystem.as_sql(), "ALTER SYSTEM");
 	}
 
 	#[test]
@@ -41,6 +43,8 @@ mod privilege_tests {
 		assert!(Privilege::Connect.is_postgres_only());
 		assert!(Privilege::Temporary.is_postgres_only());
 		assert!(Privilege::Execute.is_postgres_only());
+		assert!(Privilege::Set.is_postgres_only());
+		assert!(Privilege::AlterSystem.is_postgres_only());
 	}
 
 	#[test]
