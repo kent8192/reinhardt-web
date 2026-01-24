@@ -64,6 +64,7 @@
 //! ```
 
 pub mod backends;
+pub mod document;
 pub mod error;
 pub mod traits;
 pub mod types;
