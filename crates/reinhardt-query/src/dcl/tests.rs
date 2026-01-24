@@ -109,6 +109,20 @@ mod object_type_tests {
 		assert_eq!(ObjectType::Database.as_sql(), "DATABASE");
 		assert_eq!(ObjectType::Schema.as_sql(), "SCHEMA");
 		assert_eq!(ObjectType::Sequence.as_sql(), "SEQUENCE");
+		assert_eq!(ObjectType::Function.as_sql(), "FUNCTION");
+		assert_eq!(ObjectType::Procedure.as_sql(), "PROCEDURE");
+		assert_eq!(ObjectType::Routine.as_sql(), "ROUTINE");
+		assert_eq!(ObjectType::Type.as_sql(), "TYPE");
+		assert_eq!(ObjectType::Domain.as_sql(), "DOMAIN");
+		assert_eq!(
+			ObjectType::ForeignDataWrapper.as_sql(),
+			"FOREIGN DATA WRAPPER"
+		);
+		assert_eq!(ObjectType::ForeignServer.as_sql(), "FOREIGN SERVER");
+		assert_eq!(ObjectType::Language.as_sql(), "LANGUAGE");
+		assert_eq!(ObjectType::LargeObject.as_sql(), "LARGE OBJECT");
+		assert_eq!(ObjectType::Tablespace.as_sql(), "TABLESPACE");
+		assert_eq!(ObjectType::Parameter.as_sql(), "PARAMETER");
 	}
 
 	#[test]
@@ -120,6 +134,17 @@ mod object_type_tests {
 		// PostgreSQL-specific object types
 		assert!(ObjectType::Schema.is_postgres_only());
 		assert!(ObjectType::Sequence.is_postgres_only());
+		assert!(ObjectType::Function.is_postgres_only());
+		assert!(ObjectType::Procedure.is_postgres_only());
+		assert!(ObjectType::Routine.is_postgres_only());
+		assert!(ObjectType::Type.is_postgres_only());
+		assert!(ObjectType::Domain.is_postgres_only());
+		assert!(ObjectType::ForeignDataWrapper.is_postgres_only());
+		assert!(ObjectType::ForeignServer.is_postgres_only());
+		assert!(ObjectType::Language.is_postgres_only());
+		assert!(ObjectType::LargeObject.is_postgres_only());
+		assert!(ObjectType::Tablespace.is_postgres_only());
+		assert!(ObjectType::Parameter.is_postgres_only());
 	}
 }
 
