@@ -163,6 +163,83 @@ impl GrantStatement {
 		self
 	}
 
+	/// Convenience method: Grant on FUNCTION objects (PostgreSQL)
+	pub fn on_function<T: IntoIden>(mut self, function: T) -> Self {
+		self.object_type = ObjectType::Function;
+		self.objects.push(function.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on PROCEDURE objects (PostgreSQL)
+	pub fn on_procedure<T: IntoIden>(mut self, procedure: T) -> Self {
+		self.object_type = ObjectType::Procedure;
+		self.objects.push(procedure.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on ROUTINE objects (PostgreSQL)
+	pub fn on_routine<T: IntoIden>(mut self, routine: T) -> Self {
+		self.object_type = ObjectType::Routine;
+		self.objects.push(routine.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on TYPE objects (PostgreSQL)
+	pub fn on_type<T: IntoIden>(mut self, type_name: T) -> Self {
+		self.object_type = ObjectType::Type;
+		self.objects.push(type_name.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on DOMAIN objects (PostgreSQL)
+	pub fn on_domain<T: IntoIden>(mut self, domain: T) -> Self {
+		self.object_type = ObjectType::Domain;
+		self.objects.push(domain.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on FOREIGN DATA WRAPPER objects (PostgreSQL)
+	pub fn on_foreign_data_wrapper<T: IntoIden>(mut self, fdw: T) -> Self {
+		self.object_type = ObjectType::ForeignDataWrapper;
+		self.objects.push(fdw.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on FOREIGN SERVER objects (PostgreSQL)
+	pub fn on_foreign_server<T: IntoIden>(mut self, server: T) -> Self {
+		self.object_type = ObjectType::ForeignServer;
+		self.objects.push(server.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on LANGUAGE objects (PostgreSQL)
+	pub fn on_language<T: IntoIden>(mut self, language: T) -> Self {
+		self.object_type = ObjectType::Language;
+		self.objects.push(language.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on LARGE OBJECT objects (PostgreSQL)
+	pub fn on_large_object<T: IntoIden>(mut self, lobj: T) -> Self {
+		self.object_type = ObjectType::LargeObject;
+		self.objects.push(lobj.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on TABLESPACE objects (PostgreSQL)
+	pub fn on_tablespace<T: IntoIden>(mut self, tablespace: T) -> Self {
+		self.object_type = ObjectType::Tablespace;
+		self.objects.push(tablespace.into_iden());
+		self
+	}
+
+	/// Convenience method: Grant on PARAMETER objects (PostgreSQL)
+	pub fn on_parameter<T: IntoIden>(mut self, parameter: T) -> Self {
+		self.object_type = ObjectType::Parameter;
+		self.objects.push(parameter.into_iden());
+		self
+	}
+
 	/// Add a single grantee
 	pub fn grantee(mut self, grantee: Grantee) -> Self {
 		self.grantees.push(grantee);

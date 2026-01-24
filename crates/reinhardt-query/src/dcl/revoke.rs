@@ -162,6 +162,83 @@ impl RevokeStatement {
 		self
 	}
 
+	/// Convenience method: Revoke from FUNCTION objects (PostgreSQL)
+	pub fn from_function<T: IntoIden>(mut self, function: T) -> Self {
+		self.object_type = ObjectType::Function;
+		self.objects.push(function.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from PROCEDURE objects (PostgreSQL)
+	pub fn from_procedure<T: IntoIden>(mut self, procedure: T) -> Self {
+		self.object_type = ObjectType::Procedure;
+		self.objects.push(procedure.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from ROUTINE objects (PostgreSQL)
+	pub fn from_routine<T: IntoIden>(mut self, routine: T) -> Self {
+		self.object_type = ObjectType::Routine;
+		self.objects.push(routine.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from TYPE objects (PostgreSQL)
+	pub fn from_type<T: IntoIden>(mut self, type_name: T) -> Self {
+		self.object_type = ObjectType::Type;
+		self.objects.push(type_name.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from DOMAIN objects (PostgreSQL)
+	pub fn from_domain<T: IntoIden>(mut self, domain: T) -> Self {
+		self.object_type = ObjectType::Domain;
+		self.objects.push(domain.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from FOREIGN DATA WRAPPER objects (PostgreSQL)
+	pub fn from_foreign_data_wrapper<T: IntoIden>(mut self, fdw: T) -> Self {
+		self.object_type = ObjectType::ForeignDataWrapper;
+		self.objects.push(fdw.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from FOREIGN SERVER objects (PostgreSQL)
+	pub fn from_foreign_server<T: IntoIden>(mut self, server: T) -> Self {
+		self.object_type = ObjectType::ForeignServer;
+		self.objects.push(server.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from LANGUAGE objects (PostgreSQL)
+	pub fn from_language<T: IntoIden>(mut self, language: T) -> Self {
+		self.object_type = ObjectType::Language;
+		self.objects.push(language.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from LARGE OBJECT objects (PostgreSQL)
+	pub fn from_large_object<T: IntoIden>(mut self, lobj: T) -> Self {
+		self.object_type = ObjectType::LargeObject;
+		self.objects.push(lobj.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from TABLESPACE objects (PostgreSQL)
+	pub fn from_tablespace<T: IntoIden>(mut self, tablespace: T) -> Self {
+		self.object_type = ObjectType::Tablespace;
+		self.objects.push(tablespace.into_iden());
+		self
+	}
+
+	/// Convenience method: Revoke from PARAMETER objects (PostgreSQL)
+	pub fn from_parameter<T: IntoIden>(mut self, parameter: T) -> Self {
+		self.object_type = ObjectType::Parameter;
+		self.objects.push(parameter.into_iden());
+		self
+	}
+
 	/// Add a single grantee
 	pub fn grantee(mut self, grantee: Grantee) -> Self {
 		self.grantees.push(grantee);
