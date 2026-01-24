@@ -888,6 +888,380 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
+	// Extended object types tests
+
+	#[test]
+	fn test_postgres_grant_on_function() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Execute)
+			.on_function("calculate_total")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT EXECUTE ON FUNCTION "calculate_total" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_procedure() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Execute)
+			.on_procedure("process_order")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT EXECUTE ON PROCEDURE "process_order" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_routine() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Execute)
+			.on_routine("my_routine")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT EXECUTE ON ROUTINE "my_routine" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_type() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_type("custom_type")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT USAGE ON TYPE "custom_type" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_domain() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_domain("email_domain")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT USAGE ON DOMAIN "email_domain" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_foreign_data_wrapper() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_foreign_data_wrapper("my_fdw")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT USAGE ON FOREIGN DATA WRAPPER "my_fdw" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_foreign_server() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_foreign_server("my_server")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT USAGE ON FOREIGN SERVER "my_server" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_language() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Usage)
+			.on_language("plpgsql")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT USAGE ON LANGUAGE "plpgsql" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_large_object() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Select)
+			.on_large_object("12345")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT SELECT ON LARGE OBJECT "12345" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_tablespace() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Create)
+			.on_tablespace("fast_storage")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(
+			sql,
+			r#"GRANT CREATE ON TABLESPACE "fast_storage" TO "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_grant_on_parameter() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = GrantStatement::new()
+			.privilege(Privilege::Set)
+			.on_parameter("work_mem")
+			.to("app_user");
+
+		let (sql, values) = builder.build_grant(&stmt);
+		assert_eq!(sql, r#"GRANT SET ON PARAMETER "work_mem" TO "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_function() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Execute)
+			.from_function("calculate_total")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE EXECUTE ON FUNCTION "calculate_total" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_procedure() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Execute)
+			.from_procedure("process_order")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE EXECUTE ON PROCEDURE "process_order" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_routine() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Execute)
+			.from_routine("my_routine")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE EXECUTE ON ROUTINE "my_routine" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_type() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_type("custom_type")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE USAGE ON TYPE "custom_type" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_domain() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_domain("email_domain")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE USAGE ON DOMAIN "email_domain" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_foreign_data_wrapper() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_foreign_data_wrapper("my_fdw")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE USAGE ON FOREIGN DATA WRAPPER "my_fdw" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_foreign_server() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_foreign_server("my_server")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE USAGE ON FOREIGN SERVER "my_server" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_language() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Usage)
+			.from_language("plpgsql")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE USAGE ON LANGUAGE "plpgsql" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_large_object() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Select)
+			.from_large_object("12345")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE SELECT ON LARGE OBJECT "12345" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_tablespace() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Create)
+			.from_tablespace("fast_storage")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(
+			sql,
+			r#"REVOKE CREATE ON TABLESPACE "fast_storage" FROM "app_user""#
+		);
+		assert!(values.is_empty());
+	}
+
+	#[test]
+	fn test_postgres_revoke_from_parameter() {
+		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
+
+		let builder = PostgresQueryBuilder::new();
+		let stmt = RevokeStatement::new()
+			.privilege(Privilege::Set)
+			.from_parameter("work_mem")
+			.from("app_user");
+
+		let (sql, values) = builder.build_revoke(&stmt);
+		assert_eq!(sql, r#"REVOKE SET ON PARAMETER "work_mem" FROM "app_user""#);
+		assert!(values.is_empty());
+	}
+
 	// ========================================
 	// MySQL SQL Generation Tests
 	// ========================================
