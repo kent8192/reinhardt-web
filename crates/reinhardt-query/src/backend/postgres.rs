@@ -6,10 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterTableOperation, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
-		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
-		SelectStatement, TruncateTableStatement, UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
+		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
+		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
+		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1464,6 +1465,86 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("CASCADE");
 		} else if stmt.restrict {
 			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_index(&self, stmt: &AlterIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ALTER INDEX");
+		writer.push_space();
+
+		if let Some(ref name) = stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		} else {
+			panic!("ALTER INDEX requires an index name");
+		}
+
+		// RENAME TO clause
+		if let Some(ref new_name) = stmt.rename_to {
+			writer.push_space();
+			writer.push_keyword("RENAME TO");
+			writer.push_space();
+			writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// SET TABLESPACE clause
+		if let Some(ref tablespace) = stmt.set_tablespace {
+			writer.push_space();
+			writer.push_keyword("SET TABLESPACE");
+			writer.push_space();
+			writer.push_identifier(&tablespace.to_string(), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_reindex(&self, stmt: &ReindexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("REINDEX");
+
+		// Options (CONCURRENTLY, VERBOSE, TABLESPACE)
+		let mut options = Vec::new();
+		if stmt.concurrently {
+			options.push("CONCURRENTLY".to_string());
+		}
+		if stmt.verbose {
+			options.push("VERBOSE".to_string());
+		}
+		if let Some(ref tablespace) = stmt.tablespace {
+			let escaped = self.escape_iden(&tablespace.to_string());
+			options.push(format!("TABLESPACE {}", escaped));
+		}
+
+		if !options.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push(&options.join(", "));
+			writer.push(")");
+		}
+
+		// Target (INDEX, TABLE, SCHEMA, DATABASE, SYSTEM)
+		writer.push_space();
+		if let Some(target) = stmt.target {
+			use crate::query::ReindexTarget;
+			match target {
+				ReindexTarget::Index => writer.push_keyword("INDEX"),
+				ReindexTarget::Table => writer.push_keyword("TABLE"),
+				ReindexTarget::Schema => writer.push_keyword("SCHEMA"),
+				ReindexTarget::Database => writer.push_keyword("DATABASE"),
+				ReindexTarget::System => writer.push_keyword("SYSTEM"),
+			}
+		} else {
+			panic!("REINDEX requires a target");
+		}
+
+		// Name
+		writer.push_space();
+		if let Some(ref name) = stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		} else {
+			panic!("REINDEX requires a name");
 		}
 
 		writer.finish()

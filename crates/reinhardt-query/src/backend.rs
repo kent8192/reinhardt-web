@@ -5,10 +5,10 @@
 
 use crate::{
 	query::{
-		AlterTableStatement, CreateIndexStatement, CreateTableStatement, CreateTriggerStatement,
-		CreateViewStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-		DropTriggerStatement, DropViewStatement, InsertStatement, SelectStatement,
-		TruncateTableStatement, UpdateStatement,
+		AlterIndexStatement, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
+		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
+		ReindexStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	value::Values,
 };
@@ -268,4 +268,30 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values);
+
+	/// Build ALTER INDEX statement
+	///
+	/// Generates SQL and parameter values for an ALTER INDEX statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER INDEX statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_index(&self, stmt: &AlterIndexStatement) -> (String, Values);
+
+	/// Build REINDEX statement
+	///
+	/// Generates SQL and parameter values for a REINDEX statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The REINDEX statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_reindex(&self, stmt: &ReindexStatement) -> (String, Values);
 }
