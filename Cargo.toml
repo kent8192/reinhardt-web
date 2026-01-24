@@ -319,6 +319,8 @@ members = [
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
+  "crates/reinhardt-pages-components",                  # UI design system components
+  "crates/reinhardt-pages-components-macros",           # UI components macros
   # Integration tests
   "tests",
   "tests/integration",
