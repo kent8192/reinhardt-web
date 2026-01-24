@@ -51,6 +51,8 @@ pub mod mfa;
 pub mod model_permissions;
 #[cfg(feature = "oauth")]
 pub mod oauth2;
+#[cfg(feature = "social")]
+pub mod social;
 pub mod object_permissions;
 #[cfg(feature = "rate-limit")]
 pub mod rate_limit_permission;
@@ -90,6 +92,13 @@ pub use model_permissions::{
 pub use oauth2::{
 	AccessToken, AuthorizationCode, GrantType, InMemoryOAuth2Store, OAuth2Application,
 	OAuth2Authentication, OAuth2TokenStore, SimpleUserRepository, UserRepository,
+};
+#[cfg(feature = "social")]
+pub use social::{
+	SocialAuthBackend, OAuthProvider, SocialAuthError,
+	GoogleProvider, GitHubProvider, AppleProvider, MicrosoftProvider,
+	OAuthToken, TokenResponse, IdToken, StandardClaims,
+	ProviderConfig, PkceFlow, StateStore,
 };
 pub use object_permissions::{ObjectPermission, ObjectPermissionChecker, ObjectPermissionManager};
 pub use permission_operators::{AndPermission, NotPermission, OrPermission};
