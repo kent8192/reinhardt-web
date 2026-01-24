@@ -319,6 +319,7 @@ members = [
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
+  "crates/reinhardt-cms",                              # CMS functionality (Wagtail/django-cms equivalent)
   # Integration tests
   "tests",
   "tests/integration",
