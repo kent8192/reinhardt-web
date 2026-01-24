@@ -1229,8 +1229,10 @@ impl BaseCommand for RunServerCommand {
 impl RunServerCommand {
 	/// Run the development server
 	#[cfg(feature = "server")]
+	// Allow many arguments: CLI command handler needs to accept all server configuration options
 	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
+		// Context parameter reserved for future extensions (e.g., accessing global config)
 		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
