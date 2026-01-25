@@ -1556,12 +1556,1490 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_function(
+		&self,
+		stmt: &crate::query::CreateFunctionStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE [OR REPLACE] FUNCTION
+		writer.push_keyword("CREATE");
+		if stmt.function_def.or_replace {
+			writer.push_keyword("OR REPLACE");
+		}
+		writer.push_keyword("FUNCTION");
+
+		// Function name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Parameters (param1 type1, param2 type2, ...)
+		writer.push("(");
+		let mut first = true;
+		for param in &stmt.function_def.parameters {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Parameter mode (IN, OUT, INOUT, VARIADIC)
+			if let Some(mode) = &param.mode {
+				use crate::types::function::ParameterMode;
+				match mode {
+					ParameterMode::In => writer.push("IN "),
+					ParameterMode::Out => writer.push("OUT "),
+					ParameterMode::InOut => writer.push("INOUT "),
+					ParameterMode::Variadic => writer.push("VARIADIC "),
+				}
+			}
+
+			// Parameter name (optional)
+			if let Some(name) = &param.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+				writer.push(" ");
+			}
+
+			// Parameter type
+			if let Some(param_type) = &param.param_type {
+				writer.push(param_type);
+			}
+
+			// Default value (optional)
+			if let Some(default) = &param.default_value {
+				writer.push(" DEFAULT ");
+				writer.push(default);
+			}
+		}
+		writer.push(")");
+
+		// RETURNS type
+		if let Some(returns) = &stmt.function_def.returns {
+			writer.push_keyword("RETURNS");
+			writer.push_space();
+			writer.push(returns);
+		}
+
+		// LANGUAGE
+		if let Some(language) = &stmt.function_def.language {
+			writer.push_keyword("LANGUAGE");
+			writer.push_space();
+			match language {
+				FunctionLanguage::Sql => writer.push("SQL"),
+				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
+				FunctionLanguage::C => writer.push("C"),
+				FunctionLanguage::Custom(lang) => writer.push(lang),
+			}
+		}
+
+		// Behavior (IMMUTABLE/STABLE/VOLATILE)
+		if let Some(behavior) = &stmt.function_def.behavior {
+			writer.push_space();
+			match behavior {
+				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+			}
+		}
+
+		// Security (SECURITY DEFINER/INVOKER)
+		if let Some(security) = &stmt.function_def.security {
+			writer.push_space();
+			match security {
+				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+			}
+		}
+
+		// AS 'body'
+		if let Some(body) = &stmt.function_def.body {
+			writer.push_keyword("AS");
+			writer.push_space();
+			writer.push("$$");
+			writer.push(body);
+			writer.push("$$");
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_function(
+		&self,
+		stmt: &crate::query::AlterFunctionStatement,
+	) -> (String, Values) {
+		use crate::query::function::AlterFunctionOperation;
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER FUNCTION
+		writer.push_keyword("ALTER FUNCTION");
+
+		// Function name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Function signature (for overloaded functions)
+		if !stmt.parameters.is_empty() {
+			writer.push("(");
+			let mut first = true;
+			for param in &stmt.parameters {
+				if !first {
+					writer.push(", ");
+				}
+				first = false;
+
+				// Parameter name (optional in signature)
+				if let Some(name) = &param.name {
+					let name_str = Iden::to_string(name.as_ref());
+					if !name_str.is_empty() {
+						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+						writer.push(" ");
+					}
+				}
+
+				// Parameter type
+				if let Some(param_type) = &param.param_type {
+					writer.push(param_type);
+				}
+			}
+			writer.push(")");
+		}
+
+		// ALTER FUNCTION operation
+		if let Some(operation) = &stmt.operation {
+			writer.push_space();
+			match operation {
+				AlterFunctionOperation::RenameTo(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				AlterFunctionOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				AlterFunctionOperation::SetSchema(new_schema) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
+					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+				},
+				AlterFunctionOperation::SetSecurity(security) => match security {
+					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+				},
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP FUNCTION
+		writer.push_keyword("DROP FUNCTION");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Function name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Function signature (for overloaded functions)
+		if !stmt.parameters.is_empty() {
+			writer.push("(");
+			let mut first = true;
+			for param in &stmt.parameters {
+				if !first {
+					writer.push(", ");
+				}
+				first = false;
+
+				// Parameter name (optional in signature)
+				if let Some(name) = &param.name {
+					let name_str = Iden::to_string(name.as_ref());
+					if !name_str.is_empty() {
+						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+						writer.push(" ");
+					}
+				}
+
+				// Parameter type
+				if let Some(param_type) = &param.param_type {
+					writer.push(param_type);
+				}
+			}
+			writer.push(")");
+		}
+
+		// CASCADE
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		}
+
+		writer.finish()
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+
+	fn build_create_schema(&self, stmt: &crate::query::CreateSchemaStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE SCHEMA
+		writer.push_keyword("CREATE SCHEMA");
+
+		// IF NOT EXISTS
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// Schema name
+		if let Some(name) = &stmt.schema_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// AUTHORIZATION owner
+		if let Some(owner) = &stmt.authorization {
+			writer.push_keyword("AUTHORIZATION");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(owner.as_ref()), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_schema(&self, stmt: &crate::query::AlterSchemaStatement) -> (String, Values) {
+		use crate::query::AlterSchemaOperation;
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER SCHEMA
+		writer.push_keyword("ALTER SCHEMA");
+
+		// Schema name
+		if let Some(name) = &stmt.schema_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Operation
+		if let Some(operation) = &stmt.operation {
+			writer.push_space();
+			match operation {
+				AlterSchemaOperation::RenameTo(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				AlterSchemaOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_schema(&self, stmt: &crate::query::DropSchemaStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP SCHEMA
+		writer.push_keyword("DROP SCHEMA");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Schema name
+		if let Some(name) = &stmt.schema_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// CASCADE or RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_sequence(
+		&self,
+		stmt: &crate::query::CreateSequenceStatement,
+	) -> (String, Values) {
+		use crate::types::{Iden, sequence::OwnedBy};
+
+		let mut writer = SqlWriter::new();
+		let seq_def = &stmt.sequence_def;
+
+		// CREATE SEQUENCE
+		writer.push_keyword("CREATE SEQUENCE");
+
+		// IF NOT EXISTS
+		if seq_def.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// Sequence name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(seq_def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// INCREMENT BY
+		if let Some(increment) = seq_def.increment {
+			writer.push_keyword("INCREMENT BY");
+			writer.push_space();
+			writer.push(&increment.to_string());
+		}
+
+		// MINVALUE or NO MINVALUE
+		if let Some(min_value) = &seq_def.min_value {
+			writer.push_space();
+			match min_value {
+				Some(val) => {
+					writer.push_keyword("MINVALUE");
+					writer.push_space();
+					writer.push(&val.to_string());
+				}
+				None => {
+					writer.push_keyword("NO MINVALUE");
+				}
+			}
+		}
+
+		// MAXVALUE or NO MAXVALUE
+		if let Some(max_value) = &seq_def.max_value {
+			writer.push_space();
+			match max_value {
+				Some(val) => {
+					writer.push_keyword("MAXVALUE");
+					writer.push_space();
+					writer.push(&val.to_string());
+				}
+				None => {
+					writer.push_keyword("NO MAXVALUE");
+				}
+			}
+		}
+
+		// START WITH
+		if let Some(start) = seq_def.start {
+			writer.push_keyword("START WITH");
+			writer.push_space();
+			writer.push(&start.to_string());
+		}
+
+		// CACHE
+		if let Some(cache) = seq_def.cache {
+			writer.push_keyword("CACHE");
+			writer.push_space();
+			writer.push(&cache.to_string());
+		}
+
+		// CYCLE or NO CYCLE
+		if let Some(cycle) = seq_def.cycle {
+			writer.push_space();
+			if cycle {
+				writer.push_keyword("CYCLE");
+			} else {
+				writer.push_keyword("NO CYCLE");
+			}
+		}
+
+		// OWNED BY
+		if let Some(owned_by) = &seq_def.owned_by {
+			writer.push_keyword("OWNED BY");
+			writer.push_space();
+			match owned_by {
+				OwnedBy::Column { table, column } => {
+					writer
+						.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+					writer.push(".");
+					writer.push_identifier(&Iden::to_string(column.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				OwnedBy::None => {
+					writer.push_keyword("NONE");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_sequence(
+		&self,
+		stmt: &crate::query::AlterSequenceStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			sequence::{OwnedBy, SequenceOption},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER SEQUENCE
+		writer.push_keyword("ALTER SEQUENCE");
+
+		// Sequence name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Options
+		for option in &stmt.options {
+			writer.push_space();
+			match option {
+				SequenceOption::Restart(value) => {
+					writer.push_keyword("RESTART");
+					if let Some(val) = value {
+						writer.push_keyword("WITH");
+						writer.push_space();
+						writer.push(&val.to_string());
+					}
+				}
+				SequenceOption::IncrementBy(value) => {
+					writer.push_keyword("INCREMENT BY");
+					writer.push_space();
+					writer.push(&value.to_string());
+				}
+				SequenceOption::MinValue(value) => {
+					writer.push_keyword("MINVALUE");
+					writer.push_space();
+					writer.push(&value.to_string());
+				}
+				SequenceOption::NoMinValue => {
+					writer.push_keyword("NO MINVALUE");
+				}
+				SequenceOption::MaxValue(value) => {
+					writer.push_keyword("MAXVALUE");
+					writer.push_space();
+					writer.push(&value.to_string());
+				}
+				SequenceOption::NoMaxValue => {
+					writer.push_keyword("NO MAXVALUE");
+				}
+				SequenceOption::Cache(value) => {
+					writer.push_keyword("CACHE");
+					writer.push_space();
+					writer.push(&value.to_string());
+				}
+				SequenceOption::Cycle => {
+					writer.push_keyword("CYCLE");
+				}
+				SequenceOption::NoCycle => {
+					writer.push_keyword("NO CYCLE");
+				}
+				SequenceOption::OwnedBy(owned_by) => {
+					writer.push_keyword("OWNED BY");
+					writer.push_space();
+					match owned_by {
+						OwnedBy::Column { table, column } => {
+							writer.push_identifier(&Iden::to_string(table.as_ref()), |s| {
+								self.escape_iden(s)
+							});
+							writer.push(".");
+							writer.push_identifier(&Iden::to_string(column.as_ref()), |s| {
+								self.escape_iden(s)
+							});
+						}
+						OwnedBy::None => {
+							writer.push_keyword("NONE");
+						}
+					}
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_sequence(&self, stmt: &crate::query::DropSequenceStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP SEQUENCE
+		writer.push_keyword("DROP SEQUENCE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Sequence name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// CASCADE or RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_comment(&self, stmt: &crate::query::CommentStatement) -> (String, Values) {
+		use crate::types::{CommentTarget, Iden};
+
+		let mut writer = SqlWriter::new();
+
+		// COMMENT ON
+		writer.push_keyword("COMMENT ON");
+
+		// Target object type and name
+		if let Some(target) = &stmt.target {
+			writer.push_space();
+			match target {
+				CommentTarget::Table(table) => {
+					writer.push_keyword("TABLE");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Column(table, column) => {
+					writer.push_keyword("COLUMN");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+					writer.push(".");
+					writer.push_identifier(&Iden::to_string(column.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				CommentTarget::Index(index) => {
+					writer.push_keyword("INDEX");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(index.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::View(view) => {
+					writer.push_keyword("VIEW");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(view.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::MaterializedView(view) => {
+					writer.push_keyword("MATERIALIZED VIEW");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(view.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Sequence(seq) => {
+					writer.push_keyword("SEQUENCE");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(seq.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Schema(schema) => {
+					writer.push_keyword("SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(schema.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				CommentTarget::Database(db) => {
+					writer.push_keyword("DATABASE");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(db.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Function(func) => {
+					writer.push_keyword("FUNCTION");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(func.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Trigger(trigger, table) => {
+					writer.push_keyword("TRIGGER");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(trigger.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+					writer.push_keyword("ON");
+					writer.push_space();
+					writer
+						.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+				}
+				CommentTarget::Type(typ) => {
+					writer.push_keyword("TYPE");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(typ.as_ref()), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		// IS 'comment' or IS NULL
+		writer.push_keyword("IS");
+		writer.push_space();
+		if stmt.is_null {
+			writer.push_keyword("NULL");
+		} else if let Some(comment) = &stmt.comment {
+			// Escape single quotes in comment text
+			let escaped = comment.replace('\'', "''");
+			writer.push(&format!("'{}'", escaped));
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_database(
+		&self,
+		stmt: &crate::query::AlterDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::{DatabaseOperation, Iden};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER DATABASE
+		writer.push_keyword("ALTER DATABASE");
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Operations
+		for (i, operation) in stmt.operations.iter().enumerate() {
+			if i == 0 {
+				writer.push_space();
+			} else {
+				writer.push(", ");
+			}
+			match operation {
+				DatabaseOperation::RenameDatabase(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				DatabaseOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				// CockroachDB-specific operations are not supported in PostgreSQL
+				DatabaseOperation::AddRegion(region) => {
+					// For CockroachDB compatibility: ADD REGION 'region-name'
+					writer.push_keyword("ADD REGION");
+					writer.push_space();
+					let escaped = region.replace('\'', "''");
+					writer.push(&format!("'{}'", escaped));
+				}
+				DatabaseOperation::DropRegion(region) => {
+					// For CockroachDB compatibility: DROP REGION 'region-name'
+					writer.push_keyword("DROP REGION");
+					writer.push_space();
+					let escaped = region.replace('\'', "''");
+					writer.push(&format!("'{}'", escaped));
+				}
+				DatabaseOperation::SetPrimaryRegion(region) => {
+					// For CockroachDB compatibility: PRIMARY REGION 'region-name'
+					writer.push_keyword("PRIMARY REGION");
+					writer.push_space();
+					let escaped = region.replace('\'', "''");
+					writer.push(&format!("'{}'", escaped));
+				}
+				DatabaseOperation::ConfigureZone(zone_config) => {
+					// For CockroachDB compatibility: CONFIGURE ZONE USING ...
+					writer.push_keyword("CONFIGURE ZONE USING");
+					writer.push_space();
+
+					let mut parts = Vec::new();
+
+					if let Some(num_replicas) = zone_config.num_replicas {
+						parts.push(format!("num_replicas = {}", num_replicas));
+					}
+
+					if !zone_config.constraints.is_empty() {
+						let constraints: Vec<String> = zone_config
+							.constraints
+							.iter()
+							.map(ToString::to_string)
+							.collect();
+						parts.push(format!("constraints = '[{}]'", constraints.join(", ")));
+					}
+
+					if !zone_config.lease_preferences.is_empty() {
+						let prefs: Vec<String> = zone_config
+							.lease_preferences
+							.iter()
+							.map(|p| format!("[{}]", p))
+							.collect();
+						parts.push(format!("lease_preferences = '[{}]'", prefs.join(", ")));
+					}
+
+					writer.push(&parts.join(", "));
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ANALYZE");
+
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+
+		// Tables and columns
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
+					self.escape_iden(s)
+				});
+				if !table.columns.is_empty() {
+					w.push(" (");
+					w.push_list(&table.columns, ", ", |w2, col| {
+						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+					});
+					w.push(")");
+				}
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("VACUUM");
+
+		// Options
+		if stmt.full {
+			writer.push_keyword("FULL");
+		}
+		if stmt.freeze {
+			writer.push_keyword("FREEZE");
+		}
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+		if stmt.analyze {
+			writer.push_keyword("ANALYZE");
+		}
+
+		// Tables
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_materialized_view(
+		&self,
+		stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("CREATE MATERIALIZED VIEW");
+
+		// IF NOT EXISTS
+		if stmt.def.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// View name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Column names
+		if !stmt.def.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(&stmt.def.columns, ", ", |w, col| {
+				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		// TABLESPACE
+		if let Some(ref tablespace) = stmt.def.tablespace {
+			writer.push_keyword("TABLESPACE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+				self.escape_iden(s)
+			});
+		}
+
+		// AS SELECT
+		if let Some(ref select) = stmt.select {
+			writer.push_keyword("AS");
+			writer.push_space();
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push(&select_sql);
+
+			// WITH [NO] DATA
+			if let Some(with_data) = stmt.def.with_data {
+				writer.push_space();
+				if with_data {
+					writer.push_keyword("WITH DATA");
+				} else {
+					writer.push_keyword("WITH NO DATA");
+				}
+			}
+
+			let (sql, _) = writer.finish();
+			return (sql, select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_materialized_view(
+		&self,
+		stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::{Iden, MaterializedViewOperation};
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ALTER MATERIALIZED VIEW");
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Operations
+		for operation in &stmt.operations {
+			writer.push_space();
+			match operation {
+				MaterializedViewOperation::Rename(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::SetSchema(schema_name) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_materialized_view(
+		&self,
+		stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("DROP MATERIALIZED VIEW");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// View names
+		writer.push_space();
+		writer.push_list(&stmt.names, ", ", |w, name| {
+			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		});
+
+		// CASCADE or RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("REFRESH MATERIALIZED VIEW");
+
+		// CONCURRENTLY
+		if stmt.concurrently {
+			writer.push_keyword("CONCURRENTLY");
+		}
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// WITH [NO] DATA
+		if let Some(with_data) = stmt.with_data {
+			writer.push_space();
+			if with_data {
+				writer.push_keyword("WITH DATA");
+			} else {
+				writer.push_keyword("WITH NO DATA");
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_procedure(
+		&self,
+		stmt: &crate::query::CreateProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE [OR REPLACE] PROCEDURE
+		writer.push_keyword("CREATE");
+		if stmt.procedure_def.or_replace {
+			writer.push_keyword("OR REPLACE");
+		}
+		writer.push_keyword("PROCEDURE");
+
+		// Procedure name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Parameters (param1 type1, param2 type2, ...)
+		writer.push("(");
+		let mut first = true;
+		for param in &stmt.procedure_def.parameters {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Parameter mode (IN, OUT, INOUT, VARIADIC)
+			if let Some(mode) = &param.mode {
+				use crate::types::function::ParameterMode;
+				match mode {
+					ParameterMode::In => writer.push("IN "),
+					ParameterMode::Out => writer.push("OUT "),
+					ParameterMode::InOut => writer.push("INOUT "),
+					ParameterMode::Variadic => writer.push("VARIADIC "),
+				}
+			}
+
+			// Parameter name (optional)
+			if let Some(name) = &param.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+				writer.push(" ");
+			}
+
+			// Parameter type
+			if let Some(param_type) = &param.param_type {
+				writer.push(param_type);
+			}
+
+			// Default value (optional)
+			if let Some(default) = &param.default_value {
+				writer.push(" DEFAULT ");
+				writer.push(default);
+			}
+		}
+		writer.push(")");
+
+		// LANGUAGE
+		if let Some(language) = &stmt.procedure_def.language {
+			writer.push_keyword("LANGUAGE");
+			writer.push_space();
+			match language {
+				FunctionLanguage::Sql => writer.push("SQL"),
+				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
+				FunctionLanguage::C => writer.push("C"),
+				FunctionLanguage::Custom(lang) => writer.push(lang),
+			}
+		}
+
+		// Behavior (IMMUTABLE/STABLE/VOLATILE)
+		if let Some(behavior) = &stmt.procedure_def.behavior {
+			writer.push_space();
+			match behavior {
+				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+			}
+		}
+
+		// Security (SECURITY DEFINER/INVOKER)
+		if let Some(security) = &stmt.procedure_def.security {
+			writer.push_space();
+			match security {
+				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+			}
+		}
+
+		// AS 'body'
+		if let Some(body) = &stmt.procedure_def.body {
+			writer.push_keyword("AS");
+			writer.push_space();
+			writer.push("$$");
+			writer.push(body);
+			writer.push("$$");
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_procedure(
+		&self,
+		stmt: &crate::query::AlterProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionSecurity},
+			procedure::ProcedureOperation,
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER PROCEDURE
+		writer.push_keyword("ALTER PROCEDURE");
+
+		// Procedure name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Procedure signature (for overloaded procedures)
+		if !stmt.parameters.is_empty() {
+			writer.push("(");
+			let mut first = true;
+			for param in &stmt.parameters {
+				if !first {
+					writer.push(", ");
+				}
+				first = false;
+
+				// Parameter name (optional in signature)
+				if let Some(name) = &param.name {
+					let name_str = Iden::to_string(name.as_ref());
+					if !name_str.is_empty() {
+						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+						writer.push(" ");
+					}
+				}
+
+				// Parameter type
+				if let Some(param_type) = &param.param_type {
+					writer.push(param_type);
+				}
+			}
+			writer.push(")");
+		}
+
+		// ALTER PROCEDURE operation
+		if let Some(operation) = &stmt.operation {
+			writer.push_space();
+			match operation {
+				ProcedureOperation::RenameTo(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				ProcedureOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				ProcedureOperation::SetSchema(new_schema) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				ProcedureOperation::SetBehavior(behavior) => match behavior {
+					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+				},
+				ProcedureOperation::SetSecurity(security) => match security {
+					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+				},
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_procedure(
+		&self,
+		stmt: &crate::query::DropProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP PROCEDURE
+		writer.push_keyword("DROP PROCEDURE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Procedure name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Procedure signature (for overloaded procedures)
+		if !stmt.parameters.is_empty() {
+			writer.push("(");
+			let mut first = true;
+			for param in &stmt.parameters {
+				if !first {
+					writer.push(", ");
+				}
+				first = false;
+
+				// Parameter name (optional in signature)
+				if let Some(name) = &param.name {
+					let name_str = Iden::to_string(name.as_ref());
+					if !name_str.is_empty() {
+						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+						writer.push(" ");
+					}
+				}
+
+				// Parameter type
+				if let Some(param_type) = &param.param_type {
+					writer.push(param_type);
+				}
+			}
+			writer.push(")");
+		}
+
+		// CASCADE
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_type(&self, stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("CREATE TYPE");
+		writer.push_space();
+
+		// Type name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Type definition
+		if let Some(kind) = &stmt.kind {
+			use crate::types::type_def::TypeKind;
+			match kind {
+				TypeKind::Enum { values } => {
+					writer.push_space();
+					writer.push_keyword("AS ENUM");
+					writer.push_space();
+					writer.push("(");
+					writer.push_list(values, ", ", |w, value| {
+						w.push("'");
+						w.push(&value.replace('\'', "''"));
+						w.push("'");
+					});
+					writer.push(")");
+				}
+				TypeKind::Composite { attributes } => {
+					writer.push_space();
+					writer.push_keyword("AS");
+					writer.push_space();
+					writer.push("(");
+					writer.push_list(attributes, ", ", |w, (name, type_name)| {
+						w.push_identifier(name, |s| self.escape_iden(s));
+						w.push_space();
+						w.push(type_name);
+					});
+					writer.push(")");
+				}
+				TypeKind::Domain {
+					base_type,
+					constraint,
+					default,
+					not_null,
+				} => {
+					writer.push_space();
+					writer.push_keyword("AS");
+					writer.push_space();
+					writer.push(base_type);
+
+					// DEFAULT clause
+					if let Some(default_val) = default {
+						writer.push_space();
+						writer.push_keyword("DEFAULT");
+						writer.push_space();
+						writer.push(default_val);
+					}
+
+					// CONSTRAINT clause
+					if let Some(check) = constraint {
+						writer.push_space();
+						writer.push(check);
+					}
+
+					// NOT NULL clause
+					if *not_null {
+						writer.push_space();
+						writer.push_keyword("NOT NULL");
+					}
+				}
+				TypeKind::Range {
+					subtype,
+					subtype_diff,
+					canonical,
+				} => {
+					writer.push_space();
+					writer.push_keyword("AS RANGE");
+					writer.push_space();
+					writer.push("(");
+					writer.push("SUBTYPE = ");
+					writer.push(subtype);
+
+					// SUBTYPE_DIFF clause
+					if let Some(diff_fn) = subtype_diff {
+						writer.push(", SUBTYPE_DIFF = ");
+						writer.push(diff_fn);
+					}
+
+					// CANONICAL clause
+					if let Some(canonical_fn) = canonical {
+						writer.push(", CANONICAL = ");
+						writer.push(canonical_fn);
+					}
+
+					writer.push(")");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_type(&self, stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ALTER TYPE");
+		writer.push_space();
+		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
+
+		// Process operations
+		for operation in &stmt.operations {
+			writer.push_space();
+			use crate::types::type_def::TypeOperation;
+			match operation {
+				TypeOperation::RenameTo(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+				}
+				TypeOperation::OwnerTo(owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&owner.to_string(), |s| self.escape_iden(s));
+				}
+				TypeOperation::SetSchema(schema) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+				}
+				TypeOperation::AddValue(value, position) => {
+					writer.push_keyword("ADD VALUE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(&value.replace('\'', "''"));
+					writer.push("'");
+
+					if let Some(pos) = position {
+						writer.push_space();
+						writer.push_keyword("BEFORE");
+						writer.push_space();
+						writer.push("'");
+						writer.push(&pos.replace('\'', "''"));
+						writer.push("'");
+					}
+				}
+				TypeOperation::RenameValue(old_value, new_value) => {
+					writer.push_keyword("RENAME VALUE");
+					writer.push_space();
+					writer.push("'");
+					writer.push(&old_value.replace('\'', "''"));
+					writer.push("'");
+					writer.push_space();
+					writer.push_keyword("TO");
+					writer.push_space();
+					writer.push("'");
+					writer.push(&new_value.replace('\'', "''"));
+					writer.push("'");
+				}
+				TypeOperation::AddConstraint(name, check) => {
+					writer.push_keyword("ADD CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(name, |s| self.escape_iden(s));
+					writer.push_space();
+					writer.push(check);
+				}
+				TypeOperation::DropConstraint(name, if_exists) => {
+					writer.push_keyword("DROP CONSTRAINT");
+					if *if_exists {
+						writer.push_space();
+						writer.push_keyword("IF EXISTS");
+					}
+					writer.push_space();
+					writer.push_identifier(name, |s| self.escape_iden(s));
+				}
+				TypeOperation::SetDefault(value) => {
+					writer.push_keyword("SET DEFAULT");
+					writer.push_space();
+					writer.push(value);
+				}
+				TypeOperation::DropDefault => {
+					writer.push_keyword("DROP DEFAULT");
+				}
+				TypeOperation::SetNotNull => {
+					writer.push_keyword("SET NOT NULL");
+				}
+				TypeOperation::DropNotNull => {
+					writer.push_keyword("DROP NOT NULL");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_type(&self, stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("DROP TYPE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Type name
+		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
 	}
 }
 
@@ -4954,6 +6432,893 @@ mod tests {
 
 		let (sql, values) = builder.build_drop_trigger(&stmt);
 		assert_eq!(sql, r#"DROP TRIGGER "audit_log" ON "users" CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE FUNCTION tests
+	#[test]
+	fn test_create_function_basic() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("integer")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE FUNCTION "my_func"() RETURNS integer LANGUAGE SQL AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_or_replace() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.or_replace()
+			.returns("integer")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE OR REPLACE FUNCTION "my_func"() RETURNS integer LANGUAGE SQL AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_with_parameters() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("add_numbers")
+			.add_parameter("a", "integer")
+			.add_parameter("b", "integer")
+			.returns("integer")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT $1 + $2");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE FUNCTION "add_numbers"("a" integer, "b" integer) RETURNS integer LANGUAGE SQL AS $$SELECT $1 + $2$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_with_behavior() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("integer")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE FUNCTION "my_func"() RETURNS integer LANGUAGE SQL IMMUTABLE AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_with_security() {
+		use crate::types::function::{FunctionLanguage, FunctionSecurity};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("integer")
+			.language(FunctionLanguage::Sql)
+			.security(FunctionSecurity::Definer)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE FUNCTION "my_func"() RETURNS integer LANGUAGE SQL SECURITY DEFINER AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_plpgsql() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("increment")
+			.add_parameter("val", "integer")
+			.returns("integer")
+			.language(FunctionLanguage::PlPgSql)
+			.body("BEGIN RETURN val + 1; END;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE FUNCTION "increment"("val" integer) RETURNS integer LANGUAGE PLPGSQL AS $$BEGIN RETURN val + 1; END;$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_all_options() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("complex_func")
+			.or_replace()
+			.add_parameter("a", "integer")
+			.add_parameter("b", "text")
+			.returns("integer")
+			.language(FunctionLanguage::PlPgSql)
+			.behavior(FunctionBehavior::Stable)
+			.security(FunctionSecurity::Definer)
+			.body("BEGIN RETURN a + LENGTH(b); END;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE OR REPLACE FUNCTION "complex_func"("a" integer, "b" text) RETURNS integer LANGUAGE PLPGSQL STABLE SECURITY DEFINER AS $$BEGIN RETURN a + LENGTH(b); END;$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	// ALTER FUNCTION tests
+	#[test]
+	fn test_alter_function_rename_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").rename_to("new_func");
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, r#"ALTER FUNCTION "my_func" RENAME TO "new_func""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_owner_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").owner_to("new_owner");
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, r#"ALTER FUNCTION "my_func" OWNER TO "new_owner""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_set_schema() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").set_schema("new_schema");
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, r#"ALTER FUNCTION "my_func" SET SCHEMA "new_schema""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_set_behavior_immutable() {
+		use crate::types::function::FunctionBehavior;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func")
+			.set_behavior(FunctionBehavior::Immutable);
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, r#"ALTER FUNCTION "my_func" IMMUTABLE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_set_security_definer() {
+		use crate::types::function::FunctionSecurity;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").set_security(FunctionSecurity::Definer);
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, r#"ALTER FUNCTION "my_func" SECURITY DEFINER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_with_parameters() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func")
+			.add_parameter("a", "integer")
+			.add_parameter("b", "text")
+			.rename_to("new_func");
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER FUNCTION "my_func"("a" integer, "b" text) RENAME TO "new_func""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	// DROP FUNCTION tests
+	#[test]
+	fn test_drop_function_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func");
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, r#"DROP FUNCTION "my_func""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_function_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func").if_exists();
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, r#"DROP FUNCTION IF EXISTS "my_func""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_function_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func").cascade();
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, r#"DROP FUNCTION "my_func" CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_function_with_parameters() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func")
+			.add_parameter("", "integer")
+			.add_parameter("", "text");
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, r#"DROP FUNCTION "my_func"(integer, text)"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_function_all_options() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func")
+			.if_exists()
+			.add_parameter("", "integer")
+			.cascade();
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, r#"DROP FUNCTION IF EXISTS "my_func"(integer) CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	// Procedure tests
+	#[test]
+	fn test_create_procedure_basic() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE PROCEDURE "my_proc"() LANGUAGE SQL AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_or_replace() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.or_replace()
+			.language(FunctionLanguage::PlPgSql)
+			.body("BEGIN SELECT 1; END;");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE OR REPLACE PROCEDURE "my_proc"() LANGUAGE PLPGSQL AS $$BEGIN SELECT 1; END;$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_parameters() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.add_parameter("a", "integer")
+			.add_parameter("b", "text")
+			.language(FunctionLanguage::PlPgSql)
+			.body("BEGIN INSERT INTO log VALUES (a, b); END;");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE PROCEDURE "my_proc"("a" integer, "b" text) LANGUAGE PLPGSQL AS $$BEGIN INSERT INTO log VALUES (a, b); END;$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_behavior() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE PROCEDURE "my_proc"() LANGUAGE SQL IMMUTABLE AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_security() {
+		use crate::types::function::{FunctionLanguage, FunctionSecurity};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.security(FunctionSecurity::Definer)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE PROCEDURE "my_proc"() LANGUAGE SQL SECURITY DEFINER AS $$SELECT 1$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_all_options() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.or_replace()
+			.add_parameter("a", "integer")
+			.add_parameter("b", "text")
+			.language(FunctionLanguage::PlPgSql)
+			.behavior(FunctionBehavior::Immutable)
+			.security(FunctionSecurity::Definer)
+			.body("BEGIN INSERT INTO log VALUES (a, b); END;");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE OR REPLACE PROCEDURE "my_proc"("a" integer, "b" text) LANGUAGE PLPGSQL IMMUTABLE SECURITY DEFINER AS $$BEGIN INSERT INTO log VALUES (a, b); END;$$"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_rename_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc").rename_to("new_proc");
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(sql, r#"ALTER PROCEDURE "my_proc" RENAME TO "new_proc""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_owner_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc").owner_to("new_owner");
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(sql, r#"ALTER PROCEDURE "my_proc" OWNER TO "new_owner""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_set_schema() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc").set_schema("new_schema");
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(sql, r#"ALTER PROCEDURE "my_proc" SET SCHEMA "new_schema""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_with_signature() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc")
+			.add_parameter("a", "integer")
+			.rename_to("new_proc");
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER PROCEDURE "my_proc"("a" integer) RENAME TO "new_proc""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc");
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, r#"DROP PROCEDURE "my_proc""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").if_exists();
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, r#"DROP PROCEDURE IF EXISTS "my_proc""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").cascade();
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, r#"DROP PROCEDURE "my_proc" CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_with_signature() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").add_parameter("", "integer");
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, r#"DROP PROCEDURE "my_proc"(integer)"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_all_options() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc")
+			.if_exists()
+			.add_parameter("", "integer")
+			.cascade();
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(
+			sql,
+			r#"DROP PROCEDURE IF EXISTS "my_proc"(integer) CASCADE"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE TYPE tests
+	#[test]
+	fn test_create_type_enum() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("mood")
+			.as_enum(vec!["happy".to_string(), "sad".to_string()]);
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(sql, r#"CREATE TYPE "mood" AS ENUM ('happy', 'sad')"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_enum_with_single_quote() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("test").as_enum(vec!["it's".to_string()]);
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(sql, r#"CREATE TYPE "test" AS ENUM ('it''s')"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_composite() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("address").as_composite(vec![
+			("street".to_string(), "text".to_string()),
+			("city".to_string(), "text".to_string()),
+		]);
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "address" AS ("street" text, "city" text)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_domain_minimal() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("positive_int").as_domain("integer".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(sql, r#"CREATE TYPE "positive_int" AS integer"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_domain_with_constraint() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("positive_int")
+			.as_domain("integer".to_string())
+			.constraint("check_positive".to_string(), "CHECK (VALUE > 0)".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "positive_int" AS integer CHECK (VALUE > 0)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_domain_with_default() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("my_domain")
+			.as_domain("integer".to_string())
+			.default_value("0".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(sql, r#"CREATE TYPE "my_domain" AS integer DEFAULT 0"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_domain_not_null() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("my_domain")
+			.as_domain("integer".to_string())
+			.not_null();
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(sql, r#"CREATE TYPE "my_domain" AS integer NOT NULL"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_domain_full() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("positive_int")
+			.as_domain("integer".to_string())
+			.default_value("1".to_string())
+			.constraint("check_positive".to_string(), "CHECK (VALUE > 0)".to_string())
+			.not_null();
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "positive_int" AS integer DEFAULT 1 CHECK (VALUE > 0) NOT NULL"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_range_minimal() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("int_range").as_range("integer".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "int_range" AS RANGE (SUBTYPE = integer)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_range_with_subtype_diff() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("int_range")
+			.as_range("integer".to_string())
+			.subtype_diff("int4range_subdiff".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "int_range" AS RANGE (SUBTYPE = integer, SUBTYPE_DIFF = int4range_subdiff)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_type_range_full() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("int_range")
+			.as_range("integer".to_string())
+			.subtype_diff("int4range_subdiff".to_string())
+			.canonical("int4range_canonical".to_string());
+
+		let (sql, values) = builder.build_create_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TYPE "int_range" AS RANGE (SUBTYPE = integer, SUBTYPE_DIFF = int4range_subdiff, CANONICAL = int4range_canonical)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	// ALTER TYPE tests
+	#[test]
+	fn test_alter_type_rename_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("old_name").rename_to("new_name");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "old_name" RENAME TO "new_name""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_owner_to() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_type").owner_to("new_owner");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_type" OWNER TO "new_owner""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_set_schema() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_type").set_schema("new_schema");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_type" SET SCHEMA "new_schema""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_add_value() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("mood").add_value("excited", None);
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "mood" ADD VALUE 'excited'"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_add_value_before() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("mood").add_value("excited", Some("happy"));
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "mood" ADD VALUE 'excited' BEFORE 'happy'"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_rename_value() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("mood").rename_value("happy", "joyful");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TYPE "mood" RENAME VALUE 'happy' TO 'joyful'"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_add_constraint() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain")
+			.add_constraint("positive_check", "CHECK (VALUE > 0)");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TYPE "my_domain" ADD CONSTRAINT "positive_check" CHECK (VALUE > 0)"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_drop_constraint() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain")
+			.drop_constraint("my_constraint", false);
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TYPE "my_domain" DROP CONSTRAINT "my_constraint""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_drop_constraint_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain")
+			.drop_constraint("my_constraint", true);
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TYPE "my_domain" DROP CONSTRAINT IF EXISTS "my_constraint""#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_set_default() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain").set_default("0");
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_domain" SET DEFAULT 0"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_drop_default() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain").drop_default();
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_domain" DROP DEFAULT"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_set_not_null() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain").set_not_null();
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_domain" SET NOT NULL"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_type_drop_not_null() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("my_domain").drop_not_null();
+
+		let (sql, values) = builder.build_alter_type(&stmt);
+		assert_eq!(sql, r#"ALTER TYPE "my_domain" DROP NOT NULL"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	// DROP TYPE tests
+	#[test]
+	fn test_drop_type_basic() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("my_type");
+
+		let (sql, values) = builder.build_drop_type(&stmt);
+		assert_eq!(sql, r#"DROP TYPE "my_type""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_type_if_exists() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("my_type").if_exists();
+
+		let (sql, values) = builder.build_drop_type(&stmt);
+		assert_eq!(sql, r#"DROP TYPE IF EXISTS "my_type""#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_type_cascade() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("my_type").cascade();
+
+		let (sql, values) = builder.build_drop_type(&stmt);
+		assert_eq!(sql, r#"DROP TYPE "my_type" CASCADE"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_type_restrict() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("my_type").restrict();
+
+		let (sql, values) = builder.build_drop_type(&stmt);
+		assert_eq!(sql, r#"DROP TYPE "my_type" RESTRICT"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_type_all_options() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("my_type").if_exists().cascade();
+
+		let (sql, values) = builder.build_drop_type(&stmt);
+		assert_eq!(sql, r#"DROP TYPE IF EXISTS "my_type" CASCADE"#);
 		assert_eq!(values.len(), 0);
 	}
 }
