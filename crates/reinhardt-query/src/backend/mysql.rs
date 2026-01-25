@@ -5,7 +5,13 @@
 use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
-	query::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement},
+	query::{
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
+		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
+		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
+		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
 };
@@ -839,6 +845,1001 @@ impl QueryBuilder for MySqlQueryBuilder {
 		// RETURNING clause - NOT SUPPORTED in MySQL
 		if stmt.returning.is_some() {
 			panic!("MySQL does not support RETURNING clause.");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_database(
+		&self,
+		stmt: &crate::query::CreateDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE DATABASE
+		writer.push_keyword("CREATE DATABASE");
+
+		// IF NOT EXISTS
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// CHARACTER SET
+		if let Some(charset) = &stmt.character_set {
+			writer.push_keyword("CHARACTER SET");
+			writer.push_space();
+			writer.push_identifier(charset, |s| self.escape_iden(s));
+		}
+
+		// COLLATE
+		if let Some(collate) = &stmt.collate {
+			writer.push_keyword("COLLATE");
+			writer.push_space();
+			writer.push_identifier(collate, |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_database(
+		&self,
+		_stmt: &crate::query::AlterDatabaseStatement,
+	) -> (String, Values) {
+		panic!(
+			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
+		);
+	}
+
+	fn build_drop_database(&self, stmt: &crate::query::DropDatabaseStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP DATABASE
+		writer.push_keyword("DROP DATABASE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE TABLE
+		writer.push("CREATE TABLE");
+		writer.push_space();
+
+		// IF NOT EXISTS clause
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Table name
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.push_space();
+		writer.push("(");
+
+		// Column definitions
+		let mut first = true;
+		for column in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Column name
+			writer.push_identifier(&column.name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+
+			// Column type
+			if let Some(col_type) = &column.column_type {
+				writer.push(&self.column_type_to_sql(col_type));
+			}
+
+			// NOT NULL
+			if column.not_null {
+				writer.push(" NOT NULL");
+			}
+
+			// AUTO_INCREMENT
+			if column.auto_increment {
+				writer.push(" AUTO_INCREMENT");
+			}
+
+			// UNIQUE
+			if column.unique {
+				writer.push(" UNIQUE");
+			}
+
+			// PRIMARY KEY
+			if column.primary_key {
+				writer.push(" PRIMARY KEY");
+			}
+
+			// DEFAULT
+			if let Some(default) = &column.default {
+				writer.push(" DEFAULT ");
+				self.write_simple_expr(&mut writer, default);
+			}
+
+			// CHECK constraint
+			if let Some(check) = &column.check {
+				writer.push(" CHECK (");
+				self.write_simple_expr(&mut writer, check);
+				writer.push(")");
+			}
+
+			// COMMENT
+			if let Some(comment) = &column.comment {
+				writer.push(" COMMENT ");
+				writer.push_value(comment.clone().into(), |_| "?".to_string());
+			}
+		}
+
+		// Table constraints
+		for constraint in &stmt.constraints {
+			writer.push(", ");
+			self.write_table_constraint(&mut writer, constraint);
+		}
+
+		writer.push(")");
+
+		writer.finish()
+	}
+
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// ALTER TABLE table_name
+		writer.push("ALTER TABLE");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// Process operations
+		let mut first = true;
+		for operation in &stmt.operations {
+			if !first {
+				writer.push(",");
+			}
+			first = false;
+			writer.push_space();
+
+			match operation {
+				AlterTableOperation::AddColumn(column_def) => {
+					writer.push("ADD COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if column_def.unique {
+						writer.push(" UNIQUE");
+					}
+					if column_def.auto_increment {
+						writer.push(" AUTO_INCREMENT");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+					if let Some(check) = &column_def.check {
+						writer.push(" CHECK (");
+						self.write_simple_expr(&mut writer, check);
+						writer.push(")");
+					}
+					if let Some(comment) = &column_def.comment {
+						writer.push(" COMMENT ");
+						writer.push_value(comment.clone().into(), |_| "?".to_string());
+					}
+				}
+				AlterTableOperation::DropColumn { name, if_exists } => {
+					writer.push("DROP COLUMN");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameColumn { old, new } => {
+					// MySQL 8.0+ supports RENAME COLUMN
+					writer.push("RENAME COLUMN");
+					writer.push_space();
+					writer.push_identifier(&old.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					writer.push("TO");
+					writer.push_space();
+					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::ModifyColumn(column_def) => {
+					// MySQL uses MODIFY COLUMN instead of ALTER COLUMN
+					writer.push("MODIFY COLUMN");
+					writer.push_space();
+					writer.push_identifier(&column_def.name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+					if let Some(col_type) = &column_def.column_type {
+						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if column_def.not_null {
+						writer.push(" NOT NULL");
+					}
+					if let Some(default) = &column_def.default {
+						writer.push(" DEFAULT ");
+						self.write_simple_expr(&mut writer, default);
+					}
+				}
+				AlterTableOperation::AddConstraint(constraint) => {
+					writer.push("ADD ");
+					self.write_table_constraint(&mut writer, constraint);
+				}
+				AlterTableOperation::DropConstraint { name, if_exists } => {
+					writer.push("DROP CONSTRAINT");
+					writer.push_space();
+					if *if_exists {
+						writer.push("IF EXISTS");
+						writer.push_space();
+					}
+					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+				}
+				AlterTableOperation::RenameTable(new_name) => {
+					writer.push("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP TABLE
+		writer.push("DROP TABLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// Note: MySQL does not support CASCADE/RESTRICT for DROP TABLE
+
+		writer.finish()
+	}
+
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// CREATE UNIQUE INDEX IF NOT EXISTS
+		writer.push("CREATE");
+		writer.push_space();
+		if stmt.unique {
+			writer.push_keyword("UNIQUE");
+			writer.push_space();
+		}
+		writer.push_keyword("INDEX");
+		writer.push_space();
+
+		// IF NOT EXISTS (MySQL 5.7.4+)
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+			writer.push_space();
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		writer.push_space();
+		if let Some(table) = &stmt.table {
+			self.write_table_ref(&mut writer, table);
+		}
+		writer.push_space();
+
+		// (column1 ASC, column2 DESC, ...)
+		writer.push("(");
+		let mut first = true;
+		for col in &stmt.columns {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(order) = &col.order {
+				writer.push_space();
+				match order {
+					crate::types::Order::Asc => writer.push("ASC"),
+					crate::types::Order::Desc => writer.push("DESC"),
+				}
+			}
+		}
+		writer.push(")");
+
+		// USING method (MySQL: BTREE, HASH, FULLTEXT)
+		if let Some(method) = &stmt.using {
+			writer.push_space();
+			writer.push_keyword("USING");
+			writer.push_space();
+			writer.push(self.index_method_to_sql(method));
+		}
+
+		// WHERE clause is NOT supported in MySQL - ignore stmt.where
+
+		writer.finish()
+	}
+
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP INDEX index_name ON table_name
+		writer.push("DROP INDEX");
+		writer.push_space();
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// ON table_name (required in MySQL)
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			writer.push_keyword("ON");
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// MySQL does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("MySQL does not support MATERIALIZED views");
+		}
+
+		writer.push("CREATE");
+
+		if stmt.or_replace {
+			writer.push_keyword("OR REPLACE");
+		}
+
+		writer.push_keyword("VIEW");
+
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		if !stmt.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(stmt.columns.iter(), ", ", |w, col| {
+				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		writer.push_keyword("AS");
+
+		if let Some(select) = &stmt.select {
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push_space();
+			writer.push(&select_sql);
+			writer.append_values(&select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// MySQL does not support MATERIALIZED views
+		if stmt.materialized {
+			panic!("MySQL does not support MATERIALIZED views");
+		}
+
+		// MySQL does not support CASCADE/RESTRICT for DROP VIEW
+		if stmt.cascade || stmt.restrict {
+			panic!("MySQL does not support CASCADE/RESTRICT for DROP VIEW");
+		}
+
+		writer.push("DROP");
+		writer.push_keyword("VIEW");
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		writer.push_space();
+		writer.push_list(stmt.names.iter(), ", ", |w, name| {
+			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		});
+
+		writer.finish()
+	}
+
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
+		// MySQL does not support truncating multiple tables in a single statement
+		if stmt.tables.len() > 1 {
+			panic!(
+				"MySQL does not support truncating multiple tables in a single TRUNCATE statement"
+			);
+		}
+
+		// MySQL does not support RESTART IDENTITY, CASCADE, or RESTRICT for TRUNCATE TABLE
+		if stmt.restart_identity {
+			panic!("MySQL does not support RESTART IDENTITY for TRUNCATE TABLE");
+		}
+		if stmt.cascade {
+			panic!("MySQL does not support CASCADE for TRUNCATE TABLE");
+		}
+		if stmt.restrict {
+			panic!("MySQL does not support RESTRICT for TRUNCATE TABLE");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// TRUNCATE TABLE
+		writer.push("TRUNCATE TABLE");
+		writer.push_space();
+
+		// Table name (single table only)
+		if let Some(table_ref) = stmt.tables.first() {
+			self.write_table_ref(&mut writer, table_ref);
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerOrder, TriggerScope, TriggerTiming};
+
+		// MySQL only supports a single event per trigger
+		if stmt.events.len() > 1 {
+			panic!("MySQL does not support multiple events in a single trigger");
+		}
+
+		// MySQL does not support INSTEAD OF triggers
+		if matches!(stmt.timing, Some(TriggerTiming::InsteadOf)) {
+			panic!("MySQL does not support INSTEAD OF triggers");
+		}
+
+		// MySQL only supports FOR EACH ROW
+		if matches!(stmt.scope, Some(TriggerScope::Statement)) {
+			panic!("MySQL only supports FOR EACH ROW triggers");
+		}
+
+		// MySQL does not support WHEN clause
+		if stmt.when_condition.is_some() {
+			panic!("MySQL does not support WHEN clause in triggers");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE TRIGGER
+		writer.push("CREATE TRIGGER");
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// Timing: BEFORE / AFTER
+		if let Some(timing) = stmt.timing {
+			writer.push_space();
+			match timing {
+				TriggerTiming::Before => writer.push("BEFORE"),
+				TriggerTiming::After => writer.push("AFTER"),
+				TriggerTiming::InsteadOf => unreachable!(), // Already checked above
+			}
+		}
+
+		// Event: INSERT / UPDATE / DELETE (single event only)
+		if let Some(event) = stmt.events.first() {
+			writer.push_space();
+			match event {
+				TriggerEvent::Insert => writer.push("INSERT"),
+				TriggerEvent::Update { columns } => {
+					writer.push("UPDATE");
+					if columns.is_some() {
+						panic!("MySQL does not support UPDATE OF columns syntax");
+					}
+				}
+				TriggerEvent::Delete => writer.push("DELETE"),
+			}
+		}
+
+		// ON table
+		writer.push_keyword("ON");
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+		}
+
+		// FOR EACH ROW
+		writer.push_keyword("FOR EACH ROW");
+
+		// FOLLOWS / PRECEDES (MySQL-specific)
+		if let Some(order) = &stmt.order {
+			writer.push_space();
+			match order {
+				TriggerOrder::Follows(trigger_name) => {
+					writer.push("FOLLOWS ");
+					writer.push_identifier(trigger_name.as_str(), |s| self.escape_iden(s));
+				}
+				TriggerOrder::Precedes(trigger_name) => {
+					writer.push("PRECEDES ");
+					writer.push_identifier(trigger_name.as_str(), |s| self.escape_iden(s));
+				}
+			}
+		}
+
+		// BEGIN ... END block
+		if let Some(body) = &stmt.body {
+			writer.push_space();
+			match body {
+				TriggerBody::Single(sql) => {
+					writer.push("BEGIN ");
+					writer.push(sql.as_str());
+					writer.push("; END");
+				}
+				TriggerBody::Multiple(statements) => {
+					writer.push("BEGIN ");
+					for (i, stmt) in statements.iter().enumerate() {
+						if i > 0 {
+							writer.push(" ");
+						}
+						writer.push(stmt);
+						writer.push(";");
+					}
+					writer.push(" END");
+				}
+				TriggerBody::PostgresFunction(_) => {
+					panic!("MySQL does not support EXECUTE FUNCTION syntax");
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values) {
+		// MySQL requires table name for DROP TRIGGER
+		if stmt.table.is_none() {
+			panic!("MySQL requires table name (ON table) for DROP TRIGGER");
+		}
+
+		// MySQL does not support CASCADE/RESTRICT
+		if stmt.cascade || stmt.restrict {
+			panic!("MySQL does not support CASCADE/RESTRICT for DROP TRIGGER");
+		}
+
+		let mut writer = SqlWriter::new();
+
+		// DROP TRIGGER
+		writer.push("DROP TRIGGER");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// table.trigger_name (MySQL syntax)
+		if let Some(table) = &stmt.table {
+			writer.push_space();
+			self.write_table_ref(&mut writer, table);
+			writer.push(".");
+		}
+
+		// Trigger name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_index(&self, stmt: &AlterIndexStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		// MySQL does not support SET TABLESPACE for indexes
+		if stmt.set_tablespace.is_some() {
+			panic!("MySQL does not support SET TABLESPACE for indexes");
+		}
+
+		// MySQL requires table name for RENAME INDEX
+		let table = stmt
+			.table
+			.as_ref()
+			.expect("MySQL requires table name for ALTER INDEX RENAME");
+
+		// MySQL only supports RENAME INDEX via ALTER TABLE
+		if let Some(ref new_name) = stmt.rename_to {
+			let mut writer = SqlWriter::new();
+
+			// ALTER TABLE
+			writer.push_keyword("ALTER TABLE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+
+			// RENAME INDEX
+			writer.push_space();
+			writer.push_keyword("RENAME INDEX");
+			writer.push_space();
+
+			// Old index name
+			if let Some(ref name) = stmt.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+			} else {
+				panic!("ALTER INDEX requires an index name");
+			}
+
+			// TO new_name
+			writer.push_space();
+			writer.push_keyword("TO");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| self.escape_iden(s));
+
+			writer.finish()
+		} else {
+			panic!("MySQL ALTER INDEX only supports RENAME operation");
+		}
+	}
+
+	fn build_reindex(&self, _stmt: &ReindexStatement) -> (String, Values) {
+		panic!("MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead.");
+	}
+
+	fn build_optimize_table(&self, stmt: &OptimizeTableStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// OPTIMIZE
+		writer.push_keyword("OPTIMIZE");
+
+		// NO_WRITE_TO_BINLOG or LOCAL
+		if stmt.no_write_to_binlog {
+			writer.push_keyword("NO_WRITE_TO_BINLOG");
+		} else if stmt.local {
+			writer.push_keyword("LOCAL");
+		}
+
+		// TABLE
+		writer.push_keyword("TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		writer.finish()
+	}
+
+	fn build_repair_table(&self, stmt: &RepairTableStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// REPAIR
+		writer.push_keyword("REPAIR");
+
+		// NO_WRITE_TO_BINLOG or LOCAL
+		if stmt.no_write_to_binlog {
+			writer.push_keyword("NO_WRITE_TO_BINLOG");
+		} else if stmt.local {
+			writer.push_keyword("LOCAL");
+		}
+
+		// TABLE
+		writer.push_keyword("TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		// Options
+		if stmt.quick {
+			writer.push_keyword("QUICK");
+		}
+		if stmt.extended {
+			writer.push_keyword("EXTENDED");
+		}
+		if stmt.use_frm {
+			writer.push_keyword("USE_FRM");
+		}
+
+		writer.finish()
+	}
+
+	fn build_check_table(&self, stmt: &CheckTableStatement) -> (String, Values) {
+		use crate::types::{CheckTableOption, Iden};
+
+		let mut writer = SqlWriter::new();
+
+		// CHECK TABLE
+		writer.push_keyword("CHECK TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		// Option
+		match stmt.option {
+			CheckTableOption::ForUpgrade => {
+				writer.push_keyword("FOR UPGRADE");
+			}
+			CheckTableOption::Quick => {
+				writer.push_keyword("QUICK");
+			}
+			CheckTableOption::Fast => {
+				writer.push_keyword("FAST");
+			}
+			CheckTableOption::Medium => {
+				writer.push_keyword("MEDIUM");
+			}
+			CheckTableOption::Extended => {
+				writer.push_keyword("EXTENDED");
+			}
+			CheckTableOption::Changed => {
+				writer.push_keyword("CHANGED");
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_function(
+		&self,
+		stmt: &crate::query::CreateFunctionStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE FUNCTION
+		writer.push_keyword("CREATE FUNCTION");
+
+		// Function name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Parameters (param1 type1, param2 type2, ...)
+		writer.push("(");
+		let mut first = true;
+		for param in &stmt.function_def.parameters {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Parameter name (required in MySQL)
+			if let Some(name) = &param.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+				writer.push(" ");
+			}
+
+			// Parameter type
+			if let Some(param_type) = &param.param_type {
+				writer.push(param_type);
+			}
+		}
+		writer.push(")");
+
+		// RETURNS type
+		if let Some(returns) = &stmt.function_def.returns {
+			writer.push_keyword("RETURNS");
+			writer.push_space();
+			writer.push(returns);
+		}
+
+		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
+		// Map PostgreSQL behavior to MySQL:
+		// - IMMUTABLE -> DETERMINISTIC
+		// - STABLE/VOLATILE -> NOT DETERMINISTIC
+		if let Some(behavior) = &stmt.function_def.behavior {
+			writer.push_space();
+			match behavior {
+				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+					writer.push_keyword("NOT DETERMINISTIC")
+				}
+			}
+		}
+
+		// Language (MySQL only supports SQL for user-defined functions)
+		if let Some(language) = &stmt.function_def.language {
+			match language {
+				FunctionLanguage::Sql => {
+					// SQL is the default for MySQL, no need to specify
+				}
+				_ => {
+					// MySQL only supports SQL language for user-defined functions
+					panic!("MySQL only supports SQL language for user-defined functions");
+				}
+			}
+		}
+
+		// Security (SQL SECURITY DEFINER/INVOKER)
+		if let Some(security) = &stmt.function_def.security {
+			writer.push_space();
+			match security {
+				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+			}
+		}
+
+		// Function body (BEGIN...END)
+		if let Some(body) = &stmt.function_def.body {
+			writer.push_space();
+			writer.push("BEGIN");
+			writer.push_space();
+			writer.push(body);
+			writer.push_space();
+			writer.push("END");
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_function(
+		&self,
+		stmt: &crate::query::AlterFunctionStatement,
+	) -> (String, Values) {
+		use crate::query::function::alter_function::AlterFunctionOperation;
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER FUNCTION
+		writer.push_keyword("ALTER FUNCTION");
+
+		// Function name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// ALTER FUNCTION operation
+		if let Some(operation) = &stmt.operation {
+			writer.push_space();
+			match operation {
+				AlterFunctionOperation::RenameTo(_) => {
+					// MySQL doesn't support RENAME TO for functions directly
+					panic!(
+						"MySQL does not support RENAME TO for functions. Use DROP + CREATE instead."
+					);
+				}
+				AlterFunctionOperation::OwnerTo(_) => {
+					// MySQL doesn't have OWNER TO concept
+					panic!("MySQL does not support OWNER TO for functions.");
+				}
+				AlterFunctionOperation::SetSchema(_) => {
+					// MySQL doesn't have schemas in the same way as PostgreSQL
+					panic!("MySQL does not support SET SCHEMA for functions.");
+				}
+				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
+					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+						writer.push_keyword("NOT DETERMINISTIC")
+					}
+				},
+				AlterFunctionOperation::SetSecurity(security) => match security {
+					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+				},
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP FUNCTION
+		writer.push_keyword("DROP FUNCTION");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Function name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Note: MySQL doesn't support CASCADE for DROP FUNCTION
+		if stmt.cascade {
+			panic!("MySQL does not support CASCADE for DROP FUNCTION");
+		}
+
+		// Note: MySQL doesn't require parameter signature for DROP FUNCTION
+		// (function names must be unique within a database)
+		if !stmt.parameters.is_empty() {
+			// MySQL doesn't support parameters in DROP FUNCTION
+			// Function overloading is not supported in MySQL
+			panic!("MySQL does not support function overloading or parameters in DROP FUNCTION");
 		}
 
 		writer.finish()
@@ -1707,6 +2708,547 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+
+	fn build_create_schema(&self, _stmt: &crate::query::CreateSchemaStatement) -> (String, Values) {
+		panic!("MySQL does not support CREATE SCHEMA. Use CREATE DATABASE instead.");
+	}
+
+	fn build_alter_schema(&self, _stmt: &crate::query::AlterSchemaStatement) -> (String, Values) {
+		panic!("MySQL does not support ALTER SCHEMA. Use ALTER DATABASE instead.");
+	}
+
+	fn build_drop_schema(&self, _stmt: &crate::query::DropSchemaStatement) -> (String, Values) {
+		panic!("MySQL does not support DROP SCHEMA. Use DROP DATABASE instead.");
+	}
+
+	fn build_create_sequence(
+		&self,
+		_stmt: &crate::query::CreateSequenceStatement,
+	) -> (String, Values) {
+		panic!("MySQL does not support sequences. Use AUTO_INCREMENT instead.");
+	}
+
+	fn build_alter_sequence(
+		&self,
+		_stmt: &crate::query::AlterSequenceStatement,
+	) -> (String, Values) {
+		panic!("MySQL does not support sequences.");
+	}
+
+	fn build_drop_sequence(&self, _stmt: &crate::query::DropSequenceStatement) -> (String, Values) {
+		panic!("MySQL does not support sequences.");
+	}
+
+	fn build_comment(&self, _stmt: &crate::query::CommentStatement) -> (String, Values) {
+		panic!(
+			"MySQL does not support COMMENT ON statement. Use table/column COMMENT attribute instead."
+		);
+	}
+	//
+	// 	fn build_alter_database(
+	// 		&self,
+	// 		_stmt: &crate::query::AlterDatabaseStatement,
+	// 	) -> (String, Values) {
+	// 		panic!(
+	// 			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
+	// 		);
+	// 	}
+	//
+	// 	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+	// 		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+	// 	}
+	//
+	// 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+	// 		panic!("MySQL does not support VACUUM. Use OPTIMIZE TABLE instead.");
+	// 	}
+	//
+	// 	fn build_optimize_table(&self, stmt: &crate::query::OptimizeTableStatement) -> (String, Values) {
+	// 		let mut writer = SqlWriter::new();
+	//
+	// 		writer.push("OPTIMIZE TABLE ");
+	//
+	// 		// Write table names
+	// 		for (i, table) in stmt.tables.iter().enumerate() {
+	// 			if i > 0 {
+	// 				writer.push(", ");
+	// 			}
+	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+	// 		}
+	//
+	// 		(writer.result(), Values::default())
+	// 	}
+	//
+	// 	fn build_repair_table(&self, stmt: &crate::query::RepairTableStatement) -> (String, Values) {
+	// 		let mut writer = SqlWriter::new();
+	//
+	// 		writer.push("REPAIR TABLE ");
+	//
+	// 		// Write table names
+	// 		for (i, table) in stmt.tables.iter().enumerate() {
+	// 			if i > 0 {
+	// 				writer.push(", ");
+	// 			}
+	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+	// 		}
+	//
+	// 		// Add options
+	// 		if stmt.quick {
+	// 			writer.push(" QUICK");
+	// 		}
+	// 		if stmt.extended {
+	// 			writer.push(" EXTENDED");
+	// 		}
+	// 		if stmt.use_frm {
+	// 			writer.push(" USE_FRM");
+	// 		}
+	//
+	// 		(writer.result(), Values::default())
+	// 	}
+	//
+	// 	fn build_check_table(&self, stmt: &crate::query::CheckTableStatement) -> (String, Values) {
+	// 		let mut writer = SqlWriter::new();
+	//
+	// 		writer.push("CHECK TABLE ");
+	//
+	// 		// Write table names
+	// 		for (i, table) in stmt.tables.iter().enumerate() {
+	// 			if i > 0 {
+	// 				writer.push(", ");
+	// 			}
+	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+	// 		}
+	//
+	// 		// Add options
+	// 		if stmt.quick {
+	// 			writer.push(" QUICK");
+	// 		}
+	// 		if stmt.fast {
+	// 			writer.push(" FAST");
+	// 		}
+	// 		if stmt.medium {
+	// 			writer.push(" MEDIUM");
+	// 		}
+	// 		if stmt.extended {
+	// 			writer.push(" EXTENDED");
+	// 		}
+	// 		if stmt.changed {
+	// 			writer.push(" CHANGED");
+	// 		}
+	//
+	// 		(writer.result(), Values::default())
+	// 	}
+	//
+	// 	fn build_create_materialized_view(
+	// 		&self,
+	// 		_stmt: &crate::query::CreateMaterializedViewStatement,
+	// 	) -> (String, Values) {
+	// 		panic!(
+	// 			"MySQL does not support materialized views natively. Use regular views or tables with triggers."
+	// 		);
+	// 	}
+	//
+	// 	fn build_alter_materialized_view(
+	// 		&self,
+	// 		_stmt: &crate::query::AlterMaterializedViewStatement,
+	// 	) -> (String, Values) {
+	// 		panic!("MySQL does not support materialized views.");
+	// 	}
+	//
+	// 	fn build_drop_materialized_view(
+	// 		&self,
+	// 		_stmt: &crate::query::DropMaterializedViewStatement,
+	// 	) -> (String, Values) {
+	// 		panic!("MySQL does not support materialized views.");
+	// 	}
+	//
+	// 	fn build_refresh_materialized_view(
+	// 		&self,
+	// 		_stmt: &crate::query::RefreshMaterializedViewStatement,
+	// 	) -> (String, Values) {
+	// 		panic!("MySQL does not support materialized views.");
+	// 	}
+	//
+	fn build_create_procedure(
+		&self,
+		stmt: &crate::query::CreateProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE PROCEDURE
+		writer.push_keyword("CREATE PROCEDURE");
+
+		// Procedure name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Parameters (param1 type1, param2 type2, ...)
+		writer.push("(");
+		let mut first = true;
+		for param in &stmt.procedure_def.parameters {
+			if !first {
+				writer.push(", ");
+			}
+			first = false;
+
+			// Parameter mode (IN, OUT, INOUT)
+			// MySQL doesn't support VARIADIC
+			if let Some(mode) = &param.mode {
+				use crate::types::function::ParameterMode;
+				match mode {
+					ParameterMode::In => writer.push("IN "),
+					ParameterMode::Out => writer.push("OUT "),
+					ParameterMode::InOut => writer.push("INOUT "),
+					ParameterMode::Variadic => {
+						panic!("MySQL does not support VARIADIC parameters");
+					}
+				}
+			}
+
+			// Parameter name (required in MySQL)
+			if let Some(name) = &param.name {
+				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+				writer.push(" ");
+			}
+
+			// Parameter type
+			if let Some(param_type) = &param.param_type {
+				writer.push(param_type);
+			}
+		}
+		writer.push(")");
+
+		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
+		// Map PostgreSQL behavior to MySQL:
+		// - IMMUTABLE -> DETERMINISTIC
+		// - STABLE/VOLATILE -> NOT DETERMINISTIC
+		if let Some(behavior) = &stmt.procedure_def.behavior {
+			writer.push_space();
+			match behavior {
+				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+					writer.push_keyword("NOT DETERMINISTIC")
+				}
+			}
+		}
+
+		// Language (MySQL only supports SQL for user-defined procedures)
+		if let Some(language) = &stmt.procedure_def.language {
+			match language {
+				FunctionLanguage::Sql => {
+					// SQL is the default for MySQL, no need to specify
+				}
+				_ => {
+					// MySQL only supports SQL language for user-defined procedures
+					panic!("MySQL only supports SQL language for user-defined procedures");
+				}
+			}
+		}
+
+		// Security (SQL SECURITY DEFINER/INVOKER)
+		if let Some(security) = &stmt.procedure_def.security {
+			writer.push_space();
+			match security {
+				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+			}
+		}
+
+		// Procedure body (BEGIN...END)
+		if let Some(body) = &stmt.procedure_def.body {
+			writer.push_space();
+			writer.push("BEGIN");
+			writer.push_space();
+			writer.push(body);
+			writer.push_space();
+			writer.push("END");
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_procedure(
+		&self,
+		stmt: &crate::query::AlterProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::{
+			Iden,
+			function::{FunctionBehavior, FunctionSecurity},
+			procedure::ProcedureOperation,
+		};
+
+		let mut writer = SqlWriter::new();
+
+		// ALTER PROCEDURE
+		writer.push_keyword("ALTER PROCEDURE");
+
+		// Procedure name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// ALTER PROCEDURE operation
+		if let Some(operation) = &stmt.operation {
+			writer.push_space();
+			match operation {
+				ProcedureOperation::RenameTo(_) => {
+					// MySQL doesn't support RENAME TO for procedures directly
+					panic!(
+						"MySQL does not support RENAME TO for procedures. Use DROP + CREATE instead."
+					);
+				}
+				ProcedureOperation::OwnerTo(_) => {
+					// MySQL doesn't have OWNER TO concept
+					panic!("MySQL does not support OWNER TO for procedures.");
+				}
+				ProcedureOperation::SetSchema(_) => {
+					// MySQL doesn't have schemas in the same way as PostgreSQL
+					panic!("MySQL does not support SET SCHEMA for procedures.");
+				}
+				ProcedureOperation::SetBehavior(behavior) => match behavior {
+					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+						writer.push_keyword("NOT DETERMINISTIC")
+					}
+				},
+				ProcedureOperation::SetSecurity(security) => match security {
+					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+				},
+			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_procedure(
+		&self,
+		stmt: &crate::query::DropProcedureStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP PROCEDURE
+		writer.push_keyword("DROP PROCEDURE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Procedure name
+		if let Some(name) = &stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Note: MySQL doesn't support CASCADE for DROP PROCEDURE
+		if stmt.cascade {
+			panic!("MySQL does not support CASCADE for DROP PROCEDURE");
+		}
+
+		// Note: MySQL doesn't require parameter signature for DROP PROCEDURE
+		// (procedure names must be unique within a database)
+		if !stmt.parameters.is_empty() {
+			// MySQL doesn't support parameters in DROP PROCEDURE
+			// Procedure overloading is not supported in MySQL
+			panic!("MySQL does not support procedure overloading or parameters in DROP PROCEDURE");
+		}
+
+		writer.finish()
+	}
+	//
+	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+		panic!("CREATE TYPE not supported. Use ENUM column type.");
+	}
+
+	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+		panic!("ALTER TYPE not supported. Use ENUM column type.");
+	}
+
+	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+		panic!("DROP TYPE not supported. Use ENUM column type.");
+	}
+}
+
+// Helper methods for CREATE TABLE
+impl MySqlQueryBuilder {
+	/// Convert ColumnType to MySQL SQL type string
+	fn column_type_to_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(len) => format!("VARCHAR({})", len.unwrap_or(255)),
+			Text => "TEXT".to_string(),
+			TinyInteger => "TINYINT".to_string(),
+			SmallInteger => "SMALLINT".to_string(),
+			Integer => "INT".to_string(),
+			BigInteger => "BIGINT".to_string(),
+			Float => "FLOAT".to_string(),
+			Double => "DOUBLE".to_string(),
+			Decimal(precision) => {
+				if let Some((p, s)) = precision {
+					format!("DECIMAL({}, {})", p, s)
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			Boolean => "TINYINT(1)".to_string(),
+			Date => "DATE".to_string(),
+			Time => "TIME".to_string(),
+			DateTime => "DATETIME".to_string(),
+			Timestamp => "TIMESTAMP".to_string(),
+			TimestampWithTimeZone => "TIMESTAMP".to_string(), // MySQL TIMESTAMP handles timezone
+			Binary(len) => {
+				if let Some(l) = len {
+					format!("BLOB({})", l)
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			VarBinary(len) => format!("VARBINARY({})", len),
+			Blob => "BLOB".to_string(),
+			Uuid => "CHAR(36)".to_string(), // UUID as CHAR(36) in MySQL
+			Json => "JSON".to_string(),
+			JsonBinary => "JSON".to_string(), // MySQL JSON is binary
+			Array(_) => "JSON".to_string(),   // MySQL doesn't have ARRAY, use JSON
+			Custom(name) => name.clone(),
+		}
+	}
+
+	/// Write table constraint to SQL writer
+	fn write_table_constraint(
+		&self,
+		writer: &mut SqlWriter,
+		constraint: &crate::types::TableConstraint,
+	) {
+		use crate::types::TableConstraint;
+		use TableConstraint::*;
+
+		match constraint {
+			PrimaryKey { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("PRIMARY KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			ForeignKey {
+				name,
+				columns,
+				ref_table,
+				ref_columns,
+				on_delete,
+				on_update,
+			} => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("FOREIGN KEY");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+				writer.push_space();
+				writer.push_keyword("REFERENCES");
+				writer.push_space();
+				self.write_table_ref(writer, ref_table);
+				writer.push(" (");
+				writer.push_list(ref_columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+
+				if let Some(action) = on_delete {
+					writer.push_space();
+					writer.push_keyword("ON DELETE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+
+				if let Some(action) = on_update {
+					writer.push_space();
+					writer.push_keyword("ON UPDATE");
+					writer.push_space();
+					writer.push_keyword(self.foreign_key_action_to_sql(action));
+				}
+			}
+			Unique { name, columns } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("UNIQUE");
+				writer.push(" (");
+				writer.push_list(columns, ", ", |w, col| {
+					w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				});
+				writer.push(")");
+			}
+			Check { name, expr } => {
+				if let Some(constraint_name) = name {
+					writer.push_keyword("CONSTRAINT");
+					writer.push_space();
+					writer.push_identifier(&constraint_name.to_string(), |s| self.escape_iden(s));
+					writer.push_space();
+				}
+				writer.push_keyword("CHECK");
+				writer.push(" (");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Convert ForeignKeyAction to SQL keyword
+	fn foreign_key_action_to_sql(&self, action: &crate::types::ForeignKeyAction) -> &'static str {
+		use crate::types::ForeignKeyAction;
+		use ForeignKeyAction::*;
+
+		match action {
+			Cascade => "CASCADE",
+			Restrict => "RESTRICT",
+			SetNull => "SET NULL",
+			SetDefault => "SET DEFAULT",
+			NoAction => "NO ACTION",
+		}
+	}
+
+	fn index_method_to_sql(&self, method: &crate::query::IndexMethod) -> &'static str {
+		use crate::query::IndexMethod;
+		match method {
+			IndexMethod::BTree => "BTREE",
+			IndexMethod::Hash => "HASH",
+			IndexMethod::FullText => "FULLTEXT",
+			// MySQL doesn't support GIST, GIN, BRIN, Spatial - use BTREE as default
+			IndexMethod::Gist | IndexMethod::Gin | IndexMethod::Brin | IndexMethod::Spatial => {
+				"BTREE"
+			}
+		}
 	}
 }
 
@@ -3843,6 +5385,1430 @@ mod tests {
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("`price` BETWEEN ? AND ?"));
 		assert_eq!(values.len(), 2);
+	}
+
+	// DDL Tests
+
+	#[test]
+	fn test_drop_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE IF EXISTS `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_table_multiple() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_drop_table(&stmt);
+		assert_eq!(sql, "DROP TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").table("users");
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		assert_eq!(sql, "DROP INDEX `idx_email` ON `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_index_if_exists_not_supported() {
+		// Note: MySQL supports IF EXISTS for DROP INDEX, but showing it works
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_index();
+		stmt.name("idx_email").table("users").if_exists();
+
+		let (sql, values) = builder.build_drop_index(&stmt);
+		// Note: Our implementation doesn't add IF EXISTS for MySQL (not standard)
+		assert_eq!(sql, "DROP INDEX `idx_email` ON `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CREATE TABLE tests
+
+	#[test]
+	fn test_create_table_basic() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "name".into_iden(),
+			column_type: Some(ColumnType::String(Some(255))),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CREATE TABLE `users`"));
+		assert!(sql.contains("`id` INT"));
+		assert!(sql.contains("`name` VARCHAR(255)"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_auto_increment() {
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: true,
+			default: None,
+			check: None,
+			comment: None,
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("`id` INT AUTO_INCREMENT PRIMARY KEY"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_foreign_key() {
+		use crate::types::{
+			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
+		};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("posts");
+		stmt.columns.push(ColumnDef {
+			name: "id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: true,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.columns.push(ColumnDef {
+			name: "user_id".into_iden(),
+			column_type: Some(ColumnType::Integer),
+			not_null: false,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: None,
+			check: None,
+			comment: None,
+		});
+		stmt.constraints.push(TableConstraint::ForeignKey {
+			name: Some("fk_user".into_iden()),
+			columns: vec!["user_id".into_iden()],
+			ref_table: "users".into_table_ref(),
+			ref_columns: vec!["id".into_iden()],
+			on_delete: Some(ForeignKeyAction::Cascade),
+			on_update: Some(ForeignKeyAction::Restrict),
+		});
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("CONSTRAINT `fk_user` FOREIGN KEY (`user_id`)"));
+		assert!(sql.contains("REFERENCES `users` (`id`)"));
+		assert!(sql.contains("ON DELETE CASCADE"));
+		assert!(sql.contains("ON UPDATE RESTRICT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_basic() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(sql, "CREATE INDEX `idx_users_email` ON `users` (`email`)");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_unique() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_username");
+		stmt.table("users");
+		stmt.unique = true;
+		stmt.columns.push(IndexColumn {
+			name: "username".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE UNIQUE INDEX `idx_users_username` ON `users` (`username`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_if_not_exists() {
+		use crate::query::IndexColumn;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_email");
+		stmt.table("users");
+		stmt.if_not_exists = true;
+		stmt.columns.push(IndexColumn {
+			name: "email".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX IF NOT EXISTS `idx_users_email` ON `users` (`email`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_order() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_created");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "created_at".into_iden(),
+			order: Some(Order::Desc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_created` ON `users` (`created_at` DESC)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_multiple_columns() {
+		use crate::query::IndexColumn;
+		use crate::types::Order;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_name");
+		stmt.table("users");
+		stmt.columns.push(IndexColumn {
+			name: "last_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+		stmt.columns.push(IndexColumn {
+			name: "first_name".into_iden(),
+			order: Some(Order::Asc),
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_name` ON `users` (`last_name` ASC, `first_name` ASC)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_btree() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_users_id");
+		stmt.table("users");
+		stmt.using = Some(IndexMethod::BTree);
+		stmt.columns.push(IndexColumn {
+			name: "id".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_users_id` ON `users` (`id`) USING BTREE"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_index_with_using_fulltext() {
+		use crate::query::{IndexColumn, IndexMethod};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_index();
+		stmt.name("idx_posts_content");
+		stmt.table("posts");
+		stmt.using = Some(IndexMethod::FullText);
+		stmt.columns.push(IndexColumn {
+			name: "content".into_iden(),
+			order: None,
+		});
+
+		let (sql, values) = builder.build_create_index(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE INDEX `idx_posts_content` ON `posts` (`content`) USING FULLTEXT"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_column() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::AddColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::Integer),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` ADD COLUMN `age` INT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropColumn {
+			name: "age".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` DROP COLUMN `age`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_column() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::RenameColumn {
+			old: "email".into_iden(),
+			new: "email_address".into_iden(),
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` RENAME COLUMN `email` TO `email_address`"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_modify_column_type() {
+		use crate::query::AlterTableOperation;
+		use crate::types::{ColumnDef, ColumnType};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::ModifyColumn(ColumnDef {
+				name: "age".into_iden(),
+				column_type: Some(ColumnType::BigInteger),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				check: None,
+				comment: None,
+			}));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `age` BIGINT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_constraint() {
+		use crate::query::AlterTableOperation;
+		use crate::types::TableConstraint;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::AddConstraint(
+			TableConstraint::Unique {
+				name: Some("unique_email".into_iden()),
+				columns: vec!["email".into_iden()],
+			},
+		));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` ADD CONSTRAINT `unique_email` UNIQUE (`email`)"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_drop_constraint() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations.push(AlterTableOperation::DropConstraint {
+			name: "unique_email".into_iden(),
+			if_exists: false,
+		});
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` DROP CONSTRAINT `unique_email`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_rename_table() {
+		use crate::query::AlterTableOperation;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.operations
+			.push(AlterTableOperation::RenameTable("accounts".into_iden()));
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(sql, "ALTER TABLE `users` RENAME TO `accounts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// VIEW tests
+
+	#[test]
+	fn test_create_view_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden());
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW"));
+		assert!(sql.contains("`user_view`"));
+		assert!(sql.contains("AS"));
+		assert!(sql.contains("SELECT `id`, `name` FROM `users`"));
+	}
+
+	#[test]
+	fn test_create_view_or_replace() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).or_replace();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE OR REPLACE VIEW"));
+		assert!(sql.contains("`user_view`"));
+	}
+
+	#[test]
+	fn test_create_view_if_not_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).if_not_exists();
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("CREATE VIEW IF NOT EXISTS"));
+		assert!(sql.contains("`user_view`"));
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
+	fn test_create_view_materialized_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden()).materialized(true);
+		let mut select = Query::select();
+		select.column("id").from("users");
+		stmt.as_select(select);
+
+		let _ = builder.build_create_view(&stmt);
+	}
+
+	#[test]
+	fn test_create_view_with_columns() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_view();
+		stmt.name("user_view".into_iden())
+			.columns(vec!["user_id".into_iden(), "user_name".into_iden()]);
+		let mut select = Query::select();
+		select.column("id").column("name").from("users");
+		stmt.as_select(select);
+
+		let (sql, _values) = builder.build_create_view(&stmt);
+		assert!(sql.contains("`user_view` (`user_id`, `user_name`)"));
+	}
+
+	#[test]
+	fn test_drop_view_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]);
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW `user_view`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_view_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).if_exists();
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW IF EXISTS `user_view`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP VIEW")]
+	fn test_drop_view_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).cascade();
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
+	fn test_drop_view_materialized_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec!["user_view".into_iden()]).materialized(true);
+
+		let _ = builder.build_drop_view(&stmt);
+	}
+
+	#[test]
+	fn test_drop_view_multiple() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_view();
+		stmt.names(vec![
+			"view1".into_iden(),
+			"view2".into_iden(),
+			"view3".into_iden(),
+		]);
+
+		let (sql, values) = builder.build_drop_view(&stmt);
+		assert_eq!(sql, "DROP VIEW `view1`, `view2`, `view3`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// TRUNCATE TABLE tests
+
+	#[test]
+	fn test_truncate_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_truncate_table(&stmt);
+		assert_eq!(sql, "TRUNCATE TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "MySQL does not support truncating multiple tables in a single TRUNCATE statement"
+	)]
+	fn test_truncate_table_multiple_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").table("posts");
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support RESTART IDENTITY for TRUNCATE TABLE")]
+	fn test_truncate_table_restart_identity_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").restart_identity();
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE for TRUNCATE TABLE")]
+	fn test_truncate_table_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::truncate_table();
+		stmt.table("users").cascade();
+
+		let _ = builder.build_truncate_table(&stmt);
+	}
+
+	#[test]
+	fn test_create_trigger_basic() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("update_timestamp")
+			.timing(TriggerTiming::Before)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single("SET NEW.updated_at = NOW()"));
+
+		let (sql, values) = builder.build_create_trigger(&stmt);
+		assert_eq!(
+			sql,
+			r#"CREATE TRIGGER `update_timestamp` BEFORE UPDATE ON `users` FOR EACH ROW BEGIN SET NEW.updated_at = NOW(); END"#
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support multiple events in a single trigger")]
+	fn test_create_trigger_multiple_events_panics() {
+		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.event(TriggerEvent::Update { columns: None })
+			.on_table("users")
+			.for_each(TriggerScope::Row)
+			.execute_function("audit_log");
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support INSTEAD OF triggers")]
+	fn test_create_trigger_instead_of_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("view_insert")
+			.timing(TriggerTiming::InsteadOf)
+			.event(TriggerEvent::Insert)
+			.on_table("view_name")
+			.for_each(TriggerScope::Row)
+			.body(TriggerBody::single(
+				"INSERT INTO base_table VALUES (NEW.id)",
+			));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL only supports FOR EACH ROW triggers")]
+	fn test_create_trigger_for_statement_panics() {
+		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("audit")
+			.timing(TriggerTiming::After)
+			.event(TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(TriggerScope::Statement)
+			.body(TriggerBody::single("INSERT INTO audit_log VALUES (NOW())"));
+
+		let _ = builder.build_create_trigger(&stmt);
+	}
+
+	#[test]
+	fn test_drop_trigger_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp").on_table("users");
+
+		let (sql, values) = builder.build_drop_trigger(&stmt);
+		assert_eq!(sql, r#"DROP TRIGGER `users`.`update_timestamp`"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL requires table name (ON table) for DROP TRIGGER")]
+	fn test_drop_trigger_no_table_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp");
+
+		let _ = builder.build_drop_trigger(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP TRIGGER")]
+	fn test_drop_trigger_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_trigger();
+		stmt.name("update_timestamp").on_table("users").cascade();
+
+		let _ = builder.build_drop_trigger(&stmt);
+	}
+
+	// CREATE FUNCTION tests
+	#[test]
+	fn test_create_function_basic() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.body("RETURN 1;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1; END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_with_parameters() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("add_numbers")
+			.add_parameter("a", "INT")
+			.add_parameter("b", "INT")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.body("RETURN a + b;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `add_numbers`(`a` INT, `b` INT) RETURNS INT BEGIN RETURN a + b; END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_deterministic() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.body("RETURN 1;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `my_func`() RETURNS INT DETERMINISTIC BEGIN RETURN 1; END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_not_deterministic() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Volatile)
+			.body("RETURN RAND();");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `my_func`() RETURNS INT NOT DETERMINISTIC BEGIN RETURN RAND(); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_sql_security_definer() {
+		use crate::types::function::{FunctionLanguage, FunctionSecurity};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.security(FunctionSecurity::Definer)
+			.body("RETURN 1;");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `my_func`() RETURNS INT SQL SECURITY DEFINER BEGIN RETURN 1; END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_function_all_options() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("complex_func")
+			.add_parameter("a", "INT")
+			.add_parameter("b", "VARCHAR(255)")
+			.returns("INT")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.security(FunctionSecurity::Definer)
+			.body("RETURN a + LENGTH(b);");
+
+		let (sql, values) = builder.build_create_function(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE FUNCTION `complex_func`(`a` INT, `b` VARCHAR(255)) RETURNS INT DETERMINISTIC SQL SECURITY DEFINER BEGIN RETURN a + LENGTH(b); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL only supports SQL language for user-defined functions")]
+	fn test_create_function_plpgsql_panics() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INT")
+			.language(FunctionLanguage::PlPgSql)
+			.body("BEGIN RETURN 1; END;");
+
+		let _ = builder.build_create_function(&stmt);
+	}
+
+	// ALTER FUNCTION tests
+	#[test]
+	fn test_alter_function_set_behavior_deterministic() {
+		use crate::types::function::FunctionBehavior;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func")
+			.set_behavior(FunctionBehavior::Immutable);
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, "ALTER FUNCTION `my_func` DETERMINISTIC");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_function_set_security_definer() {
+		use crate::types::function::FunctionSecurity;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").set_security(FunctionSecurity::Definer);
+
+		let (sql, values) = builder.build_alter_function(&stmt);
+		assert_eq!(sql, "ALTER FUNCTION `my_func` SQL SECURITY DEFINER");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support RENAME TO for functions")]
+	fn test_alter_function_rename_to_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").rename_to("new_func");
+
+		let _ = builder.build_alter_function(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support OWNER TO for functions")]
+	fn test_alter_function_owner_to_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").owner_to("new_owner");
+
+		let _ = builder.build_alter_function(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support SET SCHEMA for functions")]
+	fn test_alter_function_set_schema_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").set_schema("new_schema");
+
+		let _ = builder.build_alter_function(&stmt);
+	}
+
+	// DROP FUNCTION tests
+	#[test]
+	fn test_drop_function_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func");
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, "DROP FUNCTION `my_func`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_function_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func").if_exists();
+
+		let (sql, values) = builder.build_drop_function(&stmt);
+		assert_eq!(sql, "DROP FUNCTION IF EXISTS `my_func`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE for DROP FUNCTION")]
+	fn test_drop_function_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func").cascade();
+
+		let _ = builder.build_drop_function(&stmt);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "MySQL does not support function overloading or parameters in DROP FUNCTION"
+	)]
+	fn test_drop_function_with_parameters_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func").add_parameter("", "INT");
+
+		let _ = builder.build_drop_function(&stmt);
+	}
+
+	// Procedure tests
+	#[test]
+	fn test_create_procedure_basic() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(sql, "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1 END");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_parameters() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.add_parameter("a", "INT")
+			.add_parameter("b", "VARCHAR(255)")
+			.language(FunctionLanguage::Sql)
+			.body("INSERT INTO log VALUES (a, b);");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE PROCEDURE `my_proc`(`a` INT, `b` VARCHAR(255)) BEGIN INSERT INTO log VALUES (a, b); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_behavior() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE PROCEDURE `my_proc`() DETERMINISTIC BEGIN SELECT 1 END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_with_security() {
+		use crate::types::function::{FunctionLanguage, FunctionSecurity};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.language(FunctionLanguage::Sql)
+			.security(FunctionSecurity::Definer)
+			.body("SELECT 1");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE PROCEDURE `my_proc`() SQL SECURITY DEFINER BEGIN SELECT 1 END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_procedure_all_options() {
+		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_procedure();
+		stmt.name("my_proc")
+			.add_parameter("a", "INT")
+			.add_parameter("b", "VARCHAR(255)")
+			.language(FunctionLanguage::Sql)
+			.behavior(FunctionBehavior::Immutable)
+			.security(FunctionSecurity::Definer)
+			.body("INSERT INTO log VALUES (a, b);");
+
+		let (sql, values) = builder.build_create_procedure(&stmt);
+		assert_eq!(
+			sql,
+			"CREATE PROCEDURE `my_proc`(`a` INT, `b` VARCHAR(255)) DETERMINISTIC SQL SECURITY DEFINER BEGIN INSERT INTO log VALUES (a, b); END"
+		);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_set_behavior() {
+		use crate::types::function::FunctionBehavior;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc")
+			.set_behavior(FunctionBehavior::Immutable);
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(sql, "ALTER PROCEDURE `my_proc` DETERMINISTIC");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_procedure_set_security() {
+		use crate::types::function::FunctionSecurity;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc").set_security(FunctionSecurity::Invoker);
+
+		let (sql, values) = builder.build_alter_procedure(&stmt);
+		assert_eq!(sql, "ALTER PROCEDURE `my_proc` SQL SECURITY INVOKER");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "MySQL does not support RENAME TO for procedures. Use DROP + CREATE instead."
+	)]
+	fn test_alter_procedure_rename_to_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_procedure();
+		stmt.name("my_proc").rename_to("new_proc");
+
+		let _ = builder.build_alter_procedure(&stmt);
+	}
+
+	#[test]
+	fn test_drop_procedure_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc");
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, "DROP PROCEDURE `my_proc`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_drop_procedure_if_exists() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").if_exists();
+
+		let (sql, values) = builder.build_drop_procedure(&stmt);
+		assert_eq!(sql, "DROP PROCEDURE IF EXISTS `my_proc`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support CASCADE for DROP PROCEDURE")]
+	fn test_drop_procedure_cascade_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").cascade();
+
+		let _ = builder.build_drop_procedure(&stmt);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "MySQL does not support procedure overloading or parameters in DROP PROCEDURE"
+	)]
+	fn test_drop_procedure_with_parameters_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_procedure();
+		stmt.name("my_proc").add_parameter("", "INT");
+
+		let _ = builder.build_drop_procedure(&stmt);
+	}
+
+	// TYPE tests - verify MySQL panics
+	#[test]
+	#[should_panic(expected = "CREATE TYPE not supported. Use ENUM column type.")]
+	fn test_create_type_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("mood")
+			.as_enum(vec!["happy".to_string(), "sad".to_string()]);
+
+		let _ = builder.build_create_type(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "ALTER TYPE not supported. Use ENUM column type.")]
+	fn test_alter_type_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("mood").rename_to("feeling");
+
+		let _ = builder.build_alter_type(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "DROP TYPE not supported. Use ENUM column type.")]
+	fn test_drop_type_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("mood");
+
+		let _ = builder.build_drop_type(&stmt);
+	}
+
+	// OPTIMIZE TABLE tests
+	#[test]
+	fn test_optimize_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_no_write_to_binlog() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").no_write_to_binlog();
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE NO_WRITE_TO_BINLOG TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_local() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").local();
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE LOCAL TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// REPAIR TABLE tests
+	#[test]
+	fn test_repair_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_quick() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").quick();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` QUICK");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_extended() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").extended();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` EXTENDED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_use_frm() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").use_frm();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` USE_FRM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_no_write_to_binlog() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").no_write_to_binlog();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR NO_WRITE_TO_BINLOG TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_local() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").local();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR LOCAL TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_combined_options() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").quick().use_frm();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` QUICK USE_FRM");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CHECK TABLE tests
+	#[test]
+	fn test_check_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` MEDIUM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users`, `posts` MEDIUM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_quick() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Quick);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` QUICK");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_fast() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Fast);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` FAST");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_extended() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Extended);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` EXTENDED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_changed() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Changed);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` CHANGED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_for_upgrade() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::ForUpgrade);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` FOR UPGRADE");
+		assert_eq!(values.len(), 0);
 	}
 
 	// DCL (Data Control Language) Tests

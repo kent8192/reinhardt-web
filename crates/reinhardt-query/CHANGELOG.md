@@ -99,6 +99,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL and MySQL full support for all DCL operations
 - SQLite not supported (panics with descriptive error messages)
 
+#### DDL Operations
+- `CreateTableStatement` with columns, constraints, indexes, IF NOT EXISTS
+- `AlterTableStatement` with ADD/DROP/RENAME COLUMN, ADD/DROP CONSTRAINT, RENAME TABLE
+- `DropTableStatement` with multiple tables, IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
+- `CreateIndexStatement` with UNIQUE, IF NOT EXISTS, WHERE clause (partial indexes), USING method
+- `DropIndexStatement` with IF EXISTS, CASCADE/RESTRICT (PostgreSQL)
+- `ColumnDef` for column definitions with type, constraints, default, check
+- `ColumnType` enum with 30+ SQL types (Integer, String, Text, JSON, Array, etc.)
+- `TableConstraint` enum (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)
+- `IndexMethod` enum (BTree, Hash, Gist, Gin, Brin, FullText, Spatial)
+- `AlterTableOperation` enum for ALTER TABLE operations
+- `Query` factory extensions: `create_table()`, `alter_table()`, `drop_table()`, `create_index()`, `drop_index()`
+
 #### Advanced SELECT Features
 - JOIN support (INNER, LEFT, RIGHT, FULL OUTER, CROSS) with ON/USING
 - GROUP BY with multiple columns
@@ -124,15 +137,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Backends
 - `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
   DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
-  Full DCL support:
+  DDL with CASCADE/RESTRICT support, Full DCL support:
   - GRANT/REVOKE with GRANTED BY and CASCADE support
   - GRANT/REVOKE role membership with all PostgreSQL features
   - CREATE/DROP/ALTER ROLE with all PostgreSQL role attributes
   - CREATE/DROP/ALTER USER (aliases for ROLE operations)
   - SET ROLE and RESET ROLE for session management
 - `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE,
-  Full DCL support:
+  DISTINCT ROW, INSERT IGNORE, DDL with table-qualified DROP INDEX, Full DCL support:
   - GRANT/REVOKE with User@Host format
   - GRANT/REVOKE role membership with WITH ADMIN OPTION
   - CREATE/DROP/ALTER ROLE with MySQL-specific options
@@ -140,13 +152,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - RENAME USER for user renaming
   - SET ROLE and SET DEFAULT ROLE for session management
 - `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
-  NULLS FIRST/LAST, `||` concatenation, DCL not supported (panics)
+  NULLS FIRST/LAST, `||` concatenation, DDL support, DCL not supported (panics)
 - `SqlWriter` infrastructure for SQL string construction
-- `QueryBuilder` trait for backend-agnostic query generation with methods:
-  - `build_grant()`, `build_revoke()`, `build_grant_role()`, `build_revoke_role()`
-  - `build_create_role()`, `build_drop_role()`, `build_alter_role()`
-  - `build_create_user()`, `build_drop_user()`, `build_alter_user()`, `build_rename_user()`
-  - `build_set_role()`, `build_reset_role()`, `build_set_default_role()`
+- `QueryBuilder` trait for backend-agnostic query generation (DML, DDL, and DCL)
 
 #### Operators
 - `BinOper` for binary operators (arithmetic, comparison, logical, pattern)

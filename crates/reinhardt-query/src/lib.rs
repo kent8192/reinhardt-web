@@ -8,11 +8,28 @@
 //!
 //! ## Features
 //!
+//! ### DML (Data Manipulation Language)
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
 //! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
-//! - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
+//!
+//! ### DDL (Data Definition Language)
+//! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
+//! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
+//! - **Database operations** - CREATE/ALTER/DROP DATABASE (all backends)
+//! - **Functions & Procedures** - CREATE/ALTER/DROP FUNCTION/PROCEDURE (PostgreSQL, MySQL, CockroachDB)
+//! - **Custom types** - CREATE/ALTER/DROP TYPE (PostgreSQL, CockroachDB)
+//! - **Materialized views** - CREATE/ALTER/DROP/REFRESH MATERIALIZED VIEW (PostgreSQL, CockroachDB)
+//! - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
+//! - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
+//! - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+//!
+//! ### Multi-Backend Support
+//! - **PostgreSQL** - Full DDL and DML support with advanced features
+//! - **MySQL** - DML, Functions, Procedures, Events, and table maintenance
+//! - **SQLite** - DML and basic DDL operations
+//! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
 //!
 //! ## Architecture
@@ -58,22 +75,41 @@
 //!
 //! ## Backend Differences
 //!
-//! | Feature | PostgreSQL | MySQL | SQLite |
-//! |---------|-----------|-------|--------|
-//! | Identifier quoting | `"name"` | `` `name` `` | `"name"` |
-//! | Placeholders | `$1, $2, ...` | `?, ?, ...` | `?, ?, ...` |
-//! | NULLS FIRST/LAST | Native | Not supported | Native |
-//! | DISTINCT ON | Supported | Not supported | Not supported |
-//! | Window functions | Full support | Full support | Full support |
-//! | CTEs (WITH) | Supported | Supported | Supported |
-//! | **DCL Operations** | | | |
-//! | GRANT/REVOKE | Full support | Full support | Not supported (panics) |
-//! | CREATE/DROP/ALTER ROLE | Full support | Full support | Not supported (panics) |
-//! | CREATE/DROP/ALTER USER | Full support | Full support | Not supported (panics) |
-//! | RENAME USER | Not supported (use ALTER ROLE) | Supported | Not supported (panics) |
-//! | SET ROLE | Supported | Supported | Not supported (panics) |
-//! | RESET ROLE | Supported | Not supported (panics) | Not supported (panics) |
-//! | SET DEFAULT ROLE | Not supported (panics) | Supported | Not supported (panics) |
+//! ### DML Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | Identifier quoting | `"name"` | `` `name` `` | `"name"` | `"name"` |
+//! | Placeholders | `$1, $2, ...` | `?, ?, ...` | `?, ?, ...` | `$1, $2, ...` |
+//! | NULLS FIRST/LAST | ✅ Native | ❌ | ✅ Native | ✅ Native |
+//! | DISTINCT ON | ✅ | ❌ | ❌ | ✅ |
+//! | Window functions | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+//! | CTEs (WITH) | ✅ | ✅ | ✅ | ✅ |
+//!
+//! ### DDL Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | CREATE/ALTER/DROP SCHEMA | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP SEQUENCE | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP DATABASE | ✅ | ✅ | ✅ | ✅ |
+//! | CREATE/ALTER/DROP FUNCTION | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP PROCEDURE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP TYPE | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP EVENT | ❌ | ✅ | ❌ | ❌ |
+//! | MATERIALIZED VIEW | ✅ | ❌ | ❌ | ✅ |
+//! | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
+//! | VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
+//! | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
+//!
+//! ### DCL Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | GRANT/REVOKE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/DROP/ALTER ROLE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/DROP/ALTER USER | ✅ | ✅ | ❌ | ✅ |
+//! | RENAME USER | ❌ | ✅ | ❌ | ❌ |
+//! | SET ROLE | ✅ | ✅ | ❌ | ✅ |
+//! | RESET ROLE | ✅ | ❌ | ❌ | ✅ |
+//! | SET DEFAULT ROLE | ❌ | ✅ | ❌ | ❌ |
 //!
 //! ## Expression Examples
 //!
@@ -94,6 +130,65 @@
 //!
 //! // LIKE pattern matching
 //! let like_expr = Expr::col("email").like("%@example.com");
+//! ```
+//!
+//! ## DDL Examples
+//!
+//! ```rust,ignore
+//! use reinhardt_query::prelude::*;
+//!
+//! // Create a schema (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_schema();
+//! stmt.name("app_schema").if_not_exists();
+//!
+//! // Create a sequence (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_sequence();
+//! stmt.name("user_id_seq").start_with(1000).increment_by(1);
+//!
+//! // Create a function (PostgreSQL, MySQL, CockroachDB)
+//! use reinhardt_query::types::function::FunctionLanguage;
+//! let mut stmt = Query::create_function();
+//! stmt.name("add_numbers")
+//!     .add_parameter("a", "INTEGER")
+//!     .add_parameter("b", "INTEGER")
+//!     .returns("INTEGER")
+//!     .language(FunctionLanguage::Sql)
+//!     .body("SELECT $1 + $2");
+//!
+//! // Create a procedure (PostgreSQL, MySQL, CockroachDB)
+//! let mut stmt = Query::create_procedure();
+//! stmt.name("log_event")
+//!     .add_parameter("message", "text")
+//!     .language(FunctionLanguage::Sql)
+//!     .body("INSERT INTO event_log (message) VALUES ($1)");
+//!
+//! // Create a custom ENUM type (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_type();
+//! stmt.name("status")
+//!     .as_enum(vec!["pending".to_string(), "active".to_string(), "completed".to_string()]);
+//!
+//! // Create a COMPOSITE type (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_type();
+//! stmt.name("address")
+//!     .as_composite(vec![
+//!         ("street".to_string(), "text".to_string()),
+//!         ("city".to_string(), "text".to_string()),
+//!     ]);
+//!
+//! // Create a materialized view (PostgreSQL, CockroachDB)
+//! let select = Query::select()
+//!     .column(Expr::col("id"))
+//!     .column(Expr::col("name"))
+//!     .from("users")
+//!     .and_where(Expr::col("active").eq(true));
+//!
+//! let mut stmt = Query::create_materialized_view();
+//! stmt.name("active_users").as_select(select);
+//!
+//! // Add a comment (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::comment();
+//! stmt.target(CommentTarget::Table("users".into_iden()))
+//!     .comment("Stores user account information");
 //! ```
 //!
 //! ## DCL Examples
@@ -232,11 +327,11 @@ pub mod expr;
 // Query builders
 pub mod query;
 
+// DCL (Data Control Language)
+pub mod dcl;
+
 // Backend implementations
 pub mod backend;
-
-// DCL (Data Control Language) module
-pub mod dcl;
 
 /// Prelude module for convenient imports.
 ///
@@ -261,8 +356,11 @@ pub mod prelude {
 		ConditionType, Expr, ExprTrait, IntoCondition, Keyword, SimpleExpr,
 	};
 	pub use crate::query::{
-		DeleteStatement, InsertStatement, Query, QueryBuilderTrait, QueryStatementBuilder,
-		QueryStatementWriter, SelectStatement, UpdateStatement,
+		AlterFunctionStatement, AlterProcedureStatement, AlterTypeStatement,
+		CreateFunctionStatement, CreateProcedureStatement, CreateTypeStatement, DeleteStatement,
+		DropFunctionStatement, DropProcedureStatement, DropTypeStatement, InsertStatement, Query,
+		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
+		UpdateStatement,
 	};
 	pub use crate::types::{
 		Alias, ColumnRef, DynIden, Iden, IdenStatic, IntoColumnRef, IntoIden, IntoTableRef, Order,
