@@ -7,12 +7,13 @@ use super::{PostgresQueryBuilder, QueryBuilder};
 use crate::{
 	query::{
 		AlterDatabaseStatement, AlterIndexStatement, AlterSchemaStatement, AlterSequenceStatement,
-		AlterTableStatement, CommentStatement, CreateDatabaseStatement, CreateIndexStatement,
-		CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement,
-		CreateViewStatement, DeleteStatement, DropDatabaseStatement, DropIndexStatement,
-		DropSchemaStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
-		DropViewStatement, InsertStatement, ReindexStatement, SelectStatement,
-		TruncateTableStatement, UpdateStatement,
+		AlterTableStatement, CheckTableStatement, CommentStatement, CreateDatabaseStatement,
+		CreateIndexStatement, CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropDatabaseStatement,
+		DropIndexStatement, DropSchemaStatement, DropSequenceStatement, DropTableStatement,
+		DropTriggerStatement, DropViewStatement, InsertStatement, OptimizeTableStatement,
+		ReindexStatement, RepairTableStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	value::Values,
 };
@@ -167,6 +168,24 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 		// CockroachDB supports DROP DATABASE similar to PostgreSQL
 		// Delegate to PostgreSQL implementation
 		self.postgres.build_drop_database(stmt)
+	}
+
+	fn build_optimize_table(&self, _stmt: &OptimizeTableStatement) -> (String, Values) {
+		panic!(
+			"OPTIMIZE TABLE is MySQL-specific. CockroachDB automatically optimizes tables in the background."
+		);
+	}
+
+	fn build_repair_table(&self, _stmt: &RepairTableStatement) -> (String, Values) {
+		panic!(
+			"REPAIR TABLE is not supported in CockroachDB. CockroachDB automatically repairs data through replication and consistency checks."
+		);
+	}
+
+	fn build_check_table(&self, _stmt: &CheckTableStatement) -> (String, Values) {
+		panic!(
+			"CHECK TABLE is not supported in CockroachDB. Use SHOW EXPERIMENTAL_RANGES or other system tables to monitor table health."
+		);
 	}
 
 // 	fn build_create_function(&self, stmt: &CreateFunctionStatement) -> (String, Values) {
@@ -348,5 +367,36 @@ mod tests {
 		// Should generate PostgreSQL-style SQL with double quotes and CASCADE
 		assert_eq!(sql, r#"DROP TYPE IF EXISTS "mood" CASCADE"#);
 		assert_eq!(values.len(), 0);
+	}
+
+	// MySQL-specific maintenance command panic tests
+	#[test]
+	#[should_panic(expected = "CockroachDB automatically optimizes tables")]
+	fn test_optimize_table_panics() {
+		let builder = CockroachDBQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users");
+
+		let _ = builder.build_optimize_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in CockroachDB")]
+	fn test_repair_table_panics() {
+		let builder = CockroachDBQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users");
+
+		let _ = builder.build_repair_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in CockroachDB")]
+	fn test_check_table_panics() {
+		let builder = CockroachDBQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users");
+
+		let _ = builder.build_check_table(&stmt);
 	}
 }
