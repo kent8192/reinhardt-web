@@ -1,23 +1,27 @@
 //! SQL Backend implementations
 //!
 //! This module provides database-specific SQL generation backends for PostgreSQL,
-//! MySQL, and SQLite.
+//! MySQL, SQLite, and CockroachDB.
 
 use crate::{
 	query::{
-		AlterIndexStatement, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
-		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropIndexStatement,
+		AlterDatabaseStatement, AlterIndexStatement, AlterSchemaStatement, AlterSequenceStatement,
+		AlterTableStatement, CommentStatement, CreateIndexStatement, CreateSchemaStatement,
+		CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropSchemaStatement, DropSequenceStatement,
 		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
 		ReindexStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	value::Values,
 };
 
+mod cockroachdb;
 mod mysql;
 mod postgres;
 mod sql_writer;
 mod sqlite;
 
+pub use cockroachdb::CockroachDBQueryBuilder;
 pub use mysql::MySqlQueryBuilder;
 pub use postgres::PostgresQueryBuilder;
 pub use sql_writer::SqlWriter;
@@ -33,6 +37,7 @@ pub use sqlite::SqliteQueryBuilder;
 /// - [`PostgresQueryBuilder`] - PostgreSQL backend
 /// - [`MySqlQueryBuilder`] - MySQL backend
 /// - [`SqliteQueryBuilder`] - SQLite backend
+/// - [`CockroachDBQueryBuilder`] - CockroachDB backend
 ///
 /// # Examples
 ///
@@ -294,4 +299,108 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_reindex(&self, stmt: &ReindexStatement) -> (String, Values);
+
+	/// Build CREATE SCHEMA statement
+	///
+	/// Generates SQL and parameter values for a CREATE SCHEMA statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE SCHEMA statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_schema(&self, stmt: &CreateSchemaStatement) -> (String, Values);
+
+	/// Build ALTER SCHEMA statement
+	///
+	/// Generates SQL and parameter values for an ALTER SCHEMA statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER SCHEMA statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_schema(&self, stmt: &AlterSchemaStatement) -> (String, Values);
+
+	/// Build DROP SCHEMA statement
+	///
+	/// Generates SQL and parameter values for a DROP SCHEMA statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP SCHEMA statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_schema(&self, stmt: &DropSchemaStatement) -> (String, Values);
+
+	/// Build CREATE SEQUENCE statement
+	///
+	/// Generates SQL and parameter values for a CREATE SEQUENCE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE SEQUENCE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_sequence(&self, stmt: &CreateSequenceStatement) -> (String, Values);
+
+	/// Build ALTER SEQUENCE statement
+	///
+	/// Generates SQL and parameter values for an ALTER SEQUENCE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER SEQUENCE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_sequence(&self, stmt: &AlterSequenceStatement) -> (String, Values);
+
+	/// Build DROP SEQUENCE statement
+	///
+	/// Generates SQL and parameter values for a DROP SEQUENCE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP SEQUENCE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_sequence(&self, stmt: &DropSequenceStatement) -> (String, Values);
+
+	/// Build COMMENT ON statement
+	///
+	/// Generates SQL and parameter values for a COMMENT ON statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The COMMENT ON statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_comment(&self, stmt: &CommentStatement) -> (String, Values);
+
+	/// Build ALTER DATABASE statement
+	///
+	/// Generates SQL and parameter values for an ALTER DATABASE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER DATABASE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_database(&self, stmt: &AlterDatabaseStatement) -> (String, Values);
 }
