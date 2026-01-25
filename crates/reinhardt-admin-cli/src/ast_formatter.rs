@@ -484,17 +484,18 @@ impl AstPageFormatter {
 			}
 
 			// Check for two-character sequences
-			if !in_string && !in_block_comment && ch == '/' {
-				if let Some(&(_, next_ch)) = chars.peek() {
-					if next_ch == '/' {
-						in_line_comment = true;
-						chars.next(); // consume second '/'
-						continue;
-					} else if next_ch == '*' {
-						in_block_comment = true;
-						chars.next(); // consume '*'
-						continue;
-					}
+			if !in_string
+				&& !in_block_comment
+				&& ch == '/' && let Some(&(_, next_ch)) = chars.peek()
+			{
+				if next_ch == '/' {
+					in_line_comment = true;
+					chars.next(); // consume second '/'
+					continue;
+				} else if next_ch == '*' {
+					in_block_comment = true;
+					chars.next(); // consume '*'
+					continue;
 				}
 			}
 
@@ -505,14 +506,13 @@ impl AstPageFormatter {
 			}
 
 			// Check for end of block comment
-			if in_block_comment && ch == '*' {
-				if let Some(&(_, next_ch)) = chars.peek() {
-					if next_ch == '/' {
-						in_block_comment = false;
-						chars.next(); // consume '/'
-						continue;
-					}
-				}
+			if in_block_comment
+				&& ch == '*' && let Some(&(_, next_ch)) = chars.peek()
+				&& next_ch == '/'
+			{
+				in_block_comment = false;
+				chars.next(); // consume '/'
+				continue;
 			}
 
 			// Handle strings
