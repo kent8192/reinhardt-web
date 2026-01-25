@@ -1556,261 +1556,261 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_create_function(
-		&self,
-		stmt: &crate::query::CreateFunctionStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// CREATE [OR REPLACE] FUNCTION
-		writer.push_keyword("CREATE");
-		if stmt.function_def.or_replace {
-			writer.push_keyword("OR REPLACE");
-		}
-		writer.push_keyword("FUNCTION");
-
-		// Function name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Parameters (param1 type1, param2 type2, ...)
-		writer.push("(");
-		let mut first = true;
-		for param in &stmt.function_def.parameters {
-			if !first {
-				writer.push(", ");
-			}
-			first = false;
-
-			// Parameter mode (IN, OUT, INOUT, VARIADIC)
-			if let Some(mode) = &param.mode {
-				use crate::types::function::ParameterMode;
-				match mode {
-					ParameterMode::In => writer.push("IN "),
-					ParameterMode::Out => writer.push("OUT "),
-					ParameterMode::InOut => writer.push("INOUT "),
-					ParameterMode::Variadic => writer.push("VARIADIC "),
-				}
-			}
-
-			// Parameter name (optional)
-			if let Some(name) = &param.name {
-				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-				writer.push(" ");
-			}
-
-			// Parameter type
-			if let Some(param_type) = &param.param_type {
-				writer.push(param_type);
-			}
-
-			// Default value (optional)
-			if let Some(default) = &param.default_value {
-				writer.push(" DEFAULT ");
-				writer.push(default);
-			}
-		}
-		writer.push(")");
-
-		// RETURNS type
-		if let Some(returns) = &stmt.function_def.returns {
-			writer.push_keyword("RETURNS");
-			writer.push_space();
-			writer.push(returns);
-		}
-
-		// LANGUAGE
-		if let Some(language) = &stmt.function_def.language {
-			writer.push_keyword("LANGUAGE");
-			writer.push_space();
-			match language {
-				FunctionLanguage::Sql => writer.push("SQL"),
-				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
-				FunctionLanguage::C => writer.push("C"),
-				FunctionLanguage::Custom(lang) => writer.push(lang),
-			}
-		}
-
-		// Behavior (IMMUTABLE/STABLE/VOLATILE)
-		if let Some(behavior) = &stmt.function_def.behavior {
-			writer.push_space();
-			match behavior {
-				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
-				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
-				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
-			}
-		}
-
-		// Security (SECURITY DEFINER/INVOKER)
-		if let Some(security) = &stmt.function_def.security {
-			writer.push_space();
-			match security {
-				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
-				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
-			}
-		}
-
-		// AS 'body'
-		if let Some(body) = &stmt.function_def.body {
-			writer.push_keyword("AS");
-			writer.push_space();
-			writer.push("$$");
-			writer.push(body);
-			writer.push("$$");
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_function(
-		&self,
-		stmt: &crate::query::AlterFunctionStatement,
-	) -> (String, Values) {
-		use crate::query::function::AlterFunctionOperation;
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// ALTER FUNCTION
-		writer.push_keyword("ALTER FUNCTION");
-
-		// Function name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Function signature (for overloaded functions)
-		if !stmt.parameters.is_empty() {
-			writer.push("(");
-			let mut first = true;
-			for param in &stmt.parameters {
-				if !first {
-					writer.push(", ");
-				}
-				first = false;
-
-				// Parameter name (optional in signature)
-				if let Some(name) = &param.name {
-					let name_str = Iden::to_string(name.as_ref());
-					if !name_str.is_empty() {
-						writer.push_identifier(&name_str, |s| self.escape_iden(s));
-						writer.push(" ");
-					}
-				}
-
-				// Parameter type
-				if let Some(param_type) = &param.param_type {
-					writer.push(param_type);
-				}
-			}
-			writer.push(")");
-		}
-
-		// ALTER FUNCTION operation
-		if let Some(operation) = &stmt.operation {
-			writer.push_space();
-			match operation {
-				AlterFunctionOperation::RenameTo(new_name) => {
-					writer.push_keyword("RENAME TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				AlterFunctionOperation::OwnerTo(new_owner) => {
-					writer.push_keyword("OWNER TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				AlterFunctionOperation::SetSchema(new_schema) => {
-					writer.push_keyword("SET SCHEMA");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
-					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
-					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
-					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
-				},
-				AlterFunctionOperation::SetSecurity(security) => match security {
-					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
-					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
-				},
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
-		use crate::types::Iden;
-
-		let mut writer = SqlWriter::new();
-
-		// DROP FUNCTION
-		writer.push_keyword("DROP FUNCTION");
-
-		// IF EXISTS
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		// Function name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Function signature (for overloaded functions)
-		if !stmt.parameters.is_empty() {
-			writer.push("(");
-			let mut first = true;
-			for param in &stmt.parameters {
-				if !first {
-					writer.push(", ");
-				}
-				first = false;
-
-				// Parameter name (optional in signature)
-				if let Some(name) = &param.name {
-					let name_str = Iden::to_string(name.as_ref());
-					if !name_str.is_empty() {
-						writer.push_identifier(&name_str, |s| self.escape_iden(s));
-						writer.push(" ");
-					}
-				}
-
-				// Parameter type
-				if let Some(param_type) = &param.param_type {
-					writer.push(param_type);
-				}
-			}
-			writer.push(")");
-		}
-
-		// CASCADE
-		if stmt.cascade {
-			writer.push_keyword("CASCADE");
-		}
-
-		writer.finish()
-	}
-
+// 	fn build_create_function(
+// 		&self,
+// 		stmt: &crate::query::CreateFunctionStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// CREATE [OR REPLACE] FUNCTION
+// 		writer.push_keyword("CREATE");
+// 		if stmt.function_def.or_replace {
+// 			writer.push_keyword("OR REPLACE");
+// 		}
+// 		writer.push_keyword("FUNCTION");
+// 
+// 		// Function name
+// 		writer.push_space();
+// 		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
+// 			self.escape_iden(s)
+// 		});
+// 
+// 		// Parameters (param1 type1, param2 type2, ...)
+// 		writer.push("(");
+// 		let mut first = true;
+// 		for param in &stmt.function_def.parameters {
+// 			if !first {
+// 				writer.push(", ");
+// 			}
+// 			first = false;
+// 
+// 			// Parameter mode (IN, OUT, INOUT, VARIADIC)
+// 			if let Some(mode) = &param.mode {
+// 				use crate::types::function::ParameterMode;
+// 				match mode {
+// 					ParameterMode::In => writer.push("IN "),
+// 					ParameterMode::Out => writer.push("OUT "),
+// 					ParameterMode::InOut => writer.push("INOUT "),
+// 					ParameterMode::Variadic => writer.push("VARIADIC "),
+// 				}
+// 			}
+// 
+// 			// Parameter name (optional)
+// 			if let Some(name) = &param.name {
+// 				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 				writer.push(" ");
+// 			}
+// 
+// 			// Parameter type
+// 			if let Some(param_type) = &param.param_type {
+// 				writer.push(param_type);
+// 			}
+// 
+// 			// Default value (optional)
+// 			if let Some(default) = &param.default_value {
+// 				writer.push(" DEFAULT ");
+// 				writer.push(default);
+// 			}
+// 		}
+// 		writer.push(")");
+// 
+// 		// RETURNS type
+// 		if let Some(returns) = &stmt.function_def.returns {
+// 			writer.push_keyword("RETURNS");
+// 			writer.push_space();
+// 			writer.push(returns);
+// 		}
+// 
+// 		// LANGUAGE
+// 		if let Some(language) = &stmt.function_def.language {
+// 			writer.push_keyword("LANGUAGE");
+// 			writer.push_space();
+// 			match language {
+// 				FunctionLanguage::Sql => writer.push("SQL"),
+// 				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
+// 				FunctionLanguage::C => writer.push("C"),
+// 				FunctionLanguage::Custom(lang) => writer.push(lang),
+// 			}
+// 		}
+// 
+// 		// Behavior (IMMUTABLE/STABLE/VOLATILE)
+// 		if let Some(behavior) = &stmt.function_def.behavior {
+// 			writer.push_space();
+// 			match behavior {
+// 				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+// 				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+// 				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+// 			}
+// 		}
+// 
+// 		// Security (SECURITY DEFINER/INVOKER)
+// 		if let Some(security) = &stmt.function_def.security {
+// 			writer.push_space();
+// 			match security {
+// 				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+// 				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+// 			}
+// 		}
+// 
+// 		// AS 'body'
+// 		if let Some(body) = &stmt.function_def.body {
+// 			writer.push_keyword("AS");
+// 			writer.push_space();
+// 			writer.push("$$");
+// 			writer.push(body);
+// 			writer.push("$$");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_function(
+// 		&self,
+// 		stmt: &crate::query::AlterFunctionStatement,
+// 	) -> (String, Values) {
+// 		use crate::query::function::AlterFunctionOperation;
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// ALTER FUNCTION
+// 		writer.push_keyword("ALTER FUNCTION");
+// 
+// 		// Function name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Function signature (for overloaded functions)
+// 		if !stmt.parameters.is_empty() {
+// 			writer.push("(");
+// 			let mut first = true;
+// 			for param in &stmt.parameters {
+// 				if !first {
+// 					writer.push(", ");
+// 				}
+// 				first = false;
+// 
+// 				// Parameter name (optional in signature)
+// 				if let Some(name) = &param.name {
+// 					let name_str = Iden::to_string(name.as_ref());
+// 					if !name_str.is_empty() {
+// 						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+// 						writer.push(" ");
+// 					}
+// 				}
+// 
+// 				// Parameter type
+// 				if let Some(param_type) = &param.param_type {
+// 					writer.push(param_type);
+// 				}
+// 			}
+// 			writer.push(")");
+// 		}
+// 
+// 		// ALTER FUNCTION operation
+// 		if let Some(operation) = &stmt.operation {
+// 			writer.push_space();
+// 			match operation {
+// 				AlterFunctionOperation::RenameTo(new_name) => {
+// 					writer.push_keyword("RENAME TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				AlterFunctionOperation::OwnerTo(new_owner) => {
+// 					writer.push_keyword("OWNER TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				AlterFunctionOperation::SetSchema(new_schema) => {
+// 					writer.push_keyword("SET SCHEMA");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
+// 					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+// 					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+// 					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+// 				},
+// 				AlterFunctionOperation::SetSecurity(security) => match security {
+// 					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+// 					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+// 				},
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+// 		use crate::types::Iden;
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// DROP FUNCTION
+// 		writer.push_keyword("DROP FUNCTION");
+// 
+// 		// IF EXISTS
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 		}
+// 
+// 		// Function name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Function signature (for overloaded functions)
+// 		if !stmt.parameters.is_empty() {
+// 			writer.push("(");
+// 			let mut first = true;
+// 			for param in &stmt.parameters {
+// 				if !first {
+// 					writer.push(", ");
+// 				}
+// 				first = false;
+// 
+// 				// Parameter name (optional in signature)
+// 				if let Some(name) = &param.name {
+// 					let name_str = Iden::to_string(name.as_ref());
+// 					if !name_str.is_empty() {
+// 						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+// 						writer.push(" ");
+// 					}
+// 				}
+// 
+// 				// Parameter type
+// 				if let Some(param_type) = &param.param_type {
+// 					writer.push(param_type);
+// 				}
+// 			}
+// 			writer.push(")");
+// 		}
+// 
+// 		// CASCADE
+// 		if stmt.cascade {
+// 			writer.push_keyword("CASCADE");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
@@ -2433,711 +2433,711 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		writer.finish()
 	}
-
-	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("ANALYZE");
-
-		if stmt.verbose {
-			writer.push_keyword("VERBOSE");
-		}
-
-		// Tables and columns
-		if !stmt.tables.is_empty() {
-			writer.push_space();
-			writer.push_list(&stmt.tables, ", ", |w, table| {
-				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
-					self.escape_iden(s)
-				});
-				if !table.columns.is_empty() {
-					w.push(" (");
-					w.push_list(&table.columns, ", ", |w2, col| {
-						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-					});
-					w.push(")");
-				}
-			});
-		}
-
-		writer.finish()
-	}
-
-	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("VACUUM");
-
-		// Options
-		if stmt.full {
-			writer.push_keyword("FULL");
-		}
-		if stmt.freeze {
-			writer.push_keyword("FREEZE");
-		}
-		if stmt.verbose {
-			writer.push_keyword("VERBOSE");
-		}
-		if stmt.analyze {
-			writer.push_keyword("ANALYZE");
-		}
-
-		// Tables
-		if !stmt.tables.is_empty() {
-			writer.push_space();
-			writer.push_list(&stmt.tables, ", ", |w, table| {
-				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
-			});
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_materialized_view(
-		&self,
-		stmt: &crate::query::CreateMaterializedViewStatement,
-	) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("CREATE MATERIALIZED VIEW");
-
-		// IF NOT EXISTS
-		if stmt.def.if_not_exists {
-			writer.push_keyword("IF NOT EXISTS");
-		}
-
-		// View name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Column names
-		if !stmt.def.columns.is_empty() {
-			writer.push_space();
-			writer.push("(");
-			writer.push_list(&stmt.def.columns, ", ", |w, col| {
-				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-			});
-			writer.push(")");
-		}
-
-		// TABLESPACE
-		if let Some(ref tablespace) = stmt.def.tablespace {
-			writer.push_keyword("TABLESPACE");
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
-				self.escape_iden(s)
-			});
-		}
-
-		// AS SELECT
-		if let Some(ref select) = stmt.select {
-			writer.push_keyword("AS");
-			writer.push_space();
-			let (select_sql, select_values) = self.build_select(select);
-			writer.push(&select_sql);
-
-			// WITH [NO] DATA
-			if let Some(with_data) = stmt.def.with_data {
-				writer.push_space();
-				if with_data {
-					writer.push_keyword("WITH DATA");
-				} else {
-					writer.push_keyword("WITH NO DATA");
-				}
-			}
-
-			let (sql, _) = writer.finish();
-			return (sql, select_values);
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_materialized_view(
-		&self,
-		stmt: &crate::query::AlterMaterializedViewStatement,
-	) -> (String, Values) {
-		use crate::types::{Iden, MaterializedViewOperation};
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("ALTER MATERIALIZED VIEW");
-
-		// View name
-		if let Some(ref name) = stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Operations
-		for operation in &stmt.operations {
-			writer.push_space();
-			match operation {
-				MaterializedViewOperation::Rename(new_name) => {
-					writer.push_keyword("RENAME TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				MaterializedViewOperation::OwnerTo(new_owner) => {
-					writer.push_keyword("OWNER TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				MaterializedViewOperation::SetSchema(schema_name) => {
-					writer.push_keyword("SET SCHEMA");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_materialized_view(
-		&self,
-		stmt: &crate::query::DropMaterializedViewStatement,
-	) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("DROP MATERIALIZED VIEW");
-
-		// IF EXISTS
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		// View names
-		writer.push_space();
-		writer.push_list(&stmt.names, ", ", |w, name| {
-			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		});
-
-		// CASCADE or RESTRICT
-		if stmt.cascade {
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
-
-	fn build_refresh_materialized_view(
-		&self,
-		stmt: &crate::query::RefreshMaterializedViewStatement,
-	) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("REFRESH MATERIALIZED VIEW");
-
-		// CONCURRENTLY
-		if stmt.concurrently {
-			writer.push_keyword("CONCURRENTLY");
-		}
-
-		// View name
-		if let Some(ref name) = stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// WITH [NO] DATA
-		if let Some(with_data) = stmt.with_data {
-			writer.push_space();
-			if with_data {
-				writer.push_keyword("WITH DATA");
-			} else {
-				writer.push_keyword("WITH NO DATA");
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_procedure(
-		&self,
-		stmt: &crate::query::CreateProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// CREATE [OR REPLACE] PROCEDURE
-		writer.push_keyword("CREATE");
-		if stmt.procedure_def.or_replace {
-			writer.push_keyword("OR REPLACE");
-		}
-		writer.push_keyword("PROCEDURE");
-
-		// Procedure name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Parameters (param1 type1, param2 type2, ...)
-		writer.push("(");
-		let mut first = true;
-		for param in &stmt.procedure_def.parameters {
-			if !first {
-				writer.push(", ");
-			}
-			first = false;
-
-			// Parameter mode (IN, OUT, INOUT, VARIADIC)
-			if let Some(mode) = &param.mode {
-				use crate::types::function::ParameterMode;
-				match mode {
-					ParameterMode::In => writer.push("IN "),
-					ParameterMode::Out => writer.push("OUT "),
-					ParameterMode::InOut => writer.push("INOUT "),
-					ParameterMode::Variadic => writer.push("VARIADIC "),
-				}
-			}
-
-			// Parameter name (optional)
-			if let Some(name) = &param.name {
-				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-				writer.push(" ");
-			}
-
-			// Parameter type
-			if let Some(param_type) = &param.param_type {
-				writer.push(param_type);
-			}
-
-			// Default value (optional)
-			if let Some(default) = &param.default_value {
-				writer.push(" DEFAULT ");
-				writer.push(default);
-			}
-		}
-		writer.push(")");
-
-		// LANGUAGE
-		if let Some(language) = &stmt.procedure_def.language {
-			writer.push_keyword("LANGUAGE");
-			writer.push_space();
-			match language {
-				FunctionLanguage::Sql => writer.push("SQL"),
-				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
-				FunctionLanguage::C => writer.push("C"),
-				FunctionLanguage::Custom(lang) => writer.push(lang),
-			}
-		}
-
-		// Behavior (IMMUTABLE/STABLE/VOLATILE)
-		if let Some(behavior) = &stmt.procedure_def.behavior {
-			writer.push_space();
-			match behavior {
-				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
-				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
-				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
-			}
-		}
-
-		// Security (SECURITY DEFINER/INVOKER)
-		if let Some(security) = &stmt.procedure_def.security {
-			writer.push_space();
-			match security {
-				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
-				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
-			}
-		}
-
-		// AS 'body'
-		if let Some(body) = &stmt.procedure_def.body {
-			writer.push_keyword("AS");
-			writer.push_space();
-			writer.push("$$");
-			writer.push(body);
-			writer.push("$$");
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_procedure(
-		&self,
-		stmt: &crate::query::AlterProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionSecurity},
-			procedure::ProcedureOperation,
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// ALTER PROCEDURE
-		writer.push_keyword("ALTER PROCEDURE");
-
-		// Procedure name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Procedure signature (for overloaded procedures)
-		if !stmt.parameters.is_empty() {
-			writer.push("(");
-			let mut first = true;
-			for param in &stmt.parameters {
-				if !first {
-					writer.push(", ");
-				}
-				first = false;
-
-				// Parameter name (optional in signature)
-				if let Some(name) = &param.name {
-					let name_str = Iden::to_string(name.as_ref());
-					if !name_str.is_empty() {
-						writer.push_identifier(&name_str, |s| self.escape_iden(s));
-						writer.push(" ");
-					}
-				}
-
-				// Parameter type
-				if let Some(param_type) = &param.param_type {
-					writer.push(param_type);
-				}
-			}
-			writer.push(")");
-		}
-
-		// ALTER PROCEDURE operation
-		if let Some(operation) = &stmt.operation {
-			writer.push_space();
-			match operation {
-				ProcedureOperation::RenameTo(new_name) => {
-					writer.push_keyword("RENAME TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				ProcedureOperation::OwnerTo(new_owner) => {
-					writer.push_keyword("OWNER TO");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				ProcedureOperation::SetSchema(new_schema) => {
-					writer.push_keyword("SET SCHEMA");
-					writer.push_space();
-					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
-						self.escape_iden(s)
-					});
-				}
-				ProcedureOperation::SetBehavior(behavior) => match behavior {
-					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
-					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
-					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
-				},
-				ProcedureOperation::SetSecurity(security) => match security {
-					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
-					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
-				},
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_procedure(
-		&self,
-		stmt: &crate::query::DropProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::Iden;
-
-		let mut writer = SqlWriter::new();
-
-		// DROP PROCEDURE
-		writer.push_keyword("DROP PROCEDURE");
-
-		// IF EXISTS
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		// Procedure name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Procedure signature (for overloaded procedures)
-		if !stmt.parameters.is_empty() {
-			writer.push("(");
-			let mut first = true;
-			for param in &stmt.parameters {
-				if !first {
-					writer.push(", ");
-				}
-				first = false;
-
-				// Parameter name (optional in signature)
-				if let Some(name) = &param.name {
-					let name_str = Iden::to_string(name.as_ref());
-					if !name_str.is_empty() {
-						writer.push_identifier(&name_str, |s| self.escape_iden(s));
-						writer.push(" ");
-					}
-				}
-
-				// Parameter type
-				if let Some(param_type) = &param.param_type {
-					writer.push(param_type);
-				}
-			}
-			writer.push(")");
-		}
-
-		// CASCADE
-		if stmt.cascade {
-			writer.push_keyword("CASCADE");
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_type(&self, stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("CREATE TYPE");
-		writer.push_space();
-
-		// Type name
-		if let Some(name) = &stmt.name {
-			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
-		}
-
-		// Type definition
-		if let Some(kind) = &stmt.kind {
-			use crate::types::type_def::TypeKind;
-			match kind {
-				TypeKind::Enum { values } => {
-					writer.push_space();
-					writer.push_keyword("AS ENUM");
-					writer.push_space();
-					writer.push("(");
-					writer.push_list(values, ", ", |w, value| {
-						w.push("'");
-						w.push(&value.replace('\'', "''"));
-						w.push("'");
-					});
-					writer.push(")");
-				}
-				TypeKind::Composite { attributes } => {
-					writer.push_space();
-					writer.push_keyword("AS");
-					writer.push_space();
-					writer.push("(");
-					writer.push_list(attributes, ", ", |w, (name, type_name)| {
-						w.push_identifier(name, |s| self.escape_iden(s));
-						w.push_space();
-						w.push(type_name);
-					});
-					writer.push(")");
-				}
-				TypeKind::Domain {
-					base_type,
-					constraint,
-					default,
-					not_null,
-				} => {
-					writer.push_space();
-					writer.push_keyword("AS");
-					writer.push_space();
-					writer.push(base_type);
-
-					// DEFAULT clause
-					if let Some(default_val) = default {
-						writer.push_space();
-						writer.push_keyword("DEFAULT");
-						writer.push_space();
-						writer.push(default_val);
-					}
-
-					// CONSTRAINT clause
-					if let Some(check) = constraint {
-						writer.push_space();
-						writer.push(check);
-					}
-
-					// NOT NULL clause
-					if *not_null {
-						writer.push_space();
-						writer.push_keyword("NOT NULL");
-					}
-				}
-				TypeKind::Range {
-					subtype,
-					subtype_diff,
-					canonical,
-				} => {
-					writer.push_space();
-					writer.push_keyword("AS RANGE");
-					writer.push_space();
-					writer.push("(");
-					writer.push("SUBTYPE = ");
-					writer.push(subtype);
-
-					// SUBTYPE_DIFF clause
-					if let Some(diff_fn) = subtype_diff {
-						writer.push(", SUBTYPE_DIFF = ");
-						writer.push(diff_fn);
-					}
-
-					// CANONICAL clause
-					if let Some(canonical_fn) = canonical {
-						writer.push(", CANONICAL = ");
-						writer.push(canonical_fn);
-					}
-
-					writer.push(")");
-				}
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_type(&self, stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("ALTER TYPE");
-		writer.push_space();
-		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
-
-		// Process operations
-		for operation in &stmt.operations {
-			writer.push_space();
-			use crate::types::type_def::TypeOperation;
-			match operation {
-				TypeOperation::RenameTo(new_name) => {
-					writer.push_keyword("RENAME TO");
-					writer.push_space();
-					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
-				}
-				TypeOperation::OwnerTo(owner) => {
-					writer.push_keyword("OWNER TO");
-					writer.push_space();
-					writer.push_identifier(&owner.to_string(), |s| self.escape_iden(s));
-				}
-				TypeOperation::SetSchema(schema) => {
-					writer.push_keyword("SET SCHEMA");
-					writer.push_space();
-					writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
-				}
-				TypeOperation::AddValue(value, position) => {
-					writer.push_keyword("ADD VALUE");
-					writer.push_space();
-					writer.push("'");
-					writer.push(&value.replace('\'', "''"));
-					writer.push("'");
-
-					if let Some(pos) = position {
-						writer.push_space();
-						writer.push_keyword("BEFORE");
-						writer.push_space();
-						writer.push("'");
-						writer.push(&pos.replace('\'', "''"));
-						writer.push("'");
-					}
-				}
-				TypeOperation::RenameValue(old_value, new_value) => {
-					writer.push_keyword("RENAME VALUE");
-					writer.push_space();
-					writer.push("'");
-					writer.push(&old_value.replace('\'', "''"));
-					writer.push("'");
-					writer.push_space();
-					writer.push_keyword("TO");
-					writer.push_space();
-					writer.push("'");
-					writer.push(&new_value.replace('\'', "''"));
-					writer.push("'");
-				}
-				TypeOperation::AddConstraint(name, check) => {
-					writer.push_keyword("ADD CONSTRAINT");
-					writer.push_space();
-					writer.push_identifier(name, |s| self.escape_iden(s));
-					writer.push_space();
-					writer.push(check);
-				}
-				TypeOperation::DropConstraint(name, if_exists) => {
-					writer.push_keyword("DROP CONSTRAINT");
-					if *if_exists {
-						writer.push_space();
-						writer.push_keyword("IF EXISTS");
-					}
-					writer.push_space();
-					writer.push_identifier(name, |s| self.escape_iden(s));
-				}
-				TypeOperation::SetDefault(value) => {
-					writer.push_keyword("SET DEFAULT");
-					writer.push_space();
-					writer.push(value);
-				}
-				TypeOperation::DropDefault => {
-					writer.push_keyword("DROP DEFAULT");
-				}
-				TypeOperation::SetNotNull => {
-					writer.push_keyword("SET NOT NULL");
-				}
-				TypeOperation::DropNotNull => {
-					writer.push_keyword("DROP NOT NULL");
-				}
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_type(&self, stmt: &crate::query::DropTypeStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("DROP TYPE");
-		writer.push_space();
-
-		// IF EXISTS clause
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-			writer.push_space();
-		}
-
-		// Type name
-		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
-
-		// CASCADE/RESTRICT clause
-		if stmt.cascade {
-			writer.push_space();
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_space();
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
+// 
+// 	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+// 		use crate::types::Iden;
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("ANALYZE");
+// 
+// 		if stmt.verbose {
+// 			writer.push_keyword("VERBOSE");
+// 		}
+// 
+// 		// Tables and columns
+// 		if !stmt.tables.is_empty() {
+// 			writer.push_space();
+// 			writer.push_list(&stmt.tables, ", ", |w, table| {
+// 				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
+// 					self.escape_iden(s)
+// 				});
+// 				if !table.columns.is_empty() {
+// 					w.push(" (");
+// 					w.push_list(&table.columns, ", ", |w2, col| {
+// 						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+// 					});
+// 					w.push(")");
+// 				}
+// 			});
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
+// 		use crate::types::Iden;
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("VACUUM");
+// 
+// 		// Options
+// 		if stmt.full {
+// 			writer.push_keyword("FULL");
+// 		}
+// 		if stmt.freeze {
+// 			writer.push_keyword("FREEZE");
+// 		}
+// 		if stmt.verbose {
+// 			writer.push_keyword("VERBOSE");
+// 		}
+// 		if stmt.analyze {
+// 			writer.push_keyword("ANALYZE");
+// 		}
+// 
+// 		// Tables
+// 		if !stmt.tables.is_empty() {
+// 			writer.push_space();
+// 			writer.push_list(&stmt.tables, ", ", |w, table| {
+// 				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+// 			});
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_create_materialized_view(
+// 		&self,
+// 		stmt: &crate::query::CreateMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::Iden;
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("CREATE MATERIALIZED VIEW");
+// 
+// 		// IF NOT EXISTS
+// 		if stmt.def.if_not_exists {
+// 			writer.push_keyword("IF NOT EXISTS");
+// 		}
+// 
+// 		// View name
+// 		writer.push_space();
+// 		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
+// 			self.escape_iden(s)
+// 		});
+// 
+// 		// Column names
+// 		if !stmt.def.columns.is_empty() {
+// 			writer.push_space();
+// 			writer.push("(");
+// 			writer.push_list(&stmt.def.columns, ", ", |w, col| {
+// 				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+// 			});
+// 			writer.push(")");
+// 		}
+// 
+// 		// TABLESPACE
+// 		if let Some(ref tablespace) = stmt.def.tablespace {
+// 			writer.push_keyword("TABLESPACE");
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+// 				self.escape_iden(s)
+// 			});
+// 		}
+// 
+// 		// AS SELECT
+// 		if let Some(ref select) = stmt.select {
+// 			writer.push_keyword("AS");
+// 			writer.push_space();
+// 			let (select_sql, select_values) = self.build_select(select);
+// 			writer.push(&select_sql);
+// 
+// 			// WITH [NO] DATA
+// 			if let Some(with_data) = stmt.def.with_data {
+// 				writer.push_space();
+// 				if with_data {
+// 					writer.push_keyword("WITH DATA");
+// 				} else {
+// 					writer.push_keyword("WITH NO DATA");
+// 				}
+// 			}
+// 
+// 			let (sql, _) = writer.finish();
+// 			return (sql, select_values);
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_materialized_view(
+// 		&self,
+// 		stmt: &crate::query::AlterMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{Iden, MaterializedViewOperation};
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("ALTER MATERIALIZED VIEW");
+// 
+// 		// View name
+// 		if let Some(ref name) = stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Operations
+// 		for operation in &stmt.operations {
+// 			writer.push_space();
+// 			match operation {
+// 				MaterializedViewOperation::Rename(new_name) => {
+// 					writer.push_keyword("RENAME TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				MaterializedViewOperation::OwnerTo(new_owner) => {
+// 					writer.push_keyword("OWNER TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				MaterializedViewOperation::SetSchema(schema_name) => {
+// 					writer.push_keyword("SET SCHEMA");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_materialized_view(
+// 		&self,
+// 		stmt: &crate::query::DropMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::Iden;
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("DROP MATERIALIZED VIEW");
+// 
+// 		// IF EXISTS
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 		}
+// 
+// 		// View names
+// 		writer.push_space();
+// 		writer.push_list(&stmt.names, ", ", |w, name| {
+// 			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		});
+// 
+// 		// CASCADE or RESTRICT
+// 		if stmt.cascade {
+// 			writer.push_keyword("CASCADE");
+// 		} else if stmt.restrict {
+// 			writer.push_keyword("RESTRICT");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_refresh_materialized_view(
+// 		&self,
+// 		stmt: &crate::query::RefreshMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::Iden;
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("REFRESH MATERIALIZED VIEW");
+// 
+// 		// CONCURRENTLY
+// 		if stmt.concurrently {
+// 			writer.push_keyword("CONCURRENTLY");
+// 		}
+// 
+// 		// View name
+// 		if let Some(ref name) = stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// WITH [NO] DATA
+// 		if let Some(with_data) = stmt.with_data {
+// 			writer.push_space();
+// 			if with_data {
+// 				writer.push_keyword("WITH DATA");
+// 			} else {
+// 				writer.push_keyword("WITH NO DATA");
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_create_procedure(
+// 		&self,
+// 		stmt: &crate::query::CreateProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// CREATE [OR REPLACE] PROCEDURE
+// 		writer.push_keyword("CREATE");
+// 		if stmt.procedure_def.or_replace {
+// 			writer.push_keyword("OR REPLACE");
+// 		}
+// 		writer.push_keyword("PROCEDURE");
+// 
+// 		// Procedure name
+// 		writer.push_space();
+// 		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
+// 			self.escape_iden(s)
+// 		});
+// 
+// 		// Parameters (param1 type1, param2 type2, ...)
+// 		writer.push("(");
+// 		let mut first = true;
+// 		for param in &stmt.procedure_def.parameters {
+// 			if !first {
+// 				writer.push(", ");
+// 			}
+// 			first = false;
+// 
+// 			// Parameter mode (IN, OUT, INOUT, VARIADIC)
+// 			if let Some(mode) = &param.mode {
+// 				use crate::types::function::ParameterMode;
+// 				match mode {
+// 					ParameterMode::In => writer.push("IN "),
+// 					ParameterMode::Out => writer.push("OUT "),
+// 					ParameterMode::InOut => writer.push("INOUT "),
+// 					ParameterMode::Variadic => writer.push("VARIADIC "),
+// 				}
+// 			}
+// 
+// 			// Parameter name (optional)
+// 			if let Some(name) = &param.name {
+// 				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 				writer.push(" ");
+// 			}
+// 
+// 			// Parameter type
+// 			if let Some(param_type) = &param.param_type {
+// 				writer.push(param_type);
+// 			}
+// 
+// 			// Default value (optional)
+// 			if let Some(default) = &param.default_value {
+// 				writer.push(" DEFAULT ");
+// 				writer.push(default);
+// 			}
+// 		}
+// 		writer.push(")");
+// 
+// 		// LANGUAGE
+// 		if let Some(language) = &stmt.procedure_def.language {
+// 			writer.push_keyword("LANGUAGE");
+// 			writer.push_space();
+// 			match language {
+// 				FunctionLanguage::Sql => writer.push("SQL"),
+// 				FunctionLanguage::PlPgSql => writer.push("PLPGSQL"),
+// 				FunctionLanguage::C => writer.push("C"),
+// 				FunctionLanguage::Custom(lang) => writer.push(lang),
+// 			}
+// 		}
+// 
+// 		// Behavior (IMMUTABLE/STABLE/VOLATILE)
+// 		if let Some(behavior) = &stmt.procedure_def.behavior {
+// 			writer.push_space();
+// 			match behavior {
+// 				FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+// 				FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+// 				FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+// 			}
+// 		}
+// 
+// 		// Security (SECURITY DEFINER/INVOKER)
+// 		if let Some(security) = &stmt.procedure_def.security {
+// 			writer.push_space();
+// 			match security {
+// 				FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+// 				FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+// 			}
+// 		}
+// 
+// 		// AS 'body'
+// 		if let Some(body) = &stmt.procedure_def.body {
+// 			writer.push_keyword("AS");
+// 			writer.push_space();
+// 			writer.push("$$");
+// 			writer.push(body);
+// 			writer.push("$$");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_procedure(
+// 		&self,
+// 		stmt: &crate::query::AlterProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionSecurity},
+// 			procedure::ProcedureOperation,
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// ALTER PROCEDURE
+// 		writer.push_keyword("ALTER PROCEDURE");
+// 
+// 		// Procedure name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Procedure signature (for overloaded procedures)
+// 		if !stmt.parameters.is_empty() {
+// 			writer.push("(");
+// 			let mut first = true;
+// 			for param in &stmt.parameters {
+// 				if !first {
+// 					writer.push(", ");
+// 				}
+// 				first = false;
+// 
+// 				// Parameter name (optional in signature)
+// 				if let Some(name) = &param.name {
+// 					let name_str = Iden::to_string(name.as_ref());
+// 					if !name_str.is_empty() {
+// 						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+// 						writer.push(" ");
+// 					}
+// 				}
+// 
+// 				// Parameter type
+// 				if let Some(param_type) = &param.param_type {
+// 					writer.push(param_type);
+// 				}
+// 			}
+// 			writer.push(")");
+// 		}
+// 
+// 		// ALTER PROCEDURE operation
+// 		if let Some(operation) = &stmt.operation {
+// 			writer.push_space();
+// 			match operation {
+// 				ProcedureOperation::RenameTo(new_name) => {
+// 					writer.push_keyword("RENAME TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				ProcedureOperation::OwnerTo(new_owner) => {
+// 					writer.push_keyword("OWNER TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				ProcedureOperation::SetSchema(new_schema) => {
+// 					writer.push_keyword("SET SCHEMA");
+// 					writer.push_space();
+// 					writer.push_identifier(&Iden::to_string(new_schema.as_ref()), |s| {
+// 						self.escape_iden(s)
+// 					});
+// 				}
+// 				ProcedureOperation::SetBehavior(behavior) => match behavior {
+// 					FunctionBehavior::Immutable => writer.push_keyword("IMMUTABLE"),
+// 					FunctionBehavior::Stable => writer.push_keyword("STABLE"),
+// 					FunctionBehavior::Volatile => writer.push_keyword("VOLATILE"),
+// 				},
+// 				ProcedureOperation::SetSecurity(security) => match security {
+// 					FunctionSecurity::Definer => writer.push_keyword("SECURITY DEFINER"),
+// 					FunctionSecurity::Invoker => writer.push_keyword("SECURITY INVOKER"),
+// 				},
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_procedure(
+// 		&self,
+// 		stmt: &crate::query::DropProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::Iden;
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// DROP PROCEDURE
+// 		writer.push_keyword("DROP PROCEDURE");
+// 
+// 		// IF EXISTS
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 		}
+// 
+// 		// Procedure name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Procedure signature (for overloaded procedures)
+// 		if !stmt.parameters.is_empty() {
+// 			writer.push("(");
+// 			let mut first = true;
+// 			for param in &stmt.parameters {
+// 				if !first {
+// 					writer.push(", ");
+// 				}
+// 				first = false;
+// 
+// 				// Parameter name (optional in signature)
+// 				if let Some(name) = &param.name {
+// 					let name_str = Iden::to_string(name.as_ref());
+// 					if !name_str.is_empty() {
+// 						writer.push_identifier(&name_str, |s| self.escape_iden(s));
+// 						writer.push(" ");
+// 					}
+// 				}
+// 
+// 				// Parameter type
+// 				if let Some(param_type) = &param.param_type {
+// 					writer.push(param_type);
+// 				}
+// 			}
+// 			writer.push(")");
+// 		}
+// 
+// 		// CASCADE
+// 		if stmt.cascade {
+// 			writer.push_keyword("CASCADE");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_create_type(&self, stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("CREATE TYPE");
+// 		writer.push_space();
+// 
+// 		// Type name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Type definition
+// 		if let Some(kind) = &stmt.kind {
+// 			use crate::types::type_def::TypeKind;
+// 			match kind {
+// 				TypeKind::Enum { values } => {
+// 					writer.push_space();
+// 					writer.push_keyword("AS ENUM");
+// 					writer.push_space();
+// 					writer.push("(");
+// 					writer.push_list(values, ", ", |w, value| {
+// 						w.push("'");
+// 						w.push(&value.replace('\'', "''"));
+// 						w.push("'");
+// 					});
+// 					writer.push(")");
+// 				}
+// 				TypeKind::Composite { attributes } => {
+// 					writer.push_space();
+// 					writer.push_keyword("AS");
+// 					writer.push_space();
+// 					writer.push("(");
+// 					writer.push_list(attributes, ", ", |w, (name, type_name)| {
+// 						w.push_identifier(name, |s| self.escape_iden(s));
+// 						w.push_space();
+// 						w.push(type_name);
+// 					});
+// 					writer.push(")");
+// 				}
+// 				TypeKind::Domain {
+// 					base_type,
+// 					constraint,
+// 					default,
+// 					not_null,
+// 				} => {
+// 					writer.push_space();
+// 					writer.push_keyword("AS");
+// 					writer.push_space();
+// 					writer.push(base_type);
+// 
+// 					// DEFAULT clause
+// 					if let Some(default_val) = default {
+// 						writer.push_space();
+// 						writer.push_keyword("DEFAULT");
+// 						writer.push_space();
+// 						writer.push(default_val);
+// 					}
+// 
+// 					// CONSTRAINT clause
+// 					if let Some(check) = constraint {
+// 						writer.push_space();
+// 						writer.push(check);
+// 					}
+// 
+// 					// NOT NULL clause
+// 					if *not_null {
+// 						writer.push_space();
+// 						writer.push_keyword("NOT NULL");
+// 					}
+// 				}
+// 				TypeKind::Range {
+// 					subtype,
+// 					subtype_diff,
+// 					canonical,
+// 				} => {
+// 					writer.push_space();
+// 					writer.push_keyword("AS RANGE");
+// 					writer.push_space();
+// 					writer.push("(");
+// 					writer.push("SUBTYPE = ");
+// 					writer.push(subtype);
+// 
+// 					// SUBTYPE_DIFF clause
+// 					if let Some(diff_fn) = subtype_diff {
+// 						writer.push(", SUBTYPE_DIFF = ");
+// 						writer.push(diff_fn);
+// 					}
+// 
+// 					// CANONICAL clause
+// 					if let Some(canonical_fn) = canonical {
+// 						writer.push(", CANONICAL = ");
+// 						writer.push(canonical_fn);
+// 					}
+// 
+// 					writer.push(")");
+// 				}
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_type(&self, stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("ALTER TYPE");
+// 		writer.push_space();
+// 		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
+// 
+// 		// Process operations
+// 		for operation in &stmt.operations {
+// 			writer.push_space();
+// 			use crate::types::type_def::TypeOperation;
+// 			match operation {
+// 				TypeOperation::RenameTo(new_name) => {
+// 					writer.push_keyword("RENAME TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&new_name.to_string(), |s| self.escape_iden(s));
+// 				}
+// 				TypeOperation::OwnerTo(owner) => {
+// 					writer.push_keyword("OWNER TO");
+// 					writer.push_space();
+// 					writer.push_identifier(&owner.to_string(), |s| self.escape_iden(s));
+// 				}
+// 				TypeOperation::SetSchema(schema) => {
+// 					writer.push_keyword("SET SCHEMA");
+// 					writer.push_space();
+// 					writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+// 				}
+// 				TypeOperation::AddValue(value, position) => {
+// 					writer.push_keyword("ADD VALUE");
+// 					writer.push_space();
+// 					writer.push("'");
+// 					writer.push(&value.replace('\'', "''"));
+// 					writer.push("'");
+// 
+// 					if let Some(pos) = position {
+// 						writer.push_space();
+// 						writer.push_keyword("BEFORE");
+// 						writer.push_space();
+// 						writer.push("'");
+// 						writer.push(&pos.replace('\'', "''"));
+// 						writer.push("'");
+// 					}
+// 				}
+// 				TypeOperation::RenameValue(old_value, new_value) => {
+// 					writer.push_keyword("RENAME VALUE");
+// 					writer.push_space();
+// 					writer.push("'");
+// 					writer.push(&old_value.replace('\'', "''"));
+// 					writer.push("'");
+// 					writer.push_space();
+// 					writer.push_keyword("TO");
+// 					writer.push_space();
+// 					writer.push("'");
+// 					writer.push(&new_value.replace('\'', "''"));
+// 					writer.push("'");
+// 				}
+// 				TypeOperation::AddConstraint(name, check) => {
+// 					writer.push_keyword("ADD CONSTRAINT");
+// 					writer.push_space();
+// 					writer.push_identifier(name, |s| self.escape_iden(s));
+// 					writer.push_space();
+// 					writer.push(check);
+// 				}
+// 				TypeOperation::DropConstraint(name, if_exists) => {
+// 					writer.push_keyword("DROP CONSTRAINT");
+// 					if *if_exists {
+// 						writer.push_space();
+// 						writer.push_keyword("IF EXISTS");
+// 					}
+// 					writer.push_space();
+// 					writer.push_identifier(name, |s| self.escape_iden(s));
+// 				}
+// 				TypeOperation::SetDefault(value) => {
+// 					writer.push_keyword("SET DEFAULT");
+// 					writer.push_space();
+// 					writer.push(value);
+// 				}
+// 				TypeOperation::DropDefault => {
+// 					writer.push_keyword("DROP DEFAULT");
+// 				}
+// 				TypeOperation::SetNotNull => {
+// 					writer.push_keyword("SET NOT NULL");
+// 				}
+// 				TypeOperation::DropNotNull => {
+// 					writer.push_keyword("DROP NOT NULL");
+// 				}
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_type(&self, stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push_keyword("DROP TYPE");
+// 		writer.push_space();
+// 
+// 		// IF EXISTS clause
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 			writer.push_space();
+// 		}
+// 
+// 		// Type name
+// 		writer.push_identifier(&stmt.name.to_string(), |s| self.escape_iden(s));
+// 
+// 		// CASCADE/RESTRICT clause
+// 		if stmt.cascade {
+// 			writer.push_space();
+// 			writer.push_keyword("CASCADE");
+// 		} else if stmt.restrict {
+// 			writer.push_space();
+// 			writer.push_keyword("RESTRICT");
+// 		}
+// 
+// 		writer.finish()
+// 	}
 }
 
 // Helper methods for DDL operations

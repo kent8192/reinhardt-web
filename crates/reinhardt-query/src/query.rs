@@ -93,6 +93,7 @@ mod drop_table;
 mod drop_trigger;
 mod drop_view;
 mod insert;
+pub mod maintenance;
 mod reindex;
 mod returning;
 pub mod schema;
@@ -116,6 +117,12 @@ pub use drop_table::*;
 pub use drop_trigger::*;
 pub use drop_view::*;
 pub use insert::*;
+// TODO: Maintenance operations will be implemented in future commits
+// pub use maintenance::{
+// 	AnalyzeStatement,
+// 	CheckTableStatement, OptimizeTableStatement, RepairTableStatement,
+// 	VacuumStatement,
+// };
 pub use reindex::*;
 pub use returning::*;
 pub use schema::{AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement};
@@ -633,6 +640,118 @@ impl Query {
 	pub fn drop_database() -> DropDatabaseStatement {
 		DropDatabaseStatement::new()
 	}
+
+	// TODO: Maintenance operations will be implemented in future commits
+	// /// Construct a new [`VacuumStatement`]
+	// ///
+	// /// # Examples
+	// ///
+	// /// ```rust,ignore
+	// /// use reinhardt_query::prelude::*;
+	// ///
+	// /// // VACUUM users
+	// /// let query = Query::vacuum()
+	// ///     .table("users");
+	// ///
+	// /// // VACUUM FULL ANALYZE users
+	// /// let query = Query::vacuum()
+	// ///     .table("users")
+	// ///     .full()
+	// ///     .analyze();
+	// /// ```
+	// pub fn vacuum() -> VacuumStatement {
+	// 	VacuumStatement::new()
+	// }
+
+	// /// Construct a new [`AnalyzeStatement`]
+	// ///
+	// /// # Examples
+	// ///
+	// /// ```rust,ignore
+	// /// use reinhardt_query::prelude::*;
+	// ///
+	// /// // ANALYZE users
+	// /// let query = Query::analyze()
+	// ///     .table("users");
+	// ///
+	// /// // ANALYZE VERBOSE users (email, name)
+	// /// let query = Query::analyze()
+	// ///     .table_columns("users", ["email", "name"])
+	// ///     .verbose();
+	// /// ```
+	// pub fn analyze() -> AnalyzeStatement {
+	// 	AnalyzeStatement::new()
+	// }
+
+	// /// Construct a new [`OptimizeTableStatement`]
+	// ///
+	// /// **MySQL-only feature**: This statement is specific to MySQL.
+	// /// Other backends will panic with a helpful message.
+	// ///
+	// /// # Examples
+	// ///
+	// /// ```rust,ignore
+	// /// use reinhardt_query::prelude::*;
+	// ///
+	// /// // OPTIMIZE TABLE users
+	// /// let query = Query::optimize_table()
+	// ///     .table("users");
+	// ///
+	// /// // OPTIMIZE TABLE users, posts
+	// /// let query = Query::optimize_table()
+	// ///     .table("users")
+	// ///     .table("posts");
+	// /// ```
+	// pub fn optimize_table() -> OptimizeTableStatement {
+	// 	OptimizeTableStatement::new()
+	// }
+
+	// /// Construct a new [`RepairTableStatement`]
+	// ///
+	// /// **MySQL-only feature**: This statement is specific to MySQL.
+	// /// Other backends will panic with a helpful message.
+	// ///
+	// /// # Examples
+	// ///
+	// /// ```rust,ignore
+	// /// use reinhardt_query::prelude::*;
+	// ///
+	// /// // REPAIR TABLE users
+	// /// let query = Query::repair_table()
+	// ///     .table("users");
+	// ///
+	// /// // REPAIR TABLE QUICK users
+	// /// let query = Query::repair_table()
+	// ///     .table("users")
+	// ///     .quick();
+	// /// ```
+	// pub fn repair_table() -> RepairTableStatement {
+	// 	RepairTableStatement::new()
+	// }
+
+	// /// Construct a new [`CheckTableStatement`]
+	// ///
+	// /// **MySQL-only feature**: This statement is specific to MySQL.
+	// /// Other backends will panic with a helpful message.
+	// ///
+	// /// # Examples
+	// ///
+	// /// ```rust,ignore
+	// /// use reinhardt_query::prelude::*;
+	// ///
+	// /// // CHECK TABLE users
+	// /// let query = Query::check_table()
+	// ///     .table("users");
+	// ///
+	// /// // CHECK TABLE QUICK EXTENDED users
+	// /// let query = Query::check_table()
+	// ///     .table("users")
+	// ///     .quick()
+	// ///     .extended();
+	// /// ```
+	// pub fn check_table() -> CheckTableStatement {
+	// 	CheckTableStatement::new()
+	// }
 }
 
 #[cfg(test)]

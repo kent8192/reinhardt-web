@@ -850,6 +850,79 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_database(
+		&self,
+		stmt: &crate::query::CreateDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE DATABASE
+		writer.push_keyword("CREATE DATABASE");
+
+		// IF NOT EXISTS
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// CHARACTER SET
+		if let Some(charset) = &stmt.character_set {
+			writer.push_keyword("CHARACTER SET");
+			writer.push_space();
+			writer.push_identifier(charset, |s| self.escape_iden(s));
+		}
+
+		// COLLATE
+		if let Some(collate) = &stmt.collate {
+			writer.push_keyword("COLLATE");
+			writer.push_space();
+			writer.push_identifier(collate, |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_database(
+		&self,
+		_stmt: &crate::query::AlterDatabaseStatement,
+	) -> (String, Values) {
+		panic!(
+			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
+		);
+	}
+
+	fn build_drop_database(
+		&self,
+		stmt: &crate::query::DropDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP DATABASE
+		writer.push_keyword("DROP DATABASE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		writer.finish()
+	}
+
 	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
 		let mut writer = SqlWriter::new();
 
@@ -1468,194 +1541,194 @@ impl QueryBuilder for MySqlQueryBuilder {
 		panic!("MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead.");
 	}
 
-	fn build_create_function(
-		&self,
-		stmt: &crate::query::CreateFunctionStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// CREATE FUNCTION
-		writer.push_keyword("CREATE FUNCTION");
-
-		// Function name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Parameters (param1 type1, param2 type2, ...)
-		writer.push("(");
-		let mut first = true;
-		for param in &stmt.function_def.parameters {
-			if !first {
-				writer.push(", ");
-			}
-			first = false;
-
-			// Parameter name (required in MySQL)
-			if let Some(name) = &param.name {
-				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-				writer.push(" ");
-			}
-
-			// Parameter type
-			if let Some(param_type) = &param.param_type {
-				writer.push(param_type);
-			}
-		}
-		writer.push(")");
-
-		// RETURNS type
-		if let Some(returns) = &stmt.function_def.returns {
-			writer.push_keyword("RETURNS");
-			writer.push_space();
-			writer.push(returns);
-		}
-
-		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
-		// Map PostgreSQL behavior to MySQL:
-		// - IMMUTABLE -> DETERMINISTIC
-		// - STABLE/VOLATILE -> NOT DETERMINISTIC
-		if let Some(behavior) = &stmt.function_def.behavior {
-			writer.push_space();
-			match behavior {
-				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
-				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
-					writer.push_keyword("NOT DETERMINISTIC")
-				}
-			}
-		}
-
-		// Language (MySQL only supports SQL for user-defined functions)
-		if let Some(language) = &stmt.function_def.language {
-			match language {
-				FunctionLanguage::Sql => {
-					// SQL is the default for MySQL, no need to specify
-				}
-				_ => {
-					// MySQL only supports SQL language for user-defined functions
-					panic!("MySQL only supports SQL language for user-defined functions");
-				}
-			}
-		}
-
-		// Security (SQL SECURITY DEFINER/INVOKER)
-		if let Some(security) = &stmt.function_def.security {
-			writer.push_space();
-			match security {
-				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
-				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
-			}
-		}
-
-		// Function body (BEGIN...END)
-		if let Some(body) = &stmt.function_def.body {
-			writer.push_space();
-			writer.push("BEGIN");
-			writer.push_space();
-			writer.push(body);
-			writer.push_space();
-			writer.push("END");
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_function(
-		&self,
-		stmt: &crate::query::AlterFunctionStatement,
-	) -> (String, Values) {
-		use crate::query::function::AlterFunctionOperation;
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// ALTER FUNCTION
-		writer.push_keyword("ALTER FUNCTION");
-
-		// Function name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// ALTER FUNCTION operation
-		if let Some(operation) = &stmt.operation {
-			writer.push_space();
-			match operation {
-				AlterFunctionOperation::RenameTo(_) => {
-					// MySQL doesn't support RENAME TO for functions directly
-					panic!(
-						"MySQL does not support RENAME TO for functions. Use DROP + CREATE instead."
-					);
-				}
-				AlterFunctionOperation::OwnerTo(_) => {
-					// MySQL doesn't have OWNER TO concept
-					panic!("MySQL does not support OWNER TO for functions.");
-				}
-				AlterFunctionOperation::SetSchema(_) => {
-					// MySQL doesn't have schemas in the same way as PostgreSQL
-					panic!("MySQL does not support SET SCHEMA for functions.");
-				}
-				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
-					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
-					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
-						writer.push_keyword("NOT DETERMINISTIC")
-					}
-				},
-				AlterFunctionOperation::SetSecurity(security) => match security {
-					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
-					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
-				},
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
-		use crate::types::Iden;
-
-		let mut writer = SqlWriter::new();
-
-		// DROP FUNCTION
-		writer.push_keyword("DROP FUNCTION");
-
-		// IF EXISTS
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		// Function name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Note: MySQL doesn't support CASCADE for DROP FUNCTION
-		if stmt.cascade {
-			panic!("MySQL does not support CASCADE for DROP FUNCTION");
-		}
-
-		// Note: MySQL doesn't require parameter signature for DROP FUNCTION
-		// (function names must be unique within a database)
-		if !stmt.parameters.is_empty() {
-			// MySQL doesn't support parameters in DROP FUNCTION
-			// Function overloading is not supported in MySQL
-			panic!("MySQL does not support function overloading or parameters in DROP FUNCTION");
-		}
-
-		writer.finish()
-	}
-
+// 	fn build_create_function(
+// 		&self,
+// 		stmt: &crate::query::CreateFunctionStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// CREATE FUNCTION
+// 		writer.push_keyword("CREATE FUNCTION");
+// 
+// 		// Function name
+// 		writer.push_space();
+// 		writer.push_identifier(&Iden::to_string(stmt.function_def.name.as_ref()), |s| {
+// 			self.escape_iden(s)
+// 		});
+// 
+// 		// Parameters (param1 type1, param2 type2, ...)
+// 		writer.push("(");
+// 		let mut first = true;
+// 		for param in &stmt.function_def.parameters {
+// 			if !first {
+// 				writer.push(", ");
+// 			}
+// 			first = false;
+// 
+// 			// Parameter name (required in MySQL)
+// 			if let Some(name) = &param.name {
+// 				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 				writer.push(" ");
+// 			}
+// 
+// 			// Parameter type
+// 			if let Some(param_type) = &param.param_type {
+// 				writer.push(param_type);
+// 			}
+// 		}
+// 		writer.push(")");
+// 
+// 		// RETURNS type
+// 		if let Some(returns) = &stmt.function_def.returns {
+// 			writer.push_keyword("RETURNS");
+// 			writer.push_space();
+// 			writer.push(returns);
+// 		}
+// 
+// 		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
+// 		// Map PostgreSQL behavior to MySQL:
+// 		// - IMMUTABLE -> DETERMINISTIC
+// 		// - STABLE/VOLATILE -> NOT DETERMINISTIC
+// 		if let Some(behavior) = &stmt.function_def.behavior {
+// 			writer.push_space();
+// 			match behavior {
+// 				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+// 				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+// 					writer.push_keyword("NOT DETERMINISTIC")
+// 				}
+// 			}
+// 		}
+// 
+// 		// Language (MySQL only supports SQL for user-defined functions)
+// 		if let Some(language) = &stmt.function_def.language {
+// 			match language {
+// 				FunctionLanguage::Sql => {
+// 					// SQL is the default for MySQL, no need to specify
+// 				}
+// 				_ => {
+// 					// MySQL only supports SQL language for user-defined functions
+// 					panic!("MySQL only supports SQL language for user-defined functions");
+// 				}
+// 			}
+// 		}
+// 
+// 		// Security (SQL SECURITY DEFINER/INVOKER)
+// 		if let Some(security) = &stmt.function_def.security {
+// 			writer.push_space();
+// 			match security {
+// 				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+// 				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+// 			}
+// 		}
+// 
+// 		// Function body (BEGIN...END)
+// 		if let Some(body) = &stmt.function_def.body {
+// 			writer.push_space();
+// 			writer.push("BEGIN");
+// 			writer.push_space();
+// 			writer.push(body);
+// 			writer.push_space();
+// 			writer.push("END");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_function(
+// 		&self,
+// 		stmt: &crate::query::AlterFunctionStatement,
+// 	) -> (String, Values) {
+// 		use crate::query::function::AlterFunctionOperation;
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// ALTER FUNCTION
+// 		writer.push_keyword("ALTER FUNCTION");
+// 
+// 		// Function name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// ALTER FUNCTION operation
+// 		if let Some(operation) = &stmt.operation {
+// 			writer.push_space();
+// 			match operation {
+// 				AlterFunctionOperation::RenameTo(_) => {
+// 					// MySQL doesn't support RENAME TO for functions directly
+// 					panic!(
+// 						"MySQL does not support RENAME TO for functions. Use DROP + CREATE instead."
+// 					);
+// 				}
+// 				AlterFunctionOperation::OwnerTo(_) => {
+// 					// MySQL doesn't have OWNER TO concept
+// 					panic!("MySQL does not support OWNER TO for functions.");
+// 				}
+// 				AlterFunctionOperation::SetSchema(_) => {
+// 					// MySQL doesn't have schemas in the same way as PostgreSQL
+// 					panic!("MySQL does not support SET SCHEMA for functions.");
+// 				}
+// 				AlterFunctionOperation::SetBehavior(behavior) => match behavior {
+// 					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+// 					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+// 						writer.push_keyword("NOT DETERMINISTIC")
+// 					}
+// 				},
+// 				AlterFunctionOperation::SetSecurity(security) => match security {
+// 					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+// 					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+// 				},
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_function(&self, stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+// 		use crate::types::Iden;
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// DROP FUNCTION
+// 		writer.push_keyword("DROP FUNCTION");
+// 
+// 		// IF EXISTS
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 		}
+// 
+// 		// Function name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Note: MySQL doesn't support CASCADE for DROP FUNCTION
+// 		if stmt.cascade {
+// 			panic!("MySQL does not support CASCADE for DROP FUNCTION");
+// 		}
+// 
+// 		// Note: MySQL doesn't require parameter signature for DROP FUNCTION
+// 		// (function names must be unique within a database)
+// 		if !stmt.parameters.is_empty() {
+// 			// MySQL doesn't support parameters in DROP FUNCTION
+// 			// Function overloading is not supported in MySQL
+// 			panic!("MySQL does not support function overloading or parameters in DROP FUNCTION");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
@@ -1699,263 +1772,339 @@ impl QueryBuilder for MySqlQueryBuilder {
 			"MySQL does not support COMMENT ON statement. Use table/column COMMENT attribute instead."
 		);
 	}
-
-	fn build_alter_database(
-		&self,
-		_stmt: &crate::query::AlterDatabaseStatement,
-	) -> (String, Values) {
-		panic!(
-			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
-		);
-	}
-
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
-	}
-
-	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
-		panic!("MySQL does not support VACUUM. Use OPTIMIZE TABLE instead.");
-	}
-
-	fn build_create_materialized_view(
-		&self,
-		_stmt: &crate::query::CreateMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!(
-			"MySQL does not support materialized views natively. Use regular views or tables with triggers."
-		);
-	}
-
-	fn build_alter_materialized_view(
-		&self,
-		_stmt: &crate::query::AlterMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("MySQL does not support materialized views.");
-	}
-
-	fn build_drop_materialized_view(
-		&self,
-		_stmt: &crate::query::DropMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("MySQL does not support materialized views.");
-	}
-
-	fn build_refresh_materialized_view(
-		&self,
-		_stmt: &crate::query::RefreshMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("MySQL does not support materialized views.");
-	}
-
-	fn build_create_procedure(
-		&self,
-		stmt: &crate::query::CreateProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// CREATE PROCEDURE
-		writer.push_keyword("CREATE PROCEDURE");
-
-		// Procedure name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Parameters (param1 type1, param2 type2, ...)
-		writer.push("(");
-		let mut first = true;
-		for param in &stmt.procedure_def.parameters {
-			if !first {
-				writer.push(", ");
-			}
-			first = false;
-
-			// Parameter mode (IN, OUT, INOUT)
-			// MySQL doesn't support VARIADIC
-			if let Some(mode) = &param.mode {
-				use crate::types::function::ParameterMode;
-				match mode {
-					ParameterMode::In => writer.push("IN "),
-					ParameterMode::Out => writer.push("OUT "),
-					ParameterMode::InOut => writer.push("INOUT "),
-					ParameterMode::Variadic => {
-						panic!("MySQL does not support VARIADIC parameters");
-					}
-				}
-			}
-
-			// Parameter name (required in MySQL)
-			if let Some(name) = &param.name {
-				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-				writer.push(" ");
-			}
-
-			// Parameter type
-			if let Some(param_type) = &param.param_type {
-				writer.push(param_type);
-			}
-		}
-		writer.push(")");
-
-		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
-		// Map PostgreSQL behavior to MySQL:
-		// - IMMUTABLE -> DETERMINISTIC
-		// - STABLE/VOLATILE -> NOT DETERMINISTIC
-		if let Some(behavior) = &stmt.procedure_def.behavior {
-			writer.push_space();
-			match behavior {
-				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
-				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
-					writer.push_keyword("NOT DETERMINISTIC")
-				}
-			}
-		}
-
-		// Language (MySQL only supports SQL for user-defined procedures)
-		if let Some(language) = &stmt.procedure_def.language {
-			match language {
-				FunctionLanguage::Sql => {
-					// SQL is the default for MySQL, no need to specify
-				}
-				_ => {
-					// MySQL only supports SQL language for user-defined procedures
-					panic!("MySQL only supports SQL language for user-defined procedures");
-				}
-			}
-		}
-
-		// Security (SQL SECURITY DEFINER/INVOKER)
-		if let Some(security) = &stmt.procedure_def.security {
-			writer.push_space();
-			match security {
-				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
-				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
-			}
-		}
-
-		// Procedure body (BEGIN...END)
-		if let Some(body) = &stmt.procedure_def.body {
-			writer.push_space();
-			writer.push("BEGIN");
-			writer.push_space();
-			writer.push(body);
-			writer.push_space();
-			writer.push("END");
-		}
-
-		writer.finish()
-	}
-
-	fn build_alter_procedure(
-		&self,
-		stmt: &crate::query::AlterProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::{
-			Iden,
-			function::{FunctionBehavior, FunctionSecurity},
-			procedure::ProcedureOperation,
-		};
-
-		let mut writer = SqlWriter::new();
-
-		// ALTER PROCEDURE
-		writer.push_keyword("ALTER PROCEDURE");
-
-		// Procedure name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// ALTER PROCEDURE operation
-		if let Some(operation) = &stmt.operation {
-			writer.push_space();
-			match operation {
-				ProcedureOperation::RenameTo(_) => {
-					// MySQL doesn't support RENAME TO for procedures directly
-					panic!(
-						"MySQL does not support RENAME TO for procedures. Use DROP + CREATE instead."
-					);
-				}
-				ProcedureOperation::OwnerTo(_) => {
-					// MySQL doesn't have OWNER TO concept
-					panic!("MySQL does not support OWNER TO for procedures.");
-				}
-				ProcedureOperation::SetSchema(_) => {
-					// MySQL doesn't have schemas in the same way as PostgreSQL
-					panic!("MySQL does not support SET SCHEMA for procedures.");
-				}
-				ProcedureOperation::SetBehavior(behavior) => match behavior {
-					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
-					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
-						writer.push_keyword("NOT DETERMINISTIC")
-					}
-				},
-				ProcedureOperation::SetSecurity(security) => match security {
-					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
-					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
-				},
-			}
-		}
-
-		writer.finish()
-	}
-
-	fn build_drop_procedure(
-		&self,
-		stmt: &crate::query::DropProcedureStatement,
-	) -> (String, Values) {
-		use crate::types::Iden;
-
-		let mut writer = SqlWriter::new();
-
-		// DROP PROCEDURE
-		writer.push_keyword("DROP PROCEDURE");
-
-		// IF EXISTS
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		// Procedure name
-		if let Some(name) = &stmt.name {
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-		}
-
-		// Note: MySQL doesn't support CASCADE for DROP PROCEDURE
-		if stmt.cascade {
-			panic!("MySQL does not support CASCADE for DROP PROCEDURE");
-		}
-
-		// Note: MySQL doesn't require parameter signature for DROP PROCEDURE
-		// (procedure names must be unique within a database)
-		if !stmt.parameters.is_empty() {
-			// MySQL doesn't support parameters in DROP PROCEDURE
-			// Procedure overloading is not supported in MySQL
-			panic!("MySQL does not support procedure overloading or parameters in DROP PROCEDURE");
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
-		panic!("CREATE TYPE not supported. Use ENUM column type.");
-	}
-
-	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
-		panic!("ALTER TYPE not supported. Use ENUM column type.");
-	}
-
-	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
-		panic!("DROP TYPE not supported. Use ENUM column type.");
-	}
+// 
+// 	fn build_alter_database(
+// 		&self,
+// 		_stmt: &crate::query::AlterDatabaseStatement,
+// 	) -> (String, Values) {
+// 		panic!(
+// 			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
+// 		);
+// 	}
+// 
+// 	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+// 		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+// 	}
+// 
+// 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+// 		panic!("MySQL does not support VACUUM. Use OPTIMIZE TABLE instead.");
+// 	}
+// 
+// 	fn build_optimize_table(&self, stmt: &crate::query::OptimizeTableStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push("OPTIMIZE TABLE ");
+// 
+// 		// Write table names
+// 		for (i, table) in stmt.tables.iter().enumerate() {
+// 			if i > 0 {
+// 				writer.push(", ");
+// 			}
+// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+// 		}
+// 
+// 		(writer.result(), Values::default())
+// 	}
+// 
+// 	fn build_repair_table(&self, stmt: &crate::query::RepairTableStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push("REPAIR TABLE ");
+// 
+// 		// Write table names
+// 		for (i, table) in stmt.tables.iter().enumerate() {
+// 			if i > 0 {
+// 				writer.push(", ");
+// 			}
+// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Add options
+// 		if stmt.quick {
+// 			writer.push(" QUICK");
+// 		}
+// 		if stmt.extended {
+// 			writer.push(" EXTENDED");
+// 		}
+// 		if stmt.use_frm {
+// 			writer.push(" USE_FRM");
+// 		}
+// 
+// 		(writer.result(), Values::default())
+// 	}
+// 
+// 	fn build_check_table(&self, stmt: &crate::query::CheckTableStatement) -> (String, Values) {
+// 		let mut writer = SqlWriter::new();
+// 
+// 		writer.push("CHECK TABLE ");
+// 
+// 		// Write table names
+// 		for (i, table) in stmt.tables.iter().enumerate() {
+// 			if i > 0 {
+// 				writer.push(", ");
+// 			}
+// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Add options
+// 		if stmt.quick {
+// 			writer.push(" QUICK");
+// 		}
+// 		if stmt.fast {
+// 			writer.push(" FAST");
+// 		}
+// 		if stmt.medium {
+// 			writer.push(" MEDIUM");
+// 		}
+// 		if stmt.extended {
+// 			writer.push(" EXTENDED");
+// 		}
+// 		if stmt.changed {
+// 			writer.push(" CHANGED");
+// 		}
+// 
+// 		(writer.result(), Values::default())
+// 	}
+// 
+// 	fn build_create_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::CreateMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!(
+// 			"MySQL does not support materialized views natively. Use regular views or tables with triggers."
+// 		);
+// 	}
+// 
+// 	fn build_alter_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::AlterMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("MySQL does not support materialized views.");
+// 	}
+// 
+// 	fn build_drop_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::DropMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("MySQL does not support materialized views.");
+// 	}
+// 
+// 	fn build_refresh_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::RefreshMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("MySQL does not support materialized views.");
+// 	}
+// 
+// 	fn build_create_procedure(
+// 		&self,
+// 		stmt: &crate::query::CreateProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionLanguage, FunctionSecurity},
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// CREATE PROCEDURE
+// 		writer.push_keyword("CREATE PROCEDURE");
+// 
+// 		// Procedure name
+// 		writer.push_space();
+// 		writer.push_identifier(&Iden::to_string(stmt.procedure_def.name.as_ref()), |s| {
+// 			self.escape_iden(s)
+// 		});
+// 
+// 		// Parameters (param1 type1, param2 type2, ...)
+// 		writer.push("(");
+// 		let mut first = true;
+// 		for param in &stmt.procedure_def.parameters {
+// 			if !first {
+// 				writer.push(", ");
+// 			}
+// 			first = false;
+// 
+// 			// Parameter mode (IN, OUT, INOUT)
+// 			// MySQL doesn't support VARIADIC
+// 			if let Some(mode) = &param.mode {
+// 				use crate::types::function::ParameterMode;
+// 				match mode {
+// 					ParameterMode::In => writer.push("IN "),
+// 					ParameterMode::Out => writer.push("OUT "),
+// 					ParameterMode::InOut => writer.push("INOUT "),
+// 					ParameterMode::Variadic => {
+// 						panic!("MySQL does not support VARIADIC parameters");
+// 					}
+// 				}
+// 			}
+// 
+// 			// Parameter name (required in MySQL)
+// 			if let Some(name) = &param.name {
+// 				writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 				writer.push(" ");
+// 			}
+// 
+// 			// Parameter type
+// 			if let Some(param_type) = &param.param_type {
+// 				writer.push(param_type);
+// 			}
+// 		}
+// 		writer.push(")");
+// 
+// 		// Behavior: DETERMINISTIC or NOT DETERMINISTIC (MySQL specific)
+// 		// Map PostgreSQL behavior to MySQL:
+// 		// - IMMUTABLE -> DETERMINISTIC
+// 		// - STABLE/VOLATILE -> NOT DETERMINISTIC
+// 		if let Some(behavior) = &stmt.procedure_def.behavior {
+// 			writer.push_space();
+// 			match behavior {
+// 				FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+// 				FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+// 					writer.push_keyword("NOT DETERMINISTIC")
+// 				}
+// 			}
+// 		}
+// 
+// 		// Language (MySQL only supports SQL for user-defined procedures)
+// 		if let Some(language) = &stmt.procedure_def.language {
+// 			match language {
+// 				FunctionLanguage::Sql => {
+// 					// SQL is the default for MySQL, no need to specify
+// 				}
+// 				_ => {
+// 					// MySQL only supports SQL language for user-defined procedures
+// 					panic!("MySQL only supports SQL language for user-defined procedures");
+// 				}
+// 			}
+// 		}
+// 
+// 		// Security (SQL SECURITY DEFINER/INVOKER)
+// 		if let Some(security) = &stmt.procedure_def.security {
+// 			writer.push_space();
+// 			match security {
+// 				FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+// 				FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+// 			}
+// 		}
+// 
+// 		// Procedure body (BEGIN...END)
+// 		if let Some(body) = &stmt.procedure_def.body {
+// 			writer.push_space();
+// 			writer.push("BEGIN");
+// 			writer.push_space();
+// 			writer.push(body);
+// 			writer.push_space();
+// 			writer.push("END");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_alter_procedure(
+// 		&self,
+// 		stmt: &crate::query::AlterProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::{
+// 			Iden,
+// 			function::{FunctionBehavior, FunctionSecurity},
+// 			procedure::ProcedureOperation,
+// 		};
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// ALTER PROCEDURE
+// 		writer.push_keyword("ALTER PROCEDURE");
+// 
+// 		// Procedure name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// ALTER PROCEDURE operation
+// 		if let Some(operation) = &stmt.operation {
+// 			writer.push_space();
+// 			match operation {
+// 				ProcedureOperation::RenameTo(_) => {
+// 					// MySQL doesn't support RENAME TO for procedures directly
+// 					panic!(
+// 						"MySQL does not support RENAME TO for procedures. Use DROP + CREATE instead."
+// 					);
+// 				}
+// 				ProcedureOperation::OwnerTo(_) => {
+// 					// MySQL doesn't have OWNER TO concept
+// 					panic!("MySQL does not support OWNER TO for procedures.");
+// 				}
+// 				ProcedureOperation::SetSchema(_) => {
+// 					// MySQL doesn't have schemas in the same way as PostgreSQL
+// 					panic!("MySQL does not support SET SCHEMA for procedures.");
+// 				}
+// 				ProcedureOperation::SetBehavior(behavior) => match behavior {
+// 					FunctionBehavior::Immutable => writer.push_keyword("DETERMINISTIC"),
+// 					FunctionBehavior::Stable | FunctionBehavior::Volatile => {
+// 						writer.push_keyword("NOT DETERMINISTIC")
+// 					}
+// 				},
+// 				ProcedureOperation::SetSecurity(security) => match security {
+// 					FunctionSecurity::Definer => writer.push_keyword("SQL SECURITY DEFINER"),
+// 					FunctionSecurity::Invoker => writer.push_keyword("SQL SECURITY INVOKER"),
+// 				},
+// 			}
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_drop_procedure(
+// 		&self,
+// 		stmt: &crate::query::DropProcedureStatement,
+// 	) -> (String, Values) {
+// 		use crate::types::Iden;
+// 
+// 		let mut writer = SqlWriter::new();
+// 
+// 		// DROP PROCEDURE
+// 		writer.push_keyword("DROP PROCEDURE");
+// 
+// 		// IF EXISTS
+// 		if stmt.if_exists {
+// 			writer.push_keyword("IF EXISTS");
+// 		}
+// 
+// 		// Procedure name
+// 		if let Some(name) = &stmt.name {
+// 			writer.push_space();
+// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+// 		}
+// 
+// 		// Note: MySQL doesn't support CASCADE for DROP PROCEDURE
+// 		if stmt.cascade {
+// 			panic!("MySQL does not support CASCADE for DROP PROCEDURE");
+// 		}
+// 
+// 		// Note: MySQL doesn't require parameter signature for DROP PROCEDURE
+// 		// (procedure names must be unique within a database)
+// 		if !stmt.parameters.is_empty() {
+// 			// MySQL doesn't support parameters in DROP PROCEDURE
+// 			// Procedure overloading is not supported in MySQL
+// 			panic!("MySQL does not support procedure overloading or parameters in DROP PROCEDURE");
+// 		}
+// 
+// 		writer.finish()
+// 	}
+// 
+// 	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+// 		panic!("CREATE TYPE not supported. Use ENUM column type.");
+// 	}
+// 
+// 	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+// 		panic!("ALTER TYPE not supported. Use ENUM column type.");
+// 	}
+// 
+// 	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+// 		panic!("DROP TYPE not supported. Use ENUM column type.");
+// 	}
 }
 
 // Helper methods for CREATE TABLE

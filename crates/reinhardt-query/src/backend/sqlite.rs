@@ -1435,30 +1435,30 @@ impl QueryBuilder for SqliteQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_create_function(
-		&self,
-		_stmt: &crate::query::CreateFunctionStatement,
-	) -> (String, Values) {
-		panic!(
-			"SQLite does not support CREATE FUNCTION (user-defined functions are registered via API)"
-		)
-	}
-
-	fn build_alter_function(
-		&self,
-		_stmt: &crate::query::AlterFunctionStatement,
-	) -> (String, Values) {
-		panic!(
-			"SQLite does not support ALTER FUNCTION (user-defined functions are registered via API)"
-		)
-	}
-
-	fn build_drop_function(&self, _stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
-		panic!(
-			"SQLite does not support DROP FUNCTION (user-defined functions are registered via API)"
-		)
-	}
-
+// 	fn build_create_function(
+// 		&self,
+// 		_stmt: &crate::query::CreateFunctionStatement,
+// 	) -> (String, Values) {
+// 		panic!(
+// 			"SQLite does not support CREATE FUNCTION (user-defined functions are registered via API)"
+// 		)
+// 	}
+// 
+// 	fn build_alter_function(
+// 		&self,
+// 		_stmt: &crate::query::AlterFunctionStatement,
+// 	) -> (String, Values) {
+// 		panic!(
+// 			"SQLite does not support ALTER FUNCTION (user-defined functions are registered via API)"
+// 		)
+// 	}
+// 
+// 	fn build_drop_function(&self, _stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+// 		panic!(
+// 			"SQLite does not support DROP FUNCTION (user-defined functions are registered via API)"
+// 		)
+// 	}
+// 
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
@@ -1501,6 +1501,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 		panic!("SQLite does not support COMMENT ON statement.");
 	}
 
+	fn build_create_database(
+		&self,
+		_stmt: &crate::query::CreateDatabaseStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support CREATE DATABASE. Databases are created as separate files via API.");
+	}
+
 	fn build_alter_database(
 		&self,
 		_stmt: &crate::query::AlterDatabaseStatement,
@@ -1508,76 +1515,83 @@ impl QueryBuilder for SqliteQueryBuilder {
 		panic!("SQLite does not support ALTER DATABASE.");
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
-	}
-
-	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
-		panic!(
-			"SQLite VACUUM has different syntax (no table specification). Not supported via this builder."
-		);
-	}
-
-	fn build_create_materialized_view(
+	fn build_drop_database(
 		&self,
-		_stmt: &crate::query::CreateMaterializedViewStatement,
+		_stmt: &crate::query::DropDatabaseStatement,
 	) -> (String, Values) {
-		panic!("SQLite does not support materialized views.");
+		panic!("SQLite does not support DROP DATABASE. Database files are removed via filesystem operations.");
 	}
-
-	fn build_alter_materialized_view(
-		&self,
-		_stmt: &crate::query::AlterMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support materialized views.");
-	}
-
-	fn build_drop_materialized_view(
-		&self,
-		_stmt: &crate::query::DropMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support materialized views.");
-	}
-
-	fn build_refresh_materialized_view(
-		&self,
-		_stmt: &crate::query::RefreshMaterializedViewStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support materialized views.");
-	}
-
-	fn build_create_procedure(
-		&self,
-		_stmt: &crate::query::CreateProcedureStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support stored procedures.");
-	}
-
-	fn build_alter_procedure(
-		&self,
-		_stmt: &crate::query::AlterProcedureStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support stored procedures.");
-	}
-
-	fn build_drop_procedure(
-		&self,
-		_stmt: &crate::query::DropProcedureStatement,
-	) -> (String, Values) {
-		panic!("SQLite does not support stored procedures.");
-	}
-
-	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
-		panic!("CREATE TYPE not supported.");
-	}
-
-	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
-		panic!("ALTER TYPE not supported.");
-	}
-
-	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
-		panic!("DROP TYPE not supported.");
-	}
+//
+// 	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+// 		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
+// 	}
+// 
+// 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+// 		panic!(
+// 			"SQLite VACUUM has different syntax (no table specification). Not supported via this builder."
+// 		);
+// 	}
+// 
+// 	fn build_create_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::CreateMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support materialized views.");
+// 	}
+// 
+// 	fn build_alter_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::AlterMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support materialized views.");
+// 	}
+// 
+// 	fn build_drop_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::DropMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support materialized views.");
+// 	}
+// 
+// 	fn build_refresh_materialized_view(
+// 		&self,
+// 		_stmt: &crate::query::RefreshMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support materialized views.");
+// 	}
+// 
+// 	fn build_create_procedure(
+// 		&self,
+// 		_stmt: &crate::query::CreateProcedureStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support stored procedures.");
+// 	}
+// 
+// 	fn build_alter_procedure(
+// 		&self,
+// 		_stmt: &crate::query::AlterProcedureStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support stored procedures.");
+// 	}
+// 
+// 	fn build_drop_procedure(
+// 		&self,
+// 		_stmt: &crate::query::DropProcedureStatement,
+// 	) -> (String, Values) {
+// 		panic!("SQLite does not support stored procedures.");
+// 	}
+// 
+// 	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+// 		panic!("CREATE TYPE not supported.");
+// 	}
+// 
+// 	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+// 		panic!("ALTER TYPE not supported.");
+// 	}
+// 
+// 	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+// 		panic!("DROP TYPE not supported.");
+// 	}
 }
 
 // Helper methods for CREATE TABLE

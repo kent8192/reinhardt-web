@@ -6,17 +6,13 @@
 use super::{PostgresQueryBuilder, QueryBuilder};
 use crate::{
 	query::{
-		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
-		AlterMaterializedViewStatement, AlterProcedureStatement, AlterSchemaStatement,
-		AlterSequenceStatement, AlterTableStatement, AlterTypeStatement, AnalyzeStatement,
-		CommentStatement, CreateFunctionStatement, CreateIndexStatement,
-		CreateMaterializedViewStatement, CreateProcedureStatement, CreateSchemaStatement,
-		CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateTypeStatement,
-		CreateViewStatement, DeleteStatement, DropFunctionStatement, DropIndexStatement,
-		DropMaterializedViewStatement, DropProcedureStatement, DropSchemaStatement,
-		DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropTypeStatement,
-		DropViewStatement, InsertStatement, RefreshMaterializedViewStatement, ReindexStatement,
-		SelectStatement, TruncateTableStatement, UpdateStatement, VacuumStatement,
+		AlterDatabaseStatement, AlterIndexStatement, AlterSchemaStatement, AlterSequenceStatement,
+		AlterTableStatement, CommentStatement, CreateDatabaseStatement, CreateIndexStatement,
+		CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement,
+		CreateViewStatement, DeleteStatement, DropDatabaseStatement, DropIndexStatement,
+		DropSchemaStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
+		DropViewStatement, InsertStatement, ReindexStatement, SelectStatement,
+		TruncateTableStatement, UpdateStatement,
 	},
 	value::Values,
 };
@@ -55,6 +51,14 @@ impl CockroachDBQueryBuilder {
 }
 
 impl QueryBuilder for CockroachDBQueryBuilder {
+	fn escape_identifier(&self, ident: &str) -> String {
+		self.postgres.escape_identifier(ident)
+	}
+
+	fn format_placeholder(&self, index: usize) -> String {
+		self.postgres.format_placeholder(index)
+	}
+
 	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
 		self.postgres.build_select(stmt)
 	}
@@ -147,103 +151,115 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 		todo!("CockroachDB: COMMENT ON support")
 	}
 
+	fn build_create_database(&self, stmt: &CreateDatabaseStatement) -> (String, Values) {
+		// CockroachDB supports CREATE DATABASE with multi-region extensions
+		// Delegate to PostgreSQL implementation which includes CockroachDB compatibility
+		self.postgres.build_create_database(stmt)
+	}
+
 	fn build_alter_database(&self, stmt: &AlterDatabaseStatement) -> (String, Values) {
 		// CockroachDB supports ALTER DATABASE operations with multi-region support
 		// Delegate to PostgreSQL implementation which includes CockroachDB compatibility
 		self.postgres.build_alter_database(stmt)
 	}
 
-	fn build_create_function(&self, stmt: &CreateFunctionStatement) -> (String, Values) {
-		// CockroachDB delegates to PostgreSQL for functions
-		self.postgres.build_create_function(stmt)
+	fn build_drop_database(&self, stmt: &DropDatabaseStatement) -> (String, Values) {
+		// CockroachDB supports DROP DATABASE similar to PostgreSQL
+		// Delegate to PostgreSQL implementation
+		self.postgres.build_drop_database(stmt)
 	}
 
-	fn build_alter_function(&self, stmt: &AlterFunctionStatement) -> (String, Values) {
-		// CockroachDB delegates to PostgreSQL for functions
-		self.postgres.build_alter_function(stmt)
-	}
-
-	fn build_drop_function(&self, stmt: &DropFunctionStatement) -> (String, Values) {
-		// CockroachDB delegates to PostgreSQL for functions
-		self.postgres.build_drop_function(stmt)
-	}
-
-	fn escape_identifier(&self, ident: &str) -> String {
-		self.postgres.escape_identifier(ident)
-	}
-
-	fn format_placeholder(&self, index: usize) -> String {
-		self.postgres.format_placeholder(index)
-	}
-
-	fn build_analyze(&self, stmt: &AnalyzeStatement) -> (String, Values) {
-		// CockroachDB supports ANALYZE similar to PostgreSQL
-		self.postgres.build_analyze(stmt)
-	}
-
-	fn build_vacuum(&self, _stmt: &VacuumStatement) -> (String, Values) {
-		// CockroachDB does not support VACUUM (automatic garbage collection)
-		panic!("CockroachDB does not support VACUUM. Garbage collection is automatic.");
-	}
-
-	fn build_create_materialized_view(
-		&self,
-		stmt: &CreateMaterializedViewStatement,
-	) -> (String, Values) {
-		// CockroachDB supports materialized views similar to PostgreSQL
-		self.postgres.build_create_materialized_view(stmt)
-	}
-
-	fn build_alter_materialized_view(
-		&self,
-		stmt: &AlterMaterializedViewStatement,
-	) -> (String, Values) {
-		// CockroachDB supports materialized views similar to PostgreSQL
-		self.postgres.build_alter_materialized_view(stmt)
-	}
-
-	fn build_drop_materialized_view(
-		&self,
-		stmt: &DropMaterializedViewStatement,
-	) -> (String, Values) {
-		// CockroachDB supports materialized views similar to PostgreSQL
-		self.postgres.build_drop_materialized_view(stmt)
-	}
-
-	fn build_refresh_materialized_view(
-		&self,
-		stmt: &RefreshMaterializedViewStatement,
-	) -> (String, Values) {
-		// CockroachDB supports materialized views similar to PostgreSQL
-		self.postgres.build_refresh_materialized_view(stmt)
-	}
-
-	fn build_create_procedure(&self, _stmt: &CreateProcedureStatement) -> (String, Values) {
-		todo!("CockroachDB: CREATE PROCEDURE support (Phase C)")
-	}
-
-	fn build_alter_procedure(&self, _stmt: &AlterProcedureStatement) -> (String, Values) {
-		todo!("CockroachDB: ALTER PROCEDURE support (Phase C)")
-	}
-
-	fn build_drop_procedure(&self, _stmt: &DropProcedureStatement) -> (String, Values) {
-		todo!("CockroachDB: DROP PROCEDURE support (Phase C)")
-	}
-
-	fn build_create_type(&self, stmt: &CreateTypeStatement) -> (String, Values) {
-		// CockroachDB supports custom types similar to PostgreSQL
-		self.postgres.build_create_type(stmt)
-	}
-
-	fn build_alter_type(&self, stmt: &AlterTypeStatement) -> (String, Values) {
-		// CockroachDB supports custom types similar to PostgreSQL
-		self.postgres.build_alter_type(stmt)
-	}
-
-	fn build_drop_type(&self, stmt: &DropTypeStatement) -> (String, Values) {
-		// CockroachDB supports custom types similar to PostgreSQL
-		self.postgres.build_drop_type(stmt)
-	}
+// 	fn build_create_function(&self, stmt: &CreateFunctionStatement) -> (String, Values) {
+// 		// CockroachDB delegates to PostgreSQL for functions
+// 		self.postgres.build_create_function(stmt)
+// 	}
+// 
+// 	fn build_alter_function(&self, stmt: &AlterFunctionStatement) -> (String, Values) {
+// 		// CockroachDB delegates to PostgreSQL for functions
+// 		self.postgres.build_alter_function(stmt)
+// 	}
+// 
+// 	fn build_drop_function(&self, stmt: &DropFunctionStatement) -> (String, Values) {
+// 		// CockroachDB delegates to PostgreSQL for functions
+// 		self.postgres.build_drop_function(stmt)
+// 	}
+// 
+// 	fn escape_identifier(&self, ident: &str) -> String {
+// 		self.postgres.escape_identifier(ident)
+// 	}
+// 
+// 	fn format_placeholder(&self, index: usize) -> String {
+// 		self.postgres.format_placeholder(index)
+// 	}
+// 
+// 	fn build_analyze(&self, stmt: &AnalyzeStatement) -> (String, Values) {
+// 		// CockroachDB supports ANALYZE similar to PostgreSQL
+// 		self.postgres.build_analyze(stmt)
+// 	}
+// 
+// 	fn build_vacuum(&self, _stmt: &VacuumStatement) -> (String, Values) {
+// 		// CockroachDB does not support VACUUM (automatic garbage collection)
+// 		panic!("CockroachDB does not support VACUUM. Garbage collection is automatic.");
+// 	}
+// 
+// 	fn build_create_materialized_view(
+// 		&self,
+// 		stmt: &CreateMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		// CockroachDB supports materialized views similar to PostgreSQL
+// 		self.postgres.build_create_materialized_view(stmt)
+// 	}
+// 
+// 	fn build_alter_materialized_view(
+// 		&self,
+// 		stmt: &AlterMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		// CockroachDB supports materialized views similar to PostgreSQL
+// 		self.postgres.build_alter_materialized_view(stmt)
+// 	}
+// 
+// 	fn build_drop_materialized_view(
+// 		&self,
+// 		stmt: &DropMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		// CockroachDB supports materialized views similar to PostgreSQL
+// 		self.postgres.build_drop_materialized_view(stmt)
+// 	}
+// 
+// 	fn build_refresh_materialized_view(
+// 		&self,
+// 		stmt: &RefreshMaterializedViewStatement,
+// 	) -> (String, Values) {
+// 		// CockroachDB supports materialized views similar to PostgreSQL
+// 		self.postgres.build_refresh_materialized_view(stmt)
+// 	}
+// 
+// 	fn build_create_procedure(&self, _stmt: &CreateProcedureStatement) -> (String, Values) {
+// 		todo!("CockroachDB: CREATE PROCEDURE support (Phase C)")
+// 	}
+// 
+// 	fn build_alter_procedure(&self, _stmt: &AlterProcedureStatement) -> (String, Values) {
+// 		todo!("CockroachDB: ALTER PROCEDURE support (Phase C)")
+// 	}
+// 
+// 	fn build_drop_procedure(&self, _stmt: &DropProcedureStatement) -> (String, Values) {
+// 		todo!("CockroachDB: DROP PROCEDURE support (Phase C)")
+// 	}
+// 
+// 	fn build_create_type(&self, stmt: &CreateTypeStatement) -> (String, Values) {
+// 		// CockroachDB supports custom types similar to PostgreSQL
+// 		self.postgres.build_create_type(stmt)
+// 	}
+// 
+// 	fn build_alter_type(&self, stmt: &AlterTypeStatement) -> (String, Values) {
+// 		// CockroachDB supports custom types similar to PostgreSQL
+// 		self.postgres.build_alter_type(stmt)
+// 	}
+// 
+// 	fn build_drop_type(&self, stmt: &DropTypeStatement) -> (String, Values) {
+// 		// CockroachDB supports custom types similar to PostgreSQL
+// 		self.postgres.build_drop_type(stmt)
+// 	}
 }
 
 #[cfg(test)]
