@@ -42,7 +42,9 @@
 //!
 //! # DDL Usage - Database Operations
 //!
+//! - Create Database: [`CreateDatabaseStatement`]
 //! - Alter Database: [`AlterDatabaseStatement`]
+//! - Drop Database: [`DropDatabaseStatement`]
 //!
 //! # DDL Usage - Comment Operations
 //!
@@ -107,7 +109,7 @@ pub use create_index::*;
 pub use create_table::*;
 pub use create_trigger::*;
 pub use create_view::*;
-pub use database::AlterDatabaseStatement;
+pub use database::{AlterDatabaseStatement, CreateDatabaseStatement, DropDatabaseStatement};
 pub use delete::*;
 pub use drop_index::*;
 pub use drop_table::*;
@@ -592,8 +594,44 @@ impl Query {
 	///     .name("mydb")
 	///     .add_region("us-west-1");
 	/// ```
+	pub fn create_database() -> CreateDatabaseStatement {
+		CreateDatabaseStatement::new()
+	}
+
+	/// Construct a new [`AlterDatabaseStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ALTER DATABASE mydb RENAME TO newdb
+	/// let query = Query::alter_database()
+	///     .name("mydb")
+	///     .rename_to("newdb");
+	///
+	/// // CockroachDB: ALTER DATABASE mydb ADD REGION 'us-west-1'
+	/// let query = Query::alter_database()
+	///     .name("mydb")
+	///     .add_region("us-west-1");
+	/// ```
 	pub fn alter_database() -> AlterDatabaseStatement {
 		AlterDatabaseStatement::new()
+	}
+
+	/// Construct a new [`DropDatabaseStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // DROP DATABASE mydb
+	/// let query = Query::drop_database()
+	///     .name("mydb");
+	/// ```
+	pub fn drop_database() -> DropDatabaseStatement {
+		DropDatabaseStatement::new()
 	}
 }
 

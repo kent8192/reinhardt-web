@@ -8,14 +8,15 @@ use crate::{
 		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
 		AlterMaterializedViewStatement, AlterProcedureStatement, AlterSchemaStatement,
 		AlterSequenceStatement, AlterTableStatement, AlterTypeStatement, AnalyzeStatement,
-		CommentStatement, CreateFunctionStatement, CreateIndexStatement,
+		CommentStatement, CreateDatabaseStatement, CreateFunctionStatement, CreateIndexStatement,
 		CreateMaterializedViewStatement, CreateProcedureStatement, CreateSchemaStatement,
 		CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateTypeStatement,
-		CreateViewStatement, DeleteStatement, DropFunctionStatement, DropIndexStatement,
-		DropMaterializedViewStatement, DropProcedureStatement, DropSchemaStatement,
-		DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropTypeStatement,
-		DropViewStatement, InsertStatement, RefreshMaterializedViewStatement, ReindexStatement,
-		SelectStatement, TruncateTableStatement, UpdateStatement, VacuumStatement,
+		CreateViewStatement, DeleteStatement, DropDatabaseStatement, DropFunctionStatement,
+		DropIndexStatement, DropMaterializedViewStatement, DropProcedureStatement,
+		DropSchemaStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
+		DropTypeStatement, DropViewStatement, InsertStatement, RefreshMaterializedViewStatement,
+		ReindexStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		VacuumStatement,
 	},
 	value::Values,
 };
@@ -396,6 +397,19 @@ pub trait QueryBuilder {
 	/// A tuple of (SQL string, parameter values)
 	fn build_comment(&self, stmt: &CommentStatement) -> (String, Values);
 
+	/// Build CREATE DATABASE statement
+	///
+	/// Generates SQL and parameter values for a CREATE DATABASE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE DATABASE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_database(&self, stmt: &CreateDatabaseStatement) -> (String, Values);
+
 	/// Build ALTER DATABASE statement
 	///
 	/// Generates SQL and parameter values for an ALTER DATABASE statement.
@@ -408,6 +422,19 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_alter_database(&self, stmt: &AlterDatabaseStatement) -> (String, Values);
+
+	/// Build DROP DATABASE statement
+	///
+	/// Generates SQL and parameter values for a DROP DATABASE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP DATABASE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_database(&self, stmt: &DropDatabaseStatement) -> (String, Values);
 
 	/// Build CREATE FUNCTION statement
 	///
