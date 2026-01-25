@@ -17,12 +17,13 @@ use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatem
 ///
 /// ```rust
 /// use reinhardt_query::query::AlterSchemaOperation;
+/// use reinhardt_query::types::IntoIden;
 ///
 /// // Rename schema
-/// let op = AlterSchemaOperation::RenameTo("new_schema".into());
+/// let op = AlterSchemaOperation::RenameTo("new_schema".into_iden());
 ///
 /// // Change owner
-/// let op = AlterSchemaOperation::OwnerTo("new_owner".into());
+/// let op = AlterSchemaOperation::OwnerTo("new_owner".into_iden());
 /// ```
 #[derive(Debug, Clone)]
 pub enum AlterSchemaOperation {

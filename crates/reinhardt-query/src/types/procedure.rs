@@ -103,7 +103,7 @@ pub struct ProcedureParameter {
 ///
 /// ```rust
 /// use reinhardt_query::types::procedure::ProcedureOperation;
-/// use reinhardt_query::types::Alias;
+/// use reinhardt_query::types::{Alias, IntoIden};
 ///
 /// let op = ProcedureOperation::RenameTo(Alias::new("new_proc").into_iden());
 /// ```

@@ -8,10 +8,27 @@
 //!
 //! ## Features
 //!
+//! ### DML (Data Manipulation Language)
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
-//! - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
+//!
+//! ### DDL (Data Definition Language)
+//! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
+//! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
+//! - **Database operations** - CREATE/ALTER/DROP DATABASE (all backends)
+//! - **Functions & Procedures** - CREATE/ALTER/DROP FUNCTION/PROCEDURE (PostgreSQL, MySQL, CockroachDB)
+//! - **Custom types** - CREATE/ALTER/DROP TYPE (PostgreSQL, CockroachDB)
+//! - **Materialized views** - CREATE/ALTER/DROP/REFRESH MATERIALIZED VIEW (PostgreSQL, CockroachDB)
+//! - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
+//! - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
+//! - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+//!
+//! ### Multi-Backend Support
+//! - **PostgreSQL** - Full DDL and DML support with advanced features
+//! - **MySQL** - DML, Functions, Procedures, Events, and table maintenance
+//! - **SQLite** - DML and basic DDL operations
+//! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
 //!
 //! ## Architecture
@@ -55,14 +72,30 @@
 //!
 //! ## Backend Differences
 //!
-//! | Feature | PostgreSQL | MySQL | SQLite |
-//! |---------|-----------|-------|--------|
-//! | Identifier quoting | `"name"` | `` `name` `` | `"name"` |
-//! | Placeholders | `$1, $2, ...` | `?, ?, ...` | `?, ?, ...` |
-//! | NULLS FIRST/LAST | Native | Not supported | Native |
-//! | DISTINCT ON | Supported | Not supported | Not supported |
-//! | Window functions | Full support | Full support | Full support |
-//! | CTEs (WITH) | Supported | Supported | Supported |
+//! ### DML Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | Identifier quoting | `"name"` | `` `name` `` | `"name"` | `"name"` |
+//! | Placeholders | `$1, $2, ...` | `?, ?, ...` | `?, ?, ...` | `$1, $2, ...` |
+//! | NULLS FIRST/LAST | ✅ Native | ❌ | ✅ Native | ✅ Native |
+//! | DISTINCT ON | ✅ | ❌ | ❌ | ✅ |
+//! | Window functions | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+//! | CTEs (WITH) | ✅ | ✅ | ✅ | ✅ |
+//!
+//! ### DDL Features
+//! | Feature | PostgreSQL | MySQL | SQLite | CockroachDB |
+//! |---------|-----------|-------|--------|-------------|
+//! | CREATE/ALTER/DROP SCHEMA | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP SEQUENCE | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP DATABASE | ✅ | ✅ | ✅ | ✅ |
+//! | CREATE/ALTER/DROP FUNCTION | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP PROCEDURE | ✅ | ✅ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP TYPE | ✅ | ❌ | ❌ | ✅ |
+//! | CREATE/ALTER/DROP EVENT | ❌ | ✅ | ❌ | ❌ |
+//! | MATERIALIZED VIEW | ✅ | ❌ | ❌ | ✅ |
+//! | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
+//! | VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
+//! | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
 //!
 //! ## Expression Examples
 //!
@@ -83,6 +116,44 @@
 //!
 //! // LIKE pattern matching
 //! let like_expr = Expr::col("email").like("%@example.com");
+//! ```
+//!
+//! ## DDL Examples
+//!
+//! ```rust,ignore
+//! use reinhardt_query::prelude::*;
+//!
+//! // Create a schema (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_schema();
+//! stmt.name("app_schema").if_not_exists();
+//!
+//! // Create a sequence (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_sequence();
+//! stmt.name("user_id_seq").start_with(1000).increment_by(1);
+//!
+//! // Create a function (PostgreSQL, MySQL, CockroachDB)
+//! let mut stmt = Query::create_function();
+//! stmt.name("add_numbers")
+//!     .parameter("a", "INTEGER")
+//!     .parameter("b", "INTEGER")
+//!     .returns("INTEGER")
+//!     .language_sql()
+//!     .body("SELECT $1 + $2");
+//!
+//! // Create a materialized view (PostgreSQL, CockroachDB)
+//! let select = Query::select()
+//!     .column(Expr::col("id"))
+//!     .column(Expr::col("name"))
+//!     .from("users")
+//!     .and_where(Expr::col("active").eq(true));
+//!
+//! let mut stmt = Query::create_materialized_view();
+//! stmt.name("active_users").as_select(select);
+//!
+//! // Add a comment (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::comment();
+//! stmt.target(CommentTarget::Table("users".into_iden()))
+//!     .comment("Stores user account information");
 //! ```
 //!
 //! ## Feature Flags
