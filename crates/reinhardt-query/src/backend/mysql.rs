@@ -6,11 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
-		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
-		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
-		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
+		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
+		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
+		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1539,6 +1539,125 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_reindex(&self, _stmt: &ReindexStatement) -> (String, Values) {
 		panic!("MySQL does not support REINDEX. Use OPTIMIZE TABLE or DROP/CREATE INDEX instead.");
+	}
+
+	fn build_optimize_table(&self, stmt: &OptimizeTableStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// OPTIMIZE
+		writer.push_keyword("OPTIMIZE");
+
+		// NO_WRITE_TO_BINLOG or LOCAL
+		if stmt.no_write_to_binlog {
+			writer.push_keyword("NO_WRITE_TO_BINLOG");
+		} else if stmt.local {
+			writer.push_keyword("LOCAL");
+		}
+
+		// TABLE
+		writer.push_keyword("TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		writer.finish()
+	}
+
+	fn build_repair_table(&self, stmt: &RepairTableStatement) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// REPAIR
+		writer.push_keyword("REPAIR");
+
+		// NO_WRITE_TO_BINLOG or LOCAL
+		if stmt.no_write_to_binlog {
+			writer.push_keyword("NO_WRITE_TO_BINLOG");
+		} else if stmt.local {
+			writer.push_keyword("LOCAL");
+		}
+
+		// TABLE
+		writer.push_keyword("TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		// Options
+		if stmt.quick {
+			writer.push_keyword("QUICK");
+		}
+		if stmt.extended {
+			writer.push_keyword("EXTENDED");
+		}
+		if stmt.use_frm {
+			writer.push_keyword("USE_FRM");
+		}
+
+		writer.finish()
+	}
+
+	fn build_check_table(&self, stmt: &CheckTableStatement) -> (String, Values) {
+		use crate::types::{CheckTableOption, Iden};
+
+		let mut writer = SqlWriter::new();
+
+		// CHECK TABLE
+		writer.push_keyword("CHECK TABLE");
+
+		// Table names
+		let mut first = true;
+		for table in &stmt.tables {
+			if !first {
+				writer.push(",");
+			}
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			first = false;
+		}
+
+		// Option
+		match stmt.option {
+			CheckTableOption::ForUpgrade => {
+				writer.push_keyword("FOR UPGRADE");
+			}
+			CheckTableOption::Quick => {
+				writer.push_keyword("QUICK");
+			}
+			CheckTableOption::Fast => {
+				writer.push_keyword("FAST");
+			}
+			CheckTableOption::Medium => {
+				writer.push_keyword("MEDIUM");
+			}
+			CheckTableOption::Extended => {
+				writer.push_keyword("EXTENDED");
+			}
+			CheckTableOption::Changed => {
+				writer.push_keyword("CHANGED");
+			}
+		}
+
+		writer.finish()
 	}
 
 // 	fn build_create_function(
@@ -5590,5 +5709,227 @@ mod tests {
 		stmt.name("mood");
 
 		let _ = builder.build_drop_type(&stmt);
+	}
+
+	// OPTIMIZE TABLE tests
+	#[test]
+	fn test_optimize_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_no_write_to_binlog() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").no_write_to_binlog();
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE NO_WRITE_TO_BINLOG TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_optimize_table_local() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users").local();
+
+		let (sql, values) = builder.build_optimize_table(&stmt);
+		assert_eq!(sql, "OPTIMIZE LOCAL TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	// REPAIR TABLE tests
+	#[test]
+	fn test_repair_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users`, `posts`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_quick() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").quick();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` QUICK");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_extended() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").extended();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` EXTENDED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_use_frm() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").use_frm();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` USE_FRM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_no_write_to_binlog() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").no_write_to_binlog();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR NO_WRITE_TO_BINLOG TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_local() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").local();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR LOCAL TABLE `users`");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_repair_table_combined_options() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users").quick().use_frm();
+
+		let (sql, values) = builder.build_repair_table(&stmt);
+		assert_eq!(sql, "REPAIR TABLE `users` QUICK USE_FRM");
+		assert_eq!(values.len(), 0);
+	}
+
+	// CHECK TABLE tests
+	#[test]
+	fn test_check_table_basic() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users");
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` MEDIUM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_multiple_tables() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").table("posts");
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users`, `posts` MEDIUM");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_quick() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Quick);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` QUICK");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_fast() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Fast);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` FAST");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_extended() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Extended);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` EXTENDED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_changed() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::Changed);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` CHANGED");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_check_table_for_upgrade() {
+		use crate::types::CheckTableOption;
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users").option(CheckTableOption::ForUpgrade);
+
+		let (sql, values) = builder.build_check_table(&stmt);
+		assert_eq!(sql, "CHECK TABLE `users` FOR UPGRADE");
+		assert_eq!(values.len(), 0);
 	}
 }
