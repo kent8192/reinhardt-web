@@ -6,11 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
-		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
-		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
-		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
+		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
+		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
+		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef, TriggerBody},
 	value::Values,
@@ -1554,6 +1554,24 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		writer.finish()
+	}
+
+	fn build_optimize_table(&self, _stmt: &OptimizeTableStatement) -> (String, Values) {
+		panic!(
+			"OPTIMIZE TABLE is MySQL-specific. PostgreSQL users should use VACUUM ANALYZE instead."
+		);
+	}
+
+	fn build_repair_table(&self, _stmt: &RepairTableStatement) -> (String, Values) {
+		panic!(
+			"REPAIR TABLE is not supported in PostgreSQL. PostgreSQL automatically repairs corrupted data during normal operation."
+		);
+	}
+
+	fn build_check_table(&self, _stmt: &CheckTableStatement) -> (String, Values) {
+		panic!(
+			"CHECK TABLE is not supported in PostgreSQL. Use pg_catalog system views or pg_stat_* functions to monitor table health."
+		);
 	}
 
 // 	fn build_create_function(
@@ -7417,5 +7435,36 @@ mod tests {
 		let (sql, values) = builder.build_drop_type(&stmt);
 		assert_eq!(sql, r#"DROP TYPE IF EXISTS "my_type" CASCADE"#);
 		assert_eq!(values.len(), 0);
+	}
+
+	// MySQL-specific maintenance command panic tests
+	#[test]
+	#[should_panic(expected = "PostgreSQL users should use VACUUM ANALYZE")]
+	fn test_optimize_table_panics() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users");
+
+		let _ = builder.build_optimize_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in PostgreSQL")]
+	fn test_repair_table_panics() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users");
+
+		let _ = builder.build_repair_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in PostgreSQL")]
+	fn test_check_table_panics() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users");
+
+		let _ = builder.build_check_table(&stmt);
 	}
 }
