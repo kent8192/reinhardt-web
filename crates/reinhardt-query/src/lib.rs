@@ -195,8 +195,11 @@ pub mod prelude {
 		ConditionType, Expr, ExprTrait, IntoCondition, Keyword, SimpleExpr,
 	};
 	pub use crate::query::{
-		DeleteStatement, InsertStatement, Query, QueryBuilderTrait, QueryStatementBuilder,
-		QueryStatementWriter, SelectStatement, UpdateStatement,
+		AlterFunctionStatement, AlterProcedureStatement, AlterTypeStatement,
+		CreateFunctionStatement, CreateProcedureStatement, CreateTypeStatement, DeleteStatement,
+		DropFunctionStatement, DropProcedureStatement, DropTypeStatement, InsertStatement, Query,
+		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
+		UpdateStatement,
 	};
 	pub use crate::types::{
 		Alias, ColumnRef, DynIden, Iden, IdenStatic, IntoColumnRef, IntoIden, IntoTableRef, Order,
