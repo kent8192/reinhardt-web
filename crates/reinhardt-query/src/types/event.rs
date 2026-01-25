@@ -114,6 +114,7 @@ pub enum EventCompletion {
 /// ```
 #[derive(Debug, Clone)]
 pub struct EventDef {
+	#[allow(dead_code)] // Will be used in backend implementations for event name reference
 	pub(crate) name: DynIden,
 	pub(crate) schedule: Option<EventSchedule>,
 	pub(crate) completion: Option<EventCompletion>,
