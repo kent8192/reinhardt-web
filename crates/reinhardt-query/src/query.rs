@@ -111,7 +111,10 @@ pub use create_index::*;
 pub use create_table::*;
 pub use create_trigger::*;
 pub use create_view::*;
-pub use database::{AlterDatabaseStatement, CreateDatabaseStatement, DropDatabaseStatement};
+pub use database::{
+	AlterDatabaseStatement, AttachDatabaseStatement, CreateDatabaseStatement,
+	DetachDatabaseStatement, DropDatabaseStatement,
+};
 pub use delete::*;
 pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
 pub use drop_index::*;
@@ -817,6 +820,43 @@ impl Query {
 	/// ```
 	pub fn drop_event() -> DropEventStatement {
 		DropEventStatement::new()
+	}
+
+	/// Construct a new [`AttachDatabaseStatement`]
+	///
+	/// **SQLite-only feature**: This statement is specific to SQLite.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ATTACH DATABASE 'other.db' AS other_db
+	/// let query = Query::attach_database()
+	///     .file_path("other.db")
+	///     .schema_name("other_db");
+	/// ```
+	pub fn attach_database() -> AttachDatabaseStatement {
+		AttachDatabaseStatement::new()
+	}
+
+	/// Construct a new [`DetachDatabaseStatement`]
+	///
+	/// **SQLite-only feature**: This statement is specific to SQLite.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // DETACH DATABASE other_db
+	/// let query = Query::detach_database()
+	///     .schema_name("other_db");
+	/// ```
+	pub fn detach_database() -> DetachDatabaseStatement {
+		DetachDatabaseStatement::new()
 	}
 }
 
