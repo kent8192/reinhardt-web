@@ -132,13 +132,34 @@
 //! stmt.name("user_id_seq").start_with(1000).increment_by(1);
 //!
 //! // Create a function (PostgreSQL, MySQL, CockroachDB)
+//! use reinhardt_query::types::function::FunctionLanguage;
 //! let mut stmt = Query::create_function();
 //! stmt.name("add_numbers")
-//!     .parameter("a", "INTEGER")
-//!     .parameter("b", "INTEGER")
+//!     .add_parameter("a", "INTEGER")
+//!     .add_parameter("b", "INTEGER")
 //!     .returns("INTEGER")
-//!     .language_sql()
+//!     .language(FunctionLanguage::Sql)
 //!     .body("SELECT $1 + $2");
+//!
+//! // Create a procedure (PostgreSQL, MySQL, CockroachDB)
+//! let mut stmt = Query::create_procedure();
+//! stmt.name("log_event")
+//!     .add_parameter("message", "text")
+//!     .language(FunctionLanguage::Sql)
+//!     .body("INSERT INTO event_log (message) VALUES ($1)");
+//!
+//! // Create a custom ENUM type (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_type();
+//! stmt.name("status")
+//!     .as_enum(vec!["pending".to_string(), "active".to_string(), "completed".to_string()]);
+//!
+//! // Create a COMPOSITE type (PostgreSQL, CockroachDB)
+//! let mut stmt = Query::create_type();
+//! stmt.name("address")
+//!     .as_composite(vec![
+//!         ("street".to_string(), "text".to_string()),
+//!         ("city".to_string(), "text".to_string()),
+//!     ]);
 //!
 //! // Create a materialized view (PostgreSQL, CockroachDB)
 //! let select = Query::select()

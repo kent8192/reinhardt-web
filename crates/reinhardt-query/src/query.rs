@@ -829,6 +829,40 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Basic SQL function:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::FunctionLanguage;
+	///
+	/// let query = Query::create_function()
+	///     .name("add_one")
+	///     .add_parameter("x", "integer")
+	///     .returns("integer")
+	///     .language(FunctionLanguage::Sql)
+	///     .body("SELECT $1 + 1");
+	/// ```
+	///
+	/// PL/pgSQL function with OR REPLACE and options:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::{FunctionLanguage, FunctionBehavior, FunctionSecurity};
+	///
+	/// let query = Query::create_function()
+	///     .name("calculate_total")
+	///     .or_replace()
+	///     .add_parameter("price", "numeric")
+	///     .add_parameter("quantity", "integer")
+	///     .returns("numeric")
+	///     .language(FunctionLanguage::PlPgSql)
+	///     .behavior(FunctionBehavior::Immutable)
+	///     .security(FunctionSecurity::Definer)
+	///     .body("BEGIN RETURN price * quantity; END;");
+	/// ```
 	pub fn create_function() -> CreateFunctionStatement {
 		CreateFunctionStatement::new()
 	}
@@ -837,6 +871,39 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Rename function:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_function()
+	///     .name("old_func")
+	///     .rename_to("new_func");
+	/// ```
+	///
+	/// Change function owner:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_function()
+	///     .name("my_func")
+	///     .owner_to("new_owner");
+	/// ```
+	///
+	/// Modify function behavior:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::FunctionBehavior;
+	///
+	/// let query = Query::alter_function()
+	///     .name("my_func")
+	///     .set_behavior(FunctionBehavior::Stable);
+	/// ```
 	pub fn alter_function() -> AlterFunctionStatement {
 		AlterFunctionStatement::new()
 	}
@@ -845,6 +912,39 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Simple DROP FUNCTION:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_function()
+	///     .name("my_func");
+	/// ```
+	///
+	/// DROP FUNCTION with IF EXISTS and CASCADE:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_function()
+	///     .name("my_func")
+	///     .if_exists()
+	///     .cascade();
+	/// ```
+	///
+	/// DROP FUNCTION with parameter signature:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_function()
+	///     .name("add_numbers")
+	///     .add_parameter("", "integer")
+	///     .add_parameter("", "text");
+	/// ```
 	pub fn drop_function() -> DropFunctionStatement {
 		DropFunctionStatement::new()
 	}
@@ -853,6 +953,38 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Basic SQL procedure:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::FunctionLanguage;
+	///
+	/// let query = Query::create_procedure()
+	///     .name("log_event")
+	///     .add_parameter("message", "text")
+	///     .language(FunctionLanguage::Sql)
+	///     .body("INSERT INTO event_log (message) VALUES ($1)");
+	/// ```
+	///
+	/// PL/pgSQL procedure with OR REPLACE and options:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::{FunctionLanguage, FunctionBehavior, FunctionSecurity};
+	///
+	/// let query = Query::create_procedure()
+	///     .name("update_inventory")
+	///     .or_replace()
+	///     .add_parameter("product_id", "integer")
+	///     .add_parameter("quantity", "integer")
+	///     .language(FunctionLanguage::PlPgSql)
+	///     .behavior(FunctionBehavior::Volatile)
+	///     .security(FunctionSecurity::Invoker)
+	///     .body("BEGIN UPDATE inventory SET stock = stock - quantity WHERE id = product_id; END;");
+	/// ```
 	pub fn create_procedure() -> CreateProcedureStatement {
 		CreateProcedureStatement::new()
 	}
@@ -861,6 +993,39 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Rename procedure:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_procedure()
+	///     .name("old_proc")
+	///     .rename_to("new_proc");
+	/// ```
+	///
+	/// Change procedure owner:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_procedure()
+	///     .name("my_proc")
+	///     .owner_to("new_owner");
+	/// ```
+	///
+	/// Modify procedure behavior:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::FunctionBehavior;
+	///
+	/// let query = Query::alter_procedure()
+	///     .name("my_proc")
+	///     .set_behavior(FunctionBehavior::Stable);
+	/// ```
 	pub fn alter_procedure() -> AlterProcedureStatement {
 		AlterProcedureStatement::new()
 	}
@@ -869,6 +1034,39 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
 	/// SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Simple DROP PROCEDURE:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_procedure()
+	///     .name("my_proc");
+	/// ```
+	///
+	/// DROP PROCEDURE with IF EXISTS and CASCADE:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_procedure()
+	///     .name("my_proc")
+	///     .if_exists()
+	///     .cascade();
+	/// ```
+	///
+	/// DROP PROCEDURE with parameter signature:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_procedure()
+	///     .name("update_inventory")
+	///     .add_parameter("", "integer")
+	///     .add_parameter("", "integer");
+	/// ```
 	pub fn drop_procedure() -> DropProcedureStatement {
 		DropProcedureStatement::new()
 	}
@@ -877,6 +1075,43 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, CockroachDB only.
 	/// MySQL and SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Create ENUM type:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::create_type()
+	///     .name("mood")
+	///     .as_enum(vec!["happy".to_string(), "sad".to_string(), "neutral".to_string()]);
+	/// ```
+	///
+	/// Create COMPOSITE type:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::create_type()
+	///     .name("address")
+	///     .as_composite(vec![
+	///         ("street".to_string(), "text".to_string()),
+	///         ("city".to_string(), "text".to_string()),
+	///         ("zip".to_string(), "varchar(10)".to_string()),
+	///     ]);
+	/// ```
+	///
+	/// Create DOMAIN type with constraint:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::create_type()
+	///     .name("positive_int")
+	///     .as_domain("integer".to_string())
+	///     .constraint("positive_check".to_string(), "CHECK (VALUE > 0)".to_string());
+	/// ```
 	pub fn create_type() -> CreateTypeStatement {
 		CreateTypeStatement::new()
 	}
@@ -885,6 +1120,38 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, CockroachDB only.
 	/// MySQL and SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Add value to ENUM type:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_type()
+	///     .name("mood")
+	///     .add_value("excited", Some("happy"));
+	/// ```
+	///
+	/// Rename type:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_type()
+	///     .name("old_type")
+	///     .rename_to("new_type");
+	/// ```
+	///
+	/// Rename ENUM value:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::alter_type()
+	///     .name("mood")
+	///     .rename_value("happy", "joyful");
+	/// ```
 	pub fn alter_type() -> AlterTypeStatement {
 		AlterTypeStatement::new()
 	}
@@ -893,6 +1160,28 @@ impl Query {
 	///
 	/// **Backend support**: PostgreSQL, CockroachDB only.
 	/// MySQL and SQLite will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// Simple DROP TYPE:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_type()
+	///     .name("mood");
+	/// ```
+	///
+	/// DROP TYPE with IF EXISTS and CASCADE:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::drop_type()
+	///     .name("mood")
+	///     .if_exists()
+	///     .cascade();
+	/// ```
 	pub fn drop_type() -> DropTypeStatement {
 		DropTypeStatement::new()
 	}
