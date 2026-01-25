@@ -17,14 +17,19 @@ mod column_ref;
 pub mod comment;
 pub mod database;
 mod ddl;
+pub mod function;
 mod iden;
 mod join;
+pub mod maintenance;
+pub mod materialized_view;
 mod operators;
 mod order;
+pub mod procedure;
 pub mod schema;
 pub mod sequence;
 mod table_ref;
 mod trigger;
+pub mod type_def;
 mod window;
 pub mod zone;
 
@@ -33,14 +38,21 @@ pub use column_ref::{ColumnRef, IntoColumnRef};
 pub use comment::CommentTarget;
 pub use database::DatabaseOperation;
 pub use ddl::{ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint};
+pub use function::{
+	FunctionBehavior, FunctionDef, FunctionLanguage, FunctionParameter, FunctionSecurity,
+};
 pub use iden::{DynIden, Iden, IdenStatic, IntoIden, SeaRc};
 pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
+pub use maintenance::{AnalyzeTable, VacuumOption};
+pub use materialized_view::{MaterializedViewDef, MaterializedViewOperation};
 pub use operators::{BinOper, LogicalChainOper, PgBinOper, SubQueryOper, UnOper};
 pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
+pub use procedure::{ProcedureDef, ProcedureOperation, ProcedureParameter};
 pub use schema::SchemaDef;
 pub use sequence::{OwnedBy, SequenceDef, SequenceOption};
 pub use table_ref::{IntoTableRef, TableRef};
 pub use trigger::*;
+pub use type_def::{TypeDef, TypeKind, TypeOperation};
 pub use window::{Frame, FrameClause, FrameType, WindowStatement};
 pub use zone::ZoneConfig;
 
