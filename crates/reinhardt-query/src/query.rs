@@ -1,7 +1,7 @@
 //! Query statement builders
 //!
 //! This module provides builders for SQL query statements (SELECT, INSERT, UPDATE, DELETE)
-//! and DDL statements (CREATE TABLE, ALTER TABLE, DROP TABLE).
+//! and DDL statements (CREATE/ALTER/DROP for tables, indexes, views, schemas, sequences, databases).
 //!
 //! # DML Usage
 //!
@@ -10,15 +10,43 @@
 //! - Query Update: [`UpdateStatement`]
 //! - Query Delete: [`DeleteStatement`]
 //!
-//! # DDL Usage
+//! # DDL Usage - Table Operations
 //!
 //! - Create Table: [`CreateTableStatement`]
 //! - Alter Table: [`AlterTableStatement`]
 //! - Drop Table: [`DropTableStatement`]
+//!
+//! # DDL Usage - Index Operations
+//!
 //! - Create Index: [`CreateIndexStatement`]
+//! - Alter Index: [`AlterIndexStatement`]
 //! - Drop Index: [`DropIndexStatement`]
+//! - Reindex: [`ReindexStatement`]
+//!
+//! # DDL Usage - View Operations
+//!
 //! - Create View: [`CreateViewStatement`]
 //! - Drop View: [`DropViewStatement`]
+//!
+//! # DDL Usage - Schema Operations
+//!
+//! - Create Schema: [`CreateSchemaStatement`]
+//! - Alter Schema: [`AlterSchemaStatement`]
+//! - Drop Schema: [`DropSchemaStatement`]
+//!
+//! # DDL Usage - Sequence Operations
+//!
+//! - Create Sequence: [`CreateSequenceStatement`]
+//! - Alter Sequence: [`AlterSequenceStatement`]
+//! - Drop Sequence: [`DropSequenceStatement`]
+//!
+//! # DDL Usage - Database Operations
+//!
+//! - Alter Database: [`AlterDatabaseStatement`]
+//!
+//! # DDL Usage - Comment Operations
+//!
+//! - Comment: [`CommentStatement`]
 //!
 //! # Examples
 //!
@@ -51,10 +79,12 @@
 
 mod alter_index;
 mod alter_table;
+mod comment;
 mod create_index;
 mod create_table;
 mod create_trigger;
 mod create_view;
+mod database;
 mod delete;
 mod drop_index;
 mod drop_table;
@@ -63,17 +93,21 @@ mod drop_view;
 mod insert;
 mod reindex;
 mod returning;
+pub mod schema;
 mod select;
+pub mod sequence;
 mod traits;
 mod truncate_table;
 mod update;
 
 pub use alter_index::*;
 pub use alter_table::*;
+pub use comment::CommentStatement;
 pub use create_index::*;
 pub use create_table::*;
 pub use create_trigger::*;
 pub use create_view::*;
+pub use database::AlterDatabaseStatement;
 pub use delete::*;
 pub use drop_index::*;
 pub use drop_table::*;
@@ -82,10 +116,12 @@ pub use drop_view::*;
 pub use insert::*;
 pub use reindex::*;
 pub use returning::*;
+pub use schema::{AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement};
 pub use select::{
 	CommonTableExpr, LockBehavior, LockClause, LockType, SelectDistinct, SelectExpr,
 	SelectStatement, UnionType,
 };
+pub use sequence::{AlterSequenceStatement, CreateSequenceStatement, DropSequenceStatement};
 pub use traits::*;
 pub use truncate_table::*;
 pub use update::*;
@@ -389,6 +425,175 @@ impl Query {
 	/// ```
 	pub fn reindex() -> ReindexStatement {
 		ReindexStatement::new()
+	}
+
+	/// Construct a new [`CreateSchemaStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // CREATE SCHEMA my_schema
+	/// let query = Query::create_schema()
+	///     .name("my_schema");
+	///
+	/// // CREATE SCHEMA IF NOT EXISTS my_schema AUTHORIZATION owner_user
+	/// let query = Query::create_schema()
+	///     .name("my_schema")
+	///     .if_not_exists()
+	///     .authorization("owner_user");
+	/// ```
+	pub fn create_schema() -> CreateSchemaStatement {
+		CreateSchemaStatement::new()
+	}
+
+	/// Construct a new [`AlterSchemaStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ALTER SCHEMA old_name RENAME TO new_name
+	/// let query = Query::alter_schema()
+	///     .name("old_name")
+	///     .rename_to("new_name");
+	///
+	/// // ALTER SCHEMA my_schema OWNER TO new_owner
+	/// let query = Query::alter_schema()
+	///     .name("my_schema")
+	///     .owner_to("new_owner");
+	/// ```
+	pub fn alter_schema() -> AlterSchemaStatement {
+		AlterSchemaStatement::new()
+	}
+
+	/// Construct a new [`DropSchemaStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // DROP SCHEMA my_schema
+	/// let query = Query::drop_schema()
+	///     .name("my_schema");
+	///
+	/// // DROP SCHEMA IF EXISTS my_schema CASCADE
+	/// let query = Query::drop_schema()
+	///     .name("my_schema")
+	///     .if_exists()
+	///     .cascade();
+	/// ```
+	pub fn drop_schema() -> DropSchemaStatement {
+		DropSchemaStatement::new()
+	}
+
+	/// Construct a new [`CreateSequenceStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // CREATE SEQUENCE user_id_seq
+	/// let query = Query::create_sequence()
+	///     .name("user_id_seq");
+	///
+	/// // CREATE SEQUENCE user_id_seq START WITH 1000 INCREMENT BY 1
+	/// let query = Query::create_sequence()
+	///     .name("user_id_seq")
+	///     .start_with(1000)
+	///     .increment_by(1);
+	/// ```
+	pub fn create_sequence() -> CreateSequenceStatement {
+		CreateSequenceStatement::new()
+	}
+
+	/// Construct a new [`AlterSequenceStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ALTER SEQUENCE user_id_seq RESTART WITH 2000
+	/// let query = Query::alter_sequence()
+	///     .name("user_id_seq")
+	///     .restart_with(2000);
+	///
+	/// // ALTER SEQUENCE user_id_seq RENAME TO new_user_id_seq
+	/// let query = Query::alter_sequence()
+	///     .name("user_id_seq")
+	///     .rename_to("new_user_id_seq");
+	/// ```
+	pub fn alter_sequence() -> AlterSequenceStatement {
+		AlterSequenceStatement::new()
+	}
+
+	/// Construct a new [`DropSequenceStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // DROP SEQUENCE user_id_seq
+	/// let query = Query::drop_sequence()
+	///     .name("user_id_seq");
+	///
+	/// // DROP SEQUENCE IF EXISTS user_id_seq CASCADE
+	/// let query = Query::drop_sequence()
+	///     .name("user_id_seq")
+	///     .if_exists()
+	///     .cascade();
+	/// ```
+	pub fn drop_sequence() -> DropSequenceStatement {
+		DropSequenceStatement::new()
+	}
+
+	/// Construct a new [`CommentStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::CommentTarget;
+	///
+	/// // COMMENT ON TABLE "users" IS 'User account information'
+	/// let query = Query::comment()
+	///     .target(CommentTarget::Table("users".into_iden()))
+	///     .comment("User account information");
+	///
+	/// // COMMENT ON COLUMN "users"."email" IS 'User email address'
+	/// let query = Query::comment()
+	///     .target(CommentTarget::Column("users".into_iden(), "email".into_iden()))
+	///     .comment("User email address");
+	/// ```
+	pub fn comment() -> CommentStatement {
+		CommentStatement::new()
+	}
+
+	/// Construct a new [`AlterDatabaseStatement`]
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ALTER DATABASE mydb RENAME TO newdb
+	/// let query = Query::alter_database()
+	///     .name("mydb")
+	///     .rename_to("newdb");
+	///
+	/// // CockroachDB: ALTER DATABASE mydb ADD REGION 'us-west-1'
+	/// let query = Query::alter_database()
+	///     .name("mydb")
+	///     .add_region("us-west-1");
+	/// ```
+	pub fn alter_database() -> AlterDatabaseStatement {
+		AlterDatabaseStatement::new()
 	}
 }
 
