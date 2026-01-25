@@ -3,6 +3,9 @@
 //! This module provides types for database maintenance operations:
 //!
 //! - [`VacuumOption`]: Options for VACUUM statement
+//! - [`OptimizeTableOption`]: Options for OPTIMIZE TABLE statement (MySQL-only)
+//! - [`RepairTableOption`]: Options for REPAIR TABLE statement (MySQL-only)
+//! - [`CheckTableOption`]: Options for CHECK TABLE statement (MySQL-only)
 
 use crate::types::{DynIden, IntoIden};
 
@@ -161,6 +164,242 @@ impl AnalyzeTable {
 	}
 }
 
+/// OPTIMIZE TABLE statement options (MySQL-only)
+///
+/// This struct represents options for the OPTIMIZE TABLE statement.
+/// OPTIMIZE TABLE reorganizes the physical storage of table data and associated index data.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_query::types::maintenance::OptimizeTableOption;
+///
+/// // Basic OPTIMIZE TABLE
+/// let opt = OptimizeTableOption::new();
+///
+/// // OPTIMIZE NO_WRITE_TO_BINLOG TABLE
+/// let opt = OptimizeTableOption::new().no_write_to_binlog(true);
+///
+/// // OPTIMIZE LOCAL TABLE
+/// let opt = OptimizeTableOption::new().local(true);
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct OptimizeTableOption {
+	pub(crate) no_write_to_binlog: bool,
+	pub(crate) local: bool,
+}
+
+impl OptimizeTableOption {
+	/// Create a new OPTIMIZE TABLE option
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::OptimizeTableOption;
+	///
+	/// let opt = OptimizeTableOption::new();
+	/// ```
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Set NO_WRITE_TO_BINLOG option
+	///
+	/// Suppresses binary logging for this operation (same as LOCAL).
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::OptimizeTableOption;
+	///
+	/// let opt = OptimizeTableOption::new().no_write_to_binlog(true);
+	/// ```
+	pub fn no_write_to_binlog(mut self, no_write_to_binlog: bool) -> Self {
+		self.no_write_to_binlog = no_write_to_binlog;
+		self
+	}
+
+	/// Set LOCAL option
+	///
+	/// Suppresses binary logging for this operation (same as NO_WRITE_TO_BINLOG).
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::OptimizeTableOption;
+	///
+	/// let opt = OptimizeTableOption::new().local(true);
+	/// ```
+	pub fn local(mut self, local: bool) -> Self {
+		self.local = local;
+		self
+	}
+}
+
+/// REPAIR TABLE statement options (MySQL-only)
+///
+/// This struct represents options for the REPAIR TABLE statement.
+/// REPAIR TABLE repairs a possibly corrupted table.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_query::types::maintenance::RepairTableOption;
+///
+/// // Basic REPAIR TABLE
+/// let opt = RepairTableOption::new();
+///
+/// // REPAIR TABLE with QUICK option
+/// let opt = RepairTableOption::new().quick(true);
+///
+/// // REPAIR TABLE with EXTENDED option
+/// let opt = RepairTableOption::new().extended(true);
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct RepairTableOption {
+	pub(crate) no_write_to_binlog: bool,
+	pub(crate) local: bool,
+	pub(crate) quick: bool,
+	pub(crate) extended: bool,
+	pub(crate) use_frm: bool,
+}
+
+impl RepairTableOption {
+	/// Create a new REPAIR TABLE option
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new();
+	/// ```
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Set NO_WRITE_TO_BINLOG option
+	///
+	/// Suppresses binary logging for this operation.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new().no_write_to_binlog(true);
+	/// ```
+	pub fn no_write_to_binlog(mut self, no_write_to_binlog: bool) -> Self {
+		self.no_write_to_binlog = no_write_to_binlog;
+		self
+	}
+
+	/// Set LOCAL option
+	///
+	/// Suppresses binary logging for this operation (same as NO_WRITE_TO_BINLOG).
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new().local(true);
+	/// ```
+	pub fn local(mut self, local: bool) -> Self {
+		self.local = local;
+		self
+	}
+
+	/// Set QUICK option
+	///
+	/// Tries to repair only the index file, not the data file.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new().quick(true);
+	/// ```
+	pub fn quick(mut self, quick: bool) -> Self {
+		self.quick = quick;
+		self
+	}
+
+	/// Set EXTENDED option
+	///
+	/// Creates the index row by row instead of creating one index at a time with sorting.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new().extended(true);
+	/// ```
+	pub fn extended(mut self, extended: bool) -> Self {
+		self.extended = extended;
+		self
+	}
+
+	/// Set USE_FRM option
+	///
+	/// Uses the table definition from the .frm file to recreate the index file.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::types::maintenance::RepairTableOption;
+	///
+	/// let opt = RepairTableOption::new().use_frm(true);
+	/// ```
+	pub fn use_frm(mut self, use_frm: bool) -> Self {
+		self.use_frm = use_frm;
+		self
+	}
+}
+
+/// CHECK TABLE statement options (MySQL-only)
+///
+/// This enum represents the check option for the CHECK TABLE statement.
+/// CHECK TABLE checks a table or tables for errors.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_query::types::maintenance::CheckTableOption;
+///
+/// // Default check (MEDIUM)
+/// let opt = CheckTableOption::default();
+///
+/// // Quick check
+/// let opt = CheckTableOption::Quick;
+///
+/// // Extended check
+/// let opt = CheckTableOption::Extended;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckTableOption {
+	/// Check for version compatibility
+	ForUpgrade,
+	/// Quick check, skip scanning rows for incorrect links
+	Quick,
+	/// Fast check, check only tables that haven't been closed properly
+	Fast,
+	/// Medium check (default), scan rows to verify deleted links are valid
+	Medium,
+	/// Extended check, do a full key lookup for all keys
+	Extended,
+	/// Check only tables that have been changed since last check or not closed properly
+	Changed,
+}
+
+impl Default for CheckTableOption {
+	fn default() -> Self {
+		Self::Medium
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -252,5 +491,75 @@ mod tests {
 		assert_eq!(tbl.columns[0].to_string(), "email");
 		assert_eq!(tbl.columns[1].to_string(), "name");
 		assert_eq!(tbl.columns[2].to_string(), "age");
+	}
+
+	// OptimizeTableOption tests
+	#[rstest]
+	fn test_optimize_table_option_default() {
+		let opt = OptimizeTableOption::new();
+		assert!(!opt.no_write_to_binlog);
+		assert!(!opt.local);
+	}
+
+	#[rstest]
+	fn test_optimize_table_option_no_write_to_binlog() {
+		let opt = OptimizeTableOption::new().no_write_to_binlog(true);
+		assert!(opt.no_write_to_binlog);
+		assert!(!opt.local);
+	}
+
+	#[rstest]
+	fn test_optimize_table_option_local() {
+		let opt = OptimizeTableOption::new().local(true);
+		assert!(!opt.no_write_to_binlog);
+		assert!(opt.local);
+	}
+
+	// RepairTableOption tests
+	#[rstest]
+	fn test_repair_table_option_default() {
+		let opt = RepairTableOption::new();
+		assert!(!opt.no_write_to_binlog);
+		assert!(!opt.local);
+		assert!(!opt.quick);
+		assert!(!opt.extended);
+		assert!(!opt.use_frm);
+	}
+
+	#[rstest]
+	fn test_repair_table_option_quick() {
+		let opt = RepairTableOption::new().quick(true);
+		assert!(opt.quick);
+		assert!(!opt.extended);
+	}
+
+	#[rstest]
+	fn test_repair_table_option_extended() {
+		let opt = RepairTableOption::new().extended(true);
+		assert!(!opt.quick);
+		assert!(opt.extended);
+	}
+
+	#[rstest]
+	fn test_repair_table_option_use_frm() {
+		let opt = RepairTableOption::new().use_frm(true);
+		assert!(opt.use_frm);
+	}
+
+	// CheckTableOption tests
+	#[rstest]
+	fn test_check_table_option_default() {
+		let opt = CheckTableOption::default();
+		assert!(matches!(opt, CheckTableOption::Medium));
+	}
+
+	#[rstest]
+	fn test_check_table_option_variants() {
+		assert!(matches!(CheckTableOption::ForUpgrade, CheckTableOption::ForUpgrade));
+		assert!(matches!(CheckTableOption::Quick, CheckTableOption::Quick));
+		assert!(matches!(CheckTableOption::Fast, CheckTableOption::Fast));
+		assert!(matches!(CheckTableOption::Medium, CheckTableOption::Medium));
+		assert!(matches!(CheckTableOption::Extended, CheckTableOption::Extended));
+		assert!(matches!(CheckTableOption::Changed, CheckTableOption::Changed));
 	}
 }
