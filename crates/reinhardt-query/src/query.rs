@@ -88,6 +88,7 @@ mod create_trigger;
 mod create_view;
 mod database;
 mod delete;
+pub mod event;
 mod drop_index;
 mod drop_table;
 mod drop_trigger;
@@ -112,6 +113,7 @@ pub use create_trigger::*;
 pub use create_view::*;
 pub use database::{AlterDatabaseStatement, CreateDatabaseStatement, DropDatabaseStatement};
 pub use delete::*;
+pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
 pub use drop_index::*;
 pub use drop_table::*;
 pub use drop_trigger::*;
@@ -751,6 +753,70 @@ impl Query {
 	/// ```
 	pub fn check_table() -> CheckTableStatement {
 		CheckTableStatement::new()
+	}
+
+	/// Construct a new [`CreateEventStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // CREATE EVENT cleanup_logs
+	/// // ON SCHEDULE EVERY 1 DAY
+	/// // DO DELETE FROM logs WHERE created_at < NOW() - INTERVAL 7 DAY
+	/// let query = Query::create_event()
+	///     .name("cleanup_logs")
+	///     .on_schedule_every("1 DAY")
+	///     .do_body("DELETE FROM logs WHERE created_at < NOW() - INTERVAL 7 DAY");
+	/// ```
+	pub fn create_event() -> CreateEventStatement {
+		CreateEventStatement::new()
+	}
+
+	/// Construct a new [`AlterEventStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // ALTER EVENT cleanup_logs RENAME TO purge_old_logs
+	/// let query = Query::alter_event()
+	///     .name("cleanup_logs")
+	///     .rename_to("purge_old_logs");
+	/// ```
+	pub fn alter_event() -> AlterEventStatement {
+		AlterEventStatement::new()
+	}
+
+	/// Construct a new [`DropEventStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // DROP EVENT cleanup_logs
+	/// let query = Query::drop_event()
+	///     .name("cleanup_logs");
+	///
+	/// // DROP EVENT IF EXISTS cleanup_logs
+	/// let query = Query::drop_event()
+	///     .name("cleanup_logs")
+	///     .if_exists();
+	/// ```
+	pub fn drop_event() -> DropEventStatement {
+		DropEventStatement::new()
 	}
 }
 

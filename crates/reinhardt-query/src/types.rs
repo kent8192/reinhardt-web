@@ -17,6 +17,7 @@ mod column_ref;
 pub mod comment;
 pub mod database;
 mod ddl;
+pub mod event;
 pub mod function;
 mod iden;
 mod join;
@@ -38,6 +39,7 @@ pub use column_ref::{ColumnRef, IntoColumnRef};
 pub use comment::CommentTarget;
 pub use database::DatabaseOperation;
 pub use ddl::{ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint};
+pub use event::{EventCompletion, EventDef, EventOperation, EventSchedule};
 pub use function::{
 	FunctionBehavior, FunctionDef, FunctionLanguage, FunctionParameter, FunctionSecurity,
 };
