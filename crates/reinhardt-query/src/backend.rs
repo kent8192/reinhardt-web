@@ -6,12 +6,13 @@
 use crate::{
 	query::{
 		AlterDatabaseStatement, AlterIndexStatement, AlterSchemaStatement, AlterSequenceStatement,
-		AlterTableStatement, CommentStatement, CreateDatabaseStatement, CreateIndexStatement,
-		CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement,
-		CreateViewStatement, DeleteStatement, DropDatabaseStatement, DropIndexStatement,
-		DropSchemaStatement, DropSequenceStatement, DropTableStatement, DropTriggerStatement,
-		DropViewStatement, InsertStatement, ReindexStatement, SelectStatement,
-		TruncateTableStatement, UpdateStatement,
+		AlterTableStatement, CheckTableStatement, CommentStatement, CreateDatabaseStatement,
+		CreateIndexStatement, CreateSchemaStatement, CreateSequenceStatement, CreateTableStatement,
+		CreateTriggerStatement, CreateViewStatement, DeleteStatement, DropDatabaseStatement,
+		DropIndexStatement, DropSchemaStatement, DropSequenceStatement, DropTableStatement,
+		DropTriggerStatement, DropViewStatement, InsertStatement, OptimizeTableStatement,
+		ReindexStatement, RepairTableStatement, SelectStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	value::Values,
 };
@@ -431,7 +432,49 @@ pub trait QueryBuilder {
 	/// A tuple of (SQL string, parameter values)
 	fn build_drop_database(&self, stmt: &DropDatabaseStatement) -> (String, Values);
 
-	// TODO: Advanced DDL operations (function, procedure, materialized view, type, maintenance)
+	/// Build OPTIMIZE TABLE statement
+	///
+	/// Generates SQL and parameter values for an OPTIMIZE TABLE statement.
+	/// **MySQL-only**: Other backends will panic with a helpful message.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The OPTIMIZE TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_optimize_table(&self, stmt: &OptimizeTableStatement) -> (String, Values);
+
+	/// Build REPAIR TABLE statement
+	///
+	/// Generates SQL and parameter values for a REPAIR TABLE statement.
+	/// **MySQL-only**: Other backends will panic with a helpful message.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The REPAIR TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_repair_table(&self, stmt: &RepairTableStatement) -> (String, Values);
+
+	/// Build CHECK TABLE statement
+	///
+	/// Generates SQL and parameter values for a CHECK TABLE statement.
+	/// **MySQL-only**: Other backends will panic with a helpful message.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CHECK TABLE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_check_table(&self, stmt: &CheckTableStatement) -> (String, Values);
+
+	// TODO: Advanced DDL operations (function, procedure, materialized view, type)
 	// will be implemented in future commits
 	// /// Build CREATE FUNCTION statement
 	// ///
