@@ -9,6 +9,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 ## Features
 
 - **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE
+- **DCL (Data Control Language) support** - GRANT and REVOKE statements
 - **Multi-backend support** - PostgreSQL, MySQL, SQLite with proper dialect handling
 - **Expression system** - Arithmetic, comparison, logical, and pattern matching operators
 - **Advanced SQL** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -144,6 +145,107 @@ stmt.column("name")
     });
 ```
 
+### GRANT (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::grant()
+    .privilege(Privilege::Select)
+    .privilege(Privilege::Insert)
+    .on_table("users")
+    .to("app_user")
+    .with_grant_option(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT SELECT, INSERT ON TABLE "users" TO "app_user" WITH GRANT OPTION"#
+```
+
+### REVOKE (DCL)
+
+```rust
+use reinhardt_query::prelude::*;
+
+let stmt = Query::revoke()
+    .privilege(Privilege::Insert)
+    .from_table("users")
+    .from("app_user")
+    .cascade(true);
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke(&stmt);
+// sql = r#"REVOKE INSERT ON TABLE "users" FROM "app_user" CASCADE"#
+```
+
+### GRANT Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{GrantRoleStatement, RoleSpecification};
+
+let stmt = GrantRoleStatement::new()
+    .role("developer")
+    .to(RoleSpecification::new("alice"))
+    .with_admin_option();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant_role(&stmt);
+// sql = r#"GRANT "developer" TO alice WITH ADMIN OPTION"#
+```
+
+### REVOKE Role Membership (DCL)
+
+```rust
+use reinhardt_query::dcl::{RevokeRoleStatement, RoleSpecification};
+
+let stmt = RevokeRoleStatement::new()
+    .role("developer")
+    .from(RoleSpecification::new("alice"))
+    .cascade();
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_revoke_role(&stmt);
+// sql = r#"REVOKE "developer" FROM alice CASCADE"#
+```
+
+### Extended Object Types (PostgreSQL)
+
+PostgreSQL supports additional object types beyond tables and databases:
+
+```rust
+use reinhardt_query::prelude::*;
+
+// Grant EXECUTE on function
+let stmt = Query::grant()
+    .privilege(Privilege::Execute)
+    .on_function("calculate_total")
+    .to("app_user");
+
+let builder = PostgresQueryBuilder::new();
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT EXECUTE ON FUNCTION "calculate_total" TO "app_user""#
+
+// Grant USAGE on type
+let stmt = Query::grant()
+    .privilege(Privilege::Usage)
+    .on_type("custom_type")
+    .to("app_user");
+
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT USAGE ON TYPE "custom_type" TO "app_user""#
+
+// Grant SET on parameter
+let stmt = Query::grant()
+    .privilege(Privilege::Set)
+    .on_parameter("work_mem")
+    .to("app_user");
+
+let (sql, values) = builder.build_grant(&stmt);
+// sql = r#"GRANT SET ON PARAMETER "work_mem" TO "app_user""#
+```
+
+Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter
+
 ## Backend Differences
 
 | Feature | PostgreSQL | MySQL | SQLite |
@@ -156,6 +258,7 @@ stmt.column("name")
 | CTEs (WITH) | Supported | Supported | Supported |
 | Recursive CTEs | Supported | Supported | Supported |
 | `||` concatenation | Native | Not supported | Native |
+| DCL (GRANT/REVOKE) | Full support | Full support | Not supported (panics) |
 
 ## Feature Flags
 

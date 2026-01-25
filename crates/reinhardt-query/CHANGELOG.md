@@ -46,7 +46,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InsertStatement` with table, columns, values (single and multi-row)
 - `UpdateStatement` with table, SET, WHERE
 - `DeleteStatement` with table, WHERE
-- `Query` factory with `select()`, `insert()`, `update()`, `delete()`
+- `Query` factory with methods:
+  - DML: `select()`, `insert()`, `update()`, `delete()`
+  - DCL Privileges: `grant()`, `revoke()`, `grant_role()`, `revoke_role()`
+  - DCL Roles: `create_role()`, `drop_role()`, `alter_role()`
+  - DCL Users: `create_user()`, `drop_user()`, `alter_user()`, `rename_user()`
+  - DCL Session: `set_role()`, `reset_role()`, `set_default_role()`
+
+#### DCL (Data Control Language) Builders
+
+**Privilege Management:**
+- `GrantStatement` - GRANT statement builder with fluent API for object privileges
+- `RevokeStatement` - REVOKE statement builder with fluent API for object privileges
+- `GrantRoleStatement` - GRANT role membership statement builder
+- `RevokeRoleStatement` - REVOKE role membership statement builder
+- `RoleSpecification` enum - Role specifications (RoleName, CurrentRole, CurrentUser, SessionUser)
+- `DropBehavior` enum - Drop behavior for REVOKE (Cascade, Restrict)
+- `Privilege` enum - 16 privilege types (SELECT, INSERT, UPDATE, DELETE, REFERENCES, CREATE, ALL, TRUNCATE, TRIGGER, MAINTAIN, USAGE, CONNECT, TEMPORARY, EXECUTE, SET, ALTER SYSTEM)
+  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
+- `ObjectType` enum - 15 database object types (Table, Database, Schema, Sequence, Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
+  - **Breaking Change Prevention**: Added `#[non_exhaustive]` attribute to allow future extensions without breaking changes
+  - **Extended PostgreSQL Support**: Added 11 PostgreSQL-specific object types (Function, Procedure, Routine, Type, Domain, ForeignDataWrapper, ForeignServer, Language, LargeObject, Tablespace, Parameter)
+  - Convenience methods: `on_function()`, `on_procedure()`, `on_routine()`, `on_type()`, `on_domain()`, `on_foreign_data_wrapper()`, `on_foreign_server()`, `on_language()`, `on_large_object()`, `on_tablespace()`, `on_parameter()` for GrantStatement
+  - Convenience methods: `from_function()`, `from_procedure()`, `from_routine()`, `from_type()`, `from_domain()`, `from_foreign_data_wrapper()`, `from_foreign_server()`, `from_language()`, `from_large_object()`, `from_tablespace()`, `from_parameter()` for RevokeStatement
+- `Grantee` enum - 6 grantee types (Role, User with host, Public, CurrentRole, CurrentUser, SessionUser)
+- Privilege-object validation logic
+- WITH GRANT OPTION support (object privileges)
+- WITH ADMIN OPTION support (role membership)
+- ADMIN OPTION FOR support (role membership revocation)
+- GRANTED BY clause support (PostgreSQL)
+- CASCADE and RESTRICT support (PostgreSQL)
+
+**Role and User Management:**
+- `CreateRoleStatement` - CREATE ROLE statement builder with fluent API
+- `DropRoleStatement` - DROP ROLE statement builder with IF EXISTS support
+- `AlterRoleStatement` - ALTER ROLE statement builder with attribute modification and RENAME TO (PostgreSQL)
+- `CreateUserStatement` - CREATE USER statement builder (PostgreSQL alias, MySQL native)
+- `DropUserStatement` - DROP USER statement builder with IF EXISTS support
+- `AlterUserStatement` - ALTER USER statement builder (PostgreSQL alias, MySQL native)
+- `RenameUserStatement` - RENAME USER statement builder (MySQL only)
+- `RoleAttribute` enum - PostgreSQL role attributes (SUPERUSER, CREATEDB, CREATEROLE, INHERIT, LOGIN, REPLICATION, BYPASSRLS, CONNECTION LIMIT, PASSWORD, VALID UNTIL, IN ROLE, ROLE, ADMIN)
+- `UserOption` enum - MySQL user options (IDENTIFIED BY, IDENTIFIED WITH, ACCOUNT LOCK/UNLOCK, PASSWORD EXPIRE, PASSWORD HISTORY, PASSWORD REUSE INTERVAL, PASSWORD REQUIRE CURRENT, FAILED_LOGIN_ATTEMPTS, PASSWORD_LOCK_TIME, COMMENT, ATTRIBUTE)
+
+**Session Management:**
+- `SetRoleStatement` - SET ROLE statement builder with support for specific roles, NONE, ALL, ALL EXCEPT (MySQL)
+- `ResetRoleStatement` - RESET ROLE statement builder (PostgreSQL only)
+- `SetDefaultRoleStatement` - SET DEFAULT ROLE statement builder (MySQL only)
+- `RoleTarget` enum - Role targets for SET ROLE (Named, None, All, AllExcept, Default)
+- `DefaultRoleSpec` enum - Default role specifications (RoleList, All, None)
+
+**Database Support:**
+- PostgreSQL and MySQL full support for all DCL operations
+- SQLite not supported (panics with descriptive error messages)
 
 #### Advanced SELECT Features
 - JOIN support (INNER, LEFT, RIGHT, FULL OUTER, CROSS) with ON/USING
@@ -72,13 +123,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Backends
 - `PostgresQueryBuilder` - double-quoted identifiers, `$N` placeholders,
-  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST
+  DISTINCT ON, GROUPS frame, `||` concatenation, RETURNING, NULLS FIRST/LAST,
+  Full DCL support:
+  - GRANT/REVOKE with GRANTED BY and CASCADE support
+  - GRANT/REVOKE role membership with all PostgreSQL features
+  - CREATE/DROP/ALTER ROLE with all PostgreSQL role attributes
+  - CREATE/DROP/ALTER USER (aliases for ROLE operations)
+  - SET ROLE and RESET ROLE for session management
 - `MySqlQueryBuilder` - backtick-quoted identifiers, `?` placeholders,
-  DISTINCT ROW, INSERT IGNORE
+  DISTINCT ROW, INSERT IGNORE,
+  Full DCL support:
+  - GRANT/REVOKE with User@Host format
+  - GRANT/REVOKE role membership with WITH ADMIN OPTION
+  - CREATE/DROP/ALTER ROLE with MySQL-specific options
+  - CREATE/DROP/ALTER USER with user@host specification
+  - RENAME USER for user renaming
+  - SET ROLE and SET DEFAULT ROLE for session management
 - `SqliteQueryBuilder` - double-quoted identifiers, `?` placeholders,
-  NULLS FIRST/LAST, `||` concatenation
+  NULLS FIRST/LAST, `||` concatenation, DCL not supported (panics)
 - `SqlWriter` infrastructure for SQL string construction
-- `QueryBuilder` trait for backend-agnostic query generation
+- `QueryBuilder` trait for backend-agnostic query generation with methods:
+  - `build_grant()`, `build_revoke()`, `build_grant_role()`, `build_revoke_role()`
+  - `build_create_role()`, `build_drop_role()`, `build_alter_role()`
+  - `build_create_user()`, `build_drop_user()`, `build_alter_user()`, `build_rename_user()`
+  - `build_set_role()`, `build_reset_role()`, `build_set_default_role()`
 
 #### Operators
 - `BinOper` for binary operators (arithmetic, comparison, logical, pattern)
