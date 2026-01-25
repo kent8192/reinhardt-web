@@ -2239,6 +2239,69 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_database(
+		&self,
+		stmt: &crate::query::CreateDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// CREATE DATABASE
+		writer.push_keyword("CREATE DATABASE");
+
+		// IF NOT EXISTS
+		if stmt.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// OWNER
+		if let Some(owner) = &stmt.owner {
+			writer.push_keyword("OWNER");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(owner.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// TEMPLATE
+		if let Some(template) = &stmt.template {
+			writer.push_keyword("TEMPLATE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(template.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// ENCODING
+		if let Some(encoding) = &stmt.encoding {
+			writer.push_keyword("ENCODING");
+			writer.push_space();
+			let escaped = encoding.replace('\'', "''");
+			writer.push(&format!("'{}'", escaped));
+		}
+
+		// LC_COLLATE
+		if let Some(lc_collate) = &stmt.lc_collate {
+			writer.push_keyword("LC_COLLATE");
+			writer.push_space();
+			let escaped = lc_collate.replace('\'', "''");
+			writer.push(&format!("'{}'", escaped));
+		}
+
+		// LC_CTYPE
+		if let Some(lc_ctype) = &stmt.lc_ctype {
+			writer.push_keyword("LC_CTYPE");
+			writer.push_space();
+			let escaped = lc_ctype.replace('\'', "''");
+			writer.push(&format!("'{}'", escaped));
+		}
+
+		writer.finish()
+	}
+
 	fn build_alter_database(
 		&self,
 		stmt: &crate::query::AlterDatabaseStatement,
@@ -2332,6 +2395,40 @@ impl QueryBuilder for PostgresQueryBuilder {
 					writer.push(&parts.join(", "));
 				}
 			}
+		}
+
+		writer.finish()
+	}
+
+	fn build_drop_database(
+		&self,
+		stmt: &crate::query::DropDatabaseStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		let mut writer = SqlWriter::new();
+
+		// DROP DATABASE
+		writer.push_keyword("DROP DATABASE");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// Database name
+		if let Some(name) = &stmt.database_name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// WITH (FORCE) - PostgreSQL 13+
+		if stmt.force {
+			writer.push_space();
+			writer.push_keyword("WITH");
+			writer.push(" (");
+			writer.push("FORCE");
+			writer.push(")");
 		}
 
 		writer.finish()
