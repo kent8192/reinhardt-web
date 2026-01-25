@@ -88,13 +88,15 @@ mod create_trigger;
 mod create_view;
 mod database;
 mod delete;
-pub mod event;
 mod drop_index;
 mod drop_table;
 mod drop_trigger;
 mod drop_view;
+pub mod event;
+pub mod function;
 mod insert;
 pub mod maintenance;
+pub mod procedure;
 mod reindex;
 mod returning;
 pub mod schema;
@@ -102,6 +104,7 @@ mod select;
 pub mod sequence;
 mod traits;
 mod truncate_table;
+pub mod type_def;
 mod update;
 
 pub use alter_index::*;
@@ -116,16 +119,20 @@ pub use database::{
 	DetachDatabaseStatement, DropDatabaseStatement,
 };
 pub use delete::*;
-pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
 pub use drop_index::*;
 pub use drop_table::*;
 pub use drop_trigger::*;
 pub use drop_view::*;
+pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
+pub use function::{AlterFunctionStatement, CreateFunctionStatement, DropFunctionStatement};
 pub use insert::*;
 pub use maintenance::{CheckTableStatement, OptimizeTableStatement, RepairTableStatement};
+pub use procedure::{AlterProcedureStatement, CreateProcedureStatement, DropProcedureStatement};
 pub use reindex::*;
 pub use returning::*;
-pub use schema::{AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement};
+pub use schema::{
+	AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement,
+};
 pub use select::{
 	CommonTableExpr, LockBehavior, LockClause, LockType, SelectDistinct, SelectExpr,
 	SelectStatement, UnionType,
@@ -133,6 +140,7 @@ pub use select::{
 pub use sequence::{AlterSequenceStatement, CreateSequenceStatement, DropSequenceStatement};
 pub use traits::*;
 pub use truncate_table::*;
+pub use type_def::{AlterTypeStatement, CreateTypeStatement, DropTypeStatement};
 pub use update::*;
 
 /// Shorthand for constructing any table query
@@ -815,6 +823,78 @@ impl Query {
 	/// ```
 	pub fn drop_event() -> DropEventStatement {
 		DropEventStatement::new()
+	}
+
+	/// Construct a new [`CreateFunctionStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn create_function() -> CreateFunctionStatement {
+		CreateFunctionStatement::new()
+	}
+
+	/// Construct a new [`AlterFunctionStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn alter_function() -> AlterFunctionStatement {
+		AlterFunctionStatement::new()
+	}
+
+	/// Construct a new [`DropFunctionStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn drop_function() -> DropFunctionStatement {
+		DropFunctionStatement::new()
+	}
+
+	/// Construct a new [`CreateProcedureStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn create_procedure() -> CreateProcedureStatement {
+		CreateProcedureStatement::new()
+	}
+
+	/// Construct a new [`AlterProcedureStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn alter_procedure() -> AlterProcedureStatement {
+		AlterProcedureStatement::new()
+	}
+
+	/// Construct a new [`DropProcedureStatement`]
+	///
+	/// **Backend support**: PostgreSQL, MySQL, CockroachDB only.
+	/// SQLite will panic with a helpful message.
+	pub fn drop_procedure() -> DropProcedureStatement {
+		DropProcedureStatement::new()
+	}
+
+	/// Construct a new [`CreateTypeStatement`]
+	///
+	/// **Backend support**: PostgreSQL, CockroachDB only.
+	/// MySQL and SQLite will panic with a helpful message.
+	pub fn create_type() -> CreateTypeStatement {
+		CreateTypeStatement::new()
+	}
+
+	/// Construct a new [`AlterTypeStatement`]
+	///
+	/// **Backend support**: PostgreSQL, CockroachDB only.
+	/// MySQL and SQLite will panic with a helpful message.
+	pub fn alter_type() -> AlterTypeStatement {
+		AlterTypeStatement::new()
+	}
+
+	/// Construct a new [`DropTypeStatement`]
+	///
+	/// **Backend support**: PostgreSQL, CockroachDB only.
+	/// MySQL and SQLite will panic with a helpful message.
+	pub fn drop_type() -> DropTypeStatement {
+		DropTypeStatement::new()
 	}
 
 	/// Construct a new [`AttachDatabaseStatement`]
