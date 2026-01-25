@@ -1435,12 +1435,148 @@ impl QueryBuilder for SqliteQueryBuilder {
 		writer.finish()
 	}
 
+	fn build_create_function(
+		&self,
+		_stmt: &crate::query::CreateFunctionStatement,
+	) -> (String, Values) {
+		panic!(
+			"SQLite does not support CREATE FUNCTION (user-defined functions are registered via API)"
+		)
+	}
+
+	fn build_alter_function(
+		&self,
+		_stmt: &crate::query::AlterFunctionStatement,
+	) -> (String, Values) {
+		panic!(
+			"SQLite does not support ALTER FUNCTION (user-defined functions are registered via API)"
+		)
+	}
+
+	fn build_drop_function(&self, _stmt: &crate::query::DropFunctionStatement) -> (String, Values) {
+		panic!(
+			"SQLite does not support DROP FUNCTION (user-defined functions are registered via API)"
+		)
+	}
+
 	fn escape_identifier(&self, ident: &str) -> String {
 		self.escape_iden(ident)
 	}
 
 	fn format_placeholder(&self, index: usize) -> String {
 		self.placeholder(index)
+	}
+
+	fn build_create_schema(&self, _stmt: &crate::query::CreateSchemaStatement) -> (String, Values) {
+		panic!("SQLite does not support schemas (all objects are in the main database).");
+	}
+
+	fn build_alter_schema(&self, _stmt: &crate::query::AlterSchemaStatement) -> (String, Values) {
+		panic!("SQLite does not support schemas.");
+	}
+
+	fn build_drop_schema(&self, _stmt: &crate::query::DropSchemaStatement) -> (String, Values) {
+		panic!("SQLite does not support schemas.");
+	}
+
+	fn build_create_sequence(
+		&self,
+		_stmt: &crate::query::CreateSequenceStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support sequences. Use AUTOINCREMENT instead.");
+	}
+
+	fn build_alter_sequence(
+		&self,
+		_stmt: &crate::query::AlterSequenceStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support sequences.");
+	}
+
+	fn build_drop_sequence(&self, _stmt: &crate::query::DropSequenceStatement) -> (String, Values) {
+		panic!("SQLite does not support sequences.");
+	}
+
+	fn build_comment(&self, _stmt: &crate::query::CommentStatement) -> (String, Values) {
+		panic!("SQLite does not support COMMENT ON statement.");
+	}
+
+	fn build_alter_database(
+		&self,
+		_stmt: &crate::query::AlterDatabaseStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support ALTER DATABASE.");
+	}
+
+	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
+	}
+
+	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		panic!(
+			"SQLite VACUUM has different syntax (no table specification). Not supported via this builder."
+		);
+	}
+
+	fn build_create_materialized_view(
+		&self,
+		_stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
+
+	fn build_alter_materialized_view(
+		&self,
+		_stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
+
+	fn build_drop_materialized_view(
+		&self,
+		_stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		_stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
+
+	fn build_create_procedure(
+		&self,
+		_stmt: &crate::query::CreateProcedureStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support stored procedures.");
+	}
+
+	fn build_alter_procedure(
+		&self,
+		_stmt: &crate::query::AlterProcedureStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support stored procedures.");
+	}
+
+	fn build_drop_procedure(
+		&self,
+		_stmt: &crate::query::DropProcedureStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support stored procedures.");
+	}
+
+	fn build_create_type(&self, _stmt: &crate::query::CreateTypeStatement) -> (String, Values) {
+		panic!("CREATE TYPE not supported.");
+	}
+
+	fn build_alter_type(&self, _stmt: &crate::query::AlterTypeStatement) -> (String, Values) {
+		panic!("ALTER TYPE not supported.");
+	}
+
+	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
+		panic!("DROP TYPE not supported.");
 	}
 }
 
@@ -4632,5 +4768,73 @@ mod tests {
 		stmt.name("audit_insert").cascade();
 
 		let _ = builder.build_drop_trigger(&stmt);
+	}
+
+	// FUNCTION tests - SQLite does not support DDL for functions
+	#[test]
+	#[should_panic(expected = "SQLite does not support CREATE FUNCTION")]
+	fn test_create_function_panics() {
+		use crate::types::function::FunctionLanguage;
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_function();
+		stmt.name("my_func")
+			.returns("INTEGER")
+			.language(FunctionLanguage::Sql)
+			.body("SELECT 1");
+
+		let _ = builder.build_create_function(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support ALTER FUNCTION")]
+	fn test_alter_function_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_function();
+		stmt.name("my_func").rename_to("new_func");
+
+		let _ = builder.build_alter_function(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite does not support DROP FUNCTION")]
+	fn test_drop_function_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_function();
+		stmt.name("my_func");
+
+		let _ = builder.build_drop_function(&stmt);
+	}
+
+	// TYPE tests - SQLite does not support custom types
+	#[test]
+	#[should_panic(expected = "CREATE TYPE not supported.")]
+	fn test_create_type_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_type();
+		stmt.name("mood")
+			.as_enum(vec!["happy".to_string(), "sad".to_string()]);
+
+		let _ = builder.build_create_type(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "ALTER TYPE not supported.")]
+	fn test_alter_type_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_type();
+		stmt.name("mood").rename_to("feeling");
+
+		let _ = builder.build_alter_type(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "DROP TYPE not supported.")]
+	fn test_drop_type_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::drop_type();
+		stmt.name("mood");
+
+		let _ = builder.build_drop_type(&stmt);
 	}
 }
