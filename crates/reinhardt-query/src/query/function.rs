@@ -2,14 +2,14 @@
 //!
 //! This module provides builders for function-related DDL statements:
 //!
-//! - CREATE FUNCTION: [`CreateFunctionStatement`]
-//! - ALTER FUNCTION: [`AlterFunctionStatement`]
-//! - DROP FUNCTION: [`DropFunctionStatement`]
+//! - [`CreateFunctionStatement`]: CREATE FUNCTION statement
+//! - [`AlterFunctionStatement`]: ALTER FUNCTION statement
+//! - [`DropFunctionStatement`]: DROP FUNCTION statement
 
-mod alter_function;
-mod create_function;
-mod drop_function;
+pub mod alter_function;
+pub mod create_function;
+pub mod drop_function;
 
-pub use alter_function::*;
-pub use create_function::*;
-pub use drop_function::*;
+pub use alter_function::AlterFunctionStatement;
+pub use create_function::CreateFunctionStatement;
+pub use drop_function::DropFunctionStatement;
