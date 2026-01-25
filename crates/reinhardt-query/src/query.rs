@@ -683,75 +683,75 @@ impl Query {
 	// 	AnalyzeStatement::new()
 	// }
 
-	// /// Construct a new [`OptimizeTableStatement`]
-	// ///
-	// /// **MySQL-only feature**: This statement is specific to MySQL.
-	// /// Other backends will panic with a helpful message.
-	// ///
-	// /// # Examples
-	// ///
-	// /// ```rust,ignore
-	// /// use reinhardt_query::prelude::*;
-	// ///
-	// /// // OPTIMIZE TABLE users
-	// /// let query = Query::optimize_table()
-	// ///     .table("users");
-	// ///
-	// /// // OPTIMIZE TABLE users, posts
-	// /// let query = Query::optimize_table()
-	// ///     .table("users")
-	// ///     .table("posts");
-	// /// ```
-	// pub fn optimize_table() -> OptimizeTableStatement {
-	// 	OptimizeTableStatement::new()
-	// }
+	/// Construct a new [`OptimizeTableStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // OPTIMIZE TABLE users
+	/// let query = Query::optimize_table()
+	///     .table("users");
+	///
+	/// // OPTIMIZE TABLE users, posts
+	/// let query = Query::optimize_table()
+	///     .table("users")
+	///     .table("posts");
+	/// ```
+	pub fn optimize_table() -> OptimizeTableStatement {
+		OptimizeTableStatement::new()
+	}
 
-	// /// Construct a new [`RepairTableStatement`]
-	// ///
-	// /// **MySQL-only feature**: This statement is specific to MySQL.
-	// /// Other backends will panic with a helpful message.
-	// ///
-	// /// # Examples
-	// ///
-	// /// ```rust,ignore
-	// /// use reinhardt_query::prelude::*;
-	// ///
-	// /// // REPAIR TABLE users
-	// /// let query = Query::repair_table()
-	// ///     .table("users");
-	// ///
-	// /// // REPAIR TABLE QUICK users
-	// /// let query = Query::repair_table()
-	// ///     .table("users")
-	// ///     .quick();
-	// /// ```
-	// pub fn repair_table() -> RepairTableStatement {
-	// 	RepairTableStatement::new()
-	// }
+	/// Construct a new [`RepairTableStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// // REPAIR TABLE users
+	/// let query = Query::repair_table()
+	///     .table("users");
+	///
+	/// // REPAIR TABLE QUICK users
+	/// let query = Query::repair_table()
+	///     .table("users")
+	///     .quick();
+	/// ```
+	pub fn repair_table() -> RepairTableStatement {
+		RepairTableStatement::new()
+	}
 
-	// /// Construct a new [`CheckTableStatement`]
-	// ///
-	// /// **MySQL-only feature**: This statement is specific to MySQL.
-	// /// Other backends will panic with a helpful message.
-	// ///
-	// /// # Examples
-	// ///
-	// /// ```rust,ignore
-	// /// use reinhardt_query::prelude::*;
-	// ///
-	// /// // CHECK TABLE users
-	// /// let query = Query::check_table()
-	// ///     .table("users");
-	// ///
-	// /// // CHECK TABLE QUICK EXTENDED users
-	// /// let query = Query::check_table()
-	// ///     .table("users")
-	// ///     .quick()
-	// ///     .extended();
-	// /// ```
-	// pub fn check_table() -> CheckTableStatement {
-	// 	CheckTableStatement::new()
-	// }
+	/// Construct a new [`CheckTableStatement`]
+	///
+	/// **MySQL-only feature**: This statement is specific to MySQL.
+	/// Other backends will panic with a helpful message.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::CheckTableOption;
+	///
+	/// // CHECK TABLE users
+	/// let query = Query::check_table()
+	///     .table("users");
+	///
+	/// // CHECK TABLE users QUICK
+	/// let query = Query::check_table()
+	///     .table("users")
+	///     .option(CheckTableOption::Quick);
+	/// ```
+	pub fn check_table() -> CheckTableStatement {
+		CheckTableStatement::new()
+	}
 }
 
 #[cfg(test)]

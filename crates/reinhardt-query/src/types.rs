@@ -43,7 +43,9 @@ pub use function::{
 };
 pub use iden::{DynIden, Iden, IdenStatic, IntoIden, SeaRc};
 pub use join::{ColumnPair, ColumnSpec, JoinExpr, JoinOn, JoinType};
-pub use maintenance::{AnalyzeTable, VacuumOption};
+pub use maintenance::{
+	AnalyzeTable, CheckTableOption, OptimizeTableOption, RepairTableOption, VacuumOption,
+};
 pub use materialized_view::{MaterializedViewDef, MaterializedViewOperation};
 pub use operators::{BinOper, LogicalChainOper, PgBinOper, SubQueryOper, UnOper};
 pub use order::{NullOrdering, Order, OrderExpr, OrderExprKind};
