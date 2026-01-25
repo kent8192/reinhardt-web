@@ -5,12 +5,17 @@
 
 use crate::{
 	query::{
-		AlterDatabaseStatement, AlterIndexStatement, AlterSchemaStatement, AlterSequenceStatement,
-		AlterTableStatement, CommentStatement, CreateIndexStatement, CreateSchemaStatement,
-		CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
-		DeleteStatement, DropIndexStatement, DropSchemaStatement, DropSequenceStatement,
-		DropTableStatement, DropTriggerStatement, DropViewStatement, InsertStatement,
-		ReindexStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
+		AlterMaterializedViewStatement, AlterProcedureStatement, AlterSchemaStatement,
+		AlterSequenceStatement, AlterTableStatement, AlterTypeStatement, AnalyzeStatement,
+		CommentStatement, CreateFunctionStatement, CreateIndexStatement,
+		CreateMaterializedViewStatement, CreateProcedureStatement, CreateSchemaStatement,
+		CreateSequenceStatement, CreateTableStatement, CreateTriggerStatement, CreateTypeStatement,
+		CreateViewStatement, DeleteStatement, DropFunctionStatement, DropIndexStatement,
+		DropMaterializedViewStatement, DropProcedureStatement, DropSchemaStatement,
+		DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropTypeStatement,
+		DropViewStatement, InsertStatement, RefreshMaterializedViewStatement, ReindexStatement,
+		SelectStatement, TruncateTableStatement, UpdateStatement, VacuumStatement,
 	},
 	value::Values,
 };
@@ -403,4 +408,211 @@ pub trait QueryBuilder {
 	///
 	/// A tuple of (SQL string, parameter values)
 	fn build_alter_database(&self, stmt: &AlterDatabaseStatement) -> (String, Values);
+
+	/// Build CREATE FUNCTION statement
+	///
+	/// Generates SQL and parameter values for a CREATE FUNCTION statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE FUNCTION statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_function(&self, stmt: &CreateFunctionStatement) -> (String, Values);
+
+	/// Build ALTER FUNCTION statement
+	///
+	/// Generates SQL and parameter values for an ALTER FUNCTION statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER FUNCTION statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_function(&self, stmt: &AlterFunctionStatement) -> (String, Values);
+
+	/// Build DROP FUNCTION statement
+	///
+	/// Generates SQL and parameter values for a DROP FUNCTION statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP FUNCTION statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_function(&self, stmt: &DropFunctionStatement) -> (String, Values);
+
+	/// Build CREATE PROCEDURE statement
+	///
+	/// Generates SQL and parameter values for a CREATE PROCEDURE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE PROCEDURE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_procedure(&self, stmt: &CreateProcedureStatement) -> (String, Values);
+
+	/// Build ALTER PROCEDURE statement
+	///
+	/// Generates SQL and parameter values for an ALTER PROCEDURE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER PROCEDURE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_procedure(&self, stmt: &AlterProcedureStatement) -> (String, Values);
+
+	/// Build DROP PROCEDURE statement
+	///
+	/// Generates SQL and parameter values for a DROP PROCEDURE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP PROCEDURE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_procedure(&self, stmt: &DropProcedureStatement) -> (String, Values);
+
+	/// Build CREATE TYPE statement
+	///
+	/// Generates SQL and parameter values for a CREATE TYPE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE TYPE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_type(&self, stmt: &CreateTypeStatement) -> (String, Values);
+
+	/// Build ALTER TYPE statement
+	///
+	/// Generates SQL and parameter values for an ALTER TYPE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER TYPE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_type(&self, stmt: &AlterTypeStatement) -> (String, Values);
+
+	/// Build DROP TYPE statement
+	///
+	/// Generates SQL and parameter values for a DROP TYPE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP TYPE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_type(&self, stmt: &DropTypeStatement) -> (String, Values);
+
+	/// Build ANALYZE statement
+	///
+	/// Generates SQL and parameter values for an ANALYZE statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ANALYZE statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_analyze(&self, stmt: &AnalyzeStatement) -> (String, Values);
+
+	/// Build VACUUM statement
+	///
+	/// Generates SQL and parameter values for a VACUUM statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The VACUUM statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_vacuum(&self, stmt: &VacuumStatement) -> (String, Values);
+
+	/// Build CREATE MATERIALIZED VIEW statement
+	///
+	/// Generates SQL and parameter values for a CREATE MATERIALIZED VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The CREATE MATERIALIZED VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_create_materialized_view(
+		&self,
+		stmt: &CreateMaterializedViewStatement,
+	) -> (String, Values);
+
+	/// Build ALTER MATERIALIZED VIEW statement
+	///
+	/// Generates SQL and parameter values for an ALTER MATERIALIZED VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The ALTER MATERIALIZED VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_alter_materialized_view(
+		&self,
+		stmt: &AlterMaterializedViewStatement,
+	) -> (String, Values);
+
+	/// Build DROP MATERIALIZED VIEW statement
+	///
+	/// Generates SQL and parameter values for a DROP MATERIALIZED VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The DROP MATERIALIZED VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_drop_materialized_view(
+		&self,
+		stmt: &DropMaterializedViewStatement,
+	) -> (String, Values);
+
+	/// Build REFRESH MATERIALIZED VIEW statement
+	///
+	/// Generates SQL and parameter values for a REFRESH MATERIALIZED VIEW statement.
+	///
+	/// # Arguments
+	///
+	/// * `stmt` - The REFRESH MATERIALIZED VIEW statement to build
+	///
+	/// # Returns
+	///
+	/// A tuple of (SQL string, parameter values)
+	fn build_refresh_materialized_view(
+		&self,
+		stmt: &RefreshMaterializedViewStatement,
+	) -> (String, Values);
 }
