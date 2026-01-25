@@ -5,6 +5,12 @@
 
 use super::{PostgresQueryBuilder, QueryBuilder};
 use crate::{
+	dcl::{
+		AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
+		DropRoleStatement, DropUserStatement, GrantRoleStatement, GrantStatement,
+		RenameUserStatement, ResetRoleStatement, RevokeRoleStatement, RevokeStatement,
+		SetDefaultRoleStatement, SetRoleStatement,
+	},
 	query::{
 		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
 		AlterProcedureStatement, AlterSchemaStatement, AlterSequenceStatement, AlterTableStatement,
@@ -284,6 +290,64 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 	fn build_drop_type(&self, stmt: &DropTypeStatement) -> (String, Values) {
 		// CockroachDB supports custom types similar to PostgreSQL
 		self.postgres.build_drop_type(stmt)
+	}
+
+	// DCL (Data Control Language) - CockroachDB delegates to PostgreSQL
+
+	fn build_grant(&self, stmt: &GrantStatement) -> (String, Values) {
+		self.postgres.build_grant(stmt)
+	}
+
+	fn build_revoke(&self, stmt: &RevokeStatement) -> (String, Values) {
+		self.postgres.build_revoke(stmt)
+	}
+
+	fn build_grant_role(&self, stmt: &GrantRoleStatement) -> (String, Values) {
+		self.postgres.build_grant_role(stmt)
+	}
+
+	fn build_revoke_role(&self, stmt: &RevokeRoleStatement) -> (String, Values) {
+		self.postgres.build_revoke_role(stmt)
+	}
+
+	fn build_create_role(&self, stmt: &CreateRoleStatement) -> (String, Values) {
+		self.postgres.build_create_role(stmt)
+	}
+
+	fn build_drop_role(&self, stmt: &DropRoleStatement) -> (String, Values) {
+		self.postgres.build_drop_role(stmt)
+	}
+
+	fn build_alter_role(&self, stmt: &AlterRoleStatement) -> (String, Values) {
+		self.postgres.build_alter_role(stmt)
+	}
+
+	fn build_create_user(&self, stmt: &CreateUserStatement) -> (String, Values) {
+		self.postgres.build_create_user(stmt)
+	}
+
+	fn build_drop_user(&self, stmt: &DropUserStatement) -> (String, Values) {
+		self.postgres.build_drop_user(stmt)
+	}
+
+	fn build_alter_user(&self, stmt: &AlterUserStatement) -> (String, Values) {
+		self.postgres.build_alter_user(stmt)
+	}
+
+	fn build_rename_user(&self, stmt: &RenameUserStatement) -> (String, Values) {
+		self.postgres.build_rename_user(stmt)
+	}
+
+	fn build_set_role(&self, stmt: &SetRoleStatement) -> (String, Values) {
+		self.postgres.build_set_role(stmt)
+	}
+
+	fn build_reset_role(&self, stmt: &ResetRoleStatement) -> (String, Values) {
+		self.postgres.build_reset_role(stmt)
+	}
+
+	fn build_set_default_role(&self, stmt: &SetDefaultRoleStatement) -> (String, Values) {
+		self.postgres.build_set_default_role(stmt)
 	}
 }
 
