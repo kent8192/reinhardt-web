@@ -122,12 +122,7 @@ pub use drop_table::*;
 pub use drop_trigger::*;
 pub use drop_view::*;
 pub use insert::*;
-// TODO: Maintenance operations will be implemented in future commits
-// pub use maintenance::{
-// 	AnalyzeStatement,
-// 	CheckTableStatement, OptimizeTableStatement, RepairTableStatement,
-// 	VacuumStatement,
-// };
+pub use maintenance::{CheckTableStatement, OptimizeTableStatement, RepairTableStatement};
 pub use reindex::*;
 pub use returning::*;
 pub use schema::{AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement};
