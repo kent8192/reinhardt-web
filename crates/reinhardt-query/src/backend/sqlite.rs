@@ -6,11 +6,11 @@ use super::{QueryBuilder, SqlWriter};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
-		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CreateIndexStatement,
-		CreateTableStatement, CreateTriggerStatement, CreateViewStatement, DeleteStatement,
-		DropIndexStatement, DropTableStatement, DropTriggerStatement, DropViewStatement,
-		InsertStatement, ReindexStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement,
+		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
+		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
+		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
+		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
+		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef},
 	value::Values,
@@ -1592,6 +1592,24 @@ impl QueryBuilder for SqliteQueryBuilder {
 // 	fn build_drop_type(&self, _stmt: &crate::query::DropTypeStatement) -> (String, Values) {
 // 		panic!("DROP TYPE not supported.");
 // 	}
+
+	fn build_optimize_table(&self, _stmt: &OptimizeTableStatement) -> (String, Values) {
+		panic!(
+			"OPTIMIZE TABLE is MySQL-specific. SQLite users should use VACUUM or ANALYZE instead."
+		);
+	}
+
+	fn build_repair_table(&self, _stmt: &RepairTableStatement) -> (String, Values) {
+		panic!(
+			"REPAIR TABLE is not supported in SQLite. SQLite databases are automatically repaired via WAL mode or PRAGMA integrity_check."
+		);
+	}
+
+	fn build_check_table(&self, _stmt: &CheckTableStatement) -> (String, Values) {
+		panic!(
+			"CHECK TABLE is not supported in SQLite. Use PRAGMA integrity_check or PRAGMA quick_check instead."
+		);
+	}
 }
 
 // Helper methods for CREATE TABLE
@@ -4850,5 +4868,36 @@ mod tests {
 		stmt.name("mood");
 
 		let _ = builder.build_drop_type(&stmt);
+	}
+
+	// MySQL-specific maintenance command panic tests
+	#[test]
+	#[should_panic(expected = "SQLite users should use VACUUM or ANALYZE")]
+	fn test_optimize_table_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::optimize_table();
+		stmt.table("users");
+
+		let _ = builder.build_optimize_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in SQLite")]
+	fn test_repair_table_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::repair_table();
+		stmt.table("users");
+
+		let _ = builder.build_repair_table(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "not supported in SQLite")]
+	fn test_check_table_panics() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::check_table();
+		stmt.table("users");
+
+		let _ = builder.build_check_table(&stmt);
 	}
 }
