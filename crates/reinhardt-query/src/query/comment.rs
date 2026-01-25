@@ -124,13 +124,40 @@ impl Default for CommentStatement {
 	}
 }
 
-impl QueryStatementWriter for CommentStatement {
-	fn build_any(&self, query_builder: &dyn QueryBuilder) -> (String, crate::value::Values) {
-		query_builder.build_comment(self)
+impl QueryStatementBuilder for CommentStatement {
+	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
+		// Downcast QueryBuilderTrait to concrete QueryBuilder types
+		use std::any::Any;
+		if let Some(builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>()
+		{
+			return builder.build_comment(self);
+		}
+		if let Some(builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
+		{
+			return builder.build_comment(self);
+		}
+		if let Some(builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
+		{
+			return builder.build_comment(self);
+		}
+		if let Some(builder) =
+			(query_builder as &dyn Any).downcast_ref::<crate::backend::CockroachDBQueryBuilder>()
+		{
+			return builder.build_comment(self);
+		}
+		panic!("Unsupported query builder type");
+	}
+
+	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
+		let (sql, _) = self.build_any(&query_builder);
+		sql
 	}
 }
 
-impl QueryStatementBuilder for CommentStatement {}
+impl QueryStatementWriter for CommentStatement {}
 
 #[cfg(test)]
 mod tests {
@@ -149,7 +176,10 @@ mod tests {
 			.target(CommentTarget::Table("users".into_iden()))
 			.comment("User account information");
 		let (sql, _) = builder.build_comment(&query);
-		assert_eq!(sql, "COMMENT ON TABLE \"users\" IS 'User account information'");
+		assert_eq!(
+			sql,
+			"COMMENT ON TABLE \"users\" IS 'User account information'"
+		);
 	}
 
 	#[rstest]
@@ -182,7 +212,10 @@ mod tests {
 			.target(CommentTarget::View("active_users".into_iden()))
 			.comment("Active users view");
 		let (sql, _) = builder.build_comment(&query);
-		assert_eq!(sql, "COMMENT ON VIEW \"active_users\" IS 'Active users view'");
+		assert_eq!(
+			sql,
+			"COMMENT ON VIEW \"active_users\" IS 'Active users view'"
+		);
 	}
 
 	#[rstest]
@@ -260,10 +293,7 @@ mod tests {
 			.target(CommentTarget::Type("user_status".into_iden()))
 			.comment("User status enum");
 		let (sql, _) = builder.build_comment(&query);
-		assert_eq!(
-			sql,
-			"COMMENT ON TYPE \"user_status\" IS 'User status enum'"
-		);
+		assert_eq!(sql, "COMMENT ON TYPE \"user_status\" IS 'User status enum'");
 	}
 
 	#[rstest]
