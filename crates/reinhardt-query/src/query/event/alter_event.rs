@@ -261,10 +261,7 @@ mod tests {
 		let mut stmt = AlterEventStatement::new();
 		stmt.rename_to("new_event");
 		assert_eq!(stmt.operations.len(), 1);
-		assert!(matches!(
-			&stmt.operations[0],
-			EventOperation::RenameTo(_)
-		));
+		assert!(matches!(&stmt.operations[0], EventOperation::RenameTo(_)));
 	}
 
 	#[rstest]
@@ -332,10 +329,7 @@ mod tests {
 		let mut stmt = AlterEventStatement::new();
 		stmt.comment("Updated comment");
 		assert_eq!(stmt.operations.len(), 1);
-		assert!(matches!(
-			&stmt.operations[0],
-			EventOperation::Comment(_)
-		));
+		assert!(matches!(&stmt.operations[0], EventOperation::Comment(_)));
 	}
 
 	#[rstest]

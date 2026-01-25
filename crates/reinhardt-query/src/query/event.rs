@@ -30,10 +30,10 @@
 //!     .do_body("DELETE FROM temp_data WHERE created_at < NOW() - INTERVAL 7 DAY");
 //! ```
 
-pub mod create_event;
 pub mod alter_event;
+pub mod create_event;
 pub mod drop_event;
 
-pub use create_event::CreateEventStatement;
 pub use alter_event::AlterEventStatement;
+pub use create_event::CreateEventStatement;
 pub use drop_event::DropEventStatement;

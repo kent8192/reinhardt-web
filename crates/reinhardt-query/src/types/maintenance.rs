@@ -378,7 +378,7 @@ impl RepairTableOption {
 /// // Extended check
 /// let opt = CheckTableOption::Extended;
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CheckTableOption {
 	/// Check for version compatibility
 	ForUpgrade,
@@ -387,17 +387,12 @@ pub enum CheckTableOption {
 	/// Fast check, check only tables that haven't been closed properly
 	Fast,
 	/// Medium check (default), scan rows to verify deleted links are valid
+	#[default]
 	Medium,
 	/// Extended check, do a full key lookup for all keys
 	Extended,
 	/// Check only tables that have been changed since last check or not closed properly
 	Changed,
-}
-
-impl Default for CheckTableOption {
-	fn default() -> Self {
-		Self::Medium
-	}
 }
 
 #[cfg(test)]
@@ -555,11 +550,20 @@ mod tests {
 
 	#[rstest]
 	fn test_check_table_option_variants() {
-		assert!(matches!(CheckTableOption::ForUpgrade, CheckTableOption::ForUpgrade));
+		assert!(matches!(
+			CheckTableOption::ForUpgrade,
+			CheckTableOption::ForUpgrade
+		));
 		assert!(matches!(CheckTableOption::Quick, CheckTableOption::Quick));
 		assert!(matches!(CheckTableOption::Fast, CheckTableOption::Fast));
 		assert!(matches!(CheckTableOption::Medium, CheckTableOption::Medium));
-		assert!(matches!(CheckTableOption::Extended, CheckTableOption::Extended));
-		assert!(matches!(CheckTableOption::Changed, CheckTableOption::Changed));
+		assert!(matches!(
+			CheckTableOption::Extended,
+			CheckTableOption::Extended
+		));
+		assert!(matches!(
+			CheckTableOption::Changed,
+			CheckTableOption::Changed
+		));
 	}
 }

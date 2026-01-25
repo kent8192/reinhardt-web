@@ -159,7 +159,10 @@ mod tests {
 	fn test_attach_database_with_as_name() {
 		let mut stmt = AttachDatabaseStatement::new();
 		stmt.as_name("auxiliary");
-		assert_eq!(stmt.database_name.as_ref().unwrap().to_string(), "auxiliary");
+		assert_eq!(
+			stmt.database_name.as_ref().unwrap().to_string(),
+			"auxiliary"
+		);
 	}
 
 	#[rstest]
@@ -167,7 +170,10 @@ mod tests {
 		let mut stmt = AttachDatabaseStatement::new();
 		stmt.file_path("path/to/db.sqlite").as_name("auxiliary");
 		assert_eq!(stmt.file_path.as_ref().unwrap(), "path/to/db.sqlite");
-		assert_eq!(stmt.database_name.as_ref().unwrap().to_string(), "auxiliary");
+		assert_eq!(
+			stmt.database_name.as_ref().unwrap().to_string(),
+			"auxiliary"
+		);
 	}
 
 	#[rstest]
@@ -178,7 +184,10 @@ mod tests {
 		assert!(stmt.file_path.is_none());
 		assert!(stmt.database_name.is_none());
 		assert_eq!(taken.file_path.as_ref().unwrap(), "path/to/db.sqlite");
-		assert_eq!(taken.database_name.as_ref().unwrap().to_string(), "auxiliary");
+		assert_eq!(
+			taken.database_name.as_ref().unwrap().to_string(),
+			"auxiliary"
+		);
 	}
 
 	#[rstest]

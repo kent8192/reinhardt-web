@@ -128,7 +128,10 @@ mod tests {
 	fn test_detach_database_with_name() {
 		let mut stmt = DetachDatabaseStatement::new();
 		stmt.name("auxiliary");
-		assert_eq!(stmt.database_name.as_ref().unwrap().to_string(), "auxiliary");
+		assert_eq!(
+			stmt.database_name.as_ref().unwrap().to_string(),
+			"auxiliary"
+		);
 	}
 
 	#[rstest]
@@ -137,7 +140,10 @@ mod tests {
 		stmt.name("auxiliary");
 		let taken = stmt.take();
 		assert!(stmt.database_name.is_none());
-		assert_eq!(taken.database_name.as_ref().unwrap().to_string(), "auxiliary");
+		assert_eq!(
+			taken.database_name.as_ref().unwrap().to_string(),
+			"auxiliary"
+		);
 	}
 
 	#[rstest]
@@ -151,6 +157,9 @@ mod tests {
 		let mut stmt = DetachDatabaseStatement::new();
 		let result = stmt.name("test_db");
 		// Verify fluent API returns mutable reference
-		assert_eq!(result.database_name.as_ref().unwrap().to_string(), "test_db");
+		assert_eq!(
+			result.database_name.as_ref().unwrap().to_string(),
+			"test_db"
+		);
 	}
 }

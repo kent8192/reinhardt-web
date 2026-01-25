@@ -160,8 +160,7 @@ impl CreateEventStatement {
 	/// ```
 	pub fn on_schedule_every<I: Into<String>>(&mut self, interval: I) -> &mut Self {
 		// Preserve existing starts/ends if already set
-		let (starts, ends) = if let Some(EventSchedule::Every { starts, ends, .. }) =
-			&self.schedule
+		let (starts, ends) = if let Some(EventSchedule::Every { starts, ends, .. }) = &self.schedule
 		{
 			(starts.clone(), ends.clone())
 		} else {
@@ -419,8 +418,7 @@ mod tests {
 	#[rstest]
 	fn test_create_event_on_schedule_every_with_ends() {
 		let mut stmt = CreateEventStatement::new();
-		stmt.on_schedule_every("2 WEEK")
-			.ends("2026-12-31 23:59:59");
+		stmt.on_schedule_every("2 WEEK").ends("2026-12-31 23:59:59");
 		if let Some(EventSchedule::Every {
 			interval,
 			starts,
