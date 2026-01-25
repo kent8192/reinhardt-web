@@ -1,15 +1,18 @@
-//! Type DDL statement builders
+//! Custom type DDL statement builders (PostgreSQL, CockroachDB)
 //!
 //! This module provides builders for custom type-related DDL statements:
 //!
-//! - CREATE TYPE: [`CreateTypeStatement`]
-//! - ALTER TYPE: [`AlterTypeStatement`]
-//! - DROP TYPE: [`DropTypeStatement`]
+//! - [`CreateTypeStatement`]: CREATE TYPE statement
+//! - [`AlterTypeStatement`]: ALTER TYPE statement
+//! - [`DropTypeStatement`]: DROP TYPE statement
+//!
+//! **Note**: Custom types are only supported by PostgreSQL and CockroachDB.
+//! MySQL and SQLite will panic with a helpful error message.
 
-mod alter_type;
-mod create_type;
-mod drop_type;
+pub mod alter_type;
+pub mod create_type;
+pub mod drop_type;
 
-pub use alter_type::*;
-pub use create_type::*;
-pub use drop_type::*;
+pub use alter_type::AlterTypeStatement;
+pub use create_type::CreateTypeStatement;
+pub use drop_type::DropTypeStatement;
