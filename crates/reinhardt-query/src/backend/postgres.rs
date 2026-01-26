@@ -2980,10 +2980,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		// CREATE DATABASE
 		writer.push_keyword("CREATE DATABASE");
 
-		// IF NOT EXISTS
-		if stmt.if_not_exists {
-			writer.push_keyword("IF NOT EXISTS");
-		}
+		// IF NOT EXISTS - PostgreSQL does not support IF NOT EXISTS for CREATE DATABASE
+		// if stmt.if_not_exists {
+		//     writer.push_keyword("IF NOT EXISTS");
+		// }
 
 		// Database name
 		if let Some(name) = &stmt.database_name {
