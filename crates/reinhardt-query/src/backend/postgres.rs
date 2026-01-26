@@ -3906,14 +3906,14 @@ impl PostgresQueryBuilder {
 			ColumnType::TimestampWithTimeZone => "TIMESTAMP WITH TIME ZONE".to_string(),
 			ColumnType::Time => "TIME".to_string(),
 			ColumnType::Date => "DATE".to_string(),
-			ColumnType::Binary(len) => {
-				if let Some(l) = len {
-					format!("BYTEA({})", l)
-				} else {
-					"BYTEA".to_string()
-				}
+			ColumnType::Binary(_len) => {
+				// PostgreSQL BYTEA does not support length modifiers
+				"BYTEA".to_string()
 			}
-			ColumnType::VarBinary(len) => format!("BYTEA({})", len),
+			ColumnType::VarBinary(_len) => {
+				// PostgreSQL BYTEA does not support length modifiers
+				"BYTEA".to_string()
+			}
 			ColumnType::Blob => "BYTEA".to_string(),
 			ColumnType::Boolean => "BOOLEAN".to_string(),
 			ColumnType::Json => "JSON".to_string(),
