@@ -1,0 +1,5 @@
+error: no primary key field found. Add #[field(primary_key)] to one field.
+  --> tests/ui/fail/missing_primary_key.rs:5:3
+   |
+5  | #[document(collection = "users", backend = "mongodb")]
+   |   ^^^^^^^^
