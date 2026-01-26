@@ -68,7 +68,7 @@ async fn test_postgres_create_trigger_before_insert(
 		.event(TriggerEvent::Insert)
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let builder = PostgresQueryBuilder::new();
 	let (sql, _values) = builder.build_create_trigger(&stmt);
@@ -160,7 +160,7 @@ async fn test_postgres_create_trigger_after_update(
 		.event(TriggerEvent::Update { columns: None })
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let builder = PostgresQueryBuilder::new();
 	let (sql, _values) = builder.build_create_trigger(&stmt);
@@ -250,7 +250,7 @@ async fn test_postgres_create_trigger_after_delete(
 		.event(TriggerEvent::Delete)
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let builder = PostgresQueryBuilder::new();
 	let (sql, _values) = builder.build_create_trigger(&stmt);
@@ -465,7 +465,7 @@ async fn test_postgres_create_trigger_nonexistent_table_fails(
 		.event(TriggerEvent::Insert)
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let builder = PostgresQueryBuilder::new();
 	let (sql, _values) = builder.build_create_trigger(&stmt);
@@ -724,7 +724,7 @@ async fn test_postgres_trigger_timing_event_combinations(
 		.event(event)
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let (sql, _values) = builder.build_create_trigger(&stmt);
 	sqlx::query(&sql)
@@ -826,7 +826,7 @@ async fn test_postgres_trigger_state_transition(
 		.event(TriggerEvent::Insert)
 		.on_table(table_name.clone())
 		.for_each(TriggerScope::Row)
-		.execute_function(format!("{}()", function_name));
+		.execute_function(&function_name);
 
 	let (sql, _values) = builder.build_create_trigger(&create_stmt);
 	sqlx::query(&sql)
