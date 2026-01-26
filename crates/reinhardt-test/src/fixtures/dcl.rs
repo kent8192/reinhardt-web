@@ -117,7 +117,7 @@ pub fn test_role() -> String {
 /// # Supported Attributes
 ///
 /// - PostgreSQL: LOGIN, NOLOGIN, CREATEDB, NOCREATEDB, CREATEROLE, NOCREATEROLE,
-///               SUPERUSER, NOSUPERUSER, INHERIT, NOINHERIT, REPLICATION, NOREPLICATION
+///   SUPERUSER, NOSUPERUSER, INHERIT, NOINHERIT, REPLICATION, NOREPLICATION
 /// - MySQL: (none - MySQL doesn't support role attributes)
 ///
 /// # Example
