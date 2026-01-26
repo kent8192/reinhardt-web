@@ -131,6 +131,10 @@ pub enum FunctionLanguage {
 	/// C language
 	C,
 	/// Custom language (extension)
+	///
+	/// # Security Note
+	///
+	/// Only use with trusted language names. Do not use with user input.
 	Custom(String),
 }
 

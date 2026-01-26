@@ -494,6 +494,33 @@ Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataW
 | `with-bigdecimal` | Enable BigDecimal type in `Value` |
 | `full` | Enable all optional features |
 
+## Security Considerations
+
+### SQL Injection Prevention
+
+This library uses parameterized queries by default, which protects against SQL
+injection attacks. However, some APIs allow raw SQL strings that can be
+vulnerable if misused.
+
+### Unsafe APIs
+
+The following APIs accept raw SQL strings and should be used with caution:
+
+| API | Severity | Alternative |
+|-----|----------|-------------|
+| `Expr::cust()` / `SimpleExpr::Custom` | Medium | Use `Expr::cust_with_values()` |
+| `CreateFunctionStatement::body()` | High | Only use with trusted input |
+| `CreateProcedureStatement::body()` | High | Only use with trusted input |
+| `ColumnType::Custom` | Low | Only use with trusted input |
+| `FunctionLanguage::Custom` | Low | Only use with trusted input |
+
+### Best Practices
+
+1. **Never** pass user input directly to custom SQL APIs
+2. **Always** use parameterized queries (`cust_with_values()`) for dynamic values
+3. **Validate and sanitize** any input before using it in custom SQL
+4. **Use** the type-safe query builder API when possible
+
 ## License
 
 See the repository root for license information.

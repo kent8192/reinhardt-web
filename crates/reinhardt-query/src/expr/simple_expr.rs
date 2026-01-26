@@ -82,6 +82,11 @@ pub enum SimpleExpr {
 	Tuple(Vec<SimpleExpr>),
 
 	/// A custom SQL expression (e.g., `NOW()`)
+	///
+	/// # Security Warning
+	///
+	/// This variant embeds raw SQL directly into the query. Only use with trusted
+	/// input or static SQL strings. For dynamic values, use `CustomWithExpr` instead.
 	Custom(String),
 
 	/// A custom SQL expression with parameter placeholders

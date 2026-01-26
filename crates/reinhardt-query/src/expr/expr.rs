@@ -82,12 +82,27 @@ impl Expr {
 
 	/// Create a custom SQL expression.
 	///
-	/// # Example
+	/// # Security Warning
+	///
+	/// **DO NOT** pass user input directly to this method. This method embeds the
+	/// SQL string directly into the query without parameterization, which can lead
+	/// to SQL injection vulnerabilities.
+	///
+	/// Use [`Expr::cust_with_values()`] for dynamic values instead.
+	///
+	/// # Examples
 	///
 	/// ```rust
 	/// use reinhardt_query::expr::Expr;
 	///
+	/// // ✅ SAFE: Static SQL expression
 	/// let expr = Expr::cust("NOW()");
+	///
+	/// // ❌ UNSAFE: User input
+	/// let expr = Expr::cust(&user_input);
+	///
+	/// // ✅ SAFE: Parameterized custom expression
+	/// let expr = Expr::cust_with_values("? + ?", [user_input, other_value]);
 	/// ```
 	pub fn cust<S>(sql: S) -> Self
 	where

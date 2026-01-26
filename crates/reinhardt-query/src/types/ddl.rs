@@ -67,6 +67,10 @@ pub enum ColumnType {
 	/// ARRAY - Array type (PostgreSQL)
 	Array(Box<ColumnType>),
 	/// Custom type - for database-specific types
+	///
+	/// # Security Note
+	///
+	/// Only use with trusted type names. Do not use with user input.
 	Custom(String),
 }
 
