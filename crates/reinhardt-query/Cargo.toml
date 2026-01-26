@@ -51,3 +51,6 @@ sqlx = { workspace = true }
 testcontainers = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
+
+# Property-based testing
+proptest = "1.4"
