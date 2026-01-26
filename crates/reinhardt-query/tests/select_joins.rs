@@ -1,6 +1,8 @@
-//! JOIN tests for SELECT statement
+// JOIN tests for SELECT statement
 
-use crate::fixtures::{Orders, Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Orders, Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -53,7 +55,7 @@ async fn test_select_inner_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, Table};
 
 	let create_table = Table::create()
-		.table(Orders::table())
+		.table("orders")
 		.if_not_exists()
 		.col(
 			ColumnDef::new("id")
@@ -63,19 +65,19 @@ async fn test_select_inner_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 				.primary_key(),
 		)
 		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_int().not_null())
+		.col(ColumnDef::new("total_amount").big_integer().not_null())
 		.col(ColumnDef::new("status").string_len(50).not_null())
 		.foreign_key(
 			ForeignKey::create()
 				.name("fk_orders_user_id")
-				.from(Orders::table(), "user_id")
-				.to(Users::table_name(), Users::Id)
+				.from("orders", "user_id")
+				.to("users", "id")
 				.on_delete(ForeignKeyAction::Cascade)
 				.on_update(ForeignKeyAction::Cascade),
 		)
 		.to_owned();
 
-	let (create_sql, _values) = sea_query::PostgresQueryBuilder::build(&create_table);
+	let create_sql = create_table.to_string(sea_query::PostgresQueryBuilder);
 	sqlx::query(&create_sql)
 		.execute(pool.as_ref())
 		.await
@@ -83,7 +85,7 @@ async fn test_select_inner_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 
 	// TODO: Implement INNER JOIN when supported
 	// For now, verify basic SELECT works
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -105,7 +107,7 @@ async fn test_select_left_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement LEFT JOIN when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -127,7 +129,7 @@ async fn test_select_right_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement RIGHT JOIN when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -149,7 +151,7 @@ async fn test_select_full_outer_join(#[future] users_with_data: (Arc<PgPool>, Ve
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement FULL OUTER JOIN when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -171,7 +173,7 @@ async fn test_select_cross_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement CROSS JOIN when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -193,7 +195,7 @@ async fn test_select_self_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement SELF JOIN when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -215,7 +217,7 @@ async fn test_select_multiple_joins(#[future] users_with_data: (Arc<PgPool>, Vec
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement multiple JOINs when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);

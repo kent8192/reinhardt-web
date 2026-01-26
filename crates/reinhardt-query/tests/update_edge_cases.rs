@@ -1,6 +1,8 @@
-//! Edge case tests for UPDATE statement
+// Edge case tests for UPDATE statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,18 +48,18 @@ async fn test_update_to_same_value(#[future] users_with_data: (Arc<PgPool>, Vec<
 	let (pool, _ids) = users_with_data.await;
 
 	// First get current value
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'alice@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("alice@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");
 
-	let original_name = users[0].name.clone();
+	let original_name = users[0].get::<String, _>("name").clone();
 
 	// Update to same value
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", original_name.clone().into())])
+		.table("users")
+		.values([("name", Value::String(Some(Box::new(original_name.clone()))))])
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -68,13 +70,13 @@ async fn test_update_to_same_value(#[future] users_with_data: (Arc<PgPool>, Vec<
 	assert_eq!(result.rows_affected(), 1);
 
 	// Verify value unchanged
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'alice@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("alice@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");
 
-	assert_eq!(users[0].name, original_name);
+	assert_eq!(users[0].get::<String, _>("name"), original_name);
 }
 
 /// Test update to NULL
@@ -86,8 +88,8 @@ async fn test_update_to_null(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("age", Value::Int(None).into())])
+		.table("users")
+		.values([("age", Value::Int(None))])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -97,14 +99,14 @@ async fn test_update_to_null(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'bob@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("bob@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].age, None);
+	assert_eq!(users[0].get::<Option<i32>, _>("age"), None);
 }
 
 /// Test update empty string to value
@@ -117,15 +119,18 @@ async fn test_update_empty_to_value(#[future] users_with_data: (Arc<PgPool>, Vec
 
 	// First set to empty string
 	let _update_stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "".into())])
+		.table("users")
+		.values([("name", Value::String(Some(Box::new("".to_string()))))])
 		.and_where(Expr::col("email").eq("charlie@example.com"))
 		.to_owned();
 
 	// Then update to a value
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "Charlie Has Name".into())])
+		.table("users")
+		.values([(
+			"name",
+			Value::String(Some(Box::new("Charlie Has Name".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("charlie@example.com"))
 		.to_owned();
 
@@ -135,14 +140,14 @@ async fn test_update_empty_to_value(#[future] users_with_data: (Arc<PgPool>, Vec
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'charlie@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("charlie@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "Charlie Has Name");
+	assert_eq!(users[0].get::<String, _>("name"), "Charlie Has Name");
 }
 
 /// Test update value to empty string
@@ -154,8 +159,8 @@ async fn test_update_value_to_empty(#[future] users_with_data: (Arc<PgPool>, Vec
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "".into())])
+		.table("users")
+		.values([("name", Value::String(Some(Box::new("".to_string()))))])
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -165,12 +170,12 @@ async fn test_update_value_to_empty(#[future] users_with_data: (Arc<PgPool>, Vec
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'alice@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("alice@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "");
+	assert_eq!(users[0].get::<String, _>("name"), "");
 }

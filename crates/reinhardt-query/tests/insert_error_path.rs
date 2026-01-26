@@ -1,6 +1,8 @@
-//! Error path tests for INSERT statement
+// Error path tests for INSERT statement
 
-use crate::fixtures::{Users, users_table, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_table, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::PgPool;
@@ -47,9 +49,13 @@ async fn test_insert_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 
 	// Try to insert with duplicate email
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Alice Duplicate", "alice@example.com", 35i32])
+		.values_panic([
+			Value::String(Some(Box::new("Alice Duplicate".to_string()))),
+			Value::String(Some(Box::new("alice@example.com".to_string()))),
+			Value::Int(Some(35)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -84,9 +90,12 @@ async fn test_insert_null_not_null_violation(#[future] users_table: Arc<PgPool>)
 	// Note: Current API doesn't support explicit NULL for required fields,
 	// so we verify the SQL structure instead
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email"])
-		.values_panic(["Test User", "test@example.com"])
+		.values_panic([
+			Value::String(Some(Box::new("Test User".to_string()))),
+			Value::String(Some(Box::new("test@example.com".to_string()))),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -121,7 +130,7 @@ async fn test_insert_fk_violation(#[future] users_table: Arc<PgPool>) {
 				.primary_key(),
 		)
 		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_int().not_null())
+		.col(ColumnDef::new("total_amount").big_integer().not_null())
 		.col(ColumnDef::new("status").string_len(50).not_null())
 		.foreign_key(
 			ForeignKey::create()
@@ -133,7 +142,7 @@ async fn test_insert_fk_violation(#[future] users_table: Arc<PgPool>) {
 		)
 		.to_owned();
 
-	let (create_sql, _values) = sea_query::PostgresQueryBuilder::build(&create_table);
+	let create_sql = create_table.to_string(sea_query::PostgresQueryBuilder);
 	sqlx::query(&create_sql)
 		.execute(pool.as_ref())
 		.await
@@ -143,7 +152,11 @@ async fn test_insert_fk_violation(#[future] users_table: Arc<PgPool>) {
 	let stmt = Query::insert()
 		.into_table("orders")
 		.columns(["user_id", "total_amount", "status"])
-		.values_panic([9999i32, 10000i64, "pending"])
+		.values_panic([
+			Value::Int(Some(9999)),
+			Value::BigInt(Some(10000)),
+			Value::String(Some(Box::new("pending".to_string()))),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -181,9 +194,13 @@ async fn test_insert_check_constraint_violation(#[future] users_table: Arc<PgPoo
 
 	// Insert with valid data
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Check User", "check@example.com", 25i32])
+		.values_panic([
+			Value::String(Some(Box::new("Check User".to_string()))),
+			Value::String(Some(Box::new("check@example.com".to_string()))),
+			Value::Int(Some(25)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -207,9 +224,13 @@ async fn test_insert_type_mismatch(#[future] users_table: Arc<PgPool>) {
 
 	// Build INSERT statement
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Type User", "type@example.com", 25i32])
+		.values_panic([
+			Value::String(Some(Box::new("Type User".to_string()))),
+			Value::String(Some(Box::new("type@example.com".to_string()))),
+			Value::Int(Some(25)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;

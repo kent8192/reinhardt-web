@@ -1,6 +1,8 @@
-//! Happy path tests for DELETE statement
+// Happy path tests for DELETE statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,14 +48,14 @@ async fn test_delete_single_row(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	let (pool, _ids) = users_with_data.await;
 
 	// Verify initial count
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");
 	let initial_count = users.len();
 
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -64,7 +66,7 @@ async fn test_delete_single_row(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	assert_eq!(result.rows_affected(), 1, "Should delete exactly one row");
 
 	// Verify deletion
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");
@@ -81,7 +83,7 @@ async fn test_delete_multiple_rows(#[future] users_with_data: (Arc<PgPool>, Vec<
 
 	// Delete users with age < 30
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("age").lt(30))
 		.to_owned();
 
@@ -92,14 +94,16 @@ async fn test_delete_multiple_rows(#[future] users_with_data: (Arc<PgPool>, Vec<
 	assert!(result.rows_affected() > 0, "Should delete at least one row");
 
 	// Verify deletions
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");
 
-	let young_users = users
-		.iter()
-		.filter(|u| u.age.map(|a| a < 30).unwrap_or(false));
+	let young_users = users.iter().filter(|u| {
+		u.get::<Option<i32>, _>("age")
+			.map(|a| a < 30)
+			.unwrap_or(false)
+	});
 	assert_eq!(young_users.count(), 0, "Should have no users with age < 30");
 }
 
@@ -112,7 +116,7 @@ async fn test_delete_with_returning(#[future] users_with_data: (Arc<PgPool>, Vec
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.returning_all()
 		.to_owned();
@@ -123,8 +127,8 @@ async fn test_delete_with_returning(#[future] users_with_data: (Arc<PgPool>, Vec
 	bind_and_execute!(pool, sql, values);
 
 	// Verify deletion
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'bob@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("bob@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch users");
@@ -140,7 +144,7 @@ async fn test_delete_with_returning(#[future] users_with_data: (Arc<PgPool>, Vec
 async fn test_delete_all_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::delete().from_table(Users::table_name()).to_owned();
+	let stmt = Query::delete().from_table("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_delete(&stmt);
@@ -149,7 +153,7 @@ async fn test_delete_all_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 	assert!(result.rows_affected() > 0, "Should delete all rows");
 
 	// Verify all rows deleted
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");

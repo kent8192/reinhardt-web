@@ -1,7 +1,7 @@
-//! Common assertion helpers for database testing
-//!
-//! This module provides reusable assertion macros and functions for verifying
-//! database state in integration tests.
+// Common assertion helpers for database testing
+//
+// This module provides reusable assertion macros and functions for verifying
+// database state in integration tests.
 
 use sqlx::{PgPool, Row};
 

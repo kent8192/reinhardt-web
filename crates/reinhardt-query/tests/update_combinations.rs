@@ -1,8 +1,10 @@
-//! Combination tests for UPDATE statement
-//!
-//! These tests test UPDATE combined with other advanced SQL features.
+// Combination tests for UPDATE statement
+//
+// These tests test UPDATE combined with other advanced SQL features.
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -53,8 +55,11 @@ async fn test_update_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 
 	// TODO: Add JOIN support when implemented
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "Joined Update".into())])
+		.table("users")
+		.values([(
+			"name",
+			Value::String(Some(Box::new("Joined Update".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -64,8 +69,8 @@ async fn test_update_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	bind_and_execute!(pool, sql, values);
 
 	// Verify the update happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'alice@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("alice@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");
@@ -87,8 +92,8 @@ async fn test_update_with_case_expression(#[future] users_with_data: (Arc<PgPool
 
 	// TODO: Add CASE expression when implemented
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("active", false.into())])
+		.table("users")
+		.values([("active", Value::Bool(Some(false)))])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -98,14 +103,14 @@ async fn test_update_with_case_expression(#[future] users_with_data: (Arc<PgPool
 	bind_and_execute!(pool, sql, values);
 
 	// Verify the update happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'bob@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("bob@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].active, false);
+	assert_eq!(users[0].get::<bool, _>("active"), false);
 }
 
 /// Test UPDATE with subquery
@@ -122,8 +127,11 @@ async fn test_update_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<
 
 	// TODO: Add subquery support when implemented
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "Subquery Update".into())])
+		.table("users")
+		.values([(
+			"name",
+			Value::String(Some(Box::new("Subquery Update".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("charlie@example.com"))
 		.to_owned();
 
@@ -133,8 +141,8 @@ async fn test_update_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<
 	bind_and_execute!(pool, sql, values);
 
 	// Verify the update happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'charlie@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("charlie@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch updated user");

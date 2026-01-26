@@ -1,6 +1,8 @@
-//! Aggregation tests for SELECT statement
+// Aggregation tests for SELECT statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -51,7 +53,7 @@ async fn test_select_count(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 
 	// TODO: Implement COUNT when supported
 	// For now, verify SQL structure
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -73,7 +75,7 @@ async fn test_select_sum(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement SUM when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -94,7 +96,7 @@ async fn test_select_avg(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement AVG when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -115,7 +117,7 @@ async fn test_select_min_max(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement MIN/MAX when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -136,7 +138,7 @@ async fn test_select_group_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement GROUP BY when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -157,7 +159,7 @@ async fn test_select_having(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) 
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement HAVING when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);
@@ -178,7 +180,7 @@ async fn test_select_group_by_multiple_columns(#[future] users_with_data: (Arc<P
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement multiple column GROUP BY when supported
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_select(&stmt);

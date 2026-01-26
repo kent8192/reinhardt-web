@@ -1,6 +1,8 @@
-//! Error path tests for SELECT statement
+// Error path tests for SELECT statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -48,7 +50,7 @@ async fn test_select_invalid_column(#[future] users_with_data: (Arc<PgPool>, Vec
 	// Try to select a non-existent column
 	let stmt = Query::select()
 		.column("invalid_column")
-		.from(Users::table_name())
+		.from("users")
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;

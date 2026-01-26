@@ -1,6 +1,8 @@
-//! Error path tests for DELETE statement
+// Error path tests for DELETE statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,7 +48,7 @@ async fn test_delete_nonexistent_row(#[future] users_with_data: (Arc<PgPool>, Ve
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("nonexistent@example.com"))
 		.to_owned();
 
@@ -57,7 +59,7 @@ async fn test_delete_nonexistent_row(#[future] users_with_data: (Arc<PgPool>, Ve
 	assert_eq!(result.rows_affected(), 0, "Should affect 0 rows");
 
 	// Verify no users deleted
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");
@@ -88,7 +90,7 @@ async fn test_delete_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i
 				.primary_key(),
 		)
 		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_int().not_null())
+		.col(ColumnDef::new("total_amount").big_integer().not_null())
 		.col(ColumnDef::new("status").string_len(50).not_null())
 		.foreign_key(
 			ForeignKey::create()
@@ -100,7 +102,7 @@ async fn test_delete_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i
 		)
 		.to_owned();
 
-	let (create_sql, _values) = sea_query::PostgresQueryBuilder::build(&create_table);
+	let create_sql = create_table.to_string(sea_query::PostgresQueryBuilder);
 	sqlx::query(&create_sql)
 		.execute(pool.as_ref())
 		.await
@@ -120,7 +122,7 @@ async fn test_delete_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i
 
 	// Try to delete Bob (should fail due to FK constraint)
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 

@@ -1,8 +1,10 @@
-//! Combination tests for SELECT statement
-//!
-//! These tests test SELECT combined with other advanced SQL features.
+// Combination tests for SELECT statement
+//
+// These tests test SELECT combined with other advanced SQL features.
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -52,7 +54,7 @@ async fn test_select_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add WITH clause when implemented
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -74,7 +76,7 @@ async fn test_select_with_union(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add UNION when implemented
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -96,7 +98,7 @@ async fn test_select_with_distinct_on(#[future] users_with_data: (Arc<PgPool>, V
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add DISTINCT ON when implemented
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -118,7 +120,7 @@ async fn test_select_with_window_function(#[future] users_with_data: (Arc<PgPool
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add window function support when implemented
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);

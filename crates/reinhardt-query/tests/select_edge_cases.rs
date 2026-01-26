@@ -1,6 +1,8 @@
-//! Edge case tests for SELECT statement
+// Edge case tests for SELECT statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,7 +48,7 @@ async fn test_select_empty_result(#[future] users_with_data: (Arc<PgPool>, Vec<i
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
-		.from(Users::table_name())
+		.from("users")
 		.and_where(Expr::col("email").eq("nonexistent@example.com"))
 		.to_owned();
 
@@ -67,8 +69,8 @@ async fn test_select_with_null_values(#[future] users_with_data: (Arc<PgPool>, V
 
 	// First, update one user to have NULL age
 	let update_stmt = Query::update()
-		.table(Users::table_name())
-		.values([("age", Value::Int(None).into())])
+		.table("users")
+		.values([("age", Value::Int(None))])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -87,7 +89,7 @@ async fn test_select_with_null_values(#[future] users_with_data: (Arc<PgPool>, V
 
 	// Now select and verify NULL handling
 	let stmt = Query::select()
-		.from(Users::table_name())
+		.from("users")
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -108,10 +110,7 @@ async fn test_select_with_null_values(#[future] users_with_data: (Arc<PgPool>, V
 async fn test_select_limit_zero(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::select()
-		.from(Users::table_name())
-		.limit(0)
-		.to_owned();
+	let stmt = Query::select().from("users").limit(0).to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -128,10 +127,7 @@ async fn test_select_limit_zero(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 async fn test_select_offset_beyond_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::select()
-		.from(Users::table_name())
-		.offset(1000)
-		.to_owned();
+	let stmt = Query::select().from("users").offset(1000).to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);

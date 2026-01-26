@@ -1,6 +1,8 @@
-//! Edge case tests for DELETE statement
+// Edge case tests for DELETE statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,7 +48,7 @@ async fn test_delete_zero_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("nonexistent@example.com"))
 		.to_owned();
 
@@ -57,7 +59,7 @@ async fn test_delete_zero_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	assert_eq!(result.rows_affected(), 0, "Should affect 0 rows");
 
 	// Verify no users deleted
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch all users");
@@ -88,7 +90,7 @@ async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i
 				.primary_key(),
 		)
 		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_int().not_null())
+		.col(ColumnDef::new("total_amount").big_integer().not_null())
 		.col(ColumnDef::new("status").string_len(50).not_null())
 		.foreign_key(
 			ForeignKey::create()
@@ -100,7 +102,7 @@ async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i
 		)
 		.to_owned();
 
-	let (create_sql, _values) = sea_query::PostgresQueryBuilder::build(&create_table);
+	let create_sql = create_table.to_string(sea_query::PostgresQueryBuilder);
 	sqlx::query(&create_sql)
 		.execute(pool.as_ref())
 		.await
@@ -118,7 +120,7 @@ async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i
 
 	// Delete Alice (should cascade delete the order)
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -133,7 +135,7 @@ async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Failed to count orders")
-		.get("COUNT");
+		.get("count");
 
 	assert_eq!(order_count, 0, "All orders should be cascade deleted");
 }
@@ -148,8 +150,8 @@ async fn test_delete_soft_delete_pattern(#[future] users_with_data: (Arc<PgPool>
 
 	// Soft delete: set active=false instead of actual deletion
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("active", false.into())])
+		.table("users")
+		.values([(("active", Value::Bool(Some(false))))])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -159,22 +161,24 @@ async fn test_delete_soft_delete_pattern(#[future] users_with_data: (Arc<PgPool>
 	bind_and_execute!(pool, sql, values);
 
 	// Verify soft deletion
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'bob@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("bob@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].active, false);
+	assert_eq!(users[0].get::<bool, _>("active"), false);
 
 	// Verify that filtering by active=true excludes soft deleted users
-	let active_users = Users::select()
-		.where_(format!("{} = {}", "active", "true"))
+	let active_users = sqlx::query("SELECT * FROM users WHERE active = $1")
+		.bind(true)
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch active users");
 
-	let bob_is_active = active_users.iter().any(|u| u.email == "bob@example.com");
+	let bob_is_active = active_users
+		.iter()
+		.any(|u| u.get::<String, _>("email") == "bob@example.com");
 	assert!(!bob_is_active, "Bob should not be in active users");
 }

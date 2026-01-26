@@ -1,6 +1,8 @@
-//! Happy path tests for INSERT statement
+// Happy path tests for INSERT statement
 
-use crate::fixtures::{Users, users_table};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::users_table;
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,9 +48,13 @@ async fn test_insert_single_row(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Charlie", "charlie@example.com", 35i32])
+		.values_panic([
+			Value::String(Some(Box::new("Charlie".to_string()))),
+			Value::String(Some(Box::new("charlie@example.com".to_string()))),
+			Value::Int(Some(35)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -57,17 +63,16 @@ async fn test_insert_single_row(#[future] users_table: Arc<PgPool>) {
 	let result = bind_and_execute!(pool, sql, values);
 	assert_eq!(result.rows_affected(), 1, "Should insert exactly one row");
 
-	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'charlie@example.com'"))
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let user = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("charlie@example.com")
+		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
-	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "Charlie");
-	assert_eq!(users[0].email, "charlie@example.com");
-	assert_eq!(users[0].age, Some(35));
+	assert_eq!(user.get::<String, _>("name"), "Charlie");
+	assert_eq!(user.get::<String, _>("email"), "charlie@example.com");
+	assert_eq!(user.get::<Option<i32>, _>("age"), Some(35));
 }
 
 /// Test multiple row insertion
@@ -79,10 +84,18 @@ async fn test_insert_multiple_rows(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["David", "david@example.com", 28i32])
-		.values_panic(["Eve", "eve@example.com", 32i32])
+		.values_panic([
+			Value::String(Some(Box::new("David".to_string()))),
+			Value::String(Some(Box::new("david@example.com".to_string()))),
+			Value::Int(Some(28)),
+		])
+		.values_panic([
+			Value::String(Some(Box::new("Eve".to_string()))),
+			Value::String(Some(Box::new("eve@example.com".to_string()))),
+			Value::Int(Some(32)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -91,13 +104,13 @@ async fn test_insert_multiple_rows(#[future] users_table: Arc<PgPool>) {
 	let result = bind_and_execute!(pool, sql, values);
 	assert_eq!(result.rows_affected(), 2, "Should insert exactly two rows");
 
-	// Verify using Model
-	let users = Users::select()
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let users = sqlx::query("SELECT COUNT(*) as count FROM users")
+		.fetch_one(pool.as_ref())
 		.await
-		.expect("Should fetch all users");
+		.expect("Should count users");
 
-	assert_eq!(users.len(), 2);
+	assert_eq!(users.get::<i64, _>("count"), 2);
 }
 
 /// Test insertion with RETURNING clause
@@ -109,9 +122,13 @@ async fn test_insert_with_returning(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Frank", "frank@example.com", 40i32])
+		.values_panic([
+			Value::String(Some(Box::new("Frank".to_string()))),
+			Value::String(Some(Box::new("frank@example.com".to_string()))),
+			Value::Int(Some(40)),
+		])
 		.returning_all()
 		.to_owned();
 
@@ -120,15 +137,14 @@ async fn test_insert_with_returning(#[future] users_table: Arc<PgPool>) {
 
 	bind_and_execute!(pool, sql, values);
 
-	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'frank@example.com'"))
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let user = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("frank@example.com")
+		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
-	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "Frank");
+	assert_eq!(user.get::<String, _>("name"), "Frank");
 }
 
 /// Test insertion with default values
@@ -140,9 +156,12 @@ async fn test_insert_with_default_values(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email"])
-		.values_panic(["Grace", "grace@example.com"])
+		.values_panic([
+			Value::String(Some(Box::new("Grace".to_string()))),
+			Value::String(Some(Box::new("grace@example.com".to_string()))),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -150,17 +169,16 @@ async fn test_insert_with_default_values(#[future] users_table: Arc<PgPool>) {
 
 	bind_and_execute!(pool, sql, values);
 
-	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'grace@example.com'"))
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let user = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("grace@example.com")
+		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
-	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "Grace");
-	assert_eq!(users[0].age, None); // No age specified
-	assert_eq!(users[0].active, true); // Default value
+	assert_eq!(user.get::<String, _>("name"), "Grace");
+	assert_eq!(user.get::<Option<i32>, _>("age"), None); // No age specified
+	assert_eq!(user.get::<bool, _>("active"), true); // Default value
 }
 
 /// Test insertion with NULL values
@@ -172,9 +190,13 @@ async fn test_insert_with_null_values(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Henry", "henry@example.com", Option::<i32>::None])
+		.values_panic([
+			Value::String(Some(Box::new("Henry".to_string()))),
+			Value::String(Some(Box::new("henry@example.com".to_string()))),
+			Value::Int(None),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -182,15 +204,14 @@ async fn test_insert_with_null_values(#[future] users_table: Arc<PgPool>) {
 
 	bind_and_execute!(pool, sql, values);
 
-	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'henry@example.com'"))
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let user = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("henry@example.com")
+		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
-	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].age, None);
+	assert_eq!(user.get::<Option<i32>, _>("age"), None);
 }
 
 /// Test insertion with all column types
@@ -202,9 +223,14 @@ async fn test_insert_all_column_types(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age", "active"])
-		.values_panic(["Ivy", "ivy@example.com", 27i32, false])
+		.values_panic([
+			Value::String(Some(Box::new("Ivy".to_string()))),
+			Value::String(Some(Box::new("ivy@example.com".to_string()))),
+			Value::Int(Some(27)),
+			Value::Bool(Some(false)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -212,17 +238,16 @@ async fn test_insert_all_column_types(#[future] users_table: Arc<PgPool>) {
 
 	bind_and_execute!(pool, sql, values);
 
-	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'ivy@example.com'"))
-		.fetch_all(pool.as_ref())
+	// Verify using sqlx::query
+	let user = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("ivy@example.com")
+		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
-	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "Ivy");
-	assert_eq!(users[0].age, Some(27));
-	assert_eq!(users[0].active, false);
+	assert_eq!(user.get::<String, _>("name"), "Ivy");
+	assert_eq!(user.get::<Option<i32>, _>("age"), Some(27));
+	assert_eq!(user.get::<bool, _>("active"), false);
 }
 
 /// Test bulk insertion of 100 rows
@@ -234,17 +259,21 @@ async fn test_insert_bulk_100_rows(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let mut stmt = Query::insert()
-		.into_table(Users::table_name())
-		.columns(["name", "email", "age"]);
+		.into_table("users")
+		.columns(["name", "email", "age"])
+		.to_owned();
 
 	for i in 0..100 {
 		let name = format!("User{}", i);
 		let email = format!("user{}@example.com", i);
 		let age = 20 + (i % 50);
-		stmt = stmt
-			.values_panic([name.as_str(), email.as_str(), age])
-			.to_owned();
+		stmt.values_panic([
+			Value::String(Some(Box::new(name))),
+			Value::String(Some(Box::new(email))),
+			Value::Int(Some(age)),
+		]);
 	}
+	let stmt = stmt.to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_insert(&stmt);
@@ -256,12 +285,11 @@ async fn test_insert_bulk_100_rows(#[future] users_table: Arc<PgPool>) {
 		"Should insert exactly 100 rows"
 	);
 
-	// Verify using Model
-	let count_result = sqlx::query("SELECT COUNT(*) as count FROM users")
+	// Verify using sqlx::query
+	let row = sqlx::query("SELECT COUNT(*) as count FROM users")
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Should count rows");
 
-	let count: i64 = count_result.get("count");
-	assert_eq!(count, 100);
+	assert_eq!(row.get::<i64, _>("count"), 100);
 }

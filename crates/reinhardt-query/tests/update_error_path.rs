@@ -1,6 +1,8 @@
-//! Error path tests for UPDATE statement
+// Error path tests for UPDATE statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -47,8 +49,11 @@ async fn test_update_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 
 	// Try to update Bob's email to Alice's email (duplicate)
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("email", "alice@example.com".into())])
+		.table("users")
+		.values([(
+			"email",
+			Value::String(Some(Box::new("alice@example.com".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -81,8 +86,8 @@ async fn test_update_null_not_null_violation(#[future] users_with_data: (Arc<PgP
 
 	// Try to update name to NULL (NOT NULL column)
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", Value::String(None).into())])
+		.table("users")
+		.values([("name", Value::String(None))])
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -116,8 +121,11 @@ async fn test_update_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i
 
 	// This test verifies SQL structure since users table doesn't have FK
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "Test User".into())])
+		.table("users")
+		.values([(
+			"name",
+			Value::String(Some(Box::new("Test User".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -143,8 +151,8 @@ async fn test_update_check_constraint_violation(
 
 	// Update with valid data
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("age", 25i32.into())])
+		.table("users")
+		.values([("age", Value::Int(Some(25)))])
 		.and_where(Expr::col("email").eq("bob@example.com"))
 		.to_owned();
 
@@ -168,8 +176,11 @@ async fn test_update_nonexistent_row(#[future] users_with_data: (Arc<PgPool>, Ve
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::update()
-		.table(Users::table_name())
-		.values([("name", "Ghost User".into())])
+		.table("users")
+		.values([(
+			"name",
+			Value::String(Some(Box::new("Ghost User".to_string()))),
+		)])
 		.and_where(Expr::col("email").eq("nonexistent@example.com"))
 		.to_owned();
 

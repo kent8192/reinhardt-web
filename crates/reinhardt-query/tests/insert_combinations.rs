@@ -1,8 +1,10 @@
-//! Combination tests for INSERT statement
-//!
-//! These tests test INSERT combined with other advanced SQL features.
+// Combination tests for INSERT statement
+//
+// These tests test INSERT combined with other advanced SQL features.
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -53,9 +55,13 @@ async fn test_insert_on_conflict_do_update(#[future] users_with_data: (Arc<PgPoo
 
 	// Try to upsert Alice with new age
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Alice Updated", "alice@example.com", 35i32])
+		.values_panic([
+			Value::String(Some(Box::new("Alice Updated".to_string()))),
+			Value::String(Some(Box::new("alice@example.com".to_string()))),
+			Value::Int(Some(35)),
+		])
 		.to_owned();
 
 	// TODO: Add ON CONFLICT DO UPDATE clause when implemented
@@ -66,15 +72,15 @@ async fn test_insert_on_conflict_do_update(#[future] users_with_data: (Arc<PgPoo
 	assert!(result.rows_affected() > 0);
 
 	// Verify the upsert happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'alice@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("alice@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");
 
 	assert_eq!(users.len(), 1);
 	// After UPSERT, age should be updated
-	// assert_eq!(users[0].age, Some(35));
+	// assert_eq!(users[0].get::<Option<i32>, _>("age"), Some(35));
 }
 
 /// Test INSERT with CTE (WITH clause)
@@ -82,18 +88,22 @@ async fn test_insert_on_conflict_do_update(#[future] users_with_data: (Arc<PgPoo
 /// Verifies that INSERT can be combined with Common Table Expressions.
 ///
 /// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/47
+/// See: https://github.com/kent8192/reinhardt-web/issues/58
 #[rstest]
 #[tokio::test]
-#[ignore = "CTE (WITH clause) support not yet implemented (Issue #47)"]
+#[ignore = "CTE (WITH clause) support not yet implemented (Issue #58)"]
 async fn test_insert_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add WITH clause when implemented
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["CTE User", "cte@example.com", 30i32])
+		.values_panic([
+			Value::String(Some(Box::new("CTE User".to_string()))),
+			Value::String(Some(Box::new("cte@example.com".to_string()))),
+			Value::Int(Some(30)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -103,8 +113,8 @@ async fn test_insert_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 	assert_eq!(result.rows_affected(), 1);
 
 	// Verify the insert happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'cte@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("cte@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");
@@ -117,19 +127,23 @@ async fn test_insert_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 /// Verifies that INSERT can use a subquery as the data source.
 ///
 /// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/48
+/// See: https://github.com/kent8192/reinhardt-web/issues/59
 #[rstest]
 #[tokio::test]
-#[ignore = "INSERT from subquery not yet implemented (Issue #48)"]
+#[ignore = "INSERT from subquery not yet implemented (Issue #59)"]
 async fn test_insert_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement INSERT from subquery
 	// For now, verify the basic INSERT structure
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Subquery User", "subquery@example.com", 28i32])
+		.values_panic([
+			Value::String(Some(Box::new("Subquery User".to_string()))),
+			Value::String(Some(Box::new("subquery@example.com".to_string()))),
+			Value::Int(Some(28)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -138,8 +152,8 @@ async fn test_insert_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<
 	bind_and_execute!(pool, sql, values);
 
 	// Verify the insert happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'subquery@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("subquery@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch user");

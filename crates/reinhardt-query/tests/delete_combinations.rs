@@ -1,8 +1,10 @@
-//! Combination tests for DELETE statement
-//!
-//! These tests test DELETE combined with other advanced SQL features.
+// Combination tests for DELETE statement
+//
+// These tests test DELETE combined with other advanced SQL features.
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -53,7 +55,7 @@ async fn test_delete_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<
 
 	// TODO: Add subquery support when implemented
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("email").eq("charlie@example.com"))
 		.to_owned();
 
@@ -63,8 +65,8 @@ async fn test_delete_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<
 	bind_and_execute!(pool, sql, values);
 
 	// Verify the deletion happened
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'charlie@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("charlie@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch users");
@@ -87,7 +89,7 @@ async fn test_delete_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	// TODO: Add JOIN support when implemented
 	// For now, verify SQL structure
 	let stmt = Query::delete()
-		.from_table(Users::table_name())
+		.from_table("users")
 		.and_where(Expr::col("age").gt(30))
 		.to_owned();
 
@@ -97,13 +99,15 @@ async fn test_delete_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 	bind_and_execute!(pool, sql, values);
 
 	// Verify some users were deleted
-	let users = Users::select()
+	let users = sqlx::query("SELECT * FROM users")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch users");
 
-	let old_users = users
-		.iter()
-		.filter(|u| u.age.map(|a| a > 30).unwrap_or(false));
+	let old_users = users.iter().filter(|u| {
+		u.get::<Option<i32>, _>("age")
+			.map(|a| a > 30)
+			.unwrap_or(false)
+	});
 	assert_eq!(old_users.count(), 0, "Should have no users with age > 30");
 }

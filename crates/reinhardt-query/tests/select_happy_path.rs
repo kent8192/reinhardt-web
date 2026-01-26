@@ -1,6 +1,8 @@
-//! Happy path tests for SELECT statement
+// Happy path tests for SELECT statement
 
-use crate::fixtures::{Users, users_with_data};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -45,7 +47,7 @@ macro_rules! bind_and_execute_query {
 async fn test_select_all_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::select().from(Users::table_name()).to_owned();
+	let stmt = Query::select().from("users").to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -53,11 +55,11 @@ async fn test_select_all_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i3
 	let rows = bind_and_execute_query!(pool, sql, values);
 	assert!(rows.len() >= 3, "Should have at least 3 users");
 
-	// Verify structure
+	// Verify column access
 	let row = &rows[0];
-	assert!(row.contains("id"), "Row should have id column");
-	assert!(row.contains("name"), "Row should have name column");
-	assert!(row.contains("email"), "Row should have email column");
+	let _id: i32 = row.get("id");
+	let _name: String = row.get("name");
+	let _email: String = row.get("email");
 }
 
 /// Test select specific columns
@@ -71,7 +73,7 @@ async fn test_select_specific_columns(#[future] users_with_data: (Arc<PgPool>, V
 	let stmt = Query::select()
 		.column("name")
 		.column("email")
-		.from(Users::table_name())
+		.from("users")
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -90,7 +92,7 @@ async fn test_select_with_where(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
-		.from(Users::table_name())
+		.from("users")
 		.and_where(Expr::col("email").eq("alice@example.com"))
 		.to_owned();
 
@@ -110,8 +112,8 @@ async fn test_select_with_order_by(#[future] users_with_data: (Arc<PgPool>, Vec<
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
-		.from(Users::table_name())
-		.order_by(Expr::col("age"), Order::Desc)
+		.from("users")
+		.order_by("age", Order::Desc)
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -133,10 +135,7 @@ async fn test_select_with_order_by(#[future] users_with_data: (Arc<PgPool>, Vec<
 async fn test_select_with_limit(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::select()
-		.from(Users::table_name())
-		.limit(2)
-		.to_owned();
+	let stmt = Query::select().from("users").limit(2).to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
@@ -153,11 +152,7 @@ async fn test_select_with_limit(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 async fn test_select_with_offset(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
-	let stmt = Query::select()
-		.from(Users::table_name())
-		.limit(2)
-		.offset(1)
-		.to_owned();
+	let stmt = Query::select().from("users").limit(2).offset(1).to_owned();
 
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);

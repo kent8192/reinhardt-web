@@ -1,6 +1,8 @@
-//! Edge case tests for INSERT statement
+// Edge case tests for INSERT statement
 
-use crate::fixtures::{Users, users_table};
+#[path = "fixtures.rs"]
+mod fixtures;
+use fixtures::{Users, users_table};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};
@@ -46,9 +48,13 @@ async fn test_insert_empty_string(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["", "empty@example.com", 25i32])
+		.values_panic([
+			Value::String(Some(Box::new("".to_string()))),
+			Value::String(Some(Box::new("empty@example.com".to_string()))),
+			Value::Int(Some(25)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -57,14 +63,14 @@ async fn test_insert_empty_string(#[future] users_table: Arc<PgPool>) {
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'empty@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("empty@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, "");
+	assert_eq!(users[0].get::<String, _>("name"), "");
 }
 
 /// Test insertion with max length string
@@ -80,9 +86,13 @@ async fn test_insert_max_length_string(#[future] users_table: Arc<PgPool>) {
 	let max_email = format!("{}@example.com", "b".repeat(244)); // 255 total
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic([max_name.as_str(), max_email.as_str(), 30i32])
+		.values_panic([
+			Value::String(Some(Box::new(max_name.clone()))),
+			Value::String(Some(Box::new(max_email.clone()))),
+			Value::Int(Some(30)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -92,14 +102,14 @@ async fn test_insert_max_length_string(#[future] users_table: Arc<PgPool>) {
 	assert_eq!(result.rows_affected(), 1);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", format!("'{}'", max_email)))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind(max_email.as_str())
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name.len(), 255);
+	assert_eq!(users[0].get::<String, _>("name").len(), 255);
 }
 
 /// Test insertion with zero values
@@ -111,9 +121,13 @@ async fn test_insert_zero_values(#[future] users_table: Arc<PgPool>) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Zero User", "zero@example.com", 0i32])
+		.values_panic([
+			Value::String(Some(Box::new("Zero User".to_string()))),
+			Value::String(Some(Box::new("zero@example.com".to_string()))),
+			Value::Int(Some(0)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -122,14 +136,14 @@ async fn test_insert_zero_values(#[future] users_table: Arc<PgPool>) {
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'zero@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("zero@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].age, Some(0));
+	assert_eq!(users[0].get::<Option<i32>, _>("age"), Some(0));
 }
 
 /// Test insertion with negative values
@@ -142,9 +156,13 @@ async fn test_insert_negative_values(#[future] users_table: Arc<PgPool>) {
 
 	// Note: Age doesn't make sense as negative, but we're testing the capability
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic(["Negative User", "negative@example.com", -5i32])
+		.values_panic([
+			Value::String(Some(Box::new("Negative User".to_string()))),
+			Value::String(Some(Box::new("negative@example.com".to_string()))),
+			Value::Int(Some(-5)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -153,14 +171,14 @@ async fn test_insert_negative_values(#[future] users_table: Arc<PgPool>) {
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", "'negative@example.com'"))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind("negative@example.com")
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].age, Some(-5));
+	assert_eq!(users[0].get::<Option<i32>, _>("age"), Some(-5));
 }
 
 /// Test insertion with Unicode characters
@@ -176,9 +194,13 @@ async fn test_insert_unicode_chars(#[future] users_table: Arc<PgPool>) {
 	let unicode_email = "test+🚀@example.com";
 
 	let stmt = Query::insert()
-		.into_table(Users::table_name())
+		.into_table("users")
 		.columns(["name", "email", "age"])
-		.values_panic([unicode_name, unicode_email, 25i32])
+		.values_panic([
+			Value::String(Some(Box::new(unicode_name.to_string()))),
+			Value::String(Some(Box::new(unicode_email.to_string()))),
+			Value::Int(Some(25)),
+		])
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
@@ -187,12 +209,15 @@ async fn test_insert_unicode_chars(#[future] users_table: Arc<PgPool>) {
 	bind_and_execute!(pool, sql, values);
 
 	// Verify using Model
-	let users = Users::select()
-		.where_(format!("{} = {}", "email", format!("'{}'", unicode_email)))
+	let users = sqlx::query("SELECT * FROM users WHERE email = $1")
+		.bind(unicode_email)
 		.fetch_all(pool.as_ref())
 		.await
 		.expect("Should fetch inserted user");
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name, String::from(unicode_name));
+	assert_eq!(
+		users[0].get::<String, _>("name"),
+		String::from(unicode_name)
+	);
 }
