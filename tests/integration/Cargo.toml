@@ -1,149 +1,17 @@
 [package]
 name = "reinhardt-integration-tests"
 version = "0.1.0-alpha.1"
-edition = "2021"
+edition.workspace = true
 publish = false
-autotests = true
+autotests = false
 
 [dependencies]
-# Main reinhardt facade crate for proc macro path resolution.
-# Proc macros generate code with absolute paths like ::reinhardt::db::orm::Model
-# This dependency makes those paths resolvable in test files.
-reinhardt = { workspace = true, features = ["full"] }
-
-# Reinhardt crates
-reinhardt-apps = { workspace = true }
-reinhardt-core = { workspace = true, features = ["exception", "messages", "negotiation", "pagination", "parsers", "security", "signals", "types", "validators"] }
-reinhardt-auth = { workspace = true, features = [
-  "argon2-hasher",
-  "jwt",
-  "sessions",
-  "token",
-  "oauth",
-  "database",
-  "redis-sessions",
-  "rate-limit",
-] }
-reinhardt-http = { workspace = true, features = ["messages"] }
-reinhardt-di = { workspace = true, features = ["macros", "params"] }
-reinhardt-middleware = { workspace = true }
-reinhardt-graphql = { workspace = true, features = ["full"] }
-reinhardt-grpc = { workspace = true }
-reinhardt-db = { workspace = true, features = ["backends", "contenttypes", "migrations", "orm"]}
-reinhardt-websockets = { workspace = true, features = ["redis-channel"] }
-reinhardt-server = { workspace = true, features = ["websocket"] }
-reinhardt-mail = { workspace = true }
-reinhardt-macros = { workspace = true }
-reinhardt-views = { workspace = true, features = ["viewsets"]}
-reinhardt-i18n = { workspace = true }
-reinhardt-tasks = { workspace = true, features = [
-  "redis-backend",
-  "rabbitmq-backend",
-] }
-reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "metadata", "openapi", "serializers", "throttling", "versioning"]}
-reinhardt-throttling = { workspace = true }
-reinhardt-shortcuts = { workspace = true, features = ["database"] }
-reinhardt-forms = { workspace = true }
-reinhardt-utils = { workspace = true, features = ["cache", "logging", "static", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
+reinhardt-db = { workspace = true, features = ["mongodb", "nosql"] }
+reinhardt-db-macros = { path = "../../crates/reinhardt-db-macros" }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
-reinhardt-pages = { workspace = true }
-reinhardt-commands = { workspace = true, features = ["migrations"] }
 
-# Web framework (using reinhardt-apps)
-tokio = { version = "1.0", features = ["full"] }
-hyper = "1.0"
-http = "1.0"
-async-trait = "0.1"
-
-# Database
-rust_decimal = { workspace = true }
-sqlx = { workspace = true, features = [
-  "any",
-  "postgres",
-  "sqlite",
-  "runtime-tokio",
-  "tls-rustls",
-  "chrono",
-] }
-sea-query = { workspace = true }
-
-# HTTP client for testing
-reqwest = { version = "0.12", features = ["cookies", "http2", "multipart"] }
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-bytes = "1.0"
-
-# GraphQL
-async-graphql = "7.0.17"
-async-stream = "0.3"
-futures = "0.3"
-futures-util = "0.3"
-
-# WebSocket
-tokio-tungstenite = "0.26"
-tokio-stream = "0.1"
-
-# Utilities
-chrono = "0.4"
-uuid = { version = "1.0", features = ["v4"] }
-anyhow = "1.0"
-base64 = "0.22"
-percent-encoding = "2.3"
-unic-langid = "0.9"
-once_cell = "1.20"
-serial_test = "3.2"
-ctor = "0.6.0"
-rstest = "0.26.1"
-scopeguard = "1.2"
-linkme = "0.3"
-paste = "1.0"
-tera = "1.19"
-regex = "1.11"
-
-# TOTP/MFA testing
-data-encoding = "2.6"
-totp-lite = "2.0"
-
-# Cryptographic utilities
-rand = "0.8"
-subtle = "2.5"
-hex = "0.4"
-
-# Testing utilities
-tempfile = "3.14"
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true, features = ["redis", "postgres"] }
-image = { version = "0.25.9", default-features = false, features = ["png"] }
-
-# Macro runtime requirements
-inventory = "0.3"
-reinhardt-urls = {workspace = true, features = ["proxy"]}
-reinhardt-conf = {workspace = true, features = ["settings"]}
-
-[features]
-default = ["postgres", "sqlite", "caching", "hot-reload"]
-testcontainers = []
-postgres = ["reinhardt-db/postgres"]
-sqlite = ["reinhardt-db/sqlite"]
-caching = ["reinhardt-conf/caching"]
-jwt = []
-argon2-hasher = []
-hot-reload = ["reinhardt-conf/hot-reload"]
-redis-backend = ["reinhardt-tasks/redis-backend"]
-rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
-websocket = ["reinhardt-server/websocket"]
-graphql = ["reinhardt-server/graphql"]
-msgpack = ["reinhardt-pages/msgpack"]
-proptest = []
-
-[dev-dependencies]
-# Test utilities
-tokio-test = "0.4"
-trybuild = { workspace = true }
-url = { workspace = true }
-proptest = { workspace = true }
-arbitrary = { workspace = true }
-assert-json-diff = { workspace = true }
-predicates = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+bson = "3.0"
+serde = { workspace = true, features = ["derive"] }
+rstest = { workspace = true }
+serial_test = { workspace = true }
