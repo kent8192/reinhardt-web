@@ -2,10 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_with_data};
+use fixtures::users_with_data;
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 
 /// Macro to bind values and execute query
@@ -127,7 +127,7 @@ async fn test_delete_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_delete(&stmt);
+	let (sql, _values) = builder.build_delete(&stmt);
 
 	let result = sqlx::query(&sql)
 		.bind("bob@example.com")

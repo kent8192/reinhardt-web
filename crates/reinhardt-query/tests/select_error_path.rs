@@ -2,42 +2,11 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_with_data};
+use fixtures::users_with_data;
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
-
-/// Macro to bind values and execute query
-macro_rules! bind_and_execute_query {
-	($pool:expr, $sql:expr, $values:expr) => {{
-		let mut query: sqlx::query::Query<'_, sqlx::Postgres, _> = sqlx::query(&$sql);
-		for value in &$values.0 {
-			query = match value {
-				Value::BigInt(Some(v)) => query.bind(*v),
-				Value::BigInt(None) => query.bind::<Option<i64>>(None),
-				Value::SmallInt(Some(v)) => query.bind(*v),
-				Value::SmallInt(None) => query.bind::<Option<i16>>(None),
-				Value::Int(Some(v)) => query.bind(*v),
-				Value::Int(None) => query.bind::<Option<i32>>(None),
-				Value::String(Some(v)) => query.bind(v.as_str()),
-				Value::String(None) => query.bind::<Option<&str>>(None),
-				Value::Bool(Some(v)) => query.bind(*v),
-				Value::Bool(None) => query.bind::<Option<bool>>(None),
-				Value::TinyUnsigned(Some(v)) => query.bind(*v as i16),
-				Value::TinyUnsigned(None) => query.bind::<Option<i16>>(None),
-				Value::SmallUnsigned(Some(v)) => query.bind(*v as i32),
-				Value::SmallUnsigned(None) => query.bind::<Option<i32>>(None),
-				Value::Unsigned(None) => query.bind::<Option<i64>>(None),
-				_ => query,
-			};
-		}
-		query
-			.fetch_all($pool.as_ref())
-			.await
-			.expect("Query execution failed")
-	}};
-}
 
 /// Test select invalid column
 ///
@@ -54,7 +23,7 @@ async fn test_select_invalid_column(#[future] users_with_data: (Arc<PgPool>, Vec
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_select(&stmt);
+	let (sql, _values) = builder.build_select(&stmt);
 
 	let result = sqlx::query(&sql).fetch_all(pool.as_ref()).await;
 
@@ -80,7 +49,7 @@ async fn test_select_invalid_table(#[future] users_with_data: (Arc<PgPool>, Vec<
 	let stmt = Query::select().from("invalid_table").to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_select(&stmt);
+	let (sql, _values) = builder.build_select(&stmt);
 
 	let result = sqlx::query(&sql).fetch_all(pool.as_ref()).await;
 

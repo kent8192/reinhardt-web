@@ -5,6 +5,9 @@
 
 use sqlx::{PgPool, Row};
 
+// Assertion functions are provided for future use but currently unused.
+// They enable consistent database state verification across test files.
+#[allow(dead_code)]
 /// Assert that a table has exactly the specified number of rows
 ///
 /// # Arguments
@@ -27,7 +30,7 @@ use sqlx::{PgPool, Row};
 /// assert_row_count(pool, "users", 5).await;
 /// # }
 /// ```
-pub async fn assert_row_count(pool: &PgPool, table_name: &str, expected_count: i64) {
+pub(crate) async fn assert_row_count(pool: &PgPool, table_name: &str, expected_count: i64) {
 	let sql = format!("SELECT COUNT(*) as count FROM {}", table_name);
 
 	let result = sqlx::query(&sql)
@@ -43,6 +46,9 @@ pub async fn assert_row_count(pool: &PgPool, table_name: &str, expected_count: i
 	);
 }
 
+// Assertion functions are provided for future use but currently unused.
+// They enable consistent database state verification across test files.
+#[allow(dead_code)]
 /// Assert that a table is empty (contains no rows)
 ///
 /// # Arguments
@@ -64,7 +70,7 @@ pub async fn assert_row_count(pool: &PgPool, table_name: &str, expected_count: i
 /// assert_table_empty(pool, "users").await;
 /// # }
 /// ```
-pub async fn assert_table_empty(pool: &PgPool, table_name: &str) {
+pub(crate) async fn assert_table_empty(pool: &PgPool, table_name: &str) {
 	let sql = format!("SELECT COUNT(*) as count FROM {}", table_name);
 
 	let result = sqlx::query(&sql)

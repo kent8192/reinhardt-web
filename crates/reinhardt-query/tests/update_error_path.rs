@@ -2,10 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_with_data};
+use fixtures::users_with_data;
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
 
 /// Macro to bind values and execute query
@@ -58,7 +58,7 @@ async fn test_update_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_update(&stmt);
+	let (sql, _values) = builder.build_update(&stmt);
 
 	let result = sqlx::query(&sql)
 		.bind("alice@example.com")
@@ -92,7 +92,7 @@ async fn test_update_null_not_null_violation(#[future] users_with_data: (Arc<PgP
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_update(&stmt);
+	let (sql, _values) = builder.build_update(&stmt);
 
 	let result = sqlx::query(&sql)
 		.bind::<Option<String>>(None)
@@ -117,7 +117,7 @@ async fn test_update_null_not_null_violation(#[future] users_with_data: (Arc<PgP
 #[rstest]
 #[tokio::test]
 async fn test_update_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// This test verifies SQL structure since users table doesn't have FK
 	let stmt = Query::update()

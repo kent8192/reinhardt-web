@@ -8,9 +8,12 @@ use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 
+// Model structs are used by the `#[model]` macro to generate SQL-related code.
+// They appear unused because the macro expansion happens at compile time.
+#[allow(dead_code)]
 #[model(table_name = "users")]
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Users {
+pub(crate) struct Users {
 	#[field(primary_key = true)]
 	pub id: i32,
 
@@ -26,9 +29,12 @@ pub struct Users {
 	pub active: bool,
 }
 
+// Model structs are used by the `#[model]` macro to generate SQL-related code.
+// They appear unused because the macro expansion happens at compile time.
+#[allow(dead_code)]
 #[model(table_name = "products")]
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Products {
+pub(crate) struct Products {
 	#[field(primary_key = true)]
 	pub id: i32,
 
@@ -46,9 +52,12 @@ pub struct Products {
 	pub available: bool,
 }
 
+// Model structs are used by the `#[model]` macro to generate SQL-related code.
+// They appear unused because the macro expansion happens at compile time.
+#[allow(dead_code)]
 #[model(table_name = "orders")]
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Orders {
+pub(crate) struct Orders {
 	#[field(primary_key = true)]
 	pub id: i32,
 

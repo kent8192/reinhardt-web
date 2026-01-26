@@ -2,7 +2,7 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_table};
+use fixtures::users_table;
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::{PgPool, Row};

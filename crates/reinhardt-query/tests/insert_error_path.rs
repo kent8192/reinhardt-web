@@ -2,7 +2,7 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_table, users_with_data};
+use fixtures::{users_table, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::PgPool;
@@ -59,7 +59,7 @@ async fn test_insert_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 		.to_owned();
 
 	let builder = PostgresQueryBuilder;
-	let (sql, values) = builder.build_insert(&stmt);
+	let (sql, _values) = builder.build_insert(&stmt);
 
 	let result = sqlx::query(&sql)
 		.bind("Alice Duplicate")
@@ -84,7 +84,7 @@ async fn test_insert_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 #[rstest]
 #[tokio::test]
 async fn test_insert_null_not_null_violation(#[future] users_table: Arc<PgPool>) {
-	let pool = users_table.await;
+	let _pool = users_table.await;
 
 	// Try to insert without required name field
 	// Note: Current API doesn't support explicit NULL for required fields,
@@ -220,7 +220,7 @@ async fn test_insert_check_constraint_violation(#[future] users_table: Arc<PgPoo
 #[rstest]
 #[tokio::test]
 async fn test_insert_type_mismatch(#[future] users_table: Arc<PgPool>) {
-	let pool = users_table.await;
+	let _pool = users_table.await;
 
 	// Build INSERT statement
 	let stmt = Query::insert()

@@ -2,42 +2,11 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{Users, users_with_data};
+use fixtures::users_with_data;
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::Arc;
-
-/// Macro to bind values and execute query
-macro_rules! bind_and_execute_query {
-	($pool:expr, $sql:expr, $values:expr) => {{
-		let mut query: sqlx::query::Query<'_, sqlx::Postgres, _> = sqlx::query(&$sql);
-		for value in &$values.0 {
-			query = match value {
-				Value::BigInt(Some(v)) => query.bind(*v),
-				Value::BigInt(None) => query.bind::<Option<i64>>(None),
-				Value::SmallInt(Some(v)) => query.bind(*v),
-				Value::SmallInt(None) => query.bind::<Option<i16>>(None),
-				Value::Int(Some(v)) => query.bind(*v),
-				Value::Int(None) => query.bind::<Option<i32>>(None),
-				Value::String(Some(v)) => query.bind(v.as_str()),
-				Value::String(None) => query.bind::<Option<&str>>(None),
-				Value::Bool(Some(v)) => query.bind(*v),
-				Value::Bool(None) => query.bind::<Option<bool>>(None),
-				Value::TinyUnsigned(Some(v)) => query.bind(*v as i16),
-				Value::TinyUnsigned(None) => query.bind::<Option<i16>>(None),
-				Value::SmallUnsigned(Some(v)) => query.bind(*v as i32),
-				Value::SmallUnsigned(None) => query.bind::<Option<i32>>(None),
-				Value::Unsigned(None) => query.bind::<Option<i64>>(None),
-				_ => query,
-			};
-		}
-		query
-			.fetch_all($pool.as_ref())
-			.await
-			.expect("Query execution failed")
-	}};
-}
 
 /// Test COUNT aggregation
 ///
@@ -49,7 +18,7 @@ macro_rules! bind_and_execute_query {
 #[tokio::test]
 #[ignore = "COUNT aggregation not yet implemented (Issue #61)"]
 async fn test_select_count(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement COUNT when supported
 	// For now, verify SQL structure
@@ -72,7 +41,7 @@ async fn test_select_count(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[tokio::test]
 #[ignore = "SUM aggregation not yet implemented (Issue #62)"]
 async fn test_select_sum(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement SUM when supported
 	let stmt = Query::select().from("users").to_owned();
@@ -93,7 +62,7 @@ async fn test_select_sum(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[tokio::test]
 #[ignore = "AVG aggregation not yet implemented (Issue #63)"]
 async fn test_select_avg(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement AVG when supported
 	let stmt = Query::select().from("users").to_owned();
@@ -114,7 +83,7 @@ async fn test_select_avg(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[tokio::test]
 #[ignore = "MIN/MAX aggregation not yet implemented (Issue #64)"]
 async fn test_select_min_max(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement MIN/MAX when supported
 	let stmt = Query::select().from("users").to_owned();
@@ -135,7 +104,7 @@ async fn test_select_min_max(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 #[tokio::test]
 #[ignore = "GROUP BY not yet implemented (Issue #65)"]
 async fn test_select_group_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement GROUP BY when supported
 	let stmt = Query::select().from("users").to_owned();
@@ -156,7 +125,7 @@ async fn test_select_group_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 #[tokio::test]
 #[ignore = "HAVING not yet implemented (Issue #66)"]
 async fn test_select_having(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement HAVING when supported
 	let stmt = Query::select().from("users").to_owned();
@@ -177,7 +146,7 @@ async fn test_select_having(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) 
 #[tokio::test]
 #[ignore = "Multiple column GROUP BY not yet implemented (Issue #67)"]
 async fn test_select_group_by_multiple_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement multiple column GROUP BY when supported
 	let stmt = Query::select().from("users").to_owned();
