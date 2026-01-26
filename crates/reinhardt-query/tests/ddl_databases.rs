@@ -74,6 +74,10 @@ async fn test_postgres_create_database_basic(
 }
 
 /// Test CREATE DATABASE IF NOT EXISTS on PostgreSQL
+///
+/// Note: PostgreSQL does NOT support IF NOT EXISTS for CREATE DATABASE.
+/// This test verifies that the behavior is correct - second attempt should fail
+/// because IF NOT EXISTS is ignored (not supported by PostgreSQL).
 #[rstest]
 #[tokio::test]
 async fn test_postgres_create_database_if_not_exists(
@@ -95,15 +99,17 @@ async fn test_postgres_create_database_if_not_exists(
 		.await
 		.expect("First create should succeed");
 
-	// Create database again with IF NOT EXISTS - should not fail
+	// Create database again with IF NOT EXISTS
+	// PostgreSQL does NOT support IF NOT EXISTS for CREATE DATABASE,
+	// so the second attempt should fail with "database already exists"
 	let mut stmt2 = Query::create_database();
 	stmt2.name(db_name.clone()).if_not_exists();
 
 	let (sql, _values) = builder.build_create_database(&stmt2);
 	let result = sqlx::query(&sql).execute(admin.as_ref()).await;
 	assert!(
-		result.is_ok(),
-		"Second create with IF NOT EXISTS should succeed"
+		result.is_err(),
+		"Second create should fail - PostgreSQL does not support IF NOT EXISTS for CREATE DATABASE"
 	);
 
 	// Cleanup
