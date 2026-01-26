@@ -196,14 +196,31 @@ impl CreateFunctionStatement {
 
 	/// Set function body (AS clause)
 	///
+	/// # Security Warning
+	///
+	/// The function body is embedded directly into the CREATE FUNCTION statement
+	/// and will be stored in the database. **DO NOT** pass user input directly to
+	/// this method, as it could lead to arbitrary code execution.
+	///
+	/// Only use with trusted, validated code.
+	///
 	/// # Examples
 	///
 	/// ```rust
 	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::function::{FunctionLanguage, FunctionBehavior};
 	///
+	/// // ✅ SAFE: Static code
 	/// let query = Query::create_function()
 	///     .name("my_func")
+	///     .returns("integer")
+	///     .language(FunctionLanguage::Sql)
 	///     .body("SELECT 1");
+	///
+	/// // ❌ UNSAFE: User input
+	/// let query = Query::create_function()
+	///     .name("user_func")
+	///     .body(&user_code);
 	/// ```
 	pub fn body<B: Into<String>>(&mut self, body: B) -> &mut Self {
 		self.function_def.body = Some(body.into());
