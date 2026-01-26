@@ -3895,10 +3895,11 @@ impl PostgresQueryBuilder {
 			ColumnType::Float => "REAL".to_string(),
 			ColumnType::Double => "DOUBLE PRECISION".to_string(),
 			ColumnType::Decimal(precision) => {
+				// PostgreSQL uses NUMERIC as the canonical name (DECIMAL is an alias)
 				if let Some((p, s)) = precision {
-					format!("DECIMAL({}, {})", p, s)
+					format!("NUMERIC({}, {})", p, s)
 				} else {
-					"DECIMAL".to_string()
+					"NUMERIC".to_string()
 				}
 			}
 			ColumnType::DateTime => "TIMESTAMP".to_string(),
