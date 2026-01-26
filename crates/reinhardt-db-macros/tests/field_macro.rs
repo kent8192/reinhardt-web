@@ -1,8 +1,8 @@
-//! Document Macro Tests
+//! Field Attribute Tests
 //!
-//! Tests for the `#[document(...)]` attribute macro.
+//! Tests for the `#[field(...)]` attribute macro.
 
-use reinhardt_db_macros::document;
+use reinhardt_db_macros::{document, field};
 
 /// Test placeholder - will be implemented when macro expansion is complete
 #[rstest]
