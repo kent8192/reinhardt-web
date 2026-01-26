@@ -1,0 +1,151 @@
+# Label Definitions for Reinhardt Project
+# This file serves as the single source of truth for repository label definitions.
+# Labels are automatically synced when this file is updated (requires GitHub Labeler app).
+
+# Type Labels
+- name: bug
+  color: d73a4a
+  description: Confirmed bug or unexpected behavior
+
+- name: enhancement
+  color: a2eeef
+  description: New feature or improvement request
+
+- name: documentation
+  color: 0075ca
+  description: Documentation issues or improvements
+
+- name: question
+  color: d876e3
+  description: Questions about usage or implementation
+
+- name: performance
+  color: fbca04
+  description: Performance-related issues
+
+- name: ci-cd
+  color: 2cbe4e
+  description: CI/CD workflow issues
+
+- name: security
+  color: ee0701
+  description: Security vulnerabilities or concerns
+
+# Priority Labels
+- name: critical
+  color: b60205
+  description: Critical priority - blocks release
+
+- name: high
+  color: d93f0b
+  description: High priority - important fix
+
+- name: medium
+  color: fbca04
+  description: Medium priority - normal fix
+
+- name: low
+  color: 0e8a16
+  description: Low priority - minor fix/enhancement
+
+# Status Labels
+- name: good first issue
+  color: 7057ff
+  description: Suitable for new contributors
+
+- name: help wanted
+  color: 008672
+  description: Community contributions welcome
+
+- name: duplicate
+  color: cfd3d7
+  description: Duplicate of another issue
+
+- name: invalid
+  color: e4e669
+  description: Not a valid issue
+
+- name: wontfix
+  color: ffffff
+  description: Will not be fixed (intentional)
+
+- name: needs more info
+  color: fef2c0
+  description: Awaiting additional information
+
+# Dependency Labels
+- name: dependencies
+  color: 0366d6
+  description: Pull requests that update a dependency file
+
+# Release Label (SPECIAL - Triggers Automation)
+- name: release
+  color: 0bdb4a
+  description: Triggers release automation workflow
+
+# Scope Labels
+- name: database
+  color: ededed
+  description: Database layer, schema, migrations
+
+- name: auth
+  color: ededed
+  description: Authentication, authorization, sessions
+
+- name: orm
+  color: ededed
+  description: ORM layer, models, query builder
+
+- name: http
+  color: ededed
+  description: HTTP layer, handlers, middleware
+
+- name: routing
+  color: ededed
+  description: URL routing, path matching
+
+- name: api
+  color: ededed
+  description: REST API, serializers, views
+
+- name: admin
+  color: ededed
+  description: Admin interface, admin panels
+
+- name: forms
+  color: ededed
+  description: Form handling, validation, rendering
+
+- name: graphql
+  color: ededed
+  description: GraphQL schema, resolvers
+
+- name: websockets
+  color: ededed
+  description: WebSocket connections, handlers
+
+- name: i18n
+  color: ededed
+  description: Internationalization, localization
+
+# Code Quality Labels
+- name: refactoring
+  color: ededed
+  description: Code refactoring without functional changes
+
+- name: code-quality
+  color: ededed
+  description: Code quality improvements
+
+- name: breaking-change
+  color: ededed
+  description: Breaking changes that require migration
+
+- name: architecture
+  color: ededed
+  description: Architecture and design changes
+
+# GitHub Actions
+- name: github-actions
+  color: 2cbe4e
+  description: GitHub Actions workflow files
