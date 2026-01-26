@@ -1087,7 +1087,19 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 			// Column type
 			if let Some(col_type) = &column.column_type {
-				writer.push(&self.column_type_to_sql(col_type));
+				// For auto_increment columns, use SERIAL types instead of INTEGER/BIGINT
+				if column.auto_increment {
+					use crate::types::ColumnType;
+					let serial_type = match col_type {
+						ColumnType::SmallInteger => "SMALLSERIAL",
+						ColumnType::Integer => "SERIAL",
+						ColumnType::BigInteger => "BIGSERIAL",
+						_ => &self.column_type_to_sql(col_type),
+					};
+					writer.push(serial_type);
+				} else {
+					writer.push(&self.column_type_to_sql(col_type));
+				}
 			}
 
 			// NOT NULL
