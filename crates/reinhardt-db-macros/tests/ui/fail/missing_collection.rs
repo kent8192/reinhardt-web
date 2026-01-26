@@ -1,10 +1,8 @@
-//! Document without collection attribute should fail
-
-use reinhardt_db_macros::document;
+use reinhardt_db_macros::{document, field};
+use bson::oid::ObjectId;
 
 #[document(backend = "mongodb")]
 struct User {
-	id: String,
+    #[field(primary_key)]
+    id: ObjectId,
 }
-
-fn main() {}

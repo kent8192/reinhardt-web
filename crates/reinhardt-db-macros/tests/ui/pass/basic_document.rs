@@ -1,6 +1,10 @@
-//! Basic document macro usage
+use reinhardt_db_macros::{document, field};
+use bson::oid::ObjectId;
 
-fn main() {
-	// This test verifies that the document macro compiles successfully.
-	// The actual runtime functionality will be tested in integration tests.
+#[document(collection = "users", backend = "mongodb")]
+struct User {
+    #[field(primary_key)]
+    id: ObjectId,
+    name: String,
+    email: String,
 }

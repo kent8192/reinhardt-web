@@ -1,10 +1,8 @@
-//! Unsupported backend should fail
+use reinhardt_db_macros::{document, field};
+use bson::oid::ObjectId;
 
-use reinhardt_db_macros::document;
-
-#[document(collection = "users", backend = "redis")]
+#[document(collection = "users", backend = "postgres")]
 struct User {
-	id: String,
+    #[field(primary_key)]
+    id: ObjectId,
 }
-
-fn main() {}
