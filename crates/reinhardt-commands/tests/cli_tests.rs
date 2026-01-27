@@ -37,6 +37,7 @@ fn create_runserver_default() -> Commands {
 }
 
 /// Creates runserver command with custom settings
+// Test helper: Mirrors Commands::Runserver variant fields, refactoring would reduce test clarity
 #[allow(clippy::too_many_arguments)]
 fn create_runserver_with_options(
 	address: &str,
@@ -97,6 +98,7 @@ fn test_commands_migrate_parse_minimal() {
 			assert!(!fake_initial, "fake_initial should be false by default");
 			assert!(!plan, "plan should be false by default");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
@@ -133,6 +135,7 @@ fn test_commands_migrate_parse_all_options() {
 			assert!(fake_initial, "fake_initial should be true");
 			assert!(plan, "plan should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
@@ -166,6 +169,7 @@ fn test_commands_makemigrations_parse_app_labels() {
 			assert_eq!(app_labels[1], "users");
 			assert_eq!(app_labels[2], "posts");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Makemigrations variant"),
 	}
@@ -193,6 +197,7 @@ fn test_commands_runserver_default_address() {
 				"Default address should be 127.0.0.1:8000"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Runserver variant"),
 	}
@@ -219,6 +224,7 @@ fn test_commands_runserver_custom_address() {
 			assert!(insecure, "insecure should be true");
 			assert!(no_docs, "no_docs should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Runserver variant"),
 	}
@@ -242,6 +248,7 @@ fn test_commands_shell_command_option() {
 		Commands::Shell { command } => {
 			assert_eq!(command, Some("println!(\"Hello, world!\")".to_string()));
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Shell variant"),
 	}
@@ -259,6 +266,7 @@ fn test_commands_shell_interactive_mode() {
 		Commands::Shell { command } => {
 			assert!(command.is_none(), "Interactive mode should have no command");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Shell variant"),
 	}
@@ -284,6 +292,7 @@ fn test_commands_check_deploy_flag() {
 			assert!(app_label.is_none());
 			assert!(deploy, "deploy flag should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Check variant"),
 	}
@@ -305,6 +314,7 @@ fn test_commands_check_with_app_label() {
 			assert_eq!(app_label, Some("myapp".to_string()));
 			assert!(!deploy);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Check variant"),
 	}
@@ -344,6 +354,7 @@ fn test_commands_collectstatic_all_options() {
 			assert_eq!(ignore[0], "*.map");
 			assert_eq!(ignore[1], "*.log");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Collectstatic variant"),
 	}
@@ -377,6 +388,7 @@ fn test_commands_collectstatic_defaults() {
 			assert!(!link, "link should be false by default");
 			assert!(ignore.is_empty(), "ignore should be empty by default");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Collectstatic variant"),
 	}
@@ -398,6 +410,7 @@ fn test_commands_showurls_names_flag() {
 		Commands::Showurls { names } => {
 			assert!(names, "names flag should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Showurls variant"),
 	}
@@ -430,6 +443,7 @@ fn test_commands_generateopenapi_format() {
 			assert_eq!(output, PathBuf::from("openapi.yaml"));
 			assert!(postman, "postman should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Generateopenapi variant"),
 	}
@@ -522,6 +536,7 @@ fn test_unicode_in_arguments() {
 				"Unicode migration_name should be preserved"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
@@ -548,6 +563,7 @@ fn test_empty_app_labels() {
 		Commands::Makemigrations { app_labels, .. } => {
 			assert!(app_labels.is_empty(), "Empty app_labels should be handled");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Makemigrations variant"),
 	}
@@ -579,6 +595,7 @@ fn test_special_characters_in_paths() {
 				"Special path should be preserved"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Makemigrations variant"),
 	}
@@ -611,6 +628,7 @@ fn test_very_long_argument_values() {
 			assert_eq!(app_label.as_ref().map(|s| s.len()), Some(1000));
 			assert_eq!(migration_name.as_ref().map(|s| s.len()), Some(1000));
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
@@ -754,6 +772,7 @@ fn test_collectstatic_decision_flag_combinations(
 			assert_eq!(l, link, "{}: link mismatch", description);
 			assert_eq!(d, dry_run, "{}: dry_run mismatch", description);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Collectstatic variant"),
 	}
@@ -792,6 +811,7 @@ fn test_collectstatic_multiple_ignore_patterns() {
 				assert_eq!(&ignore[i], pattern, "Pattern {} should match", i);
 			}
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Collectstatic variant"),
 	}
@@ -970,6 +990,7 @@ fn test_commands_showurls_defaults() {
 		Commands::Showurls { names } => {
 			assert!(!names, "names should be false by default");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Showurls variant"),
 	}
@@ -1034,6 +1055,7 @@ fn test_generateopenapi_command_exists() {
 		Commands::Generateopenapi { format, .. } => {
 			assert_eq!(format, "json");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Generateopenapi variant"),
 	}
@@ -1059,6 +1081,7 @@ fn test_generateopenapi_yaml_format() {
 			assert_eq!(format, "yaml");
 			assert_eq!(output, PathBuf::from("openapi.yaml"));
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Generateopenapi variant"),
 	}
@@ -1083,6 +1106,7 @@ fn test_generateopenapi_postman_flag() {
 		Commands::Generateopenapi { postman, .. } => {
 			assert!(postman, "postman flag should be true");
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Generateopenapi variant"),
 	}
@@ -1148,6 +1172,7 @@ fn test_database_url_special_chars() {
 				"Database URL should be preserved exactly"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Migrate variant"),
 	}
@@ -1168,6 +1193,7 @@ fn test_runserver_empty_address() {
 				"Empty address should be allowed at parse level"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Runserver variant"),
 	}
@@ -1199,6 +1225,7 @@ fn test_shell_complex_command() {
 				"Complex command should be preserved"
 			);
 		}
+		// Test assertion pattern: Exhaustive match with safety fallback for refactoring
 		#[allow(unreachable_patterns)]
 		_ => panic!("Expected Commands::Shell variant"),
 	}

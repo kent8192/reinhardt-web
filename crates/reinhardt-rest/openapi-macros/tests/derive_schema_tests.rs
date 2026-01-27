@@ -8,6 +8,7 @@ use utoipa::openapi::{
 
 #[test]
 fn test_simple_struct_schema_generation() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -33,6 +34,7 @@ fn test_simple_struct_schema_generation() {
 
 #[test]
 fn test_optional_fields_not_required() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -56,6 +58,7 @@ fn test_optional_fields_not_required() {
 
 #[test]
 fn test_field_with_description() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -89,6 +92,7 @@ fn test_field_with_description() {
 
 #[test]
 fn test_field_with_example() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -118,6 +122,7 @@ fn test_field_with_example() {
 
 #[test]
 fn test_field_with_format() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -150,6 +155,7 @@ fn test_field_with_format() {
 
 #[test]
 fn test_field_with_read_only() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -178,6 +184,7 @@ fn test_field_with_read_only() {
 
 #[test]
 fn test_field_with_write_only() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct CreateUser {
@@ -206,6 +213,7 @@ fn test_field_with_write_only() {
 
 #[test]
 fn test_field_with_deprecated() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -235,6 +243,7 @@ fn test_field_with_deprecated() {
 
 #[test]
 fn test_field_with_numeric_constraints() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct Product {
@@ -265,6 +274,7 @@ fn test_field_with_numeric_constraints() {
 
 #[test]
 fn test_field_with_string_length_constraints() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -295,6 +305,7 @@ fn test_field_with_string_length_constraints() {
 
 #[test]
 fn test_field_with_pattern() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -321,6 +332,7 @@ fn test_field_with_pattern() {
 
 #[test]
 fn test_doc_comments_as_description() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -353,6 +365,7 @@ fn test_doc_comments_as_description() {
 
 #[test]
 fn test_explicit_description_overrides_doc_comment() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -380,6 +393,7 @@ fn test_explicit_description_overrides_doc_comment() {
 
 #[test]
 fn test_combined_attributes() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -422,6 +436,7 @@ fn test_combined_attributes() {
 
 #[test]
 fn test_complex_struct_with_all_features() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -520,6 +535,7 @@ fn test_complex_struct_with_all_features() {
 
 #[test]
 fn test_simple_unit_enum_generates_string_schema() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Status {
@@ -547,6 +563,7 @@ fn test_simple_unit_enum_generates_string_schema() {
 fn test_internally_tagged_enum() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "type")]
@@ -571,6 +588,7 @@ fn test_internally_tagged_enum() {
 fn test_adjacently_tagged_enum() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "t", content = "c")]
@@ -594,6 +612,7 @@ fn test_adjacently_tagged_enum() {
 fn test_untagged_enum() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(untagged)]
@@ -616,6 +635,7 @@ fn test_untagged_enum() {
 
 #[test]
 fn test_externally_tagged_enum_with_struct_variants() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Shape {
@@ -638,6 +658,7 @@ fn test_externally_tagged_enum_with_struct_variants() {
 
 #[test]
 fn test_enum_with_newtype_variant() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Wrapper {
@@ -659,6 +680,7 @@ fn test_enum_with_newtype_variant() {
 fn test_enum_with_serde_rename() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Status {
@@ -687,6 +709,7 @@ fn test_enum_with_serde_rename() {
 fn test_enum_with_serde_rename_all() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(rename_all = "snake_case")]
@@ -715,6 +738,7 @@ fn test_enum_with_serde_rename_all() {
 fn test_enum_with_skip_variant() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Mode {
@@ -742,6 +766,7 @@ fn test_enum_with_skip_variant() {
 
 #[test]
 fn test_mixed_variant_types() {
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Data {
@@ -767,6 +792,7 @@ fn test_mixed_variant_types() {
 fn test_internally_tagged_with_unit_variant() {
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Struct only used for compile-time schema generation, never instantiated
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "kind")]

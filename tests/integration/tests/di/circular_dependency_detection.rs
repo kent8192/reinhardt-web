@@ -9,6 +9,7 @@ use std::sync::Arc;
 /// Test fixture: ServiceA (depends on ServiceB)
 #[derive(Clone)]
 #[injectable]
+// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 #[allow(dead_code)]
 struct ServiceA {
 	#[inject]
@@ -18,6 +19,7 @@ struct ServiceA {
 /// Test fixture: ServiceB (depends on ServiceC)
 #[derive(Clone)]
 #[injectable]
+// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 #[allow(dead_code)]
 struct ServiceB {
 	#[inject]
@@ -27,6 +29,7 @@ struct ServiceB {
 /// Test fixture: ServiceC (depends on ServiceA - circular!)
 #[derive(Clone)]
 #[injectable]
+// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 #[allow(dead_code)]
 struct ServiceC {
 	#[inject]
@@ -38,6 +41,7 @@ struct ServiceC {
 async fn test_direct_circular_dependency() {
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct DirectA {
 		#[inject]
@@ -46,6 +50,7 @@ async fn test_direct_circular_dependency() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct DirectB {
 		#[inject]
@@ -103,6 +108,7 @@ async fn test_indirect_circular_dependency() {
 async fn test_self_dependency() {
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct SelfDependent {
 		#[inject]
@@ -125,6 +131,7 @@ async fn test_self_dependency() {
 async fn test_complex_circular_dependency() {
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct ComplexA {
 		#[inject]
@@ -133,6 +140,7 @@ async fn test_complex_circular_dependency() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct ComplexB {
 		#[inject]
@@ -141,6 +149,7 @@ async fn test_complex_circular_dependency() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct ComplexC {
 		#[inject]
@@ -149,6 +158,7 @@ async fn test_complex_circular_dependency() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct ComplexD {
 		#[inject]
@@ -174,6 +184,7 @@ async fn test_complex_circular_dependency() {
 async fn test_no_circular_dependency_succeeds() {
 	#[derive(Clone)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct NoCycleA {
 		#[inject]
@@ -182,6 +193,7 @@ async fn test_no_circular_dependency_succeeds() {
 
 	#[derive(Clone, Default)]
 	#[injectable]
+	// DI test fixture: Struct only used by #[injectable] macro for dependency resolution testing
 	#[allow(dead_code)]
 	struct NoCycleB {
 		#[no_inject]

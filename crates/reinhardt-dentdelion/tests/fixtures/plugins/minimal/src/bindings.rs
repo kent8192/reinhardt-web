@@ -2,10 +2,14 @@
 // Options used:
 //   * runtime_path: "wit_bindgen_rt"
 #[rustfmt::skip]
+// Generated code: wit-bindgen auto-generates all module contents
+// Generated runtime module: wit-bindgen internal runtime utilities
 #[allow(dead_code, clippy::all)]
 pub mod reinhardt {
     pub mod dentdelion {
         /// Common types shared between host and plugin interfaces.
+        // Generated code: wit-bindgen auto-generates type definitions and trait implementations
+        // Generated code: wit-bindgen auto-generates module interfaces and trait implementations
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod types {
             #[used]
@@ -186,6 +190,7 @@ pub mod reinhardt {
         ///
         /// These functions allow plugins to interact with the host environment
         /// in a controlled and sandboxed manner.
+        // Generated code: wit-bindgen auto-generates module interfaces and trait implementations
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod host {
             #[used]
@@ -194,6 +199,7 @@ pub mod reinhardt {
             use super::super::super::_rt;
             pub type PluginError = super::super::super::reinhardt::dentdelion::types::PluginError;
             pub type HttpResponse = super::super::super::reinhardt::dentdelion::types::HttpResponse;
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// ===== Configuration Access =====
             /// Get a configuration value by key.
@@ -247,6 +253,7 @@ pub mod reinhardt {
                     result7
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Set a configuration value.
             /// Value is MessagePack-serialized ConfigValue.
@@ -358,6 +365,7 @@ pub mod reinhardt {
                     result13
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// ===== Logging =====
             /// Log a debug message.
@@ -379,6 +387,7 @@ pub mod reinhardt {
                     unsafe { wit_import1(ptr0.cast_mut(), len0) };
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Log an info message.
             pub fn log_info(message: &str) -> () {
@@ -399,6 +408,7 @@ pub mod reinhardt {
                     unsafe { wit_import1(ptr0.cast_mut(), len0) };
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Log a warning message.
             pub fn log_warn(message: &str) -> () {
@@ -419,6 +429,7 @@ pub mod reinhardt {
                     unsafe { wit_import1(ptr0.cast_mut(), len0) };
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Log an error message.
             pub fn log_error(message: &str) -> () {
@@ -439,6 +450,7 @@ pub mod reinhardt {
                     unsafe { wit_import1(ptr0.cast_mut(), len0) };
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// ===== Service Registration =====
             /// Register a service with the DI container.
@@ -550,6 +562,7 @@ pub mod reinhardt {
                     result13
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Get a registered service by name.
             /// Returns MessagePack-serialized service state.
@@ -602,6 +615,7 @@ pub mod reinhardt {
                     result7
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Unregister a service from the DI container.
             pub fn unregister_service(name: &str) -> Result<(), PluginError> {
@@ -694,6 +708,7 @@ pub mod reinhardt {
                     result12
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// ===== HTTP Client (requires capability check) =====
             /// Perform an HTTP GET request.
@@ -904,6 +919,7 @@ pub mod reinhardt {
                     result29
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Perform an HTTP POST request.
             /// Requires: Plugin must have appropriate network capability.
@@ -1131,6 +1147,7 @@ pub mod reinhardt {
                     result30
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// ===== Database Access (requires capability check) =====
             /// Execute a SQL query and return results.
@@ -1256,6 +1273,7 @@ pub mod reinhardt {
                     result16
                 }
             }
+            // Generated FFI bindings: unsafe blocks are wit-bindgen generated for WASM interop
             #[allow(unused_unsafe, clippy::all)]
             /// Execute a SQL statement (INSERT, UPDATE, DELETE).
             /// Returns number of affected rows.
@@ -1371,6 +1389,7 @@ pub mod reinhardt {
     }
 }
 #[rustfmt::skip]
+// Generated runtime module: wit-bindgen internal runtime utilities
 #[allow(dead_code, clippy::all)]
 pub mod exports {
     pub mod reinhardt {
@@ -1389,6 +1408,7 @@ pub mod exports {
                 pub type Capability = super::super::super::super::reinhardt::dentdelion::types::Capability;
                 pub type PluginError = super::super::super::super::reinhardt::dentdelion::types::PluginError;
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_get_metadata_cabi<T: Guest>() -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -1541,6 +1561,7 @@ pub mod exports {
                     ptr1
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_get_metadata<T: Guest>(arg0: *mut u8) {
                     let l0 = *arg0.add(0).cast::<*mut u8>();
@@ -1641,6 +1662,7 @@ pub mod exports {
                     }
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_get_capabilities_cabi<T: Guest>() -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -1727,6 +1749,7 @@ pub mod exports {
                     ptr1
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_get_capabilities<T: Guest>(arg0: *mut u8) {
                     let l0 = *arg0.add(0).cast::<*mut u8>();
@@ -1773,6 +1796,7 @@ pub mod exports {
                     );
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_on_load_cabi<T: Guest>(
                     arg0: *mut u8,
@@ -1835,6 +1859,7 @@ pub mod exports {
                     ptr2
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_on_load<T: Guest>(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
@@ -1869,6 +1894,7 @@ pub mod exports {
                     }
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_on_enable_cabi<T: Guest>() -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -1925,6 +1951,7 @@ pub mod exports {
                     ptr1
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_on_enable<T: Guest>(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
@@ -1959,6 +1986,7 @@ pub mod exports {
                     }
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_on_disable_cabi<T: Guest>() -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -2015,6 +2043,7 @@ pub mod exports {
                     ptr1
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_on_disable<T: Guest>(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
@@ -2049,6 +2078,7 @@ pub mod exports {
                     }
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_on_unload_cabi<T: Guest>() -> *mut u8 {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -2105,6 +2135,7 @@ pub mod exports {
                     ptr1
                 }
                 #[doc(hidden)]
+                // WASM FFI: Function names match WIT interface specification
                 #[allow(non_snake_case)]
                 pub unsafe fn __post_return_on_unload<T: Guest>(arg0: *mut u8) {
                     let l0 = i32::from(*arg0.add(0).cast::<u8>());
@@ -2331,6 +2362,7 @@ mod _rt {
 ///
 /// export!(MyType);
 /// ```
+// Generated macros: wit-bindgen utility macros for type conversions
 #[allow(unused_macros)]
 #[doc(hidden)]
 macro_rules! __export_dentdelion_plugin_impl {
@@ -2348,6 +2380,7 @@ pub(crate) use __export_dentdelion_plugin_impl as export;
 #[cfg(target_arch = "wasm32")]
 #[unsafe(link_section = "component-type:wit-bindgen:0.41.0:reinhardt:dentdelion@0.1.0:dentdelion-plugin:encoded world")]
 #[doc(hidden)]
+// Generated string literals: wit-bindgen may generate octal escape sequences
 #[allow(clippy::octal_escapes)]
 pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1420] = *b"\
 \0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x84\x0a\x01A\x02\x01\
