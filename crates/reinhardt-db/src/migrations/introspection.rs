@@ -490,6 +490,7 @@ impl SQLiteIntrospector {
 		col_type.into()
 	}
 
+	// Future implementation: Will be used for FK constraint validation in migrations
 	#[allow(dead_code)]
 	fn convert_foreign_key_action(action: &sea_schema::sqlite::def::ForeignKeyAction) -> String {
 		use sea_schema::sqlite::def::ForeignKeyAction;
@@ -529,6 +530,7 @@ impl SQLiteIntrospector {
 			to: String,
 			on_update: String,
 			on_delete: String,
+			// SQLite PRAGMA field: MATCH clause parsed but not currently used in FK info
 			#[allow(dead_code)]
 			r#match: String,
 		}
@@ -604,20 +606,25 @@ impl SQLiteIntrospector {
 	) -> Result<HashMap<String, IndexInfo>> {
 		#[derive(sqlx::FromRow)]
 		struct IndexListRow {
+			// SQLite PRAGMA field: Sequence number in index list, not used in IndexInfo
 			#[allow(dead_code)]
 			seq: i64,
 			name: String,
 			unique: i64,
+			// SQLite PRAGMA field: Index creation origin (c=CREATE INDEX, u=UNIQUE, pk=PRIMARY KEY)
 			#[allow(dead_code)]
 			origin: String,
+			// SQLite PRAGMA field: Whether index is partial (WHERE clause), not currently used
 			#[allow(dead_code)]
 			partial: i64,
 		}
 
 		#[derive(sqlx::FromRow)]
 		struct IndexInfoRow {
+			// SQLite PRAGMA field: Column sequence in index, not used in IndexInfo
 			#[allow(dead_code)]
 			seqno: i64,
+			// SQLite PRAGMA field: Column ID in table, not used in IndexInfo
 			#[allow(dead_code)]
 			cid: i64,
 			name: Option<String>,

@@ -166,11 +166,12 @@ struct VaultSecretMetadata {
 	// Note: Fields used by serde for JSON deserialization, not directly accessed in code
 	#[allow(dead_code)]
 	created_time: String,
+	// Serde deserialization: Version number from Vault API, not currently used
 	#[allow(dead_code)]
 	version: u64,
 }
-
 #[derive(Debug, Serialize)]
+// Future implementation: Will be used for Vault write operations
 #[allow(dead_code)]
 struct VaultWriteRequest {
 	data: HashMap<String, String>,
@@ -178,12 +179,13 @@ struct VaultWriteRequest {
 
 // Note: Structs used by serde for JSON deserialization from Vault list API responses
 #[derive(Debug, Deserialize)]
+// Serde deserialization: Vault API response wrapper, all fields auto-deserialized
 #[allow(dead_code)]
 struct VaultListResponse {
 	data: VaultListData,
 }
-
 #[derive(Debug, Deserialize)]
+// Serde deserialization: Vault API data container, all fields auto-deserialized
 #[allow(dead_code)]
 struct VaultListData {
 	keys: Vec<String>,
@@ -208,8 +210,10 @@ struct VaultVersionInfo {
 	// Note: Fields used by serde for JSON deserialization, not directly accessed in code
 	#[allow(dead_code)]
 	created_time: String,
+	// Serde deserialization: Deletion timestamp from Vault API, not currently used
 	#[allow(dead_code)]
 	deletion_time: String,
+	// Serde deserialization: Destroyed flag from Vault API, not currently used
 	#[allow(dead_code)]
 	destroyed: bool,
 }

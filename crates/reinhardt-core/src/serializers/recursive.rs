@@ -401,6 +401,7 @@ mod tests {
 
 	#[test]
 	fn test_context_visit_and_leave() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -420,6 +421,7 @@ mod tests {
 
 	#[test]
 	fn test_context_reset() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -480,6 +482,7 @@ mod tests {
 
 	#[test]
 	fn test_circular_reference_detection() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -497,6 +500,7 @@ mod tests {
 
 	#[test]
 	fn test_circular_visit_with() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -514,6 +518,7 @@ mod tests {
 
 	#[test]
 	fn test_circular_visit_with_error() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -535,6 +540,7 @@ mod tests {
 
 	#[test]
 	fn test_different_objects_same_string_representation() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,
@@ -554,6 +560,7 @@ mod tests {
 
 	#[test]
 	fn test_same_object_multiple_references() {
+		// Test fixture: Struct used only for circular reference detection testing
 		#[allow(dead_code)]
 		struct User {
 			id: i64,

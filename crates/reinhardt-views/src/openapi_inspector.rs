@@ -687,6 +687,7 @@ mod tests {
 	use crate::viewsets::ModelViewSet;
 
 	#[derive(Debug, Clone)]
+	// Test fixture: Model only used for ViewSet type parameters in tests
 	#[allow(dead_code)]
 	struct TestModel {
 		id: i64,
@@ -755,12 +756,16 @@ mod tests {
 		// Define a test model with ToSchema implementation
 		#[derive(Debug, Clone)]
 		struct User {
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			id: i64,
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			username: String,
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			email: String,
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			is_active: bool,
 		}
@@ -828,8 +833,10 @@ mod tests {
 
 		#[derive(Debug, Clone)]
 		struct Product {
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			id: i64,
+			// Test fixture field: Field definition required for ToSchema implementation testing
 			#[allow(dead_code)]
 			name: String,
 		}

@@ -344,6 +344,7 @@ pub fn reconcile_with_options(
 }
 
 /// Normalizes whitespace for comparison.
+// Future implementation: Will be used for whitespace-insensitive DOM comparison
 #[allow(dead_code)]
 fn normalize_whitespace(s: &str) -> String {
 	s.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -351,6 +352,7 @@ fn normalize_whitespace(s: &str) -> String {
 
 /// Checks if an element's structure matches the view.
 #[cfg(target_arch = "wasm32")]
+// Future implementation: Will be used for pre-reconciliation structure validation
 #[allow(dead_code)]
 pub(super) fn structure_matches(element: &Element, view: &Page) -> bool {
 	reconcile(element, view).is_ok()
@@ -358,6 +360,7 @@ pub(super) fn structure_matches(element: &Element, view: &Page) -> bool {
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
+// Test stub: Non-WASM placeholder for structure_matches testing
 #[allow(dead_code)]
 pub(super) fn structure_matches(_element: &str, _view: &Page) -> bool {
 	true
@@ -365,6 +368,7 @@ pub(super) fn structure_matches(_element: &str, _view: &Page) -> bool {
 
 /// Detailed comparison result.
 #[derive(Debug, Clone)]
+// Future implementation: Will provide detailed reconciliation diagnostics
 #[allow(dead_code)]
 pub(super) struct CompareResult {
 	/// Whether the structures match.
@@ -372,7 +376,7 @@ pub(super) struct CompareResult {
 	/// List of differences found.
 	pub differences: Vec<String>,
 }
-
+// Future implementation: Will provide detailed comparison results for debugging
 #[allow(dead_code)]
 impl CompareResult {
 	/// Creates a successful match result.
@@ -394,6 +398,7 @@ impl CompareResult {
 
 /// Compares DOM structure with view and returns detailed results.
 #[cfg(target_arch = "wasm32")]
+// Future implementation: Will provide detailed mismatch diagnostics for debugging
 #[allow(dead_code)]
 pub(super) fn compare_structure(element: &Element, view: &Page) -> CompareResult {
 	let mut differences = Vec::new();
@@ -477,6 +482,7 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
+// Test stub: Non-WASM placeholder for compare_structure testing
 #[allow(dead_code)]
 pub(super) fn compare_structure(_element: &str, _view: &Page) -> CompareResult {
 	CompareResult::success()

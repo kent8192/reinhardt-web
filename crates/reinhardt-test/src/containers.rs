@@ -114,6 +114,7 @@ pub trait TestDatabase: Send + Sync {
 
 /// PostgreSQL test container
 pub struct PostgresContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<GenericImage>,
 	host: String,
@@ -221,6 +222,7 @@ impl TestDatabase for PostgresContainer {
 
 /// MySQL test container
 pub struct MySqlContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<Mysql>,
 	host: String,
@@ -288,6 +290,7 @@ impl TestDatabase for MySqlContainer {
 
 /// Redis test container
 pub struct RedisContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<RedisImage>,
 	host: String,
@@ -403,6 +406,7 @@ impl RedisContainer {
 
 /// Memcached test container
 pub struct MemcachedContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<GenericImage>,
 	host: String,
@@ -581,6 +585,7 @@ where
 
 /// RabbitMQ test container
 pub struct RabbitMQContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<GenericImage>,
 	host: String,
@@ -707,6 +712,7 @@ where
 
 /// Mailpit test container for SMTP testing
 pub struct MailpitContainer {
+	// Container lifecycle: Field must be retained to keep TestContainer running
 	#[allow(dead_code)]
 	container: ContainerAsync<GenericImage>,
 	host: String,
