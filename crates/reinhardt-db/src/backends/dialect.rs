@@ -12,6 +12,9 @@ pub mod sqlite;
 #[cfg(feature = "mysql")]
 pub mod mysql;
 
+#[cfg(feature = "mysql")]
+pub mod mysql_dcl;
+
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresBackend;
 
@@ -20,3 +23,6 @@ pub use sqlite::SqliteBackend;
 
 #[cfg(feature = "mysql")]
 pub use mysql::MySqlBackend;
+
+#[cfg(feature = "mysql")]
+pub use mysql_dcl::MySqlUser;

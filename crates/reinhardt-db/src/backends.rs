@@ -197,6 +197,9 @@ pub use dialect::SqliteBackend;
 #[cfg(feature = "mysql")]
 pub use dialect::MySqlBackend;
 
+#[cfg(feature = "mysql")]
+pub use dialect::MySqlUser;
+
 #[cfg(feature = "cockroachdb-backend")]
 pub use drivers::cockroachdb::{
 	ClusterInfo, CockroachDBBackend, CockroachDBConnection, CockroachDBConnectionConfig,
