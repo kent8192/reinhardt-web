@@ -48,7 +48,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.91.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
 
       - name: Install protoc
         run: |
