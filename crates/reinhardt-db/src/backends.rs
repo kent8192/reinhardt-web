@@ -198,7 +198,10 @@ pub use dialect::SqliteBackend;
 pub use dialect::MySqlBackend;
 
 #[cfg(feature = "mysql")]
-pub use dialect::MySqlUser;
+pub use dialect::{
+	AlterUserStatement, CreateUserStatement, DefaultRoleSpec, DropUserStatement, MySqlUser,
+	RenameUserStatement, SetDefaultRoleStatement,
+};
 
 #[cfg(feature = "cockroachdb-backend")]
 pub use drivers::cockroachdb::{

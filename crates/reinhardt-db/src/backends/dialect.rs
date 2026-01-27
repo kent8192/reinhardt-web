@@ -25,4 +25,7 @@ pub use sqlite::SqliteBackend;
 pub use mysql::MySqlBackend;
 
 #[cfg(feature = "mysql")]
-pub use mysql_dcl::MySqlUser;
+pub use mysql_dcl::{
+	AlterUserStatement, CreateUserStatement, DefaultRoleSpec, DropUserStatement, MySqlUser,
+	RenameUserStatement, SetDefaultRoleStatement,
+};

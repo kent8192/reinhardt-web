@@ -121,10 +121,237 @@ impl From<String> for MySqlUser {
 	}
 }
 
+/// Default role specification for SET DEFAULT ROLE
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DefaultRoleSpec {
+	/// No default roles
+	None,
+	/// All roles granted to the user
+	All,
+	/// Specific roles
+	Roles(Vec<String>),
+}
+
+/// CREATE USER statement builder
+#[derive(Debug, Clone)]
+pub struct CreateUserStatement {
+	user: MySqlUser,
+	password: Option<String>,
+	if_not_exists: bool,
+}
+
+impl CreateUserStatement {
+	/// Create a new CREATE USER statement
+	pub fn new(user: impl Into<MySqlUser>) -> Self {
+		Self {
+			user: user.into(),
+			password: None,
+			if_not_exists: false,
+		}
+	}
+
+	/// Set the password for the user
+	pub fn password(mut self, password: impl Into<String>) -> Self {
+		self.password = Some(password.into());
+		self
+	}
+
+	/// Add IF NOT EXISTS clause
+	pub fn if_not_exists(mut self) -> Self {
+		self.if_not_exists = true;
+		self
+	}
+
+	/// Build the SQL statement
+	pub fn build(&self) -> String {
+		let mut sql = String::from("CREATE USER ");
+		if self.if_not_exists {
+			sql.push_str("IF NOT EXISTS ");
+		}
+		sql.push_str(&self.user.to_string());
+		if let Some(password) = &self.password {
+			sql.push_str(" IDENTIFIED BY '");
+			sql.push_str(password);
+			sql.push('\'');
+		}
+		sql
+	}
+}
+
+/// ALTER USER statement builder
+#[derive(Debug, Clone)]
+pub struct AlterUserStatement {
+	user: MySqlUser,
+	password: Option<String>,
+}
+
+impl AlterUserStatement {
+	/// Create a new ALTER USER statement
+	pub fn new(user: impl Into<MySqlUser>) -> Self {
+		Self {
+			user: user.into(),
+			password: None,
+		}
+	}
+
+	/// Set the new password for the user
+	pub fn password(mut self, password: impl Into<String>) -> Self {
+		self.password = Some(password.into());
+		self
+	}
+
+	/// Build the SQL statement
+	pub fn build(&self) -> String {
+		let mut sql = format!("ALTER USER {}", self.user);
+		if let Some(password) = &self.password {
+			sql.push_str(" IDENTIFIED BY '");
+			sql.push_str(password);
+			sql.push('\'');
+		}
+		sql
+	}
+}
+
+/// DROP USER statement builder
+#[derive(Debug, Clone)]
+pub struct DropUserStatement {
+	users: Vec<MySqlUser>,
+	if_exists: bool,
+}
+
+impl DropUserStatement {
+	/// Create a new DROP USER statement
+	pub fn new() -> Self {
+		Self {
+			users: Vec::new(),
+			if_exists: false,
+		}
+	}
+
+	/// Add a user to drop
+	pub fn user(mut self, user: impl Into<MySqlUser>) -> Self {
+		self.users.push(user.into());
+		self
+	}
+
+	/// Add multiple users to drop
+	pub fn users(mut self, users: Vec<impl Into<MySqlUser>>) -> Self {
+		for user in users {
+			self.users.push(user.into());
+		}
+		self
+	}
+
+	/// Add IF EXISTS clause
+	pub fn if_exists(mut self) -> Self {
+		self.if_exists = true;
+		self
+	}
+
+	/// Build the SQL statement
+	pub fn build(&self) -> String {
+		let mut sql = String::from("DROP USER ");
+		if self.if_exists {
+			sql.push_str("IF EXISTS ");
+		}
+		let user_strings: Vec<String> = self.users.iter().map(|u| u.to_string()).collect();
+		sql.push_str(&user_strings.join(", "));
+		sql
+	}
+}
+
+impl Default for DropUserStatement {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+/// RENAME USER statement builder
+#[derive(Debug, Clone)]
+pub struct RenameUserStatement {
+	old_user: MySqlUser,
+	new_user: MySqlUser,
+}
+
+impl RenameUserStatement {
+	/// Create a new RENAME USER statement
+	pub fn new(old_user: impl Into<MySqlUser>, new_user: impl Into<MySqlUser>) -> Self {
+		Self {
+			old_user: old_user.into(),
+			new_user: new_user.into(),
+		}
+	}
+
+	/// Build the SQL statement
+	pub fn build(&self) -> String {
+		format!("RENAME USER {} TO {}", self.old_user, self.new_user)
+	}
+}
+
+/// SET DEFAULT ROLE statement builder
+#[derive(Debug, Clone)]
+pub struct SetDefaultRoleStatement {
+	roles: DefaultRoleSpec,
+	users: Vec<MySqlUser>,
+}
+
+impl SetDefaultRoleStatement {
+	/// Create a new SET DEFAULT ROLE statement
+	pub fn new() -> Self {
+		Self {
+			roles: DefaultRoleSpec::None,
+			users: Vec::new(),
+		}
+	}
+
+	/// Set the roles specification
+	pub fn roles(mut self, roles: DefaultRoleSpec) -> Self {
+		self.roles = roles;
+		self
+	}
+
+	/// Add a user
+	pub fn user(mut self, user: impl Into<MySqlUser>) -> Self {
+		self.users.push(user.into());
+		self
+	}
+
+	/// Add multiple users
+	pub fn users_list(mut self, users: Vec<impl Into<MySqlUser>>) -> Self {
+		for user in users {
+			self.users.push(user.into());
+		}
+		self
+	}
+
+	/// Build the SQL statement
+	pub fn build(&self) -> String {
+		let mut sql = String::from("SET DEFAULT ROLE ");
+		match &self.roles {
+			DefaultRoleSpec::None => sql.push_str("NONE"),
+			DefaultRoleSpec::All => sql.push_str("ALL"),
+			DefaultRoleSpec::Roles(roles) => {
+				sql.push_str(&roles.join(", "));
+			}
+		}
+		sql.push_str(" TO ");
+		let user_strings: Vec<String> = self.users.iter().map(|u| u.to_string()).collect();
+		sql.push_str(&user_strings.join(", "));
+		sql
+	}
+}
+
+impl Default for SetDefaultRoleStatement {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
+	// MySqlUser tests
 	#[test]
 	fn test_parse_user_with_host() {
 		let user = MySqlUser::parse("app_user@localhost");
@@ -192,5 +419,136 @@ mod tests {
 		let user1 = MySqlUser::parse("user@host");
 		let user2 = MySqlUser::new("user", "host");
 		assert_eq!(user1, user2);
+	}
+
+	// CREATE USER tests
+	#[test]
+	fn test_create_user_basic() {
+		let stmt = CreateUserStatement::new("app_user@localhost");
+		assert_eq!(stmt.build(), "CREATE USER 'app_user'@'localhost'");
+	}
+
+	#[test]
+	fn test_create_user_with_password() {
+		let stmt = CreateUserStatement::new("app_user@localhost").password("secret123");
+		assert_eq!(
+			stmt.build(),
+			"CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'secret123'"
+		);
+	}
+
+	#[test]
+	fn test_create_user_if_not_exists() {
+		let stmt = CreateUserStatement::new("app_user@localhost").if_not_exists();
+		assert_eq!(
+			stmt.build(),
+			"CREATE USER IF NOT EXISTS 'app_user'@'localhost'"
+		);
+	}
+
+	#[test]
+	fn test_create_user_default_host() {
+		let stmt = CreateUserStatement::new("admin");
+		assert_eq!(stmt.build(), "CREATE USER 'admin'@'%'");
+	}
+
+	// ALTER USER tests
+	#[test]
+	fn test_alter_user_password() {
+		let stmt = AlterUserStatement::new("app_user@localhost").password("newsecret");
+		assert_eq!(
+			stmt.build(),
+			"ALTER USER 'app_user'@'localhost' IDENTIFIED BY 'newsecret'"
+		);
+	}
+
+	// DROP USER tests
+	#[test]
+	fn test_drop_user_single() {
+		let stmt = DropUserStatement::new().user("app_user@localhost");
+		assert_eq!(stmt.build(), "DROP USER 'app_user'@'localhost'");
+	}
+
+	#[test]
+	fn test_drop_user_multiple() {
+		let stmt = DropUserStatement::new()
+			.user("user1@localhost")
+			.user("user2@%");
+		assert_eq!(stmt.build(), "DROP USER 'user1'@'localhost', 'user2'@'%'");
+	}
+
+	#[test]
+	fn test_drop_user_if_exists() {
+		let stmt = DropUserStatement::new()
+			.user("app_user@localhost")
+			.if_exists();
+		assert_eq!(stmt.build(), "DROP USER IF EXISTS 'app_user'@'localhost'");
+	}
+
+	// RENAME USER tests
+	#[test]
+	fn test_rename_user() {
+		let stmt = RenameUserStatement::new("old_user@localhost", "new_user@localhost");
+		assert_eq!(
+			stmt.build(),
+			"RENAME USER 'old_user'@'localhost' TO 'new_user'@'localhost'"
+		);
+	}
+
+	// SET DEFAULT ROLE tests
+	#[test]
+	fn test_set_default_role_none() {
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::None)
+			.user("app_user@localhost");
+		assert_eq!(
+			stmt.build(),
+			"SET DEFAULT ROLE NONE TO 'app_user'@'localhost'"
+		);
+	}
+
+	#[test]
+	fn test_set_default_role_all() {
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("app_user@localhost");
+		assert_eq!(
+			stmt.build(),
+			"SET DEFAULT ROLE ALL TO 'app_user'@'localhost'"
+		);
+	}
+
+	#[test]
+	fn test_set_default_role_specific() {
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::Roles(vec![
+				"role1".to_string(),
+				"role2".to_string(),
+			]))
+			.user("app_user@localhost");
+		assert_eq!(
+			stmt.build(),
+			"SET DEFAULT ROLE role1, role2 TO 'app_user'@'localhost'"
+		);
+	}
+
+	#[test]
+	fn test_set_default_role_multiple_users() {
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("user1@localhost")
+			.user("user2@%");
+		assert_eq!(
+			stmt.build(),
+			"SET DEFAULT ROLE ALL TO 'user1'@'localhost', 'user2'@'%'"
+		);
+	}
+
+	#[test]
+	fn test_set_default_role_default_host() {
+		let stmt = SetDefaultRoleStatement::new()
+			.roles(DefaultRoleSpec::All)
+			.user("admin");
+		assert_eq!(stmt.build(), "SET DEFAULT ROLE ALL TO 'admin'@'%'");
 	}
 }
