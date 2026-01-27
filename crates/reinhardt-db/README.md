@@ -412,6 +412,41 @@ unset DOCKER_HOST
 cat .testcontainers.properties
 ```
 
+## SQL Generation Notes
+
+### Identifier Quoting
+
+The query builder uses SeaQuery to generate SQL statements with automatic identifier quoting. Different database backends quote identifiers differently to preserve case sensitivity and allow special characters:
+
+| Backend | Quote Character | Example |
+|---------|-----------------|---------|
+| PostgreSQL | Double quotes (`"`) | `INSERT INTO "users" ("name", "email") VALUES ($1, $2)` |
+| MySQL | Backticks (`` ` ``) | `` INSERT INTO `users` (`name`, `email`) VALUES (?, ?) `` |
+| SQLite | Double quotes (`"`) | `INSERT INTO "users" ("name", "email") VALUES (?, ?)` |
+
+**When writing tests** that check generated SQL strings, you need to account for these quotes:
+
+```rust
+use crate::backends::query_builder::InsertBuilder;
+
+// ❌ Fails - doesn't account for quotes
+let (sql, _) = builder.build();
+assert!(sql.contains("INSERT INTO users"));
+
+// ✅ Works - checks parts separately
+assert!(sql.contains("INSERT INTO") && sql.contains("users"));
+
+// ✅ Works - includes quotes (PostgreSQL example)
+assert!(sql.contains(r#"INSERT INTO "users""#));
+```
+
+**Why this matters:**
+- Identifiers are always quoted for consistency across all SQL dialects
+- Quoted identifiers preserve case (e.g., `"UserName"` vs `username`)
+- Allows special characters in table/column names
+- Prevents conflicts with SQL reserved keywords
+
+For implementation details, see [`backends::query_builder`](src/backends/query_builder.rs) module documentation.
 
 ## associations
 

@@ -1,4 +1,40 @@
 //! Query builder with dialect support
+//!
+//! This module provides high-level query builders for INSERT, UPDATE, SELECT, and DELETE operations
+//! using SeaQuery for cross-database compatibility.
+//!
+//! # Identifier Quoting
+//!
+//! All SQL identifiers (table names, column names) are automatically quoted according to the database backend:
+//!
+//! | Backend | Quote Character | Example |
+//! |---------|-----------------|---------|
+//! | PostgreSQL | Double quotes (`"`) | `INSERT INTO "users" ("name", "email") VALUES ($1, $2)` |
+//! | MySQL | Backticks (`` ` ``) | `` INSERT INTO `users` (`name`, `email`) VALUES (?, ?) `` |
+//! | SQLite | Double quotes (`"`) | `INSERT INTO "users" ("name", "email") VALUES (?, ?)` |
+//!
+//! This quoting preserves case sensitivity and allows special characters in identifiers.
+//!
+//! # Testing Generated SQL
+//!
+//! When writing tests that check generated SQL strings, account for the quoted identifiers:
+//!
+//! ```rust,ignore
+//! let (sql, _) = InsertBuilder::new(backend, "users")
+//!     .value("name", "Alice")
+//!     .build();
+//!
+//! // ❌ Fails - doesn't account for quotes
+//! assert!(sql.contains("INSERT INTO users"));
+//!
+//! // ✅ Works - checks parts separately
+//! assert!(sql.contains("INSERT INTO") && sql.contains("users"));
+//!
+//! // ✅ Works - includes quotes (PostgreSQL)
+//! assert!(sql.contains(r#"INSERT INTO "users""#));
+//! ```
+//!
+//! See the test cases in this module for more examples.
 
 use std::sync::Arc;
 
