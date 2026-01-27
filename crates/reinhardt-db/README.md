@@ -429,6 +429,10 @@ The query builder uses SeaQuery to generate SQL statements with automatic identi
 ```rust
 use crate::backends::query_builder::InsertBuilder;
 
+let builder = InsertBuilder::new(backend, "users")
+    .value("name", "Alice")
+    .value("email", "alice@example.com");
+
 // ❌ Fails - doesn't account for quotes
 let (sql, _) = builder.build();
 assert!(sql.contains("INSERT INTO users"));

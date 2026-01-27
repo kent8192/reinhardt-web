@@ -20,9 +20,11 @@
 //! When writing tests that check generated SQL strings, account for the quoted identifiers:
 //!
 //! ```rust,ignore
-//! let (sql, _) = InsertBuilder::new(backend, "users")
+//! // Create a query builder with your backend
+//! let builder = InsertBuilder::new(backend, "users")
 //!     .value("name", "Alice")
-//!     .build();
+//!     .value("email", "alice@example.com");
+//! let (sql, _) = builder.build();
 //!
 //! // ❌ Fails - doesn't account for quotes
 //! assert!(sql.contains("INSERT INTO users"));
