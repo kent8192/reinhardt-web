@@ -1,8 +1,14 @@
 #!/bin/sh
 # Reinhardt pre-push hook
 # Runs fmt and clippy checks before allowing push
+# Skips checks when deleting remote branches
 
 set -e
+
+# Skip checks for branch deletion
+if echo "$@" | grep -q -- "--delete"; then
+    exit 0
+fi
 
 echo "🔍 Running pre-push checks..."
 
