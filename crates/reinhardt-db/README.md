@@ -427,7 +427,7 @@ The query builder uses SeaQuery to generate SQL statements with automatic identi
 **When writing tests** that check generated SQL strings, you need to account for these quotes:
 
 ```rust
-use crate::backends::query_builder::InsertBuilder;
+use reinhardt_db::backends::InsertBuilder;
 
 let builder = InsertBuilder::new(backend, "users")
     .value("name", "Alice")
