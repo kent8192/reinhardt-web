@@ -140,6 +140,7 @@
 
 pub mod backend;
 pub mod connection;
+pub mod dcl;
 pub mod dialect;
 pub mod drivers;
 pub mod error;
@@ -156,6 +157,10 @@ pub use schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorResult
 // Re-export query abstraction types
 pub use backend::DatabaseBackend;
 pub use connection::DatabaseConnection;
+pub use dcl::{
+	AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
+	RenameUserStatement, SetDefaultRoleStatement, SetRoleStatement,
+};
 pub use query_builder::{InsertBuilder, SelectBuilder, UpdateBuilder};
 pub use types::{
 	DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
