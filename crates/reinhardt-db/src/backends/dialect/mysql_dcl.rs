@@ -2,6 +2,157 @@
 //!
 //! This module provides structures and utilities for building MySQL DCL statements
 //! with proper user@host syntax handling.
+//!
+//! ## Overview
+//!
+//! MySQL uses a unique `'user'@'host'` syntax for user identifiers that differs from
+//! most other database systems. This module ensures proper parsing and formatting of
+//! MySQL user identifiers for all DCL operations.
+//!
+//! ## Key Features
+//!
+//! - **Automatic host defaulting**: Users without explicit hosts default to `'%'` (any host)
+//! - **Type-safe builders**: Fluent API for constructing DCL statements
+//! - **SQL injection protection**: Values are properly escaped and quoted
+//!
+//! ## Usage Examples
+//!
+//! ### CREATE USER
+//!
+//! ```rust
+//! use reinhardt_db::backends::{CreateUserStatement, MySqlUser};
+//!
+//! // Create user with explicit host
+//! let stmt = CreateUserStatement::new("app_user@localhost")
+//!     .password("secret123");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'secret123'"
+//! );
+//!
+//! // Create user with default host (%)
+//! let stmt = CreateUserStatement::new("admin")
+//!     .password("admin123")
+//!     .if_not_exists();
+//! assert_eq!(
+//!     stmt.build(),
+//!     "CREATE USER IF NOT EXISTS 'admin'@'%' IDENTIFIED BY 'admin123'"
+//! );
+//! ```
+//!
+//! ### ALTER USER
+//!
+//! ```rust
+//! use reinhardt_db::backends::AlterUserStatement;
+//!
+//! let stmt = AlterUserStatement::new("app_user@localhost")
+//!     .password("new_password");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "ALTER USER 'app_user'@'localhost' IDENTIFIED BY 'new_password'"
+//! );
+//! ```
+//!
+//! ### DROP USER
+//!
+//! ```rust
+//! use reinhardt_db::backends::DropUserStatement;
+//!
+//! // Drop single user
+//! let stmt = DropUserStatement::new()
+//!     .user("old_user@localhost")
+//!     .if_exists();
+//! assert_eq!(
+//!     stmt.build(),
+//!     "DROP USER IF EXISTS 'old_user'@'localhost'"
+//! );
+//!
+//! // Drop multiple users
+//! let stmt = DropUserStatement::new()
+//!     .user("user1@localhost")
+//!     .user("user2@%");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "DROP USER 'user1'@'localhost', 'user2'@'%'"
+//! );
+//! ```
+//!
+//! ### RENAME USER
+//!
+//! ```rust
+//! use reinhardt_db::backends::RenameUserStatement;
+//!
+//! let stmt = RenameUserStatement::new("old_name@localhost", "new_name@localhost");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "RENAME USER 'old_name'@'localhost' TO 'new_name'@'localhost'"
+//! );
+//! ```
+//!
+//! ### SET DEFAULT ROLE
+//!
+//! ```rust
+//! use reinhardt_db::backends::{DefaultRoleSpec, SetDefaultRoleStatement};
+//!
+//! // Set all roles as default
+//! let stmt = SetDefaultRoleStatement::new()
+//!     .roles(DefaultRoleSpec::All)
+//!     .user("app_user@localhost");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "SET DEFAULT ROLE ALL TO 'app_user'@'localhost'"
+//! );
+//!
+//! // Set specific roles
+//! let stmt = SetDefaultRoleStatement::new()
+//!     .roles(DefaultRoleSpec::Roles(vec!["role1".to_string(), "role2".to_string()]))
+//!     .user("app_user@localhost");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "SET DEFAULT ROLE role1, role2 TO 'app_user'@'localhost'"
+//! );
+//!
+//! // Clear default roles
+//! let stmt = SetDefaultRoleStatement::new()
+//!     .roles(DefaultRoleSpec::None)
+//!     .user("app_user@localhost");
+//! assert_eq!(
+//!     stmt.build(),
+//!     "SET DEFAULT ROLE NONE TO 'app_user'@'localhost'"
+//! );
+//! ```
+//!
+//! ## MySQL User Identifier Format
+//!
+//! MySQL user identifiers follow the format `'user'@'host'` where:
+//!
+//! - **user**: The username (required)
+//! - **host**: The hostname, IP address, or `%` for any host (defaults to `%` if not specified)
+//!
+//! ### Valid Host Specifications
+//!
+//! - `localhost` - Local connections only
+//! - `192.168.1.100` - Specific IP address
+//! - `%.example.com` - Any host in domain
+//! - `%` - Any host (default)
+//!
+//! ### Parsing Examples
+//!
+//! ```rust
+//! use reinhardt_db::backends::MySqlUser;
+//!
+//! // With explicit host
+//! let user = MySqlUser::parse("app_user@localhost");
+//! assert_eq!(user.to_string(), "'app_user'@'localhost'");
+//!
+//! // Without host (defaults to %)
+//! let user = MySqlUser::parse("admin");
+//! assert_eq!(user.to_string(), "'admin'@'%'");
+//!
+//! // With wildcard host
+//! let user = MySqlUser::parse("web@%.example.com");
+//! assert_eq!(user.to_string(), "'web'@'%.example.com'");
+//! ```
 
 use std::fmt::{self, Display, Formatter};
 

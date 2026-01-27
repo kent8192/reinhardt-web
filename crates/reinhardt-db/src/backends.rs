@@ -131,10 +131,47 @@
 //!     .build();
 //! ```
 //!
+//! ## MySQL DCL (Data Control Language)
+//!
+//! MySQL-specific user management with proper `'user'@'host'` syntax:
+//!
+//! ```rust,ignore
+//! use reinhardt_db::backends::{
+//!     CreateUserStatement, AlterUserStatement, DropUserStatement,
+//!     SetDefaultRoleStatement, DefaultRoleSpec
+//! };
+//!
+//! // CREATE USER with password
+//! let stmt = CreateUserStatement::new("app_user@localhost")
+//!     .password("secret123")
+//!     .if_not_exists();
+//! let sql = stmt.build();
+//! // Produces: CREATE USER IF NOT EXISTS 'app_user'@'localhost' IDENTIFIED BY 'secret123'
+//!
+//! // ALTER USER password
+//! let stmt = AlterUserStatement::new("app_user@localhost")
+//!     .password("new_password");
+//! let sql = stmt.build();
+//!
+//! // DROP USER
+//! let stmt = DropUserStatement::new()
+//!     .user("old_user@localhost")
+//!     .if_exists();
+//! let sql = stmt.build();
+//!
+//! // SET DEFAULT ROLE
+//! let stmt = SetDefaultRoleStatement::new()
+//!     .roles(DefaultRoleSpec::All)
+//!     .user("app_user@localhost");
+//! let sql = stmt.build();
+//! ```
+//!
+//! For more details, see [`dialect::mysql_dcl`].
+//!
 //! ## Feature Flags
 //!
 //! - **`postgres`**: PostgreSQL support with advanced features
-//! - **`mysql`**: MySQL/MariaDB support with XA transactions
+//! - **`mysql`**: MySQL/MariaDB support with XA transactions and DCL statements
 //! - **`sqlite`**: SQLite support for embedded databases
 //! - **`cockroachdb-backend`**: CockroachDB distributed SQL support
 
