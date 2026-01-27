@@ -107,6 +107,12 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - SeaQuery integration for query building
+  - **DCL (Data Control Language) support**: User and role management
+    - CREATE/ALTER USER statements
+    - CREATE/ALTER ROLE statements
+    - SET ROLE and SET DEFAULT ROLE
+    - RENAME USER operations
+    - All builders include validation (trim whitespace, reject empty strings)
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
@@ -291,6 +297,50 @@ let pool = Pool::new("postgres://user:pass@localhost/db")
 // Get a connection
 let conn = pool.get().await?;
 ```
+
+### DCL (Data Control Language) Operations
+
+The `backends::dcl` module provides builders for user and role management with built-in validation:
+
+```rust
+use reinhardt::db::backends::{
+    CreateUserStatement, CreateRoleStatement, 
+    SetRoleStatement, RenameUserStatement
+};
+use std::sync::Arc;
+
+// Create a user (validates and trims whitespace)
+let stmt = CreateUserStatement::new(backend.clone())
+    .user("admin")?  // Returns Err if empty/whitespace
+    .build();
+// PostgreSQL: CREATE USER "admin"
+// MySQL: CREATE USER 'admin'@'%'
+
+// Create a role
+let stmt = CreateRoleStatement::new(backend.clone())
+    .role("developer")?
+    .build();
+// PostgreSQL: CREATE ROLE "developer"
+
+// Set current role
+let stmt = SetRoleStatement::new(backend.clone())
+    .role("developer")?
+    .build();
+// PostgreSQL: SET ROLE "developer"
+
+// Rename a user
+let stmt = RenameUserStatement::new(backend)
+    .rename("oldname", "newname")?
+    .build();
+// PostgreSQL: ALTER USER "oldname" RENAME TO "newname"
+```
+
+All DCL builders validate input:
+- Automatically trim whitespace from names
+- Reject empty or whitespace-only strings
+- Return `Result<Self, String>` for validation errors
+
+See `examples/dcl_usage.rs` for comprehensive examples.
 
 ## Module Organization
 
