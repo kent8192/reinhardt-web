@@ -164,7 +164,7 @@ use std::fmt::{self, Display, Formatter};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_db::backends::dialect::MySqlUser;
+/// use reinhardt_db::backends::MySqlUser;
 ///
 /// // Parse user with explicit host
 /// let user = MySqlUser::parse("app_user@localhost");
@@ -195,7 +195,7 @@ impl MySqlUser {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_db::backends::dialect::MySqlUser;
+	/// use reinhardt_db::backends::MySqlUser;
 	///
 	/// let user = MySqlUser::new("admin", "localhost");
 	/// assert_eq!(user.to_string(), "'admin'@'localhost'");
@@ -219,7 +219,7 @@ impl MySqlUser {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_db::backends::dialect::MySqlUser;
+	/// use reinhardt_db::backends::MySqlUser;
 	///
 	/// let user = MySqlUser::parse("app_user@localhost");
 	/// assert_eq!(user.user(), "app_user");
