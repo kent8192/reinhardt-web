@@ -98,7 +98,8 @@ async fn test_least_privilege_principle_adherence(
 	// Goal: Verify migrations work with minimal required permissions
 
 	// Create restricted user with only CREATE and ALTER privileges
-	sqlx::query("CREATE USER migration_user WITH PASSWORD 'migration_pass'")
+	sqlx::query("CREATE USER migration_user WITH PASSWORD $1")
+		.bind("migration_pass")
 		.execute(&*pool)
 		.await
 		.expect("Failed to create migration_user");
@@ -812,7 +813,8 @@ async fn test_permission_escalation_prevention(
 	.expect("Failed to create sensitive_data table");
 
 	// Create restricted migration user
-	sqlx::query("CREATE USER restricted_migration WITH PASSWORD 'restricted_pass'")
+	sqlx::query("CREATE USER restricted_migration WITH PASSWORD $1")
+		.bind("restricted_pass")
 		.execute(&*pool)
 		.await
 		.expect("Failed to create restricted_migration user");
@@ -874,7 +876,8 @@ async fn test_permission_escalation_prevention(
 
 	// Attempt 3: Try to create superuser (should fail)
 	let superuser_creation =
-		sqlx::query("CREATE USER malicious_super WITH SUPERUSER PASSWORD 'malicious'")
+		sqlx::query("CREATE USER malicious_super WITH SUPERUSER PASSWORD $1")
+			.bind("malicious")
 			.execute(&restricted_pool)
 			.await;
 
