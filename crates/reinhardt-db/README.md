@@ -892,6 +892,106 @@ Optimize how related objects are loaded:
 - **Type-safe results**: `PoolResult<T>` type alias
 - **Error propagation**: Automatic conversion from sqlx errors
 
+## Security Considerations
+
+### SQL Injection Prevention
+
+Reinhardt-DB uses [SeaQuery](https://docs.rs/sea-query/) as its query builder, which provides parameterized queries to prevent SQL injection. However, certain APIs accept raw SQL strings and require careful use to maintain security.
+
+#### ⚠️ High-Risk APIs
+
+These APIs accept raw SQL and should **only** be used with trusted input:
+
+##### 1. `Expr::cust()` - Custom SQL Expressions (Medium Severity)
+
+**Risk**: SQL injection if user input is passed directly
+
+**Unsafe Example** (❌ **DO NOT DO THIS**):
+```rust
+use sea_query::Expr;
+
+// ❌ DANGEROUS - User input directly in SQL!
+let user_input = "'; DROP TABLE users; --";
+let expr = Expr::cust(format!("column = '{}'", user_input));
+```
+
+**Safe Alternative** - Use `Expr::cust_with_values()`:
+```rust
+use sea_query::{Expr, Value};
+
+// ✅ SAFE - Uses parameterized query
+let user_input = "some_value";
+let expr = Expr::cust_with_values("column = ?", [Value::from(user_input)]);
+```
+
+**When `Expr::cust()` is Safe**:
+```rust
+// ✅ SAFE - No user input, only constants
+let expr = Expr::cust("column IS NOT NULL");
+let expr = Expr::cust("created_at > NOW() - INTERVAL '1 day'");
+```
+
+##### 2. `SimpleExpr::Custom` - Custom Simple Expressions (Medium Severity)
+
+Similar to `Expr::cust()`, this variant accepts raw SQL strings.
+
+**Safe Usage**:
+```rust
+use sea_query::SimpleExpr;
+
+// ✅ SAFE - Only constants, no user input
+let expr = SimpleExpr::Custom("CURRENT_TIMESTAMP".to_string());
+```
+
+##### 3. Database Function/Procedure Bodies (High Severity)
+
+**Note**: These APIs are from SeaQuery and not commonly used in application code, but warrant awareness.
+
+- `CreateFunctionStatement::body()`
+- `CreateProcedureStatement::body()`
+
+**Risk**: Arbitrary code execution in database if user input is included
+
+**Recommendation**: Only use with trusted, developer-defined SQL. Never allow user input in function/procedure bodies.
+
+#### 🔒 Lower-Risk APIs
+
+These APIs have limited scope but still require caution:
+
+##### 4. `ColumnType::Custom` (Low Severity)
+
+Used for custom column types in DDL operations.
+
+**Risk**: Limited to schema definition, not query execution
+
+**Safe Usage**:
+```rust
+use sea_query::ColumnType;
+
+// ✅ SAFE - DDL context, no data manipulation
+let col_type = ColumnType::Custom("CITEXT".into());
+```
+
+##### 5. `FunctionLanguage::Custom` (Low Severity)
+
+Used for specifying custom function languages.
+
+**Risk**: Limited to language names in function definitions
+
+#### 🛡️ Best Practices
+
+1. **Prefer SeaQuery's Type-Safe API**: Use `Expr` methods like `col()`, `value()`, `eq()`, etc.
+2. **Use Parameterized Queries**: When raw SQL is necessary, use `cust_with_values()` instead of `cust()`
+3. **Validate Input**: If you must use `Expr::cust()`, validate and sanitize all input
+4. **Whitelist Patterns**: For dynamic queries, use whitelisting rather than blacklisting
+5. **Review Carefully**: Treat all uses of `cust()` and `Custom` as security-sensitive code
+
+#### 📚 Additional Resources
+
+- [OWASP SQL Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html)
+- [SeaQuery Documentation](https://docs.rs/sea-query/)
+- [Rust Security Best Practices](https://anssi-fr.github.io/rust-guide/)
+
 ## License
 
 Licensed under either of Apache License, Version 2.0 or MIT license at your option.

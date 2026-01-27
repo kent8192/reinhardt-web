@@ -293,6 +293,17 @@ pub use lambda_stmt::{
 pub use order_with_respect_to::{OrderError, OrderValue, OrderedModel};
 
 // SeaQuery re-exports for query building in client code
+//
+// # Security Warning
+//
+// When using `Expr` from SeaQuery, be aware of SQL injection risks:
+//
+// - ⚠️ `Expr::cust()` accepts raw SQL strings and is vulnerable to SQL injection if user input
+//   is passed directly. **Always use** `Expr::cust_with_values()` when incorporating user input.
+//
+// - ✅ Prefer SeaQuery's type-safe methods: `Expr::col()`, `Expr::value()`, `Expr::eq()`, etc.
+//
+// See the "Security Considerations" section in the crate README for detailed guidance.
 pub use sea_query::{
 	Alias, Asterisk, Expr, ExprTrait, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
 	SqliteQueryBuilder,
