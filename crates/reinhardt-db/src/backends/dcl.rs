@@ -460,10 +460,10 @@ impl SetDefaultRoleStatement {
 		match self.backend.database_type() {
 			DatabaseType::Postgres => {
 				if self.role_names.is_empty() {
-					format!("ALTER USER \"{}\" SET ROLE NONE", user)
+					format!("ALTER ROLE \"{}\" SET ROLE NONE", user)
 				} else {
 					let roles = self.role_names.join("\", \"");
-					format!("ALTER USER \"{}\" SET ROLE \"{}\";", user, roles)
+					format!("ALTER ROLE \"{}\" SET ROLE \"{}\"", user, roles)
 				}
 			}
 			DatabaseType::Mysql => {
