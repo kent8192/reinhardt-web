@@ -212,8 +212,10 @@ struct BucketState {
 /// # });
 /// ```
 pub struct TokenBucket<B: ThrottleBackend, T: TimeProvider = SystemTimeProvider> {
+	// Future implementation: Throttle key for identifying rate limit buckets
 	#[allow(dead_code)]
 	key: String,
+	// Future implementation: Backend storage for token bucket state
 	#[allow(dead_code)]
 	backend: Arc<B>,
 	config: TokenBucketConfig,

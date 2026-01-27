@@ -213,6 +213,7 @@ mod tests {
 	use super::*;
 	use serde::Deserialize;
 
+	// Test fixture: Query parameter structure for deserialization tests
 	#[allow(dead_code)]
 	#[derive(Debug, Deserialize, PartialEq)]
 	struct TestQuery {

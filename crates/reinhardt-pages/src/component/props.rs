@@ -39,6 +39,7 @@ pub trait Props: Default {
 
 /// Empty props for components that don't need any.
 #[derive(Debug, Clone, Default)]
+// Future implementation: Props type for components with no configuration
 #[allow(dead_code)]
 pub(super) struct EmptyProps;
 
@@ -50,11 +51,13 @@ impl Props for EmptyProps {
 
 /// Builder for constructing props dynamically.
 #[derive(Debug, Clone, Default)]
+// Future implementation: Dynamic props builder for runtime component configuration
 #[allow(dead_code)]
 pub(super) struct PropsBuilder {
 	attrs: HashMap<String, String>,
 }
 
+// Future implementation: Builder methods for dynamic props construction
 #[allow(dead_code)]
 impl PropsBuilder {
 	/// Creates a new props builder.

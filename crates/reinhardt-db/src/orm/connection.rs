@@ -20,6 +20,7 @@ pub enum DatabaseBackend {
 #[derive(serde::Serialize)]
 pub struct QueryRow {
 	pub data: serde_json::Value,
+	// Future implementation: Direct database row access for advanced query operations
 	#[allow(dead_code)]
 	#[serde(skip)]
 	inner: Option<Row>,

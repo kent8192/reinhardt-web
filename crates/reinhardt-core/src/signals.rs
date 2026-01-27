@@ -191,6 +191,7 @@ mod tests {
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	#[derive(Debug, Clone)]
+	// Test fixture: Model for signal integration tests
 	#[allow(dead_code)]
 	struct TestModel {
 		id: i32,

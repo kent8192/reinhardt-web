@@ -163,6 +163,7 @@ pub(crate) fn routes_impl(_args: TokenStream, input: ItemFn) -> Result<TokenStre
 		// #[routes] function can exist in the entire project.
 		#[doc(hidden)]
 		#[unsafe(no_mangle)]
+		// Generated code: Linker symbol marker for route registration validation
 		#[allow(non_upper_case_globals, dead_code)]
 		// non_upper_case_globals: Intentionally lowercase for linker symbol
 		// dead_code: Symbol is never directly used, only exists for linker validation

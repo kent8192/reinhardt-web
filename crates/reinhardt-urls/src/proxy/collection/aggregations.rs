@@ -7,6 +7,7 @@ use crate::proxy::ScalarValue;
 /// Aggregation operations on collections
 #[derive(Debug, Clone)]
 pub struct CollectionAggregations {
+	// Future implementation: Collection proxy for aggregation operations
 	#[allow(dead_code)]
 	proxy: CollectionProxy,
 }

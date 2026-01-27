@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 // Concurrent service
 #[derive(Clone)]
+// Benchmark fixture: Service for concurrency performance measurement
 #[allow(dead_code)]
 struct ConcurrentService {
 	id: usize,

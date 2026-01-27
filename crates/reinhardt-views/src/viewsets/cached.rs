@@ -391,6 +391,7 @@ mod tests {
 	fn test_cached_viewset_creation() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet {
+			// Test fixture: Name field for cached viewset tests
 			#[allow(dead_code)]
 			name: String,
 		}

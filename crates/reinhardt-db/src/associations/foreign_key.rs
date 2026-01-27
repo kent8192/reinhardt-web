@@ -349,6 +349,7 @@ impl<T, K> ReverseRelationship for ForeignKey<T, K> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for foreign key association tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct User {

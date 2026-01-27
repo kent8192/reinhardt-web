@@ -493,6 +493,7 @@ mod tests {
 	use crate::signals::{SignalName, signal::Signal};
 
 	#[derive(Debug, Clone)]
+	// Test fixture: Data structure for profiler signal tests
 	#[allow(dead_code)]
 	struct TestData {
 		value: String,

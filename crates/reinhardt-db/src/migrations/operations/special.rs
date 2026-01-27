@@ -221,8 +221,10 @@ impl StateOperation {
 /// ```
 pub struct RunCode {
 	pub description: String,
+	// Complex closure type: Migration execution function with database connection
 	#[allow(clippy::type_complexity)]
 	pub code: Box<dyn Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync>,
+	// Complex closure type: Migration rollback function with database connection
 	#[allow(clippy::type_complexity)]
 	pub reverse_code: Option<Box<dyn Fn(&DatabaseConnection) -> Result<(), String> + Send + Sync>>,
 }

@@ -338,6 +338,7 @@ impl<T, K> ReverseRelationship for OneToOne<T, K> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for one-to-one association tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct User {
@@ -345,6 +346,7 @@ mod tests {
 		name: String,
 	}
 
+	// Test fixture: Model for one-to-one association tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct UserProfile {

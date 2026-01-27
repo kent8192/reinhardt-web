@@ -14,6 +14,7 @@ use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use serde_json::Value;
 use std::env;
+// Conditional use: PathBuf is used only when certain features are enabled
 #[allow(unused)]
 use std::path::PathBuf;
 
@@ -705,6 +706,7 @@ async fn execute_generateopenapi(
 }
 
 #[cfg(not(feature = "openapi"))]
+// Feature gate: Stub implementation when openapi feature is disabled
 #[allow(dead_code)]
 async fn execute_generateopenapi(
 	_format: String,

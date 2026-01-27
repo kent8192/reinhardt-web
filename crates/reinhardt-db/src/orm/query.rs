@@ -5486,6 +5486,7 @@ mod tests {
 	}
 
 	impl TestUser {
+		// Test fixture: Constructor for query tests
 		#[allow(dead_code)]
 		fn new(username: String, email: String) -> Self {
 			Self {

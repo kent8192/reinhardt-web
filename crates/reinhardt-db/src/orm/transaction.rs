@@ -1559,6 +1559,7 @@ mod tests {
 	use reinhardt_core::validators::TableName;
 	use serde::{Deserialize, Serialize};
 
+	// Test fixture: Model for transaction tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct TestItem {
@@ -1575,6 +1576,7 @@ mod tests {
 		}
 	}
 
+	// Test fixture: Table name constant for transaction tests
 	#[allow(dead_code)]
 	const TEST_ITEM_TABLE: TableName = TableName::new_const("test_items");
 

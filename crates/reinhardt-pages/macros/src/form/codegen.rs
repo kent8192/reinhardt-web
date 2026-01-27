@@ -896,6 +896,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								// Clone signals for async block - allow non_snake_case for generated variable names
 								{
 									#(
+										// Generated code: Field names may use PascalCase for component props
 										#[allow(non_snake_case)]
 										let #field_names = #field_value_getters;
 									)*
@@ -934,6 +935,7 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 								// Clone signals for async block - allow non_snake_case for generated variable names
 								{
 									#(
+										// Generated code: Field names may use PascalCase for component props
 										#[allow(non_snake_case)]
 										let #field_names = #field_value_getters;
 									)*

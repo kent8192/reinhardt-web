@@ -130,9 +130,11 @@ pub struct SchemaEditorFactory {
 	#[cfg(feature = "postgres")]
 	pg_pool: Option<Arc<PgPool>>,
 	#[cfg(feature = "mysql")]
+	// Future implementation: MySQL connection pool support
 	#[allow(dead_code)]
 	mysql_pool: Option<Arc<MySqlPool>>,
 	#[cfg(feature = "sqlite")]
+	// Future implementation: SQLite connection pool support
 	#[allow(dead_code)]
 	sqlite_pool: Option<Arc<SqlitePool>>,
 }

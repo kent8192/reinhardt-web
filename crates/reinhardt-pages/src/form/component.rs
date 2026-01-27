@@ -532,6 +532,7 @@ impl FormComponent {
 	/// ```
 	pub fn validate(&self) -> bool {
 		let mut errors = HashMap::new();
+		// Conditional mutability: Variable is mutable only in WASM target for error collection
 		#[allow(unused_mut)] // mut is only used in WASM target
 		let mut non_field_errors: Vec<String> = Vec::new();
 

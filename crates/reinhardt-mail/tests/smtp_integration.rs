@@ -41,6 +41,7 @@ impl MailpitAddress {
 }
 
 #[derive(Debug, serde::Deserialize)]
+// Test fixture: Response structure for SMTP integration tests
 #[allow(dead_code)]
 struct MessagesResponse {
 	total: usize,

@@ -568,6 +568,7 @@ mod tests {
 		}
 	}
 
+	// Test fixture: Model for polymorphic association tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct Post {
@@ -575,6 +576,7 @@ mod tests {
 		title: String,
 	}
 
+	// Test fixture: Table name constant for polymorphic tests
 	#[allow(dead_code)]
 	const POST_TABLE: TableName = TableName::new_const("posts");
 

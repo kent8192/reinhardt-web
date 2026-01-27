@@ -7,6 +7,7 @@ use crate::proxy::ScalarValue;
 /// Collection operations for filtering and transforming
 #[derive(Debug, Clone)]
 pub struct CollectionOperations {
+	// Future implementation: Collection proxy for CRUD operations
 	#[allow(dead_code)]
 	proxy: CollectionProxy,
 }

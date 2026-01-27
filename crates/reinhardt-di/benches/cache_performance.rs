@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 // Benchmark service
 #[derive(Clone)]
+// Benchmark fixture: Service for cache performance measurement
 #[allow(dead_code)]
 struct BenchService {
 	id: usize,
@@ -26,6 +27,7 @@ impl Injectable for BenchService {
 
 // Heavy computation service (expensive to create)
 #[derive(Clone)]
+// Benchmark fixture: Service for measuring cache efficiency with expensive operations
 #[allow(dead_code)]
 struct HeavyService {
 	computed_value: u64,

@@ -125,6 +125,7 @@ mod di_feature_disabled {
 		// This test verifies that users can define adapters without DI
 		// Local struct definitions are intentionally not instantiated - this is a compile-time test
 
+		// Test fixture: Compile-time test verifying trait implementation without instantiation
 		#[allow(dead_code)] // Compile-time test only - struct is never constructed
 		struct MockAdapter;
 
@@ -139,6 +140,7 @@ mod di_feature_disabled {
 			}
 		}
 
+		// Test fixture: Compile-time test verifying subscription trait implementation
 		#[allow(dead_code)] // Compile-time test only - struct is never constructed
 		struct MockSubscriptionAdapter;
 

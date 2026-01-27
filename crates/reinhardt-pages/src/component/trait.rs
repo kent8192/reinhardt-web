@@ -52,6 +52,7 @@ pub(super) struct DynComponent {
 	name: &'static str,
 }
 
+// Future implementation: Dynamic component wrapper for type erasure
 #[allow(dead_code)]
 impl DynComponent {
 	/// Creates a new dynamic component.
@@ -133,6 +134,7 @@ where
 }
 
 #[cfg(test)]
+// Test uses intersperse method that conflicts with unstable std method
 #[allow(unstable_name_collisions)]
 mod tests {
 	use super::*;

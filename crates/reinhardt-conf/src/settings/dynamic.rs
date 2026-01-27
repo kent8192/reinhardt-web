@@ -624,6 +624,7 @@ impl DynamicSettings {
 	/// # });
 	/// ```
 	#[cfg(feature = "hot-reload")]
+	// Async lock: Watch file operation requires holding lock across await points
 	#[allow(clippy::await_holding_lock)] // HotReloadManager's async methods require holding the lock
 	pub async fn watch_file(&self, path: &std::path::Path) -> DynamicResult<()> {
 		if let Some(hot_reload) = &self.hot_reload {
@@ -659,6 +660,7 @@ impl DynamicSettings {
 	/// # }
 	/// ```
 	#[cfg(feature = "hot-reload")]
+	// Async lock: Unwatch file operation requires holding lock across await points
 	#[allow(clippy::await_holding_lock)] // HotReloadManager's async methods require holding the lock
 	pub async fn unwatch_file(&self, path: &std::path::Path) -> DynamicResult<()> {
 		if let Some(hot_reload) = &self.hot_reload {
@@ -688,6 +690,7 @@ impl DynamicSettings {
 	/// # }
 	/// ```
 	#[cfg(feature = "hot-reload")]
+	// Async lock: Stop watching operation requires holding lock across await points
 	#[allow(clippy::await_holding_lock)] // HotReloadManager's async methods require holding the lock
 	pub async fn stop_watching(&self) -> DynamicResult<()> {
 		if let Some(hot_reload) = &self.hot_reload {

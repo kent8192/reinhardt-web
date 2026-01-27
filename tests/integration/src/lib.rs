@@ -197,6 +197,7 @@ pub struct TestServer {
 	pub pool: Pool<Postgres>,
 }
 
+// Test fixture: TestServer implementation methods
 #[allow(dead_code)]
 impl TestServer {
 	/// Create a test server in HTTP mode (actual TCP listener)

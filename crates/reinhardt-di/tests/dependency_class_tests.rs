@@ -87,6 +87,7 @@ async fn test_async_callable_dependency() {
 #[derive(Clone)]
 struct StatefulDependency {
 	instance_id: usize,
+	// Test fixture: Shared counter for tracking dependency instances
 	#[allow(dead_code)]
 	counter_ref: Arc<AtomicUsize>,
 }

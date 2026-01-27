@@ -304,6 +304,7 @@ pub fn attach_event(
 
 /// Non-WASM version for testing (Phase 2-B).
 #[cfg(not(target_arch = "wasm32"))]
+// Non-WASM stub: Recursive event attachment not available outside browser
 #[allow(dead_code)]
 pub fn attach_events_recursive(
 	_element: &str,
@@ -319,6 +320,7 @@ pub fn attach_events_recursive(
 
 /// Attaches multiple events based on bindings.
 #[cfg(target_arch = "wasm32")]
+// WASM-only: Event attachment requires browser DOM APIs
 #[allow(dead_code)]
 pub(super) fn attach_events(
 	element: &Element,
@@ -384,6 +386,7 @@ fn event_type_from_string(s: &str) -> EventType {
 
 /// Non-WASM version for testing.
 #[cfg(not(target_arch = "wasm32"))]
+// Non-WASM stub: Event attachment not available outside browser
 #[allow(dead_code)]
 pub(super) fn attach_events(
 	_element: &str,

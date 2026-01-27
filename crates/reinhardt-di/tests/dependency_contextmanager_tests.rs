@@ -202,9 +202,11 @@ impl Injectable for ErrorTracker {
 #[allow(dead_code)]
 #[derive(Debug)]
 struct AsyncDependencyError;
+// Test fixture: Error type for synchronous dependency tests
 #[allow(dead_code)]
 #[derive(Debug)]
 struct SyncDependencyError;
+// Test fixture: Error type for alternative dependency path tests
 #[allow(dead_code)]
 #[derive(Debug)]
 struct OtherDependencyError;

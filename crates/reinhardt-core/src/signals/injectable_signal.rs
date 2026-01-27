@@ -90,6 +90,7 @@ mod tests {
 	use super::*;
 	use crate::signals::SignalName;
 
+	// Test fixture: Model for injectable signal tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]
 	struct TestModel {

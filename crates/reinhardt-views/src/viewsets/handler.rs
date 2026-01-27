@@ -17,8 +17,10 @@ use std::sync::{Arc, RwLock};
 pub struct ViewSetHandler<V: ViewSet> {
 	viewset: Arc<V>,
 	action_map: HashMap<Method, String>,
+	// Future implementation: Handler name for identification
 	#[allow(dead_code)]
 	name: Option<String>,
+	// Future implementation: URL pattern suffix for handler routing
 	#[allow(dead_code)]
 	suffix: Option<String>,
 

@@ -296,6 +296,7 @@ mod tests {
 	fn test_nested_viewset_creation() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet {
+			// Test fixture: Name field for nested resource tests
 			#[allow(dead_code)]
 			name: String,
 		}

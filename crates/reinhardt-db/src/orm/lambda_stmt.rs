@@ -215,6 +215,7 @@ type LambdaFunctionMap = Arc<RwLock<HashMap<String, LambdaFunction>>>;
 
 // Lambda function registry
 pub struct LambdaRegistry {
+	// Future implementation: Lambda function storage for query operations
 	#[allow(dead_code)]
 	functions: LambdaFunctionMap,
 }

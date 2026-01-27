@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 /// A path parameter extracted from a URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
+// Future implementation: URL path parameter for client-side routing
 #[allow(dead_code)] // Reserved for future use in pattern matching APIs
 pub(crate) struct PathParam {
 	/// The parameter name.

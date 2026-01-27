@@ -544,6 +544,7 @@ mod tests {
 	use std::time::Duration;
 	use tokio::time::sleep;
 
+	// Test fixture: Task structure for worker tests
 	#[allow(dead_code)]
 	struct TestTask {
 		id: TaskId,

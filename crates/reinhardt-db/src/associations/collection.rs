@@ -104,6 +104,7 @@ impl<S, C, T> AssociationCollection<S, C, T> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for association collection tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Order {
@@ -111,6 +112,7 @@ mod tests {
 		product_name: String,
 	}
 
+	// Test fixture: Model for association collection tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct User {

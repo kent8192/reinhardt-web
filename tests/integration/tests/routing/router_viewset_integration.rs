@@ -8,6 +8,7 @@ use reinhardt_urls::routers::{DefaultRouter, Router};
 use reinhardt_views::viewsets::ModelViewSet;
 use std::sync::Arc;
 
+// Test fixture: Model for router-viewset integration tests
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct TestModel {

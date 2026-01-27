@@ -107,8 +107,10 @@ struct BucketState {
 /// # });
 /// ```
 pub struct LeakyBucketThrottle<B: ThrottleBackend, T: TimeProvider = SystemTimeProvider> {
+	// Future implementation: Throttle key for identifying rate limit buckets
 	#[allow(dead_code)]
 	key: String,
+	// Future implementation: Backend storage for throttle state
 	#[allow(dead_code)]
 	backend: Arc<B>,
 	config: LeakyBucketConfig,

@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 /// Internal type for representing unique constraint checks
 #[derive(Debug, Clone)]
+// Future implementation: Query structure for unique constraint validation
 #[allow(dead_code)] // Fields are used in database validation
 enum UniqueCheckQuery {
 	/// Single field uniqueness check

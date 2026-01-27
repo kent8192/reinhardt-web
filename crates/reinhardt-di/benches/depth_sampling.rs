@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 // Nested dependency service
 #[derive(Clone)]
+// Benchmark fixture: Service for dependency depth sampling
 #[allow(dead_code)]
 struct Layer {
 	depth: usize,

@@ -360,6 +360,7 @@ impl<T, K> ReverseRelationship for ManyToMany<T, K> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for many-to-many association tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Student {
@@ -367,6 +368,7 @@ mod tests {
 		name: String,
 	}
 
+	// Test fixture: Model for many-to-many association tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Course {

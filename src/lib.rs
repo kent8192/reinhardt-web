@@ -109,6 +109,7 @@ pub mod reinhardt_pages {
 
 #[doc(hidden)]
 pub mod reinhardt_types {
+	// Generated code: Re-exported type definitions may have unused imports
 	#[allow(unused_imports, unreachable_pub)]
 	pub use reinhardt_core::types::*;
 }

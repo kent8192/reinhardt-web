@@ -500,6 +500,7 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 	let enum_variants = labels.iter().map(|label| {
 		// Allow non_camel_case_types for user-defined labels
 		quote! {
+			// Generated code: User-defined label identifiers may use non-camel-case naming
 			#[allow(non_camel_case_types)]
 			#label
 		}

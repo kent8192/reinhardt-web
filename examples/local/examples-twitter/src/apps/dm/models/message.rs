@@ -9,8 +9,10 @@ use uuid::Uuid;
 // Used by #[model] macro for type inference in ForeignKeyField<T> relationship fields.
 // The macro requires these types to be in scope for generating the correct column types
 // and relationship metadata, even though they appear unused to the compiler.
+// Conditional use: Import used in message relationship definitions
 #[allow(unused_imports)]
 use super::room::DMRoom;
+// Conditional use: Import used in message author relationship
 #[allow(unused_imports)]
 use crate::apps::auth::models::User;
 

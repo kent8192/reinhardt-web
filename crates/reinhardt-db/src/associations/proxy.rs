@@ -67,6 +67,7 @@ impl<S, A, T> AssociationProxy<S, A, T> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for association proxy tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Address {
@@ -74,6 +75,7 @@ mod tests {
 		country: String,
 	}
 
+	// Test fixture: Model for association proxy tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct User {

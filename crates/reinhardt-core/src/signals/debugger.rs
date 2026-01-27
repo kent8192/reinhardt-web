@@ -421,6 +421,7 @@ mod tests {
 	use crate::signals::{SignalName, signal::Signal};
 
 	#[derive(Debug, Clone)]
+	// Test fixture: Data structure for debugger signal tests
 	#[allow(dead_code)]
 	struct TestData {
 		value: String,

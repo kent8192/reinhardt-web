@@ -387,6 +387,7 @@ mod tests {
 		}
 	}
 
+	// Test fixture: Model for reverse accessor tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestTweet {

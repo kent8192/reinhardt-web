@@ -7,6 +7,7 @@ use reinhardt_views::viewsets::{GenericViewSet, ModelViewSet, ViewSet};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
+// Test fixture: Model for viewset-router integration tests
 #[allow(dead_code)]
 struct TestModel {
 	id: i64,

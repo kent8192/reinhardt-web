@@ -18,6 +18,7 @@ use uuid::Uuid;
 /// ORM model for session table - demonstrates reinhardt_orm integration with CSRF tests
 #[model(app_label = "csrf_test", table_name = "sessions")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
+// Test fixture: ORM model for CSRF protection integration tests
 #[allow(dead_code)] // ORM model for CSRF integration tests
 struct SessionModel {
 	#[field(primary_key = true, max_length = 40)]

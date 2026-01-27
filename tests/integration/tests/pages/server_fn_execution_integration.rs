@@ -34,6 +34,7 @@ use reinhardt_pages::server_fn::server_fn_trait::ServerFnError;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 
+// Conditional use: Fixtures imported for specific test configurations
 #[allow(unused_imports)]
 use super::fixtures::*;
 
@@ -379,6 +380,7 @@ async fn test_server_fn_special_chars_in_args(test_payload_with_special_chars: T
 async fn test_server_fn_loading_to_success() {
 	// Tests expected state machine: Loading → Success
 	#[derive(Debug, Clone, PartialEq)]
+	// Test fixture: State machine for server function success flow
 	#[allow(dead_code)]
 	enum ServerFnState<T> {
 		Loading,
@@ -423,6 +425,7 @@ async fn test_server_fn_loading_to_success() {
 async fn test_server_fn_loading_to_error() {
 	// Tests expected state machine: Loading → Error
 	#[derive(Debug, Clone)]
+	// Test fixture: State machine for server function error flow
 	#[allow(dead_code)]
 	enum ServerFnState<T> {
 		Loading,

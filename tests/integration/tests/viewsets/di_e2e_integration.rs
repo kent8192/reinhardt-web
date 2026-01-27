@@ -25,6 +25,7 @@ async fn test_complete_request_response_cycle() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// Test fixture: Logger service for DI end-to-end tests
 	#[allow(dead_code)]
 	struct RequestLogger {
 		#[no_inject]
@@ -41,6 +42,7 @@ async fn test_complete_request_response_cycle() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// Test fixture: Viewset with injected logger for DI end-to-end tests
 	#[allow(dead_code)]
 	struct LoggingViewSet {
 		#[inject]
@@ -1007,6 +1009,7 @@ async fn test_empty_request_handling() {
 
 	#[derive(Clone)]
 	#[injectable]
+	// Test fixture: Minimal viewset for DI initialization tests
 	#[allow(dead_code)]
 	struct EmptyViewSet {
 		#[inject]

@@ -150,6 +150,7 @@ impl CsrfConfig {
 
 /// CSRF middleware
 pub struct CsrfMiddleware {
+	// Future implementation: Configuration will be used for CSRF token validation
 	#[allow(dead_code)]
 	config: CsrfConfig,
 }

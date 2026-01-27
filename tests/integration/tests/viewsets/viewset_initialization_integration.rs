@@ -6,6 +6,7 @@ use reinhardt_views::viewsets::{
 };
 
 #[derive(Debug, Clone)]
+// Test fixture: Model for viewset initialization tests
 #[allow(dead_code)]
 struct TestModel {
 	id: i64,

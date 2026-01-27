@@ -524,6 +524,7 @@ async fn run_plugin(subcommand: PluginCommands, verbosity: u8) -> CommandResult<
 	}
 }
 
+// Clippy override: CLI command requires many parameters for different options
 #[allow(clippy::too_many_arguments)] // CLI command handler with many options
 fn run_fmt(
 	path: PathBuf,

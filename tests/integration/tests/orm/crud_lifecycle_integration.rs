@@ -27,6 +27,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 /// ORM model for article - demonstrates reinhardt_orm integration
 #[model(app_label = "crud_test", table_name = "articles")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
+// Test fixture: ORM model for CRUD lifecycle integration tests
 #[allow(dead_code)] // ORM model for CRUD lifecycle tests
 struct ArticleModel {
 	#[field(primary_key = true)]
@@ -40,6 +41,7 @@ struct ArticleModel {
 /// ORM model for post with timestamps
 #[model(app_label = "crud_test", table_name = "posts")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
+// Test fixture: ORM model for CRUD lifecycle integration tests
 #[allow(dead_code)] // ORM model for CRUD lifecycle tests
 struct PostModel {
 	#[field(primary_key = true)]

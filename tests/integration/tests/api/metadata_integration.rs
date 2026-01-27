@@ -64,6 +64,7 @@ impl MockAPIView {
 		self
 	}
 
+	// Test fixture: Builder method for configuring allowed HTTP methods
 	#[allow(dead_code)]
 	fn with_allowed_methods(mut self, methods: Vec<String>) -> Self {
 		self.allowed_methods = methods;

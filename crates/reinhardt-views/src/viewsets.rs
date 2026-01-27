@@ -237,6 +237,7 @@ mod tests {
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_http::Request;
 
+	// Test fixture: Model for viewset tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]
 	struct TestModel {

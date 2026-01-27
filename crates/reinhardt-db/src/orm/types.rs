@@ -286,6 +286,7 @@ type CoerceFunction = Box<dyn Fn(SqlValue) -> Result<SqlValue, TypeError> + Send
 
 /// Type decorator - wraps another type with custom behavior
 pub struct TypeDecorator<T: SqlTypeDefinition> {
+	// Future implementation: Inner type for delegation and decoration
 	#[allow(dead_code)]
 	inner: T,
 	coerce_fn: Option<CoerceFunction>,

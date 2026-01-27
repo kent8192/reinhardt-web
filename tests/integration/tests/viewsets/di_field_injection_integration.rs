@@ -50,6 +50,7 @@ struct UserViewSet {
 	#[inject]
 	cache: Injected<RedisCache>,
 	#[no_inject]
+	// Test fixture: Name field for viewset identification
 	#[allow(dead_code)]
 	name: String,
 }

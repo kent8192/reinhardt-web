@@ -290,6 +290,7 @@ mod tests {
 	use super::*;
 
 	#[derive(Clone)]
+	// Test fixture: Model for fulltext search filter tests
 	#[allow(dead_code)]
 	struct Article {
 		id: i64,

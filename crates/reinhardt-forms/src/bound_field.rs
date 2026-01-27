@@ -2,6 +2,7 @@ use crate::field::{FormField, Widget};
 
 /// BoundField represents a field bound to form data
 pub struct BoundField<'a> {
+	// Future implementation: Form name for field rendering context
 	#[allow(dead_code)]
 	form_name: String,
 	field: &'a dyn FormField,

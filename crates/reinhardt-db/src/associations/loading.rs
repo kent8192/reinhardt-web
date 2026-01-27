@@ -360,6 +360,7 @@ impl<T> Default for JoinedLoader<T> {
 mod tests {
 	use super::*;
 
+	// Test fixture: Model for association loading tests
 	#[allow(dead_code)]
 	#[derive(Clone)]
 	struct Post {

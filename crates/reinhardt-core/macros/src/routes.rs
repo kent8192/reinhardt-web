@@ -373,6 +373,7 @@ fn generate_view_type(
 	let inventory_crate = crate::crate_paths::get_inventory_crate();
 	let metadata_submission = quote! {
 		#inventory_crate::submit! {
+			// Generated code: Inventory submission creates non-upper-case static items
 			#[allow(non_upper_case_globals)]
 			#core_crate::endpoint::EndpointMetadata {
 				path: #path,
@@ -626,6 +627,7 @@ fn route_impl(method: &str, args: TokenStream, input: ItemFn) -> Result<TokenStr
 	let inventory_crate = crate::crate_paths::get_inventory_crate();
 	let metadata_submission = quote! {
 		#inventory_crate::submit! {
+			// Generated code: Inventory submission creates non-upper-case static items
 			#[allow(non_upper_case_globals)]
 			#core_crate::endpoint::EndpointMetadata {
 				path: #path_str,

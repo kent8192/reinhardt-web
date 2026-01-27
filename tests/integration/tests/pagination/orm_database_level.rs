@@ -25,6 +25,7 @@ use std::sync::Arc;
 /// ORM model for product - demonstrates reinhardt_orm integration with pagination
 #[model(app_label = "pagination_test", table_name = "products")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
+// Test fixture: ORM model for pagination integration tests
 #[allow(dead_code)] // ORM model for pagination integration tests
 struct ProductModel {
 	#[field(primary_key = true)]

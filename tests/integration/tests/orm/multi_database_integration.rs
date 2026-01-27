@@ -58,6 +58,7 @@ use tokio::time::{sleep, Duration};
 /// ORM model for user - demonstrates reinhardt_orm integration with multi-database
 #[model(app_label = "multi_db", table_name = "users")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
+// Test fixture: ORM model for multi-database integration tests
 #[allow(dead_code)] // ORM model for multi-database integration tests
 struct UserModel {
 	#[field(primary_key = true)]

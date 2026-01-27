@@ -639,6 +639,7 @@ mod tests {
 		}
 	}
 
+	// Test fixture: Model for SQLAlchemy-style query tests
 	#[allow(dead_code)]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct Post {

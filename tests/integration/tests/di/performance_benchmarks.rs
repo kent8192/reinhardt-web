@@ -16,6 +16,7 @@ use std::time::Instant;
 
 /// Baseline service (no dependencies)
 #[derive(Clone, Default)]
+// Benchmark fixture: Simple service for baseline performance measurement
 #[allow(dead_code)]
 struct BaselineService {
 	value: i32,

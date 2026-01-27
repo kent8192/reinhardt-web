@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+// Test fixture: HTTP exception type for yield exception handling tests
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct HttpException {

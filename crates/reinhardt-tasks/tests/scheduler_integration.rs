@@ -26,6 +26,7 @@ impl TestExecutor {
 		}
 	}
 
+	// Test fixture: Helper method for checking task execution count
 	#[allow(dead_code)]
 	fn execution_count(&self) -> usize {
 		*self.executed_count.lock().unwrap()

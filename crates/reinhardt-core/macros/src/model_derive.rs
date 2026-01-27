@@ -863,6 +863,7 @@ struct FieldInfo {
 
 /// Foreign key / One-to-one field information for automatic ID field generation
 #[derive(Debug, Clone)]
+// Future implementation: Field metadata for automatic foreign key ID generation
 #[allow(dead_code)] // Fields will be used for accessor generation in future
 struct ForeignKeyFieldInfo {
 	/// Original field name (e.g., "author")

@@ -160,6 +160,7 @@ impl ModelFormConfig {
 pub struct ModelForm<T: FormModel> {
 	form: Form,
 	instance: Option<T>,
+	// Future implementation: Configuration options for model form behavior
 	#[allow(dead_code)]
 	config: ModelFormConfig,
 	_phantom: PhantomData<T>,
