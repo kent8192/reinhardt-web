@@ -5,13 +5,13 @@
 
 use std::str::FromStr;
 
+use fake::Fake;
 use fake::faker::address::en::{CityName, CountryName, StateName, StreetName, ZipCode};
 use fake::faker::company::en::CompanyName;
 use fake::faker::internet::en::{DomainSuffix, FreeEmail, Password, SafeEmail, Username};
 use fake::faker::lorem::en::{Paragraph, Sentence, Word, Words};
 use fake::faker::name::en::{FirstName, LastName, Name};
 use fake::faker::phone_number::en::{CellNumber, PhoneNumber};
-use fake::Fake;
 use uuid::Uuid;
 
 use crate::error::{SeedingError, SeedingResult};
@@ -182,9 +182,9 @@ impl FakerType {
 	where
 		T::Err: std::fmt::Display,
 	{
-		self.generate().parse::<T>().map_err(|e| {
-			SeedingError::FakerError(format!("Failed to convert faker value: {}", e))
-		})
+		self.generate()
+			.parse::<T>()
+			.map_err(|e| SeedingError::FakerError(format!("Failed to convert faker value: {}", e)))
 	}
 
 	/// Returns all available faker type names.
@@ -346,7 +346,11 @@ mod tests {
 	#[case(FakerType::Uuid)]
 	fn test_faker_generate(#[case] faker_type: FakerType) {
 		let value = faker_type.generate();
-		assert!(!value.is_empty(), "Generated value should not be empty for {:?}", faker_type);
+		assert!(
+			!value.is_empty(),
+			"Generated value should not be empty for {:?}",
+			faker_type
+		);
 	}
 
 	#[rstest]

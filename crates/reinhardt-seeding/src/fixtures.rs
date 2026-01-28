@@ -35,5 +35,5 @@ mod serializer;
 pub use format::{FixtureData, FixtureFormat, FixtureRecord};
 pub use loader::{FixtureLoader, LoadOptions, LoadResult};
 pub use parser::FixtureParser;
-pub use registry::{register_model_loader, ModelLoader, ModelRegistry};
+pub use registry::{ModelLoader, ModelRegistry, register_model_loader};
 pub use serializer::{FixtureSerializer, ModelSerializer};

@@ -350,9 +350,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let data = parser
-			.parse_files(&[file1.path(), file2.path()])
-			.unwrap();
+		let data = parser.parse_files(&[file1.path(), file2.path()]).unwrap();
 		assert_eq!(data.len(), 2);
 	}
 }

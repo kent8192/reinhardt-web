@@ -161,11 +161,7 @@ Options:
 
 		// Create loader and load fixtures
 		let loader = FixtureLoader::with_options(load_options);
-		let paths: Vec<&std::path::Path> = args
-			.fixture_paths
-			.iter()
-			.map(|p| p.as_path())
-			.collect();
+		let paths: Vec<&std::path::Path> = args.fixture_paths.iter().map(|p| p.as_path()).collect();
 
 		let result = loader.load_from_paths(&paths).await?;
 
@@ -200,7 +196,7 @@ mod tests {
 	use std::io::Write;
 	use tempfile::NamedTempFile;
 
-	use crate::fixtures::{register_model_loader, FixtureRecord, ModelLoader, ModelRegistry};
+	use crate::fixtures::{FixtureRecord, ModelLoader, ModelRegistry, register_model_loader};
 	use async_trait::async_trait;
 	use serde_json::json;
 
