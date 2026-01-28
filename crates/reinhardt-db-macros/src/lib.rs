@@ -56,9 +56,9 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro_attribute]
 pub fn document(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // TODO: Implement document macro expansion
-    // For now, just return the input unchanged
-    item
+	// TODO: Implement document macro expansion
+	// For now, just return the input unchanged
+	item
 }
 
 /// Field attribute for document/model fields
@@ -94,9 +94,9 @@ pub fn document(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn field(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // TODO: Implement field attribute processing
-    // For now, just return the input unchanged
-    item
+	// TODO: Implement field attribute processing
+	// For now, just return the input unchanged
+	item
 }
 
 /// Model derive macro for ORM
@@ -116,7 +116,7 @@ pub fn field(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_derive(Model)]
 pub fn derive_model(_input: TokenStream) -> TokenStream {
-    // TODO: Implement Model derive macro
-    // For now, return empty implementation
-    TokenStream::new()
+	// TODO: Implement Model derive macro
+	// For now, return empty implementation
+	TokenStream::new()
 }
