@@ -204,16 +204,16 @@ async fn echo_raw(Body(body): Body) -> reinhardt_http::Response {
 }
 ```
 
-### `` `Text` ``
+### Body as String
 
-Extracts request body as `` `String` ``.
+Extract the raw body and convert to `` `String` ``.
 
 ```rust
-use reinhardt_di::params::Text;
+use reinhardt_di::params::Body;
 
-async fn process_text(Text(text): Text) -> reinhardt_http::Response {
-    let processed = text.to_uppercase();
-    reinhardt_http::Response::ok().with_body(processed)
+async fn process_text(Body(body): Body) -> reinhardt_http::Response {
+    let text = String::from_utf8_lossy(&body).to_uppercase();
+    reinhardt_http::Response::ok().with_body(text)
 }
 ```
 

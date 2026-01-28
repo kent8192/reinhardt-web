@@ -269,7 +269,7 @@ pub struct UserListView;
 
 #[async_trait]
 impl View for UserListView {
-    async fn handle(&self, request: Request) -> Result<Response, Error> {
+    async fn dispatch(&self, request: Request) -> Result<Response, Error> {
         let users = User::objects().all().await?;
         Ok(Response::ok().with_json(&users)?)
     }

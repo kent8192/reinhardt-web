@@ -19,8 +19,8 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 Use `` `StaticFilesMiddleware` `` for serving static files.
 
 ```rust
-use reinhardt_middleware::StaticFilesMiddleware;
-use reinhardt_utils::static::StaticFilesConfig;
+use reinhardt_utils::r#static::StaticFilesMiddleware;
+use reinhardt_utils::r#static::StaticFilesConfig;
 
 let config = StaticFilesConfig {
     static_root: "static".into(),
@@ -286,8 +286,8 @@ let no_cache = CacheDirective::no_cache();
 
 ```rust
 use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::StaticFilesMiddleware;
-use reinhardt_utils::static::StaticFilesConfig;
+use reinhardt_utils::r#static::StaticFilesMiddleware;
+use reinhardt_utils::r#static::StaticFilesConfig;
 
 let router = ServerRouter::new()
     .with_middleware(StaticFilesMiddleware::new(

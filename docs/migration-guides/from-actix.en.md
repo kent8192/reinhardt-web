@@ -289,15 +289,7 @@ async fn handler(
 ### Reinhardt
 
 ```rust
-// Using DI context
-use reinhardt_di::params::Di;
-
-async fn handler(Di(db): Di<Arc<Database>>) -> Response {
-    let users = db.get_users().await;
-    Response::ok().with_json(&users).unwrap()
-}
-
-// Or get from request
+// Using DI context via request
 async fn handler(req: Request) -> Response {
     if let Some(db) = req.get_di_context::<Database>() {
         let users = db.get_users().await;

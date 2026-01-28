@@ -89,15 +89,9 @@ async fn get_user(
 ### Reinhardt DI Context
 
 ```rust
-use reinhardt_di::params::Di;
 use reinhardt_http::Response;
 
-async fn get_user(Di(db): Di<Arc<Database>>) -> Response {
-    let user = db.get_user(123).await;
-    Response::ok().with_json(&user).unwrap()
-}
-
-// Or get from request
+// Get dependencies from request via DI context
 async fn get_user(req: Request) -> Response {
     if let Some(db) = req.get_di_context::<Database>() {
         let user = db.get_user(123).await;
@@ -211,7 +205,6 @@ Available extractors in Reinhardt:
 - `` `Query<T>` `` - Query parameters
 - `` `Path<T>` `` - Path parameters
 - `` `Body` `` - Raw body bytes
-- `` `Text` `` - Raw body as string
 - `` `Multipart` `` - Multipart form data
 - `` `Header<T>` `` - Typed header
 - `` `HeaderNamed` `` - Named header
