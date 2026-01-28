@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
+## [0.2.0-alpha.1] - 2026-01-28
+
+### Changed
+
+- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
+  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
+  - Feature renamed from `static` to `staticfiles`
+  - Improves developer experience by eliminating raw identifier prefix
+
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
