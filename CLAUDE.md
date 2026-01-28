@@ -160,16 +160,17 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Push commits and tags AFTER successful publish
 
 **Publishing Workflow:**
-1. Update crate version in `Cargo.toml`
-2. Update crate's `CHANGELOG.md`
-3. Run all verification commands
-4. Commit version changes (see docs/COMMIT_GUIDELINE.md CE-5)
-5. Wait for explicit user authorization to proceed
-6. Run `cargo publish --dry-run -p <crate-name>`
-7. Wait for user confirmation after dry-run
-8. Run `cargo publish -p <crate-name>`
-9. Create and push tag: `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
-10. Push: `git push && git push --tags`
+1. Check crates.io for current published version: `curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'`
+2. Update crate version in `Cargo.toml`
+3. Update crate's `CHANGELOG.md`
+4. Run all verification commands
+5. Commit version changes (see docs/COMMIT_GUIDELINE.md CE-5)
+6. Wait for explicit user authorization to proceed
+7. Run `cargo publish --dry-run -p <crate-name>`
+8. Wait for user confirmation after dry-run
+9. Run `cargo publish -p <crate-name>`
+10. Create and push tag: `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
+11. Push: `git push && git push --tags`
 
 **Why This Approach:**
 - **Traceability**: Git tag enables complete restoration of specific crate version state
@@ -333,6 +334,7 @@ Before submitting code:
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
 - Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
 - Follow Semantic Versioning 2.0.0 strictly for all crates
+- Check crates.io for current published version before updating crate versions
 - Use `[crate-name]@v[version]` format for Git tags
 - Verify with `--dry-run` before publishing to crates.io
 - Commit version bump before creating tags
@@ -373,6 +375,7 @@ Before submitting code:
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`
 - Publish to crates.io without explicit user authorization
+- Update crate versions without checking crates.io for current published status
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
 - Make breaking changes without MAJOR version bump

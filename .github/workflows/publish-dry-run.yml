@@ -90,6 +90,85 @@ jobs:
           echo "$CHANGED_OUTPUT"
           echo "has_changes=true" >> $GITHUB_OUTPUT
 
+      - name: Check crates.io version status
+        if: steps.detect-crates.outputs.has_changes == 'true'
+        run: |
+          echo "::group::Checking crates.io version status"
+
+          HAS_CONFLICT=false
+
+          # Get changed crates
+          CHANGED_CRATES=$(cargo ws changed 2>&1 | grep -v "^$" || true)
+
+          for CRATE_NAME in $CHANGED_CRATES; do
+            # Get proposed version from cargo metadata
+            PROPOSED_VERSION=$(cargo metadata --format-version 1 --no-deps \
+              | jq -r --arg name "$CRATE_NAME" '.packages[] | select(.name == $name) | .version')
+
+            if [ -z "$PROPOSED_VERSION" ]; then
+              echo "⚠️ Could not determine version for $CRATE_NAME, skipping"
+              continue
+            fi
+
+            echo "Checking $CRATE_NAME v$PROPOSED_VERSION on crates.io..."
+
+            # Query crates.io API with required User-Agent header
+            HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "User-Agent: reinhardt-ci (https://github.com/kent8192/reinhardt-rs)" \
+              "https://crates.io/api/v1/crates/$CRATE_NAME")
+
+            HTTP_BODY=$(echo "$HTTP_RESPONSE" | head -n -1)
+            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n 1)
+
+            if [ "$HTTP_STATUS" = "404" ]; then
+              echo "  ℹ️ $CRATE_NAME: Not yet published on crates.io (new crate) - OK"
+              sleep 1
+              continue
+            fi
+
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "  ⚠️ $CRATE_NAME: crates.io API returned HTTP $HTTP_STATUS, skipping check"
+              sleep 1
+              continue
+            fi
+
+            # Extract published versions
+            PUBLISHED_MAX=$(echo "$HTTP_BODY" | jq -r '.crate.max_version // empty')
+            VERSION_EXISTS=$(echo "$HTTP_BODY" | jq -r \
+              --arg ver "$PROPOSED_VERSION" \
+              '[.versions[]? | select(.num == $ver)] | length > 0')
+
+            if [ "$VERSION_EXISTS" = "true" ]; then
+              echo "  ❌ $CRATE_NAME: Version $PROPOSED_VERSION is ALREADY PUBLISHED on crates.io!"
+              echo "::error::$CRATE_NAME v$PROPOSED_VERSION is already published on crates.io. Bump the version before publishing."
+              HAS_CONFLICT=true
+            else
+              echo "  ✅ $CRATE_NAME: Version $PROPOSED_VERSION is available"
+              # Warn about unnatural version jumps
+              if [ -n "$PUBLISHED_MAX" ] && [ "$PUBLISHED_MAX" != "null" ]; then
+                echo "     Current max on crates.io: $PUBLISHED_MAX → Proposed: $PROPOSED_VERSION"
+              fi
+            fi
+
+            # Rate limit: 1 second between API calls (crates.io policy)
+            sleep 1
+          done
+
+          echo "::endgroup::"
+
+          if [ "$HAS_CONFLICT" = "true" ]; then
+            echo "=========================================="
+            echo "❌ Version conflict detected!"
+            echo "=========================================="
+            echo "One or more crates have versions already published on crates.io."
+            echo "Please bump the version(s) before proceeding."
+            exit 1
+          fi
+
+          echo "=========================================="
+          echo "✅ crates.io version status check passed"
+          echo "=========================================="
+
       - name: Run publish dry-run for changed crates
         if: steps.detect-crates.outputs.has_changes == 'true'
         run: |
@@ -176,6 +255,7 @@ jobs:
             echo ""
             echo "### Verification Performed"
             echo "- ✅ Workspace build check (\`cargo check --workspace --all-features\`)"
+            echo "- ✅ crates.io version conflict check"
             echo "- ✅ Publish dry-run (\`cargo ws publish --dry-run\`)"
             echo "- ✅ Packaging, dependency resolution, and manifest validation"
             echo "- ✅ Output analysis for error detection"

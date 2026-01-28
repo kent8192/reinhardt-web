@@ -125,6 +125,15 @@ impl Pool {
 - [ ] Main crate (`reinhardt-web`) version updated if sub-crate version changed
 - [ ] Main crate CHANGELOG.md references sub-crate changes
 
+### Crates.io Version Status
+
+- [ ] Current published version checked:
+  ```bash
+  curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'
+  ```
+- [ ] Proposed version not already published on crates.io
+- [ ] Version increment is appropriate (MAJOR/MINOR/PATCH)
+
 ### Metadata
 
 - [ ] `description`, `license`, `repository` fields present
@@ -190,6 +199,22 @@ Create `release` label:
 
 ### Publishing Workflow
 
+#### Step 0: Check crates.io Version Status
+
+Before making any version changes, verify the current published state:
+
+```bash
+# Check current published version
+curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'
+
+# Verify proposed version is not already published
+curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.versions[].num'
+```
+
+**Ensure**:
+- The proposed version is **not** already published
+- The version increment is appropriate relative to the current published version
+
 #### Step 1: Create PR with Version Changes
 
 ```bash
@@ -233,6 +258,7 @@ git push origin feature/update-reinhardt-orm
 **Workflow actions**:
 
 - Detects changed crates (`cargo ws changed`)
+- Checks crates.io for version conflicts (fails if proposed version already published)
 - Runs `cargo ws publish --dry-run`
 - Reports results in PR checks
 
@@ -708,7 +734,18 @@ git reset --hard HEAD~1  # If not pushed
 **Dry-run Failed**: Add missing metadata fields (`description`, `license`,
 `repository`) to `Cargo.toml`
 
-**Version Already Published**: Increment version and retry
+**Version Already Published**: The crates.io version check step will catch this
+automatically. To investigate manually:
+
+```bash
+# Check current published version
+curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'
+
+# List all published versions
+curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.versions[].num'
+```
+
+Increment the version in `Cargo.toml` and retry
 
 **No Crates Detected**: Verify version changes in `Cargo.toml` files
 
@@ -746,6 +783,7 @@ git reset --hard HEAD~1  # If not pushed
 ### Verification Checklist
 
 - [ ] Version follows SemVer
+- [ ] Proposed version not already published on crates.io
 - [ ] CHANGELOG updated
 - [ ] Tests pass
 - [ ] Dry-run succeeds
