@@ -2,9 +2,9 @@
 
 use async_trait::async_trait;
 use reinhardt_payment::{
-	PaymentProvider, PaymentIntentParams, CheckoutParams, SubscriptionParams,
-	SubscriptionUpdateParams, PaymentIntent, CheckoutSession, Subscription,
-	PaymentError, WebhookEvent, PaymentIntentStatus, SubscriptionStatus,
+	CheckoutParams, CheckoutSession, PaymentError, PaymentIntent, PaymentIntentParams,
+	PaymentIntentStatus, PaymentProvider, Subscription, SubscriptionParams, SubscriptionStatus,
+	SubscriptionUpdateParams, WebhookEvent,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -107,7 +107,10 @@ impl PaymentProvider for MockStripeProvider {
 			created_at: chrono::Utc::now(),
 		};
 
-		self.payment_intents.write().await.insert(id, intent.clone());
+		self.payment_intents
+			.write()
+			.await
+			.insert(id, intent.clone());
 		Ok(intent)
 	}
 
@@ -210,7 +213,10 @@ impl PaymentProvider for MockStripeProvider {
 			status: "open".to_string(),
 		};
 
-		self.checkout_sessions.write().await.insert(id, session.clone());
+		self.checkout_sessions
+			.write()
+			.await
+			.insert(id, session.clone());
 		Ok(session)
 	}
 
@@ -240,7 +246,10 @@ impl PaymentProvider for MockStripeProvider {
 			cancel_at_period_end: false,
 		};
 
-		self.subscriptions.write().await.insert(id, subscription.clone());
+		self.subscriptions
+			.write()
+			.await
+			.insert(id, subscription.clone());
 		Ok(subscription)
 	}
 
@@ -289,8 +298,8 @@ impl PaymentProvider for MockStripeProvider {
 		_signature: &str,
 	) -> Result<WebhookEvent, PaymentError> {
 		// In mock mode, we parse the payload directly without signature verification
-		let event: WebhookEvent = serde_json::from_slice(payload)
-			.map_err(|e| PaymentError::SerializationError(e))?;
+		let event: WebhookEvent =
+			serde_json::from_slice(payload).map_err(PaymentError::SerializationError)?;
 
 		Ok(event)
 	}
