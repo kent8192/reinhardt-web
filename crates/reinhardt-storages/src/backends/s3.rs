@@ -97,6 +97,10 @@ impl StorageBackend for S3Storage {
 	}
 
 	async fn delete(&self, name: &str) -> Result<()> {
+		if !self.exists(name).await? {
+			return Err(StorageError::NotFound(name.to_string()));
+		}
+
 		let key = self.get_key(name);
 
 		self.client
@@ -133,6 +137,10 @@ impl StorageBackend for S3Storage {
 	}
 
 	async fn url(&self, name: &str, expiry_secs: u64) -> Result<String> {
+		if !self.exists(name).await? {
+			return Err(StorageError::NotFound(name.to_string()));
+		}
+
 		let key = self.get_key(name);
 
 		let presigned_request = self
