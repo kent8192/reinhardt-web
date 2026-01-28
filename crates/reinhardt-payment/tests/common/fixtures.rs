@@ -1,10 +1,8 @@
 //! Test fixtures using rstest framework.
 
-use reinhardt_payment::{
-	PaymentIntentParams, CheckoutParams, SubscriptionParams, CheckoutMode,
-};
-use reinhardt_payment_mocks::{MockStripeProvider, MockBasisTheoryVault};
 use reinhardt_payment::vault::CardData;
+use reinhardt_payment::{CheckoutMode, CheckoutParams, PaymentIntentParams, SubscriptionParams};
+use reinhardt_payment_mocks::{MockBasisTheoryVault, MockStripeProvider};
 
 use super::constants::*;
 
@@ -34,9 +32,7 @@ pub fn payment_intent_params_with_idempotency() -> PaymentIntentParams {
 		amount: TEST_AMOUNT_STANDARD,
 		currency: TEST_CURRENCY_USD.to_string(),
 		confirm: false,
-		idempotency_key: Some(
-			reinhardt_payment::idempotency::IdempotencyKeyGenerator::generate()
-		),
+		idempotency_key: Some(reinhardt_payment::idempotency::IdempotencyKeyGenerator::generate()),
 		..Default::default()
 	}
 }

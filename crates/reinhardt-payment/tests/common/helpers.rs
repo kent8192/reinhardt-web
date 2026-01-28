@@ -1,8 +1,8 @@
 //! Test helper functions.
 
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use reinhardt_payment::PaymentIntentStatus;
+use sha2::Sha256;
 
 /// Creates a signed webhook payload.
 ///
@@ -14,10 +14,7 @@ use reinhardt_payment::PaymentIntentStatus;
 /// # Returns
 ///
 /// A tuple of (payload bytes, signature header string)
-pub fn create_signed_webhook(
-	payload: &str,
-	secret: &str,
-) -> (Vec<u8>, String) {
+pub fn create_signed_webhook(payload: &str, secret: &str) -> (Vec<u8>, String) {
 	let timestamp = chrono::Utc::now().timestamp().to_string();
 	let signed_payload = format!("{}.{}", timestamp, payload);
 
@@ -40,8 +37,8 @@ pub fn create_signed_webhook(
 ///
 /// Hex-encoded signature string
 pub fn compute_hmac_sha256(data: &str, secret: &str) -> String {
-	let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-		.expect("Invalid secret key length");
+	let mut mac =
+		Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("Invalid secret key length");
 	mac.update(data.as_bytes());
 	hex::encode(mac.finalize().into_bytes())
 }
@@ -69,20 +66,31 @@ pub fn create_timestamp_offset(seconds_ago: i64) -> String {
 /// # Panics
 ///
 /// Panics if the transition is invalid
-pub fn assert_valid_payment_intent_transition(
-	from: PaymentIntentStatus,
-	to: PaymentIntentStatus,
-) {
+pub fn assert_valid_payment_intent_transition(from: PaymentIntentStatus, to: PaymentIntentStatus) {
 	let valid = matches!(
 		(from, to),
-		(PaymentIntentStatus::RequiresPaymentMethod, PaymentIntentStatus::RequiresConfirmation)
-			| (PaymentIntentStatus::RequiresPaymentMethod, PaymentIntentStatus::RequiresAction)
-			| (PaymentIntentStatus::RequiresConfirmation, PaymentIntentStatus::RequiresAction)
-			| (PaymentIntentStatus::RequiresConfirmation, PaymentIntentStatus::Processing)
-			| (PaymentIntentStatus::RequiresAction, PaymentIntentStatus::Processing)
-			| (PaymentIntentStatus::Processing, PaymentIntentStatus::Succeeded)
-			| (PaymentIntentStatus::RequiresCapture, PaymentIntentStatus::Succeeded)
-			| (_, PaymentIntentStatus::Canceled)
+		(
+			PaymentIntentStatus::RequiresPaymentMethod,
+			PaymentIntentStatus::RequiresConfirmation
+		) | (
+			PaymentIntentStatus::RequiresPaymentMethod,
+			PaymentIntentStatus::RequiresAction
+		) | (
+			PaymentIntentStatus::RequiresConfirmation,
+			PaymentIntentStatus::RequiresAction
+		) | (
+			PaymentIntentStatus::RequiresConfirmation,
+			PaymentIntentStatus::Processing
+		) | (
+			PaymentIntentStatus::RequiresAction,
+			PaymentIntentStatus::Processing
+		) | (
+			PaymentIntentStatus::Processing,
+			PaymentIntentStatus::Succeeded
+		) | (
+			PaymentIntentStatus::RequiresCapture,
+			PaymentIntentStatus::Succeeded
+		) | (_, PaymentIntentStatus::Canceled)
 	);
 
 	assert!(valid, "Invalid status transition: {:?} -> {:?}", from, to);

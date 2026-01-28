@@ -1,6 +1,6 @@
 //! TokenVault integration tests.
 
-use reinhardt_payment::vault::{TokenVault, CardData};
+use reinhardt_payment::vault::{CardData, TokenVault};
 use reinhardt_payment_mocks::MockBasisTheoryVault;
 
 mod common;
@@ -30,7 +30,12 @@ async fn test_tokenize_card_with_invalid_number_fails() {
 	let result = vault.tokenize_card(card).await;
 
 	assert!(result.is_err());
-	assert!(result.unwrap_err().to_string().contains("Invalid card number"));
+	assert!(
+		result
+			.unwrap_err()
+			.to_string()
+			.contains("Invalid card number")
+	);
 }
 
 /// Test tokenizing an expired card fails.
@@ -211,7 +216,12 @@ async fn test_tokenize_card_invalid_month_fails() {
 	let result = vault.tokenize_card(card).await;
 
 	assert!(result.is_err());
-	assert!(result.unwrap_err().to_string().contains("Invalid expiration month"));
+	assert!(
+		result
+			.unwrap_err()
+			.to_string()
+			.contains("Invalid expiration month")
+	);
 }
 
 /// Test tokenization preserves fingerprint.
