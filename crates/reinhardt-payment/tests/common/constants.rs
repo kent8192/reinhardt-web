@@ -7,9 +7,9 @@ pub const TEST_CARD_DECLINED: &str = "4000000000000002";
 pub const TEST_CARD_INSUFFICIENT: &str = "4000000000009995";
 
 /// Test amounts (in cents).
-pub const TEST_AMOUNT_MIN: u64 = 100;      // $1.00
+pub const TEST_AMOUNT_MIN: u64 = 100; // $1.00
 pub const TEST_AMOUNT_STANDARD: u64 = 1000; // $10.00
-pub const TEST_AMOUNT_LARGE: u64 = 10000;  // $100.00
+pub const TEST_AMOUNT_LARGE: u64 = 10000; // $100.00
 pub const INVALID_AMOUNT_ZERO: u64 = 0;
 
 /// Test currencies.

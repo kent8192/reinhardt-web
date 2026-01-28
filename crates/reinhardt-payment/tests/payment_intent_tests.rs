@@ -1,6 +1,6 @@
 //! PaymentIntent integration tests.
 
-use reinhardt_payment::{PaymentProvider, PaymentIntentStatus, PaymentIntentParams};
+use reinhardt_payment::{PaymentIntentParams, PaymentIntentStatus, PaymentProvider};
 use reinhardt_payment_mocks::MockStripeProvider;
 
 mod common;
@@ -37,7 +37,12 @@ async fn test_create_payment_intent_with_zero_amount_fails() {
 	let result = provider.create_payment_intent(params).await;
 
 	assert!(result.is_err());
-	assert!(result.unwrap_err().to_string().contains("must be greater than zero"));
+	assert!(
+		result
+			.unwrap_err()
+			.to_string()
+			.contains("must be greater than zero")
+	);
 }
 
 /// Test creating a payment intent with confirm flag.
@@ -60,10 +65,7 @@ async fn test_confirm_payment_with_valid_intent_succeeds() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 
 	let result = provider.confirm_payment(&intent.id).await;
 
@@ -78,10 +80,7 @@ async fn test_confirm_payment_already_confirmed_fails() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 	let _ = provider.confirm_payment(&intent.id).await;
 
 	let result = provider.confirm_payment(&intent.id).await;
@@ -95,10 +94,7 @@ async fn test_capture_payment_with_valid_intent_succeeds() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 
 	let result = provider.capture_payment(&intent.id, None).await;
 
@@ -113,10 +109,7 @@ async fn test_capture_payment_partial_amount_succeeds() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 
 	let partial_amount = TEST_AMOUNT_STANDARD / 2;
 	let result = provider
@@ -135,10 +128,7 @@ async fn test_cancel_payment_with_valid_intent_succeeds() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 
 	let result = provider.cancel_payment(&intent.id).await;
 
@@ -153,19 +143,18 @@ async fn test_cancel_payment_succeeded_intent_fails() {
 	let provider = mock_provider();
 	let params = payment_intent_params();
 
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 	let _ = provider.capture_payment(&intent.id, None).await;
 
 	let result = provider.cancel_payment(&intent.id).await;
 
 	assert!(result.is_err());
-	assert!(result
-		.unwrap_err()
-		.to_string()
-		.contains("Cannot cancel succeeded"));
+	assert!(
+		result
+			.unwrap_err()
+			.to_string()
+			.contains("Cannot cancel succeeded")
+	);
 }
 
 /// Test payment intent lifecycle: create -> confirm -> succeed.
@@ -175,10 +164,7 @@ async fn test_payment_lifecycle_automatic_capture_succeeds() {
 	let params = payment_intent_params();
 
 	// Create
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 	assert!(matches!(
 		intent.status,
 		PaymentIntentStatus::RequiresPaymentMethod
@@ -196,10 +182,7 @@ async fn test_payment_lifecycle_cancellation_succeeds() {
 	let params = payment_intent_params();
 
 	// Create
-	let intent = provider
-		.create_payment_intent(params)
-		.await
-		.unwrap();
+	let intent = provider.create_payment_intent(params).await.unwrap();
 
 	// Cancel
 	let canceled = provider.cancel_payment(&intent.id).await.unwrap();
