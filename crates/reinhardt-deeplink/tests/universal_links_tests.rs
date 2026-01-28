@@ -16,7 +16,7 @@
 //! - All tests use at least one Reinhardt component (TP-2)
 //! - No skeleton implementations (TP-1)
 
-use reinhardt_deeplink::{IosConfig, AasaHandler, AppLinkComponent};
+use reinhardt_deeplink::{AasaHandler, AppLinkComponent, IosConfig};
 use rstest::*;
 
 // Import fixtures

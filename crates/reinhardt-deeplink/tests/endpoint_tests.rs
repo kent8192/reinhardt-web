@@ -6,13 +6,12 @@
 //! - Edge cases: Caching behavior, multiple statements
 //! - Sanity: Content type, CORS headers
 
-use reinhardt_deeplink::{AasaHandler, AssetLinksHandler, IosConfig, AndroidConfig};
+use reinhardt_deeplink::{AasaHandler, AndroidConfig, AssetLinksHandler, IosConfig};
 use reinhardt_http::{Handler, Request};
 use rstest::*;
 
 const VALID_APP_ID: &str = "TEAM123456.com.example.app";
-const VALID_FINGERPRINT: &str =
-	"FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C";
+const VALID_FINGERPRINT: &str = "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C";
 
 // ============================================================================
 // AasaHandler Tests
@@ -60,9 +59,7 @@ fn test_aasa_handler_response_headers() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	assert_eq!(response.status, hyper::StatusCode::OK);
 	assert!(response.headers.contains_key("content-type"));
@@ -85,9 +82,7 @@ fn test_aasa_handler_async_handle() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	assert_eq!(response.status, hyper::StatusCode::OK);
 }
@@ -166,9 +161,7 @@ fn test_assetlinks_handler_response_headers() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	assert_eq!(response.status, hyper::StatusCode::OK);
 	assert!(response.headers.contains_key("content-type"));
@@ -191,9 +184,7 @@ fn test_assetlinks_handler_async_handle() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	assert_eq!(response.status, hyper::StatusCode::OK);
 }
@@ -271,9 +262,7 @@ fn test_aasa_handler_content_type() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	let content_type = response.headers.get("content-type").unwrap();
 	assert_eq!(content_type.to_str().unwrap(), "application/json");
@@ -293,9 +282,7 @@ fn test_assetlinks_handler_content_type() {
 		.build()
 		.unwrap();
 
-	let response = tokio_runtime()
-		.block_on(handler.handle(request))
-		.unwrap();
+	let response = tokio_runtime().block_on(handler.handle(request)).unwrap();
 
 	let content_type = response.headers.get("content-type").unwrap();
 	assert_eq!(content_type.to_str().unwrap(), "application/json");
@@ -382,7 +369,10 @@ fn test_both_headers_cors() {
 		.block_on(assetlinks_handler.handle(request_assetlinks))
 		.unwrap();
 
-	let cors_aasa = response_aasa.headers.get("access-control-allow-origin").unwrap();
+	let cors_aasa = response_aasa
+		.headers
+		.get("access-control-allow-origin")
+		.unwrap();
 	let cors_assetlinks = response_assetlinks
 		.headers
 		.get("access-control-allow-origin")

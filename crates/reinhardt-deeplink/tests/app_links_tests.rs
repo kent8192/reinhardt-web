@@ -22,8 +22,7 @@ use rstest::*;
 mod fixtures;
 use fixtures::*;
 
-const VALID_FINGERPRINT: &str =
-	"FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C";
+const VALID_FINGERPRINT: &str = "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C";
 
 // ============================================================================
 // Happy Path Tests (正常系)
@@ -179,7 +178,10 @@ fn test_fingerprint_format_variants() {
 			.sha256_fingerprint(&fingerprint)
 			.build();
 
-		assert_eq!(config.statements[0].target.sha256_cert_fingerprints[0], fingerprint);
+		assert_eq!(
+			config.statements[0].target.sha256_cert_fingerprints[0],
+			fingerprint
+		);
 	}
 }
 
@@ -218,17 +220,12 @@ fn test_dal_json_structure_matches_spec() {
 	assert!(statement.get("target").is_some());
 
 	let relations = statement.get("relation").unwrap().as_array().unwrap();
-	assert_eq!(
-		relations[0],
-		"delegate_permission/common.handle_all_urls"
-	);
+	assert_eq!(relations[0], "delegate_permission/common.handle_all_urls");
 
 	let target = statement.get("target").unwrap();
 	assert!(target.get("namespace").is_some());
 	assert!(target.get("package_name").is_some());
-	assert!(target
-		.get("sha256_cert_fingerprints")
-		.is_some());
+	assert!(target.get("sha256_cert_fingerprints").is_some());
 }
 
 // ============================================================================
@@ -244,7 +241,10 @@ fn test_android_config_multiple_fingerprints_single_target() {
 		.sha256_fingerprints(&[VALID_FINGERPRINT, fp2])
 		.build();
 
-	assert_eq!(config.statements[0].target.sha256_cert_fingerprints.len(), 2);
+	assert_eq!(
+		config.statements[0].target.sha256_cert_fingerprints.len(),
+		2
+	);
 }
 
 #[rstest]

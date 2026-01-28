@@ -6,7 +6,7 @@
 //! - Combinatorial: Multiple paths and hosts
 //! - Sanity: URL template format
 
-use reinhardt_deeplink::{CustomSchemeConfig, CustomScheme};
+use reinhardt_deeplink::{CustomScheme, CustomSchemeConfig};
 use rstest::*;
 
 // Import fixtures
@@ -52,7 +52,9 @@ fn test_custom_scheme_builder_with_paths() {
 }
 
 #[rstest]
-fn test_custom_scheme_config_contains_schemes(#[from(custom_scheme_config)] config: CustomSchemeConfig) {
+fn test_custom_scheme_config_contains_schemes(
+	#[from(custom_scheme_config)] config: CustomSchemeConfig,
+) {
 	assert!(!config.schemes.is_empty());
 	assert_eq!(config.schemes[0].name, "myapp");
 }
