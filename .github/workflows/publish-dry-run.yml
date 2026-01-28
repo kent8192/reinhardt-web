@@ -98,7 +98,9 @@ jobs:
           HAS_CONFLICT=false
 
           # Get changed crates
-          CHANGED_CRATES=$(cargo ws changed 2>&1 | grep -v "^$" || true)
+          # Filter out info messages (e.g., "info looking for changes since...")
+          # and keep only valid crate names (starting with "reinhardt-")
+          CHANGED_CRATES=$(cargo ws changed 2>&1 | grep -v "^info" | grep -v "^$" | grep -E "^reinhardt-" || true)
 
           for CRATE_NAME in $CHANGED_CRATES; do
             # Get proposed version from cargo metadata
