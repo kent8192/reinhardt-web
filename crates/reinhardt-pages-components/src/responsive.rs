@@ -130,11 +130,8 @@ mod tests {
 
 	#[test]
 	fn test_responsive_value() {
-		let value = ResponsiveValue::new(12)
-			.sm(6)
-			.md(4)
-			.lg(3);
-		
+		let value = ResponsiveValue::new(12).sm(6).md(4).lg(3);
+
 		assert_eq!(value.xs, Some(12));
 		assert_eq!(value.sm, Some(6));
 		assert_eq!(value.md, Some(4));

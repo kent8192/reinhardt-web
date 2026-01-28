@@ -129,7 +129,10 @@ mod tests {
 	fn test_default_theme() {
 		let theme = Theme::default_theme();
 		assert_eq!(theme.primary, "#0d6efd");
-		assert_eq!(theme.font_family, "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif");
+		assert_eq!(
+			theme.font_family,
+			"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+		);
 	}
 
 	#[test]
@@ -145,7 +148,7 @@ mod tests {
 		let theme = Theme::default_theme()
 			.primary("#007bff")
 			.border_radius("0.5rem");
-		
+
 		assert_eq!(theme.primary, "#007bff");
 		assert_eq!(theme.border_radius, "0.5rem");
 	}

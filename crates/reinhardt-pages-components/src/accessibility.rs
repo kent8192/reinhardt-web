@@ -125,7 +125,7 @@ mod tests {
 			.label("Submit button")
 			.role("button")
 			.expanded(true);
-		
+
 		assert_eq!(attrs.label, Some("Submit button".into()));
 		assert_eq!(attrs.role, Some("button".into()));
 		assert_eq!(attrs.expanded, Some(true));
@@ -137,7 +137,7 @@ mod tests {
 			.label("Submit")
 			.role("button")
 			.expanded(false);
-		
+
 		let html_attrs = attrs.to_html_attributes();
 		assert_eq!(html_attrs.get("aria-label"), Some(&"Submit".to_string()));
 		assert_eq!(html_attrs.get("role"), Some(&"button".to_string()));
