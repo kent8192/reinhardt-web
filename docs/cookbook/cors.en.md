@@ -192,9 +192,9 @@ let router = ServerRouter::new()
 use reinhardt_urls::routers::ServerRouter;
 use hyper::Method;
 
-# async fn api_handler(_req: reinhardt_http::Request) -> reinhardt_http::Result<reinhardt_http::Response> {
-#     Ok(reinhardt_http::Response::ok())
-# }
+async fn api_handler(_req: reinhardt_http::Request) -> reinhardt_http::Result<reinhardt_http::Response> {
+    Ok(reinhardt_http::Response::ok())
+}
 let router = ServerRouter::new()
     .function("/api/data", Method::GET, api_handler)
     .with_route_middleware(CorsMiddleware::permissive());

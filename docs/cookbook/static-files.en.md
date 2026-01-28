@@ -88,7 +88,7 @@ Saves files to AWS S3 (requires `` `s3` `` feature).
 ```rust
 use reinhardt_utils::r#static::storage::{S3Storage, S3Config};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let config = S3Config {
     bucket: "my-bucket".to_string(),
     region: "us-east-1".to_string(),
@@ -101,8 +101,8 @@ let storage = S3Storage::new(config);
 // Save file
 let url = storage.save("images/logo.png", image_bytes).await?;
 // Returns: "https://cdn.example.com/static/images/logo.png"
-# Ok(())
-# }
+Ok(())
+}
 ```
 
 ### AzureBlobStorage
@@ -112,7 +112,7 @@ Saves files to Azure Blob Storage (requires `` `azure` `` feature).
 ```rust
 use reinhardt_utils::r#static::storage::{AzureBlobStorage, AzureBlobConfig};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let config = AzureBlobConfig {
     connection_string: "...".to_string(),
     container: "static-files".to_string(),
@@ -120,8 +120,8 @@ let config = AzureBlobConfig {
 };
 
 let storage = AzureBlobStorage::new(config);
-# Ok(())
-# }
+Ok(())
+}
 ```
 
 ### GcsStorage
@@ -131,7 +131,7 @@ Saves files to Google Cloud Storage (requires `` `gcs` `` feature).
 ```rust
 use reinhardt_utils::r#static::storage::{GcsStorage, GcsConfig};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let config = GcsConfig {
     bucket: "my-bucket".to_string(),
     key_prefix: Some("static/".to_string()),
@@ -139,8 +139,8 @@ let config = GcsConfig {
 };
 
 let storage = GcsStorage::new(config);
-# Ok(())
-# }
+Ok(())
+}
 ```
 
 ---
