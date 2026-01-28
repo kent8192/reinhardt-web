@@ -319,6 +319,8 @@ members = [
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
+  "crates/reinhardt-taggit",                            # Tagging system
+  "crates/reinhardt-taggit/macros",                     # Tagging macros
   # Integration tests
   "tests",
   "tests/integration",
@@ -404,6 +406,8 @@ reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.1" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.1" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.1" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.1" }
+reinhardt-taggit = { path = "crates/reinhardt-taggit", version = "0.1.0" }
+reinhardt-taggit-macros = { path = "crates/reinhardt-taggit/macros", version = "0.1.0" }
 
 # Core subcrates
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.1" }
