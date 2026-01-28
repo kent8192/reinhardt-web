@@ -13,13 +13,11 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use reinhardt_pages_components::*;
+//! use reinhardt_pages_components::theme::Theme;
 //!
-//! // Using builder pattern
-//! let container = Container::new()
-//!     .fluid(true);
-//!
-//! // let html = container.render();
+//! // Create default theme
+//! let theme = Theme::default();
+//! let css = theme.to_css_variables();
 //! ```
 //!
 //! ## Component Categories
