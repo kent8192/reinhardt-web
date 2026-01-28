@@ -152,7 +152,7 @@ reinhardt-http = { workspace = true }
 reinhardt-middleware = { workspace = true }
 reinhardt-urls = { workspace = true, features = ["routers"] }
 reinhardt-server = { workspace = true }
-reinhardt-utils = { workspace = true, features = ["static"] }
+reinhardt-utils = { workspace = true, features = ["staticfiles"] }
 hyper = { workspace = true }
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4"] }
