@@ -320,6 +320,7 @@ members = [
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-payment",                          # Payment integration (Stripe/BasisTheory)
+  "crates/reinhardt-payment-mocks",                    # Mock implementations for payment testing
   # Integration tests
   "tests",
   "tests/integration",
@@ -405,6 +406,7 @@ reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.1" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.1" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.1" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.1" }
+reinhardt-payment-mocks = { path = "crates/reinhardt-payment-mocks", version = "0.1.0-alpha.1" }
 
 # Core subcrates
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.1" }
