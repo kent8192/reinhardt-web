@@ -1,14 +1,15 @@
 //! Integration tests for LocalStorage backend.
 
-use crate::fixtures::{TestFile, local_backend, local_temp_dir, small_file};
-use crate::utils::{
-	assert_config_error, assert_content_matches, assert_file_size, assert_file_url,
-	assert_not_found, assert_storage_exists, assert_storage_not_exists, generate_nested_path,
-	generate_unique_name,
-};
+mod fixtures;
+mod utils;
+
+use fixtures::{LocalTestDir, TestFile, local_backend, local_temp_dir, small_file};
 use reinhardt_storages::{StorageBackend, StorageError};
 use rstest::rstest;
 use std::sync::Arc;
+use utils::{
+	assert_file_url, assert_storage_exists, assert_storage_not_exists, generate_nested_path,
+};
 
 // ============================================================================
 // CRUD Tests
@@ -19,7 +20,10 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_save_file(local_backend: Arc<dyn StorageBackend>, small_file: TestFile) {
+	async fn test_save_file(
+		#[future(awt)] local_backend: Arc<dyn StorageBackend>,
+		small_file: TestFile,
+	) {
 		let path = local_backend
 			.save(&small_file.name, &small_file.content)
 			.await
@@ -36,7 +40,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_open_file(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_open_file(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_open.txt";
 		let content = b"Hello, LocalStorage!";
 
@@ -55,7 +59,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_delete_file(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_delete_file(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_delete.txt";
 		local_backend
 			.save(name, b"temporary")
@@ -78,7 +82,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_exists_true(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_exists_true(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_exists_true.txt";
 		local_backend
 			.save(name, b"content")
@@ -97,7 +101,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_exists_false(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_exists_false(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_nonexistent.txt";
 		let exists = local_backend
 			.exists(name)
@@ -108,7 +112,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_roundtrip(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_roundtrip(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_roundtrip.bin";
 		let content = vec![0u8, 1, 2, 3, 255, 254, 253];
 
@@ -127,7 +131,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_overwrite_file(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_overwrite_file(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_overwrite.txt";
 		let content1 = b"Original content";
 		let content2 = b"New content";
@@ -151,7 +155,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_empty_file(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_empty_file(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_empty.txt";
 		let content: Vec<u8> = vec![];
 
@@ -169,7 +173,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_binary_data(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_binary_data(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_binary.bin";
 		let content: Vec<u8> = (0u8..=255).collect();
 
@@ -195,7 +199,9 @@ mod directory_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_creates_parent_directories(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_creates_parent_directories(
+		#[future(awt)] local_backend: Arc<dyn StorageBackend>,
+	) {
 		let name = "parent/child/grandchild/file.txt";
 		let content = b"Nested file content";
 
@@ -215,7 +221,7 @@ mod directory_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_nested_path(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_nested_path(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = generate_nested_path(3, "file.txt");
 		let content = b"Deeply nested file";
 
@@ -234,7 +240,7 @@ mod directory_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_directory_not_a_file(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_directory_not_a_file(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let dir_name = "test_dir";
 
 		// Create a directory by saving a file in it
@@ -267,7 +273,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_file_url_format(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_file_url_format(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_url.txt";
 		local_backend
 			.save(name, b"content")
@@ -288,7 +294,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_url_uses_absolute_path(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_url_uses_absolute_path(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_absolute.txt";
 		local_backend
 			.save(name, b"content")
@@ -307,7 +313,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_url_not_found(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_url_not_found(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent.txt";
 
 		let result = local_backend.url(name, 3600).await;
@@ -327,7 +333,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_file_size(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_file_size(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_size.txt";
 		let content = b"Hello, World!";
 
@@ -345,7 +351,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_modified_time(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_modified_time(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_time.txt";
 
 		local_backend
@@ -366,7 +372,9 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_size_updates_after_overwrite(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_size_updates_after_overwrite(
+		#[future(awt)] local_backend: Arc<dyn StorageBackend>,
+	) {
 		let name = "test_size_update.txt";
 		let content1 = b"Small";
 		let content2 = b"This is much larger content";
@@ -402,7 +410,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_open_not_found(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_open_not_found(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_open.txt";
 
 		let result = local_backend.open(name).await;
@@ -412,7 +420,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_delete_not_found(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_delete_not_found(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_delete.txt";
 
 		let result = local_backend.delete(name).await;
@@ -422,7 +430,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_size_not_found(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_size_not_found(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_size.txt";
 
 		let result = local_backend.size(name).await;
@@ -432,7 +440,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_unicode_filename(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_unicode_filename(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
 		let name = "ファイル.txt"; // Japanese filename
 		let content = "Unicode content".as_bytes();
 
@@ -454,7 +462,9 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_special_characters_in_name(local_backend: Arc<dyn StorageBackend>) {
+	async fn test_special_characters_in_name(
+		#[future(awt)] local_backend: Arc<dyn StorageBackend>,
+	) {
 		let name = "file with spaces & symbols!.txt";
 		let content = b"Special chars";
 
@@ -477,11 +487,10 @@ mod error_tests {
 
 mod persistence_tests {
 	use super::*;
-	use crate::fixtures::local_temp_dir;
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_file_persistence(local_temp_dir: crate::fixtures::LocalTestDir) {
+	async fn test_file_persistence(#[future(awt)] local_temp_dir: LocalTestDir) {
 		let backend = local_temp_dir.backend();
 		let name = "persistent.txt";
 		let content = b"Persistent content";
@@ -498,8 +507,8 @@ mod persistence_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_multiple_operations(local_backend: Arc<dyn StorageBackend>) {
-		let files = vec![
+	async fn test_multiple_operations(#[future(awt)] local_backend: Arc<dyn StorageBackend>) {
+		let files: Vec<(&str, &[u8])> = vec![
 			("file1.txt", b"content1"),
 			("file2.txt", b"content2"),
 			("file3.txt", b"content3"),
@@ -508,7 +517,7 @@ mod persistence_tests {
 		// Save all files
 		for (name, content) in &files {
 			local_backend
-				.save(name, content)
+				.save(name, *content)
 				.await
 				.expect("Failed to save");
 		}
