@@ -358,14 +358,14 @@ mod factory_error_tests {
 			.expect("Failed to create backend");
 
 		// Test all operations work
-		let test_cases = vec![
+		let test_cases: Vec<(&str, &[u8])> = vec![
 			("file1.txt", b"content1"),
 			("file2.txt", b"content2"),
 			("path/to/file3.txt", b"content3"),
 		];
 
 		for (name, content) in &test_cases {
-			backend.save(name, content).await.expect("Failed to save");
+			backend.save(name, *content).await.expect("Failed to save");
 
 			let read_content = backend.open(name).await.expect("Failed to read");
 			assert_eq!(read_content, *content);
