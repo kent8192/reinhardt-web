@@ -1257,18 +1257,17 @@ impl RunServerCommand {
 			crate::CommandError::ExecutionError("Failed to get registered router".to_string())
 		})?;
 
-		// TODO: Re-enable OpenAPI wrapper after resolving circular dependency
 		// Wrap with OpenAPI endpoints if enabled
-		// #[cfg(feature = "openapi")]
-		// let router = if !no_docs {
-		// 	use reinhardt_http::Handler;
-		// 	use reinhardt_rest::openapi::OpenApiRouter;
-		// 	std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
-		// } else {
-		// 	base_router
-		// };
+		#[cfg(feature = "openapi-router")]
+		let router = if !no_docs {
+			use reinhardt_http::Handler;
+			use reinhardt_openapi::OpenApiRouter;
+			std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
+		} else {
+			base_router
+		};
 
-		// #[cfg(not(feature = "openapi"))]
+		#[cfg(not(feature = "openapi-router"))]
 		let router = base_router;
 
 		// Parse socket address
