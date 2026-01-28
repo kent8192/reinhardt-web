@@ -34,6 +34,7 @@ rstest = "0.23"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
+serial_test = "3"
 
 [features]
 default = ["s3", "local"]
