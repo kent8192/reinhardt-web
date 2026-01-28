@@ -158,7 +158,8 @@ pub mod generator;
 pub mod openapi;
 pub mod param_metadata;
 pub mod registry;
-// TODO: router_wrapper disabled to avoid circular dependency with reinhardt-urls
+// router_wrapper disabled due to circular dependency: reinhardt-urls → reinhardt-rest → reinhardt-views → reinhardt-urls
+// See: https://github.com/kent8192/reinhardt-web/issues/23
 // pub mod router_wrapper;
 pub mod schema_registration;
 pub mod serde_attrs;
@@ -180,7 +181,8 @@ pub use openapi::{
 pub use param_metadata::{CookieParam, HeaderParam, ParameterMetadata, PathParam, QueryParam};
 pub use registry::SchemaRegistry;
 pub use reinhardt_openapi_macros::Schema;
-// TODO: OpenApiRouter disabled due to circular dependency
+// OpenApiRouter disabled due to circular dependency
+// See: https://github.com/kent8192/reinhardt-web/issues/23
 // pub use router_wrapper::OpenApiRouter;
 pub use schema_registration::SchemaRegistration;
 pub use serde_attrs::{FieldMetadata, RenameAll, SchemaBuilderExt};

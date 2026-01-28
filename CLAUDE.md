@@ -96,8 +96,6 @@ See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Planned features go in `lib.rs` header, NOT in README.md
 - Test all code examples
 - Verify all links are valid
-- **ALWAYS** update crate's `CHANGELOG.md` when `Cargo.toml` version changes (same commit)
-- **CHANGELOG.md MUST be written in English** (no exceptions)
 - **NEVER** document user requests or AI assistant interactions in project documentation
   - Documentation must describe technical reasons, design decisions, and implementation details
   - Avoid phrases like "User requested...", "As requested by...", "User asked..."
@@ -120,33 +118,13 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - **NEVER** execute batch commits without user confirmation
 
 **GitHub Integration:**
-- **MUST** prefer GitHub MCP tools when available for all GitHub operations
-- **Fallback**: Use GitHub CLI (`gh`) when GitHub MCP is not available
-- **Priority order**: GitHub MCP > GitHub CLI (`gh`) > raw API
-- **NEVER** use raw `curl` or web browser for GitHub operations when MCP or `gh` is available
-
-**GitHub MCP Tool Mapping:**
-
-| Operation | GitHub MCP Tool | gh CLI Fallback |
-|-----------|----------------|-----------------|
-| Create PR | `create_pull_request` | `gh pr create` |
-| View PR | `pull_request_read` (method: get) | `gh pr view` |
-| List PRs | `list_pull_requests` | `gh pr list` |
-| Create Issue | `issue_write` (method: create) | `gh issue create` |
-| View Issue | `issue_read` (method: get) | `gh issue view` |
-| List Issues | `list_issues` | `gh issue list` |
-| Search Code | `search_code` | `gh api search/code` |
-| Get File | `get_file_contents` | `gh api repos/.../contents` |
-| Create Branch | `create_branch` | `gh api refs` |
-| List Commits | `list_commits` | `gh api commits` |
-| List Releases | `list_releases` | `gh release list` |
-- **MUST** write all PR titles and descriptions in English
-- **MUST** write all issue titles and descriptions in English
-
-See docs/PR_GUIDELINE.md for detailed pull request guidelines including:
-- PR creation policy
-- PR title and description format
-- PR review process
+- **MUST** use GitHub CLI (`gh`) for all GitHub operations
+- Use `gh pr create` for creating pull requests
+- Use `gh pr view` for viewing PR details
+- Use `gh issue create` for creating issues
+- Use `gh issue view` for viewing issue details
+- Use `gh api` for accessing GitHub API
+- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
 See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
@@ -180,17 +158,6 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
   - `cargo publish --dry-run -p <crate-name>`
 - Commit version bump and CHANGELOG updates BEFORE creating tag
 - Push commits and tags AFTER successful publish
-
-**Version Cascade Policy:**
-- When a sub-crate's version changes, the main crate (`reinhardt-web`) version MUST be updated following the version mapping rules:
-  - Single sub-crate update: Main crate version change MUST match sub-crate's change level (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH)
-  - Multiple sub-crates update: Main crate version follows the highest priority change (MAJOR > MINOR > PATCH)
-- The main crate's CHANGELOG.md MUST include a "Sub-Crate Updates" subsection with:
-  - Sub-crate name, version, and CHANGELOG link (using anchor format: `#[version]---YYYY-MM-DD`)
-  - Brief summary (1-3 bullet points) of key changes
-- Each crate version bump MUST be committed individually (sub-crates first, main crate last)
-- Main crate commit message MUST include `cascade:` keyword indicating Version Cascade
-- See [docs/VERSION_CASCADE.md](docs/VERSION_CASCADE.md) for complete implementation guide
 
 **Publishing Workflow:**
 1. Update crate version in `Cargo.toml`
@@ -257,12 +224,7 @@ docker ps
 # Docker daemon should be running automatically on most systems
 ```
 
-**GitHub Operations:**
-
-When GitHub MCP is available, use MCP tools directly (preferred).
-When unavailable, fall back to GitHub CLI.
-
-**GitHub CLI Fallback:**
+**GitHub Operations (using GitHub CLI):**
 ```bash
 # Pull Requests
 gh pr create --title "feat: Add feature" --body "Description" --label enhancement
@@ -343,7 +305,6 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
-   - [ ] PR guidelines (@docs/PR_GUIDELINE.md)
 
 ---
 
@@ -376,19 +337,12 @@ Before submitting code:
 - Verify with `--dry-run` before publishing to crates.io
 - Commit version bump before creating tags
 - Update crate's CHANGELOG.md with version changes
-- Write CHANGELOG.md in English (no exceptions)
-- Update main crate (`reinhardt-web`) version when any sub-crate version changes
-- Apply Version Cascade Policy: version mapping (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH) for single sub-crate updates
-- For multiple sub-crates updates, follow highest priority: MAJOR > MINOR > PATCH
-- Commit each crate version bump individually (sub-crates first, main crate last)
-- Include `cascade:` keyword in main crate commit message for Version Cascade
-- Use standardized CHANGELOG reference format: `#[version]---YYYY-MM-DD` for sub-crate links
-- Add "Sub-Crate Updates" subsection in main crate CHANGELOG.md with brief summary
-- Prefer GitHub MCP tools when available; fall back to `gh` CLI otherwise
-- Write all PR titles and descriptions in English
-- Write all issue titles and descriptions in English
-- Add appropriate labels to every PR (`enhancement`, `bug`, `documentation`, etc.)
-- Use `release` label ONLY for version bump PRs (triggers automation)
+- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
+- Search existing issues before creating new ones
+- Use appropriate issue templates for all issues
+- Apply at least one type label to every issue
+- Report security vulnerabilities privately via GitHub Security Advisories
+- Use `.github/labels.yml` as source of truth for label definitions
 - Use `rstest` for ALL test cases (no plain `#[test]`)
 - Use `reinhardt-test` fixtures for test setup/teardown
 - Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
@@ -407,8 +361,6 @@ Before submitting code:
 - Commit without user instruction (except Plan Mode approval)
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
-- Create PRs without appropriate labels
-- Use `release` label for non-version-bump PRs (triggers unintended automation)
 - Save files to project directory (use `/tmp`)
 - Leave backup files (`.bak`, `.backup`, `.old`, `~`)
 - Create skeleton tests (tests without assertions)
@@ -423,17 +375,16 @@ Before submitting code:
 - Publish to crates.io without explicit user authorization
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
-- Update sub-crate version without updating main crate version
-- Use inappropriate version level in Version Cascade (e.g., MAJOR sub-crate → PATCH main crate)
-- Batch multiple crate version bumps into single commit (must commit individually)
-- Omit `cascade:` keyword in main crate version bump commit message
-- Use non-standard CHANGELOG anchor format for sub-crate links
-- Skip "Sub-Crate Updates" subsection in main crate CHANGELOG.md
-- Change `Cargo.toml` version without updating corresponding CHANGELOG.md
 - Make breaking changes without MAJOR version bump
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
+- Create issues without appropriate labels
+- Create public issues for security vulnerabilities
+- Create duplicate issues without searching first
+- Skip issue templates when creating issues
+- Use non-English in issue titles or descriptions
+- Apply `release` label to issues (only for PRs)
 - Use plain `#[test]` instead of `#[rstest]`
 - Write raw SQL strings in tests (use SeaQuery instead)
 - Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
@@ -452,8 +403,11 @@ For comprehensive guidelines, see:
 - **Anti-Patterns**: docs/ANTI_PATTERNS.md
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: docs/COMMIT_GUIDELINE.md
-- **Pull Requests**: docs/PR_GUIDELINE.md
 - **Release Process**: docs/RELEASE_PROCESS.md
+- **Issues**: docs/ISSUE_GUIDELINES.md
+- **Security Policy**: SECURITY.md
+- **Code of Conduct**: CODE_OF_CONDUCT.md
+- **Label Definitions**: .github/labels.yml
 - **Project Overview**: README.md
 
 ---
