@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use reinhardt::DatabaseConnection;
 use reinhardt::db::orm::Model;
+use reinhardt_auth::sessions::InMemorySessionBackend;
 use reinhardt_websockets::integration::pages::PagesAuthenticator;
 use reinhardt_websockets::room::RoomManager;
 use reinhardt_websockets::{
@@ -42,7 +43,7 @@ pub struct DMHandler {
 	/// Room manager for tracking active WebSocket connections
 	room_manager: Arc<RwLock<RoomManager>>,
 	/// Authenticator for Cookie/session-based authentication
-	authenticator: Arc<PagesAuthenticator>,
+	authenticator: Arc<PagesAuthenticator<InMemorySessionBackend>>,
 	/// Database connection for message persistence
 	db: DatabaseConnection,
 }
@@ -50,9 +51,10 @@ pub struct DMHandler {
 impl DMHandler {
 	/// Create a new DMHandler with database connection
 	pub fn new(db: DatabaseConnection) -> Self {
+		let session_backend = InMemorySessionBackend::new();
 		Self {
 			room_manager: Arc::new(RwLock::new(RoomManager::new())),
-			authenticator: Arc::new(PagesAuthenticator::new()),
+			authenticator: Arc::new(PagesAuthenticator::new(session_backend)),
 			db,
 		}
 	}
