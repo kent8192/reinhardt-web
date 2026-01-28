@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Dead Letter Queue (DLQ) system for handling failed signals with retry logic
 //!
 //! This module provides functionality to handle failed signal emissions by queuing them

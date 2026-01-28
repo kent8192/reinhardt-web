@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! GraphQL Subscriptions - Signal-based GraphQL subscription support
 //!
 //! This module provides GraphQL subscription integration for signals,
