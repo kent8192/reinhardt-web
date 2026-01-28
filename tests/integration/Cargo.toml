@@ -6,12 +6,41 @@ publish = false
 autotests = false
 
 [dependencies]
+# Database crates
 reinhardt-db = { workspace = true, features = ["mongodb", "nosql"] }
-reinhardt-db-macros = { path = "../../crates/reinhardt-db-macros" }
+reinhardt-db-macros = { workspace = true }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 
+# Reinhardt HTTP/server crates (for TestServer and request helpers)
+reinhardt-core = { workspace = true }
+reinhardt-http = { workspace = true }
+reinhardt-server = { workspace = true }
+
+# HTTP primitives (used in lib.rs make_request helpers)
+bytes = { workspace = true }
+hyper = { workspace = true }
+reqwest = { workspace = true }
+
+# Database pool (used in lib.rs, validator_test_common.rs)
+sqlx = { workspace = true }
+
+# Async runtime
 tokio = { workspace = true, features = ["full"] }
+
+# Serialization
 bson = "3.0"
 serde = { workspace = true, features = ["derive"] }
+
+# Testing framework
 rstest = { workspace = true }
 serial_test = { workspace = true }
+testcontainers = { workspace = true }
+
+# Required by #[model] macro
+ctor = { workspace = true }
+
+# Async traits (used in migration_duplicate.rs)
+async-trait = { workspace = true }
+
+# Temp files (used in migration_duplicate.rs)
+tempfile = { workspace = true }
