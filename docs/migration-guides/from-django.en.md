@@ -58,7 +58,7 @@ urlpatterns = [
 ```rust
 // routes.rs
 use reinhardt_urls::routers::ServerRouter;
-use reinhardt_views::class_based::View;
+use reinhardt_views::View;
 use hyper::Method;
 
 pub fn user_routes() -> ServerRouter {
@@ -260,7 +260,7 @@ class UserListView(View):
 
 ```rust
 // views.rs
-use reinhardt_views::class_based::View;
+use reinhardt_views::View;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_views::viewsets::Action;
 use reinhardt_http::{Request, Response};
