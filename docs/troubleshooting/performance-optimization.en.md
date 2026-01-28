@@ -89,7 +89,7 @@ let count_query = Query::select()
 ### Avoid N+1 Problem
 
 ```rust
-use reinhardt_orm::QuerySet;
+use reinhardt_db::QuerySet;
 
 // ❌ N+1 problem
 let posts = Post::objects().all().await?;

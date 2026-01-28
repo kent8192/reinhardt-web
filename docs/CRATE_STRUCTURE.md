@@ -295,7 +295,7 @@ Users access modules through the parent crate:
 
 ```rust
 use reinhardt::db::orm::Model;        // ✅ Correct
-// NOT: use reinhardt_orm::Model;     // ❌ Won't work
+// NOT: use reinhardt_db::Model;     // ❌ Won't work
 ```
 
 ## Testing Strategy
@@ -373,7 +373,7 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["db-postgres", "orm", "migr
 
 **Before**:
 ```rust
-use reinhardt_orm::Model;
+use reinhardt_db::Model;
 use reinhardt_migrations::Migration;
 ```
 

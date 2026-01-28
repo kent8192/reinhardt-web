@@ -123,7 +123,7 @@ user.delete()
 ### Reinhardt ORM
 
 ```rust
-use reinhardt_orm::QuerySet;
+use reinhardt_db::QuerySet;
 
 // QuerySet API
 let users = User::objects()

@@ -158,7 +158,7 @@ crates/reinhardt-orm/
 **Example (Cross-crate integration):**
 ```rust
 // tests/integration/tests/orm_serializer_integration.rs
-use reinhardt_orm::Model;
+use reinhardt_db::Model;
 use reinhardt_serializers::Serialize;
 
 #[test]
@@ -173,7 +173,7 @@ fn test_model_serialization() {
 **Example (Within-crate integration):**
 ```rust
 // crates/reinhardt-orm/tests/integration_tests.rs
-use reinhardt_orm::{QueryBuilder, Connection};
+use reinhardt_db::{QueryBuilder, Connection};
 
 #[test]
 fn test_query_execution() {
@@ -208,7 +208,7 @@ fn test_query_execution() {
 ```rust
 // Imports from multiple Reinhardt crates
 use reinhardt_filters::SimpleSearchBackend;
-use reinhardt_orm::QueryBuilder;
+use reinhardt_db::QueryBuilder;
 
 #[test]
 fn test_filter_with_orm() {
