@@ -26,6 +26,6 @@ The Cookbook provides practical guides for solving common tasks.
 
 ## See Also
 
-- [API Reference](https://docs.rs/reinhardt-web/)
+- [API Reference](https://docs.rs/reinhardt/)
 - [Migration Guides](../migration-guides/)
 - [Troubleshooting](../troubleshooting/)

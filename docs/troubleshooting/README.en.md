@@ -18,6 +18,6 @@ Troubleshooting guides provide solutions to common problems encountered during d
 
 ## See Also
 
-- [API Reference](https://docs.rs/reinhardt-web/)
+- [API Reference](https://docs.rs/reinhardt/)
 - [Cookbook](../cookbook/)
 - [Migration Guides](../migration-guides/)
