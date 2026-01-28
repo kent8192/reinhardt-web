@@ -182,10 +182,7 @@ Examples:
 		// For now, return success with count to demonstrate the structure
 
 		if options.verbosity > 0 {
-			println!(
-				"Successfully created {} instance(s)",
-				options.count
-			);
+			println!("Successfully created {} instance(s)", options.count);
 		}
 
 		Ok(SeedResult {
@@ -204,7 +201,7 @@ Examples:
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::factory::{clear_factories, register_factory, Factory};
+	use crate::factory::{Factory, clear_factories, register_factory};
 	use rstest::rstest;
 
 	// Test factory

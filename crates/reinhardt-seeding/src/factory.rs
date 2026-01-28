@@ -44,13 +44,13 @@ mod sequence;
 mod traits;
 
 pub use builder::{BuildConfig, FactoryBuilder, FieldGenerator};
-pub use faker::{generate_fake, FakerType};
+pub use faker::{FakerType, generate_fake};
 pub use registry::{
-	clear_factories, factory_count, factory_model_ids, get_factory, get_factory_for_type,
-	has_factory, register_factory, register_factory_for_type, AnyFactory, FactoryRegistry,
+	AnyFactory, FactoryRegistry, clear_factories, factory_count, factory_model_ids, get_factory,
+	get_factory_for_type, has_factory, register_factory, register_factory_for_type,
 };
 pub use sequence::{
-	clear_sequences, remove_sequence, reset_all_sequences, reset_sequence, sequence,
-	sequence_names, Sequence,
+	Sequence, clear_sequences, remove_sequence, reset_all_sequences, reset_sequence, sequence,
+	sequence_names,
 };
 pub use traits::{Factory, FactoryExt, LazyEvaluator, LazyFactory, RelatedFactory, SubFactory};

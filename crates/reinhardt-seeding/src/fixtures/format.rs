@@ -300,10 +300,22 @@ mod tests {
 
 	#[rstest]
 	fn test_fixture_format_from_extension() {
-		assert_eq!(FixtureFormat::from_extension("json"), Some(FixtureFormat::Json));
-		assert_eq!(FixtureFormat::from_extension("JSON"), Some(FixtureFormat::Json));
-		assert_eq!(FixtureFormat::from_extension("yaml"), Some(FixtureFormat::Yaml));
-		assert_eq!(FixtureFormat::from_extension("yml"), Some(FixtureFormat::Yaml));
+		assert_eq!(
+			FixtureFormat::from_extension("json"),
+			Some(FixtureFormat::Json)
+		);
+		assert_eq!(
+			FixtureFormat::from_extension("JSON"),
+			Some(FixtureFormat::Json)
+		);
+		assert_eq!(
+			FixtureFormat::from_extension("yaml"),
+			Some(FixtureFormat::Yaml)
+		);
+		assert_eq!(
+			FixtureFormat::from_extension("yml"),
+			Some(FixtureFormat::Yaml)
+		);
 		assert_eq!(FixtureFormat::from_extension("xml"), None);
 	}
 
