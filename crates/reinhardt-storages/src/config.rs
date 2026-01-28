@@ -17,6 +17,17 @@ pub enum BackendType {
 	Local,
 }
 
+impl std::fmt::Display for BackendType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			BackendType::S3 => write!(f, "S3"),
+			BackendType::Gcs => write!(f, "GCS"),
+			BackendType::Azure => write!(f, "Azure"),
+			BackendType::Local => write!(f, "Local"),
+		}
+	}
+}
+
 impl FromStr for BackendType {
 	type Err = StorageError;
 
