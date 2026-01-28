@@ -93,7 +93,7 @@ middleware = [
   "reinhardt-middleware/sessions",
   "sessions",
 ]
-static-files = ["reinhardt-utils/static"]
+static-files = ["reinhardt-utils/staticfiles"]
 storage = ["reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
