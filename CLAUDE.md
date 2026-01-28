@@ -141,6 +141,12 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - **NEVER** make breaking changes without incrementing MAJOR version
 - Each crate maintains its own independent version
 - Pre-1.0.0 versions (0.x.x) may have breaking changes in MINOR versions (per SemVer spec)
+- **Pre-release versions (alpha/beta/rc)**: Until initial stable release (e.g., `0.1.0`), increment only pre-release identifier regardless of change type
+  - Breaking change: `0.1.0-alpha.1` → `0.1.0-alpha.2` (NOT `0.2.0-alpha.1`)
+  - New feature: `0.1.0-alpha.1` → `0.1.0-alpha.2`
+  - Bug fix: `0.1.0-alpha.1` → `0.1.0-alpha.2`
+  - Same rule applies to rc versions: `0.1.0-rc.1` → `0.1.0-rc.2` (NOT `0.2.0-rc.1`)
+- **Pre-release progression**: `0.1.0-alpha.x` → `0.1.0-rc.1` → `0.1.0` (stable)
 
 **Tagging Strategy (Per-Crate Tagging):**
 - **MUST** use format: `[crate-name]@v[version]`
@@ -375,7 +381,8 @@ Before submitting code:
 - Publish to crates.io without explicit user authorization
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
-- Make breaking changes without MAJOR version bump
+- Make breaking changes without MAJOR version bump (except pre-release versions)
+- Increment MINOR/MAJOR version during pre-release phase (use `0.1.0-alpha.1` → `0.1.0-alpha.2` or `0.1.0-rc.1` → `0.1.0-rc.2`, NOT `0.2.0-alpha.1` or `0.2.0-rc.1`)
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes

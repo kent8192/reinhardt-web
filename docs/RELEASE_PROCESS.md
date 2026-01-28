@@ -102,6 +102,34 @@ impl Pool {
 
 **After 1.0.0**: Breaking changes REQUIRE MAJOR version bump
 
+### Pre-Release Version Rules (alpha/beta/rc)
+
+Until the initial stable release (e.g., `0.1.0`), **increment only the pre-release identifier** regardless of change type:
+
+| Change Type | Version Update | Example |
+|-------------|----------------|---------|
+| Breaking change | Pre-release increment | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+| New feature | Pre-release increment | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+| Bug fix | Pre-release increment | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+
+The same rule applies to rc (release candidate) versions:
+
+| Change Type | Version Update | Example |
+|-------------|----------------|---------|
+| Breaking change | Pre-release increment | `0.1.0-rc.1` → `0.1.0-rc.2` |
+| New feature | Pre-release increment | `0.1.0-rc.1` → `0.1.0-rc.2` |
+| Bug fix | Pre-release increment | `0.1.0-rc.1` → `0.1.0-rc.2` |
+
+**Rationale**: Pre-release versions are inherently unstable. Breaking changes are expected during alpha/beta/rc phases. Incrementing MINOR/MAJOR versions during pre-release would prematurely consume version numbers before stabilization.
+
+**Pre-release progression**:
+1. `0.1.0-alpha.x` → `0.1.0-rc.1` (alpha stabilized, ready for release candidate)
+2. `0.1.0-rc.x` → `0.1.0` (rc stabilized, ready for stable release)
+
+**Examples**:
+- `0.1.0-alpha.5` → `0.1.0-rc.1` (transition from alpha to rc)
+- `0.1.0-rc.3` → `0.1.0` (transition from rc to stable)
+
 ---
 
 ## Pre-Release Checklist

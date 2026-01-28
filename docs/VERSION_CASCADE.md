@@ -46,6 +46,30 @@ For Pre-1.0.0 versions (0.x.x), Semantic Versioning allows breaking changes in M
 
 **Clarification**: This rule does NOT change the mapping logic—it simply acknowledges that Pre-1.0.0 MINOR updates may contain breaking changes per SemVer 2.0.0 specification.
 
+### VCR-4: Pre-Release Version Exception (alpha/beta/rc)
+
+For pre-release versions (e.g., `0.1.0-alpha.x`), **only increment the pre-release identifier** until the initial stable release:
+
+| Change Type | Sub-Crate Update | Main Crate Update |
+|-------------|------------------|-------------------|
+| Breaking change | `0.1.0-alpha.1` → `0.1.0-alpha.2` | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+| New feature | `0.1.0-alpha.1` → `0.1.0-alpha.2` | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+| Bug fix | `0.1.0-alpha.1` → `0.1.0-alpha.2` | `0.1.0-alpha.1` → `0.1.0-alpha.2` |
+
+The same rule applies to rc (release candidate) versions:
+
+| Change Type | Sub-Crate Update | Main Crate Update |
+|-------------|------------------|-------------------|
+| Breaking change | `0.1.0-rc.1` → `0.1.0-rc.2` | `0.1.0-rc.1` → `0.1.0-rc.2` |
+| New feature | `0.1.0-rc.1` → `0.1.0-rc.2` | `0.1.0-rc.1` → `0.1.0-rc.2` |
+| Bug fix | `0.1.0-rc.1` → `0.1.0-rc.2` | `0.1.0-rc.1` → `0.1.0-rc.2` |
+
+**Key Point**: Do NOT update to `0.2.0-alpha.1` or `0.2.0-rc.1` for breaking changes during pre-release phase. Pre-release versions are inherently unstable, and breaking changes are expected.
+
+**Pre-release progression**:
+1. `0.1.0-alpha.x` → `0.1.0-rc.1` (alpha stabilized, ready for release candidate)
+2. `0.1.0-rc.x` → `0.1.0` (rc stabilized, ready for stable release)
+
 ---
 
 ## CHANGELOG Reference Format
