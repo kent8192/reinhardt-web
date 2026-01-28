@@ -58,6 +58,7 @@ rustls-pemfile = "2.0"
 rcgen = "0.14.5"
 reinhardt-utils = {workspace = true, features = ["utils-core"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
+reinhardt-openapi = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal"] }
@@ -78,6 +79,7 @@ migrations = ["reinhardt-db"]
 routers = ["dep:reinhardt-urls"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-rest", "dep:reinhardt-http"]
+openapi-router = ["dep:reinhardt-openapi", "openapi"]
 server = ["dep:reinhardt-server", "dep:reinhardt-middleware", "routers", "di"]
 autoreload = ["dep:notify", "server"]
 shell = ["dep:rustyline"]

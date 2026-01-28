@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_rest::openapi::OpenApiRouter;
+//! use reinhardt_openapi::OpenApiRouter;
 //! use reinhardt_urls::routers::BasicRouter;
 //!
 //! fn main() {
@@ -24,11 +24,11 @@
 //! }
 //! ```
 
-use super::endpoints::generate_openapi_schema;
-use super::swagger::{RedocUI, SwaggerUI};
 use async_trait::async_trait;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response, Result};
+use reinhardt_rest::openapi::endpoints::generate_openapi_schema;
+use reinhardt_rest::openapi::{RedocUI, SwaggerUI};
 use reinhardt_urls::prelude::Route;
 use reinhardt_urls::routers::Router;
 use std::sync::Arc;
@@ -61,7 +61,7 @@ impl<H> OpenApiRouter<H> {
 	/// # Example
 	///
 	/// ```rust,ignore
-	/// use reinhardt_rest::openapi::OpenApiRouter;
+	/// use reinhardt_openapi::OpenApiRouter;
 	/// use reinhardt_urls::routers::BasicRouter;
 	///
 	/// let router = BasicRouter::new();
@@ -206,6 +206,7 @@ where
 mod tests {
 	use super::*;
 	use hyper::StatusCode;
+	use rstest::rstest;
 
 	struct DummyHandler;
 
@@ -216,6 +217,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_openapi_json_endpoint() {
 		let handler = DummyHandler;
@@ -230,6 +232,7 @@ mod tests {
 		assert!(body_str.contains("3.")); // OpenAPI version (3.0 or 3.1)
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_swagger_docs_endpoint() {
 		let handler = DummyHandler;
@@ -243,6 +246,7 @@ mod tests {
 		assert!(body_str.contains("swagger-ui"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redoc_docs_endpoint() {
 		let handler = DummyHandler;
@@ -256,6 +260,7 @@ mod tests {
 		assert!(body_str.contains("redoc"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delegation_to_inner_handler() {
 		let handler = DummyHandler;
