@@ -76,9 +76,56 @@ jobs:
       - name: Install cargo-workspaces
         run: cargo install cargo-workspaces
 
-      - name: Authenticate to crates.io with OIDC
-        uses: rust-lang/crates-io-auth-action@v1
+      - name: Authenticate to crates.io
         id: auth
+        env:
+          FALLBACK_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Try Trusted Publishing (OIDC) first
+          echo "Attempting Trusted Publishing authentication..."
+
+          # Get OIDC token from GitHub
+          OIDC_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r '.value')
+
+          if [ -n "$OIDC_TOKEN" ] && [ "$OIDC_TOKEN" != "null" ]; then
+            # Exchange OIDC token for crates.io token
+            RESPONSE=$(curl -sS -X POST "https://crates.io/api/v1/trusted_publishing/tokens" \
+              -H "Content-Type: application/json" \
+              -d "{\"jwt\": \"$OIDC_TOKEN\"}" 2>&1)
+
+            TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
+
+            if [ -n "$TOKEN" ]; then
+              echo "✅ Trusted Publishing authentication successful"
+              echo "token=$TOKEN" >> $GITHUB_OUTPUT
+              echo "auth_method=trusted_publishing" >> $GITHUB_OUTPUT
+              exit 0
+            else
+              echo "⚠️ Trusted Publishing token exchange failed"
+              echo "Response: $RESPONSE"
+            fi
+          else
+            echo "⚠️ Failed to get OIDC token from GitHub"
+          fi
+
+          # Fallback to API token
+          echo "Falling back to API token authentication..."
+          if [ -n "$FALLBACK_TOKEN" ]; then
+            echo "✅ Using API token for authentication"
+            echo "token=$FALLBACK_TOKEN" >> $GITHUB_OUTPUT
+            echo "auth_method=api_token" >> $GITHUB_OUTPUT
+          else
+            echo "❌ No authentication method available"
+            echo "Please either:"
+            echo "  1. Configure Trusted Publishing on crates.io for this repository"
+            echo "  2. Set CARGO_REGISTRY_TOKEN secret in GitHub repository settings"
+            exit 1
+          fi
+
+      - name: Display authentication method
+        run: |
+          echo "Authentication method: ${{ steps.auth.outputs.auth_method }}"
 
       - name: Detect crates to publish
         id: detect-crates
