@@ -2,9 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::Datelike;
-use reinhardt_payment::vault::{
-	TokenVault, CardData, Token, TokenInfo, PaymentResult, VaultError,
-};
+use reinhardt_payment::vault::{CardData, PaymentResult, Token, TokenInfo, TokenVault, VaultError};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -76,7 +74,14 @@ impl MockBasisTheoryVault {
 
 	/// Creates a masked display for the card number.
 	fn mask_card_number(number: &str) -> String {
-		let last_four = number.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>();
+		let last_four = number
+			.chars()
+			.rev()
+			.take(4)
+			.collect::<Vec<_>>()
+			.into_iter()
+			.rev()
+			.collect::<String>();
 		format!("XXXX-XXXX-XXXX-{}", last_four)
 	}
 }
@@ -103,9 +108,7 @@ impl TokenVault for MockBasisTheoryVault {
 		let current_year = now.year() as u16;
 
 		if card.exp_year < current_year {
-			return Err(VaultError::InvalidCardData(
-				"Card has expired".to_string(),
-			));
+			return Err(VaultError::InvalidCardData("Card has expired".to_string()));
 		}
 
 		let token = Token {
@@ -114,7 +117,10 @@ impl TokenVault for MockBasisTheoryVault {
 			fingerprint: format!("fp_{}", card.number.len()),
 		};
 
-		self.tokens.write().await.insert(token.id.clone(), token.clone());
+		self.tokens
+			.write()
+			.await
+			.insert(token.id.clone(), token.clone());
 		Ok(token)
 	}
 
@@ -125,9 +131,7 @@ impl TokenVault for MockBasisTheoryVault {
 		_currency: &str,
 	) -> Result<PaymentResult, VaultError> {
 		if *self.fail_next.read().await {
-			return Err(VaultError::ApiError(
-				"Mock configured to fail".to_string(),
-			));
+			return Err(VaultError::ApiError("Mock configured to fail".to_string()));
 		}
 
 		// Check if token exists
@@ -150,9 +154,7 @@ impl TokenVault for MockBasisTheoryVault {
 
 	async fn get_token(&self, token_id: &str) -> Result<TokenInfo, VaultError> {
 		if *self.fail_next.read().await {
-			return Err(VaultError::ApiError(
-				"Mock configured to fail".to_string(),
-			));
+			return Err(VaultError::ApiError("Mock configured to fail".to_string()));
 		}
 
 		let tokens = self.tokens.read().await;
@@ -170,9 +172,7 @@ impl TokenVault for MockBasisTheoryVault {
 
 	async fn delete_token(&self, token_id: &str) -> Result<(), VaultError> {
 		if *self.fail_next.read().await {
-			return Err(VaultError::ApiError(
-				"Mock configured to fail".to_string(),
-			));
+			return Err(VaultError::ApiError("Mock configured to fail".to_string()));
 		}
 
 		let tokens = self.tokens.write().await;
