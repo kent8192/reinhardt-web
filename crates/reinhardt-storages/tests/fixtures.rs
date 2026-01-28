@@ -269,6 +269,14 @@ impl S3TestContainer {
 
 	/// Create S3 storage backend from this container.
 	pub async fn create_backend(&self) -> Arc<dyn StorageBackend> {
+		// SAFETY: Setting environment variables for test-only AWS credentials.
+		// These tests run serially and the env vars are required by aws-config
+		// defaults() credential chain used in S3Storage::new().
+		unsafe {
+			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
+			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+		}
+
 		let config = StorageConfig::S3(reinhardt_storages::config::S3Config {
 			bucket: self.bucket.clone(),
 			region: Some(self.region.clone()),
@@ -283,6 +291,14 @@ impl S3TestContainer {
 
 	/// Create S3 storage backend with prefix from this container.
 	pub async fn create_backend_with_prefix(&self, prefix: &str) -> Arc<dyn StorageBackend> {
+		// SAFETY: Setting environment variables for test-only AWS credentials.
+		// These tests run serially and the env vars are required by aws-config
+		// defaults() credential chain used in S3Storage::new().
+		unsafe {
+			std::env::set_var("AWS_ACCESS_KEY_ID", "test");
+			std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+		}
+
 		let config = StorageConfig::S3(reinhardt_storages::config::S3Config {
 			bucket: self.bucket.clone(),
 			region: Some(self.region.clone()),
