@@ -26,7 +26,7 @@ impl DevelopmentErrorHandler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DevelopmentErrorHandler;
+	/// use reinhardt_utils::staticfiles::DevelopmentErrorHandler;
 	///
 	/// let handler = DevelopmentErrorHandler::new();
 	/// ```
@@ -61,7 +61,7 @@ impl DevelopmentErrorHandler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DevelopmentErrorHandler;
+	/// use reinhardt_utils::staticfiles::DevelopmentErrorHandler;
 	/// use std::io;
 	///
 	/// let handler = DevelopmentErrorHandler::new();
@@ -124,7 +124,7 @@ impl DevelopmentErrorHandler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DevelopmentErrorHandler;
+	/// use reinhardt_utils::staticfiles::DevelopmentErrorHandler;
 	/// use std::io;
 	///
 	/// let handler = DevelopmentErrorHandler::new();

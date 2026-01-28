@@ -21,7 +21,7 @@ impl CssMinifier {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::minify::CssMinifier;
+	/// use reinhardt_utils::staticfiles::processing::minify::CssMinifier;
 	///
 	/// let minifier = CssMinifier::new();
 	/// ```
@@ -38,7 +38,7 @@ impl CssMinifier {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::minify::CssMinifier;
+	/// use reinhardt_utils::staticfiles::processing::minify::CssMinifier;
 	///
 	/// let minifier = CssMinifier::with_level(1);
 	/// ```
@@ -146,7 +146,7 @@ impl JsMinifier {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::minify::JsMinifier;
+	/// use reinhardt_utils::staticfiles::processing::minify::JsMinifier;
 	///
 	/// let minifier = JsMinifier::new();
 	/// ```

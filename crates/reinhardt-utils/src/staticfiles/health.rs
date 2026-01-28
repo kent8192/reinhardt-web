@@ -48,7 +48,7 @@ impl HealthCheckResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckResult;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckResult;
 	///
 	/// let result = HealthCheckResult::healthy("database");
 	/// assert_eq!(result.component, "database");
@@ -67,7 +67,7 @@ impl HealthCheckResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckResult;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckResult;
 	///
 	/// let result = HealthCheckResult::degraded("cache", "High latency detected");
 	/// assert_eq!(result.component, "cache");
@@ -86,7 +86,7 @@ impl HealthCheckResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckResult;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckResult;
 	///
 	/// let result = HealthCheckResult::unhealthy("database", "Connection failed");
 	/// assert_eq!(result.component, "database");
@@ -105,7 +105,7 @@ impl HealthCheckResult {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckResult;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckResult;
 	///
 	/// let result = HealthCheckResult::healthy("api")
 	///     .with_metadata("response_time_ms", "45");
@@ -131,7 +131,7 @@ impl HealthReport {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::{HealthReport, HealthCheckResult};
+	/// use reinhardt_utils::staticfiles::health::{HealthReport, HealthCheckResult};
 	///
 	/// let checks = vec![
 	///     HealthCheckResult::healthy("database"),
@@ -172,7 +172,7 @@ pub trait HealthCheck: Send + Sync {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::{HealthCheck, HealthCheckResult};
+	/// use reinhardt_utils::staticfiles::health::{HealthCheck, HealthCheckResult};
 	/// use async_trait::async_trait;
 	///
 	/// struct DatabaseHealthCheck;
@@ -198,7 +198,7 @@ pub trait DatabaseHealthCheck: HealthCheck {}
 /// # Examples
 ///
 /// ```
-/// use reinhardt_utils::r#static::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
+/// use reinhardt_utils::staticfiles::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
 ///
@@ -230,7 +230,7 @@ impl HealthCheckManager {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckManager;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckManager;
 	///
 	/// let manager = HealthCheckManager::new();
 	/// ```
@@ -245,7 +245,7 @@ impl HealthCheckManager {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
+	/// use reinhardt_utils::staticfiles::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
 	/// use async_trait::async_trait;
 	/// use std::sync::Arc;
 	///
@@ -270,7 +270,7 @@ impl HealthCheckManager {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::HealthCheckManager;
+	/// use reinhardt_utils::staticfiles::health::HealthCheckManager;
 	///
 	/// let manager = HealthCheckManager::new();
 	/// assert_eq!(manager.count(), 0);
@@ -284,7 +284,7 @@ impl HealthCheckManager {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
+	/// use reinhardt_utils::staticfiles::health::{HealthCheckManager, HealthCheck, HealthCheckResult};
 	/// use async_trait::async_trait;
 	/// use std::sync::Arc;
 	///

@@ -17,7 +17,7 @@ pub type StorageFactory = Box<dyn Fn() -> Arc<dyn Storage> + Send + Sync>;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_utils::r#static::storage::{StorageRegistry, FileSystemStorage};
+/// use reinhardt_utils::staticfiles::storage::{StorageRegistry, FileSystemStorage};
 /// use std::sync::Arc;
 /// use std::path::PathBuf;
 ///
@@ -60,8 +60,8 @@ impl StorageRegistry {
 	///
 	/// ```rust,no_run
 	/// # use std::sync::Arc;
-	/// # use reinhardt_utils::r#static::StorageRegistry;
-	/// # use reinhardt_utils::r#static::storage::FileSystemStorage;
+	/// # use reinhardt_utils::staticfiles::StorageRegistry;
+	/// # use reinhardt_utils::staticfiles::storage::FileSystemStorage;
 	/// # let mut registry = StorageRegistry::new();
 	/// registry.register(
 	///     "my-storage",
@@ -162,7 +162,7 @@ impl Default for StorageRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::r#static::{FileSystemStorage, MemoryStorage};
+	use crate::staticfiles::{FileSystemStorage, MemoryStorage};
 	use std::path::PathBuf;
 
 	#[test]

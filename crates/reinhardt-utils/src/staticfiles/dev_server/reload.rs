@@ -34,7 +34,7 @@ impl AutoReload {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::AutoReload;
+	/// use reinhardt_utils::staticfiles::AutoReload;
 	///
 	/// let reload = AutoReload::new();
 	/// ```
@@ -51,7 +51,7 @@ impl AutoReload {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::AutoReload;
+	/// use reinhardt_utils::staticfiles::AutoReload;
 	///
 	/// let reload = AutoReload::new();
 	/// reload.trigger_reload();
@@ -67,7 +67,7 @@ impl AutoReload {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::AutoReload;
+	/// use reinhardt_utils::staticfiles::AutoReload;
 	///
 	/// let reload = AutoReload::new();
 	/// reload.trigger_file_reload("/static/css/main.css".to_string());
@@ -114,7 +114,7 @@ impl AutoReload {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::{AutoReload, WatchEvent};
+	/// use reinhardt_utils::staticfiles::{AutoReload, WatchEvent};
 	/// use std::path::PathBuf;
 	///
 	/// let reload = AutoReload::new();
@@ -163,7 +163,7 @@ impl AutoReloadBuilder {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::AutoReloadBuilder;
+	/// use reinhardt_utils::staticfiles::AutoReloadBuilder;
 	///
 	/// let builder = AutoReloadBuilder::new();
 	/// let reload = builder.build();

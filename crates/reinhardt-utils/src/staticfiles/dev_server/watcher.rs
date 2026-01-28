@@ -39,7 +39,7 @@ impl FileWatcher {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_utils::r#static::FileWatcher;
+	/// use reinhardt_utils::staticfiles::FileWatcher;
 	/// use std::path::PathBuf;
 	///
 	/// #[tokio::main]
@@ -137,7 +137,7 @@ impl FileWatcherBuilder {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::FileWatcherBuilder;
+	/// use reinhardt_utils::staticfiles::FileWatcherBuilder;
 	/// use std::path::PathBuf;
 	///
 	/// let builder = FileWatcherBuilder::new()

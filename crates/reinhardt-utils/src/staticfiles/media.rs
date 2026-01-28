@@ -11,7 +11,7 @@
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_utils::r#static::media::Media;
+/// use reinhardt_utils::staticfiles::media::Media;
 ///
 /// let mut media = Media::new();
 /// media.add_css("all", "css/forms.css");
@@ -44,7 +44,7 @@ impl Media {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_utils::r#static::media::Media;
+	/// # use reinhardt_utils::staticfiles::media::Media;
 	/// let mut media = Media::new();
 	/// media.add_css("all", "css/style.css");
 	/// media.add_css("print", "css/print.css");
@@ -61,7 +61,7 @@ impl Media {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_utils::r#static::media::Media;
+	/// # use reinhardt_utils::staticfiles::media::Media;
 	/// let mut media = Media::new();
 	/// media.add_js("js/script.js");
 	/// ```
@@ -76,7 +76,7 @@ impl Media {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_utils::r#static::media::Media;
+	/// # use reinhardt_utils::staticfiles::media::Media;
 	/// let mut media1 = Media::new();
 	/// media1.add_css("all", "css/base.css");
 	///
@@ -111,7 +111,7 @@ impl Media {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_utils::r#static::media::Media;
+	/// # use reinhardt_utils::staticfiles::media::Media;
 	/// let mut media = Media::new();
 	/// media.add_css("all", "/static/css/style.css");
 	///
@@ -147,7 +147,7 @@ impl Media {
 	/// # Example
 	///
 	/// ```rust
-	/// # use reinhardt_utils::r#static::media::Media;
+	/// # use reinhardt_utils::staticfiles::media::Media;
 	/// let mut media = Media::new();
 	/// media.add_js("/static/js/app.js");
 	///
@@ -189,7 +189,7 @@ impl Media {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_utils::r#static::media::{Media, HasMedia};
+/// use reinhardt_utils::staticfiles::media::{Media, HasMedia};
 ///
 /// struct DatePickerWidget;
 ///

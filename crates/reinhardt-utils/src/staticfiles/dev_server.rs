@@ -34,7 +34,7 @@ impl DevServerConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DevServerConfig;
+	/// use reinhardt_utils::staticfiles::DevServerConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = DevServerConfig::new()

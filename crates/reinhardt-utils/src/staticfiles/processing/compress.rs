@@ -31,7 +31,7 @@ impl GzipCompressor {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::GzipCompressor;
+	/// use reinhardt_utils::staticfiles::processing::compress::GzipCompressor;
 	///
 	/// let compressor = GzipCompressor::new();
 	/// ```
@@ -48,7 +48,7 @@ impl GzipCompressor {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::GzipCompressor;
+	/// use reinhardt_utils::staticfiles::processing::compress::GzipCompressor;
 	///
 	/// let compressor = GzipCompressor::with_level(9);
 	/// ```
@@ -107,7 +107,7 @@ impl BrotliCompressor {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::BrotliCompressor;
+	/// use reinhardt_utils::staticfiles::processing::compress::BrotliCompressor;
 	///
 	/// let compressor = BrotliCompressor::new();
 	/// ```
@@ -128,7 +128,7 @@ impl BrotliCompressor {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::BrotliCompressor;
+	/// use reinhardt_utils::staticfiles::processing::compress::BrotliCompressor;
 	///
 	/// let compressor = BrotliCompressor::with_settings(9, 20);
 	/// ```
@@ -222,7 +222,7 @@ impl CompressionConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::CompressionConfig;
+	/// use reinhardt_utils::staticfiles::processing::compress::CompressionConfig;
 	///
 	/// let config = CompressionConfig::new();
 	/// assert!(config.gzip);
@@ -237,7 +237,7 @@ impl CompressionConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::compress::CompressionConfig;
+	/// use reinhardt_utils::staticfiles::processing::compress::CompressionConfig;
 	///
 	/// let config = CompressionConfig::new().with_gzip(true);
 	/// assert!(config.gzip);
