@@ -18,6 +18,42 @@ include = [
 [lib]
 name = "reinhardt"
 
+[package.metadata.docs.rs]
+# docs.rs ビルド用の features 設定
+# ドキュメント肥大化を防ぐため、必要最小限の features のみ有効化
+features = [
+    # コア機能
+    "core",
+    "di",
+    # REST API（最小構成）
+    "rest",
+    # データベース（PostgreSQL のみ）
+    "database",
+    "db-postgres",
+    # 認証（JWT のみ）
+    "auth",
+    "auth-jwt",
+    "argon2-hasher",  # DefaultUser, Argon2Hasher 用
+    "auth-middleware",  # HttpSessionConfig, SessionMiddleware 用
+    # セッション
+    "sessions",
+    # ミドルウェア
+    "middleware",
+    "middleware-cors",
+]
+
+# デフォルト features を無効化（78個の features がデフォルト有効になっているため）
+no-default-features = true
+
+# ビルドターゲットの制限（docs.rs の制限は10ターゲット）
+cargo-args = ["--no-deps"]
+
+# ビルド対象のターゲット（単一ターゲットのみ）
+targets = ["x86_64-unknown-linux-gnu"]
+
+# docs.rs 専用の cfg 属性を定義
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["full"]
 
@@ -66,6 +102,8 @@ api = [
   "reinhardt-views/viewsets",
 ]
 auth = ["reinhardt-auth"]
+argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
+auth-middleware = ["auth", "reinhardt-auth/middleware"]
 admin = [
   "reinhardt-admin",
   "reinhardt-admin/adapters",

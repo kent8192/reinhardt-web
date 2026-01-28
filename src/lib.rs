@@ -600,12 +600,14 @@ pub use reinhardt_urls::routers::Path as ClientPath;
 // Re-export auth
 #[cfg(all(feature = "auth", not(target_arch = "wasm32")))]
 pub use reinhardt_auth::{
-	AllowAny, AnonymousUser, AuthBackend, BaseUser, CurrentUser, DefaultUser, FullUser,
+	AllowAny, AnonymousUser, AuthBackend, BaseUser, CurrentUser, FullUser,
 	IsAdminUser, IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, SimpleUser, User,
 };
 
-#[cfg(all(feature = "auth", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(feature = "argon2-hasher")))]
+#[cfg(all(feature = "auth", feature = "argon2-hasher", not(target_arch = "wasm32")))]
+pub use reinhardt_auth::DefaultUser;
+
+#[cfg(all(feature = "auth", feature = "argon2-hasher", not(target_arch = "wasm32")))]
 pub use reinhardt_auth::Argon2Hasher;
 
 #[cfg(all(feature = "auth-jwt", not(target_arch = "wasm32")))]
