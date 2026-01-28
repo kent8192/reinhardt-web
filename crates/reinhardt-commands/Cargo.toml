@@ -56,7 +56,7 @@ tokio-rustls = "0.26"
 hyper-rustls = { version = "0.27", features = ["http1", "http2"] }
 rustls-pemfile = "2.0"
 rcgen = "0.14.5"
-reinhardt-utils = {workspace = true, features = ["utils-core"]}
+reinhardt-utils = {workspace = true, features = ["utils-core", "static"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 
 [target.'cfg(unix)'.dependencies]
