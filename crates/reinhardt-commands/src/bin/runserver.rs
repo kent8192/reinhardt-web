@@ -18,7 +18,8 @@ use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tera::{Context, Tera};
+use reinhardt_commands::WelcomePage;
+use reinhardt_pages::ssr::SsrRenderer;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
@@ -197,23 +198,9 @@ async fn handle_request(req: Request<Incoming>) -> Result<Response<Full<Bytes>>,
 
 /// Serve the welcome page
 fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
-	let template_str = include_str!("../../templates/welcome.tpl");
-
-	let mut tera = Tera::default();
-	tera.add_raw_template("welcome.tpl", template_str)
-		.unwrap_or_else(|e| {
-			eprintln!("Error adding template: {}", e);
-		});
-
-	let mut context = Context::new();
-	context.insert("version", env!("CARGO_PKG_VERSION"));
-
-	let html = tera.render("welcome.tpl", &context).unwrap_or_else(|e| {
-		format!(
-			"<html><body><h1>Error rendering template: {}</h1></body></html>",
-			e
-		)
-	});
+	let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page(&component);
 
 	Ok(Response::builder()
 		.status(StatusCode::OK)
