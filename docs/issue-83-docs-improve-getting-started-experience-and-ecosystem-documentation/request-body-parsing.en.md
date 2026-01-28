@@ -311,6 +311,6 @@ async fn update_user(
 
 ## See Also
 
-- [Request API](../api-reference/request.en.md)
+- [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response Serialization](./response-serialization.en.md)
-- [Path Parameters](../api-reference/router.en.md)
+- [Path Parameters](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)

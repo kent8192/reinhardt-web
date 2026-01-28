@@ -247,6 +247,6 @@ let router = ServerRouter::new()
 
 ## See Also
 
-- [Router API](../api-reference/router.en.md)
+- [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
 - [Serving Static Files](../cookbook/static-files.en.md)
 - [Middleware Creation](../cookbook/middleware-creation.en.md)

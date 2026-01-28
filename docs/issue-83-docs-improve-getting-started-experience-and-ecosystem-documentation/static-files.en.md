@@ -305,4 +305,4 @@ let router = ServerRouter::new()
 
 - [CORS Configuration](./cors.en.md)
 - [Middleware Creation](./middleware-creation.en.md)
-- [Media Files](../api-reference/#media)
+- [Media Files](https://docs.rs/reinhardt-utils/latest/reinhardt_utils/static/index.html)
