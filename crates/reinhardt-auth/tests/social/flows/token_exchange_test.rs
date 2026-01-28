@@ -1,7 +1,7 @@
 //! Token exchange flow tests
 
-use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::core::OAuthProvider;
+use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::core::token::TokenResponse;
 use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
 use rstest::*;

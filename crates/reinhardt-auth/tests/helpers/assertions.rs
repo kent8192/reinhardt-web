@@ -8,11 +8,11 @@ use reinhardt_auth::social::core::{
 use reinhardt_auth::social::flow::StateData;
 
 /// Asserts that a token response contains expected fields
-pub fn assert_token_response_valid(
-	response: &TokenResponse,
-	expected_scopes: &[&str],
-) {
-	assert!(!response.access_token.is_empty(), "access_token must not be empty");
+pub fn assert_token_response_valid(response: &TokenResponse, expected_scopes: &[&str]) {
+	assert!(
+		!response.access_token.is_empty(),
+		"access_token must not be empty"
+	);
 	assert_eq!(response.token_type, "Bearer", "token_type must be Bearer");
 
 	if let Some(scope) = &response.scope {
@@ -29,11 +29,7 @@ pub fn assert_token_response_valid(
 }
 
 /// Asserts that an ID token is valid
-pub fn assert_id_token_valid(
-	token: &IdToken,
-	expected_issuer: &str,
-	expected_audience: &str,
-) {
+pub fn assert_id_token_valid(token: &IdToken, expected_issuer: &str, expected_audience: &str) {
 	assert_eq!(token.iss, expected_issuer, "Issuer mismatch");
 	assert_eq!(token.aud, expected_audience, "Audience mismatch");
 	assert!(token.exp > token.iat, "Expiration must be after issued-at");
@@ -43,12 +39,9 @@ pub fn assert_id_token_valid(
 }
 
 /// Asserts that PKCE challenge is correctly calculated
-pub fn assert_pkce_challenge_valid(
-	verifier: &str,
-	challenge: &str,
-) {
-	use sha2::{Digest, Sha256};
+pub fn assert_pkce_challenge_valid(verifier: &str, challenge: &str) {
 	use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+	use sha2::{Digest, Sha256};
 
 	let mut hasher = Sha256::new();
 	hasher.update(verifier.as_bytes());
@@ -73,10 +66,7 @@ pub fn assert_state_not_expired(data: &StateData) {
 }
 
 /// Asserts that claims contain expected email
-pub fn assert_claims_has_email(
-	claims: &StandardClaims,
-	email: &str,
-) {
+pub fn assert_claims_has_email(claims: &StandardClaims, email: &str) {
 	assert_eq!(
 		claims.email.as_ref().unwrap(),
 		email,
@@ -87,13 +77,9 @@ pub fn assert_claims_has_email(
 }
 
 /// Asserts that authorization URL contains required parameters
-pub fn assert_authorization_url_valid(
-	url: &str,
-	expected_params: &[(&str, &str)],
-) {
+pub fn assert_authorization_url_valid(url: &str, expected_params: &[(&str, &str)]) {
 	let parsed: url::Url = url.parse().expect("Invalid URL");
-	let query_pairs: std::collections::HashMap<_, _> =
-		parsed.query_pairs().into_iter().collect();
+	let query_pairs: std::collections::HashMap<_, _> = parsed.query_pairs().into_iter().collect();
 
 	for (key, value) in expected_params {
 		assert_eq!(
@@ -139,7 +125,11 @@ mod tests {
 
 		assert_authorization_url_valid(
 			url,
-			&[("client_id", "test"), ("response_type", "code"), ("state", "test_state")],
+			&[
+				("client_id", "test"),
+				("response_type", "code"),
+				("state", "test_state"),
+			],
 		);
 	}
 }

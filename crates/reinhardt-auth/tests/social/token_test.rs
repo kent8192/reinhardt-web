@@ -1,7 +1,7 @@
 //! Token handling tests
 
-use reinhardt_auth::social::core::token::{OAuthToken, TokenResponse};
 use chrono::{Duration, Utc};
+use reinhardt_auth::social::core::token::{OAuthToken, TokenResponse};
 use rstest::*;
 
 #[test]
@@ -20,7 +20,10 @@ fn test_token_response_from_response() {
 	assert_eq!(response.access_token, "test_access_token");
 	assert_eq!(response.token_type, "Bearer");
 	assert_eq!(response.expires_in, Some(3600));
-	assert_eq!(response.refresh_token, Some("test_refresh_token".to_string()));
+	assert_eq!(
+		response.refresh_token,
+		Some("test_refresh_token".to_string())
+	);
 }
 
 #[test]
@@ -143,7 +146,12 @@ fn test_token_response_empty_scope() {
 	};
 
 	// Act
-	let scopes: Vec<&str> = response.scope.as_ref().unwrap().split_whitespace().collect();
+	let scopes: Vec<&str> = response
+		.scope
+		.as_ref()
+		.unwrap()
+		.split_whitespace()
+		.collect();
 
 	// Assert
 	assert!(scopes.is_empty());

@@ -49,7 +49,10 @@ async fn test_apple_oidc_discovery_url() {
 
 	// Assert
 	assert!(oidc.discovery_url.contains("appleid.apple.com"));
-	assert!(oidc.discovery_url.contains(".well-known/openid-configuration"));
+	assert!(
+		oidc.discovery_url
+			.contains(".well-known/openid-configuration")
+	);
 }
 
 #[tokio::test]

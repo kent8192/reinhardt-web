@@ -82,9 +82,18 @@ async fn test_state_cleanup_expired() {
 	store.store(new_data).await.unwrap();
 
 	// Assert
-	assert!(store.retrieve("valid").await.is_ok(), "Valid state should exist");
-	assert!(store.retrieve("new").await.is_ok(), "New state should exist");
-	assert!(store.retrieve("expired").await.is_err(), "Expired state should be cleaned up");
+	assert!(
+		store.retrieve("valid").await.is_ok(),
+		"Valid state should exist"
+	);
+	assert!(
+		store.retrieve("new").await.is_ok(),
+		"New state should exist"
+	);
+	assert!(
+		store.retrieve("expired").await.is_err(),
+		"Expired state should be cleaned up"
+	);
 }
 
 #[tokio::test]
@@ -124,12 +133,7 @@ async fn test_state_custom_ttl() {
 	// Arrange
 	let store = InMemoryStateStore::new();
 	let custom_ttl = Duration::minutes(30);
-	let data = StateData::with_ttl(
-		"custom_ttl_state".to_string(),
-		None,
-		None,
-		custom_ttl,
-	);
+	let data = StateData::with_ttl("custom_ttl_state".to_string(), None, None, custom_ttl);
 
 	// Act
 	store.store(data).await.unwrap();

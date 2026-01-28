@@ -1,7 +1,7 @@
 //! Mock OAuth2/OIDC server for testing
 
-use hyper::{body::Incoming, Request, Response};
 use hyper::{Method, StatusCode};
+use hyper::{Request, Response, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_auth::social::core::{
 	claims::{IdToken, StandardClaims},
@@ -29,7 +29,9 @@ impl Default for MockConfig {
 			token_endpoint: "http://localhost:9999/token".into(),
 			userinfo_endpoint: Some("http://localhost:9999/userinfo".into()),
 			jwks_endpoint: Some("http://localhost:9999/jwks".into()),
-			discovery_endpoint: Some("http://localhost:9999/.well-known/openid-configuration".into()),
+			discovery_endpoint: Some(
+				"http://localhost:9999/.well-known/openid-configuration".into(),
+			),
 		}
 	}
 }
@@ -90,12 +92,11 @@ impl MockOAuth2Server {
 					let state = state.clone();
 
 					tokio::spawn(async move {
-						let mut service = hyper::service::service_fn(move |req: Request<Incoming>| {
-							let state = state.clone();
-							async move {
-								handle_request(req, state).await
-							}
-						});
+						let mut service =
+							hyper::service::service_fn(move |req: Request<Incoming>| {
+								let state = state.clone();
+								async move { handle_request(req, state).await }
+							});
 
 						let _ = hyper::server::conn::http1::Builder::new()
 							.serve_connection(io, &mut service)
@@ -179,7 +180,10 @@ impl MockOAuth2Server {
 
 	/// Get discovery URL
 	pub fn discovery_url(&self) -> Option<String> {
-		Some(format!("http://{}/.well-known/openid-configuration", self.local_addr))
+		Some(format!(
+			"http://{}/.well-known/openid-configuration",
+			self.local_addr
+		))
 	}
 
 	/// Get the server port
@@ -191,9 +195,7 @@ impl MockOAuth2Server {
 impl Default for MockOAuth2Server {
 	fn default() -> Self {
 		tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current().block_on(async {
-				Self::new().await
-			})
+			tokio::runtime::Handle::current().block_on(async { Self::new().await })
 		})
 	}
 }
@@ -235,8 +237,14 @@ async fn handle_request(
 	match (method, path) {
 		// Authorization endpoint
 		(&Method::GET, "/authorize") => {
-			let auth_code = state_guard.auth_code.clone().unwrap_or_else(|| "test_code".to_string());
-			let redirect_uri = format!("{}?code={}&state=test_state", state_guard.config.redirect_uri, auth_code);
+			let auth_code = state_guard
+				.auth_code
+				.clone()
+				.unwrap_or_else(|| "test_code".to_string());
+			let redirect_uri = format!(
+				"{}?code={}&state=test_state",
+				state_guard.config.redirect_uri, auth_code
+			);
 
 			// Return 302 redirect
 			Ok(Response::builder()
@@ -248,14 +256,18 @@ async fn handle_request(
 
 		// Token endpoint
 		(&Method::POST, "/token") => {
-			let token_response = state_guard.token_response.clone().unwrap_or_else(|| TokenResponse {
-				access_token: "test_access_token".to_string(),
-				token_type: "Bearer".to_string(),
-				expires_in: Some(3600),
-				refresh_token: Some("test_refresh_token".to_string()),
-				scope: Some("openid email profile".to_string()),
-				id_token: None,
-			});
+			let token_response =
+				state_guard
+					.token_response
+					.clone()
+					.unwrap_or_else(|| TokenResponse {
+						access_token: "test_access_token".to_string(),
+						token_type: "Bearer".to_string(),
+						expires_in: Some(3600),
+						refresh_token: Some("test_refresh_token".to_string()),
+						scope: Some("openid email profile".to_string()),
+						id_token: None,
+					});
 
 			let json = serde_json::to_string(&token_response).unwrap();
 			Ok(Response::builder()
@@ -267,17 +279,21 @@ async fn handle_request(
 
 		// UserInfo endpoint
 		(&Method::GET, "/userinfo") => {
-			let userinfo = state_guard.userinfo_response.clone().unwrap_or_else(|| StandardClaims {
-				sub: "test_user".to_string(),
-				email: Some("test@example.com".to_string()),
-				email_verified: Some(true),
-				name: Some("Test User".to_string()),
-				given_name: Some("Test".to_string()),
-				family_name: Some("User".to_string()),
-				picture: None,
-				locale: None,
-				additional_claims: HashMap::new(),
-			});
+			let userinfo =
+				state_guard
+					.userinfo_response
+					.clone()
+					.unwrap_or_else(|| StandardClaims {
+						sub: "test_user".to_string(),
+						email: Some("test@example.com".to_string()),
+						email_verified: Some(true),
+						name: Some("Test User".to_string()),
+						given_name: Some("Test".to_string()),
+						family_name: Some("User".to_string()),
+						picture: None,
+						locale: None,
+						additional_claims: HashMap::new(),
+					});
 
 			let json = serde_json::to_string(&userinfo).unwrap();
 			Ok(Response::builder()
@@ -303,7 +319,8 @@ async fn handle_request(
 		// Discovery endpoint
 		(&Method::GET, "/.well-known/openid-configuration") => {
 			let discovery = state_guard.discovery_response.clone().unwrap_or_else(|| {
-				format!(r#"{{
+				format!(
+					r#"{{
 					"issuer": "http://localhost:{}",
 					"authorization_endpoint": "http://localhost:{}/authorize",
 					"token_endpoint": "http://localhost:{}/token",
@@ -314,11 +331,38 @@ async fn handle_request(
 					"grant_types_supported": ["authorization_code"],
 					"subject_types_supported": ["public"],
 					"id_token_signing_alg_values_supported": ["RS256"]
-				}}"#, state_guard.config.authorization_endpoint.split(':').nth(2).unwrap_or("9999"),
-				state_guard.config.authorization_endpoint.split(':').nth(2).unwrap_or("9999"),
-				state_guard.config.authorization_endpoint.split(':').nth(2).unwrap_or("9999"),
-				state_guard.config.authorization_endpoint.split(':').nth(2).unwrap_or("9999"),
-				state_guard.config.authorization_endpoint.split(':').nth(2).unwrap_or("9999"))
+				}}"#,
+					state_guard
+						.config
+						.authorization_endpoint
+						.split(':')
+						.nth(2)
+						.unwrap_or("9999"),
+					state_guard
+						.config
+						.authorization_endpoint
+						.split(':')
+						.nth(2)
+						.unwrap_or("9999"),
+					state_guard
+						.config
+						.authorization_endpoint
+						.split(':')
+						.nth(2)
+						.unwrap_or("9999"),
+					state_guard
+						.config
+						.authorization_endpoint
+						.split(':')
+						.nth(2)
+						.unwrap_or("9999"),
+					state_guard
+						.config
+						.authorization_endpoint
+						.split(':')
+						.nth(2)
+						.unwrap_or("9999")
+				)
 			});
 
 			Ok(Response::builder()

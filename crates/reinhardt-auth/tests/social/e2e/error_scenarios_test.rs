@@ -1,8 +1,8 @@
 //! Error scenario tests
 
-use reinhardt_auth::social::core::{config::ProviderConfig, OAuthProvider, SocialAuthError};
-use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
+use reinhardt_auth::social::core::{OAuthProvider, SocialAuthError, config::ProviderConfig};
 use reinhardt_auth::social::flow::{InMemoryStateStore, StateStore};
+use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
 use rstest::*;
 
 #[tokio::test]
@@ -171,19 +171,17 @@ async fn test_error_unauthorized_access() {
 				Ok(_) => {
 					assert!(true, "Token exchange succeeded");
 				}
-				Err(e) => {
-					match e {
-						SocialAuthError::Provider(_) => {
-							assert!(true, "Provider error returned");
-						}
-						SocialAuthError::Network(_) => {
-							assert!(true, "Network error returned");
-						}
-						_ => {
-							assert!(true, "Other error type");
-						}
+				Err(e) => match e {
+					SocialAuthError::Provider(_) => {
+						assert!(true, "Provider error returned");
 					}
-				}
+					SocialAuthError::Network(_) => {
+						assert!(true, "Network error returned");
+					}
+					_ => {
+						assert!(true, "Other error type");
+					}
+				},
 			}
 		}
 		Err(_) => {
@@ -233,11 +231,8 @@ async fn test_error_recovery_flow() {
 
 	// Recovery - Create new state and proceed
 	let new_state = "recovery_state";
-	let state_data = reinhardt_auth::social::flow::StateData::new(
-		new_state.to_string(),
-		None,
-		None,
-	);
+	let state_data =
+		reinhardt_auth::social::flow::StateData::new(new_state.to_string(), None, None);
 	let store_result = state_store.store(state_data).await;
 
 	// Assert - Recovery successful

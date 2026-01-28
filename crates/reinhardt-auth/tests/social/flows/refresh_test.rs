@@ -1,7 +1,7 @@
 //! Token refresh flow tests
 
-use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::core::OAuthProvider;
+use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
 use rstest::*;
 
@@ -20,9 +20,7 @@ async fn test_token_refresh_github() {
 	// Assert
 	match result {
 		Ok(provider) => {
-			let refresh_result = provider
-				.refresh_token("test_refresh_token")
-				.await;
+			let refresh_result = provider.refresh_token("test_refresh_token").await;
 
 			match refresh_result {
 				Ok(_response) => {
@@ -54,9 +52,7 @@ async fn test_token_refresh_google_oidc() {
 	// Assert
 	match result {
 		Ok(provider) => {
-			let refresh_result = provider
-				.refresh_token("test_refresh_token")
-				.await;
+			let refresh_result = provider.refresh_token("test_refresh_token").await;
 
 			match refresh_result {
 				Ok(_response) => {
@@ -88,9 +84,7 @@ async fn test_token_refresh_error_handling() {
 	// Assert
 	match result {
 		Ok(provider) => {
-			let refresh_result = provider
-				.refresh_token("invalid_refresh_token")
-				.await;
+			let refresh_result = provider.refresh_token("invalid_refresh_token").await;
 
 			// Should handle error gracefully
 			match refresh_result {

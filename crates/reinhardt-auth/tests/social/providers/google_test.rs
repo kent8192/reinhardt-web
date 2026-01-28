@@ -46,7 +46,10 @@ async fn test_google_oidc_discovery_url() {
 
 	// Assert
 	assert!(oidc.discovery_url.contains("accounts.google.com"));
-	assert!(oidc.discovery_url.contains(".well-known/openid-configuration"));
+	assert!(
+		oidc.discovery_url
+			.contains(".well-known/openid-configuration")
+	);
 }
 
 #[tokio::test]

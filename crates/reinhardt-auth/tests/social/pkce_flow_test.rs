@@ -10,8 +10,16 @@ fn test_pkce_verifier_valid_length() {
 
 	// Assert
 	let len = verifier.as_str().len();
-	assert!(len >= 43, "Verifier must be at least 43 characters, got {}", len);
-	assert!(len <= 128, "Verifier must be at most 128 characters, got {}", len);
+	assert!(
+		len >= 43,
+		"Verifier must be at least 43 characters, got {}",
+		len
+	);
+	assert!(
+		len <= 128,
+		"Verifier must be at most 128 characters, got {}",
+		len
+	);
 }
 
 #[test]
@@ -72,8 +80,16 @@ fn test_pkce_pairs_are_unique() {
 	let (verifier2, challenge2) = PkceFlow::generate();
 
 	// Assert
-	assert_ne!(verifier1.as_str(), verifier2.as_str(), "Verifiers must be unique");
-	assert_ne!(challenge1.as_str(), challenge2.as_str(), "Challenges must be unique");
+	assert_ne!(
+		verifier1.as_str(),
+		verifier2.as_str(),
+		"Verifiers must be unique"
+	);
+	assert_ne!(
+		challenge1.as_str(),
+		challenge2.as_str(),
+		"Challenges must be unique"
+	);
 }
 
 #[test]

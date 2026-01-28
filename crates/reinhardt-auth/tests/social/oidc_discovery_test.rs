@@ -20,10 +20,7 @@ async fn test_discovery_fetch_from_url() {
 	// In test environment without mocks, we expect an error
 	match result {
 		Ok(discovery) => {
-			assert_eq!(
-				discovery.issuer,
-				"https://accounts.google.com"
-			);
+			assert_eq!(discovery.issuer, "https://accounts.google.com");
 			assert!(!discovery.authorization_endpoint.is_empty());
 		}
 		Err(_) => {

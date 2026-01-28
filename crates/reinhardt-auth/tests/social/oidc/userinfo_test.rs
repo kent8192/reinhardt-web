@@ -2,8 +2,8 @@
 
 use reinhardt_auth::social::core::claims::StandardClaims;
 use reinhardt_auth::social::oidc::UserInfoClient;
-use std::collections::HashMap;
 use rstest::*;
+use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_userinfo_retrieve_claims() {
@@ -51,7 +51,10 @@ fn test_userinfo_parse_standard_claims() {
 	assert_eq!(claims.name, Some("Test User".to_string()));
 	assert_eq!(claims.given_name, Some("Test".to_string()));
 	assert_eq!(claims.family_name, Some("User".to_string()));
-	assert_eq!(claims.picture, Some("https://example.com/photo.jpg".to_string()));
+	assert_eq!(
+		claims.picture,
+		Some("https://example.com/photo.jpg".to_string())
+	);
 }
 
 #[test]
@@ -81,7 +84,10 @@ fn test_userinfo_extract_email_and_profile() {
 fn test_userinfo_handle_provider_specific_claims() {
 	// Arrange
 	let mut additional = HashMap::new();
-	additional.insert("custom_field".to_string(), serde_json::json!("custom_value"));
+	additional.insert(
+		"custom_field".to_string(),
+		serde_json::json!("custom_value"),
+	);
 
 	let json = r#"{
 		"sub": "user123",

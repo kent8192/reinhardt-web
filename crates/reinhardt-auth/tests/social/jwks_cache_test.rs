@@ -1,10 +1,10 @@
 //! JWKS cache integration tests
 
 use reinhardt_auth::social::oidc::{Jwk, JwkSet, JwksCache};
+use rstest::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use rstest::*;
 
 #[test]
 fn test_jwk_set_structure() {
@@ -185,9 +185,7 @@ fn test_jwks_serialization() {
 		y: None,
 	};
 
-	let jwks = JwkSet {
-		keys: vec![jwk],
-	};
+	let jwks = JwkSet { keys: vec![jwk] };
 
 	// Act
 	let json = serde_json::to_string(&jwks).unwrap();

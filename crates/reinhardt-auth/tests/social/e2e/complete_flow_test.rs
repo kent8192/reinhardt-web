@@ -1,9 +1,9 @@
 //! End-to-end flow tests
 
-use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::core::OAuthProvider;
+use reinhardt_auth::social::core::config::ProviderConfig;
+use reinhardt_auth::social::flow::{InMemoryStateStore, PkceFlow, StateStore};
 use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
-use reinhardt_auth::social::flow::{InMemoryStateStore, StateStore, PkceFlow};
 use rstest::*;
 
 #[tokio::test]

@@ -27,7 +27,10 @@ fn test_error_token_validation() {
 	let error = SocialAuthError::TokenValidation("Invalid signature".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Token validation failed: Invalid signature");
+	assert_eq!(
+		error.to_string(),
+		"Token validation failed: Invalid signature"
+	);
 }
 
 #[test]
@@ -45,7 +48,10 @@ fn test_error_discovery() {
 	let error = SocialAuthError::Discovery("Discovery document not found".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Discovery error: Discovery document not found");
+	assert_eq!(
+		error.to_string(),
+		"Discovery error: Discovery document not found"
+	);
 }
 
 #[test]
@@ -54,7 +60,10 @@ fn test_error_state_validation() {
 	let error = SocialAuthError::StateValidation("Invalid state parameter".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "State validation failed: Invalid state parameter");
+	assert_eq!(
+		error.to_string(),
+		"State validation failed: Invalid state parameter"
+	);
 }
 
 #[test]
@@ -63,7 +72,10 @@ fn test_error_pkce_validation() {
 	let error = SocialAuthError::PkceValidation("Invalid code verifier".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "PKCE validation failed: Invalid code verifier");
+	assert_eq!(
+		error.to_string(),
+		"PKCE validation failed: Invalid code verifier"
+	);
 }
 
 #[test]
@@ -99,7 +111,10 @@ fn test_error_token_exchange_error() {
 	let error = SocialAuthError::TokenExchangeError("Invalid authorization code".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Token exchange error: Invalid authorization code");
+	assert_eq!(
+		error.to_string(),
+		"Token exchange error: Invalid authorization code"
+	);
 }
 
 #[test]
@@ -108,7 +123,10 @@ fn test_error_token_refresh_error() {
 	let error = SocialAuthError::TokenRefreshError("Refresh token expired".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Token refresh error: Refresh token expired");
+	assert_eq!(
+		error.to_string(),
+		"Token refresh error: Refresh token expired"
+	);
 }
 
 #[test]
@@ -184,7 +202,10 @@ fn test_error_not_supported() {
 	let error = SocialAuthError::NotSupported("UserInfo endpoint not supported".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Not supported: UserInfo endpoint not supported");
+	assert_eq!(
+		error.to_string(),
+		"Not supported: UserInfo endpoint not supported"
+	);
 }
 
 #[test]
@@ -220,5 +241,8 @@ fn test_error_invalid_configuration() {
 	let error = SocialAuthError::InvalidConfiguration("Invalid redirect URI".to_string());
 
 	// Assert
-	assert_eq!(error.to_string(), "Invalid configuration: Invalid redirect URI");
+	assert_eq!(
+		error.to_string(),
+		"Invalid configuration: Invalid redirect URI"
+	);
 }

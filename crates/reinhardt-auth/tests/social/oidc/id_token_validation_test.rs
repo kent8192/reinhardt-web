@@ -1,8 +1,8 @@
 //! ID token validation tests
 
+use chrono::{Duration, Utc};
 use reinhardt_auth::social::core::claims::IdToken;
 use reinhardt_auth::social::oidc::IdTokenValidator;
-use chrono::{Utc, Duration};
 use rstest::*;
 
 #[test]
@@ -159,7 +159,10 @@ fn test_id_token_reject_expired() {
 	};
 
 	// Assert
-	assert!(token.exp < Utc::now().timestamp(), "Token should be expired");
+	assert!(
+		token.exp < Utc::now().timestamp(),
+		"Token should be expired"
+	);
 }
 
 #[test]

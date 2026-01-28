@@ -1,7 +1,7 @@
 //! Authorization flow tests
 
-use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::core::OAuthProvider;
+use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
 use rstest::*;
 
@@ -55,7 +55,9 @@ async fn test_authorization_url_generation_google() {
 	// Assert
 	match result {
 		Ok(provider) => {
-			let url_result = provider.authorization_url("test_state", Some("test_nonce"), None).await;
+			let url_result = provider
+				.authorization_url("test_state", Some("test_nonce"), None)
+				.await;
 
 			match url_result {
 				Ok(url) => {

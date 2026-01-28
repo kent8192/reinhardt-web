@@ -54,7 +54,10 @@ fn test_google_config_is_oidc() {
 	// Assert
 	assert!(config.oidc.is_some(), "Google should use OIDC");
 	assert!(config.oauth2.is_none(), "Google should not use OAuth2");
-	assert!(config.oidc.unwrap().use_nonce, "OIDC should use nonce by default");
+	assert!(
+		config.oidc.unwrap().use_nonce,
+		"OIDC should use nonce by default"
+	);
 }
 
 #[test]
@@ -170,12 +173,15 @@ fn test_oauth2_config_endpoints() {
 fn test_oidc_config_discovery_url() {
 	// Arrange
 	let oidc_config = OIDCConfig {
-		discovery_url: "https://accounts.google.com/.well-known/openid-configuration"
-			.to_string(),
+		discovery_url: "https://accounts.google.com/.well-known/openid-configuration".to_string(),
 		use_nonce: true,
 	};
 
 	// Assert
-	assert!(oidc_config.discovery_url.contains(".well-known/openid-configuration"));
+	assert!(
+		oidc_config
+			.discovery_url
+			.contains(".well-known/openid-configuration")
+	);
 	assert!(oidc_config.use_nonce);
 }

@@ -1,9 +1,9 @@
 //! Claims parsing tests
 
 use reinhardt_auth::social::core::claims::{IdToken, StandardClaims};
+use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
-use rstest::*;
 
 #[test]
 fn test_id_token_serialize() {
@@ -129,7 +129,10 @@ fn test_standard_claims_optional_fields() {
 fn test_standard_claims_with_additional_claims() {
 	// Arrange
 	let mut additional = HashMap::new();
-	additional.insert("custom_field".to_string(), serde_json::json!("custom_value"));
+	additional.insert(
+		"custom_field".to_string(),
+		serde_json::json!("custom_value"),
+	);
 
 	let claims = StandardClaims {
 		sub: "user123".to_string(),
@@ -160,7 +163,7 @@ fn test_id_token_validation_timestamps() {
 		iss: "https://accounts.google.com".to_string(),
 		aud: "client_id".to_string(),
 		exp: now + 3600, // Expires in 1 hour
-		iat: now, // Issued now
+		iat: now,        // Issued now
 		nonce: None,
 		email: None,
 		email_verified: None,
