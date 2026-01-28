@@ -1,13 +1,15 @@
 //! Integration tests for S3 storage backend using LocalStack.
 
-use crate::fixtures::{TestFile, s3_backend, s3_backend_with_prefix, s3_container};
-use crate::utils::{
-	assert_content_matches, assert_file_size, assert_presigned_url, assert_storage_exists,
-	assert_storage_not_exists, generate_unique_name,
+mod fixtures;
+mod utils;
+
+use fixtures::{
+	S3TestContainer, generate_unique_name, s3_backend, s3_backend_with_prefix, s3_container,
 };
 use reinhardt_storages::{StorageBackend, StorageError};
 use rstest::rstest;
 use std::sync::Arc;
+use utils::{assert_presigned_url, assert_storage_exists, assert_storage_not_exists};
 
 // ============================================================================
 // CRUD Tests
@@ -18,7 +20,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_save_file(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_save_file(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_save.txt";
 		let content = b"Hello, S3!";
 
@@ -38,7 +40,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_open_file(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_open_file(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_open.txt";
 		let content = b"Hello, S3 Storage!";
 
@@ -57,7 +59,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_delete_file(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_delete_file(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_delete.txt";
 		s3_backend
 			.save(name, b"temporary")
@@ -80,7 +82,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_exists_true(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_exists_true(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_exists_true.txt";
 		s3_backend
 			.save(name, b"content")
@@ -99,7 +101,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_exists_false(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_exists_false(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_nonexistent.txt";
 		let exists = s3_backend
 			.exists(name)
@@ -110,7 +112,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_roundtrip(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_roundtrip(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_roundtrip.bin";
 		let content = vec![0u8, 1, 2, 3, 255, 254, 253];
 
@@ -129,7 +131,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_overwrite_file(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_overwrite_file(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_overwrite.txt";
 		let content1 = b"Original content";
 		let content2 = b"New content";
@@ -153,7 +155,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_empty_file(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_empty_file(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_empty.txt";
 		let content: Vec<u8> = vec![];
 
@@ -171,7 +173,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_binary_data(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_binary_data(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_binary.bin";
 		let content: Vec<u8> = (0u8..=255).collect();
 
@@ -189,7 +191,7 @@ mod crud_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_nested_path(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_nested_path(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "path/to/nested/file.txt";
 		let content = b"Nested file content";
 
@@ -216,7 +218,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_presigned_url_format(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_presigned_url_format(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_url.txt";
 		s3_backend
 			.save(name, b"content")
@@ -233,7 +235,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_presigned_url_custom_expiry(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_presigned_url_custom_expiry(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_expiry.txt";
 		s3_backend
 			.save(name, b"content")
@@ -250,7 +252,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_url_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_url_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent.txt";
 
 		let result = s3_backend.url(name, 3600).await;
@@ -260,7 +262,7 @@ mod url_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_url_contains_bucket(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_url_contains_bucket(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_bucket_in_url.txt";
 		s3_backend
 			.save(name, b"content")
@@ -289,7 +291,9 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_prefix_applied_to_save(s3_backend_with_prefix: Arc<dyn StorageBackend>) {
+	async fn test_prefix_applied_to_save(
+		#[future(awt)] s3_backend_with_prefix: Arc<dyn StorageBackend>,
+	) {
 		let name = "test_prefix_save.txt";
 		let content = b"Prefix test content";
 
@@ -311,7 +315,9 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_prefix_applied_to_open(s3_backend_with_prefix: Arc<dyn StorageBackend>) {
+	async fn test_prefix_applied_to_open(
+		#[future(awt)] s3_backend_with_prefix: Arc<dyn StorageBackend>,
+	) {
 		let name = "test_prefix_open.txt";
 		let content = b"Prefix open test";
 
@@ -333,9 +339,9 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_prefix_trailing_slash(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_prefix_trailing_slash(#[future(awt)] s3_container: S3TestContainer) {
 		// Create a new backend with trailing slash in prefix
-		let container = s3_container().await;
+		let container = s3_container;
 		let backend = container
 			.create_backend_with_prefix("trailing-slash/")
 			.await;
@@ -356,7 +362,9 @@ mod prefix_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_prefix_with_nested_path(s3_backend_with_prefix: Arc<dyn StorageBackend>) {
+	async fn test_prefix_with_nested_path(
+		#[future(awt)] s3_backend_with_prefix: Arc<dyn StorageBackend>,
+	) {
 		let name = "nested/path/file.txt";
 		let content = b"Prefix with nested path";
 
@@ -385,7 +393,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_file_size(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_file_size(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_size.txt";
 		let content = b"Hello, S3 Size!";
 
@@ -403,7 +411,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_modified_time(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_modified_time(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_time.txt";
 
 		s3_backend
@@ -424,7 +432,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_size_updates_after_overwrite(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_size_updates_after_overwrite(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_size_update.txt";
 		let content1 = b"Small";
 		let content2 = b"This is much larger content";
@@ -452,7 +460,7 @@ mod metadata_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_empty_file_size(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_empty_file_size(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_empty_size.txt";
 		let content: Vec<u8> = vec![];
 
@@ -478,7 +486,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_open_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_open_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_open.txt";
 
 		let result = s3_backend.open(name).await;
@@ -488,7 +496,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_delete_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_delete_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_delete.txt";
 
 		let result = s3_backend.delete(name).await;
@@ -498,7 +506,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_size_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_size_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_size.txt";
 
 		let result = s3_backend.size(name).await;
@@ -508,7 +516,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_url_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_url_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_url.txt";
 
 		let result = s3_backend.url(name, 3600).await;
@@ -518,7 +526,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_special_characters_in_name(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_special_characters_in_name(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "file with spaces & symbols!.txt";
 		let content = b"Special chars";
 
@@ -536,7 +544,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_unicode_filename(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_unicode_filename(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "ファイル.txt"; // Japanese filename
 		let content = "Unicode content".as_bytes();
 
@@ -558,7 +566,7 @@ mod error_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_modified_time_not_found(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_modified_time_not_found(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name = "nonexistent_time.txt";
 
 		let result = s3_backend.get_modified_time(name).await;
@@ -576,8 +584,8 @@ mod multiple_operations_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_multiple_files(s3_backend: Arc<dyn StorageBackend>) {
-		let files = vec![
+	async fn test_multiple_files(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
+		let files: Vec<(&str, &[u8])> = vec![
 			("file1.txt", b"content1"),
 			("file2.txt", b"content2"),
 			("file3.txt", b"content3"),
@@ -586,7 +594,7 @@ mod multiple_operations_tests {
 		// Save all files
 		for (name, content) in &files {
 			s3_backend
-				.save(name, content)
+				.save(name, *content)
 				.await
 				.expect("Failed to save");
 		}
@@ -612,7 +620,7 @@ mod multiple_operations_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_unique_names(s3_backend: Arc<dyn StorageBackend>) {
+	async fn test_unique_names(#[future(awt)] s3_backend: Arc<dyn StorageBackend>) {
 		let name1 = generate_unique_name("test");
 		let name2 = generate_unique_name("test");
 
