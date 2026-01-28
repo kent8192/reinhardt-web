@@ -1,10 +1,10 @@
 //! Integration tests for LocalStorage backend.
 
-use crate::fixtures::{local_backend, local_temp_dir, small_file, TestFile};
+use crate::fixtures::{TestFile, local_backend, local_temp_dir, small_file};
 use crate::utils::{
 	assert_config_error, assert_content_matches, assert_file_size, assert_file_url,
-	assert_not_found, assert_storage_exists, assert_storage_not_exists,
-	generate_nested_path, generate_unique_name,
+	assert_not_found, assert_storage_exists, assert_storage_not_exists, generate_nested_path,
+	generate_unique_name,
 };
 use reinhardt_storages::{StorageBackend, StorageError};
 use rstest::rstest;
@@ -45,10 +45,7 @@ mod crud_tests {
 			.await
 			.expect("Failed to save file");
 
-		let read_content = local_backend
-			.open(name)
-			.await
-			.expect("Failed to open file");
+		let read_content = local_backend.open(name).await.expect("Failed to open file");
 
 		assert_eq!(read_content, content);
 
@@ -88,7 +85,10 @@ mod crud_tests {
 			.await
 			.expect("Failed to save");
 
-		let exists = local_backend.exists(name).await.expect("Failed to check exists");
+		let exists = local_backend
+			.exists(name)
+			.await
+			.expect("Failed to check exists");
 		assert!(exists);
 
 		// Cleanup
@@ -99,7 +99,10 @@ mod crud_tests {
 	#[tokio::test]
 	async fn test_exists_false(local_backend: Arc<dyn StorageBackend>) {
 		let name = "test_nonexistent.txt";
-		let exists = local_backend.exists(name).await.expect("Failed to check exists");
+		let exists = local_backend
+			.exists(name)
+			.await
+			.expect("Failed to check exists");
 		assert!(!exists);
 	}
 
@@ -114,10 +117,7 @@ mod crud_tests {
 			.await
 			.expect("Failed to save");
 
-		let read_content = local_backend
-			.open(name)
-			.await
-			.expect("Failed to read");
+		let read_content = local_backend.open(name).await.expect("Failed to read");
 
 		assert_eq!(read_content, content);
 
@@ -244,7 +244,10 @@ mod directory_tests {
 			.expect("Failed to save");
 
 		// Directory should return false for exists (not a file)
-		let exists = local_backend.exists(dir_name).await.expect("Failed to check");
+		let exists = local_backend
+			.exists(dir_name)
+			.await
+			.expect("Failed to check");
 		assert!(!exists, "Directory should not be treated as a file");
 
 		// Cleanup
@@ -292,7 +295,10 @@ mod url_tests {
 			.await
 			.expect("Failed to save");
 
-		let url = local_backend.url(name, 3600).await.expect("Failed to get URL");
+		let url = local_backend
+			.url(name, 3600)
+			.await
+			.expect("Failed to get URL");
 		assert_file_url(&url).expect("URL should be valid");
 
 		// Cleanup
@@ -480,10 +486,7 @@ mod persistence_tests {
 		let name = "persistent.txt";
 		let content = b"Persistent content";
 
-		backend
-			.save(name, content)
-			.await
-			.expect("Failed to save");
+		backend.save(name, content).await.expect("Failed to save");
 
 		// Re-read to verify persistence
 		let read_content = backend.open(name).await.expect("Failed to read");

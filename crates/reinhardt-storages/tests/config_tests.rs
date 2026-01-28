@@ -74,7 +74,10 @@ mod env_parsing_tests {
 	#[tokio::test]
 	async fn test_local_config_from_env() {
 		with_envs(
-			&[("STORAGE_BACKEND", "local"), ("LOCAL_BASE_PATH", "/tmp/test-storage")],
+			&[
+				("STORAGE_BACKEND", "local"),
+				("LOCAL_BASE_PATH", "/tmp/test-storage"),
+			],
 			async {
 				let config = StorageConfig::from_env().expect("Failed to load config");
 
@@ -138,7 +141,10 @@ mod env_parsing_tests {
 	async fn test_backend_type_case_insensitive() {
 		for backend_type in &["s3", "S3", "S3"] {
 			with_envs(
-				&[("STORAGE_BACKEND", backend_type), ("S3_BUCKET", "test-bucket")],
+				&[
+					("STORAGE_BACKEND", backend_type),
+					("S3_BUCKET", "test-bucket"),
+				],
 				async {
 					let config = StorageConfig::from_env().expect("Failed to load config");
 					match config {
@@ -308,7 +314,10 @@ mod config_clone_tests {
 	#[tokio::test]
 	async fn test_local_config_clone() {
 		with_envs(
-			&[("STORAGE_BACKEND", "local"), ("LOCAL_BASE_PATH", "/tmp/test")],
+			&[
+				("STORAGE_BACKEND", "local"),
+				("LOCAL_BASE_PATH", "/tmp/test"),
+			],
 			async {
 				let config1 = StorageConfig::from_env().expect("Failed to load");
 				let config2 = config1.clone();

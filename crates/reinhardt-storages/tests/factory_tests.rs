@@ -1,6 +1,6 @@
 //! Factory pattern tests for creating storage backends.
 
-use reinhardt_storages::{create_storage, StorageBackend, StorageConfig, StorageError};
+use reinhardt_storages::{StorageBackend, StorageConfig, StorageError, create_storage};
 use rstest::rstest;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -18,9 +18,7 @@ mod backend_creation_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = create_storage(config)
 			.await
@@ -32,10 +30,7 @@ mod backend_creation_tests {
 			.await
 			.expect("Failed to save");
 
-		let content = backend
-			.open("test.txt")
-			.await
-			.expect("Failed to read");
+		let content = backend.open("test.txt").await.expect("Failed to read");
 
 		assert_eq!(content, b"Hello, factory!");
 
@@ -49,9 +44,7 @@ mod backend_creation_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend: Arc<dyn StorageBackend> = create_storage(config)
 			.await
@@ -158,9 +151,7 @@ mod arc_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = create_storage(config)
 			.await
@@ -188,9 +179,7 @@ mod arc_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = create_storage(config)
 			.await
@@ -233,9 +222,7 @@ mod arc_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = create_storage(config)
 			.await
@@ -255,10 +242,7 @@ mod arc_tests {
 			.expect("Failed to save");
 
 		// All clones should see the same files
-		let content1 = backend
-			.open("file1.txt")
-			.await
-			.expect("Failed to read");
+		let content1 = backend.open("file1.txt").await.expect("Failed to read");
 		let content2 = clone1.open("file2.txt").await.expect("Failed to read");
 
 		assert_eq!(content1, b"Clone 1");
@@ -284,9 +268,7 @@ mod local_feature_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let result = create_storage(config).await;
 		assert!(result.is_ok(), "Local feature should be enabled");
@@ -369,9 +351,7 @@ mod factory_error_tests {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = create_storage(config)
 			.await
@@ -385,10 +365,7 @@ mod factory_error_tests {
 		];
 
 		for (name, content) in &test_cases {
-			backend
-				.save(name, content)
-				.await
-				.expect("Failed to save");
+			backend.save(name, content).await.expect("Failed to save");
 
 			let read_content = backend.open(name).await.expect("Failed to read");
 			assert_eq!(read_content, *content);

@@ -18,9 +18,7 @@ impl LocalTestDir {
 		let temp_dir = TempDir::new().expect("Failed to create temp dir");
 		let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-			base_path,
-		});
+		let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 		let backend = tokio::runtime::Runtime::new()
 			.unwrap()
@@ -47,9 +45,7 @@ pub fn local_backend() -> Arc<dyn StorageBackend> {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-	let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig {
-		base_path,
-	});
+	let config = StorageConfig::Local(reinhardt_storages::config::LocalConfig { base_path });
 
 	tokio::runtime::Runtime::new()
 		.unwrap()
@@ -90,10 +86,7 @@ mod tests {
 			.await
 			.expect("Failed to save");
 
-		let content = backend
-			.open("test.txt")
-			.await
-			.expect("Failed to read");
+		let content = backend.open("test.txt").await.expect("Failed to read");
 
 		assert_eq!(content, b"Hello, world!");
 	}

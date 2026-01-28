@@ -15,7 +15,11 @@ impl TestFile {
 	/// Create a new test file.
 	pub fn new(name: String, content: Vec<u8>) -> Self {
 		let size = content.len();
-		Self { name, content, size }
+		Self {
+			name,
+			content,
+			size,
+		}
 	}
 
 	/// Get the file extension.

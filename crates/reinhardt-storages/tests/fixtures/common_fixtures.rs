@@ -1,6 +1,6 @@
 //! Common test fixtures for storage tests.
 
-use crate::utils::{create_binary_file, create_text_file, TestFile};
+use crate::utils::{TestFile, create_binary_file, create_text_file};
 use rstest::fixture;
 
 /// Empty file fixture (0 bytes).

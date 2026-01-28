@@ -4,9 +4,8 @@ use reinhardt_storages::{StorageBackend, StorageConfig};
 use rstest::fixture;
 use std::sync::Arc;
 use testcontainers::{
-	clients,
+	GenericImage, Image, clients,
 	core::{ContainerPort, WaitFor},
-	GenericImage, Image,
 };
 
 /// S3 test container wrapper.
@@ -138,10 +137,7 @@ mod tests {
 			.await
 			.expect("Failed to save");
 
-		let content = backend
-			.open("test.txt")
-			.await
-			.expect("Failed to read");
+		let content = backend.open("test.txt").await.expect("Failed to read");
 
 		assert_eq!(content, b"Hello, S3!");
 

@@ -1,6 +1,6 @@
 //! Integration tests for S3 storage backend using LocalStack.
 
-use crate::fixtures::{s3_backend, s3_backend_with_prefix, s3_container, TestFile};
+use crate::fixtures::{TestFile, s3_backend, s3_backend_with_prefix, s3_container};
 use crate::utils::{
 	assert_content_matches, assert_file_size, assert_presigned_url, assert_storage_exists,
 	assert_storage_not_exists, generate_unique_name,
@@ -47,10 +47,7 @@ mod crud_tests {
 			.await
 			.expect("Failed to save file");
 
-		let read_content = s3_backend
-			.open(name)
-			.await
-			.expect("Failed to open file");
+		let read_content = s3_backend.open(name).await.expect("Failed to open file");
 
 		assert_eq!(read_content, content);
 
@@ -90,7 +87,10 @@ mod crud_tests {
 			.await
 			.expect("Failed to save");
 
-		let exists = s3_backend.exists(name).await.expect("Failed to check exists");
+		let exists = s3_backend
+			.exists(name)
+			.await
+			.expect("Failed to check exists");
 		assert!(exists);
 
 		// Cleanup
@@ -101,7 +101,10 @@ mod crud_tests {
 	#[tokio::test]
 	async fn test_exists_false(s3_backend: Arc<dyn StorageBackend>) {
 		let name = "test_nonexistent.txt";
-		let exists = s3_backend.exists(name).await.expect("Failed to check exists");
+		let exists = s3_backend
+			.exists(name)
+			.await
+			.expect("Failed to check exists");
 		assert!(!exists);
 	}
 
@@ -116,10 +119,7 @@ mod crud_tests {
 			.await
 			.expect("Failed to save");
 
-		let read_content = s3_backend
-			.open(name)
-			.await
-			.expect("Failed to read");
+		let read_content = s3_backend.open(name).await.expect("Failed to read");
 
 		assert_eq!(read_content, content);
 
@@ -223,10 +223,7 @@ mod url_tests {
 			.await
 			.expect("Failed to save");
 
-		let url = s3_backend
-			.url(name, 3600)
-			.await
-			.expect("Failed to get URL");
+		let url = s3_backend.url(name, 3600).await.expect("Failed to get URL");
 
 		assert_presigned_url(&url).expect("URL should be valid presigned URL");
 
@@ -273,7 +270,10 @@ mod url_tests {
 		let url = s3_backend.url(name, 3600).await.expect("Failed to get URL");
 
 		// URL should contain the bucket name
-		assert!(url.contains("test-bucket"), "URL should contain bucket name");
+		assert!(
+			url.contains("test-bucket"),
+			"URL should contain bucket name"
+		);
 
 		// Cleanup
 		s3_backend.delete(name).await.ok();
@@ -336,15 +336,14 @@ mod prefix_tests {
 	async fn test_prefix_trailing_slash(s3_backend: Arc<dyn StorageBackend>) {
 		// Create a new backend with trailing slash in prefix
 		let container = s3_container().await;
-		let backend = container.create_backend_with_prefix("trailing-slash/").await;
+		let backend = container
+			.create_backend_with_prefix("trailing-slash/")
+			.await;
 
 		let name = "test_trailing.txt";
 		let content = b"Trailing slash test";
 
-		let path = backend
-			.save(name, content)
-			.await
-			.expect("Failed to save");
+		let path = backend.save(name, content).await.expect("Failed to save");
 
 		assert!(
 			path.contains("trailing-slash"),
@@ -366,11 +365,11 @@ mod prefix_tests {
 			.await
 			.expect("Failed to save");
 
+		assert!(path.contains("test-prefix"), "Path should contain prefix");
 		assert!(
-			path.contains("test-prefix"),
-			"Path should contain prefix"
+			path.contains("nested"),
+			"Path should contain nested directories"
 		);
-		assert!(path.contains("nested"), "Path should contain nested directories");
 
 		// Cleanup
 		s3_backend_with_prefix.delete(name).await.ok();
