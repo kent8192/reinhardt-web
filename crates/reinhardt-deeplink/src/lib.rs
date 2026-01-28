@@ -49,5 +49,8 @@ pub use config::{
 	DeeplinkConfigBuilder, IosConfig, IosConfigBuilder, WebCredentialsConfig,
 };
 pub use endpoints::{AasaHandler, AssetLinksHandler};
-pub use error::DeeplinkError;
+pub use error::{DeeplinkError, validate_app_id, validate_fingerprint};
 pub use router::{DeeplinkRouter, DeeplinkRouterExt};
+
+/// Result type for deeplink operations.
+pub type DeeplinkResult<T> = Result<T, DeeplinkError>;
