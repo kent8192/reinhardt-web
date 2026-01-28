@@ -159,6 +159,7 @@ fn load_settings() -> Settings {
 		.profile(profile)
 		.add_source(
 			DefaultSource::new()
+				// Core settings
 				.with_value(
 					"base_dir",
 					serde_json::json!(base_dir.to_string_lossy().to_string()),
@@ -174,13 +175,34 @@ fn load_settings() -> Settings {
 				.with_value("root_urlconf", serde_json::json!("config.urls"))
 				.with_value("databases", serde_json::json!({}))
 				.with_value("templates", serde_json::json!([]))
+				// Static/Media files
 				.with_value("static_url", serde_json::json!("/static/"))
+				.with_value("static_root", serde_json::json!(null))
 				.with_value("staticfiles_dirs", serde_json::json!([]))
 				.with_value("media_url", serde_json::json!("/media/"))
+				.with_value("media_root", serde_json::json!(null))
+				// Internationalization
 				.with_value("language_code", serde_json::json!("en-us"))
 				.with_value("time_zone", serde_json::json!("UTC"))
 				.with_value("use_i18n", serde_json::json!(false))
-				.with_value("use_tz", serde_json::json!(false)),
+				.with_value("use_tz", serde_json::json!(false))
+				// Model settings
+				.with_value(
+					"default_auto_field",
+					serde_json::json!("reinhardt.db.models.BigAutoField"),
+				)
+				// Security settings
+				.with_value("secure_proxy_ssl_header", serde_json::json!(null))
+				.with_value("secure_ssl_redirect", serde_json::json!(false))
+				.with_value("secure_hsts_seconds", serde_json::json!(null))
+				.with_value("secure_hsts_include_subdomains", serde_json::json!(false))
+				.with_value("secure_hsts_preload", serde_json::json!(false))
+				.with_value("session_cookie_secure", serde_json::json!(false))
+				.with_value("csrf_cookie_secure", serde_json::json!(false))
+				.with_value("append_slash", serde_json::json!(true))
+				// Admin/Manager contacts
+				.with_value("admins", serde_json::json!([]))
+				.with_value("managers", serde_json::json!([])),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
