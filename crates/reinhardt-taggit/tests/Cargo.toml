@@ -1,0 +1,26 @@
+[package]
+name = "reinhardt-taggit-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+# Crate under test
+reinhardt-taggit = { path = "../" }
+
+# Reinhardt ecosystem
+reinhardt-core = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-test = { workspace = true }
+
+# Testing
+rstest = { workspace = true }
+tokio-test = "0.4"
+testcontainers = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+serde = { workspace = true }
