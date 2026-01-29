@@ -3,10 +3,14 @@
 //! Production-ready middleware stack for the Twitter clone example.
 
 use reinhardt::middleware::cors::CorsConfig;
-use reinhardt::middleware::request_id::RequestIdConfig;
-use reinhardt::middleware::{CorsMiddleware, LoggingMiddleware, RequestIdMiddleware};
+use reinhardt::middleware::security_middleware::{SecurityConfig, SecurityMiddleware};
+use reinhardt::middleware::{CorsMiddleware, LoggingMiddleware};
 use reinhardt::prelude::*;
+use reinhardt::utils::staticfiles::caching::{
+	CacheControlConfig, CacheControlMiddleware, CacheDirective, CachePolicy,
+};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Create CORS middleware with credentials support for the Twitter clone.
 ///
@@ -35,18 +39,45 @@ pub fn create_cors_middleware() -> CorsMiddleware {
 	CorsMiddleware::new(config)
 }
 
+/// Create SecurityMiddleware with default configuration.
+///
+/// Provides security headers for the application:
+/// - HSTS (HTTP Strict Transport Security)
+/// - X-Content-Type-Options: nosniff
+/// - Referrer-Policy: same-origin
+pub fn create_security_middleware() -> SecurityMiddleware {
+	SecurityMiddleware::with_config(SecurityConfig::default())
+}
+
+/// Create CacheControlMiddleware with optimized settings for API responses.
+///
+/// Configuration:
+/// - public: true (responses can be cached by any cache)
+/// - max_age: 3600 seconds (1 hour)
+/// - s_maxage: 86400 seconds (1 day for shared caches/CDNs)
+pub fn create_cache_control_middleware() -> CacheControlMiddleware {
+	let cache_policy = CachePolicy::new()
+		.with_directive(CacheDirective::Public)
+		.with_max_age(Duration::from_secs(3600))
+		.with_s_maxage(Duration::from_secs(86400));
+
+	let cache_config = CacheControlConfig::new().with_default_policy(cache_policy);
+
+	CacheControlMiddleware::new(cache_config)
+}
+
 /// Create a production-ready middleware stack for the Twitter clone.
 ///
-/// Stack includes:
-/// - CORS for cross-origin API access
-/// - Request ID for distributed tracing
-/// - Logging for request/response auditing
+/// Stack order (execution order for requests):
+/// 1. LoggingMiddleware - Log all incoming requests
+/// 2. SecurityMiddleware - Apply security headers
+/// 3. CorsMiddleware - Handle cross-origin requests
+/// 4. CacheControlMiddleware - Set cache headers for responses
 pub fn create_middleware_stack() -> Vec<Arc<dyn Middleware>> {
-	let request_id_config = RequestIdConfig::default();
-
 	vec![
-		Arc::new(RequestIdMiddleware::new(request_id_config)),
 		Arc::new(LoggingMiddleware::new()),
+		Arc::new(create_security_middleware()),
 		Arc::new(create_cors_middleware()),
+		Arc::new(create_cache_control_middleware()),
 	]
 }

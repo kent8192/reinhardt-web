@@ -8,14 +8,23 @@ use reinhardt::routes;
 
 // Import app URL modules
 use crate::apps::{auth, dm, profile, relationship, tweet};
-use crate::config::middleware::create_cors_middleware;
+use crate::config::middleware::{
+	create_cache_control_middleware, create_cors_middleware, create_security_middleware,
+};
+use reinhardt::LoggingMiddleware;
 
 /// Build URL patterns for the application
 ///
 /// This project uses:
 /// - Server Functions (`#[server_fn]`) for API communication
 /// - Client routing for SPA navigation
-/// - CORS middleware for cross-origin requests with credentials support
+/// - Production-ready middleware stack for security and performance
+///
+/// Middleware stack (in execution order):
+/// 1. LoggingMiddleware - Request/response logging
+/// 2. SecurityMiddleware - Security headers (HSTS, X-Content-Type-Options)
+/// 3. CorsMiddleware - Cross-origin resource sharing
+/// 4. CacheControlMiddleware - HTTP cache headers
 ///
 /// Each app's `routes()` function returns a `UnifiedRouter` with both
 /// server and client routes defined.
@@ -28,6 +37,9 @@ pub fn routes() -> UnifiedRouter {
 		.mount_unified("/", profile::urls::routes())
 		.mount_unified("/", relationship::urls::routes())
 		.mount_unified("/", dm::urls::routes())
-		// Apply CORS middleware for cross-origin API access
+		// Apply middleware stack (order matters for request processing)
+		.with_middleware(LoggingMiddleware::new())
+		.with_middleware(create_security_middleware())
 		.with_middleware(create_cors_middleware())
+		.with_middleware(create_cache_control_middleware())
 }
