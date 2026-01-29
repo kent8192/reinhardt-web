@@ -303,6 +303,152 @@ impl PostgresQueryBuilder {
 		}
 	}
 
+	/// Write a simple expression with values inlined (no placeholders)
+	///
+	/// This is used for CHECK constraints in DDL statements, which cannot use
+	/// parameterized queries. Values are written directly as SQL literals.
+	fn write_simple_expr_unquoted(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
+		use crate::types::BinOper;
+		use crate::value::Value;
+
+		match expr {
+			SimpleExpr::Column(col_ref) => {
+				self.write_column_ref(writer, col_ref);
+			}
+			SimpleExpr::Value(value) => {
+				// Write values inline as SQL literals instead of using placeholders
+				match value {
+					Value::Int(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::BigInt(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::TinyInt(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::SmallInt(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::Unsigned(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::SmallUnsigned(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::TinyUnsigned(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::BigUnsigned(Some(n)) => {
+						writer.push(&n.to_string());
+					}
+					Value::String(Some(s)) => {
+						let escaped = s.as_str().replace('\'', "''");
+						writer.push(&format!("'{}'", escaped));
+					}
+					Value::Bool(Some(b)) => {
+						writer.push(if *b { "TRUE" } else { "FALSE" });
+					}
+					Value::Float(Some(f)) => {
+						writer.push(&f.to_string());
+					}
+					Value::Double(Some(d)) => {
+						writer.push(&d.to_string());
+					}
+					// None values render as NULL
+					_ => {
+						writer.push("NULL");
+					}
+				}
+			}
+			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
+				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
+					if items.len() == 2 =>
+				{
+					self.write_simple_expr_unquoted(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push_space();
+					self.write_simple_expr_unquoted(writer, &items[0]);
+					writer.push(" AND ");
+					self.write_simple_expr_unquoted(writer, &items[1]);
+				}
+				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
+					self.write_simple_expr_unquoted(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push(" (");
+					writer.push_list(items, ", ", |w, item| {
+						self.write_simple_expr_unquoted(w, item);
+					});
+					writer.push(")");
+				}
+				_ => {
+					self.write_simple_expr_unquoted(writer, left);
+					writer.push_space();
+					writer.push(op.as_str());
+					writer.push_space();
+					self.write_simple_expr_unquoted(writer, right);
+				}
+			},
+			SimpleExpr::Unary(op, expr) => {
+				writer.push(op.as_str());
+				writer.push_space();
+				self.write_simple_expr_unquoted(writer, expr);
+			}
+			SimpleExpr::FunctionCall(func_name, args) => {
+				writer.push(&func_name.to_string());
+				writer.push("(");
+				writer.push_list(args, ", ", |w, arg| {
+					self.write_simple_expr_unquoted(w, arg);
+				});
+				writer.push(")");
+			}
+			SimpleExpr::Constant(val) => {
+				writer.push(val.as_str());
+			}
+			SimpleExpr::Tuple(items) => {
+				writer.push("(");
+				writer.push_list(items, ", ", |w, item| {
+					self.write_simple_expr_unquoted(w, item);
+				});
+				writer.push(")");
+			}
+			SimpleExpr::Case(case) => {
+				writer.push_keyword("CASE");
+				for (condition, result) in &case.when_clauses {
+					writer.push_space();
+					writer.push_keyword("WHEN");
+					writer.push_space();
+					self.write_simple_expr_unquoted(writer, condition);
+					writer.push_space();
+					writer.push_keyword("THEN");
+					writer.push_space();
+					self.write_simple_expr_unquoted(writer, result);
+				}
+				if let Some(else_result) = &case.else_clause {
+					writer.push_space();
+					writer.push_keyword("ELSE");
+					writer.push_space();
+					self.write_simple_expr_unquoted(writer, else_result);
+				}
+				writer.push_space();
+				writer.push_keyword("END");
+			}
+			// Subqueries are not supported in CHECK constraints
+			SimpleExpr::SubQuery(_, _) => {
+				writer.push("(TRUE)");
+			}
+			// Window expressions are not supported in CHECK constraints
+			SimpleExpr::Window { .. } | SimpleExpr::WindowNamed { .. } => {
+				writer.push("(TRUE)");
+			}
+			_ => {
+				writer.push("(TRUE)");
+			}
+		}
+	}
+
 	/// Write a condition
 	fn write_condition(&self, writer: &mut SqlWriter, condition: &Condition) {
 		use crate::expr::ConditionType;
@@ -941,7 +1087,19 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 			// Column type
 			if let Some(col_type) = &column.column_type {
-				writer.push(&self.column_type_to_sql(col_type));
+				// For auto_increment columns, use SERIAL types instead of INTEGER/BIGINT
+				if column.auto_increment {
+					use crate::types::ColumnType;
+					let serial_type = match col_type {
+						ColumnType::SmallInteger => "SMALLSERIAL",
+						ColumnType::Integer => "SERIAL",
+						ColumnType::BigInteger => "BIGSERIAL",
+						_ => &self.column_type_to_sql(col_type),
+					};
+					writer.push(serial_type);
+				} else {
+					writer.push(&self.column_type_to_sql(col_type));
+				}
 			}
 
 			// NOT NULL
@@ -976,7 +1134,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 				writer.push_keyword("CHECK");
 				writer.push_space();
 				writer.push("(");
-				self.write_simple_expr(&mut writer, check_expr);
+				self.write_simple_expr_unquoted(&mut writer, check_expr);
 				writer.push(")");
 			}
 		}
@@ -1032,7 +1190,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 					}
 					if let Some(check) = &column_def.check {
 						writer.push(" CHECK (");
-						self.write_simple_expr(&mut writer, check);
+						self.write_simple_expr_unquoted(&mut writer, check);
 						writer.push(")");
 					}
 				}
@@ -2822,10 +2980,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		// CREATE DATABASE
 		writer.push_keyword("CREATE DATABASE");
 
-		// IF NOT EXISTS
-		if stmt.if_not_exists {
-			writer.push_keyword("IF NOT EXISTS");
-		}
+		// IF NOT EXISTS - PostgreSQL does not support IF NOT EXISTS for CREATE DATABASE
+		// if stmt.if_not_exists {
+		//     writer.push_keyword("IF NOT EXISTS");
+		// }
 
 		// Database name
 		if let Some(name) = &stmt.database_name {
@@ -3737,10 +3895,11 @@ impl PostgresQueryBuilder {
 			ColumnType::Float => "REAL".to_string(),
 			ColumnType::Double => "DOUBLE PRECISION".to_string(),
 			ColumnType::Decimal(precision) => {
+				// PostgreSQL uses NUMERIC as the canonical name (DECIMAL is an alias)
 				if let Some((p, s)) = precision {
-					format!("DECIMAL({}, {})", p, s)
+					format!("NUMERIC({}, {})", p, s)
 				} else {
-					"DECIMAL".to_string()
+					"NUMERIC".to_string()
 				}
 			}
 			ColumnType::DateTime => "TIMESTAMP".to_string(),
@@ -3748,14 +3907,14 @@ impl PostgresQueryBuilder {
 			ColumnType::TimestampWithTimeZone => "TIMESTAMP WITH TIME ZONE".to_string(),
 			ColumnType::Time => "TIME".to_string(),
 			ColumnType::Date => "DATE".to_string(),
-			ColumnType::Binary(len) => {
-				if let Some(l) = len {
-					format!("BYTEA({})", l)
-				} else {
-					"BYTEA".to_string()
-				}
+			ColumnType::Binary(_len) => {
+				// PostgreSQL BYTEA does not support length modifiers
+				"BYTEA".to_string()
 			}
-			ColumnType::VarBinary(len) => format!("BYTEA({})", len),
+			ColumnType::VarBinary(_len) => {
+				// PostgreSQL BYTEA does not support length modifiers
+				"BYTEA".to_string()
+			}
 			ColumnType::Blob => "BYTEA".to_string(),
 			ColumnType::Boolean => "BOOLEAN".to_string(),
 			ColumnType::Json => "JSON".to_string(),
@@ -6528,8 +6687,10 @@ mod tests {
 		});
 
 		let (sql, values) = builder.build_create_table(&stmt);
+		// CHECK constraints use inlined values (not parameters) in PostgreSQL
 		assert!(sql.contains("\"age\" INTEGER CHECK"));
-		assert_eq!(values.len(), 1);
+		assert!(sql.contains(">= 0"));
+		assert_eq!(values.len(), 0);
 	}
 
 	#[test]
