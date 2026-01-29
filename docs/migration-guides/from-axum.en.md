@@ -200,14 +200,14 @@ async fn handler(
 ```
 
 Available extractors in Reinhardt:
-- `` `Json<T>` `` - JSON body
-- `` `Form<T>` `` - Form data
-- `` `Query<T>` `` - Query parameters
-- `` `Path<T>` `` - Path parameters
-- `` `Body` `` - Raw body bytes
-- `` `Multipart` `` - Multipart form data
-- `` `Header<T>` `` - Typed header
-- `` `HeaderNamed` `` - Named header
+- `Json<T>` - JSON body
+- `Form<T>` - Form data
+- `Query<T>` - Query parameters
+- `Path<T>` - Path parameters
+- `Body` - Raw body bytes
+- `Multipart` - Multipart form data
+- `Header<T>` - Typed header
+- `HeaderNamed` - Named header
 
 ---
 
@@ -325,7 +325,7 @@ impl Middleware for LoggingMiddleware {
 
 ## Migration Checklist
 
-- [ ] Convert handlers to `` `Handler` `` trait or functions
+- [ ] Convert handlers to `Handler` trait or functions
 - [ ] Replace State with DI context
 - [ ] Replace layers with middleware
 - [ ] Convert routing configuration

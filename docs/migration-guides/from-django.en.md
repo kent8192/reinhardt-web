@@ -376,8 +376,8 @@ impl Middleware for CustomMiddleware {
 
 ## Migration Checklist
 
-- [ ] Convert models to `` `#[model]` `` structs
-- [ ] Convert views to handlers (`` `Handler` `` trait)
+- [ ] Convert models to `#[model]` structs
+- [ ] Convert views to handlers (`Handler` trait)
 - [ ] Convert URL patterns to router configuration
 - [ ] Convert forms to validation structs
 - [ ] Set up environment-based configuration

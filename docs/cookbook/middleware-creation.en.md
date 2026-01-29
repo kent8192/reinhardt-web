@@ -15,7 +15,7 @@ Guide to creating custom middleware.
 
 ## Middleware trait
 
-All middleware must implement the `` `Middleware` `` trait.
+All middleware must implement the `Middleware` trait.
 
 ```rust
 use async_trait::async_trait;
@@ -208,15 +208,15 @@ impl Middleware for RateLimiter {
 
 Middleware execution order matters. A typical recommended order:
 
-1. `` `RequestIdMiddleware` `` - Generate request ID first
-2. `` `LoggingMiddleware` `` - Log all requests
-3. `` `TracingMiddleware` `` - Start tracing span
-4. `` `SecurityMiddleware` `` - Apply security headers
-5. `` `CorsMiddleware` `` - Handle CORS preflight
-6. `` `SessionMiddleware` `` - Load session
-7. `` `AuthenticationMiddleware` `` - Authenticate user
-8. `` `CsrfMiddleware` `` - Validate CSRF token
-9. `` `RateLimitMiddleware` `` - Apply rate limits
+1. `RequestIdMiddleware` - Generate request ID first
+2. `LoggingMiddleware` - Log all requests
+3. `TracingMiddleware` - Start tracing span
+4. `SecurityMiddleware` - Apply security headers
+5. `CorsMiddleware` - Handle CORS preflight
+6. `SessionMiddleware` - Load session
+7. `AuthenticationMiddleware` - Authenticate user
+8. `CsrfMiddleware` - Validate CSRF token
+9. `RateLimitMiddleware` - Apply rate limits
 10. Application handlers
 
 ```rust
@@ -245,66 +245,66 @@ Reinhardt includes 30+ built-in middleware components.
 
 | Middleware | Description |
 |------------|-------------|
-| `` `AuthenticationMiddleware` `` | Session-based user authentication |
+| `AuthenticationMiddleware` | Session-based user authentication |
 
 ### Security
 
 | Middleware | Description |
 |------------|-------------|
-| `` `CorsMiddleware` `` | Cross-Origin Resource Sharing |
-| `` `CsrfMiddleware` `` | CSRF token protection |
-| `` `CspMiddleware` `` | Content Security Policy headers |
-| `` `XFrameOptionsMiddleware` `` | Clickjacking protection |
-| `` `HttpsRedirectMiddleware` `` | Force HTTPS connections |
-| `` `SecurityMiddleware` `` | Combined security headers |
+| `CorsMiddleware` | Cross-Origin Resource Sharing |
+| `CsrfMiddleware` | CSRF token protection |
+| `CspMiddleware` | Content Security Policy headers |
+| `XFrameOptionsMiddleware` | Clickjacking protection |
+| `HttpsRedirectMiddleware` | Force HTTPS connections |
+| `SecurityMiddleware` | Combined security headers |
 
 ### Performance
 
 | Middleware | Description |
 |------------|-------------|
-| `` `CacheMiddleware` `` | HTTP response caching |
-| `` `GZipMiddleware` `` | Gzip compression |
-| `` `BrotliMiddleware` `` | Brotli compression |
-| `` `ETagMiddleware` `` | ETag generation and validation |
-| `` `ConditionalGetMiddleware` `` | Conditional GET support |
+| `CacheMiddleware` | HTTP response caching |
+| `GZipMiddleware` | Gzip compression |
+| `BrotliMiddleware` | Brotli compression |
+| `ETagMiddleware` | ETag generation and validation |
+| `ConditionalGetMiddleware` | Conditional GET support |
 
 ### Observability
 
 | Middleware | Description |
 |------------|-------------|
-| `` `LoggingMiddleware` `` | Request/response logging |
-| `` `TracingMiddleware` `` | Distributed tracing |
-| `` `MetricsMiddleware` `` | Performance metrics collection |
-| `` `RequestIdMiddleware` `` | Unique request ID generation |
+| `LoggingMiddleware` | Request/response logging |
+| `TracingMiddleware` | Distributed tracing |
+| `MetricsMiddleware` | Performance metrics collection |
+| `RequestIdMiddleware` | Unique request ID generation |
 
 ### Rate Limiting
 
 | Middleware | Description |
 |------------|-------------|
-| `` `RateLimitMiddleware` `` | API rate limiting |
+| `RateLimitMiddleware` | API rate limiting |
 
 ### Resilience
 
 | Middleware | Description |
 |------------|-------------|
-| `` `CircuitBreakerMiddleware` `` | Circuit breaker pattern |
-| `` `TimeoutMiddleware` `` | Request timeout handling |
+| `CircuitBreakerMiddleware` | Circuit breaker pattern |
+| `TimeoutMiddleware` | Request timeout handling |
 
 ### Session & State
 
 | Middleware | Description |
 |------------|-------------|
-| `` `SessionMiddleware` `` | Session management |
-| `` `SiteMiddleware` `` | Multi-site support |
-| `` `LocaleMiddleware` `` | Internationalization and locale detection |
+| `SessionMiddleware` | Session management |
+| `SiteMiddleware` | Multi-site support |
+| `LocaleMiddleware` | Internationalization and locale detection |
 
 ### Utility
 
 | Middleware | Description |
 |------------|-------------|
-| `` `CommonMiddleware` `` | Common HTTP functionality |
-| `` `BrokenLinkEmailsMiddleware` `` | Broken link notification |
-| `` `FlatpagesMiddleware` `` | Static page serving from database |
+| `CommonMiddleware` | Common HTTP functionality |
+| `BrokenLinkEmailsMiddleware` | Broken link notification |
+| `FlatpagesMiddleware` | Static page serving from database |
 
 ---
 

@@ -14,7 +14,7 @@ Guide to extracting data from request bodies and converting to type-safe structs
 
 ## JSON Extraction
 
-### `` `Json<T>` ``
+### `Json<T>`
 
 Extracts and deserializes JSON from request body.
 
@@ -65,9 +65,9 @@ async fn create_user(Json(user): Json<CreateUser>) -> reinhardt_http::Response {
 
 ## Form Data Extraction
 
-### `` `Form<T>` ``
+### `Form<T>`
 
-Extracts `` `application/x-www-form-urlencoded`` `` data.
+Extracts `application/x-www-form-urlencoded` data.
 
 ```rust
 use reinhardt_di::params::Form;
@@ -125,9 +125,9 @@ async fn contact(Form(form): Form<ContactForm>) -> reinhardt_http::Response {
 
 ## Multipart Extraction
 
-### `` `Multipart` ``
+### `Multipart`
 
-Extracts `` `multipart/form-data`` `` (used for file uploads).
+Extracts `multipart/form-data` (used for file uploads).
 
 ```rust
 use reinhardt_di::params::{Multipart, MultipartField};
@@ -191,9 +191,9 @@ async fn upload_with_metadata(mut multipart: Multipart) -> reinhardt_http::Respo
 
 ## Raw Body Extraction
 
-### `` `Body` ``
+### `Body`
 
-Extracts raw request body as `` `Bytes` ``.
+Extracts raw request body as `Bytes`.
 
 ```rust
 use reinhardt_di::params::Body;
@@ -206,7 +206,7 @@ async fn echo_raw(Body(body): Body) -> reinhardt_http::Response {
 
 ### Body as String
 
-Extract the raw body and convert to `` `String` ``.
+Extract the raw body and convert to `String`.
 
 ```rust
 use reinhardt_di::params::Body;

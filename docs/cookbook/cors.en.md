@@ -16,7 +16,7 @@ Guide to configuring Cross-Origin Resource Sharing (CORS).
 
 ### CorsMiddleware
 
-Use `` `CorsMiddleware` `` to configure CORS.
+Use `CorsMiddleware` to configure CORS.
 
 ```rust
 use reinhardt_middleware::{CorsMiddleware, cors::CorsConfig};
@@ -36,15 +36,15 @@ let middleware = CorsMiddleware::new(config);
 
 ## CORS Configuration Options
 
-### `` `CorsConfig` ``
+### `CorsConfig`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `` `allow_origins` `` | `` `Vec<String>` `` | `` `["*"]` `` | Allowed origins |
-| `` `allow_methods` `` | `` `Vec<String>` `` | `` `["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]` `` | Allowed HTTP methods |
-| `` `allow_headers` `` | `` `Vec<String>` `` | `` `["Content-Type", "Authorization"]` `` | Allowed request headers |
-| `` `allow_credentials` `` | `` `bool` `` | `` `false` `` | Whether to allow credentials |
-| `` `max_age` `` | `` `Option<u64>` `` | `` `Some(3600)` `` | Preflight cache duration (seconds) |
+| `allow_origins` | `Vec<String>` | `["*"]` | Allowed origins |
+| `allow_methods` | `Vec<String>` | `["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]` | Allowed HTTP methods |
+| `allow_headers` | `Vec<String>` | `["Content-Type", "Authorization"]` | Allowed request headers |
+| `allow_credentials` | `bool` | `false` | Whether to allow credentials |
+| `max_age` | `Option<u64>` | `Some(3600)` | Preflight cache duration (seconds) |
 
 ---
 
@@ -52,7 +52,7 @@ let middleware = CorsMiddleware::new(config);
 
 ### Automatic OPTIONS Handling
 
-`` `CorsMiddleware` `` automatically handles preflight requests (OPTIONS method).
+`CorsMiddleware` automatically handles preflight requests (OPTIONS method).
 
 ```rust
 use reinhardt_middleware::CorsMiddleware;
@@ -83,7 +83,7 @@ Access-Control-Allow-Credentials: true
 
 ### Permissive Mode
 
-Use `` `permissive()` `` to allow all origins in development.
+Use `permissive()` to allow all origins in development.
 
 ```rust
 use reinhardt_middleware::CorsMiddleware;
@@ -153,7 +153,7 @@ let config = CorsConfig {
 
 Allow requests with cookies and authentication headers.
 
-**Note**: When `` `allow_credentials: true` ``, you cannot use `` "*" `` in `` `allow_origins` ``.
+**Note**: When `allow_credentials: true`, you cannot use `"*"` in `allow_origins`.
 
 ```rust
 use reinhardt_middleware::cors::CorsConfig;
@@ -208,10 +208,10 @@ CORS middleware should be applied as early as possible.
 
 **Recommended order**:
 
-1. `` `RequestIdMiddleware` `` (request tracking)
-2. `` `LoggingMiddleware` `` (logging)
-3. `` **CorsMiddleware** `` (CORS handling)
-4. `` `SecurityMiddleware` `` (security headers)
+1. `RequestIdMiddleware` (request tracking)
+2. `LoggingMiddleware` (logging)
+3. **CorsMiddleware** (CORS handling)
+4. `SecurityMiddleware` (security headers)
 5. Other middleware...
 
 ```rust

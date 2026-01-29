@@ -110,7 +110,7 @@ let posts = Post::objects()
 
 ### HTTP Caching
 
-HTTP caching using `` `CacheControlMiddleware` ``.
+HTTP caching using `CacheControlMiddleware`.
 
 ```rust
 use reinhardt_middleware::{CacheControlMiddleware, caching::CacheControlConfig};

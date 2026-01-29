@@ -14,7 +14,7 @@ Guide to paginating large datasets.
 
 ## Page Number-Based Pagination
 
-### `` `PageNumberPagination` ``
+### `PageNumberPagination`
 
 Traditional page number-based pagination.
 
@@ -84,7 +84,7 @@ if let Err(e) = pagination.validate() {
 
 ## Limit/Offset-Based Pagination
 
-### `` `LimitOffsetPagination` ``
+### `LimitOffsetPagination`
 
 Flexible limit/offset-based pagination.
 
@@ -132,7 +132,7 @@ async fn list_items(
 
 ## Cursor-Based Pagination
 
-### `` `CursorPagination` ``
+### `CursorPagination`
 
 Best for infinite scroll or real-time feeds.
 
@@ -191,7 +191,7 @@ let cursor_data = String::from_utf8(decoded).unwrap();
 
 ## Pagination Metadata
 
-### `` `PaginatedResponse` ``
+### `PaginatedResponse`
 
 Standard paginated response format.
 
@@ -221,7 +221,7 @@ let response = PaginatedResponse {
 // }
 ```
 
-### `` `Page` `` Struct
+### `Page` Struct
 
 Contains detailed page information.
 

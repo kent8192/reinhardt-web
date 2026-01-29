@@ -304,11 +304,11 @@ async fn handler(req: Request) -> Response {
 
 ## Migration Checklist
 
-- [ ] Convert handlers to `` `Handler` `` trait or functions
-- [ ] Replace extractors with DI params (`` `Json` ``, `` `Path` ``, `` `Query` ``, etc.)
-- [ ] Convert middleware to `` `Middleware` `` trait
-- [ ] Replace `` `web::Data` `` with DI context
-- [ ] Convert routing configuration to `` `ServerRouter` ``
+- [ ] Convert handlers to `Handler` trait or functions
+- [ ] Replace extractors with DI params (`Json`, `Path`, `Query`, etc.)
+- [ ] Convert middleware to `Middleware` trait
+- [ ] Replace `web::Data` with DI context
+- [ ] Convert routing configuration to `ServerRouter`
 - [ ] Update response building
 - [ ] Add error handling
 - [ ] Test changes

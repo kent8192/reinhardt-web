@@ -210,7 +210,7 @@ Preflight requests (OPTIONS) are failing.
 
 - CORS middleware not registered
 - Allowed origins not configured correctly
-- `` `allow_credentials`` is `` `false`` when credentials are needed
+- `allow_credentials` is `false` when credentials are needed
 
 ### Solution
 

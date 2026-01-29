@@ -16,7 +16,7 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 
 ### StaticFilesMiddleware
 
-Use `` `StaticFilesMiddleware` `` for serving static files.
+Use `StaticFilesMiddleware` for serving static files.
 
 ```rust
 use reinhardt_utils::staticfiles::StaticFilesMiddleware;
@@ -83,7 +83,7 @@ let content = storage.open("test.txt").await?;
 
 ### S3Storage
 
-Saves files to AWS S3 (requires `` `s3` `` feature).
+Saves files to AWS S3 (requires `s3` feature).
 
 ```rust
 use reinhardt_utils::staticfiles::storage::{S3Storage, S3Config};
@@ -107,7 +107,7 @@ Ok(())
 
 ### AzureBlobStorage
 
-Saves files to Azure Blob Storage (requires `` `azure` `` feature).
+Saves files to Azure Blob Storage (requires `azure` feature).
 
 ```rust
 use reinhardt_utils::staticfiles::storage::{AzureBlobStorage, AzureBlobConfig};
@@ -126,7 +126,7 @@ Ok(())
 
 ### GcsStorage
 
-Saves files to Google Cloud Storage (requires `` `gcs` `` feature).
+Saves files to Google Cloud Storage (requires `gcs` feature).
 
 ```rust
 use reinhardt_utils::staticfiles::storage::{GcsStorage, GcsConfig};
@@ -149,7 +149,7 @@ Ok(())
 
 ### Development
 
-Use `` `StaticFileHandler` `` to serve local files directly.
+Use `StaticFileHandler` to serve local files directly.
 
 ```rust
 use reinhardt_utils::staticfiles::handler::StaticFileHandler;
@@ -159,7 +159,7 @@ let handler = StaticFileHandler::new("/path/to/static");
 
 ### Production
 
-Use `` `HashedFileStorage` `` for cache busting.
+Use `HashedFileStorage` for cache busting.
 
 ```rust
 use reinhardt_utils::staticfiles::storage::HashedFileStorage;
@@ -173,7 +173,7 @@ let url = storage.save("style.css", css_bytes).await?;
 
 ### ManifestStaticFilesStorage
 
-Versioned files using manifest (similar to Django's `` `ManifestStaticFilesStorage` ``).
+Versioned files using manifest (similar to Django's `ManifestStaticFilesStorage`).
 
 ```rust
 use reinhardt_utils::staticfiles::storage::{ManifestStaticFilesStorage, Manifest};

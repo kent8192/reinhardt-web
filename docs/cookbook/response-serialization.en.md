@@ -14,9 +14,9 @@ Guide to serializing data as JSON or other formats in responses.
 
 ## JSON Responses
 
-### Using `` `.with_json()` ``
+### Using `.with_json()`
 
-Return JSON responses using `` `Response::with_json()` ``.
+Return JSON responses using `Response::with_json()`.
 
 ```rust
 use reinhardt_http::Response;
@@ -113,7 +113,7 @@ async fn not_found() -> Response {
 
 ## Streaming Responses
 
-### `` `StreamingResponse` ``
+### `StreamingResponse`
 
 Stream large or chunked data.
 
@@ -159,9 +159,9 @@ async fn sse_events() -> StreamingResponse<impl Stream<Item = Result<Bytes, Box<
 
 ## Error Responses
 
-### Conversion from `` `Error` ``
+### Conversion from `Error`
 
-Use `` `From<Error>` `` implementation.
+Use `From<Error>` implementation.
 
 ```rust
 use reinhardt_http::{Error, Response};
@@ -209,7 +209,7 @@ impl From<ApiError> for Response {
 
 ## Paginated Responses
 
-### `` `PaginatedResponse` ``
+### `PaginatedResponse`
 
 Return paginated data.
 
@@ -239,7 +239,7 @@ async fn list_users(page: usize) -> Response {
 }
 ```
 
-### `` `Page` `` Struct
+### `Page` Struct
 
 ```rust
 use reinhardt_core::pagination::Page;
