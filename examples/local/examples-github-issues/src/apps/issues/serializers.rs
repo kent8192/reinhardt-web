@@ -1,6 +1,6 @@
 //! GraphQL types and input objects for issues
 
-use async_graphql::{Context, Enum, ID, InputObject, Object, Result as GqlResult};
+use async_graphql::{Context, Enum, ID, InputObject, Object, Result as GqlResult, SimpleObject};
 use chrono::{DateTime, Utc};
 
 use crate::apps::issues::models::Issue;
@@ -124,4 +124,46 @@ pub struct UpdateIssueInput {
 	pub title: Option<String>,
 	/// New body (optional)
 	pub body: Option<String>,
+}
+
+/// Pagination input for list queries
+#[derive(InputObject)]
+pub struct PaginationInput {
+	/// Page number (1-based, defaults to 1)
+	pub page: Option<i32>,
+	/// Number of items per page (defaults to 10)
+	pub page_size: Option<i32>,
+}
+
+impl Default for PaginationInput {
+	fn default() -> Self {
+		Self {
+			page: Some(1),
+			page_size: Some(10),
+		}
+	}
+}
+
+/// Pagination metadata for list responses
+#[derive(SimpleObject)]
+pub struct PageInfo {
+	/// Whether there is a next page
+	pub has_next_page: bool,
+	/// Whether there is a previous page
+	pub has_previous_page: bool,
+	/// Total number of items across all pages
+	pub total_count: i32,
+	/// Current page number (1-based)
+	pub page: i32,
+	/// Number of items per page
+	pub page_size: i32,
+}
+
+/// Paginated issue connection
+#[derive(SimpleObject)]
+pub struct IssueConnection {
+	/// List of issues on the current page
+	pub edges: Vec<IssueType>,
+	/// Pagination metadata
+	pub page_info: PageInfo,
 }

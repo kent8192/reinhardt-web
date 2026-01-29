@@ -10,7 +10,9 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use crate::apps::issues::models::Issue;
-use crate::apps::issues::serializers::{CreateIssueInput, IssueType, UpdateIssueInput};
+use crate::apps::issues::serializers::{
+	CreateIssueInput, IssueConnection, IssueType, PageInfo, PaginationInput, UpdateIssueInput,
+};
 
 /// Issue event types for subscriptions
 #[derive(Debug, Clone)]
@@ -123,15 +125,47 @@ impl IssueQuery {
 		Ok(issue.map(IssueType))
 	}
 
-	/// List issues, optionally filtered by project
-	async fn issues(&self, ctx: &Context<'_>, project_id: Option<ID>) -> GqlResult<Vec<IssueType>> {
+	/// List issues, optionally filtered by project, with pagination support
+	async fn issues(
+		&self,
+		ctx: &Context<'_>,
+		project_id: Option<ID>,
+		pagination: Option<PaginationInput>,
+	) -> GqlResult<IssueConnection> {
 		let storage = ctx.data::<IssueStorage>()?;
-		let issues = if let Some(pid) = project_id {
+		let all_issues = if let Some(pid) = project_id {
 			storage.get_issues_by_project(pid.as_str()).await
 		} else {
 			storage.list_issues().await
 		};
-		Ok(issues.into_iter().map(IssueType).collect())
+
+		// Apply pagination
+		let pagination = pagination.unwrap_or_default();
+		let page = pagination.page.unwrap_or(1).max(1);
+		let page_size = pagination.page_size.unwrap_or(10).max(1);
+
+		let total_count = all_issues.len() as i32;
+		let start = ((page - 1) * page_size) as usize;
+
+		let edges: Vec<IssueType> = all_issues
+			.into_iter()
+			.skip(start)
+			.take(page_size as usize)
+			.map(IssueType)
+			.collect();
+
+		let total_pages = (total_count + page_size - 1) / page_size;
+
+		Ok(IssueConnection {
+			edges,
+			page_info: PageInfo {
+				has_next_page: page < total_pages,
+				has_previous_page: page > 1,
+				total_count,
+				page,
+				page_size,
+			},
+		})
 	}
 }
 
