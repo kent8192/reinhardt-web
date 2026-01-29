@@ -127,6 +127,36 @@ mod user_options;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod create_role_tests;
+
+#[cfg(test)]
+mod drop_role_tests;
+
+#[cfg(test)]
+mod alter_role_tests;
+
+#[cfg(test)]
+mod create_user_tests;
+
+#[cfg(test)]
+mod drop_user_tests;
+
+#[cfg(test)]
+mod alter_user_tests;
+
+#[cfg(test)]
+mod rename_user_tests;
+
+#[cfg(test)]
+mod set_role_tests;
+
+#[cfg(test)]
+mod reset_role_tests;
+
+#[cfg(test)]
+mod set_default_role_tests;
+
 pub use alter_role::AlterRoleStatement;
 pub use alter_user::AlterUserStatement;
 pub use create_role::CreateRoleStatement;
