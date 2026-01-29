@@ -14,6 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Brief summary of key changes
 -->
 
+## [0.1.0-alpha.3] - 2026-01-29
+
+### Changed
+
+- **BREAKING**: Update `static-files` feature to use `reinhardt-utils/staticfiles` (#114)
+
+### Sub-Crate Updates
+
+- `reinhardt-utils` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-utils/CHANGELOG.md#010-alpha3---2026-01-29))
+  - **BREAKING**: Rename `r#static` module to `staticfiles`
+  - Improves developer experience by eliminating raw identifier prefix
+- `reinhardt-commands` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-commands/CHANGELOG.md#010-alpha3---2026-01-29))
+  - Update imports for staticfiles module rename
+- `reinhardt-conf` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-conf/CHANGELOG.md#010-alpha3---2026-01-29))
+  - Update imports for staticfiles module rename
+- `reinhardt-pages` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-pages/CHANGELOG.md#010-alpha3---2026-01-29))
+  - Update imports for staticfiles module rename
+- `reinhardt-test` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-test/CHANGELOG.md#010-alpha3---2026-01-29))
+  - Rename feature `static` to `staticfiles`
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Sub-Crate Updates

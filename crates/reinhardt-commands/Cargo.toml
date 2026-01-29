@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-commands"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -57,7 +57,7 @@ tokio-rustls = "0.26"
 hyper-rustls = { version = "0.27", features = ["http1", "http2"] }
 rustls-pemfile = "2.0"
 rcgen = "0.14.5"
-reinhardt-utils = {workspace = true, features = ["utils-core", "static"]}
+reinhardt-utils = {workspace = true, features = ["utils-core", "staticfiles"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 reinhardt-openapi = { workspace = true, optional = true }
 

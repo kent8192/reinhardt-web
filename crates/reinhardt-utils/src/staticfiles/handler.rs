@@ -54,7 +54,7 @@ impl StaticFileHandler {
 	/// # Example
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::handler::StaticFileHandler;
+	/// use reinhardt_utils::staticfiles::handler::StaticFileHandler;
 	/// use std::path::PathBuf;
 	///
 	/// let handler = StaticFileHandler::new(PathBuf::from("static"))

@@ -42,7 +42,7 @@ impl CdnConfig {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,
@@ -102,7 +102,7 @@ impl CdnUrlGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,
@@ -119,7 +119,7 @@ impl CdnUrlGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,
@@ -162,7 +162,7 @@ impl CdnUrlGenerator {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnUrlGenerator, CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,
@@ -195,7 +195,7 @@ impl CdnInvalidationRequest {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::CdnInvalidationRequest;
+	/// use reinhardt_utils::staticfiles::cdn::CdnInvalidationRequest;
 	///
 	/// let request = CdnInvalidationRequest::new(vec![
 	///     "/css/style.css".to_string(),
@@ -237,7 +237,7 @@ impl CdnPurgeHelper {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnPurgeHelper, CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnPurgeHelper, CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,
@@ -254,7 +254,7 @@ impl CdnPurgeHelper {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_utils::r#static::cdn::{CdnPurgeHelper, CdnConfig, CdnProvider};
+	/// use reinhardt_utils::staticfiles::cdn::{CdnPurgeHelper, CdnConfig, CdnProvider};
 	///
 	/// let config = CdnConfig::new(
 	///     CdnProvider::CloudFront,

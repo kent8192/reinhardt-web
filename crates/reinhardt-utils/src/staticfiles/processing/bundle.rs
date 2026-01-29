@@ -24,7 +24,7 @@ impl AssetBundler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::AssetBundler;
+	/// use reinhardt_utils::staticfiles::processing::bundle::AssetBundler;
 	///
 	/// let bundler = AssetBundler::new();
 	/// ```
@@ -40,7 +40,7 @@ impl AssetBundler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::AssetBundler;
+	/// use reinhardt_utils::staticfiles::processing::bundle::AssetBundler;
 	/// use std::path::PathBuf;
 	///
 	/// let mut bundler = AssetBundler::new();
@@ -56,7 +56,7 @@ impl AssetBundler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::AssetBundler;
+	/// use reinhardt_utils::staticfiles::processing::bundle::AssetBundler;
 	/// use std::path::PathBuf;
 	///
 	/// let mut bundler = AssetBundler::new();
@@ -83,7 +83,7 @@ impl AssetBundler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::AssetBundler;
+	/// use reinhardt_utils::staticfiles::processing::bundle::AssetBundler;
 	/// use std::path::PathBuf;
 	///
 	/// let mut bundler = AssetBundler::new();
@@ -124,7 +124,7 @@ impl AssetBundler {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::AssetBundler;
+	/// use reinhardt_utils::staticfiles::processing::bundle::AssetBundler;
 	/// use std::path::PathBuf;
 	///
 	/// let mut bundler = AssetBundler::new();
@@ -187,7 +187,7 @@ impl BundleConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::BundleConfig;
+	/// use reinhardt_utils::staticfiles::processing::bundle::BundleConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = BundleConfig::new(PathBuf::from("bundle.js"));
@@ -206,7 +206,7 @@ impl BundleConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::bundle::BundleConfig;
+	/// use reinhardt_utils::staticfiles::processing::bundle::BundleConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let mut config = BundleConfig::new(PathBuf::from("bundle.js"));

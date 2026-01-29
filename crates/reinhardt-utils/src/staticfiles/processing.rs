@@ -11,7 +11,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use reinhardt_utils::r#static::processing::{ProcessingPipeline, ProcessingConfig};
+//! use reinhardt_utils::staticfiles::processing::{ProcessingPipeline, ProcessingConfig};
 //!
 //! let config = ProcessingConfig::default()
 //!     .with_minification(true)
@@ -109,7 +109,7 @@ impl ProcessingConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::ProcessingConfig;
+	/// use reinhardt_utils::staticfiles::processing::ProcessingConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"));
@@ -128,7 +128,7 @@ impl ProcessingConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::ProcessingConfig;
+	/// use reinhardt_utils::staticfiles::processing::ProcessingConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"))
@@ -145,7 +145,7 @@ impl ProcessingConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::ProcessingConfig;
+	/// use reinhardt_utils::staticfiles::processing::ProcessingConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"))
@@ -162,7 +162,7 @@ impl ProcessingConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::ProcessingConfig;
+	/// use reinhardt_utils::staticfiles::processing::ProcessingConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"))
@@ -179,7 +179,7 @@ impl ProcessingConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::ProcessingConfig;
+	/// use reinhardt_utils::staticfiles::processing::ProcessingConfig;
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"))
@@ -206,7 +206,7 @@ impl ProcessingPipeline {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::{ProcessingPipeline, ProcessingConfig};
+	/// use reinhardt_utils::staticfiles::processing::{ProcessingPipeline, ProcessingConfig};
 	/// use std::path::PathBuf;
 	///
 	/// let config = ProcessingConfig::new(PathBuf::from("dist"));
@@ -235,7 +235,7 @@ impl ProcessingPipeline {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_utils::r#static::processing::{ProcessingPipeline, ProcessingConfig};
+	/// use reinhardt_utils::staticfiles::processing::{ProcessingPipeline, ProcessingConfig};
 	/// use std::path::PathBuf;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {

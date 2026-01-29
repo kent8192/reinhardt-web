@@ -36,7 +36,7 @@ impl TemplateStaticConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
 	///
 	/// let config = TemplateStaticConfig::new("/static/".to_string());
 	/// assert_eq!(config.static_url, "/static/");
@@ -55,7 +55,7 @@ impl TemplateStaticConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
 	/// use std::collections::HashMap;
 	///
 	/// let mut manifest = HashMap::new();
@@ -78,8 +78,8 @@ impl TemplateStaticConfig {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
-	/// use reinhardt_utils::r#static::ManifestStaticFilesStorage;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::ManifestStaticFilesStorage;
 	/// use std::path::PathBuf;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -133,7 +133,7 @@ impl TemplateStaticConfig {
 	/// Basic usage:
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
 	///
 	/// let config = TemplateStaticConfig::new("/static/".to_string());
 	/// assert_eq!(config.resolve_url("css/style.css"), "/static/css/style.css");
@@ -142,7 +142,7 @@ impl TemplateStaticConfig {
 	/// With manifest:
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
 	/// use std::collections::HashMap;
 	///
 	/// let mut manifest = HashMap::new();
@@ -157,7 +157,7 @@ impl TemplateStaticConfig {
 	/// With query string and fragment:
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::template_integration::TemplateStaticConfig;
+	/// use reinhardt_utils::staticfiles::template_integration::TemplateStaticConfig;
 	///
 	/// let config = TemplateStaticConfig::new("/static/".to_string());
 	/// assert_eq!(

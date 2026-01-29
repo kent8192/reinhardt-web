@@ -35,7 +35,7 @@ impl SourceMap {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMap;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMap;
 	///
 	/// let source_map = SourceMap::new("app.min.js".to_string());
 	/// assert_eq!(source_map.version, 3);
@@ -58,7 +58,7 @@ impl SourceMap {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMap;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMap;
 	///
 	/// let mut source_map = SourceMap::new("app.min.js".to_string());
 	/// source_map.add_source("src/app.js".to_string());
@@ -73,7 +73,7 @@ impl SourceMap {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMap;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMap;
 	///
 	/// let mut source_map = SourceMap::new("app.min.js".to_string());
 	/// source_map.add_source("src/app.js".to_string());
@@ -106,7 +106,7 @@ impl SourceMap {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMap;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMap;
 	///
 	/// let source_map = SourceMap::new("app.min.js".to_string());
 	/// let json = source_map.to_json().unwrap();
@@ -127,7 +127,7 @@ impl SourceMap {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMap;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMap;
 	///
 	/// let json = r#"{"version":3,"file":"app.min.js","sources":[],"names":[],"mappings":""}"#;
 	/// let source_map = SourceMap::from_json(json).unwrap();
@@ -154,7 +154,7 @@ impl SourceMapGenerator {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMapGenerator;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMapGenerator;
 	///
 	/// let generator = SourceMapGenerator::new();
 	/// ```
@@ -170,7 +170,7 @@ impl SourceMapGenerator {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMapGenerator;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMapGenerator;
 	///
 	/// let generator = SourceMapGenerator::new().with_inline_sources(false);
 	/// ```
@@ -190,7 +190,7 @@ impl SourceMapGenerator {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMapGenerator;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMapGenerator;
 	/// use std::path::Path;
 	///
 	/// let generator = SourceMapGenerator::new();
@@ -283,7 +283,7 @@ impl SourceMapGenerator {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::sourcemap::SourceMapGenerator;
+	/// use reinhardt_utils::staticfiles::processing::sourcemap::SourceMapGenerator;
 	///
 	/// let generator = SourceMapGenerator::new();
 	/// let comment = generator.generate_comment("app.min.js.map");
