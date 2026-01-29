@@ -2,13 +2,14 @@
 //!
 //! This module contains Query, Mutation, and Subscription resolvers for issue operations.
 
-use async_graphql::{Context, ID, Object, Result as GqlResult, Subscription};
+use async_graphql::{Context, ErrorExtensions, ID, Object, Result as GqlResult, Subscription};
 use futures_util::Stream;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
+use crate::apps::issues::errors::ApiError;
 use crate::apps::issues::models::Issue;
 use crate::apps::issues::serializers::{
 	CreateIssueInput, IssueConnection, IssueType, PageInfo, PaginationInput, UpdateIssueInput,
@@ -182,16 +183,16 @@ impl IssueMutation {
 		input: CreateIssueInput,
 	) -> GqlResult<IssueType> {
 		use reinhardt::Claims;
-		let claims = ctx
-			.data::<Claims>()
-			.map_err(|_| async_graphql::Error::new("Authentication required"))?;
+		let claims = ctx.data::<Claims>().map_err(|_| {
+			ApiError::Unauthorized("Authentication required".to_string()).extend()
+		})?;
 		let storage = ctx.data::<IssueStorage>()?;
 		let broadcaster = ctx.data::<IssueEventBroadcaster>()?;
 
 		let project_id = Uuid::parse_str(input.project_id.as_str())
-			.map_err(|_| async_graphql::Error::new("Invalid project ID"))?;
+			.map_err(|_| ApiError::InvalidInput("Invalid project ID".to_string()).extend())?;
 		let author_id = Uuid::parse_str(&claims.sub)
-			.map_err(|_| async_graphql::Error::new("Invalid user ID"))?;
+			.map_err(|_| ApiError::InvalidInput("Invalid user ID".to_string()).extend())?;
 
 		let number = storage.get_next_number(&project_id.to_string()).await;
 
@@ -225,7 +226,7 @@ impl IssueMutation {
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		// Update issue using setters
 		let mut updated_issue = issue.clone();
@@ -252,7 +253,7 @@ impl IssueMutation {
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		let mut closed_issue = issue.clone();
 		closed_issue.set_state("closed".to_string());
@@ -273,7 +274,7 @@ impl IssueMutation {
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		let mut reopened_issue = issue.clone();
 		reopened_issue.set_state("open".to_string());
