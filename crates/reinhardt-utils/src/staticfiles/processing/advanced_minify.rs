@@ -66,7 +66,7 @@ impl AdvancedMinifyConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::AdvancedMinifyConfig;
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::AdvancedMinifyConfig;
 	///
 	/// let config = AdvancedMinifyConfig::new();
 	/// assert!(config.mangle);
@@ -81,7 +81,7 @@ impl AdvancedMinifyConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::AdvancedMinifyConfig;
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::AdvancedMinifyConfig;
 	///
 	/// let config = AdvancedMinifyConfig::new().with_mangle(true);
 	/// assert!(config.mangle);
@@ -138,7 +138,7 @@ impl AdvancedMinifyConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::AdvancedMinifyConfig;
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::AdvancedMinifyConfig;
 	///
 	/// let config = AdvancedMinifyConfig::production();
 	/// assert!(config.mangle);
@@ -163,7 +163,7 @@ impl AdvancedMinifyConfig {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::AdvancedMinifyConfig;
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::AdvancedMinifyConfig;
 	///
 	/// let config = AdvancedMinifyConfig::development();
 	/// assert!(!config.mangle);
@@ -200,7 +200,7 @@ impl AdvancedJsMinifier {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::AdvancedJsMinifier;
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::AdvancedJsMinifier;
 	///
 	/// let minifier = AdvancedJsMinifier::new();
 	/// ```
@@ -215,7 +215,7 @@ impl AdvancedJsMinifier {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::advanced_minify::{AdvancedJsMinifier, AdvancedMinifyConfig};
+	/// use reinhardt_utils::staticfiles::processing::advanced_minify::{AdvancedJsMinifier, AdvancedMinifyConfig};
 	///
 	/// let config = AdvancedMinifyConfig::production();
 	/// let minifier = AdvancedJsMinifier::with_config(config);

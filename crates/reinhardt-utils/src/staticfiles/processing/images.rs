@@ -26,7 +26,7 @@ impl ImageOptimizer {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::images::ImageOptimizer;
+	/// use reinhardt_utils::staticfiles::processing::images::ImageOptimizer;
 	///
 	/// let optimizer = ImageOptimizer::new(85);
 	/// ```
@@ -42,7 +42,7 @@ impl ImageOptimizer {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::processing::images::ImageOptimizer;
+	/// use reinhardt_utils::staticfiles::processing::images::ImageOptimizer;
 	///
 	/// let optimizer = ImageOptimizer::with_settings(90, false);
 	/// ```

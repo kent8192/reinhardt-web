@@ -31,7 +31,7 @@ impl AzureBlobConfig {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// use reinhardt_utils::r#static::storage::AzureBlobConfig;
+	/// use reinhardt_utils::staticfiles::storage::AzureBlobConfig;
 	///
 	/// let config = AzureBlobConfig::new(
 	///     "mystorageaccount".to_string(),
@@ -84,7 +84,7 @@ impl AzureBlobConfig {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use reinhardt_utils::r#static::storage::{AzureBlobStorage, AzureBlobConfig, Storage};
+/// use reinhardt_utils::staticfiles::storage::{AzureBlobStorage, AzureBlobConfig, Storage};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = AzureBlobConfig::new(

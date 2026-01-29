@@ -63,8 +63,8 @@ impl CheckMessage {
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_utils::r#static::checks::check_static_files_config;
-/// use reinhardt_utils::r#static::storage::StaticFilesConfig;
+/// use reinhardt_utils::staticfiles::checks::check_static_files_config;
+/// use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 /// use std::path::PathBuf;
 ///
 /// let config = StaticFilesConfig {

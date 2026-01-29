@@ -1350,8 +1350,10 @@ impl RunServerCommand {
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
-			use reinhardt_utils::r#static::PathResolver;
-			use reinhardt_utils::r#static::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+			use reinhardt_utils::staticfiles::PathResolver;
+			use reinhardt_utils::staticfiles::middleware::{
+				StaticFilesConfig, StaticFilesMiddleware,
+			};
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);

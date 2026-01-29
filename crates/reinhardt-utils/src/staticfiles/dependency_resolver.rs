@@ -22,7 +22,7 @@ impl DependencyGraph {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DependencyGraph;
+	/// use reinhardt_utils::staticfiles::DependencyGraph;
 	///
 	/// let graph = DependencyGraph::new();
 	/// ```
@@ -38,7 +38,7 @@ impl DependencyGraph {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DependencyGraph;
+	/// use reinhardt_utils::staticfiles::DependencyGraph;
 	///
 	/// let mut graph = DependencyGraph::new();
 	/// graph.add_file("app.js".to_string());
@@ -57,7 +57,7 @@ impl DependencyGraph {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DependencyGraph;
+	/// use reinhardt_utils::staticfiles::DependencyGraph;
 	///
 	/// let mut graph = DependencyGraph::new();
 	/// graph.add_file("main.js".to_string());
@@ -77,7 +77,7 @@ impl DependencyGraph {
 	/// # Examples
 	///
 	/// ```rust
-	/// use reinhardt_utils::r#static::DependencyGraph;
+	/// use reinhardt_utils::staticfiles::DependencyGraph;
 	///
 	/// let mut graph = DependencyGraph::new();
 	/// graph.add_file("main.js".to_string());

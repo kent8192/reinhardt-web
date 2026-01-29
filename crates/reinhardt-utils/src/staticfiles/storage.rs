@@ -206,7 +206,7 @@ impl StaticFilesFinder {
 	/// # Example
 	///
 	/// ```rust,no_run
-	/// use reinhardt_utils::r#static::StaticFilesFinder;
+	/// use reinhardt_utils::staticfiles::StaticFilesFinder;
 	/// use std::path::PathBuf;
 	///
 	/// let finder = StaticFilesFinder::new(vec![

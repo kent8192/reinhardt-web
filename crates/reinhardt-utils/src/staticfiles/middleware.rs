@@ -92,7 +92,7 @@ impl StaticFilesConfig {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_utils::r#static::middleware::{StaticFilesMiddleware, StaticFilesConfig};
+/// use reinhardt_utils::staticfiles::middleware::{StaticFilesMiddleware, StaticFilesConfig};
 /// use std::path::PathBuf;
 ///
 /// let config = StaticFilesConfig::new("dist")
