@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::apps::issues::errors::ApiError;
 use crate::apps::issues::models::Issue;
@@ -182,10 +183,15 @@ impl IssueMutation {
 		ctx: &Context<'_>,
 		input: CreateIssueInput,
 	) -> GqlResult<IssueType> {
+		// Validate input
+		input
+			.validate()
+			.map_err(|e| ApiError::InvalidInput(format!("Validation error: {}", e)).extend())?;
+
 		use reinhardt::Claims;
-		let claims = ctx.data::<Claims>().map_err(|_| {
-			ApiError::Unauthorized("Authentication required".to_string()).extend()
-		})?;
+		let claims = ctx
+			.data::<Claims>()
+			.map_err(|_| ApiError::Unauthorized("Authentication required".to_string()).extend())?;
 		let storage = ctx.data::<IssueStorage>()?;
 		let broadcaster = ctx.data::<IssueEventBroadcaster>()?;
 
@@ -220,6 +226,11 @@ impl IssueMutation {
 		id: ID,
 		input: UpdateIssueInput,
 	) -> GqlResult<IssueType> {
+		// Validate input
+		input
+			.validate()
+			.map_err(|e| ApiError::InvalidInput(format!("Validation error: {}", e)).extend())?;
+
 		let storage = ctx.data::<IssueStorage>()?;
 		let broadcaster = ctx.data::<IssueEventBroadcaster>()?;
 

@@ -2,6 +2,7 @@
 
 use async_graphql::{Context, Enum, ID, InputObject, Object, Result as GqlResult, SimpleObject};
 use chrono::{DateTime, Utc};
+use validator::Validate;
 
 use crate::apps::issues::models::Issue;
 
@@ -107,22 +108,26 @@ impl IssueType {
 }
 
 /// Input for creating an issue
-#[derive(InputObject)]
+#[derive(InputObject, Validate)]
 pub struct CreateIssueInput {
 	/// Project ID to create the issue in
 	pub project_id: ID,
-	/// Issue title
+	/// Issue title (1-200 characters)
+	#[validate(length(min = 1, max = 200))]
 	pub title: String,
-	/// Issue body (supports Markdown)
+	/// Issue body (supports Markdown, max 10000 characters)
+	#[validate(length(max = 10000))]
 	pub body: String,
 }
 
 /// Input for updating an issue
-#[derive(InputObject)]
+#[derive(InputObject, Validate)]
 pub struct UpdateIssueInput {
-	/// New title (optional)
+	/// New title (optional, 1-200 characters if provided)
+	#[validate(length(min = 1, max = 200))]
 	pub title: Option<String>,
-	/// New body (optional)
+	/// New body (optional, max 10000 characters if provided)
+	#[validate(length(max = 10000))]
 	pub body: Option<String>,
 }
 
