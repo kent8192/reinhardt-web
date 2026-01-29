@@ -10,6 +10,7 @@ use reinhardt::routes;
 use crate::apps::{auth, dm, profile, relationship, tweet};
 use crate::config::middleware::{
 	create_cache_control_middleware, create_cors_middleware, create_security_middleware,
+	create_static_files_middleware,
 };
 use reinhardt::LoggingMiddleware;
 
@@ -25,6 +26,7 @@ use reinhardt::LoggingMiddleware;
 /// 2. SecurityMiddleware - Security headers (HSTS, X-Content-Type-Options)
 /// 3. CorsMiddleware - Cross-origin resource sharing
 /// 4. CacheControlMiddleware - HTTP cache headers
+/// 5. StaticFilesMiddleware - Static and media file serving
 ///
 /// Each app's `routes()` function returns a `UnifiedRouter` with both
 /// server and client routes defined.
@@ -42,4 +44,5 @@ pub fn routes() -> UnifiedRouter {
 		.with_middleware(create_security_middleware())
 		.with_middleware(create_cors_middleware())
 		.with_middleware(create_cache_control_middleware())
+		.with_middleware(create_static_files_middleware())
 }

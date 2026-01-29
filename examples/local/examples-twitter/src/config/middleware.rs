@@ -9,6 +9,9 @@ use reinhardt::prelude::*;
 use reinhardt::utils::staticfiles::caching::{
 	CacheControlConfig, CacheControlMiddleware, CacheDirective, CachePolicy,
 };
+use reinhardt::utils::staticfiles::middleware::{
+	StaticFilesConfig as StaticMiddlewareConfig, StaticFilesMiddleware,
+};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -66,6 +69,22 @@ pub fn create_cache_control_middleware() -> CacheControlMiddleware {
 	CacheControlMiddleware::new(cache_config)
 }
 
+/// Create StaticFilesMiddleware for serving static and media files.
+///
+/// Configuration:
+/// - root_dir: "static" (root directory for static files)
+/// - url_prefix: "/static/" (URL path prefix)
+/// - spa_mode: false (disabled for API-first application)
+/// - excluded_prefixes: ["/api/", "/media/"] (paths to exclude from static handling)
+pub fn create_static_files_middleware() -> StaticFilesMiddleware {
+	let config = StaticMiddlewareConfig::new("static")
+		.url_prefix("/static/")
+		.spa_mode(false)
+		.excluded_prefixes(vec!["/api/".to_string(), "/media/".to_string()]);
+
+	StaticFilesMiddleware::new(config)
+}
+
 /// Create a production-ready middleware stack for the Twitter clone.
 ///
 /// Stack order (execution order for requests):
@@ -73,11 +92,13 @@ pub fn create_cache_control_middleware() -> CacheControlMiddleware {
 /// 2. SecurityMiddleware - Apply security headers
 /// 3. CorsMiddleware - Handle cross-origin requests
 /// 4. CacheControlMiddleware - Set cache headers for responses
+/// 5. StaticFilesMiddleware - Serve static and media files
 pub fn create_middleware_stack() -> Vec<Arc<dyn Middleware>> {
 	vec![
 		Arc::new(LoggingMiddleware::new()),
 		Arc::new(create_security_middleware()),
 		Arc::new(create_cors_middleware()),
 		Arc::new(create_cache_control_middleware()),
+		Arc::new(create_static_files_middleware()),
 	]
 }
