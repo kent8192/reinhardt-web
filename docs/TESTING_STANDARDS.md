@@ -648,6 +648,169 @@ fn test_concurrent_counter() {
 }
 ```
 
+### TI-6 (SHOULD): Arrange-Act-Assert (AAA) Pattern
+
+All tests SHOULD follow the **Arrange-Act-Assert (AAA)** pattern for clear, consistent structure.
+
+**AAA Phases:**
+
+| Phase | Purpose | BDD Equivalent |
+|-------|---------|----------------|
+| **Arrange** | Set up test preconditions and inputs | Given |
+| **Act** | Execute the behavior under test | When |
+| **Assert** | Verify the expected outcomes | Then |
+
+**Comment Labels:**
+
+Use ONLY these standard labels:
+- `// Arrange` - Setup phase
+- `// Act` - Execution phase
+- `// Assert` - Verification phase
+
+❌ **Non-standard labels are prohibited:** `// Setup`, `// Execute`, `// Verify`, `// Given`, `// When`, `// Then`
+
+**Single Act Principle:**
+
+Each test SHOULD have exactly **one** Act phase. If a test requires multiple Act phases, consider splitting it into separate tests.
+
+**rstest Fixtures as Arrange:**
+
+rstest fixtures serve as the **Arrange phase** of AAA:
+- When a fixture provides all setup: `// Arrange: provided by <fixture_name>` or omit the Arrange comment entirely
+- When additional inline setup is needed after fixture injection: add an explicit `// Arrange` section for the inline portion
+
+**Comment Omission:**
+
+AAA comments MAY be omitted when the test body is **5 lines or fewer** and the phases are self-evident.
+
+**Lifecycle Test Exception:**
+
+CRUD workflow tests or lifecycle tests may use domain-specific labels instead of AAA:
+- `// CREATE`, `// READ`, `// UPDATE`, `// DELETE`
+- `// SETUP`, `// EXECUTE`, `// TEARDOWN` (for lifecycle tests only)
+
+**Examples:**
+
+#### Example 1: Simple Unit Test (Inline Arrange)
+
+```rust
+#[rstest]
+fn test_query_builder_select() {
+	// Arrange
+	let builder = QueryBuilder::new().table("users");
+
+	// Act
+	let sql = builder.select(&["id", "name"]).build();
+
+	// Assert
+	assert_eq!(sql, "SELECT id, name FROM users");
+}
+```
+
+#### Example 2: Fixture Provides Arrange
+
+```rust
+#[fixture]
+fn test_catalog() -> MessageCatalog {
+	let mut catalog = MessageCatalog::new("fr");
+	catalog.insert("hello", "bonjour");
+	catalog
+}
+
+#[rstest]
+fn test_translation_lookup(test_catalog: MessageCatalog) {
+	// Arrange: provided by test_catalog
+
+	// Act
+	let result = test_catalog.get("hello");
+
+	// Assert
+	assert_eq!(result, Some("bonjour"));
+}
+```
+
+#### Example 3: Fixture + Inline Arrange
+
+```rust
+#[rstest]
+fn test_filter_by_field(base_queryset: QuerySet) {
+	// Arrange
+	let field = "age";
+	let value = 18;
+
+	// Act
+	let filtered = base_queryset.filter(field, Operator::Gte, value);
+
+	// Assert
+	assert_eq!(filtered.count(), 3);
+}
+```
+
+#### Example 4: TeardownGuard with AAA
+
+```rust
+#[rstest]
+#[serial(i18n)]
+fn test_translation_activation(
+	_i18n_guard: TeardownGuard<I18nGuard>,
+) {
+	// Arrange
+	let catalog = MessageCatalog::new("fr");
+
+	// Act
+	activate("fr", catalog);
+
+	// Assert
+	assert_eq!(get_language(), "fr");
+}
+```
+
+**Anti-Pattern: Multiple Acts in One Test**
+
+❌ **BAD - Multiple Acts:**
+```rust
+#[rstest]
+fn test_user_workflow(db: Database) {
+	// Act 1 - create
+	let user = db.create_user("Alice");
+	assert!(user.is_ok());
+
+	// Act 2 - update
+	let updated = db.update_user(user.id, "Bob");
+	assert!(updated.is_ok());
+
+	// Act 3 - delete
+	let deleted = db.delete_user(user.id);
+	assert!(deleted.is_ok());
+}
+```
+
+✅ **GOOD - Split into separate tests:**
+```rust
+#[rstest]
+fn test_create_user(db: Database) {
+	// Act
+	let user = db.create_user("Alice");
+
+	// Assert
+	assert!(user.is_ok());
+	assert_eq!(user.unwrap().name, "Alice");
+}
+
+#[rstest]
+fn test_update_user(db_with_user: (Database, User)) {
+	// Arrange: provided by db_with_user
+	let (db, user) = db_with_user;
+
+	// Act
+	let updated = db.update_user(user.id, "Bob");
+
+	// Assert
+	assert!(updated.is_ok());
+	assert_eq!(updated.unwrap().name, "Bob");
+}
+```
+
 ---
 
 ## Infrastructure Testing
@@ -808,6 +971,7 @@ let pool = loop {
 - Use `#[rstest]` attribute instead of `#[test]`
 - Use `#[rstest]` with `#[tokio::test]` for async tests
 - Leverage fixtures for setup/teardown
+- Fixtures externalize the **Arrange** phase of the AAA pattern (see TI-6)
 
 **Examples:**
 
@@ -841,6 +1005,10 @@ async fn test_async_operation(#[future] postgres_container: PostgresFixture) {
 ### TF-1 (SHOULD): rstest Fixture Pattern
 
 Use **rstest** fixtures for reusable test setup and dependency injection.
+
+> **Note:** Fixtures serve as the **Arrange** phase in the AAA pattern.
+> When a fixture provides all test setup, the Arrange phase is externalized from the test body.
+> See TI-6 for details on combining fixtures with AAA.
 
 #### Basic Fixture
 

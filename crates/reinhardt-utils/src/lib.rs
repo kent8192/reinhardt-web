@@ -13,7 +13,7 @@
 //! - `logging`: Logging utilities (feature: `logging`)
 //! - `cache`: Caching utilities (feature: `cache`)
 //! - `storage`: Storage utilities (feature: `storage`)
-//! - `static`: Static file serving utilities (feature: `static`)
+//! - `staticfiles`: Static file serving utilities (feature: `staticfiles`)
 //!
 //! ## Example
 //!
@@ -36,7 +36,7 @@
 
 pub mod cache;
 pub mod logging;
-pub mod r#static;
+pub mod staticfiles;
 pub mod storage;
 pub mod utils_core;
 

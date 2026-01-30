@@ -27,6 +27,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Re-release of 0.1.0-alpha.3 content after version correction
+- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
+  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
+  - Feature renamed from `static` to `staticfiles`
+  - Improves developer experience by eliminating raw identifier prefix
+
+
+## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
+
+**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
+
+### Changed
+
+- **BREAKING**: Rename `r#static` module to `staticfiles` (#114)
+  - Module renamed from `reinhardt_utils::r#static` to `reinhardt_utils::staticfiles`
+  - Feature renamed from `static` to `staticfiles`
+  - Improves developer experience by eliminating raw identifier prefix
+
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added

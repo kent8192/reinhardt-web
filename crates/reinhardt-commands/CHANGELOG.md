@@ -21,18 +21,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Fixed
-- N/A
+- Fix `runserver` to load settings from `settings/` directory instead of using `Settings::default()` (#128)
+- Add all required Settings fields to DefaultSource to prevent deserialization errors
 
 ### Security
 - N/A
 
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Version bump for publish workflow correction (no functional changes)
+
 ## [0.1.0-alpha.3] - 2026-01-29
 
-### Fixed
-- Fix `runserver` to load settings from `settings/` directory instead of using `Settings::default()` (#128)
-- Add all required Settings fields to DefaultSource to prevent deserialization errors
+### Changed
 
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
 
 ## [0.1.0-alpha.2] - 2026-01-28
 
