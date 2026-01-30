@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
+## [0.1.0-alpha.2] - 2026-01-29
+
+### Changed
+
+- Remove obsolete commented-out code from wizard module documentation
+- Update package version from workspace reference to explicit version
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
