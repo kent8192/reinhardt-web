@@ -1,0 +1,80 @@
+# release-plz configuration for Reinhardt project
+# Documentation: https://release-plz.ieni.dev/docs/config
+
+[workspace]
+# Changelog settings
+changelog_update = true
+
+# PR settings
+pr_branch_prefix = "release-plz/"
+pr_labels = ["release", "automated"]
+
+# Git release settings
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "{{ package }}@v{{ version }}"
+git_release_type = "auto"
+
+# Publish settings
+semver_check = false
+publish_timeout = "10m"
+dependencies_update = false
+
+# Non-published packages (tests, examples, internal tools)
+[[package]]
+name = "reinhardt-test-support"
+release = false
+publish = false
+
+[[package]]
+name = "reinhardt-integration-tests"
+release = false
+publish = false
+
+[[package]]
+name = "reinhardt-benchmarks"
+release = false
+publish = false
+
+[[package]]
+name = "examples-hello-world"
+release = false
+publish = false
+
+[[package]]
+name = "examples-rest-api"
+release = false
+publish = false
+
+[[package]]
+name = "examples-database-integration"
+release = false
+publish = false
+
+[[package]]
+name = "examples-tutorial-basis"
+release = false
+publish = false
+
+[[package]]
+name = "examples-tutorial-rest"
+release = false
+publish = false
+
+[[package]]
+name = "examples-twitter"
+release = false
+publish = false
+
+[[package]]
+name = "examples-github-issues"
+release = false
+publish = false
+
+[[package]]
+name = "reinhardt-settings-cli"
+release = false
+publish = false
+
+[changelog]
+protect_breaking_commits = true
