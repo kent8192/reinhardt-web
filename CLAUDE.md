@@ -134,60 +134,46 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 
 ### Release & Publishing Policy
 
-**Versioning (Semantic Versioning 2.0.0):**
-- **MUST** follow Semantic Versioning 2.0.0 strictly for all crates
-  - MAJOR version (X.0.0): Breaking changes (API incompatibility)
-  - MINOR version (0.X.0): New features (backward compatible)
-  - PATCH version (0.0.X): Bug fixes (backward compatible)
-- **NEVER** make breaking changes without incrementing MAJOR version
-- Each crate maintains its own independent version
-- Pre-1.0.0 versions (0.x.x) may have breaking changes in MINOR versions (per SemVer spec)
+**Automated Releases with release-plz:**
+
+This project uses [release-plz](https://release-plz.ieni.dev/) for automated release management:
+
+- **Automated Versioning**: Versions determined from conventional commits
+- **Automated CHANGELOGs**: Generated from commit messages
+- **Release PRs**: Automatically created when changes are pushed to main
+- **Automated Publishing**: Crates published to crates.io upon Release PR merge
+
+**Commit-to-Version Mapping:**
+
+| Commit Type | Version Bump |
+|-------------|--------------|
+| `feat:` | MINOR |
+| `fix:` | PATCH |
+| `feat!:` or `BREAKING CHANGE:` | MAJOR |
+| Other types | PATCH |
 
 **Tagging Strategy (Per-Crate Tagging):**
-- **MUST** use format: `[crate-name]@v[version]`
-  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-orm@v0.1.1`, `reinhardt@v1.0.0`
-- **MUST** tag each crate individually when published to crates.io
-- Tag message MUST include brief changelog summary
-- Tag MUST be created AFTER committing version changes, not before
+- Format: `[crate-name]@v[version]`
+  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-orm@v0.1.1`
+- Tags are created automatically by release-plz upon Release PR merge
+- **NEVER** create release tags manually
 
-**Publishing to crates.io:**
-- **NEVER** publish without explicit user authorization
-- **ALWAYS** use `--dry-run` first for verification
-- Verify all checks pass before publishing:
-  - `cargo check --workspace --all --all-features`
-  - `cargo test --workspace --all --all-features`
-  - `cargo publish --dry-run -p <crate-name>`
-- Commit version bump and CHANGELOG updates BEFORE creating tag
-- Push commits and tags AFTER successful publish
+**Release Workflow:**
+1. Write commits following Conventional Commits format
+2. Push to main branch
+3. release-plz creates Release PR with version bumps and CHANGELOG updates
+4. Review and merge Release PR
+5. release-plz publishes to crates.io and creates Git tags
 
-**Publishing Workflow:**
-1. Check crates.io for current published version: `curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'`
-2. Update crate version in `Cargo.toml`
-3. Update crate's `CHANGELOG.md`
-4. Run all verification commands
-5. Commit version changes (see docs/COMMIT_GUIDELINE.md CE-5)
-6. Wait for explicit user authorization to proceed
-7. Run `cargo publish --dry-run -p <crate-name>`
-8. Wait for user confirmation after dry-run
-9. Run `cargo publish -p <crate-name>`
-10. Create and push tag: `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
-11. Push: `git push && git push --tags`
+**Manual Intervention:**
+- Edit Release PR to adjust CHANGELOG entries or versions if needed
+- Release PRs can be modified before merging
 
-**Why This Approach:**
-- **Traceability**: Git tag enables complete restoration of specific crate version state
-- **Unambiguous**: Clear identification of which crate at which version (critical for 70+ crates)
-- **Efficient**: Release only changed crates, avoid unnecessary dependency updates
-- **Automation-friendly**: Compatible with tools like `release-plz`, `cargo-release`
-
-**Version Cascade Policy:**
-- **MUST** follow Version Cascade Policy (docs/VERSION_CASCADE.md) when updating sub-crate versions
-- When sub-crate version is updated, main crate (`reinhardt-web`) version MUST also be updated
-- Version change level mapping:
-  - Sub-crate MAJOR → Main crate MAJOR
-  - Sub-crate MINOR → Main crate MINOR
-  - Sub-crate PATCH → Main crate PATCH
-- Multiple sub-crates: Follow highest priority (MAJOR > MINOR > PATCH)
-- **ALWAYS** update CHANGELOG.md with Sub-Crate Updates section
+**Critical Rules:**
+- **MUST** use conventional commit format for proper version detection
+- **MUST** review Release PRs before merging
+- **NEVER** manually bump versions in feature branches
+- **NEVER** create release tags manually
 
 See docs/RELEASE_PROCESS.md for detailed release procedures.
 
@@ -344,15 +330,8 @@ Before submitting code:
 - Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
 - Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
-- Follow Semantic Versioning 2.0.0 strictly for all crates
-- Check crates.io for current published version before updating crate versions
-- Use `[crate-name]@v[version]` format for Git tags
-- Verify with `--dry-run` before publishing to crates.io
-- Commit version bump before creating tags
-- Update crate's CHANGELOG.md with version changes
-- Follow Version Cascade Policy when updating sub-crate versions
-- Update main crate version when any sub-crate version changes
-- Include Sub-Crate Updates section in main crate CHANGELOG.md
+- Use conventional commit format for proper version detection by release-plz
+- Review Release PRs created by release-plz before merging
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
@@ -389,13 +368,9 @@ Before submitting code:
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`
-- Publish to crates.io without explicit user authorization
-- Update crate versions without checking crates.io for current published status
-- Create Git tags before committing version changes
-- Skip `--dry-run` verification before publishing
-- Make breaking changes without MAJOR version bump
-- Update sub-crate version without cascading to main crate
-- Skip CHANGELOG.md Sub-Crate Updates section for version cascades
+- Manually bump versions in feature branches (let release-plz handle it)
+- Create release tags manually (release-plz creates them automatically)
+- Skip reviewing Release PRs before merging
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
@@ -425,7 +400,6 @@ For comprehensive guidelines, see:
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: docs/COMMIT_GUIDELINE.md
 - **Release Process**: docs/RELEASE_PROCESS.md
-- **Version Cascade**: docs/VERSION_CASCADE.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
