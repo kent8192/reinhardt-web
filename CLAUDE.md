@@ -178,6 +178,16 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - **Efficient**: Release only changed crates, avoid unnecessary dependency updates
 - **Automation-friendly**: Compatible with tools like `release-plz`, `cargo-release`
 
+**Version Cascade Policy:**
+- **MUST** follow Version Cascade Policy (docs/VERSION_CASCADE.md) when updating sub-crate versions
+- When sub-crate version is updated, main crate (`reinhardt-web`) version MUST also be updated
+- Version change level mapping:
+  - Sub-crate MAJOR → Main crate MAJOR
+  - Sub-crate MINOR → Main crate MINOR
+  - Sub-crate PATCH → Main crate PATCH
+- Multiple sub-crates: Follow highest priority (MAJOR > MINOR > PATCH)
+- **ALWAYS** update CHANGELOG.md with Sub-Crate Updates section
+
 See docs/RELEASE_PROCESS.md for detailed release procedures.
 
 ### Workflow Best Practices
@@ -339,6 +349,9 @@ Before submitting code:
 - Verify with `--dry-run` before publishing to crates.io
 - Commit version bump before creating tags
 - Update crate's CHANGELOG.md with version changes
+- Follow Version Cascade Policy when updating sub-crate versions
+- Update main crate version when any sub-crate version changes
+- Include Sub-Crate Updates section in main crate CHANGELOG.md
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
@@ -379,6 +392,8 @@ Before submitting code:
 - Create Git tags before committing version changes
 - Skip `--dry-run` verification before publishing
 - Make breaking changes without MAJOR version bump
+- Update sub-crate version without cascading to main crate
+- Skip CHANGELOG.md Sub-Crate Updates section for version cascades
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
@@ -407,6 +422,7 @@ For comprehensive guidelines, see:
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: docs/COMMIT_GUIDELINE.md
 - **Release Process**: docs/RELEASE_PROCESS.md
+- **Version Cascade**: docs/VERSION_CASCADE.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md

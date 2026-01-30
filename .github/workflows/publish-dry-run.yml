@@ -77,6 +77,9 @@ jobs:
           echo "Detecting changed crates..."
 
           # Use cargo-workspaces to detect changed crates
+          # Note: cargo ws changed detects all file changes including non-functional ones
+          # (CHANGELOG, README, etc.). The version check step filters these out by
+          # checking for actual src/ changes since the crate's version tag.
           CHANGED_OUTPUT=$(cargo ws changed 2>&1 || true)
 
           if echo "$CHANGED_OUTPUT" | grep -q "No changed crates detected"; then
@@ -103,13 +106,34 @@ jobs:
           CHANGED_CRATES=$(cargo ws changed 2>&1 | grep -v "^info" | grep -v "^$" | grep -E "^reinhardt-" || true)
 
           for CRATE_NAME in $CHANGED_CRATES; do
-            # Get proposed version from cargo metadata
+            # Get crate path from cargo metadata
+            CRATE_PATH=$(cargo metadata --format-version 1 --no-deps \
+              | jq -r --arg name "$CRATE_NAME" '.packages[] | select(.name == $name) | .manifest_path' \
+              | sed 's|/Cargo.toml||')
+
+            if [ -z "$CRATE_PATH" ]; then
+              echo "⚠️ Could not determine path for $CRATE_NAME, skipping"
+              continue
+            fi
+
+            # Get the tag for this crate's current version
             PROPOSED_VERSION=$(cargo metadata --format-version 1 --no-deps \
               | jq -r --arg name "$CRATE_NAME" '.packages[] | select(.name == $name) | .version')
 
             if [ -z "$PROPOSED_VERSION" ]; then
               echo "⚠️ Could not determine version for $CRATE_NAME, skipping"
               continue
+            fi
+
+            # Check if there are actual src/ changes since the tag
+            # This filters out crates with only non-functional changes (CHANGELOG, README, etc.)
+            CRATE_TAG="${CRATE_NAME}@v${PROPOSED_VERSION}"
+            if git rev-parse "$CRATE_TAG" >/dev/null 2>&1; then
+              SRC_CHANGES=$(git diff --name-only "$CRATE_TAG"..HEAD -- "$CRATE_PATH/src/" 2>/dev/null | wc -l | tr -d ' ')
+              if [ "$SRC_CHANGES" = "0" ]; then
+                echo "ℹ️ $CRATE_NAME v$PROPOSED_VERSION: No src/ changes since tag, skipping version check"
+                continue
+              fi
             fi
 
             echo "Checking $CRATE_NAME v$PROPOSED_VERSION on crates.io..."
@@ -119,8 +143,8 @@ jobs:
               -H "User-Agent: reinhardt-ci (https://github.com/kent8192/reinhardt-rs)" \
               "https://crates.io/api/v1/crates/$CRATE_NAME")
 
-            HTTP_BODY=$(echo "$HTTP_RESPONSE" | head -n -1)
             HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n 1)
+            HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 
             if [ "$HTTP_STATUS" = "404" ]; then
               echo "  ℹ️ $CRATE_NAME: Not yet published on crates.io (new crate) - OK"
@@ -268,8 +292,8 @@ jobs:
             echo "Upon merge, the 'publish-on-merge' workflow will:"
             echo "1. Verify build for each crate"
             echo "2. Publish changed crates to crates.io in dependency order"
-            echo "3. Create GitHub Releases"
-            echo "4. Push release tags"
+            echo "3. Create and push release tags (via cargo-workspaces)"
+            echo "4. Create GitHub Releases"
           } >> $GITHUB_STEP_SUMMARY
 
       - name: No changes summary

@@ -192,73 +192,39 @@ jobs:
             echo "Publishing order determined by cargo ws plan (dependency-aware)."
           fi
 
-      - name: Publish crates sequentially
+      - name: Publish crates using cargo-workspaces
         if: steps.detect-crates.outputs.has_changes == 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
+          echo "Publishing crates using cargo ws publish..."
+          echo "cargo-workspaces automatically:"
+          echo "  - Resolves dependency order"
+          echo "  - Removes dev-dependencies (fixes circular dev-deps issue)"
+          echo "  - Waits between publishes for crates.io index updates"
+          echo "  - Creates and pushes tags for each published crate"
+          echo ""
 
-          echo "Publishing crates in dependency order with 30s interval..."
-          echo "Order determined by cargo ws plan to ensure dependencies are published first."
-          echo "This delay allows crates.io index to update between publishes."
-
-          CRATE_COUNT=$(echo "$CRATES_JSON" | jq '. | length')
-          CURRENT=0
-
-          echo "$CRATES_JSON" | jq -c '.[]' | while read -r crate; do
-            CURRENT=$((CURRENT + 1))
-            CRATE_NAME=$(echo "$crate" | jq -r '.name')
-            VERSION=$(echo "$crate" | jq -r '.version')
-
-            echo ""
-            echo "[$CURRENT/$CRATE_COUNT] Publishing $CRATE_NAME v$VERSION..."
-            echo ""
-
-            # Run build verification first
-            echo "Running build verification..."
-            if ! cargo build -p "$CRATE_NAME"; then
-              echo "❌ Build verification failed for $CRATE_NAME"
-              exit 1
-            fi
-            echo "✅ Build verification passed for $CRATE_NAME"
-
-            # Publish with retry logic
-            MAX_RETRIES=3
-            RETRY_COUNT=0
-            WAIT_TIME=10
-
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              if cargo publish -p "$CRATE_NAME"; then
-                echo "✅ Successfully published $CRATE_NAME v$VERSION"
-                break
-              else
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                  echo "⚠️ Publish failed, retrying in ${WAIT_TIME}s (attempt $RETRY_COUNT/$MAX_RETRIES)..."
-                  sleep $WAIT_TIME
-                  WAIT_TIME=$((WAIT_TIME * 2))
-                else
-                  echo "❌ Publish failed after $MAX_RETRIES attempts"
-                  exit 1
-                fi
-              fi
-            done
-
-            # Create local tag (don't push yet)
-            TAG_NAME="${CRATE_NAME}@v${VERSION}"
-            git tag "$TAG_NAME" -m "Release $CRATE_NAME v$VERSION"
-            echo "🏷️ Created tag: $TAG_NAME"
-
-            # Wait before next crate (except for last one)
-            if [ "$CURRENT" -lt "$CRATE_COUNT" ]; then
-              echo "⏳ Waiting 30 seconds before next crate..."
-              sleep 30
-            fi
-          done
+          # Use cargo ws publish with appropriate flags:
+          # --from-git: Skip version bump (already committed)
+          # --no-global-tag: Don't create workspace-wide tag (only per-crate tags)
+          # --individual-tag-prefix '%n@': Tag format prefix (crate-name@)
+          # --tag-prefix 'v': Tag format suffix (v before version)
+          # Combined format: [crate-name]@v[version]
+          # --publish-interval 30: Wait 30s between publishes for crates.io index
+          # --yes: Skip confirmation prompts
+          # --allow-dirty: Allow uncommitted changes (dev-deps removal)
+          cargo ws publish \
+            --from-git \
+            --no-global-tag \
+            --individual-tag-prefix '%n@' \
+            --tag-prefix 'v' \
+            --publish-interval 30 \
+            --yes \
+            --allow-dirty
 
           echo ""
-          echo "🎉 All crates published successfully!"
+          echo "🎉 All crates published and tagged successfully!"
 
       - name: Create GitHub Releases
         if: steps.detect-crates.outputs.has_changes == 'true'
@@ -301,26 +267,6 @@ jobs:
               --notes-file /tmp/release-notes-${CRATE_NAME}.md
 
             echo "✅ Created GitHub Release for $TAG_NAME"
-          done
-
-      - name: Push tags
-        if: steps.detect-crates.outputs.has_changes == 'true'
-        run: |
-          # Get all tags created in this run (tags pointing at HEAD)
-          TAGS=$(git tag --points-at HEAD | grep -E "^[a-z0-9_-]+@v[0-9]" || echo "")
-
-          if [ -z "$TAGS" ]; then
-            echo "No tags to push."
-            exit 0
-          fi
-
-          echo "Pushing tags..."
-          echo "$TAGS" | while read -r tag; do
-            if [ -n "$tag" ]; then
-              echo "Pushing tag: $tag"
-              git push origin "$tag"
-              echo "✅ Tag $tag pushed successfully."
-            fi
           done
 
       - name: Summary
