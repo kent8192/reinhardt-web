@@ -1,6 +1,4 @@
-# kakebooR
-
-> Rust製の家計簿Webアプリケーション。Reinhardt Webフレームワークを使用したREST APIベースの収支管理システム。
+# reinhardt-web
 
 ## Tech Stack
 
