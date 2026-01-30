@@ -22,17 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Sub-Crate Updates
 
-- `reinhardt-utils` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-utils/CHANGELOG.md#010-alpha2---2026-01-29))
-  - **BREAKING**: Rename `r#static` module to `staticfiles`
-  - Improves developer experience by eliminating raw identifier prefix
-- `reinhardt-commands` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-commands/CHANGELOG.md#010-alpha3---2026-01-29))
-  - Update imports for staticfiles module rename
-- `reinhardt-conf` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-conf/CHANGELOG.md#010-alpha2---2026-01-29))
-  - Update imports for staticfiles module rename
-- `reinhardt-pages` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-pages/CHANGELOG.md#010-alpha2---2026-01-29))
-  - Update imports for staticfiles module rename
-- `reinhardt-test` updated to v0.1.0-alpha.2 ([CHANGELOG](crates/reinhardt-test/CHANGELOG.md#010-alpha2---2026-01-29))
-  - Rename feature `static` to `staticfiles`
+- `reinhardt-utils` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-utils/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-conf` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-conf/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-pages` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-pages/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-test` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-test/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-commands` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-commands/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-rest` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-rest/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-http` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-http/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-db` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-db/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-forms` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-forms/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-pages-macros` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-pages/macros/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
 
 ## [0.1.0-alpha.1] - 2026-01-23
 
