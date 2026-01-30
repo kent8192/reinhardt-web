@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
 ## [0.1.0-alpha.4] - 2026-01-30
 
 ### Changed
 
 - Version bump for publish workflow correction (no functional changes)
-
 
 ## [0.1.0-alpha.3] - 2026-01-30
 
@@ -40,3 +42,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial release with RESTful API framework with serializers, viewsets, and browsable API interface
+

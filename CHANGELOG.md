@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Brief summary of key changes
 -->
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
 ## [0.1.0-alpha.2] - 2026-01-29
 
 ### Changed

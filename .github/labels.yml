@@ -78,10 +78,10 @@
   color: 0366d6
   description: Pull requests that update a dependency file
 
-# Release Label (SPECIAL - Triggers Automation)
+# Release Label (Applied by release-plz)
 - name: release
   color: 0bdb4a
-  description: Triggers release automation workflow
+  description: Applied to Release PRs created by release-plz
 
 # Scope Labels
 - name: database

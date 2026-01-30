@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
 ## [0.1.0-alpha.3] - 2026-01-30
 
 ### Changed
@@ -19,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Internal updates (changelog entry backfilled)
-
 
 ## [0.1.0-alpha.1] - 2026-01-23
 
@@ -57,3 +59,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Custom endpoint paths
   - Codec selection (json, url, msgpack)
   - Dependency injection support with `#[reinhardt::inject]`
+
