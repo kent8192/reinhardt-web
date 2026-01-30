@@ -372,7 +372,7 @@ reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.2" }
 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.1" }
-reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.3" }
+reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.4" }
 reinhardt-settings-cli = { path = "crates/reinhardt-conf/crates/settings-cli", version = "0.1.0-alpha.1" }
 reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-alpha.1" }
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-alpha.1" }
@@ -381,13 +381,13 @@ reinhardt-server = { path = "crates/reinhardt-server", version = "0.1.0-alpha.1"
 reinhardt-views = { path = "crates/reinhardt-views", version = "0.1.0-alpha.1" }
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.1.0-alpha.1" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-alpha.1" }
-reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.3" }
+reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.4" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.2" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.2" }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.3" }
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.4" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.1" }
-reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.3" }
+reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.4" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.3" }
 reinhardt-throttling = { path = "crates/reinhardt-throttling", version = "0.1.0-alpha.1" }
 reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.0-alpha.1" }

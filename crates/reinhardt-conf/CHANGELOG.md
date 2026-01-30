@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - N/A
 
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Re-release of 0.1.0-alpha.3 content after version correction
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
+
+
 ## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
 
 **Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
