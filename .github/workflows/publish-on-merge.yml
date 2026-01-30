@@ -202,46 +202,29 @@ jobs:
           echo "  - Resolves dependency order"
           echo "  - Removes dev-dependencies (fixes circular dev-deps issue)"
           echo "  - Waits between publishes for crates.io index updates"
+          echo "  - Creates and pushes tags for each published crate"
           echo ""
 
           # Use cargo ws publish with appropriate flags:
           # --from-git: Skip version bump (already committed)
-          # --no-git-tag: We create tags manually for more control
-          # --no-git-push: We push tags manually
+          # --no-global-tag: Don't create workspace-wide tag (only per-crate tags)
+          # --individual-tag-prefix '%n@': Tag format prefix (crate-name@)
+          # --tag-prefix 'v': Tag format suffix (v before version)
+          # Combined format: [crate-name]@v[version]
           # --publish-interval 30: Wait 30s between publishes for crates.io index
           # --yes: Skip confirmation prompts
           # --allow-dirty: Allow uncommitted changes (dev-deps removal)
           cargo ws publish \
             --from-git \
-            --no-git-tag \
-            --no-git-push \
+            --no-global-tag \
+            --individual-tag-prefix '%n@' \
+            --tag-prefix 'v' \
             --publish-interval 30 \
             --yes \
             --allow-dirty
 
           echo ""
-          echo "🎉 All crates published successfully!"
-
-      - name: Create tags for published crates
-        if: steps.detect-crates.outputs.has_changes == 'true'
-        run: |
-          CRATES_JSON='${{ steps.detect-crates.outputs.crates_json }}'
-
-          echo "Creating tags for published crates..."
-
-          echo "$CRATES_JSON" | jq -c '.[]' | while read -r crate; do
-            CRATE_NAME=$(echo "$crate" | jq -r '.name')
-            VERSION=$(echo "$crate" | jq -r '.version')
-            TAG_NAME="${CRATE_NAME}@v${VERSION}"
-
-            # Check if tag already exists
-            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-              echo "ℹ️ Tag $TAG_NAME already exists, skipping..."
-            else
-              git tag "$TAG_NAME" -m "Release $CRATE_NAME v$VERSION"
-              echo "🏷️ Created tag: $TAG_NAME"
-            fi
-          done
+          echo "🎉 All crates published and tagged successfully!"
 
       - name: Create GitHub Releases
         if: steps.detect-crates.outputs.has_changes == 'true'
@@ -284,26 +267,6 @@ jobs:
               --notes-file /tmp/release-notes-${CRATE_NAME}.md
 
             echo "✅ Created GitHub Release for $TAG_NAME"
-          done
-
-      - name: Push tags
-        if: steps.detect-crates.outputs.has_changes == 'true'
-        run: |
-          # Get all tags created in this run (tags pointing at HEAD)
-          TAGS=$(git tag --points-at HEAD | grep -E "^[a-z0-9_-]+@v[0-9]" || echo "")
-
-          if [ -z "$TAGS" ]; then
-            echo "No tags to push."
-            exit 0
-          fi
-
-          echo "Pushing tags..."
-          echo "$TAGS" | while read -r tag; do
-            if [ -n "$tag" ]; then
-              echo "Pushing tag: $tag"
-              git push origin "$tag"
-              echo "✅ Tag $tag pushed successfully."
-            fi
           done
 
       - name: Summary

@@ -292,8 +292,8 @@ jobs:
             echo "Upon merge, the 'publish-on-merge' workflow will:"
             echo "1. Verify build for each crate"
             echo "2. Publish changed crates to crates.io in dependency order"
-            echo "3. Create GitHub Releases"
-            echo "4. Push release tags"
+            echo "3. Create and push release tags (via cargo-workspaces)"
+            echo "4. Create GitHub Releases"
           } >> $GITHUB_STEP_SUMMARY
 
       - name: No changes summary
