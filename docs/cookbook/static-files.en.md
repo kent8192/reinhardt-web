@@ -20,7 +20,7 @@ Use `StaticFilesMiddleware` for serving static files.
 
 ```rust
 use reinhardt_utils::staticfiles::StaticFilesMiddleware;
-use reinhardt_utils::staticfiles::StaticFilesConfig;
+use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 
 let config = StaticFilesConfig {
     static_root: "static".into(),
@@ -34,6 +34,12 @@ let config = StaticFilesConfig {
 
 let middleware = StaticFilesMiddleware::new(config);
 ```
+
+> **Note**: There are two `StaticFilesConfig` types in `reinhardt_utils::staticfiles`:
+> - `storage::StaticFilesConfig` - For storage configuration (`static_root`, `static_url`, `staticfiles_dirs`, `media_url`)
+> - `middleware::StaticFilesConfig` - For middleware configuration (`root_dir`, `url_prefix`, `spa_mode`, etc.)
+>
+> This example uses the storage version. The storage config is also re-exported at `reinhardt_utils::staticfiles::StaticFilesConfig`.
 
 ---
 
@@ -250,7 +256,7 @@ let all_files = finder.find_all();
 Controls caching for static files.
 
 ```rust
-use reinhardt_middleware::{CacheControlMiddleware, caching::CacheControlConfig};
+use reinhardt_utils::staticfiles::{CacheControlMiddleware, CacheControlConfig};
 
 let config = CacheControlConfig {
     public: true,
@@ -265,7 +271,7 @@ let middleware = CacheControlMiddleware::new(config);
 ### Cache Directives
 
 ```rust
-use reinhardt_middleware::caching::CacheDirective;
+use reinhardt_utils::staticfiles::CacheDirective;
 
 // Typical static files (cache for 1 hour)
 let directive = CacheDirective::public()
@@ -287,7 +293,7 @@ let no_cache = CacheDirective::no_cache();
 ```rust
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_utils::staticfiles::StaticFilesMiddleware;
-use reinhardt_utils::staticfiles::StaticFilesConfig;
+use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 
 let router = ServerRouter::new()
     .with_middleware(StaticFilesMiddleware::new(

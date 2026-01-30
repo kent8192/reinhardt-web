@@ -113,7 +113,7 @@ let posts = Post::objects()
 HTTP caching using `CacheControlMiddleware`.
 
 ```rust
-use reinhardt_middleware::{CacheControlMiddleware, caching::CacheControlConfig};
+use reinhardt_utils::staticfiles::{CacheControlMiddleware, CacheControlConfig};
 
 let config = CacheControlConfig {
     public: true,
@@ -129,7 +129,7 @@ let router = ServerRouter::new()
 ### Cache Directives
 
 ```rust
-use reinhardt_middleware::caching::CacheDirective;
+use reinhardt_utils::staticfiles::CacheDirective;
 
 // Versioned files (cache for 1 year)
 let immutable = CacheDirective::public()
