@@ -38,7 +38,7 @@ impl<T> PaginatedResponse<T> {
 		page_size: usize,
 		base_url: &str,
 	) -> Self {
-		let num_pages = (total_count + page_size - 1) / page_size;
+		let num_pages = total_count.div_ceil(page_size);
 
 		Self {
 			count: total_count,
