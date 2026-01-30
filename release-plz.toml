@@ -6,7 +6,7 @@
 changelog_update = true
 
 # PR settings
-pr_branch_prefix = "release-plz/"
+pr_branch_prefix = "release/"
 pr_labels = ["release", "automated"]
 
 # Git release settings
