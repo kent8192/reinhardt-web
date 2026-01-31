@@ -31,6 +31,7 @@ runs:
       shell: bash
       env:
         IMAGES_FILE: ${{ inputs.images-file }}
+        CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit }}
       run: |
         # Read images from the specified images file
         if [ ! -f "$IMAGES_FILE" ]; then
@@ -53,6 +54,11 @@ runs:
             echo "Loading $image from cache..."
             if docker load -i "$tar_file"; then
               echo "Successfully loaded $image from cache"
+              # Remove tar file after successful load to save disk space (cache hit case)
+              if [ "$CACHE_HIT" = "true" ]; then
+                rm -f "$tar_file"
+                echo "Removed $tar_file to save disk space (cache hit)"
+              fi
             else
               echo "Failed to load $image from cache, pulling from registry..."
               docker pull "$image"
@@ -75,3 +81,11 @@ runs:
       with:
         path: ~/docker-cache
         key: docker-images-${{ inputs.key }}-${{ hashFiles(inputs.images-file) }}
+
+    - name: Cleanup tar files after cache save
+      if: steps.cache-restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Cleaning up tar files after cache save..."
+        rm -rf ~/docker-cache
+        echo "Removed ~/docker-cache to save disk space"
