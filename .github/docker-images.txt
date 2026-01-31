@@ -1,0 +1,26 @@
+# Docker images used by TestContainers in this project
+# These images are cached to avoid Docker Hub rate limits
+# Format: image:tag (one per line)
+
+# Databases
+postgres:16-alpine
+postgres:17-alpine
+mysql:8.0
+cockroachdb/cockroach:v23.1.0
+mongo:7.0
+
+# Cache/Key-Value Stores
+redis:7-alpine
+memcached:1.6-alpine
+
+# Redis Cluster
+grokzen/redis-cluster:7.0.10
+neohq/redis-cluster:latest
+
+# Message Queues
+rabbitmq:3.12-management-alpine
+rabbitmq:3-management-alpine
+
+# Development/Testing Services
+axllent/mailpit:latest
+localstack/localstack:latest

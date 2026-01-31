@@ -1,0 +1,71 @@
+name: Cache Docker Images
+description: Cache Docker images to avoid Docker Hub rate limits
+
+inputs:
+  key:
+    description: 'Cache key suffix (e.g., workflow name)'
+    required: false
+    default: 'default'
+
+runs:
+  using: composite
+  steps:
+    - name: Create cache directory
+      shell: bash
+      run: mkdir -p ~/docker-cache
+
+    - name: Restore Docker images from cache
+      id: cache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/docker-cache
+        key: docker-images-${{ inputs.key }}-${{ hashFiles('.github/docker-images.txt') }}
+        restore-keys: |
+          docker-images-${{ inputs.key }}-
+
+    - name: Load or Pull Docker images
+      shell: bash
+      run: |
+        # Read images from the docker-images.txt file
+        if [ ! -f ".github/docker-images.txt" ]; then
+          echo "Warning: .github/docker-images.txt not found, skipping image caching"
+          exit 0
+        fi
+
+        while IFS= read -r image || [ -n "$image" ]; do
+          # Skip empty lines and comments
+          [[ -z "$image" || "$image" =~ ^[[:space:]]*# ]] && continue
+
+          # Trim whitespace
+          image=$(echo "$image" | xargs)
+
+          # Create safe filename from image name
+          safe_name=$(echo "$image" | tr '/:' '_')
+          tar_file=~/docker-cache/${safe_name}.tar
+
+          if [ -f "$tar_file" ]; then
+            echo "Loading $image from cache..."
+            if docker load -i "$tar_file"; then
+              echo "Successfully loaded $image from cache"
+            else
+              echo "Failed to load $image from cache, pulling from registry..."
+              docker pull "$image"
+              docker save -o "$tar_file" "$image"
+            fi
+          else
+            echo "Pulling $image from Docker Hub..."
+            if docker pull "$image"; then
+              echo "Saving $image to cache..."
+              docker save -o "$tar_file" "$image"
+            else
+              echo "Warning: Failed to pull $image"
+            fi
+          fi
+        done < ".github/docker-images.txt"
+
+    - name: Save Docker images to cache
+      if: steps.cache-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/docker-cache
+        key: docker-images-${{ inputs.key }}-${{ hashFiles('.github/docker-images.txt') }}
