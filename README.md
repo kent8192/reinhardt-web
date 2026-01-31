@@ -9,6 +9,8 @@
   <p>Build with <em>all</em> the power of Django's batteries-included philosophy,<br/>
   or compose <em>only</em> what you need—your choice, your way.</p>
 
+🌐 **English** | [日本語](docs/readmeLangs/README_JA.md) | [简体中文](docs/readmeLangs/README_ZH_CN.md) | [繁體中文](docs/readmeLangs/README_ZH_TW.md) | [Русский](docs/readmeLangs/README_RU.md) | [Українська](docs/readmeLangs/README_UK.md) | [فارسی](docs/readmeLangs/README_FA.md) | [العربية](docs/readmeLangs/README_AR.md)
+
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
