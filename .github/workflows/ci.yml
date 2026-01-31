@@ -81,3 +81,28 @@ jobs:
     steps:
       - name: Mark CI as successful
         run: echo "All CI checks passed!"
+
+  # Automatically retry failed jobs (max 2 retries)
+  # Each retry gets a fresh runner with clean disk space
+  rerun-on-failure:
+    name: Retry Failed Jobs
+    runs-on: ubuntu-latest
+    needs:
+      - check
+      - fmt
+      - clippy
+      - unit-test
+      - intra-crate-integration-test
+      - cross-crate-integration-test
+      - doc-test
+      - examples-test
+      - ui-test
+    if: failure() && fromJSON(github.run_attempt) < 3
+    steps:
+      - name: Trigger rerun of failed jobs
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Attempt ${{ github.run_attempt }} failed, triggering retry..."
+          gh workflow run rerun.yml -F run_id=${{ github.run_id }}
