@@ -1121,8 +1121,12 @@ mod tests {
 
 	// Tests for OnConflictClause (new fluent API)
 
+	// ==========================================
+	// PostgreSQL Tests - Exact SQL Verification
+	// ==========================================
+
 	#[test]
-	fn test_on_conflict_clause_columns_do_nothing_postgres() {
+	fn test_on_conflict_clause_columns_do_nothing_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
 
@@ -1130,14 +1134,19 @@ mod tests {
 		let builder = InsertBuilder::new(backend, "users")
 			.value("email", QueryValue::String("test@example.com".to_string()))
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
-		let (sql, _) = builder.build();
+		let (sql, params) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT (email) DO NOTHING"));
+		// Assert - verify exact SQL structure
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO NOTHING"
+		);
+		assert_eq!(params.len(), 1);
+		assert!(matches!(&params[0], QueryValue::String(s) if s == "test@example.com"));
 	}
 
 	#[test]
-	fn test_on_conflict_clause_columns_do_update_postgres() {
+	fn test_on_conflict_clause_columns_do_update_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
 
@@ -1148,16 +1157,18 @@ mod tests {
 			.on_conflict(
 				OnConflictClause::columns(vec!["email"]).do_update(vec!["name", "updated_at"]),
 			);
-		let (sql, _) = builder.build();
+		let (sql, params) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
-		assert!(sql.contains("name = EXCLUDED.name"));
-		assert!(sql.contains("updated_at = EXCLUDED.updated_at"));
+		// Assert - verify exact SQL structure with EXCLUDED references
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ('test@example.com', 'Test User') ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
+		);
+		assert_eq!(params.len(), 2);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_with_where_postgres() {
+	fn test_on_conflict_clause_with_where_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
 
@@ -1170,16 +1181,18 @@ mod tests {
 					.do_update(vec!["version"])
 					.where_clause("users.version < EXCLUDED.version"),
 			);
-		let (sql, _) = builder.build();
+		let (sql, params) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
-		assert!(sql.contains("version = EXCLUDED.version"));
-		assert!(sql.contains("WHERE users.version < EXCLUDED.version"));
+		// Assert - verify WHERE clause is appended correctly
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"version\") VALUES ('test@example.com', 2) ON CONFLICT (email) DO UPDATE SET version = EXCLUDED.version WHERE users.version < EXCLUDED.version"
+		);
+		assert_eq!(params.len(), 2);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_constraint_postgres() {
+	fn test_on_conflict_clause_constraint_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
 
@@ -1189,13 +1202,15 @@ mod tests {
 			.on_conflict(OnConflictClause::constraint("users_email_key").do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET"));
-		assert!(sql.contains("name = EXCLUDED.name"));
+		// Assert - verify ON CONSTRAINT syntax
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET name = EXCLUDED.name"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_any_do_nothing_postgres() {
+	fn test_on_conflict_clause_any_do_nothing_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
 
@@ -1205,12 +1220,63 @@ mod tests {
 			.on_conflict(OnConflictClause::any().do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT DO NOTHING"));
+		// Assert - verify no conflict target specified
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT DO NOTHING"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_do_nothing_mysql() {
+	fn test_on_conflict_clause_multiple_columns_postgres_exact_sql() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("tenant_id", QueryValue::Int(1))
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(
+				OnConflictClause::columns(vec!["tenant_id", "email"]).do_update(vec!["name"]),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert - verify multiple conflict columns
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (1, 'test@example.com') ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name"
+		);
+	}
+
+	#[test]
+	fn test_on_conflict_clause_multiple_update_columns_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("id", QueryValue::Int(1))
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec![
+				"name",
+				"email",
+				"updated_at",
+				"version",
+			]));
+		let (sql, _) = builder.build();
+
+		// Assert - verify all update columns are included
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = EXCLUDED.updated_at, version = EXCLUDED.version"
+		);
+	}
+
+	// ==========================================
+	// MySQL Tests - Exact SQL Verification
+	// ==========================================
+
+	#[test]
+	fn test_on_conflict_clause_do_nothing_mysql_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
 
@@ -1220,12 +1286,15 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.starts_with("INSERT IGNORE INTO"));
+		// Assert - MySQL uses INSERT IGNORE syntax
+		assert_eq!(
+			sql,
+			"INSERT IGNORE INTO `users` (`email`) VALUES ('test@example.com')"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_do_update_mysql() {
+	fn test_on_conflict_clause_do_update_mysql_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
 
@@ -1235,13 +1304,64 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON DUPLICATE KEY UPDATE"));
-		assert!(sql.contains("name = VALUES(name)"));
+		// Assert - MySQL uses ON DUPLICATE KEY UPDATE with VALUES() function
+		assert_eq!(
+			sql,
+			"INSERT INTO `users` (`email`) VALUES ('test@example.com') ON DUPLICATE KEY UPDATE name = VALUES(name)"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_do_nothing_sqlite() {
+	fn test_on_conflict_clause_do_update_multiple_columns_mysql() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("id", QueryValue::Int(1))
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec![
+				"name",
+				"email",
+				"updated_at",
+			]));
+		let (sql, _) = builder.build();
+
+		// Assert - verify multiple update columns with VALUES() syntax
+		assert_eq!(
+			sql,
+			"INSERT INTO `users` (`id`) VALUES (1) ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), updated_at = VALUES(updated_at)"
+		);
+	}
+
+	#[test]
+	fn test_on_conflict_clause_where_ignored_mysql() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+
+		// Act - MySQL does not support WHERE clause, but should not error
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(
+				OnConflictClause::columns(vec!["email"])
+					.do_update(vec!["name"])
+					.where_clause("users.version < VALUES(version)"),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert - WHERE clause is ignored for MySQL
+		assert_eq!(
+			sql,
+			"INSERT INTO `users` (`email`) VALUES ('test@example.com') ON DUPLICATE KEY UPDATE name = VALUES(name)"
+		);
+		assert!(!sql.contains("WHERE"));
+	}
+
+	// ==========================================
+	// SQLite Tests - Exact SQL Verification
+	// ==========================================
+
+	#[test]
+	fn test_on_conflict_clause_do_nothing_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
 
@@ -1251,12 +1371,15 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.starts_with("INSERT OR IGNORE INTO"));
+		// Assert - SQLite uses INSERT OR IGNORE syntax
+		assert_eq!(
+			sql,
+			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES ('test@example.com')"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_do_update_sqlite() {
+	fn test_on_conflict_clause_do_update_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
 
@@ -1266,14 +1389,15 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
-		// SQLite uses lowercase 'excluded'
-		assert!(sql.contains("name = excluded.name"));
+		// Assert - SQLite uses lowercase 'excluded' pseudo-table
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET name = excluded.name"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_with_where_sqlite() {
+	fn test_on_conflict_clause_with_where_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
 
@@ -1287,15 +1411,17 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert
-		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
-		assert!(sql.contains("WHERE users.version < excluded.version"));
+		// Assert - SQLite supports WHERE clause
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET version = excluded.version WHERE users.version < excluded.version"
+		);
 	}
 
 	#[test]
-	fn test_on_conflict_clause_multiple_columns() {
+	fn test_on_conflict_clause_multiple_columns_sqlite() {
 		// Arrange
-		let backend = Arc::new(MockBackend);
+		let backend = Arc::new(MockSqliteBackend);
 
 		// Act
 		let builder = InsertBuilder::new(backend, "users")
@@ -1306,7 +1432,299 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
+		// Assert - verify multiple conflict columns
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (1, 'test@example.com') ON CONFLICT (tenant_id, email) DO UPDATE SET name = excluded.name"
+		);
+	}
+
+	#[test]
+	fn test_on_conflict_clause_any_do_nothing_sqlite() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::any().do_nothing());
+		let (sql, _) = builder.build();
+
+		// Assert - SQLite uses INSERT OR IGNORE even with any() target
+		assert_eq!(
+			sql,
+			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES ('test@example.com')"
+		);
+	}
+
+	// ==========================================
+	// Legacy API Tests - Backwards Compatibility
+	// ==========================================
+
+	#[test]
+	fn test_legacy_on_conflict_do_nothing_still_works() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act - using legacy API
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict_do_nothing(Some(vec!["email".to_string()]));
+		let (sql, _) = builder.build();
+
+		// Assert - legacy API should still work
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO NOTHING"
+		);
+	}
+
+	#[test]
+	fn test_legacy_on_conflict_do_update_still_works() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act - using legacy API
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict_do_update(
+				Some(vec!["email".to_string()]),
+				vec!["name".to_string(), "updated_at".to_string()],
+			);
+		let (sql, _) = builder.build();
+
+		// Assert - legacy API should still work
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
+		);
+	}
+
+	#[test]
+	fn test_new_api_takes_precedence_over_legacy() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act - both APIs used, new should take precedence
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict_do_nothing(Some(vec!["email".to_string()])) // legacy
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"])); // new
+		let (sql, _) = builder.build();
+
+		// Assert - new API should be used (DO UPDATE, not DO NOTHING)
+		assert!(sql.contains("DO UPDATE SET"));
+		assert!(!sql.contains("DO NOTHING"));
+	}
+
+	// ==========================================
+	// Edge Cases and Error Conditions
+	// ==========================================
+
+	#[test]
+	fn test_on_conflict_clause_single_column_single_update() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("id", QueryValue::Int(1))
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]));
+		let (sql, _) = builder.build();
+
 		// Assert
-		assert!(sql.contains("ON CONFLICT (tenant_id, email) DO UPDATE SET"));
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name"
+		);
+	}
+
+	#[test]
+	fn test_on_conflict_clause_with_returning() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.returning(vec!["id", "created_at"])
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
+		let (sql, _) = builder.build();
+
+		// Assert - RETURNING should come before ON CONFLICT in SeaQuery output
+		assert!(sql.contains("RETURNING"));
+		assert!(sql.contains("ON CONFLICT"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_with_null_value() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.value("name", QueryValue::Null)
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
+		assert_eq!(params.len(), 2);
+		assert!(matches!(params[1], QueryValue::Null));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_with_integer_values() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "counters")
+			.value("key", QueryValue::String("visits".to_string()))
+			.value("count", QueryValue::Int(1))
+			.on_conflict(OnConflictClause::columns(vec!["key"]).do_update(vec!["count"]));
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"counters\" (\"key\", \"count\") VALUES ('visits', 1) ON CONFLICT (key) DO UPDATE SET count = EXCLUDED.count"
+		);
+		assert_eq!(params.len(), 2);
+		assert!(matches!(params[1], QueryValue::Int(1)));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_complex_where_condition() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "documents")
+			.value("id", QueryValue::Int(1))
+			.on_conflict(
+				OnConflictClause::columns(vec!["id"])
+					.do_update(vec!["content", "version"])
+					.where_clause(
+						"documents.version < EXCLUDED.version AND documents.locked = false",
+					),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert - complex WHERE with AND condition
+		assert_eq!(
+			sql,
+			"INSERT INTO \"documents\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, version = EXCLUDED.version WHERE documents.version < EXCLUDED.version AND documents.locked = false"
+		);
+	}
+
+	// ==========================================
+	// Fluent API Chain Tests
+	// ==========================================
+
+	#[test]
+	fn test_fluent_api_do_nothing_then_do_update_uses_last() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act - chain do_nothing then do_update
+		let clause = OnConflictClause::columns(vec!["email"])
+			.do_nothing()
+			.do_update(vec!["name"]);
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(clause);
+		let (sql, _) = builder.build();
+
+		// Assert - last action (do_update) should be used
+		assert!(sql.contains("DO UPDATE SET"));
+		assert!(!sql.contains("DO NOTHING"));
+	}
+
+	#[test]
+	fn test_fluent_api_do_update_then_do_nothing_uses_last() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act - chain do_update then do_nothing
+		let clause = OnConflictClause::columns(vec!["email"])
+			.do_update(vec!["name"])
+			.do_nothing();
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(clause);
+		let (sql, _) = builder.build();
+
+		// Assert - last action (do_nothing) should be used
+		assert!(sql.contains("DO NOTHING"));
+		assert!(!sql.contains("DO UPDATE"));
+	}
+
+	#[test]
+	fn test_conflict_target_types() {
+		// Act - test ConflictTarget::Columns
+		let columns_clause = OnConflictClause::columns(vec!["a", "b"]);
+		assert!(matches!(
+			columns_clause.target,
+			Some(ConflictTarget::Columns(ref cols)) if cols == &vec!["a".to_string(), "b".to_string()]
+		));
+
+		// Act - test ConflictTarget::Constraint
+		let constraint_clause = OnConflictClause::constraint("my_constraint");
+		assert!(matches!(
+			constraint_clause.target,
+			Some(ConflictTarget::Constraint(ref name)) if name == "my_constraint"
+		));
+
+		// Act - test no target (any)
+		let any_clause = OnConflictClause::any();
+		assert!(any_clause.target.is_none());
+
+		// Verify they all build correctly with separate backends
+		let backend1: Arc<dyn DatabaseBackend> = Arc::new(MockBackend);
+		let builder1 = InsertBuilder::new(backend1, "t")
+			.value("x", QueryValue::Int(1))
+			.on_conflict(columns_clause.do_nothing());
+		let (sql1, _) = builder1.build();
+		assert!(sql1.contains("ON CONFLICT (a, b) DO NOTHING"));
+
+		let backend2: Arc<dyn DatabaseBackend> = Arc::new(MockBackend);
+		let builder2 = InsertBuilder::new(backend2, "t")
+			.value("x", QueryValue::Int(1))
+			.on_conflict(constraint_clause.do_nothing());
+		let (sql2, _) = builder2.build();
+		assert!(sql2.contains("ON CONFLICT ON CONSTRAINT my_constraint DO NOTHING"));
+
+		let backend3: Arc<dyn DatabaseBackend> = Arc::new(MockBackend);
+		let builder3 = InsertBuilder::new(backend3, "t")
+			.value("x", QueryValue::Int(1))
+			.on_conflict(any_clause.do_nothing());
+		let (sql3, _) = builder3.build();
+		assert!(sql3.contains("ON CONFLICT DO NOTHING"));
+	}
+
+	// ==========================================
+	// Parameter Preservation Tests
+	// ==========================================
+
+	#[test]
+	fn test_parameters_preserved_with_on_conflict() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("id", QueryValue::Int(42))
+			.value("name", QueryValue::String("John".to_string()))
+			.value("active", QueryValue::Bool(true))
+			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["name", "active"]));
+		let (_, params) = builder.build();
+
+		// Assert - all parameters should be preserved in order
+		assert_eq!(params.len(), 3);
+		assert!(matches!(params[0], QueryValue::Int(42)));
+		assert!(matches!(&params[1], QueryValue::String(s) if s == "John"));
+		assert!(matches!(params[2], QueryValue::Bool(true)));
 	}
 }
