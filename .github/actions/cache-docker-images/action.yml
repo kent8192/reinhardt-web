@@ -6,6 +6,10 @@ inputs:
     description: 'Cache key suffix (e.g., workflow name)'
     required: false
     default: 'default'
+  images-file:
+    description: 'Path to the file listing Docker images to cache'
+    required: false
+    default: '.github/docker-images.txt'
 
 runs:
   using: composite
@@ -19,16 +23,18 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ~/docker-cache
-        key: docker-images-${{ inputs.key }}-${{ hashFiles('.github/docker-images.txt') }}
+        key: docker-images-${{ inputs.key }}-${{ hashFiles(inputs.images-file) }}
         restore-keys: |
           docker-images-${{ inputs.key }}-
 
     - name: Load or Pull Docker images
       shell: bash
+      env:
+        IMAGES_FILE: ${{ inputs.images-file }}
       run: |
-        # Read images from the docker-images.txt file
-        if [ ! -f ".github/docker-images.txt" ]; then
-          echo "Warning: .github/docker-images.txt not found, skipping image caching"
+        # Read images from the specified images file
+        if [ ! -f "$IMAGES_FILE" ]; then
+          echo "Warning: $IMAGES_FILE not found, skipping image caching"
           exit 0
         fi
 
@@ -61,11 +67,11 @@ runs:
               echo "Warning: Failed to pull $image"
             fi
           fi
-        done < ".github/docker-images.txt"
+        done < "$IMAGES_FILE"
 
     - name: Save Docker images to cache
       if: steps.cache-restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: ~/docker-cache
-        key: docker-images-${{ inputs.key }}-${{ hashFiles('.github/docker-images.txt') }}
+        key: docker-images-${{ inputs.key }}-${{ hashFiles(inputs.images-file) }}

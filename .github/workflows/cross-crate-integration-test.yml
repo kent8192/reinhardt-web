@@ -46,6 +46,7 @@ jobs:
         uses: ./.github/actions/cache-docker-images
         with:
           key: cross-crate-integration
+          images-file: .github/docker-images-cross-crate.txt
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust

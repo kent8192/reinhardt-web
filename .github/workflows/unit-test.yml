@@ -76,11 +76,6 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Cache Docker images
-        uses: ./.github/actions/cache-docker-images
-        with:
-          key: unit-test
-
       - name: Run unit tests
         run: cargo make unit-test
 

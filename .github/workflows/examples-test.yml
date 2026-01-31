@@ -77,6 +77,7 @@ jobs:
         uses: ./.github/actions/cache-docker-images
         with:
           key: examples-test
+          images-file: .github/docker-images-examples.txt
 
       - name: Run examples tests
         run: cargo make examples-test-only

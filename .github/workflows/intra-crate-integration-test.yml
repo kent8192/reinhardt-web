@@ -46,6 +46,7 @@ jobs:
         uses: ./.github/actions/cache-docker-images
         with:
           key: intra-crate-integration
+          images-file: .github/docker-images-intra-crate.txt
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
