@@ -283,6 +283,7 @@ tonic-prost-build = { workspace = true }
 resolver = "3"
 members = [
   # Core framework (always included)
+  "crates/reinhardt-query",
   "crates/reinhardt-apps",
   "crates/reinhardt-conf",
   "crates/reinhardt-conf/crates/settings-cli",

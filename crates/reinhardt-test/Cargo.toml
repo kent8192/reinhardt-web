@@ -167,3 +167,4 @@ reinhardt-conf = {workspace = true, features = ["settings"]}
 tokio = { workspace = true, features = ["full"] }
 tokio-test = "0.4"
 scopeguard = "1.2"
+serial_test = "3.0"
