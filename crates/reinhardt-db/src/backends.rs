@@ -131,6 +131,30 @@
 //!     .build();
 //! ```
 //!
+//! ## Database Maintenance
+//!
+//! Update table statistics for query optimization:
+//!
+//! ```rust,ignore
+//! use reinhardt_db::backends::AnalyzeBuilder;
+//!
+//! // Analyze all tables in the database
+//! let builder = AnalyzeBuilder::new(backend.clone());
+//! builder.execute().await?;
+//!
+//! // Analyze a specific table
+//! let builder = AnalyzeBuilder::new(backend.clone())
+//!     .table("users");
+//! builder.execute().await?;
+//!
+//! // Analyze specific columns with verbose output (PostgreSQL)
+//! let builder = AnalyzeBuilder::new(backend.clone())
+//!     .table("users")
+//!     .columns(vec!["email", "created_at"])
+//!     .verbose(true);
+//! builder.execute().await?;
+//! ```
+//!
 //! ## Feature Flags
 //!
 //! - **`postgres`**: PostgreSQL support with advanced features
@@ -156,7 +180,7 @@ pub use schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorResult
 // Re-export query abstraction types
 pub use backend::DatabaseBackend;
 pub use connection::DatabaseConnection;
-pub use query_builder::{InsertBuilder, SelectBuilder, UpdateBuilder};
+pub use query_builder::{AnalyzeBuilder, InsertBuilder, SelectBuilder, UpdateBuilder};
 pub use types::{
 	DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
 };
