@@ -42,10 +42,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Cache Docker images
-        uses: ./.github/actions/cache-docker-images
+      - name: Pull Docker images
+        uses: ./.github/actions/pull-docker-images
         with:
-          key: cross-crate-integration
           images-file: .github/docker-images-cross-crate.txt
 
       - name: Setup Rust

@@ -73,10 +73,9 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Cache Docker images
-        uses: ./.github/actions/cache-docker-images
+      - name: Pull Docker images
+        uses: ./.github/actions/pull-docker-images
         with:
-          key: examples-test
           images-file: .github/docker-images-examples.txt
 
       - name: Run examples tests
