@@ -30,6 +30,16 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 	}
 }
 
+/// Conflict target specifying which constraint or columns trigger the conflict
+#[derive(Debug, Clone)]
+pub enum ConflictTarget {
+	/// Specify conflict columns (e.g., `ON CONFLICT (email, tenant_id)`)
+	Columns(Vec<String>),
+	/// Specify a named constraint (e.g., `ON CONFLICT ON CONSTRAINT users_email_key`)
+	/// Note: Only supported by PostgreSQL
+	Constraint(String),
+}
+
 /// ON CONFLICT action for INSERT statements
 #[derive(Debug, Clone)]
 pub enum OnConflictAction {
@@ -47,6 +57,182 @@ pub enum OnConflictAction {
 	},
 }
 
+/// Fluent builder for ON CONFLICT clause with advanced options
+///
+/// This builder provides a more fluent API for constructing ON CONFLICT clauses,
+/// with support for:
+/// - Column-based and constraint-based conflict targets
+/// - Conditional updates with WHERE clauses
+/// - Explicit column assignments using EXCLUDED values
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Basic upsert on email column
+/// builder.on_conflict(OnConflictClause::columns(vec!["email"])
+///     .do_update(vec!["name", "updated_at"]))
+///
+/// // Upsert with conditional WHERE clause
+/// builder.on_conflict(OnConflictClause::columns(vec!["email"])
+///     .do_update(vec!["name", "updated_at"])
+///     .where_clause("users.updated_at < EXCLUDED.updated_at"))
+///
+/// // Upsert on named constraint (PostgreSQL only)
+/// builder.on_conflict(OnConflictClause::constraint("users_email_key")
+///     .do_update(vec!["name"]))
+/// ```
+#[derive(Debug, Clone)]
+pub struct OnConflictClause {
+	/// The conflict target (columns or constraint)
+	target: Option<ConflictTarget>,
+	/// The action to take on conflict
+	action: OnConflictClauseAction,
+	/// Optional WHERE clause for conditional updates (PostgreSQL/SQLite only)
+	where_condition: Option<String>,
+}
+
+/// Action to take when a conflict occurs
+#[derive(Debug, Clone)]
+pub enum OnConflictClauseAction {
+	/// Do nothing on conflict
+	DoNothing,
+	/// Update specified columns on conflict
+	DoUpdate {
+		/// Columns to update on conflict
+		update_columns: Vec<String>,
+	},
+}
+
+impl OnConflictClause {
+	/// Create a new ON CONFLICT clause targeting specific columns
+	///
+	/// # Arguments
+	///
+	/// * `columns` - Columns that form the conflict target
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// OnConflictClause::columns(vec!["email", "tenant_id"])
+	///     .do_update(vec!["name"])
+	/// ```
+	pub fn columns(columns: Vec<impl Into<String>>) -> Self {
+		Self {
+			target: Some(ConflictTarget::Columns(
+				columns.into_iter().map(Into::into).collect(),
+			)),
+			action: OnConflictClauseAction::DoNothing,
+			where_condition: None,
+		}
+	}
+
+	/// Create a new ON CONFLICT clause targeting a named constraint
+	///
+	/// Note: This is only supported by PostgreSQL
+	///
+	/// # Arguments
+	///
+	/// * `constraint_name` - Name of the constraint to target
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// OnConflictClause::constraint("users_email_key")
+	///     .do_update(vec!["name"])
+	/// ```
+	pub fn constraint(constraint_name: impl Into<String>) -> Self {
+		Self {
+			target: Some(ConflictTarget::Constraint(constraint_name.into())),
+			action: OnConflictClauseAction::DoNothing,
+			where_condition: None,
+		}
+	}
+
+	/// Create a new ON CONFLICT clause with no specific target
+	///
+	/// This matches any unique constraint violation. Note that for SQLite
+	/// with DO UPDATE, a target is required.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// OnConflictClause::any()
+	///     .do_nothing()
+	/// ```
+	pub fn any() -> Self {
+		Self {
+			target: None,
+			action: OnConflictClauseAction::DoNothing,
+			where_condition: None,
+		}
+	}
+
+	/// Set the action to DO NOTHING on conflict
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// OnConflictClause::columns(vec!["email"])
+	///     .do_nothing()
+	/// ```
+	pub fn do_nothing(mut self) -> Self {
+		self.action = OnConflictClauseAction::DoNothing;
+		self
+	}
+
+	/// Set the action to DO UPDATE with specified columns
+	///
+	/// The updated values will be taken from the EXCLUDED pseudo-table
+	/// (or VALUES() function for MySQL).
+	///
+	/// # Arguments
+	///
+	/// * `columns` - Columns to update when conflict occurs
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// OnConflictClause::columns(vec!["email"])
+	///     .do_update(vec!["name", "updated_at"])
+	/// ```
+	pub fn do_update(mut self, columns: Vec<impl Into<String>>) -> Self {
+		self.action = OnConflictClauseAction::DoUpdate {
+			update_columns: columns.into_iter().map(Into::into).collect(),
+		};
+		self
+	}
+
+	/// Add a WHERE clause for conditional updates
+	///
+	/// The WHERE clause is evaluated before the update is performed.
+	/// Only rows matching the condition will be updated.
+	///
+	/// Note: Only supported by PostgreSQL and SQLite. MySQL does not support
+	/// conditional updates in ON DUPLICATE KEY UPDATE.
+	///
+	/// # Arguments
+	///
+	/// * `condition` - SQL condition expression
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// // Only update if the new data is newer
+	/// OnConflictClause::columns(vec!["email"])
+	///     .do_update(vec!["name", "updated_at"])
+	///     .where_clause("users.updated_at < EXCLUDED.updated_at")
+	///
+	/// // Only update if version is greater
+	/// OnConflictClause::columns(vec!["id"])
+	///     .do_update(vec!["data", "version"])
+	///     .where_clause("users.version < EXCLUDED.version")
+	/// ```
+	pub fn where_clause(mut self, condition: impl Into<String>) -> Self {
+		self.where_condition = Some(condition.into());
+		self
+	}
+}
+
 /// INSERT query builder
 pub struct InsertBuilder {
 	backend: Arc<dyn DatabaseBackend>,
@@ -55,6 +241,7 @@ pub struct InsertBuilder {
 	values: Vec<QueryValue>,
 	returning: Option<Vec<String>>,
 	on_conflict: Option<OnConflictAction>,
+	on_conflict_clause: Option<OnConflictClause>,
 }
 
 impl InsertBuilder {
@@ -66,6 +253,7 @@ impl InsertBuilder {
 			values: Vec::new(),
 			returning: None,
 			on_conflict: None,
+			on_conflict_clause: None,
 		}
 	}
 
@@ -125,6 +313,43 @@ impl InsertBuilder {
 		self
 	}
 
+	/// Set ON CONFLICT behavior using the fluent `OnConflictClause` builder
+	///
+	/// This method provides a more flexible API for specifying conflict handling,
+	/// including support for:
+	/// - Column-based conflict targets
+	/// - Constraint-based conflict targets (PostgreSQL only)
+	/// - Conditional updates with WHERE clauses
+	///
+	/// # Arguments
+	///
+	/// * `clause` - The ON CONFLICT clause configuration
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// // Basic upsert on email column
+	/// builder.on_conflict(OnConflictClause::columns(vec!["email"])
+	///     .do_update(vec!["name", "updated_at"]))
+	///
+	/// // Upsert with conditional WHERE clause (only update if newer)
+	/// builder.on_conflict(OnConflictClause::columns(vec!["email"])
+	///     .do_update(vec!["name", "updated_at"])
+	///     .where_clause("users.updated_at < EXCLUDED.updated_at"))
+	///
+	/// // Upsert on named constraint (PostgreSQL only)
+	/// builder.on_conflict(OnConflictClause::constraint("users_email_key")
+	///     .do_update(vec!["name"]))
+	///
+	/// // Do nothing on any conflict
+	/// builder.on_conflict(OnConflictClause::any()
+	///     .do_nothing())
+	/// ```
+	pub fn on_conflict(mut self, clause: OnConflictClause) -> Self {
+		self.on_conflict_clause = Some(clause);
+		self
+	}
+
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
@@ -162,7 +387,10 @@ impl InsertBuilder {
 		};
 
 		// Add ON CONFLICT clause if specified
-		if let Some(ref on_conflict) = self.on_conflict {
+		// Prefer the new OnConflictClause over the legacy OnConflictAction
+		if let Some(ref clause) = self.on_conflict_clause {
+			sql = self.apply_new_on_conflict_clause(sql, clause);
+		} else if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict);
 		}
 
@@ -263,6 +491,135 @@ impl InsertBuilder {
 							" ON CONFLICT {} DO UPDATE SET {}",
 							conflict_str, update_str
 						));
+					}
+				}
+			}
+		}
+
+		sql
+	}
+
+	/// Apply new OnConflictClause to SQL string based on database type
+	///
+	/// This method handles the enhanced ON CONFLICT clause with support for:
+	/// - Column-based conflict targets
+	/// - Constraint-based conflict targets (PostgreSQL only)
+	/// - WHERE clauses for conditional updates
+	fn apply_new_on_conflict_clause(&self, mut sql: String, clause: &OnConflictClause) -> String {
+		use super::types::DatabaseType;
+
+		match self.backend.database_type() {
+			DatabaseType::Postgres => {
+				// Build conflict target
+				let target_str = match &clause.target {
+					Some(ConflictTarget::Columns(cols)) => {
+						format!("({})", cols.join(", "))
+					}
+					Some(ConflictTarget::Constraint(name)) => {
+						format!("ON CONSTRAINT {}", name)
+					}
+					None => String::new(),
+				};
+
+				match &clause.action {
+					OnConflictClauseAction::DoNothing => {
+						if target_str.is_empty() {
+							sql.push_str(" ON CONFLICT DO NOTHING");
+						} else {
+							sql.push_str(&format!(" ON CONFLICT {} DO NOTHING", target_str));
+						}
+					}
+					OnConflictClauseAction::DoUpdate { update_columns } => {
+						let update_str = update_columns
+							.iter()
+							.map(|col| format!("{} = EXCLUDED.{}", col, col))
+							.collect::<Vec<_>>()
+							.join(", ");
+
+						let mut clause_str =
+							format!(" ON CONFLICT {} DO UPDATE SET {}", target_str, update_str);
+
+						// Add WHERE clause if specified
+						if let Some(ref where_cond) = clause.where_condition {
+							clause_str.push_str(&format!(" WHERE {}", where_cond));
+						}
+
+						sql.push_str(&clause_str);
+					}
+				}
+			}
+			DatabaseType::Mysql => {
+				// MySQL does not support conflict targets or WHERE clauses
+				// Warn if constraint-based target is used
+				if let Some(ConflictTarget::Constraint(_)) = &clause.target {
+					// MySQL doesn't support ON CONFLICT ON CONSTRAINT
+					// Fall back to standard MySQL behavior
+				}
+
+				match &clause.action {
+					OnConflictClauseAction::DoNothing => {
+						sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
+					}
+					OnConflictClauseAction::DoUpdate { update_columns } => {
+						let update_str = update_columns
+							.iter()
+							.map(|col| format!("{} = VALUES({})", col, col))
+							.collect::<Vec<_>>()
+							.join(", ");
+
+						sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
+						// Note: MySQL does not support WHERE clause in ON DUPLICATE KEY UPDATE
+					}
+				}
+			}
+			DatabaseType::Sqlite => {
+				// SQLite uses similar syntax to PostgreSQL but with lowercase 'excluded'
+				match &clause.action {
+					OnConflictClauseAction::DoNothing => {
+						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
+					}
+					OnConflictClauseAction::DoUpdate { update_columns } => {
+						// SQLite requires conflict columns for DO UPDATE
+						let conflict_str = match &clause.target {
+							Some(ConflictTarget::Columns(cols)) => {
+								if cols.is_empty() {
+									panic!(
+										"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE"
+									);
+								}
+								format!("({})", cols.join(", "))
+							}
+							Some(ConflictTarget::Constraint(_)) => {
+								// SQLite doesn't support ON CONSTRAINT syntax
+								panic!("SQLite does not support ON CONFLICT ON CONSTRAINT syntax");
+							}
+							None => {
+								// SQLite requires conflict target for DO UPDATE
+								return sql;
+							}
+						};
+
+						if update_columns.is_empty() {
+							panic!(
+								"update_columns cannot be empty for OnConflictClauseAction::DoUpdate"
+							);
+						}
+
+						let update_str = update_columns
+							.iter()
+							.map(|col| format!("{} = excluded.{}", col, col)) // lowercase 'excluded'
+							.collect::<Vec<_>>()
+							.join(", ");
+
+						let mut clause_str =
+							format!(" ON CONFLICT {} DO UPDATE SET {}", conflict_str, update_str);
+
+						// Add WHERE clause if specified
+						if let Some(ref where_cond) = clause.where_condition {
+							clause_str.push_str(&format!(" WHERE {}", where_cond));
+						}
+
+						sql.push_str(&clause_str);
 					}
 				}
 			}
@@ -679,5 +1036,277 @@ mod tests {
 			"DELETE FROM \"users\" WHERE \"status\" = 'inactive' AND \"age\" = 18"
 		);
 		assert_eq!(params.len(), 2);
+	}
+
+	// Mock backends for different database types
+	struct MockMysqlBackend;
+
+	#[async_trait::async_trait]
+	impl DatabaseBackend for MockMysqlBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Mysql
+		}
+		fn placeholder(&self, index: usize) -> String {
+			format!("?{}", index)
+		}
+		fn supports_returning(&self) -> bool {
+			false
+		}
+		fn supports_on_conflict(&self) -> bool {
+			false
+		}
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			Ok(QueryResult { rows_affected: 1 })
+		}
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			Ok(Row::new())
+		}
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			Ok(Vec::new())
+		}
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			Ok(None)
+		}
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			Ok(Box::new(MockTransactionExecutor))
+		}
+	}
+
+	struct MockSqliteBackend;
+
+	#[async_trait::async_trait]
+	impl DatabaseBackend for MockSqliteBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Sqlite
+		}
+		fn placeholder(&self, index: usize) -> String {
+			format!("?{}", index)
+		}
+		fn supports_returning(&self) -> bool {
+			true
+		}
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			Ok(QueryResult { rows_affected: 1 })
+		}
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			Ok(Row::new())
+		}
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			Ok(Vec::new())
+		}
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			Ok(None)
+		}
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			Ok(Box::new(MockTransactionExecutor))
+		}
+	}
+
+	// Tests for OnConflictClause (new fluent API)
+
+	#[test]
+	fn test_on_conflict_clause_columns_do_nothing_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO NOTHING"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_columns_do_update_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.value("name", QueryValue::String("Test User".to_string()))
+			.on_conflict(
+				OnConflictClause::columns(vec!["email"]).do_update(vec!["name", "updated_at"]),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
+		assert!(sql.contains("name = EXCLUDED.name"));
+		assert!(sql.contains("updated_at = EXCLUDED.updated_at"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_with_where_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.value("version", QueryValue::Int(2))
+			.on_conflict(
+				OnConflictClause::columns(vec!["email"])
+					.do_update(vec!["version"])
+					.where_clause("users.version < EXCLUDED.version"),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
+		assert!(sql.contains("version = EXCLUDED.version"));
+		assert!(sql.contains("WHERE users.version < EXCLUDED.version"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_constraint_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::constraint("users_email_key").do_update(vec!["name"]));
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET"));
+		assert!(sql.contains("name = EXCLUDED.name"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_any_do_nothing_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::any().do_nothing());
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT DO NOTHING"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_do_nothing_mysql() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.starts_with("INSERT IGNORE INTO"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_do_update_mysql() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON DUPLICATE KEY UPDATE"));
+		assert!(sql.contains("name = VALUES(name)"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_do_nothing_sqlite() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.starts_with("INSERT OR IGNORE INTO"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_do_update_sqlite() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
+		// SQLite uses lowercase 'excluded'
+		assert!(sql.contains("name = excluded.name"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_with_where_sqlite() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(
+				OnConflictClause::columns(vec!["email"])
+					.do_update(vec!["version"])
+					.where_clause("users.version < excluded.version"),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (email) DO UPDATE SET"));
+		assert!(sql.contains("WHERE users.version < excluded.version"));
+	}
+
+	#[test]
+	fn test_on_conflict_clause_multiple_columns() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+
+		// Act
+		let builder = InsertBuilder::new(backend, "users")
+			.value("tenant_id", QueryValue::Int(1))
+			.value("email", QueryValue::String("test@example.com".to_string()))
+			.on_conflict(
+				OnConflictClause::columns(vec!["tenant_id", "email"]).do_update(vec!["name"]),
+			);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (tenant_id, email) DO UPDATE SET"));
 	}
 }
