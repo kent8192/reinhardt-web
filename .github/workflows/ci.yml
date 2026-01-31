@@ -99,10 +99,10 @@ jobs:
       - ui-test
     if: failure() && fromJSON(github.run_attempt) < 3
     steps:
-      - name: Trigger rerun of failed jobs
+      - name: Rerun failed jobs
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Attempt ${{ github.run_attempt }} failed, triggering retry..."
-          gh workflow run rerun.yml -F run_id=${{ github.run_id }}
+          echo "Attempt ${{ github.run_attempt }} failed, rerunning failed jobs..."
+          gh run rerun ${{ github.run_id }} --failed
