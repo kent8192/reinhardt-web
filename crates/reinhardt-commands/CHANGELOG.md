@@ -21,8 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 ### Fixed
-- Fix `runserver` to load settings from `settings/` directory instead of using `Settings::default()` (#128)
-- Add all required Settings fields to DefaultSource to prevent deserialization errors
+- N/A
 
 ### Security
 - N/A
