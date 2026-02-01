@@ -65,6 +65,25 @@ jobs:
         with:
           tool: nextest
 
+      - name: Additional disk cleanup before tests
+        run: |
+          echo "Disk usage before additional cleanup:"
+          df -h
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/* || true
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          rm -rf ~/.cache/pip || true
+          rm -rf ~/.npm || true
+          rm -rf ~/.cache/yarn || true
+          rm -rf ~/.gradle || true
+          rm -rf ~/.m2 || true
+          # Cargo registry and git db cleanup
+          rm -rf ~/.cargo/registry/cache || true
+          rm -rf ~/.cargo/git/db || true
+          echo "Disk usage after additional cleanup:"
+          df -h
+
       - name: Pull Docker images
         uses: ./.github/actions/pull-docker-images
         with:
