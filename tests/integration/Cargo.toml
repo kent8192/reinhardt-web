@@ -47,11 +47,16 @@ reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-urls = { workspace = true }
+reinhardt-conf = { workspace = true }
+reinhardt-pages = { workspace = true }
+reinhardt-commands = { workspace = true }
 
 # HTTP primitives (used in lib.rs make_request helpers)
 bytes = { workspace = true }
+http = { workspace = true }
 hyper = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
 
 # Database pool (used in lib.rs, validator_test_common.rs)
 sqlx = { workspace = true }
@@ -62,11 +67,16 @@ tokio = { workspace = true, features = ["full"] }
 # Serialization
 bson = "3.0"
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Template engine
+tera = { workspace = true }
 
 # Testing framework
 rstest = { workspace = true }
 serial_test = { workspace = true }
 testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 
 # Required by #[model] macro
 ctor = { workspace = true }
@@ -76,3 +86,24 @@ async-trait = { workspace = true }
 
 # Temp files (used in migration_duplicate.rs)
 tempfile = { workspace = true }
+
+# Additional dependencies required by tests
+async-graphql = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+data-encoding = "2.7"
+futures = { workspace = true }
+hex = "0.4"
+rand = { workspace = true }
+sea-query = { workspace = true }
+subtle = "2.6"
+totp-lite = "2.0"
+uuid = { workspace = true }
+linkme = { workspace = true }
+inventory = { workspace = true }
+paste = "1.0"
+image = { workspace = true }
+url = { workspace = true }
+rust_decimal = { workspace = true }
+async-stream = "0.3"
+regex = { workspace = true }
