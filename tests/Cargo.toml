@@ -53,7 +53,7 @@ reinhardt-utils = { workspace = true, features = [
     "cache",
     "logging",
     "storage",
-    "static",
+    "staticfiles",
 ] }
 reinhardt-views = { workspace = true, features = ["viewsets"] }
 

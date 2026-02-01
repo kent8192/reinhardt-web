@@ -8,6 +8,7 @@ Thank you for your interest in contributing to Reinhardt! This document provides
 - [Development Setup](#development-setup)
 - [Code Style & Conventions](#code-style--conventions)
 - [Testing Guidelines](#testing-guidelines)
+- [Issue Guidelines](#issue-guidelines)
 - [Commit Guidelines](#commit-guidelines)
 - [Pull Request Process](#pull-request-process)
 - [Documentation](#documentation)
@@ -273,6 +274,133 @@ fn test_translation() {
 
 ---
 
+## Issue Guidelines
+
+### Before Creating an Issue
+
+**Search First:**
+
+Always search existing issues before creating a new one:
+
+```bash
+# Search via GitHub CLI
+gh issue list --search "your query"
+
+# Search open and closed issues
+gh issue list --state open --search "database"
+gh issue list --state closed --search "leak"
+```
+
+**Check Documentation:**
+
+- [Issue Guidelines](docs/ISSUE_GUIDELINES.md) for detailed issue policies
+- [Examples](examples/) for usage patterns
+- [CLAUDE.md](CLAUDE.md) for project-specific guidelines
+
+### Issue Types
+
+Use the appropriate issue template when creating issues:
+
+| Template | Use When | Label Applied |
+|----------|----------|---------------|
+| `1-bug.yml` | Unexpected behavior or error | `bug` |
+| `2-feature.yml` | New functionality request | `enhancement` |
+| `3-documentation.yml` | Documentation issues | `documentation` |
+| `4-question.yml` | Usage questions | `question` |
+| `5-performance.yml` | Performance issues | `performance` |
+| `6-ci_cd.yml` | CI/CD workflow failures | `ci-cd` |
+| `7-security.yml` | Security vulnerabilities | `security`, `critical` |
+
+### Issue Title Format
+
+Issue titles must be:
+- **Specific**: Clearly describe the problem or request
+- **Concise**: Maximum 72 characters
+- **Professional**: Use technical language
+- **Uppercase Start**: Begin with uppercase letter
+
+**Format Options:**
+
+**Option 1: Type Prefix (Recommended)**
+```
+[Type]: <brief description>
+```
+
+**Option 2: Plain Descriptive**
+```
+<Brief descriptive title>
+```
+
+**Examples:**
+- `Bug: Connection pool leak when using async transactions`
+- `Feature: Add MySQL database backend support`
+- `Performance: Slow query execution with large datasets`
+- `Docs: Missing migration guide for v0.2.0`
+- `CI: TestContainers integration tests failing on macOS`
+
+### Issue Labels
+
+**Type Labels (required):**
+- `bug` - Confirmed bug or unexpected behavior
+- `enhancement` - New feature or improvement request
+- `documentation` - Documentation issues or improvements
+- `question` - Questions about usage or implementation
+- `performance` - Performance-related issues
+- `ci-cd` - CI/CD workflow issues
+- `security` - Security vulnerabilities or concerns
+
+**Priority Labels (recommended):**
+- `critical` - Blocks release or major functionality
+- `high` - Important fix or feature
+- `medium` - Normal priority
+- `low` - Minor fix or enhancement
+
+**Scope Labels (recommended):**
+- `database`, `auth`, `orm`, `http`, `routing`, `api`, `admin`, `graphql`, `websockets`, `i18n`
+
+### Security Issues
+
+**Security vulnerabilities MUST be reported privately:**
+
+- **DO NOT** create public issues for security vulnerabilities
+- **DO** use GitHub Security Advisories for private reporting
+- **DO** include reproduction steps and impact assessment
+
+**Report via GitHub Security Advisories:**
+```
+https://github.com/kent8192/reinhardt-web/security/advisories
+```
+
+See [SECURITY.md](SECURITY.md) for detailed security policy.
+
+### Creating Issues
+
+**Via GitHub Web Interface:**
+
+1. Go to [Issues](https://github.com/kent8192/reinhardt-web/issues)
+2. Click "New Issue"
+3. Select the appropriate template
+4. Fill out all required fields
+5. Submit
+
+**Via GitHub CLI:**
+
+```bash
+# Create a bug report
+gh issue create --title "Bug: Connection pool leak" \
+  --body "Description..." \
+  --label bug
+
+# Create a feature request
+gh issue create --title "Feature: Add MySQL support" \
+  --body "Description..." \
+  --label enhancement
+```
+
+For detailed issue guidelines, see [docs/ISSUE_GUIDELINES.md](docs/ISSUE_GUIDELINES.md).
+
+---
+
 ## Commit Guidelines
 
 ### Commit Policy
@@ -454,6 +582,10 @@ Update documentation for:
 
 - [Getting Started Guide](docs/GETTING_STARTED.md)
 - [Feature Flags Guide](docs/FEATURE_FLAGS.md)
+- [Issue Guidelines](docs/ISSUE_GUIDELINES.md) - Issue creation and management
+- [Pull Request Guidelines](docs/PR_GUIDELINE.md) - PR policies and procedures
+- [Security Policy](SECURITY.md) - Security vulnerability reporting
+- [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
 - [Project Instructions](CLAUDE.md)
 - GitHub Discussions (for questions and ideas)
 - GitHub Issues (for bug reports)
@@ -463,6 +595,8 @@ Update documentation for:
 Please check:
 
 -  [Getting Started Guide](docs/GETTING_STARTED.md)
+-  [Issue Guidelines](docs/ISSUE_GUIDELINES.md)
+-  [Pull Request Guidelines](docs/PR_GUIDELINE.md)
 -  [Examples](examples/)
 -  Existing GitHub Issues and Discussions
 -  [CLAUDE.md](CLAUDE.md) for project-specific guidelines
