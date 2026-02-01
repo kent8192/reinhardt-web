@@ -4,21 +4,27 @@
 
 use clap::Parser;
 use colored::Colorize;
+use http_body_util::Full;
+use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
+use reinhardt_commands::WelcomePage;
+use reinhardt_pages::component::Component;
+use reinhardt_pages::ssr::SsrRenderer;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};
 use std::convert::Infallible;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tera::{Context, Tera};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
+
+use reinhardt_conf::Settings;
 
 #[derive(Parser, Debug)]
 #[command(name = "runserver")]
@@ -57,30 +63,150 @@ struct Args {
 	self_signed: bool,
 }
 
-async fn handle_request(_req: Request<Incoming>) -> Result<Response<String>, Infallible> {
-	// Render the welcome page template using Tera
-	let template_str = include_str!("../../templates/welcome.tpl");
+/// Check if a path is safe (prevents directory traversal attacks)
+fn is_safe_path(path: &Path) -> bool {
+	// Convert to string and check for path traversal attempts
+	// Return true if path is safe (does NOT contain "..")
+	!path.to_string_lossy().contains("..")
+}
 
-	let mut tera = Tera::default();
-	tera.add_raw_template("welcome.tpl", template_str)
-		.unwrap_or_else(|e| {
-			eprintln!("Error adding template: {}", e);
-		});
+/// Get MIME type based on file extension
+fn get_mime_type(path: &Path) -> &'static str {
+	match path.extension().and_then(|e| e.to_str()) {
+		Some("js") => "application/javascript",
+		Some("mjs") => "application/javascript",
+		Some("css") => "text/css; charset=utf-8",
+		Some("html") => "text/html; charset=utf-8",
+		Some("htm") => "text/html; charset=utf-8",
+		Some("json") => "application/json",
+		Some("xml") => "application/xml",
+		Some("png") => "image/png",
+		Some("jpg") => "image/jpeg",
+		Some("jpeg") => "image/jpeg",
+		Some("gif") => "image/gif",
+		Some("svg") => "image/svg+xml",
+		Some("ico") => "image/x-icon",
+		Some("woff") => "font/woff",
+		Some("woff2") => "font/woff2",
+		Some("ttf") => "font/ttf",
+		Some("eot") => "application/vnd.ms-fontobject",
+		Some("wasm") => "application/wasm",
+		Some("mp4") => "video/mp4",
+		Some("webm") => "video/webm",
+		Some("mp3") => "audio/mpeg",
+		Some("wav") => "audio/wav",
+		Some("ogg") => "audio/ogg",
+		Some("pdf") => "application/pdf",
+		Some("zip") => "application/zip",
+		Some("txt") => "text/plain; charset=utf-8",
+		Some("md") => "text/markdown; charset=utf-8",
+		_ => "application/octet-stream",
+	}
+}
 
-	let mut context = Context::new();
-	context.insert("version", env!("CARGO_PKG_VERSION"));
+/// Serve a static file
+async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, Infallible> {
+	// Read file content
+	match tokio::fs::read(file_path).await {
+		Ok(content) => {
+			let mime_type = get_mime_type(file_path);
 
-	let html = tera.render("welcome.tpl", &context).unwrap_or_else(|e| {
-		format!(
-			"<html><body><h1>Error rendering template: {}</h1></body></html>",
-			e
-		)
-	});
+			Ok(Response::builder()
+				.status(StatusCode::OK)
+				.header("Content-Type", mime_type)
+				.header("Cache-Control", "no-cache")
+				.body(Full::new(Bytes::from(content)))
+				.unwrap())
+		}
+		Err(_) => Ok(Response::builder()
+			.status(StatusCode::NOT_FOUND)
+			.header("Content-Type", "text/plain")
+			.body(Full::new(Bytes::from("File not found")))
+			.unwrap()),
+	}
+}
+
+async fn handle_request(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+	// For this implementation, we'll use default settings
+	// In a full implementation, we'd load settings from file
+	let settings = Settings::default();
+
+	let path = req.uri().path();
+
+	// Serve static files in debug mode from staticfiles_dirs
+	if settings.debug && path.starts_with(&settings.static_url) {
+		// Strip static_url prefix to get relative path
+		let relative_path = match path.strip_prefix(&settings.static_url) {
+			Some(p) => p,
+			None => path,
+		};
+		let relative_path = relative_path.trim_start_matches('/');
+
+		// If relative path is empty, serve the welcome page
+		if relative_path.is_empty() {
+			return serve_welcome_page();
+		}
+
+		// Find file in all staticfiles_dirs (in reverse order for override behavior)
+		let mut found_files: Vec<PathBuf> = Vec::new();
+
+		for dir in settings.staticfiles_dirs.iter().rev() {
+			let file_path = dir.join(relative_path);
+			if file_path.exists() && file_path.is_file() && is_safe_path(&file_path) {
+				found_files.push(file_path);
+			}
+		}
+
+		// Check for conflicts (same file in multiple directories) - ERROR
+		if found_files.len() > 1 {
+			eprintln!(
+				"❌ Error: Static file '{}' found in multiple directories:",
+				relative_path
+			);
+			for path in &found_files {
+				eprintln!("   - {}", path.display());
+			}
+			eprintln!("Please resolve the conflict by removing duplicate files.");
+			return Ok(Response::builder()
+				.status(StatusCode::INTERNAL_SERVER_ERROR)
+				.header("Content-Type", "text/plain")
+				.body(Full::new(Bytes::from(format!(
+					"Internal Server Error: Static file conflict for '{}'. Check server logs.",
+					relative_path
+				))))
+				.unwrap());
+		}
+
+		// Serve the found file
+		if let Some(file_path) = found_files.first() {
+			return serve_static_file(file_path).await;
+		}
+
+		// File not found, return 404
+		return Ok(Response::builder()
+			.status(StatusCode::NOT_FOUND)
+			.header("Content-Type", "text/plain")
+			.body(Full::new(Bytes::from(format!(
+				"Static file not found: {}",
+				relative_path
+			))))
+			.unwrap());
+	}
+
+	// Fall through to welcome page
+	serve_welcome_page()
+}
+
+/// Serve the welcome page
+fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
+	let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(component.render());
 
 	Ok(Response::builder()
 		.status(StatusCode::OK)
 		.header("Content-Type", "text/html; charset=utf-8")
-		.body(html)
+		.body(Full::new(Bytes::from(html)))
 		.unwrap())
 }
 

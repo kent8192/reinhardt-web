@@ -1,20 +1,52 @@
 [package]
 name = "reinhardt-integration-tests"
 version = "0.1.0-alpha.1"
-edition.workspace = true
+edition = "2021"
 publish = false
-autotests = false
+autotests = true
 
 [dependencies]
-# Database crates
-reinhardt-db = { workspace = true, features = ["mongodb", "nosql"] }
-reinhardt-db-macros = { workspace = true }
-reinhardt-test = { workspace = true, features = ["testcontainers"] }
+# Main reinhardt facade crate for proc macro path resolution.
+# Proc macros generate code with absolute paths like ::reinhardt::db::orm::Model
+# This dependency makes those paths resolvable in test files.
+reinhardt = { workspace = true, features = ["full"] }
 
-# Reinhardt HTTP/server crates (for TestServer and request helpers)
-reinhardt-core = { workspace = true }
-reinhardt-http = { workspace = true }
-reinhardt-server = { workspace = true }
+# Reinhardt crates
+reinhardt-apps = { workspace = true }
+reinhardt-core = { workspace = true, features = ["exception", "messages", "negotiation", "pagination", "parsers", "security", "signals", "types", "validators"] }
+reinhardt-auth = { workspace = true, features = [
+  "argon2-hasher",
+  "jwt",
+  "sessions",
+  "token",
+  "oauth",
+  "database",
+  "redis-sessions",
+  "rate-limit",
+] }
+reinhardt-http = { workspace = true, features = ["messages"] }
+reinhardt-di = { workspace = true, features = ["macros", "params"] }
+reinhardt-middleware = { workspace = true }
+reinhardt-graphql = { workspace = true, features = ["full"] }
+reinhardt-grpc = { workspace = true }
+reinhardt-db = { workspace = true, features = ["backends", "contenttypes", "migrations", "orm", "mongodb", "nosql"] }
+reinhardt-db-macros = { workspace = true }
+reinhardt-websockets = { workspace = true, features = ["redis-channel"] }
+reinhardt-server = { workspace = true, features = ["websocket"] }
+reinhardt-mail = { workspace = true }
+reinhardt-macros = { workspace = true }
+reinhardt-views = { workspace = true, features = ["viewsets"]}
+reinhardt-i18n = { workspace = true }
+reinhardt-tasks = { workspace = true, features = [
+  "redis-backend",
+  "rabbitmq-backend",
+] }
+reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "metadata", "openapi", "serializers", "throttling", "versioning"]}
+reinhardt-throttling = { workspace = true }
+reinhardt-shortcuts = { workspace = true, features = ["database"] }
+reinhardt-forms = { workspace = true }
+reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 
 # HTTP primitives (used in lib.rs make_request helpers)
 bytes = { workspace = true }
