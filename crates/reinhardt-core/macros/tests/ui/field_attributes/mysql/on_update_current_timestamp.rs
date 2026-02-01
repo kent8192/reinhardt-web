@@ -4,11 +4,6 @@ use chrono::{DateTime, Utc};
 use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-#[allow(unused_imports)]
-use reinhardt_db::migrations as _;
-#[allow(unused_imports)]
-use reinhardt_db::orm as _;
-
 #[cfg(feature = "db-mysql")]
 #[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "posts")]

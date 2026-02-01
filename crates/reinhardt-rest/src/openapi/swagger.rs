@@ -12,10 +12,10 @@ use std::sync::Arc;
 use tera::Tera;
 
 /// Embedded favicon for Swagger UI (loaded at compile time)
-const SWAGGER_FAVICON_PNG: &[u8] = include_bytes!("../../../../branding/thirdparty/swagger.png");
+const SWAGGER_FAVICON_PNG: &[u8] = include_bytes!("../../assets/swagger.png");
 
 /// Embedded favicon for Redoc UI (loaded at compile time)
-const REDOC_FAVICON_PNG: &[u8] = include_bytes!("../../../../branding/thirdparty/redoc.png");
+const REDOC_FAVICON_PNG: &[u8] = include_bytes!("../../assets/redoc.png");
 
 /// Lazy-initialized Tera instance
 static TEMPLATES: Lazy<Tera> = Lazy::new(|| {

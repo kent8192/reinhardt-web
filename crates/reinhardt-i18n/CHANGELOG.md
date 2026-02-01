@@ -7,28 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking Changes
-- N/A
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
 
-### Added
-- Work in progress features (not yet released)
+## [0.1.0-alpha.2] - 2026-01-23
 
 ### Changed
-- N/A
 
-### Deprecated
-- N/A
+- Re-publish with correct repository URL (reinhardt-web)
 
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-## [0.1.0] - 2025-11-16
+## [0.1.0-alpha.1] - 2026-01-23 [YANKED]
 
 ### Added
-- Initial release with internationalization support with translation catalogs and locale management
+
+- Initial crates.io release
+
