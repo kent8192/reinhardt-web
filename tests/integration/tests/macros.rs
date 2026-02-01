@@ -12,3 +12,9 @@ mod model_derive_integration;
 
 #[path = "macros/validator_integration.rs"]
 mod validator_integration;
+
+#[path = "macros/model_attribute_derive_integration.rs"]
+mod model_attribute_derive_integration;
+
+#[path = "macros/receiver_macro_integration.rs"]
+mod receiver_macro_integration;

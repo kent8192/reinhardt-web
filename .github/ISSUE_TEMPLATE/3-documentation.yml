@@ -1,0 +1,60 @@
+name: "\U0001F4DD Documentation"
+description: Report documentation issues or suggest improvements
+labels: ["documentation"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve our documentation!
+        Please fill out the form below.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched existing issues to verify this hasn't been reported
+          required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation issue located?
+      placeholder: "e.g., README.md, docs/MODULE_SYSTEM.md, or https://docs.rs/reinhardt-core"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current Problem
+      description: What's wrong with the current documentation?
+      placeholder: |
+        - Missing information about X
+        - Outdated example code
+        - Broken link to Y
+        - Unclear explanation of Z
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: |
+        The documentation should explain...
+
+        Example of what the improved section might look like:
+        ```markdown
+        ## Section Title
+        ...
+        ```
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context that would help us improve the documentation

@@ -1,5 +1,5 @@
 error: Direct use of #[derive(AppConfig)] is not allowed. Use #[app_config(name = "...", label = "...")] instead.
-  --> tests/ui/app_config/fail/direct_derive.rs:21:12
+  --> tests/ui/app_config/fail/direct_derive.rs:10:12
    |
-21 | pub struct DirectDeriveConfig;
+10 | pub struct DirectDeriveConfig;
    |            ^^^^^^^^^^^^^^^^^^

@@ -1,7 +1,7 @@
 error: unknown attribute `unknown_attr` for model admin
 
          = help: valid attributes are: for, name, list_display, list_filter, search_fields, fields, readonly_fields, ordering, list_per_page
-  --> tests/ui/admin/fail/unknown_attribute.rs:16:43
-   |
-16 | #[admin(model, for = User, name = "User", unknown_attr = "value")]
-   |                                           ^^^^^^^^^^^^
+ --> tests/ui/admin/fail/unknown_attribute.rs:7:43
+  |
+7 | #[admin(model, for = User, name = "User", unknown_attr = "value")]
+  |                                           ^^^^^^^^^^^^

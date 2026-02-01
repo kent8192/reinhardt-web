@@ -12,7 +12,7 @@ use syn::{ItemFn, LitStr, parse_macro_input};
 ///
 /// ```rust,no_run
 /// # use example_test_macros::example_test;
-/// #[example_test(version = "0.1.0")]
+/// #[example_test(version = "0.1.0-alpha.1")]
 /// fn test_exact_version() {
 ///     // Run only on reinhardt 0.1.0
 /// }
