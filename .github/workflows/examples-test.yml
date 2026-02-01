@@ -20,7 +20,7 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 4096
+          root-reserve-mb: 8192
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
@@ -72,6 +72,11 @@ jobs:
           rm -rf ~/.cargo/git/db || true
           echo "Disk usage after additional cleanup:"
           df -h
+
+      - name: Pull Docker images
+        uses: ./.github/actions/pull-docker-images
+        with:
+          images-file: .github/docker-images-examples.txt
 
       - name: Run examples tests
         run: cargo make examples-test-only
