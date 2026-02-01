@@ -295,6 +295,7 @@ macro_rules! server_fn_test_cases {
 			#[rstest::rstest]
 			#[tokio::test]
 			async fn $test_name(
+				// Fixture injected by rstest; may not be directly used in test body
 				#[allow(unused_variables)]
 				server_fn_context: $crate::server_fn::ServerFnTestEnv,
 			) {

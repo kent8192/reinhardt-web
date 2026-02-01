@@ -44,7 +44,7 @@ reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "me
 reinhardt-throttling = { workspace = true }
 reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
-reinhardt-utils = { workspace = true, features = ["cache", "logging", "static", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
+reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-pages = { workspace = true }
 reinhardt-commands = { workspace = true, features = ["migrations"] }

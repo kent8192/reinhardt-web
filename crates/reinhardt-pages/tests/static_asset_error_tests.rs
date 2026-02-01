@@ -6,7 +6,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod error_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_utils::r#static::TemplateStaticConfig;
+	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 	use rstest::rstest;
 	use std::collections::HashMap;
 
@@ -72,7 +72,7 @@ mod error_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_from_storage_nonexistent_manifest() {
-		use reinhardt_utils::r#static::ManifestStaticFilesStorage;
+		use reinhardt_utils::staticfiles::ManifestStaticFilesStorage;
 		use tempfile::tempdir;
 
 		let temp_dir = tempdir().unwrap();
@@ -91,7 +91,7 @@ mod error_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_from_storage_invalid_json() {
-		use reinhardt_utils::r#static::ManifestStaticFilesStorage;
+		use reinhardt_utils::staticfiles::ManifestStaticFilesStorage;
 		use std::io;
 		use tempfile::tempdir;
 
@@ -119,7 +119,7 @@ mod error_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_from_storage_truncated_json() {
-		use reinhardt_utils::r#static::ManifestStaticFilesStorage;
+		use reinhardt_utils::staticfiles::ManifestStaticFilesStorage;
 		use std::io;
 		use tempfile::tempdir;
 
