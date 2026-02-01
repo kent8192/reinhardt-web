@@ -6,7 +6,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod happy_path_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_utils::r#static::TemplateStaticConfig;
+	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 	use rstest::rstest;
 	use std::collections::HashMap;
 

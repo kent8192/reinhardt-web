@@ -195,8 +195,9 @@ impl PostgresIntrospector {
 			})
 			.collect();
 
-		// PostgreSQL CHECK constraints would need separate extraction
-		// For now, initialize as empty (can be added later if needed)
+		// PostgreSQL CHECK constraints extraction is not yet implemented.
+		// This is a non-critical feature that can be added when needed.
+		// Most common constraints (NOT NULL, UNIQUE, FK, PK) are already supported.
 		let check_constraints: Vec<CheckConstraintInfo> = Vec::new();
 
 		Ok(TableInfo {
@@ -427,8 +428,9 @@ impl MySQLIntrospector {
 			})
 			.collect();
 
-		// MySQL CHECK constraints would need separate extraction
-		// For now, initialize as empty (can be added later if needed)
+		// MySQL CHECK constraints extraction is not yet implemented.
+		// This is a non-critical feature that can be added when needed.
+		// Most common constraints (NOT NULL, UNIQUE, FK, PK) are already supported.
 		let check_constraints: Vec<CheckConstraintInfo> = Vec::new();
 
 		Ok(TableInfo {
