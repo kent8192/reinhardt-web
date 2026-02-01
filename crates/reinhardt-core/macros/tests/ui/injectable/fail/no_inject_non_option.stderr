@@ -1,6 +1,6 @@
 error: Field with #[no_inject] but no default value must have type Option<T>
-  --> tests/ui/injectable/fail/no_inject_non_option.rs:26:2
+  --> tests/ui/injectable/fail/no_inject_non_option.rs:31:2
    |
-26 | /     #[no_inject] // Error: must be Option<T>
-27 | |     cache: Cache,
+31 | /     #[no_inject] // Error: must be Option<T>
+32 | |     cache: Cache,
    | |________________^

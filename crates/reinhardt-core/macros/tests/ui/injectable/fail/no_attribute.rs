@@ -4,13 +4,18 @@
 
 use reinhardt_macros::injectable;
 
+/// Mock Injectable trait for testing
+pub trait Injectable {
+	fn resolve() -> Self;
+}
+
 #[derive(Clone, Default)]
 struct Database;
 
 #[async_trait::async_trait]
-impl reinhardt_di::Injectable for Database {
-	async fn inject(_ctx: &reinhardt_di::InjectionContext) -> reinhardt_di::DiResult<Self> {
-		Ok(Database)
+impl Injectable for Database {
+	fn resolve() -> Self {
+		Database
 	}
 }
 
