@@ -1229,8 +1229,10 @@ impl BaseCommand for RunServerCommand {
 impl RunServerCommand {
 	/// Run the development server
 	#[cfg(feature = "server")]
+	// Allow many arguments: CLI command handler needs to accept all server configuration options
 	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
+		// Context parameter reserved for future extensions (e.g., accessing global config)
 		#[allow(unused_variables)] ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
@@ -1255,18 +1257,17 @@ impl RunServerCommand {
 			crate::CommandError::ExecutionError("Failed to get registered router".to_string())
 		})?;
 
-		// TODO: Re-enable OpenAPI wrapper after resolving circular dependency
 		// Wrap with OpenAPI endpoints if enabled
-		// #[cfg(feature = "openapi")]
-		// let router = if !no_docs {
-		// 	use reinhardt_http::Handler;
-		// 	use reinhardt_rest::openapi::OpenApiRouter;
-		// 	std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
-		// } else {
-		// 	base_router
-		// };
+		#[cfg(feature = "openapi-router")]
+		let router = if !no_docs {
+			use reinhardt_http::Handler;
+			use reinhardt_openapi::OpenApiRouter;
+			std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
+		} else {
+			base_router
+		};
 
-		// #[cfg(not(feature = "openapi"))]
+		#[cfg(not(feature = "openapi-router"))]
 		let router = base_router;
 
 		// Parse socket address
@@ -1349,8 +1350,10 @@ impl RunServerCommand {
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
-			use reinhardt_utils::r#static::PathResolver;
-			use reinhardt_utils::r#static::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+			use reinhardt_utils::staticfiles::PathResolver;
+			use reinhardt_utils::staticfiles::middleware::{
+				StaticFilesConfig, StaticFilesMiddleware,
+			};
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);

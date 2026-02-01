@@ -7,7 +7,7 @@
 mod fuzz_tests {
 	use proptest::prelude::*;
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_utils::r#static::TemplateStaticConfig;
+	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 
 	proptest! {
 		/// Fuzz test: resolve_static never panics with random ASCII paths
