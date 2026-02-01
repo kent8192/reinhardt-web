@@ -27,6 +27,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Version bump for publish workflow correction (no functional changes)
+
+## [0.1.0-alpha.3] - 2026-01-29
+
+### Changed
+
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
+
+## [0.1.0-alpha.2] - 2026-01-28
+
+### Changed
+- Migrated welcome page rendering from Tera to reinhardt-pages SSR
+- Added reinhardt-pages dependency
+
+### Removed
+- Removed welcome.tpl template (replaced by WelcomePage component)
+
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
