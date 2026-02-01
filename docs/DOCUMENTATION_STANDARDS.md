@@ -690,6 +690,11 @@ let conn = connect("postgres://localhost")?;
 ```
 
 **3. CHANGELOG.md:**
+
+**Language Requirement:**
+- **MUST be written in English** (no exceptions)
+- All entries, descriptions, and migration guides must use English
+
 ```markdown
 ## [0.2.0] - 2025-01-XX
 

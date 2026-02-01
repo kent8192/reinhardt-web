@@ -27,7 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
-## [0.1.0] - 2025-11-16
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
-- Initial release with uRL routing system with pattern matching and reverse URL resolution
+
+- Initial crates.io release
+

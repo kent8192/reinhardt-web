@@ -123,98 +123,46 @@ git apply --cached /tmp/changes.patch
 - Verify staged files before committing
 - Use `git status` to confirm no ignored files are included
 
-### CE-5 (MUST): Release Commits
+### CE-5: Automated Releases with release-plz
 
-**Version Bump Commits:**
+**Overview:**
 
-When preparing for crate publication to crates.io:
+This project uses [release-plz](https://release-plz.ieni.dev/) for automated release management. Version bumps, CHANGELOG updates, and publishing are handled automatically based on conventional commits.
 
-**Subject Line Format:**
-```
-chore(release): bump [crate-name] to v[version]
+**How It Works:**
 
-Example:
-chore(release): bump reinhardt-core to v0.2.0
-```
+1. Write commits following [Conventional Commits](https://www.conventionalcommits.org/) format
+2. Push to main branch
+3. release-plz automatically creates a Release PR with:
+   - Version bumps in `Cargo.toml` files
+   - Updated CHANGELOG.md files
+   - Summary of changes
+4. Review and merge the Release PR
+5. release-plz publishes to crates.io and creates Git tags
 
-**Body Format:**
-```
-Prepare for crate publication to crates.io.
+**Commit-to-Version Mapping:**
 
-Version Changes:
-- crates/[crate-name]/Cargo.toml: version 0.1.0 -> [new-version]
-- crates/[crate-name]/CHANGELOG.md: Add release notes for v[new-version]
+| Commit Type | Version Bump | Example |
+|-------------|--------------|---------|
+| `feat:` | MINOR | `feat(auth): add OAuth support` |
+| `fix:` | PATCH | `fix(orm): resolve connection leak` |
+| `feat!:` or `BREAKING CHANGE:` | MAJOR | `feat!: change API response format` |
+| Other types | PATCH | `docs:`, `chore:`, `refactor:`, etc. |
 
-Breaking Changes: (if MAJOR version bump)
-- List breaking changes here
-- API changes that affect backward compatibility
+**Manual Intervention:**
 
-New Features: (if MINOR version bump)
-- List new features here
-- Enhancements and additions
-
-Bug Fixes: (if PATCH version bump)
-- List bug fixes here
-- Resolved issues and corrections
-
-[Standard footer with Claude Code attribution]
-```
-
-**Requirements:**
-- Version bump commits MUST be separate from feature/fix commits
-- MUST update both `Cargo.toml` version AND `CHANGELOG.md` in the same commit
-- MUST list all significant changes in the commit body
-- Breaking changes MUST be clearly identified for MAJOR version bumps
-- Git tag MUST be created AFTER commit, not before
-- Commit message MUST follow standard format (CM-1, CM-2, CM-3)
-
-**Example Complete Commit:**
-
-```
-chore(release): bump reinhardt-orm to v0.2.0
-
-Prepare reinhardt-orm for publication to crates.io.
-
-Version Changes:
-- crates/reinhardt-orm/Cargo.toml: version 0.1.0 -> 0.2.0
-- crates/reinhardt-orm/CHANGELOG.md: Add release notes for v0.2.0
-
-Breaking Changes:
-- QueryBuilder::build() now returns Result<Query> instead of Query
-- Removed deprecated method Model::save_sync()
-
-New Features:
-- Add support for async connection pooling
-- Implement QueryBuilder::with_timeout() method
-- Add Model::bulk_insert() for batch operations
-
-Bug Fixes:
-- Fix race condition in transaction rollback
-- Correct UTC timezone handling in timestamp fields
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-**Post-Commit Actions (Performed AFTER Commit):**
-
-After committing the version bump:
-
-1. Wait for explicit user authorization to proceed with publishing
-2. Run verification: `cargo publish --dry-run -p [crate-name]`
-3. Wait for user confirmation after dry-run results
-4. Publish: `cargo publish -p [crate-name]`
-5. Create Git tag: `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
-6. Push commits and tags: `git push && git push --tags`
+- Edit the Release PR to adjust CHANGELOG entries or version numbers if needed
+- Release PRs can be modified before merging
 
 **Critical Rules:**
-- ❌ NEVER create tag before committing version changes
-- ❌ NEVER publish without explicit user authorization
-- ❌ NEVER skip `--dry-run` verification
-- ✅ ALWAYS commit version bump first, then tag
-- ✅ ALWAYS wait for user confirmation between steps
-- ✅ ALWAYS update CHANGELOG.md in the same commit as Cargo.toml
+- ✅ Use conventional commit format for proper version detection
+- ✅ Review Release PRs before merging
+- ❌ NEVER manually bump versions in feature branches (let release-plz handle it)
+- ❌ NEVER create release tags manually (release-plz creates them)
+
+**For Detailed Information:**
+
+See [docs/RELEASE_PROCESS.md](RELEASE_PROCESS.md) for complete release workflow documentation
 
 ---
 

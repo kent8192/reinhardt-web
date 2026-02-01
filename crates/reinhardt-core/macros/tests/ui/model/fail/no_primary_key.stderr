@@ -1,5 +1,0 @@
-error: Model must have at least one primary key field
- --> tests/ui/model/fail/no_primary_key.rs:8:8
-  |
-8 | struct User {
-  |        ^^^^

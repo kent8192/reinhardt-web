@@ -4,17 +4,6 @@
 
 use reinhardt_macros::AppConfig;
 
-// Allow this test crate to be referenced as `::reinhardt`
-extern crate self as reinhardt;
-
-pub mod reinhardt_apps {
-	pub use ::reinhardt_apps::*;
-}
-
-pub mod macros {
-	pub use reinhardt_macros::AppConfig;
-}
-
 // This should fail to compile with a helpful error message
 #[derive(AppConfig)]
 #[app_config(name = "test", label = "test")]
