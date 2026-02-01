@@ -243,13 +243,22 @@ mod tests {
 				.await;
 		}
 
-		// Query all issues
+		// Query all issues with pagination
 		let query = r#"
 			query {
 				issues {
-					id
-					number
-					title
+					edges {
+						id
+						number
+						title
+					}
+					pageInfo {
+						hasNextPage
+						hasPreviousPage
+						totalCount
+						page
+						pageSize
+					}
 				}
 			}
 		"#;
@@ -257,8 +266,14 @@ mod tests {
 		let response = schema.execute(Request::new(query)).await;
 		let data = response.data.into_json().unwrap();
 
-		let issues = data["issues"].as_array().unwrap();
-		assert_eq!(issues.len(), 3);
+		let edges = data["issues"]["edges"].as_array().unwrap();
+		assert_eq!(edges.len(), 3);
+
+		let page_info = &data["issues"]["pageInfo"];
+		assert_eq!(page_info["totalCount"], 3);
+		assert_eq!(page_info["page"], 1);
+		assert_eq!(page_info["hasNextPage"], false);
+		assert_eq!(page_info["hasPreviousPage"], false);
 	}
 
 	#[tokio::test]
@@ -286,14 +301,20 @@ mod tests {
 			.execute(Request::new(create_query).data(claims))
 			.await;
 
-		// Query issues by project
+		// Query issues by project with pagination
 		let query = format!(
 			r#"
 			query {{
 				issues(projectId: "{}") {{
-					id
-					title
-					projectId
+					edges {{
+						id
+						title
+						projectId
+					}}
+					pageInfo {{
+						totalCount
+						page
+					}}
 				}}
 			}}
 		"#,
@@ -303,9 +324,10 @@ mod tests {
 		let response = schema.execute(Request::new(query)).await;
 		let data = response.data.into_json().unwrap();
 
-		let issues = data["issues"].as_array().unwrap();
-		assert_eq!(issues.len(), 1);
-		assert_eq!(issues[0]["projectId"], project_id);
+		let edges = data["issues"]["edges"].as_array().unwrap();
+		assert_eq!(edges.len(), 1);
+		assert_eq!(edges[0]["projectId"], project_id);
+		assert_eq!(data["issues"]["pageInfo"]["totalCount"], 1);
 	}
 
 	#[tokio::test]
