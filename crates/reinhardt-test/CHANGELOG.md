@@ -27,13 +27,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Re-release of 0.1.0-alpha.3 content after version correction
+- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
+- Update imports for `reinhardt_utils::staticfiles` module rename
+
+
+## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
+
+**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
+
+### Changed
+
+- Rename feature `static` to `staticfiles` following `reinhardt-utils` module rename (#114)
+- Update imports for `reinhardt_utils::staticfiles` module rename
+
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
 
 - Initial crates.io release
 
-## [0.1.0] - 2025-11-16
-
-### Added
-- Initial release with testing utilities including fixtures, test client, and database helpers

@@ -7,7 +7,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod macro_compile_tests {
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
-	use reinhardt_utils::r#static::TemplateStaticConfig;
+	use reinhardt_utils::staticfiles::TemplateStaticConfig;
 	use rstest::rstest;
 
 	/// Test that resolve_static works in a pattern similar to macro usage
