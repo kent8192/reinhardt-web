@@ -70,12 +70,16 @@ pub enum FilterOperator {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FilterValue {
 	String(String),
+	/// Deprecated: Use `Int` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Int` instead for SeaQuery naming alignment")]
 	Integer(i64),
-	/// Alias for Integer (for compatibility with test code)
+	/// 64-bit signed integer value (SeaQuery-aligned naming)
 	Int(i64),
 	Float(f64),
+	/// Deprecated: Use `Bool` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Bool` instead for SeaQuery naming alignment")]
 	Boolean(bool),
-	/// Alias for Boolean (for compatibility with test code)
+	/// Boolean value (SeaQuery-aligned naming)
 	Bool(bool),
 	Null,
 	Array(Vec<String>),
@@ -108,9 +112,17 @@ impl Filter {
 #[derive(Debug, Clone)]
 pub enum UpdateValue {
 	String(String),
+	/// Deprecated: Use `Int` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Int` instead for SeaQuery naming alignment")]
 	Integer(i64),
+	/// 64-bit signed integer value (SeaQuery-aligned naming)
+	Int(i64),
 	Float(f64),
+	/// Deprecated: Use `Bool` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Bool` instead for SeaQuery naming alignment")]
 	Boolean(bool),
+	/// Boolean value (SeaQuery-aligned naming)
+	Bool(bool),
 	Null,
 	/// Field reference for field-to-field updates (e.g., SET discount_price = total_price)
 	FieldRef(super::expressions::F),
@@ -262,13 +274,13 @@ impl From<&str> for FilterValue {
 
 impl From<i64> for FilterValue {
 	fn from(i: i64) -> Self {
-		FilterValue::Integer(i)
+		FilterValue::Int(i)
 	}
 }
 
 impl From<i32> for FilterValue {
 	fn from(i: i32) -> Self {
-		FilterValue::Integer(i as i64)
+		FilterValue::Int(i as i64)
 	}
 }
 
@@ -280,7 +292,7 @@ impl From<f64> for FilterValue {
 
 impl From<bool> for FilterValue {
 	fn from(b: bool) -> Self {
-		FilterValue::Boolean(b)
+		FilterValue::Bool(b)
 	}
 }
 
@@ -2389,6 +2401,7 @@ where
 	}
 
 	/// Build WHERE condition using SeaQuery from accumulated filters
+	#[allow(deprecated)] // Support both old and new variant names during migration
 	fn build_where_condition(&self) -> Option<Condition> {
 		// Early return only if both filters and subquery_conditions are empty
 		if self.filters.is_empty() && self.subquery_conditions.is_empty() {
@@ -2730,6 +2743,7 @@ where
 		value.to_sql()
 	}
 
+	#[allow(deprecated)] // Support both old and new variant names during migration
 	fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 		match v {
 			FilterValue::String(s) => {
@@ -2755,6 +2769,7 @@ where
 
 	/// Convert FilterValue to SQL-safe string representation
 	/// Used for custom SQL expressions (PostgreSQL operators)
+	#[allow(deprecated)] // Support both old and new variant names during migration
 	fn filter_value_to_sql_string(v: &FilterValue) -> String {
 		match v {
 			FilterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
@@ -2780,6 +2795,7 @@ where
 
 	/// Convert FilterValue to String representation
 	#[allow(dead_code)]
+	#[allow(deprecated)] // Support both old and new variant names during migration
 	fn value_to_string(v: &FilterValue) -> String {
 		match v {
 			FilterValue::String(s) => s.clone(),
@@ -2834,6 +2850,7 @@ where
 
 	/// Convert FilterValue to array of sea_query::Value
 	#[allow(dead_code)]
+	#[allow(deprecated)] // Support both old and new variant names during migration
 	fn value_to_array(v: &FilterValue) -> Vec<sea_query::Value> {
 		match v {
 			FilterValue::String(s) => Self::parse_array_string(s),
@@ -3993,11 +4010,12 @@ where
 
 		// Add SET clauses
 		for (field, value) in updates {
+			#[allow(deprecated)] // Support both old and new variant names during migration
 			let val_expr = match value {
 				UpdateValue::String(s) => Expr::val(s.clone()),
-				UpdateValue::Integer(i) => Expr::val(*i),
+				UpdateValue::Integer(i) | UpdateValue::Int(i) => Expr::val(*i),
 				UpdateValue::Float(f) => Expr::val(*f),
-				UpdateValue::Boolean(b) => Expr::val(*b),
+				UpdateValue::Boolean(b) | UpdateValue::Bool(b) => Expr::val(*b),
 				UpdateValue::Null => Expr::val(sea_query::Value::Int(None)),
 				UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
 				UpdateValue::Expression(expr) => Self::expression_to_seaquery(expr),

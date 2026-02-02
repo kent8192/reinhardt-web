@@ -158,7 +158,7 @@ where
 
 		// Try to parse as i64 first (common for primary keys), fallback to string
 		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
-			FilterValue::Integer(int_value)
+			FilterValue::Int(int_value)
 		} else {
 			FilterValue::String(lookup_value.clone())
 		};

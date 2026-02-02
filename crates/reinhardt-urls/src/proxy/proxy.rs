@@ -320,9 +320,17 @@ pub enum ProxyTarget {
 #[serde(untagged)]
 pub enum ScalarValue {
 	String(String),
+	/// Deprecated: Use `Int` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Int` instead for SeaQuery naming alignment")]
 	Integer(i64),
+	/// 64-bit signed integer value (SeaQuery-aligned naming)
+	Int(i64),
 	Float(f64),
+	/// Deprecated: Use `Bool` instead for SeaQuery naming alignment
+	#[deprecated(since = "0.2.0", note = "use `Bool` instead for SeaQuery naming alignment")]
 	Boolean(bool),
+	/// Boolean value (SeaQuery-aligned naming)
+	Bool(bool),
 	Null,
 }
 
@@ -340,7 +348,7 @@ impl From<&str> for ScalarValue {
 
 impl From<i64> for ScalarValue {
 	fn from(i: i64) -> Self {
-		ScalarValue::Integer(i)
+		ScalarValue::Int(i)
 	}
 }
 
@@ -352,7 +360,7 @@ impl From<f64> for ScalarValue {
 
 impl From<bool> for ScalarValue {
 	fn from(b: bool) -> Self {
-		ScalarValue::Boolean(b)
+		ScalarValue::Bool(b)
 	}
 }
 
@@ -386,17 +394,18 @@ impl ScalarValue {
 	/// ```
 	/// use reinhardt_urls::proxy::ScalarValue;
 	///
-	/// let value = ScalarValue::Integer(42);
+	/// let value = ScalarValue::Int(42);
 	/// assert_eq!(value.as_integer().unwrap(), 42);
 	///
 	/// let str_value = ScalarValue::String("test".to_string());
 	/// assert!(str_value.as_integer().is_err());
 	/// ```
 	pub fn as_integer(&self) -> ProxyResult<i64> {
+		#[allow(deprecated)] // Support both old and new variant names during migration
 		match self {
-			ScalarValue::Integer(i) => Ok(*i),
+			ScalarValue::Integer(i) | ScalarValue::Int(i) => Ok(*i),
 			_ => Err(ProxyError::TypeMismatch {
-				expected: "Integer".to_string(),
+				expected: "Int".to_string(),
 				actual: format!("{:?}", self),
 			}),
 		}
@@ -411,7 +420,7 @@ impl ScalarValue {
 	/// let value = ScalarValue::Float(3.15);
 	/// assert_eq!(value.as_float().unwrap(), 3.15);
 	///
-	/// let bool_value = ScalarValue::Boolean(true);
+	/// let bool_value = ScalarValue::Bool(true);
 	/// assert!(bool_value.as_float().is_err());
 	/// ```
 	pub fn as_float(&self) -> ProxyResult<f64> {
@@ -430,17 +439,18 @@ impl ScalarValue {
 	/// ```
 	/// use reinhardt_urls::proxy::ScalarValue;
 	///
-	/// let value = ScalarValue::Boolean(true);
+	/// let value = ScalarValue::Bool(true);
 	/// assert!(value.as_boolean().unwrap());
 	///
-	/// let int_value = ScalarValue::Integer(1);
+	/// let int_value = ScalarValue::Int(1);
 	/// assert!(int_value.as_boolean().is_err());
 	/// ```
 	pub fn as_boolean(&self) -> ProxyResult<bool> {
+		#[allow(deprecated)] // Support both old and new variant names during migration
 		match self {
-			ScalarValue::Boolean(b) => Ok(*b),
+			ScalarValue::Boolean(b) | ScalarValue::Bool(b) => Ok(*b),
 			_ => Err(ProxyError::TypeMismatch {
-				expected: "Boolean".to_string(),
+				expected: "Bool".to_string(),
 				actual: format!("{:?}", self),
 			}),
 		}
@@ -472,13 +482,13 @@ mod tests {
 		let s = ScalarValue::String("test".to_string());
 		assert_eq!(s.as_string().unwrap(), "test");
 
-		let i = ScalarValue::Integer(42);
+		let i = ScalarValue::Int(42);
 		assert_eq!(i.as_integer().unwrap(), 42);
 
 		let f = ScalarValue::Float(3.15);
 		assert_eq!(f.as_float().unwrap(), 3.15);
 
-		let b = ScalarValue::Boolean(true);
+		let b = ScalarValue::Bool(true);
 		assert!(b.as_boolean().unwrap());
 	}
 

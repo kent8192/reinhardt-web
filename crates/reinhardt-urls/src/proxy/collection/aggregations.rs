@@ -48,8 +48,9 @@ impl CollectionAggregations {
 		let values = self.proxy.get_values(source).await?;
 		let mut sum = 0.0;
 		for value in values {
+			#[allow(deprecated)] // Support both old and new variant names during migration
 			match value {
-				ScalarValue::Integer(i) => sum += i as f64,
+				ScalarValue::Integer(i) | ScalarValue::Int(i) => sum += i as f64,
 				ScalarValue::Float(f) => sum += f,
 				_ => {}
 			}
@@ -79,8 +80,9 @@ impl CollectionAggregations {
 		let mut sum = 0.0;
 		let mut count = 0;
 		for value in &values {
+			#[allow(deprecated)] // Support both old and new variant names during migration
 			match value {
-				ScalarValue::Integer(i) => {
+				ScalarValue::Integer(i) | ScalarValue::Int(i) => {
 					sum += *i as f64;
 					count += 1;
 				}
@@ -117,22 +119,24 @@ impl CollectionAggregations {
 		T: super::super::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
-		Ok(values.into_iter().min_by(|a, b| {
+		#[allow(deprecated)] // Support both old and new variant names during migration
+		let result = values.into_iter().min_by(|a, b| {
 			use std::cmp::Ordering;
 			match (a, b) {
-				(ScalarValue::Integer(x), ScalarValue::Integer(y)) => x.cmp(y),
+				(ScalarValue::Integer(x) | ScalarValue::Int(x), ScalarValue::Integer(y) | ScalarValue::Int(y)) => x.cmp(y),
 				(ScalarValue::Float(x), ScalarValue::Float(y)) => {
 					x.partial_cmp(y).unwrap_or(Ordering::Equal)
 				}
-				(ScalarValue::Integer(x), ScalarValue::Float(y)) => {
+				(ScalarValue::Integer(x) | ScalarValue::Int(x), ScalarValue::Float(y)) => {
 					(*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
 				}
-				(ScalarValue::Float(x), ScalarValue::Integer(y)) => {
+				(ScalarValue::Float(x), ScalarValue::Integer(y) | ScalarValue::Int(y)) => {
 					x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
 				}
 				_ => format!("{:?}", a).cmp(&format!("{:?}", b)),
 			}
-		}))
+		});
+		Ok(result)
 	}
 	/// Maximum value in collection
 	///
@@ -154,21 +158,23 @@ impl CollectionAggregations {
 		T: super::super::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
-		Ok(values.into_iter().max_by(|a, b| {
+		#[allow(deprecated)] // Support both old and new variant names during migration
+		let result = values.into_iter().max_by(|a, b| {
 			use std::cmp::Ordering;
 			match (a, b) {
-				(ScalarValue::Integer(x), ScalarValue::Integer(y)) => x.cmp(y),
+				(ScalarValue::Integer(x) | ScalarValue::Int(x), ScalarValue::Integer(y) | ScalarValue::Int(y)) => x.cmp(y),
 				(ScalarValue::Float(x), ScalarValue::Float(y)) => {
 					x.partial_cmp(y).unwrap_or(Ordering::Equal)
 				}
-				(ScalarValue::Integer(x), ScalarValue::Float(y)) => {
+				(ScalarValue::Integer(x) | ScalarValue::Int(x), ScalarValue::Float(y)) => {
 					(*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
 				}
-				(ScalarValue::Float(x), ScalarValue::Integer(y)) => {
+				(ScalarValue::Float(x), ScalarValue::Integer(y) | ScalarValue::Int(y)) => {
 					x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
 				}
 				_ => format!("{:?}", a).cmp(&format!("{:?}", b)),
 			}
-		}))
+		});
+		Ok(result)
 	}
 }

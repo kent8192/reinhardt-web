@@ -430,7 +430,7 @@ where
 
 			// Try to parse as i64 first (most common primary key type)
 			let filter_value = if let Ok(int_pk) = pk_value.parse::<i64>() {
-				FilterValue::Integer(int_pk)
+				FilterValue::Int(int_pk)
 			} else {
 				// Fallback to string if not a valid integer
 				FilterValue::String(pk_value.clone())

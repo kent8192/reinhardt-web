@@ -257,7 +257,7 @@ impl<M: Model> Manager<M> {
 
 		// Try to parse as i64 first (common for primary keys), fallback to string
 		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			super::query::FilterValue::Integer(int_value)
+			super::query::FilterValue::Int(int_value)
 		} else {
 			super::query::FilterValue::String(pk_str)
 		};

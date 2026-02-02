@@ -31,11 +31,12 @@ impl FilterCondition {
 	}
 
 	pub fn matches(&self, scalar: &ScalarValue) -> bool {
+		#[allow(deprecated)] // Support both old and new variant names during migration
 		let scalar_str = match scalar {
 			ScalarValue::String(s) => s.clone(),
-			ScalarValue::Integer(i) => i.to_string(),
+			ScalarValue::Integer(i) | ScalarValue::Int(i) => i.to_string(),
 			ScalarValue::Float(f) => f.to_string(),
-			ScalarValue::Boolean(b) => b.to_string(),
+			ScalarValue::Boolean(b) | ScalarValue::Bool(b) => b.to_string(),
 			ScalarValue::Null => "null".to_string(),
 		};
 

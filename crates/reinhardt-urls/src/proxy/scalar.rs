@@ -186,7 +186,7 @@ impl ScalarComparison {
 	/// use reinhardt_urls::proxy::{ScalarComparison, ScalarValue};
 	///
 	/// let comparison = ScalarComparison::gt(100);
-	/// assert!(matches!(comparison, ScalarComparison::Gt(ScalarValue::Integer(100))));
+	/// assert!(matches!(comparison, ScalarComparison::Gt(ScalarValue::Int(100))));
 	/// ```
 	pub fn gt(value: impl Into<ScalarValue>) -> Self {
 		ScalarComparison::Gt(value.into())
@@ -199,7 +199,7 @@ impl ScalarComparison {
 	/// use reinhardt_urls::proxy::{ScalarComparison, ScalarValue};
 	///
 	/// let comparison = ScalarComparison::gte(50);
-	/// assert!(matches!(comparison, ScalarComparison::Gte(ScalarValue::Integer(50))));
+	/// assert!(matches!(comparison, ScalarComparison::Gte(ScalarValue::Int(50))));
 	/// ```
 	pub fn gte(value: impl Into<ScalarValue>) -> Self {
 		ScalarComparison::Gte(value.into())
@@ -212,7 +212,7 @@ impl ScalarComparison {
 	/// use reinhardt_urls::proxy::{ScalarComparison, ScalarValue};
 	///
 	/// let comparison = ScalarComparison::lt(25);
-	/// assert!(matches!(comparison, ScalarComparison::Lt(ScalarValue::Integer(25))));
+	/// assert!(matches!(comparison, ScalarComparison::Lt(ScalarValue::Int(25))));
 	/// ```
 	pub fn lt(value: impl Into<ScalarValue>) -> Self {
 		ScalarComparison::Lt(value.into())
@@ -225,7 +225,7 @@ impl ScalarComparison {
 	/// use reinhardt_urls::proxy::{ScalarComparison, ScalarValue};
 	///
 	/// let comparison = ScalarComparison::lte(75);
-	/// assert!(matches!(comparison, ScalarComparison::Lte(ScalarValue::Integer(75))));
+	/// assert!(matches!(comparison, ScalarComparison::Lte(ScalarValue::Int(75))));
 	/// ```
 	pub fn lte(value: impl Into<ScalarValue>) -> Self {
 		ScalarComparison::Lte(value.into())
@@ -237,7 +237,7 @@ impl ScalarComparison {
 	/// ```
 	/// use reinhardt_urls::proxy::{ScalarComparison, ScalarValue};
 	///
-	/// let values = vec![ScalarValue::Integer(1), ScalarValue::Integer(2)];
+	/// let values = vec![ScalarValue::Int(1), ScalarValue::Int(2)];
 	/// let comparison = ScalarComparison::in_values(values);
 	/// assert!(matches!(comparison, ScalarComparison::In(_)));
 	/// ```

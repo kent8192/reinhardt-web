@@ -208,12 +208,12 @@ impl<T: Model> GenericRelationSet<T> {
 		let ct_filter = Filter::new(
 			self.ct_field.clone(),
 			FilterOperator::Eq,
-			FilterValue::Integer(self.content_type_id),
+			FilterValue::Int(self.content_type_id),
 		);
 		let fk_filter = Filter::new(
 			self.fk_field.clone(),
 			FilterOperator::Eq,
-			FilterValue::Integer(self.object_id),
+			FilterValue::Int(self.object_id),
 		);
 
 		T::objects().all().filter(ct_filter).filter(fk_filter)
