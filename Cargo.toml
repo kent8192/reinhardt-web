@@ -401,7 +401,7 @@ reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.1" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.1" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.1" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.1" }
-reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.1" }
+reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.2" }
 
 # Core subcrates
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.1" }

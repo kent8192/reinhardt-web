@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.2] - 2026-02-02
+
+### Fixed
+
+- Fix release-plz CI workflow compatibility by establishing a new comparison baseline
+
 ## [0.1.0-alpha.1] - 2025-01-26
 
 ### Added
