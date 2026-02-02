@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.2...reinhardt-web@v0.1.0-alpha.3) - 2026-02-02
+
+### Fixed
+
+- *(ci)* migrate to official release-plz action
+- *(ci)* use registry-manifest-path to avoid workspace member errors
+- *(ci)* run release-plz only on push to main
+- *(ci)* use release-plz update for PR validation
+- *(ci)* use release --dry-run for PR validation
+- *(ci)* remove WASM build artifacts from git tracking
+- *(examples)* standardize settings file pattern with .example.toml
+- *(ci)* remove proptest regression files from git tracking
+- *(ci)* use jlumbroso/free-disk-space for ui-test workflow
+- *(ci)* use jlumbroso/free-disk-space for examples tests
+- *(ci)* use jlumbroso/free-disk-space for integration tests
+- *(ci)* add disk cleanup step to integration test workflows
+- *(ci)* increase root-reserve-mb from 4GB to 8GB
+- *(ci)* move docker pull after rust setup to avoid disk space issues
+- *(ci)* replace docker save/load with pull-only approach
+- *(ci)* delete tar files after docker load to save disk space
+- *(ci)* split docker image lists by workflow to avoid disk space issues
+
+### Other
+
+- Merge pull request #164 from kent8192/improve/release-plz-official-action
+- *(release-plz)* use prebuilt binary for dry-run testing
+- *(release-plz)* add --dry-run flag for debugging
+- *(openapi)* bump version to 0.1.0-alpha.2 for release-plz fix
+- add docker image caching to avoid rate limits
+- Merge pull request #110 from kent8192/fix/issue-83-docs-improve-getting-started-experience-and-ecosystem-documentation
+- change release PR branch prefix to release/
+- merge main into chore/release-plz-migration
+- update release label description for release-plz
+- add release-plz migration markers to CHANGELOGs
+- remove cargo-workspaces configuration from Cargo.toml
+- update CLAUDE.md for release-plz migration
+- simplify release commits section for release-plz
+- rewrite release process documentation for release-plz
+- remove Version Cascade Policy
+- remove cargo-workspaces publish workflows
+- add release-plz GitHub Actions workflow
+- add release-plz configuration
+
 ### Sub-Crate Updates
 
 <!-- Add sub-crate updates here following the format:

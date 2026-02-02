@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.1...reinhardt-admin@v0.1.0-alpha.2) - 2026-02-02
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
