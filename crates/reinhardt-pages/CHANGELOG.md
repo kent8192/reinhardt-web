@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.4...reinhardt-pages@v0.1.0-alpha.5) - 2026-02-02
+
+### Fixed
+
+- *(ci)* remove proptest regression files from git tracking
+
+### Other
+
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
 - N/A
 
 ### Added
