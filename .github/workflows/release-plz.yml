@@ -50,8 +50,32 @@ jobs:
           sudo mv release-plz /usr/local/bin/
           release-plz --version
 
+      - name: Setup release reference
+        id: release-ref
+        run: |
+          # Get the latest release tag if it exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Using latest tag: $LATEST_TAG"
+            echo "ref=$LATEST_TAG" >> $GITHUB_OUTPUT
+          else
+            # No tags exist yet - use the commit where reinhardt-micro was removed
+            # This is a workaround for the workspace member issue in published packages
+            # After the first successful release, tags will be available
+            FALLBACK_REF="4cc0ac9"
+            echo "No tags found, using fallback ref: $FALLBACK_REF"
+            echo "ref=$FALLBACK_REF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout release reference
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release-ref.outputs.ref }}
+          path: release-ref
+
       - name: Run release-plz release-pr
-        run: release-plz release-pr
+        run: release-plz release-pr --registry-manifest-path release-ref/Cargo.toml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
