@@ -53,11 +53,12 @@ jobs:
           sudo mv release-plz /usr/local/bin/
           release-plz --version
 
-      - name: Run release-plz (dry-run for PR) / release-pr (for push)
+      - name: Run release-plz (update for PR validation) / release-pr (for push)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "Running release-plz release --dry-run for PR validation"
-            release-plz release --dry-run
+            echo "Running release-plz update for PR validation"
+            echo "This validates version bumping and changelog generation without registry access"
+            release-plz update
           else
             echo "Running release-plz release-pr for push to main"
             release-plz release-pr
