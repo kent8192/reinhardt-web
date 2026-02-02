@@ -482,6 +482,69 @@ Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataW
 |---------|-----------|-------|--------|-------------|
 | GRANT/REVOKE | ✅ | ✅ | ❌ | ✅ |
 
+## SQL Generation Notes
+
+### Identifier Quoting
+
+All query builders automatically quote identifiers (table names, column names, etc.) to ensure
+correct handling of reserved keywords, case sensitivity, and special characters.
+
+| Backend | Quote Character | Example |
+|---------|-----------------|---------|
+| PostgreSQL | `"` (double quote) | `"users"`, `"email"` |
+| MySQL | `` ` `` (backtick) | `` `users` ``, `` `email` `` |
+| SQLite | `"` (double quote) | `"users"`, `"email"` |
+| CockroachDB | `"` (double quote) | `"users"`, `"email"` |
+
+### Generated SQL Examples
+
+```sql
+-- PostgreSQL / SQLite / CockroachDB
+INSERT INTO "users" ("name", "email") VALUES ($1, $2)
+SELECT "id", "name" FROM "users" WHERE "active" = $1
+
+-- MySQL
+INSERT INTO `users` (`name`, `email`) VALUES (?, ?)
+SELECT `id`, `name` FROM `users` WHERE `active` = ?
+```
+
+### Writing Tests
+
+When writing tests that assert against generated SQL, you must account for quoted identifiers.
+
+**Approach 1: Include quotes in assertions (recommended)**
+
+```rust
+let (sql, _) = builder.build_insert(&stmt);
+assert_eq!(sql, r#"INSERT INTO "users" ("name") VALUES ($1)"#);
+```
+
+**Approach 2: Check parts separately**
+
+```rust
+let (sql, _) = builder.build_insert(&stmt);
+assert!(sql.starts_with("INSERT INTO"));
+assert!(sql.contains(r#""users""#));
+assert!(sql.contains(r#""name""#));
+```
+
+**Approach 3: Verify specific quoted identifiers**
+
+```rust
+let (sql, _) = builder.build_select(&stmt);
+assert!(sql.contains(r#"FROM "users""#));
+assert!(sql.contains(r#""email""#));
+```
+
+### Placeholder Styles
+
+| Backend | Style | Example |
+|---------|-------|---------|
+| PostgreSQL | Numbered | `$1`, `$2`, `$3` |
+| MySQL | Positional | `?`, `?`, `?` |
+| SQLite | Positional | `?`, `?`, `?` |
+| CockroachDB | Numbered | `$1`, `$2`, `$3` |
+
 ## Feature Flags
 
 | Flag | Description |

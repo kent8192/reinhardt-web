@@ -1,6 +1,63 @@
 //! PostgreSQL query builder backend
 //!
 //! This module implements the SQL generation backend for PostgreSQL.
+//!
+//! # Identifier Quoting
+//!
+//! PostgreSQL uses double quotes (`"`) to quote identifiers (table names, column names, etc.).
+//! This query builder **always quotes identifiers** to ensure:
+//!
+//! - Reserved keywords can be used as identifiers (e.g., `"user"`, `"order"`)
+//! - Case sensitivity is preserved (PostgreSQL folds unquoted identifiers to lowercase)
+//! - Special characters in identifiers are handled correctly
+//!
+//! ## Generated SQL Examples
+//!
+//! ```text
+//! INSERT INTO "users" ("name", "email") VALUES ($1, $2)
+//! SELECT "id", "name" FROM "users" WHERE "active" = $1
+//! UPDATE "orders" SET "status" = $1 WHERE "id" = $2
+//! ```
+//!
+//! ## Writing Tests
+//!
+//! When writing tests that assert against generated SQL, you must account for quoted
+//! identifiers. Here are recommended approaches:
+//!
+//! ### Approach 1: Include quotes in assertions
+//!
+//! ```rust,ignore
+//! let (sql, _) = builder.build_insert(&stmt);
+//! assert_eq!(sql, r#"INSERT INTO "users" ("name") VALUES ($1)"#);
+//! ```
+//!
+//! ### Approach 2: Check parts separately
+//!
+//! ```rust,ignore
+//! let (sql, _) = builder.build_insert(&stmt);
+//! assert!(sql.starts_with("INSERT INTO"));
+//! assert!(sql.contains(r#""users""#));
+//! assert!(sql.contains(r#""name""#));
+//! ```
+//!
+//! ### Approach 3: Verify specific quoted identifiers
+//!
+//! ```rust,ignore
+//! let (sql, _) = builder.build_select(&stmt);
+//! // Check that table name is properly quoted
+//! assert!(sql.contains(r#"FROM "users""#));
+//! // Check that column is properly quoted
+//! assert!(sql.contains(r#""email""#));
+//! ```
+//!
+//! ## Quoting Rules
+//!
+//! | Input | Output | Notes |
+//! |-------|--------|-------|
+//! | `users` | `"users"` | Simple identifier |
+//! | `user"name` | `"user""name"` | Internal quotes are escaped |
+//! | `ORDER` | `"ORDER"` | Reserved keywords work |
+//! | `CamelCase` | `"CamelCase"` | Case is preserved |
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
