@@ -16,7 +16,9 @@ proc-macro = true
 default = []
 
 [dependencies]
-# AST definitions shared with formatter
+# DSL definitions (new canonical location)
+reinhardt-manouche = { workspace = true }
+# AST definitions (deprecated, kept for backward compatibility)
 reinhardt-pages-ast = { workspace = true }
 
 # Procedural macro essentials
