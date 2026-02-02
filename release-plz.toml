@@ -76,5 +76,15 @@ name = "reinhardt-settings-cli"
 release = false
 publish = false
 
+[[package]]
+name = "example-common"
+release = false
+publish = false
+
+[[package]]
+name = "example-test-macros"
+release = false
+publish = false
+
 [changelog]
 protect_breaking_commits = true
