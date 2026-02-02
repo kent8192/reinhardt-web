@@ -156,7 +156,7 @@ pub use schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorResult
 // Re-export query abstraction types
 pub use backend::DatabaseBackend;
 pub use connection::DatabaseConnection;
-pub use query_builder::{InsertBuilder, SelectBuilder, UpdateBuilder};
+pub use query_builder::{AnalyzeBuilder, InsertBuilder, SelectBuilder, UpdateBuilder};
 pub use types::{
 	DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
 };
