@@ -1,6 +1,5 @@
 //! Compression module tests
 
-use reinhardt_whitenoise::cache::CompressedVariants;
 use reinhardt_whitenoise::compression::parse_accept_encoding;
 use reinhardt_whitenoise::compression::{FileScanner, WhiteNoiseCompressor};
 use reinhardt_whitenoise::config::WhiteNoiseConfig;

@@ -3,6 +3,7 @@
 //! This module provides fixtures that wrap generic reinhardt-test fixtures
 //! with whitenoise-specific test data.
 
+#[path = "fixtures/test_fixtures.rs"]
 mod test_fixtures;
 
 // Re-export public fixture functions
