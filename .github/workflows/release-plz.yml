@@ -9,9 +9,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 concurrency:
   group: release-plz-${{ github.ref }}
@@ -53,16 +50,8 @@ jobs:
           sudo mv release-plz /usr/local/bin/
           release-plz --version
 
-      - name: Run release-plz (update for PR validation) / release-pr (for push)
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "Running release-plz update for PR validation"
-            echo "This validates version bumping and changelog generation without registry access"
-            release-plz update
-          else
-            echo "Running release-plz release-pr for push to main"
-            release-plz release-pr
-          fi
+      - name: Run release-plz release-pr
+        run: release-plz release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
