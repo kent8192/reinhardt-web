@@ -133,3 +133,10 @@ sea-query = { version = "1.0.0-rc.29", features = [
 	"backend-sqlite",
 ] }
 reinhardt-db = {workspace = true, features = ["orm"]}
+
+# Exclude helpers from being compiled as a test binary
+# helpers.rs is a shared module used by other tests
+[[test]]
+name = "helpers"
+path = "tests/helpers.rs"
+test = false

@@ -1,6 +1,7 @@
 //! UserInfo endpoint tests
 
 use reinhardt_auth::social::core::claims::StandardClaims;
+use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::oidc::UserInfoClient;
 use rstest::*;
 use std::collections::HashMap;
@@ -12,10 +13,11 @@ async fn test_userinfo_retrieve_claims() {
 	// Arrange
 	let access_token = "test_access_token";
 	let userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo";
-	let client = UserInfoClient::new();
+	let oauth2_client = OAuth2Client::new();
+	let client = UserInfoClient::new(oauth2_client);
 
 	// Act - In real scenario, this would fetch from UserInfo endpoint
-	let result = client.fetch(userinfo_url, access_token).await;
+	let result = client.get_user_info(userinfo_url, access_token).await;
 
 	// Assert
 	match result {
@@ -108,10 +110,11 @@ async fn test_userinfo_handle_endpoint_errors() {
 	// Arrange
 	let access_token = "invalid_token";
 	let userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo";
-	let client = UserInfoClient::new();
+	let oauth2_client = OAuth2Client::new();
+	let client = UserInfoClient::new(oauth2_client);
 
 	// Act
-	let result = client.fetch(userinfo_url, access_token).await;
+	let result = client.get_user_info(userinfo_url, access_token).await;
 
 	// Assert
 	match result {
