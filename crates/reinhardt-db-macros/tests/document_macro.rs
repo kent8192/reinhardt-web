@@ -3,6 +3,7 @@
 //! Tests for the `#[document(...)]` attribute macro.
 
 use reinhardt_db_macros::document;
+use rstest::rstest;
 
 /// Test placeholder - will be implemented when macro expansion is complete
 #[rstest]
