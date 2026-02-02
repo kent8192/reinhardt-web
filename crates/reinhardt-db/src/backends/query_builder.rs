@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use sea_query::{Alias, Asterisk, Expr, ExprTrait, Query, Value};
+use sea_query::{Alias, Asterisk, Expr, ExprTrait, Query, SelectStatement, Value};
 
 use super::{
 	backend::DatabaseBackend,
@@ -625,6 +625,238 @@ impl InsertBuilder {
 			}
 		}
 
+		sql
+	}
+
+	pub async fn execute(&self) -> Result<QueryResult> {
+		let (sql, params) = self.build();
+		self.backend.execute(&sql, params).await
+	}
+
+	pub async fn fetch_one(&self) -> Result<Row> {
+		let (sql, params) = self.build();
+		self.backend.fetch_one(&sql, params).await
+	}
+
+	/// Convert to INSERT FROM SELECT builder
+	///
+	/// This method is mutually exclusive with `value()`. When `from_select()` is
+	/// called, all previously added values are discarded and the SELECT statement
+	/// is used as the source of data.
+	///
+	/// # Arguments
+	///
+	/// * `columns` - Columns to insert into
+	/// * `select_stmt` - The SELECT statement to use as data source
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// let select = Query::select()
+	///     .columns([Alias::new("id"), Alias::new("name")])
+	///     .from(Alias::new("source_table"))
+	///     .to_owned();
+	///
+	/// builder.from_select(vec!["id", "name"], select)
+	/// ```
+	pub fn from_select(
+		self,
+		columns: Vec<&str>,
+		select_stmt: SelectStatement,
+	) -> InsertFromSelectBuilder {
+		InsertFromSelectBuilder::new(self.backend, &self.table, columns, select_stmt)
+			.with_returning(self.returning)
+			.with_on_conflict(self.on_conflict)
+	}
+}
+
+/// INSERT FROM SELECT query builder
+///
+/// Builds INSERT INTO ... SELECT statements for inserting data from a subquery.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use sea_query::{Alias, Query};
+///
+/// let select = Query::select()
+///     .columns([Alias::new("id"), Alias::new("name")])
+///     .from(Alias::new("source_table"))
+///     .to_owned();
+///
+/// let builder = InsertFromSelectBuilder::new(
+///     backend,
+///     "target_table",
+///     vec!["id", "name"],
+///     select,
+/// );
+///
+/// let (sql, _) = builder.build();
+/// // Generates: INSERT INTO "target_table" ("id", "name") SELECT "id", "name" FROM "source_table"
+/// ```
+pub struct InsertFromSelectBuilder {
+	backend: Arc<dyn DatabaseBackend>,
+	table: String,
+	columns: Vec<String>,
+	select_stmt: SelectStatement,
+	returning: Option<Vec<String>>,
+	on_conflict: Option<OnConflictAction>,
+}
+
+impl InsertFromSelectBuilder {
+	pub fn new(
+		backend: Arc<dyn DatabaseBackend>,
+		table: impl Into<String>,
+		columns: Vec<&str>,
+		select_stmt: SelectStatement,
+	) -> Self {
+		Self {
+			backend,
+			table: table.into(),
+			columns: columns.iter().map(|s| (*s).to_owned()).collect(),
+			select_stmt,
+			returning: None,
+			on_conflict: None,
+		}
+	}
+
+	fn with_returning(mut self, returning: Option<Vec<String>>) -> Self {
+		self.returning = returning;
+		self
+	}
+
+	fn with_on_conflict(mut self, on_conflict: Option<OnConflictAction>) -> Self {
+		self.on_conflict = on_conflict;
+		self
+	}
+
+	pub fn returning(mut self, columns: Vec<&str>) -> Self {
+		if self.backend.supports_returning() {
+			self.returning = Some(columns.iter().map(|s| (*s).to_owned()).collect());
+		}
+		self
+	}
+
+	pub fn on_conflict_do_nothing(mut self, conflict_columns: Option<Vec<String>>) -> Self {
+		self.on_conflict = Some(OnConflictAction::DoNothing { conflict_columns });
+		self
+	}
+
+	pub fn on_conflict_do_update(
+		mut self,
+		conflict_columns: Option<Vec<String>>,
+		update_columns: Vec<String>,
+	) -> Self {
+		self.on_conflict = Some(OnConflictAction::DoUpdate {
+			conflict_columns,
+			update_columns,
+		});
+		self
+	}
+
+	pub fn build(&self) -> (String, Vec<QueryValue>) {
+		use super::types::DatabaseType;
+		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		let mut stmt = Query::insert()
+			.into_table(Alias::new(&self.table))
+			.to_owned();
+
+		let column_refs: Vec<Alias> = self.columns.iter().map(Alias::new).collect();
+		stmt.columns(column_refs);
+
+		stmt.select_from(self.select_stmt.clone())
+			.expect("Failed to set SELECT statement for INSERT");
+
+		if let Some(ref cols) = self.returning {
+			for col in cols {
+				stmt.returning(Query::returning().column(Alias::new(col)));
+			}
+		}
+
+		let mut sql = match self.backend.database_type() {
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+		};
+
+		if let Some(ref on_conflict) = self.on_conflict {
+			sql = self.apply_on_conflict_clause(sql, on_conflict);
+		}
+
+		(sql, Vec::new())
+	}
+
+	fn apply_on_conflict_clause(&self, mut sql: String, action: &OnConflictAction) -> String {
+		use super::types::DatabaseType;
+
+		match self.backend.database_type() {
+			DatabaseType::Postgres => match action {
+				OnConflictAction::DoNothing { conflict_columns } => {
+					if let Some(cols) = conflict_columns {
+						sql.push_str(&format!(" ON CONFLICT ({}) DO NOTHING", cols.join(", ")));
+					} else {
+						sql.push_str(" ON CONFLICT DO NOTHING");
+					}
+				}
+				OnConflictAction::DoUpdate {
+					conflict_columns,
+					update_columns,
+				} => {
+					let conflict_str = conflict_columns
+						.as_ref()
+						.map(|cols| format!("({})", cols.join(", ")))
+						.unwrap_or_default();
+					let update_str = update_columns
+						.iter()
+						.map(|col| format!("{} = EXCLUDED.{}", col, col))
+						.collect::<Vec<_>>()
+						.join(", ");
+					sql.push_str(&format!(
+						" ON CONFLICT {} DO UPDATE SET {}",
+						conflict_str, update_str
+					));
+				}
+			},
+			DatabaseType::Mysql => match action {
+				OnConflictAction::DoNothing { .. } => {
+					sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
+				}
+				OnConflictAction::DoUpdate {
+					update_columns, ..
+				} => {
+					let update_str = update_columns
+						.iter()
+						.map(|col| format!("{} = VALUES({})", col, col))
+						.collect::<Vec<_>>()
+						.join(", ");
+					sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
+				}
+			},
+			DatabaseType::Sqlite => match action {
+				OnConflictAction::DoNothing { .. } => {
+					sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
+				}
+				OnConflictAction::DoUpdate {
+					conflict_columns,
+					update_columns,
+				} => {
+					let conflict_str = match conflict_columns {
+						Some(cols) if !cols.is_empty() => format!("({})", cols.join(", ")),
+						_ => return sql,
+					};
+					let update_str = update_columns
+						.iter()
+						.map(|col| format!("{} = excluded.{}", col, col))
+						.collect::<Vec<_>>()
+						.join(", ");
+					sql.push_str(&format!(
+						" ON CONFLICT {} DO UPDATE SET {}",
+						conflict_str, update_str
+					));
+				}
+			},
+		}
 		sql
 	}
 
@@ -1726,5 +1958,271 @@ mod tests {
 		assert!(matches!(params[0], QueryValue::Int(42)));
 		assert!(matches!(&params[1], QueryValue::String(s) if s == "John"));
 		assert!(matches!(params[2], QueryValue::Bool(true)));
+	}
+
+	// ==========================================
+	// INSERT FROM SELECT Tests
+	// ==========================================
+
+	#[test]
+	fn test_insert_from_select_basic_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\""
+		);
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_with_where_clause() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("users"))
+			.and_where(Expr::col(Alias::new("status")).eq("inactive"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "archived_users", vec!["id", "name"], select);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"archived_users\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"users\" WHERE \"status\" = 'inactive'"
+		);
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_with_returning() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select)
+				.returning(vec!["id"]);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.contains("RETURNING"));
+		assert!(sql.contains("\"id\""));
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_on_conflict_do_nothing_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select)
+				.on_conflict_do_nothing(Some(vec!["id".to_string()]));
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (id) DO NOTHING"));
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_on_conflict_do_update_postgres() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select)
+				.on_conflict_do_update(Some(vec!["id".to_string()]), vec!["name".to_string()]);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name"));
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_mysql() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO `target_table` (`id`, `name`) SELECT `id`, `name` FROM `source_table`"
+		);
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_mysql_ignore() {
+		// Arrange
+		let backend = Arc::new(MockMysqlBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select)
+				.on_conflict_do_nothing(None);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.starts_with("INSERT IGNORE INTO"));
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_sqlite() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\""
+		);
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_from_select_sqlite_or_ignore() {
+		// Arrange
+		let backend = Arc::new(MockSqliteBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], select)
+				.on_conflict_do_nothing(None);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert!(sql.starts_with("INSERT OR IGNORE INTO"));
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_builder_from_select_conversion() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder =
+			InsertBuilder::new(backend, "target_table").from_select(vec!["id", "name"], select);
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\""
+		);
+		assert!(params.is_empty());
+	}
+
+	#[test]
+	fn test_insert_builder_from_select_preserves_returning() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder = InsertBuilder::new(backend, "target_table")
+			.returning(vec!["id"])
+			.from_select(vec!["id", "name"], select);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("RETURNING"));
+	}
+
+	#[test]
+	fn test_insert_builder_from_select_preserves_on_conflict() {
+		// Arrange
+		let backend = Arc::new(MockBackend);
+		let select = Query::select()
+			.column(Alias::new("id"))
+			.column(Alias::new("name"))
+			.from(Alias::new("source_table"))
+			.to_owned();
+
+		// Act
+		let builder = InsertBuilder::new(backend, "target_table")
+			.on_conflict_do_nothing(Some(vec!["id".to_string()]))
+			.from_select(vec!["id", "name"], select);
+		let (sql, _) = builder.build();
+
+		// Assert
+		assert!(sql.contains("ON CONFLICT (id) DO NOTHING"));
 	}
 }
