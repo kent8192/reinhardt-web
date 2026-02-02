@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.1...reinhardt-middleware@v0.1.0-alpha.2) - 2026-02-02
+
+### Fixed
+
+- *(ci)* remove proptest regression files from git tracking
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
+
 ### Breaking Changes
 - N/A
 
