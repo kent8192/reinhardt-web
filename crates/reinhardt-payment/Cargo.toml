@@ -54,6 +54,9 @@ rstest = "0.24"
 # Reinhardt testing infrastructure
 reinhardt-test = { path = "../reinhardt-test" }
 
+# Mock implementations for testing
+reinhardt-payment-mocks = { path = "../reinhardt-payment-mocks" }
+
 [features]
 default = []
 
