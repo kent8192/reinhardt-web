@@ -9,6 +9,9 @@ keywords = ["ast", "parser", "wasm"]
 categories = ["parser-implementations", "wasm"]
 
 [dependencies]
+# Re-export from reinhardt-manouche
+reinhardt-manouche = { workspace = true }
+
 # Documentation
 aquamarine = "0.5"
 
