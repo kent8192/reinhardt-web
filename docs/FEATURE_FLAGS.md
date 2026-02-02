@@ -334,7 +334,7 @@ async fn handler(
 | `i18n` | Internationalization | reinhardt-i18n |
 | `mail` | Email sending | reinhardt-mail |
 | `sessions` | Session mgmt | reinhardt-auth (includes sessions subcrate) |
-| `static-files` | Static serving | reinhardt-utils/static |
+| `static-files` | Static serving | reinhardt-utils/staticfiles |
 | `storage` | Storage abstraction | reinhardt-utils/storage |
 | `tasks` | Background jobs | reinhardt-tasks |
 | `shortcuts` | Django-style helpers | reinhardt-shortcuts |

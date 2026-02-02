@@ -5,7 +5,7 @@
 use crate::CommandResult;
 use crate::{BaseCommand, CommandContext};
 use async_trait::async_trait;
-use reinhardt_utils::r#static::{StaticFilesConfig, StaticFilesFinder};
+use reinhardt_utils::staticfiles::{StaticFilesConfig, StaticFilesFinder};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
