@@ -48,7 +48,10 @@ jobs:
           protoc --version
 
       - name: Install release-plz
-        run: cargo install release-plz
+        run: |
+          curl -sSfL https://github.com/release-plz/release-plz/releases/latest/download/release-plz-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          sudo mv release-plz /usr/local/bin/
+          release-plz --version
 
       - name: Run release-plz (dry-run)
         run: release-plz release-pr --dry-run
