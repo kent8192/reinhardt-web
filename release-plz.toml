@@ -8,6 +8,7 @@ changelog_update = true
 # PR settings
 pr_branch_prefix = "release/"
 pr_labels = ["release", "automated"]
+pr_name = "chore: release"
 
 # Git release settings
 git_release_enable = true

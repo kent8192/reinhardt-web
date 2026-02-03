@@ -59,6 +59,8 @@ jobs:
   release-plz-release:
     name: Release
     runs-on: ubuntu-latest
+    # Only run when Release PR is merged (commit message starts with "chore: release")
+    if: startsWith(github.event.head_commit.message, 'chore: release')
     steps:
       - name: Generate GitHub token
         uses: actions/create-github-app-token@v2
