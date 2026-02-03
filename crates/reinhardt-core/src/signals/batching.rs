@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Signal batching system for aggregating multiple signals into single dispatches
 //!
 //! This module provides functionality to batch multiple signal emissions into a single
