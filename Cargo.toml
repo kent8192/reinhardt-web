@@ -379,7 +379,7 @@ reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.6" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.4" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.2" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.5" }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.5" }
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.6" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.3" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.6" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.6" }
