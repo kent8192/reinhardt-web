@@ -28,6 +28,7 @@
 #![warn(missing_docs)]
 
 mod app;
+mod codegen;
 mod config;
 mod error;
 mod ipc;
@@ -36,6 +37,7 @@ mod webview;
 mod window;
 
 pub use app::{DesktopApp, DesktopAppBuilder};
+pub use codegen::StaticHtmlVisitor;
 pub use config::WindowConfig;
 pub use error::{DesktopError, Result};
 pub use ipc::{IpcHandler, IpcMessage, IpcResponse};

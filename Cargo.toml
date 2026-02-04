@@ -300,6 +300,7 @@ members = [
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
+  "crates/reinhardt-desktop",                          # Desktop application framework
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
