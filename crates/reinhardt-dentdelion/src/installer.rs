@@ -389,7 +389,7 @@ mod tests {
 	fn create_test_cargo_toml(dir: &Path) {
 		let content = r#"[package]
 name = "test-project"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 
 [dependencies]
 serde = "1.0"
@@ -602,7 +602,7 @@ serde = "1.0"
 		let temp_dir = TempDir::new().unwrap();
 		let content = r#"[package]
 name = "test-project"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 "#;
 		std::fs::write(temp_dir.path().join("Cargo.toml"), content).unwrap();
 

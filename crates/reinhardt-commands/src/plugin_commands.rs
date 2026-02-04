@@ -776,7 +776,7 @@ mod tests {
 	fn create_test_project(dir: &std::path::Path) {
 		let content = r#"[package]
 name = "test-project"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 
 [dependencies]
 serde = "1.0"
@@ -1101,7 +1101,7 @@ enabled = false
 		// Add the plugin to Cargo.toml as well
 		let cargo_content = r#"[package]
 name = "test-project"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 
 [dependencies]
 serde = "1.0"

@@ -1,11 +1,6 @@
 use reinhardt_macros::model;
 use serde::{Deserialize, Serialize};
 
-#[allow(unused_imports)]
-use reinhardt_db::migrations as _;
-#[allow(unused_imports)]
-use reinhardt_db::orm as _;
-
 #[derive(Serialize, Deserialize)]
 #[model(app_label = "test", table_name = "users")]
 struct User {

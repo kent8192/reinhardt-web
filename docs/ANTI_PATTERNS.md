@@ -374,6 +374,15 @@ value assertions.
 @docs/TESTING_STANDARDS.md TI-5 for assertion strictness guidelines and
 acceptable exceptions.
 
+### ❌ Tests Without Clear AAA Structure
+
+Tests that mix setup, execution, and verification without clear phase separation,
+or use non-standard phase labels (`// Setup`, `// Execute`, `// Verify`).
+
+**Why?** Clear Arrange-Act-Assert structure improves test readability and
+maintainability. See @docs/TESTING_STANDARDS.md TI-6 for AAA pattern guidelines
+and examples.
+
 ---
 
 ## File Management Anti-Patterns

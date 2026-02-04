@@ -6,6 +6,8 @@ use async_graphql::{
 	MergedObject, MergedSubscription, Schema,
 	http::{GraphQLPlaygroundConfig, playground_source},
 };
+use reinhardt::middleware::CorsMiddleware;
+use reinhardt::middleware::cors::CorsConfig;
 use reinhardt::routes;
 use reinhardt::{JwtAuth, Request, Response, StatusCode, UnifiedRouter, ViewResult};
 
@@ -81,6 +83,21 @@ pub async fn graphql_playground(_req: Request) -> ViewResult<Response> {
 		.with_body(html))
 }
 
+/// Create CORS middleware for the application.
+///
+/// Development configuration allowing cross-origin requests for GraphQL Playground
+/// and frontend development.
+fn create_cors_middleware() -> CorsMiddleware {
+	let config = CorsConfig {
+		allow_origins: vec!["*".to_string()], // Development only
+		allow_methods: vec!["GET".to_string(), "POST".to_string(), "OPTIONS".to_string()],
+		allow_headers: vec!["Content-Type".to_string(), "Authorization".to_string()],
+		allow_credentials: false,
+		max_age: Some(3600),
+	};
+	CorsMiddleware::new(config)
+}
+
 /// Build URL patterns for the application
 #[routes]
 pub fn routes() -> UnifiedRouter {
@@ -88,4 +105,5 @@ pub fn routes() -> UnifiedRouter {
 		.endpoint(views::health_check)
 		.function("/graphql", reinhardt::Method::POST, graphql_handler)
 		.function("/graphql", reinhardt::Method::GET, graphql_playground)
+		.with_middleware(create_cors_middleware())
 }
