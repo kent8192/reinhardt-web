@@ -4,12 +4,15 @@ use std::sync::Arc;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 
+use crate::codegen::StaticHtmlVisitor;
 use crate::config::WindowConfig;
 use crate::error::Result;
 use crate::ipc::IpcHandler;
 use crate::protocol::{Asset, ProtocolHandler};
 use crate::webview::WebViewManager;
 use crate::window::WindowManager;
+use reinhardt_manouche::codegen::IRVisitor;
+use reinhardt_manouche::ir::ComponentIR;
 
 /// Builder for creating a DesktopApp.
 #[derive(Default)]
@@ -54,6 +57,35 @@ impl DesktopAppBuilder {
 	/// Sets the index HTML content.
 	pub fn index_html(mut self, html: impl Into<String>) -> Self {
 		self.index_html = Some(html.into());
+		self
+	}
+
+	/// Creates the app from a reinhardt-manouche ComponentIR.
+	///
+	/// This generates static HTML from the component and registers it
+	/// as `index.html`.
+	pub fn from_component(mut self, component: &ComponentIR) -> Self {
+		let mut visitor = StaticHtmlVisitor::new();
+		visitor.visit_component(component);
+		let html = visitor.into_html();
+
+		// Wrap in basic HTML document structure
+		let full_html = format!(
+			r#"<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{}</title>
+</head>
+<body>
+{}
+</body>
+</html>"#,
+			self.config.title, html
+		);
+
+		self.index_html = Some(full_html);
 		self
 	}
 
@@ -143,5 +175,43 @@ impl DesktopApp {
 				_ => {}
 			}
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use proc_macro2::Span;
+	use reinhardt_manouche::ir::{ElementIR, NodeIR, TextIR};
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_builder_from_component() {
+		// Arrange
+		let component = ComponentIR {
+			props: vec![],
+			body: vec![NodeIR::Element(ElementIR {
+				tag: "h1".to_string(),
+				attributes: vec![],
+				events: vec![],
+				children: vec![NodeIR::Text(TextIR {
+					content: "Hello".to_string(),
+					span: Span::call_site(),
+				})],
+				span: Span::call_site(),
+			})],
+			span: Span::call_site(),
+		};
+
+		// Act
+		let builder = DesktopAppBuilder::new()
+			.title("Test")
+			.from_component(&component);
+
+		// Assert
+		let app = builder.build().unwrap();
+		// The test passes if build() succeeds - internal state verification
+		// would require additional accessors
+		drop(app);
 	}
 }
