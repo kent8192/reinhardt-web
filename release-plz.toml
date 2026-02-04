@@ -8,6 +8,7 @@ changelog_update = true
 # PR settings
 pr_branch_prefix = "release/"
 pr_labels = ["release", "automated"]
+pr_name = "chore: release"
 
 # Git release settings
 git_release_enable = true
@@ -19,6 +20,17 @@ git_release_type = "auto"
 semver_check = false
 publish_timeout = "10m"
 dependencies_update = false
+
+# Two-stage release workflow:
+# - Stage 1: Push to main creates a Release PR (via release-pr command)
+# - Stage 2: Merging the Release PR triggers actual publishing (via release command)
+# With release_always = false, packages are only published when the Release PR is merged,
+# not on every commit to main. This gives maintainers control over when releases happen.
+# See: https://release-plz.ieni.dev/docs/config#the-release_always-field
+release_always = false
+
+# Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
+publish_no_verify = true
 
 # Non-published packages (tests, examples, internal tools)
 [[package]]
