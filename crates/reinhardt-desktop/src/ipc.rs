@@ -176,3 +176,137 @@ pub(crate) const IPC_INIT_SCRIPT: &str = r#"
     };
 })();
 "#;
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+	use serde_json::json;
+
+	#[rstest]
+	fn test_ipc_response_success_with_data() {
+		// Arrange
+		let data = json!({"key": "value"});
+
+		// Act
+		let response = IpcResponse::success(&data);
+
+		// Assert
+		assert!(response.success);
+		assert_eq!(response.data, Some(data));
+		assert!(response.error.is_none());
+		assert!(response.request_id.is_none());
+	}
+
+	#[rstest]
+	fn test_ipc_response_ok() {
+		// Act
+		let response = IpcResponse::ok();
+
+		// Assert
+		assert!(response.success);
+		assert!(response.data.is_none());
+		assert!(response.error.is_none());
+	}
+
+	#[rstest]
+	fn test_ipc_response_error() {
+		// Act
+		let response = IpcResponse::error("something went wrong");
+
+		// Assert
+		assert!(!response.success);
+		assert!(response.data.is_none());
+		assert_eq!(response.error, Some("something went wrong".to_string()));
+	}
+
+	#[rstest]
+	fn test_ipc_response_with_request_id() {
+		// Arrange
+		let response = IpcResponse::ok();
+
+		// Act
+		let response = response.with_request_id("req-123");
+
+		// Assert
+		assert_eq!(response.request_id, Some("req-123".to_string()));
+	}
+
+	#[rstest]
+	fn test_ipc_handler_register_and_handle() {
+		// Arrange
+		let mut handler = IpcHandler::new();
+		handler.register("greet", |msg| {
+			let name = msg
+				.payload
+				.get("name")
+				.and_then(|v| v.as_str())
+				.unwrap_or("World");
+			Ok(IpcResponse::success(format!("Hello, {}!", name)))
+		});
+
+		let message = IpcMessage {
+			command: "greet".to_string(),
+			payload: json!({"name": "Rust"}),
+			request_id: Some("1".to_string()),
+		};
+
+		// Act
+		let response = handler.handle(message);
+
+		// Assert
+		assert!(response.success);
+		assert_eq!(response.data, Some(json!("Hello, Rust!")));
+		assert_eq!(response.request_id, Some("1".to_string()));
+	}
+
+	#[rstest]
+	fn test_ipc_handler_unknown_command() {
+		// Arrange
+		let handler = IpcHandler::new();
+		let message = IpcMessage {
+			command: "unknown".to_string(),
+			payload: json!({}),
+			request_id: None,
+		};
+
+		// Act
+		let response = handler.handle(message);
+
+		// Assert
+		assert!(!response.success);
+		assert!(response.error.unwrap().contains("unknown command"));
+	}
+
+	#[rstest]
+	fn test_ipc_handler_handle_raw_valid() {
+		// Arrange
+		let mut handler = IpcHandler::new();
+		handler.register("ping", |_| Ok(IpcResponse::success("pong")));
+
+		let raw = r#"{"command":"ping","payload":{}}"#;
+
+		// Act
+		let response_str = handler.handle_raw(raw);
+		let response: IpcResponse = serde_json::from_str(&response_str).unwrap();
+
+		// Assert
+		assert!(response.success);
+		assert_eq!(response.data, Some(json!("pong")));
+	}
+
+	#[rstest]
+	fn test_ipc_handler_handle_raw_invalid_json() {
+		// Arrange
+		let handler = IpcHandler::new();
+		let raw = "not valid json";
+
+		// Act
+		let response_str = handler.handle_raw(raw);
+		let response: IpcResponse = serde_json::from_str(&response_str).unwrap();
+
+		// Assert
+		assert!(!response.success);
+		assert!(response.error.unwrap().contains("invalid message format"));
+	}
+}

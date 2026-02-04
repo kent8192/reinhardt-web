@@ -112,3 +112,54 @@ impl WindowConfig {
 		self
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_window_config_default_values() {
+		// Arrange & Act
+		let config = WindowConfig::default();
+
+		// Assert
+		assert_eq!(config.title, "Reinhardt Desktop App");
+		assert_eq!(config.width, 800);
+		assert_eq!(config.height, 600);
+		assert!(config.resizable);
+		assert!(!config.maximized);
+		assert!(!config.fullscreen);
+		assert!(config.decorations);
+		assert!(!config.always_on_top);
+		assert!(config.min_size.is_none());
+		assert!(config.max_size.is_none());
+	}
+
+	#[rstest]
+	fn test_window_config_builder_chain() {
+		// Arrange & Act
+		let config = WindowConfig::new()
+			.title("Test App")
+			.size(1024, 768)
+			.resizable(false)
+			.maximized(true)
+			.fullscreen(false)
+			.decorations(false)
+			.always_on_top(true)
+			.min_size(400, 300)
+			.max_size(1920, 1080);
+
+		// Assert
+		assert_eq!(config.title, "Test App");
+		assert_eq!(config.width, 1024);
+		assert_eq!(config.height, 768);
+		assert!(!config.resizable);
+		assert!(config.maximized);
+		assert!(!config.fullscreen);
+		assert!(!config.decorations);
+		assert!(config.always_on_top);
+		assert_eq!(config.min_size, Some((400, 300)));
+		assert_eq!(config.max_size, Some((1920, 1080)));
+	}
+}

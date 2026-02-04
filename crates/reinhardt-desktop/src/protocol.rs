@@ -112,3 +112,144 @@ impl ProtocolHandler {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_asset_html_factory() {
+		// Arrange
+		let content = b"<html></html>";
+
+		// Act
+		let asset = Asset::html(content.as_slice());
+
+		// Assert
+		assert_eq!(asset.content.as_ref(), content);
+		assert_eq!(asset.mime_type, "text/html");
+	}
+
+	#[rstest]
+	fn test_asset_css_factory() {
+		// Arrange
+		let content = b"body { color: red; }";
+
+		// Act
+		let asset = Asset::css(content.as_slice());
+
+		// Assert
+		assert_eq!(asset.content.as_ref(), content);
+		assert_eq!(asset.mime_type, "text/css");
+	}
+
+	#[rstest]
+	fn test_asset_js_factory() {
+		// Arrange
+		let content = b"console.log('hello');";
+
+		// Act
+		let asset = Asset::js(content.as_slice());
+
+		// Assert
+		assert_eq!(asset.content.as_ref(), content);
+		assert_eq!(asset.mime_type, "application/javascript");
+	}
+
+	#[rstest]
+	fn test_asset_json_factory() {
+		// Arrange
+		let content = b"{}";
+
+		// Act
+		let asset = Asset::json(content.as_slice());
+
+		// Assert
+		assert_eq!(asset.content.as_ref(), content);
+		assert_eq!(asset.mime_type, "application/json");
+	}
+
+	#[rstest]
+	fn test_protocol_handler_register_and_resolve() {
+		// Arrange
+		let mut handler = ProtocolHandler::new();
+		let content = b"<html><body>Hello</body></html>";
+
+		// Act
+		handler.register_asset("index.html", Asset::html(content.as_slice()));
+		let resolved = handler.resolve("index.html");
+
+		// Assert
+		assert!(resolved.is_ok());
+		let asset = resolved.unwrap();
+		assert_eq!(asset.content.as_ref(), content);
+		assert_eq!(asset.mime_type, "text/html");
+	}
+
+	#[rstest]
+	fn test_protocol_handler_resolve_with_leading_slash() {
+		// Arrange
+		let mut handler = ProtocolHandler::new();
+		handler.register_asset("styles.css", Asset::css(b"body {}".as_slice()));
+
+		// Act
+		let resolved = handler.resolve("/styles.css");
+
+		// Assert
+		assert!(resolved.is_ok());
+		assert_eq!(resolved.unwrap().mime_type, "text/css");
+	}
+
+	#[rstest]
+	fn test_protocol_handler_resolve_not_found() {
+		// Arrange
+		let handler = ProtocolHandler::new();
+
+		// Act
+		let resolved = handler.resolve("nonexistent.html");
+
+		// Assert
+		assert!(resolved.is_err());
+	}
+
+	#[rstest]
+	#[case("html", "text/html")]
+	#[case("htm", "text/html")]
+	#[case("css", "text/css")]
+	#[case("js", "application/javascript")]
+	#[case("mjs", "application/javascript")]
+	#[case("json", "application/json")]
+	#[case("png", "image/png")]
+	#[case("jpg", "image/jpeg")]
+	#[case("jpeg", "image/jpeg")]
+	#[case("gif", "image/gif")]
+	#[case("svg", "image/svg+xml")]
+	#[case("ico", "image/x-icon")]
+	#[case("woff", "font/woff")]
+	#[case("woff2", "font/woff2")]
+	#[case("ttf", "font/ttf")]
+	#[case("otf", "font/otf")]
+	#[case("wasm", "application/wasm")]
+	#[case("unknown", "application/octet-stream")]
+	fn test_mime_type_for_extension(#[case] ext: &str, #[case] expected: &str) {
+		// Act
+		let mime = ProtocolHandler::mime_type_for_extension(ext);
+
+		// Assert
+		assert_eq!(mime, expected);
+	}
+
+	#[rstest]
+	fn test_url_for() {
+		// Act & Assert
+		assert_eq!(
+			ProtocolHandler::url_for("index.html"),
+			"reinhardt://localhost/index.html"
+		);
+		assert_eq!(
+			ProtocolHandler::url_for("/styles/main.css"),
+			"reinhardt://localhost/styles/main.css"
+		);
+	}
+}
