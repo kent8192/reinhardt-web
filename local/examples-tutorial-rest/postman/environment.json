@@ -1,0 +1,16 @@
+{
+	"id": "examples-tutorial-rest-env",
+	"name": "examples-tutorial-rest Environment",
+	"values": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000",
+			"enabled": true
+		},
+		{
+			"key": "snippetId",
+			"value": "",
+			"enabled": true
+		}
+	]
+}
