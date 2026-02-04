@@ -21,6 +21,9 @@ semver_check = false
 publish_timeout = "10m"
 dependencies_update = false
 
+# Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
+publish_no_verify = true
+
 # Non-published packages (tests, examples, internal tools)
 [[package]]
 name = "reinhardt-test-support"
