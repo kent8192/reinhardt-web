@@ -21,52 +21,11 @@ on:
         type: boolean
 
 jobs:
-  release-plz-validate:
-    name: Validate Release
-    runs-on: ubuntu-latest
-    # Only run for PRs from release/ branches
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
-    steps:
-      - name: Generate GitHub token
-        uses: actions/create-github-app-token@v2
-        id: generate-token
-        with:
-          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
-
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protoc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
-
-      - name: Check release (dry-run)
-        uses: release-plz/action@v0.5
-        with:
-          command: release
-          args: --dry-run
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  # NOTE: Dry-run validation job removed because it fails for workspaces with internal
+  # dev-dependencies. When publishing workspace crates, `release-plz release --dry-run`
+  # tries to resolve dev-dependencies from crates.io before the dependent crates are
+  # published, causing resolution failures. The actual release job uses
+  # `cargo publish --workspace` which handles dependency ordering correctly.
 
   release-plz-pr:
     name: Release PR
