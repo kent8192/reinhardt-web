@@ -8,15 +8,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      force_release:
-        description: |
-          Force release by temporarily using release_always=true.
-          Use this to recover from failed releases when the current commit is NOT from a release-plz-* branch.
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   # Native two-step release workflow:
@@ -26,15 +17,10 @@ jobs:
   # With release_always = false in release-plz.toml:
   # - Regular pushes: release-plz skips publishing (not from release PR)
   # - Release PR merge: release-plz detects release-plz-* branch and publishes
-  #
-  # For recovery from failed releases:
-  # - Use 'force_release' workflow_dispatch which creates a temporary config with release_always=true
 
   release-plz-pr:
     name: Release PR
     runs-on: ubuntu-latest
-    # Only run on push to main (not workflow_dispatch)
-    if: github.event_name == 'push'
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
@@ -81,9 +67,6 @@ jobs:
   release-plz-release:
     name: Release
     runs-on: ubuntu-latest
-    # Run on every push to main - release-plz will check if commit is from release PR (release_always=false)
-    # Also run on manual workflow_dispatch with force_release
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_release == true)
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
@@ -118,24 +101,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-
-      # For force_release, temporarily override release_always to true
-      - name: Override config for force release
-        if: github.event_name == 'workflow_dispatch' && inputs.force_release == true
-        run: |
-          # Override release_always to true for force release
-          echo "Overriding release_always to true for force release..."
-          # Use POSIX-compatible pattern for whitespace
-          if grep -q "release_always[[:space:]]*=[[:space:]]*false" release-plz.toml; then
-            sed -i 's/release_always[[:space:]]*=[[:space:]]*false/release_always = true/' release-plz.toml
-            echo "✓ Successfully overrode release_always to true"
-          else
-            echo "⚠ Warning: Could not find 'release_always = false' pattern. Current value:"
-            grep "release_always" release-plz.toml || echo "  (not found)"
-          fi
-          echo ""
-          echo "Current config:"
-          grep -E "^release_always|^#.*release_always" release-plz.toml | head -5
 
       - name: Publish to crates.io and create releases
         uses: release-plz/action@v0.5
