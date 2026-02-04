@@ -186,7 +186,7 @@ impl AttrValue {
 	///
 	/// # Returns
 	///
-	/// `Some(&str)` if this is a string literal, `None` otherwise
+	/// `Some(String)` if this is a string literal, `None` otherwise
 	pub fn as_string(&self) -> Option<String> {
 		match self {
 			Self::StringLit(lit) => Some(lit.value()),

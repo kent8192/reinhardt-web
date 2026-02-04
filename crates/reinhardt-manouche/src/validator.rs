@@ -11,5 +11,8 @@ mod page;
 
 pub use error::*;
 pub use form::validate_form;
-pub use head::{TypedHeadMacro, validate_head};
+pub use head::validate_head;
 pub use page::validate_page;
+
+// Re-export typed AST types from core
+pub use crate::core::TypedHeadMacro;
