@@ -1,0 +1,40 @@
+[package]
+name = "reinhardt-desktop"
+version = "0.1.0-alpha.1"
+edition.workspace = true
+license.workspace = true
+description = "Desktop application framework using wry/tao for reinhardt"
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+# Window management and event loop
+tao = "0.32"
+
+# WebView embedding
+wry = "0.50"
+
+# Shared DSL definitions
+reinhardt-manouche = { workspace = true }
+
+# Serialization for IPC
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+[dev-dependencies]
+rstest = "0.25"
+
+[features]
+default = []
+# Enable all features
+full = []
+
+[lints]
+workspace = true
