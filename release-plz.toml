@@ -21,13 +21,13 @@ semver_check = false
 publish_timeout = "10m"
 dependencies_update = false
 
-# Two-stage release workflow:
-# - Stage 1: Push to main creates a Release PR (via release-pr command)
-# - Stage 2: Merging the Release PR triggers actual publishing (via release command)
-# With release_always = false, packages are only published when the Release PR is merged,
-# not on every commit to main. This gives maintainers control over when releases happen.
+# Release settings:
+# With release_always = true (default), packages are published when:
+# - Local version is higher than registry version
+# - No git tag exists for the version
+# This enables manual `force_release` workflow_dispatch to publish pending crates.
 # See: https://release-plz.ieni.dev/docs/config#the-release_always-field
-release_always = false
+release_always = true
 
 # Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
 publish_no_verify = true
