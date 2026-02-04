@@ -130,6 +130,5 @@ bytes = "1.0"
 hyper = "1.0"
 tokio-test = "0.4"
 serial_test = { workspace = true }
-reinhardt-http = { workspace = true }
 reinhardt-test = { workspace = true }
 rstest = { workspace = true }
