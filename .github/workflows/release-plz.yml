@@ -123,9 +123,9 @@ jobs:
 
       - name: Publish to crates.io (native workspace publishing)
         run: |
-          # Use Cargo 1.90+ native workspace publishing to handle dependency ordering
-          # This uses registry overlay to verify all crates before uploading
-          cargo publish --workspace
+          # Use custom script to publish workspace crates, skipping already-published versions
+          # This handles cases where some crates are already published (e.g., during retries)
+          bash scripts/publish-workspace.sh
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
