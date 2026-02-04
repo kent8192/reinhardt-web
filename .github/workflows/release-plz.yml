@@ -8,30 +8,19 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, closed]
-  workflow_dispatch:
-    inputs:
-      force_release:
-        description: 'Force run release job (publish to crates.io)'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
-  # NOTE: Dry-run validation job removed because it fails for workspaces with internal
-  # dev-dependencies. When publishing workspace crates, `release-plz release --dry-run`
-  # tries to resolve dev-dependencies from crates.io before the dependent crates are
-  # published, causing resolution failures. The actual release job uses
-  # `release-plz release` which handles dependency ordering and skips already-published versions.
+  # Native two-step release workflow:
+  # 1. Push to main → release-plz creates Release PR (branch: release-plz-*)
+  # 2. Merge Release PR → release-plz detects commit from release-plz-* branch and publishes
+  #
+  # With release_always = false in release-plz.toml:
+  # - Regular pushes: release-plz skips publishing (not from release PR)
+  # - Release PR merge: release-plz detects release-plz-* branch and publishes
 
   release-plz-pr:
     name: Release PR
     runs-on: ubuntu-latest
-    # Only run on push to main
-    if: github.event_name == 'push'
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
@@ -78,17 +67,9 @@ jobs:
   release-plz-release:
     name: Release
     runs-on: ubuntu-latest
-    # Run when Release PR (with 'release' + 'automated' labels) is merged
-    # OR when manually triggered with force_release
-    if: >-
-      (
-        github.event_name == 'pull_request' &&
-        github.event.action == 'closed' &&
-        github.event.pull_request.merged == true &&
-        contains(github.event.pull_request.labels.*.name, 'release') &&
-        contains(github.event.pull_request.labels.*.name, 'automated')
-      ) ||
-      (github.event_name == 'workflow_dispatch' && inputs.force_release == true)
+    concurrency:
+      group: release-plz-release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - name: Generate GitHub token
         uses: actions/create-github-app-token@v2
