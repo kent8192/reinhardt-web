@@ -72,11 +72,12 @@ See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 - ALL test artifacts MUST be cleaned up
 - Global state tests MUST use `#[serial(group_name)]`
 - Use strict assertions (`assert_eq!`) instead of loose matching (`contains`)
+- Follow Arrange-Act-Assert (AAA) pattern for test structure
 
 See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
 - Test organization (TO-1, TO-2)
-- Test implementation (TI-1 ~ TI-5)
+- Test implementation (TI-1 ~ TI-6)
 - Infrastructure testing (IT-1)
 
 ### File Management
@@ -96,8 +97,6 @@ See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Planned features go in `lib.rs` header, NOT in README.md
 - Test all code examples
 - Verify all links are valid
-- **ALWAYS** update crate's `CHANGELOG.md` when `Cargo.toml` version changes (same commit)
-- **CHANGELOG.md MUST be written in English** (no exceptions)
 - **NEVER** document user requests or AI assistant interactions in project documentation
   - Documentation must describe technical reasons, design decisions, and implementation details
   - Avoid phrases like "User requested...", "As requested by...", "User asked..."
@@ -120,33 +119,13 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - **NEVER** execute batch commits without user confirmation
 
 **GitHub Integration:**
-- **MUST** prefer GitHub MCP tools when available for all GitHub operations
-- **Fallback**: Use GitHub CLI (`gh`) when GitHub MCP is not available
-- **Priority order**: GitHub MCP > GitHub CLI (`gh`) > raw API
-- **NEVER** use raw `curl` or web browser for GitHub operations when MCP or `gh` is available
-
-**GitHub MCP Tool Mapping:**
-
-| Operation | GitHub MCP Tool | gh CLI Fallback |
-|-----------|----------------|-----------------|
-| Create PR | `create_pull_request` | `gh pr create` |
-| View PR | `pull_request_read` (method: get) | `gh pr view` |
-| List PRs | `list_pull_requests` | `gh pr list` |
-| Create Issue | `issue_write` (method: create) | `gh issue create` |
-| View Issue | `issue_read` (method: get) | `gh issue view` |
-| List Issues | `list_issues` | `gh issue list` |
-| Search Code | `search_code` | `gh api search/code` |
-| Get File | `get_file_contents` | `gh api repos/.../contents` |
-| Create Branch | `create_branch` | `gh api refs` |
-| List Commits | `list_commits` | `gh api commits` |
-| List Releases | `list_releases` | `gh release list` |
-- **MUST** write all PR titles and descriptions in English
-- **MUST** write all issue titles and descriptions in English
-
-See docs/PR_GUIDELINE.md for detailed pull request guidelines including:
-- PR creation policy
-- PR title and description format
-- PR review process
+- **MUST** use GitHub CLI (`gh`) for all GitHub operations
+- Use `gh pr create` for creating pull requests
+- Use `gh pr view` for viewing PR details
+- Use `gh issue create` for creating issues
+- Use `gh issue view` for viewing issue details
+- Use `gh api` for accessing GitHub API
+- **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
 See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
@@ -155,60 +134,46 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 
 ### Release & Publishing Policy
 
-**Versioning (Semantic Versioning 2.0.0):**
-- **MUST** follow Semantic Versioning 2.0.0 strictly for all crates
-  - MAJOR version (X.0.0): Breaking changes (API incompatibility)
-  - MINOR version (0.X.0): New features (backward compatible)
-  - PATCH version (0.0.X): Bug fixes (backward compatible)
-- **NEVER** make breaking changes without incrementing MAJOR version
-- Each crate maintains its own independent version
-- Pre-1.0.0 versions (0.x.x) may have breaking changes in MINOR versions (per SemVer spec)
+**Automated Releases with release-plz:**
+
+This project uses [release-plz](https://release-plz.ieni.dev/) for automated release management:
+
+- **Automated Versioning**: Versions determined from conventional commits
+- **Automated CHANGELOGs**: Generated from commit messages
+- **Release PRs**: Automatically created when changes are pushed to main
+- **Automated Publishing**: Crates published to crates.io upon Release PR merge
+
+**Commit-to-Version Mapping:**
+
+| Commit Type | Version Bump |
+|-------------|--------------|
+| `feat:` | MINOR |
+| `fix:` | PATCH |
+| `feat!:` or `BREAKING CHANGE:` | MAJOR |
+| Other types | PATCH |
 
 **Tagging Strategy (Per-Crate Tagging):**
-- **MUST** use format: `[crate-name]@v[version]`
-  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-orm@v0.1.1`, `reinhardt@v1.0.0`
-- **MUST** tag each crate individually when published to crates.io
-- Tag message MUST include brief changelog summary
-- Tag MUST be created AFTER committing version changes, not before
+- Format: `[crate-name]@v[version]`
+  - Examples: `reinhardt-core@v0.2.0`, `reinhardt-orm@v0.1.1`
+- Tags are created automatically by release-plz upon Release PR merge
+- **NEVER** create release tags manually
 
-**Publishing to crates.io:**
-- **NEVER** publish without explicit user authorization
-- **ALWAYS** use `--dry-run` first for verification
-- Verify all checks pass before publishing:
-  - `cargo check --workspace --all --all-features`
-  - `cargo test --workspace --all --all-features`
-  - `cargo publish --dry-run -p <crate-name>`
-- Commit version bump and CHANGELOG updates BEFORE creating tag
-- Push commits and tags AFTER successful publish
+**Release Workflow:**
+1. Write commits following Conventional Commits format
+2. Push to main branch
+3. release-plz creates Release PR with version bumps and CHANGELOG updates
+4. Review and merge Release PR
+5. release-plz publishes to crates.io and creates Git tags
 
-**Version Cascade Policy:**
-- When a sub-crate's version changes, the main crate (`reinhardt-web`) version MUST be updated following the version mapping rules:
-  - Single sub-crate update: Main crate version change MUST match sub-crate's change level (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH)
-  - Multiple sub-crates update: Main crate version follows the highest priority change (MAJOR > MINOR > PATCH)
-- The main crate's CHANGELOG.md MUST include a "Sub-Crate Updates" subsection with:
-  - Sub-crate name, version, and CHANGELOG link (using anchor format: `#[version]---YYYY-MM-DD`)
-  - Brief summary (1-3 bullet points) of key changes
-- Each crate version bump MUST be committed individually (sub-crates first, main crate last)
-- Main crate commit message MUST include `cascade:` keyword indicating Version Cascade
-- See [docs/VERSION_CASCADE.md](docs/VERSION_CASCADE.md) for complete implementation guide
+**Manual Intervention:**
+- Edit Release PR to adjust CHANGELOG entries or versions if needed
+- Release PRs can be modified before merging
 
-**Publishing Workflow:**
-1. Update crate version in `Cargo.toml`
-2. Update crate's `CHANGELOG.md`
-3. Run all verification commands
-4. Commit version changes (see docs/COMMIT_GUIDELINE.md CE-5)
-5. Wait for explicit user authorization to proceed
-6. Run `cargo publish --dry-run -p <crate-name>`
-7. Wait for user confirmation after dry-run
-8. Run `cargo publish -p <crate-name>`
-9. Create and push tag: `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
-10. Push: `git push && git push --tags`
-
-**Why This Approach:**
-- **Traceability**: Git tag enables complete restoration of specific crate version state
-- **Unambiguous**: Clear identification of which crate at which version (critical for 70+ crates)
-- **Efficient**: Release only changed crates, avoid unnecessary dependency updates
-- **Automation-friendly**: Compatible with tools like `release-plz`, `cargo-release`
+**Critical Rules:**
+- **MUST** use conventional commit format for proper version detection
+- **MUST** review Release PRs before merging
+- **NEVER** manually bump versions in feature branches
+- **NEVER** create release tags manually
 
 See docs/RELEASE_PROCESS.md for detailed release procedures.
 
@@ -257,12 +222,7 @@ docker ps
 # Docker daemon should be running automatically on most systems
 ```
 
-**GitHub Operations:**
-
-When GitHub MCP is available, use MCP tools directly (preferred).
-When unavailable, fall back to GitHub CLI.
-
-**GitHub CLI Fallback:**
+**GitHub Operations (using GitHub CLI):**
 ```bash
 # Pull Requests
 gh pr create --title "feat: Add feature" --body "Description" --label enhancement
@@ -343,7 +303,6 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
-   - [ ] PR guidelines (@docs/PR_GUIDELINE.md)
 
 ---
 
@@ -371,25 +330,16 @@ Before submitting code:
 - Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
 - Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
-- Follow Semantic Versioning 2.0.0 strictly for all crates
-- Use `[crate-name]@v[version]` format for Git tags
-- Verify with `--dry-run` before publishing to crates.io
-- Commit version bump before creating tags
-- Update crate's CHANGELOG.md with version changes
-- Write CHANGELOG.md in English (no exceptions)
-- Update main crate (`reinhardt-web`) version when any sub-crate version changes
-- Apply Version Cascade Policy: version mapping (MAJOR → MAJOR, MINOR → MINOR, PATCH → PATCH) for single sub-crate updates
-- For multiple sub-crates updates, follow highest priority: MAJOR > MINOR > PATCH
-- Commit each crate version bump individually (sub-crates first, main crate last)
-- Include `cascade:` keyword in main crate commit message for Version Cascade
-- Use standardized CHANGELOG reference format: `#[version]---YYYY-MM-DD` for sub-crate links
-- Add "Sub-Crate Updates" subsection in main crate CHANGELOG.md with brief summary
-- Prefer GitHub MCP tools when available; fall back to `gh` CLI otherwise
-- Write all PR titles and descriptions in English
-- Write all issue titles and descriptions in English
-- Add appropriate labels to every PR (`enhancement`, `bug`, `documentation`, etc.)
-- Use `release` label ONLY for version bump PRs (triggers automation)
+- Use conventional commit format for proper version detection by release-plz
+- Review Release PRs created by release-plz before merging
+- Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
+- Search existing issues before creating new ones
+- Use appropriate issue templates for all issues
+- Apply at least one type label to every issue
+- Report security vulnerabilities privately via GitHub Security Advisories
+- Use `.github/labels.yml` as source of truth for label definitions
 - Use `rstest` for ALL test cases (no plain `#[test]`)
+- Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
 - Use `reinhardt-test` fixtures for test setup/teardown
 - Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
 - Use SeaQuery (not raw SQL) for SQL construction in tests
@@ -407,8 +357,6 @@ Before submitting code:
 - Commit without user instruction (except Plan Mode approval)
 - Leave docs outdated after code changes
 - Document user requests or AI interactions in project documentation
-- Create PRs without appropriate labels
-- Use `release` label for non-version-bump PRs (triggers unintended automation)
 - Save files to project directory (use `/tmp`)
 - Leave backup files (`.bak`, `.backup`, `.old`, `~`)
 - Create skeleton tests (tests without assertions)
@@ -420,21 +368,20 @@ Before submitting code:
 - Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
 - Create batch commits without user confirmation
 - Use relative paths beyond `../`
-- Publish to crates.io without explicit user authorization
-- Create Git tags before committing version changes
-- Skip `--dry-run` verification before publishing
-- Update sub-crate version without updating main crate version
-- Use inappropriate version level in Version Cascade (e.g., MAJOR sub-crate → PATCH main crate)
-- Batch multiple crate version bumps into single commit (must commit individually)
-- Omit `cascade:` keyword in main crate version bump commit message
-- Use non-standard CHANGELOG anchor format for sub-crate links
-- Skip "Sub-Crate Updates" subsection in main crate CHANGELOG.md
-- Change `Cargo.toml` version without updating corresponding CHANGELOG.md
-- Make breaking changes without MAJOR version bump
+- Manually bump versions in feature branches (let release-plz handle it)
+- Create release tags manually (release-plz creates them automatically)
+- Skip reviewing Release PRs before merging
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
+- Create issues without appropriate labels
+- Create public issues for security vulnerabilities
+- Create duplicate issues without searching first
+- Skip issue templates when creating issues
+- Use non-English in issue titles or descriptions
+- Apply `release` label to issues (only for PRs)
 - Use plain `#[test]` instead of `#[rstest]`
+- Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
 - Write raw SQL strings in tests (use SeaQuery instead)
 - Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
 - Write generic types without backticks in doc comments (causes HTML tag warnings)
@@ -452,8 +399,11 @@ For comprehensive guidelines, see:
 - **Anti-Patterns**: docs/ANTI_PATTERNS.md
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: docs/COMMIT_GUIDELINE.md
-- **Pull Requests**: docs/PR_GUIDELINE.md
 - **Release Process**: docs/RELEASE_PROCESS.md
+- **Issues**: docs/ISSUE_GUIDELINES.md
+- **Security Policy**: SECURITY.md
+- **Code of Conduct**: CODE_OF_CONDUCT.md
+- **Label Definitions**: .github/labels.yml
 - **Project Overview**: README.md
 
 ---

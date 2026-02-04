@@ -1,0 +1,106 @@
+name: Performance Issue
+description: Report a performance-related issue
+title: "[Performance]: <brief description>"
+labels: ["performance"]
+body:
+	- type: markdown
+		attributes:
+			value: |
+				Thanks for reporting a performance issue! Please provide as much detail as possible.
+
+	- type: textarea
+		attributes:
+			label: Performance Problem Description
+			description: Clearly describe the performance problem you're experiencing
+			placeholder: |
+				Example: Query execution time increases linearly with dataset size.
+				When querying 10,000 records, it takes 5 seconds, but with 100,000 records,
+				it takes 50 seconds.
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Steps to Reproduce
+			description: Steps to reproduce the performance issue
+			placeholder: |
+				1. Create a table with 100,000 records
+				2. Run query: SELECT * FROM users WHERE email LIKE '%@example.com'
+				3. Observe query execution time
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Expected vs Actual Performance
+			description: What did you expect and what actually happened?
+			placeholder: |
+				**Expected:** Query should complete within 1 second for 100,000 records
+				**Actual:** Query takes 50 seconds for 100,000 records
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Benchmark Results (if available)
+			description: If you have benchmark results, please share them
+			placeholder: |
+				- 10,000 records: 0.5s
+				- 50,000 records: 25s
+				- 100,000 records: 50s
+		validations:
+			required: false
+
+	- type: dropdown
+		attributes:
+			label: Environment
+			description: Select your operating system
+			options:
+				- macOS
+				- Linux
+				- Windows
+				- Other
+		validations:
+			required: true
+
+	- type: input
+		attributes:
+			label: Rust Version
+			description: Output of `rustc --version`
+			placeholder: rustc 1.91.1 (e.g., 1.91.1)
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Additional Environment Details
+			description: Any other relevant environment information
+			placeholder: |
+				- Dataset size: 100,000 records
+				- Database: PostgreSQL 14.5
+				- Available memory: 8GB
+				- CPU: Intel Core i7
+		validations:
+			required: false
+
+	- type: checkboxes
+		attributes:
+			label: Priority Assessment
+			description: Help us assess the priority of this performance issue
+			options:
+				- label: "Blocks release or major functionality"
+				- label: "Causes significant performance degradation"
+				- label: "Affects production use"
+				- label: "Workaround available"
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Additional Context
+			description: Any other context, screenshots, or links to relevant code
+			placeholder: |
+				- Link to relevant code: https://github.com/kent8192/reinhardt-web/blob/main/src/file.rs#L123
+				- Profiling results attached
+		validations:
+			required: false
