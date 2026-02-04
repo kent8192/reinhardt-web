@@ -22,10 +22,16 @@ publish_timeout = "10m"
 dependencies_update = false
 
 # Release settings:
-# With release_always = true (default), packages are published when:
+# With release_always = true (default), release-plz will publish packages when:
 # - Local version is higher than registry version
 # - No git tag exists for the version
-# This enables manual `force_release` workflow_dispatch to publish pending crates.
+#
+# Note: The two-stage release workflow (Release PR → merge → publish) is enforced by the
+# GitHub Actions workflow condition, NOT by this setting. The workflow only runs on:
+# 1. Merged PRs with 'release' + 'automated' labels, OR
+# 2. Manual 'force_release' workflow_dispatch
+#
+# Therefore, release_always = true is safe and enables manual force_release for recovery.
 # See: https://release-plz.ieni.dev/docs/config#the-release_always-field
 release_always = true
 
