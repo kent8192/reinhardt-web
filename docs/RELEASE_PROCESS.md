@@ -114,16 +114,15 @@ When changes are pushed to main, release-plz automatically:
 Upon merge, release-plz:
 
 1. Publishes crates to crates.io (in dependency order)
-   - Uses `scripts/publish-workspace.sh` to handle already-published versions
-   - Automatically skips crates that are already on crates.io
-   - Publishes only new or updated crate versions
+   - Automatically skips already-published versions
+   - Handles workspace dependency ordering correctly
 2. Creates Git tags (`[crate-name]@v[version]`)
 3. Creates GitHub Releases
 
-**Note**: The custom publishing script (`scripts/publish-workspace.sh`) ensures that:
-- Already-published crate versions are skipped (no errors on retry)
-- Only publishable crates are processed (excludes tests, examples, benchmarks)
-- Crates are published with proper delay for crates.io indexing
+**Note**: The `release-plz release` command handles publishing gracefully:
+- Already-published crate versions are skipped automatically (no errors on retry)
+- Only publishable crates are processed (respects `publish = false` in Cargo.toml)
+- Workspace dependencies are published in the correct order
 
 ---
 
@@ -211,13 +210,8 @@ The following packages are excluded from release:
 **Publish Failed:**
 - Check `CARGO_REGISTRY_TOKEN` secret is set
 - Verify crate metadata is complete
-- **Already Published Errors**: The workflow uses `scripts/publish-workspace.sh` to automatically skip already-published versions. If you see errors about already-published crates, the workflow will retry and skip them.
 - Review crates.io for existing version conflicts
-
-**Publishing Already-Published Versions:**
-- The workflow automatically skips crates that are already published on crates.io
-- This is handled by `scripts/publish-workspace.sh` which checks each crate version before publishing
-- Useful when retrying failed workflows or when only some crates need to be published
+- **Already Published**: release-plz automatically skips already-published versions, so retry is safe
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
@@ -234,28 +228,6 @@ git log --oneline -10
 
 # Check crates.io version
 curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'
-
-# Test publish script (dry run)
-bash scripts/publish-workspace.sh
-```
-
-### Publishing Script
-
-The `scripts/publish-workspace.sh` script handles workspace publishing:
-
-**Features:**
-- Checks each crate version against crates.io
-- Skips already-published versions
-- Excludes non-publishable packages (tests, examples, benchmarks)
-- Publishes in workspace dependency order
-- Includes 10-second delay between publishes for indexing
-
-**Usage:**
-```bash
-# Automatically called by GitHub Actions workflow
-# Can also be run manually (requires CARGO_REGISTRY_TOKEN)
-export CARGO_REGISTRY_TOKEN="your-token"
-bash scripts/publish-workspace.sh
 ```
 
 ---
