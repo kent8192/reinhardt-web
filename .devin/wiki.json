@@ -1,0 +1,112 @@
+{
+  "repo_notes": [
+    {
+      "content": "Reinhardt is a polylithic batteries-included Rust web framework inspired by Django, Django REST Framework, and FastAPI. The framework is organized as a Cargo workspace with 70+ crates, allowing users to select only the components they need via feature flags.",
+      "author": "Maintainer"
+    },
+    {
+      "content": "Key architectural layers: 1) Foundation (reinhardt-core, reinhardt-http, reinhardt-server), 2) Data Layer (reinhardt-db with ORM and migrations), 3) REST Framework (reinhardt-rest, reinhardt-views), 4) Authentication (reinhardt-auth with JWT/OAuth/Session), 5) Advanced Features (GraphQL, WebSockets, Admin, Tasks).",
+      "author": "Architect"
+    },
+    {
+      "content": "The crates/ directory contains all workspace members. The examples/local/ directory contains 7 example projects demonstrating real-world usage. The docs/ directory contains comprehensive documentation including tutorials, API references, and coding standards.",
+      "author": "Maintainer"
+    },
+    {
+      "content": "Feature flag system: 'minimal' for microservices (~5-10MB), 'standard' for typical web apps (~20-30MB), 'full' for all features (~50+MB). Individual features can be toggled granularly (e.g., db-postgres, auth-jwt, middleware-cors).",
+      "author": "Architect"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Architecture Overview",
+      "purpose": "Explain the polylithic architecture philosophy, how crates are organized in layers (Foundation, Data, REST, Auth, Advanced), and the request/response flow through the framework.",
+      "parent": null
+    },
+    {
+      "title": "Core Foundation",
+      "purpose": "Document reinhardt-core (types, exceptions, validators, signals), reinhardt-http (request/response types), reinhardt-server (Hyper-based server), and reinhardt-macros.",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "Dependency Injection",
+      "purpose": "Document reinhardt-di: FastAPI-inspired type-safe async DI system with scoped/singleton support, injectable types, and integration with request handlers.",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "URL Routing",
+      "purpose": "Document reinhardt-urls: URL pattern matching, path converters, route registration, and how routing integrates with the middleware pipeline.",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "Database Layer",
+      "purpose": "Document reinhardt-db: ORM with Model definitions, QuerySet API (filter, exclude, annotate, aggregate), migrations system, relationships (ForeignKey, ManyToMany), and supported backends (PostgreSQL, MySQL, SQLite, CockroachDB).",
+      "parent": null
+    },
+    {
+      "title": "REST Framework",
+      "purpose": "Document reinhardt-rest: Serializers, Parsers (JSON, Form, Multipart), ViewSets, Routers, pagination, filtering, and OpenAPI generation.",
+      "parent": null
+    },
+    {
+      "title": "Class-Based Views",
+      "purpose": "Document reinhardt-views: Generic views (ListView, DetailView, CreateView, UpdateView, DeleteView), mixins, and how they integrate with the REST framework.",
+      "parent": "REST Framework"
+    },
+    {
+      "title": "Authentication System",
+      "purpose": "Document reinhardt-auth: Authentication backends (JWT, Token, Session, OAuth2, Basic), permission system (DjangoModelPermissions, object-level), user/group management.",
+      "parent": null
+    },
+    {
+      "title": "Middleware",
+      "purpose": "Document reinhardt-middleware: 20+ middleware including CORS, CSRF, CSP, compression, caching, logging, tracing, rate limiting, and session management.",
+      "parent": null
+    },
+    {
+      "title": "Forms",
+      "purpose": "Document reinhardt-forms: Django-style form processing with 20+ field types, validation, ModelForms, FormSets, and FormWizards.",
+      "parent": null
+    },
+    {
+      "title": "Frontend Framework",
+      "purpose": "Document reinhardt-pages: WASM-based frontend with fine-grained reactivity, SSR, hydration, and JSX-like macros (page!, head!).",
+      "parent": null
+    },
+    {
+      "title": "Real-time Features",
+      "purpose": "Document reinhardt-websockets (room-based messaging, auth, rate limiting) and reinhardt-graphql (async-graphql integration, subscriptions, DI support).",
+      "parent": null
+    },
+    {
+      "title": "Background Tasks",
+      "purpose": "Document reinhardt-tasks: Celery-inspired task queue with scheduling, retries, DAG execution, worker load balancing, and integration with the framework.",
+      "parent": null
+    },
+    {
+      "title": "Admin Panel",
+      "purpose": "Document reinhardt-admin: Admin interface generation, model registration, custom admin views, and reinhardt-admin-cli.",
+      "parent": null
+    },
+    {
+      "title": "Utilities",
+      "purpose": "Document reinhardt-utils (timezone, caching, storage, static files), reinhardt-i18n (internationalization), reinhardt-mail (email backends).",
+      "parent": null
+    },
+    {
+      "title": "Feature Flags Guide",
+      "purpose": "Explain the three-level feature hierarchy (minimal/standard/full), module-level features, database backends, auth variants, and how to optimize binary size.",
+      "parent": null
+    },
+    {
+      "title": "Example Projects",
+      "purpose": "Document the 7 example projects in examples/local/: hello-world, rest-api, database-integration, tutorial-basis, tutorial-rest, twitter, github-issues.",
+      "parent": null
+    },
+    {
+      "title": "Testing Guide",
+      "purpose": "Document reinhardt-test: TestContainers integration, test fixtures, and testing best practices for Reinhardt applications.",
+      "parent": null
+    }
+  ]
+}

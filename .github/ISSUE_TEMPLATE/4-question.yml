@@ -1,0 +1,51 @@
+name: "\u2753 Question"
+description: Ask a question about usage or get help
+labels: ["question"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in Reinhardt!
+        Please fill out the form below to help us answer your question.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have read the documentation and couldn't find the answer
+          required: true
+        - label: I have searched existing issues for similar questions
+          required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: |
+        How do I...?
+        What is the recommended way to...?
+        Is it possible to...?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What I've Tried
+      description: What have you already tried or researched?
+      placeholder: |
+        I've tried X, but it didn't work because...
+        I found this in the docs, but I'm not sure how to apply it...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, code examples, or screenshots that would help
+      placeholder: |
+        ```rust
+        // Relevant code example
+        ```
