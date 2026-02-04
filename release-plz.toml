@@ -6,7 +6,11 @@
 changelog_update = true
 
 # PR settings
-pr_branch_prefix = "release/"
+# IMPORTANT: Branch prefix MUST start with "release-plz-" for native two-step release workflow.
+# When release_always = false, release-plz checks if the latest commit is from a PR
+# whose branch starts with "release-plz-" to determine if it should publish.
+# See: https://release-plz.ieni.dev/docs/config#the-release_always-field
+pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
 pr_name = "chore: release"
 
@@ -21,19 +25,15 @@ semver_check = false
 publish_timeout = "10m"
 dependencies_update = false
 
-# Release settings:
-# With release_always = true (default), release-plz will publish packages when:
-# - Local version is higher than registry version
-# - No git tag exists for the version
+# Two-stage release workflow (native release-plz control):
+# - Stage 1: Push to main → `release-plz release-pr` creates Release PR (branch: release-plz-*)
+# - Stage 2: Merge Release PR → `release-plz release` detects commit from release-plz-* branch and publishes
 #
-# Note: The two-stage release workflow (Release PR → merge → publish) is enforced by the
-# GitHub Actions workflow condition, NOT by this setting. The workflow only runs on:
-# 1. Merged PRs with 'release' + 'automated' labels, OR
-# 2. Manual 'force_release' workflow_dispatch
-#
-# Therefore, release_always = true is safe and enables manual force_release for recovery.
+# With release_always = false:
+# - release-plz only publishes when the commit is from a merged release-plz-* branch PR
+# - This gives maintainers control over when releases happen (must merge the Release PR)
 # See: https://release-plz.ieni.dev/docs/config#the-release_always-field
-release_always = true
+release_always = false
 
 # Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
 publish_no_verify = true
