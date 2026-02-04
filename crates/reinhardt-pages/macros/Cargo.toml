@@ -18,8 +18,6 @@ default = []
 [dependencies]
 # DSL definitions (new canonical location)
 reinhardt-manouche = { workspace = true }
-# AST definitions (deprecated, kept for backward compatibility)
-reinhardt-pages-ast = { workspace = true }
 
 # Procedural macro essentials
 syn = { version = "2.0", features = ["full", "extra-traits"] }
