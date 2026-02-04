@@ -379,7 +379,11 @@ reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.6" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.4" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.2" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.5" }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.6" }
+# Note: reinhardt-test has no version constraint because it's used as a dev-dependency
+# across many workspace crates. With a version, cargo publish would fail if reinhardt-test
+# isn't published first (release-plz doesn't consider dev-dependencies for ordering).
+# See: https://github.com/release-plz/release-plz/issues/1316
+reinhardt-test = { path = "crates/reinhardt-test" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.3" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.6" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.6" }
