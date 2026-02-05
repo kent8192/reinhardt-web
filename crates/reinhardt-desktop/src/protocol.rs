@@ -91,6 +91,18 @@ impl ProtocolHandler {
 		)
 	}
 
+	/// Registers bundled CSS at the standard path (`bundle.css`).
+	pub fn register_bundled_css(&mut self, content: impl Into<String>) {
+		let content_string = content.into();
+		self.register_asset("bundle.css", Asset::css(content_string.into_bytes()));
+	}
+
+	/// Registers bundled JS at the standard path (`bundle.js`).
+	pub fn register_bundled_js(&mut self, content: impl Into<String>) {
+		let content_string = content.into();
+		self.register_asset("bundle.js", Asset::js(content_string.into_bytes()));
+	}
+
 	/// Infers MIME type from file extension.
 	pub fn mime_type_for_extension(ext: &str) -> &'static str {
 		match ext.to_lowercase().as_str() {
@@ -250,6 +262,40 @@ mod tests {
 		assert_eq!(
 			ProtocolHandler::url_for("/styles/main.css"),
 			"reinhardt://localhost/styles/main.css"
+		);
+	}
+
+	#[rstest]
+	fn test_protocol_handler_register_bundled_css() {
+		// Arrange
+		let mut handler = ProtocolHandler::new();
+
+		// Act
+		handler.register_bundled_css("body { margin: 0; }");
+
+		// Assert
+		let css = handler.resolve("bundle.css").unwrap();
+		assert_eq!(css.mime_type, "text/css");
+		assert_eq!(
+			std::str::from_utf8(&css.content).unwrap(),
+			"body { margin: 0; }"
+		);
+	}
+
+	#[rstest]
+	fn test_protocol_handler_register_bundled_js() {
+		// Arrange
+		let mut handler = ProtocolHandler::new();
+
+		// Act
+		handler.register_bundled_js("console.log('init');");
+
+		// Assert
+		let js = handler.resolve("bundle.js").unwrap();
+		assert_eq!(js.mime_type, "application/javascript");
+		assert_eq!(
+			std::str::from_utf8(&js.content).unwrap(),
+			"console.log('init');"
 		);
 	}
 }
