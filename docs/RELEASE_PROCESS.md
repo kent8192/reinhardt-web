@@ -114,8 +114,15 @@ When changes are pushed to main, release-plz automatically:
 Upon merge, release-plz:
 
 1. Publishes crates to crates.io (in dependency order)
+   - Automatically skips already-published versions
+   - Handles workspace dependency ordering correctly
 2. Creates Git tags (`[crate-name]@v[version]`)
 3. Creates GitHub Releases
+
+**Note**: The `release-plz release` command handles publishing gracefully:
+- Already-published crate versions are skipped automatically (no errors on retry)
+- Only publishable crates are processed (respects `publish = false` in Cargo.toml)
+- Workspace dependencies are published in the correct order
 
 ---
 
@@ -204,6 +211,7 @@ The following packages are excluded from release:
 - Check `CARGO_REGISTRY_TOKEN` secret is set
 - Verify crate metadata is complete
 - Review crates.io for existing version conflicts
+- **Already Published**: release-plz automatically skips already-published versions, so retry is safe
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
