@@ -1,0 +1,48 @@
+[package]
+name = "reinhardt-mobile"
+version = "0.1.0-alpha.1"
+edition = "2024"
+license.workspace = true
+description = "Mobile application support for Reinhardt framework using WRY and TAO"
+repository.workspace = true
+keywords = ["mobile", "webview", "wry", "tao", "cross-platform"]
+categories = ["gui", "web-programming"]
+
+[dependencies]
+# Core Reinhardt dependencies
+reinhardt-manouche = { workspace = true }
+
+# WebView and window management
+wry = "0.47"
+tao = "0.30"
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Code generation
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+# Build configuration
+cfg_aliases = "0.2"
+
+# Platform-specific dependencies
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk = "0.9"
+ndk-context = "0.1"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.5"
+objc2-foundation = { version = "0.2", features = ["NSString", "NSProcessInfo"] }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[build-dependencies]
+cfg_aliases = "0.2"
