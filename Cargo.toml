@@ -300,6 +300,7 @@ members = [
   "crates/reinhardt-pages/macros",              # WASM frontend macros
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
+  "crates/reinhardt-mobile",                           # Mobile application support (WRY/TAO)
   "crates/reinhardt-desktop",                          # Desktop application framework
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
@@ -381,6 +382,7 @@ reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.6" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.4" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.2" }
 reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-alpha.1" }
+reinhardt-mobile = { path = "crates/reinhardt-mobile", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.5" }
 # Note: reinhardt-test version is intentionally omitted as a workaround for cargo 1.84+ regression
 # (https://github.com/rust-lang/cargo/issues/15151). When used as a dev-dependency, the version
