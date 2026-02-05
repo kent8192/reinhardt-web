@@ -34,8 +34,10 @@ rstest = "0.25"
 
 [features]
 default = []
+# Asset bundling support
+bundling = []
 # Enable all features
-full = []
+full = ["bundling"]
 
 [lints]
 workspace = true
