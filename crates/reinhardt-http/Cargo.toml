@@ -26,7 +26,9 @@ reqwest = { workspace = true, features = ["json"] }
 rstest = { workspace = true }
 futures-util = { workspace = true }
 reinhardt-test = { workspace = true }
-reinhardt-urls = {workspace = true, features = ["routers"]}
+# Use explicit version to avoid circular dependency during publishing
+# (reinhardt-urls depends on reinhardt-http, so we can't use workspace version)
+reinhardt-urls = { version = "0.1.0-alpha.2", features = ["routers"] }
 
 [features]
 default = ["parsers"]
