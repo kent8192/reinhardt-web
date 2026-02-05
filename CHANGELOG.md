@@ -7,12 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.3...reinhardt-web@v0.1.0-alpha.4) - 2026-02-03
+
+### Other
+
+- Merge pull request #111 from kent8192/fix/issue-81-bug-reinhardt-pages-wasm-build-fails-due-to-tokiomio-server-side-dependencies
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.2...reinhardt-web@v0.1.0-alpha.3) - 2026-02-03
+
+### Fixed
+
+- *(ci)* use GitHub App token for release-plz to trigger CI workflows
+- add publish = false to example packages
+- *(ci)* add missing example packages to release-plz exclusion list
+- *(ci)* use registry-manifest-path to avoid workspace member errors
+- *(ci)* run release-plz only on push to main
+- *(ci)* use release-plz update for PR validation
+- *(ci)* use release --dry-run for PR validation
+- *(ci)* remove WASM build artifacts from git tracking
+- *(examples)* standardize settings file pattern with .example.toml
+- *(ci)* remove proptest regression files from git tracking
+- *(ci)* use jlumbroso/free-disk-space for ui-test workflow
+- *(ci)* use jlumbroso/free-disk-space for examples tests
+- *(ci)* use jlumbroso/free-disk-space for integration tests
+- *(ci)* add disk cleanup step to integration test workflows
+- *(ci)* increase root-reserve-mb from 4GB to 8GB
+- *(ci)* move docker pull after rust setup to avoid disk space issues
+- *(ci)* replace docker save/load with pull-only approach
+- *(ci)* delete tar files after docker load to save disk space
+- *(ci)* split docker image lists by workflow to avoid disk space issues
+
+### Other
+
+- Merge pull request #167 from kent8192/fix/release-plz-cargo-metadata-warn
+- *(release-plz)* use prebuilt binary for dry-run testing
+- *(release-plz)* add --dry-run flag for debugging
+- *(openapi)* bump version to 0.1.0-alpha.2 for release-plz fix
+- add docker image caching to avoid rate limits
+- Merge pull request #110 from kent8192/fix/issue-83-docs-improve-getting-started-experience-and-ecosystem-documentation
+- change release PR branch prefix to release/
+- merge main into chore/release-plz-migration
+- update release label description for release-plz
+- add release-plz migration markers to CHANGELOGs
+- remove cargo-workspaces configuration from Cargo.toml
+- update CLAUDE.md for release-plz migration
+- simplify release commits section for release-plz
+- rewrite release process documentation for release-plz
+- remove Version Cascade Policy
+- remove cargo-workspaces publish workflows
+- add release-plz GitHub Actions workflow
+- add release-plz configuration
+
 ### Sub-Crate Updates
 
 <!-- Add sub-crate updates here following the format:
 - `[crate-name]` updated to v[version] ([CHANGELOG](crates/[crate-name]/CHANGELOG.md#[anchor]))
   - Brief summary of key changes
 -->
+
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.2] - 2026-01-29
+
+### Changed
+
+- **BREAKING**: Update `static-files` feature to use `reinhardt-utils/staticfiles` (#114)
+
+### Sub-Crate Updates
+
+- `reinhardt-utils` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-utils/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-conf` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-conf/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-pages` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-pages/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-test` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-test/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Re-release after version correction
+- `reinhardt-commands` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-commands/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-rest` updated to v0.1.0-alpha.4 ([CHANGELOG](crates/reinhardt-rest/CHANGELOG.md#010-alpha4---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-http` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-http/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-db` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-db/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-forms` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-forms/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
+- `reinhardt-pages-macros` updated to v0.1.0-alpha.3 ([CHANGELOG](crates/reinhardt-pages/macros/CHANGELOG.md#010-alpha3---2026-01-30))
+  - Version bump for publish workflow correction
 
 ## [0.1.0-alpha.1] - 2026-01-23
 

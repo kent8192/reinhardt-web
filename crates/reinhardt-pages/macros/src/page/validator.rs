@@ -14,7 +14,7 @@
 use proc_macro2::Span;
 use syn::{Expr, Result};
 
-use reinhardt_pages_ast::{
+use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
 	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
 	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch, types::AttrValue,
@@ -101,7 +101,7 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 ///
 /// Recursively validates all branches.
 fn transform_if(
-	if_node: &reinhardt_pages_ast::PageIf,
+	if_node: &reinhardt_manouche::core::PageIf,
 	parent_tags: &[String],
 ) -> Result<TypedPageIf> {
 	// Transform then branch
@@ -139,7 +139,7 @@ fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<Type
 
 /// Transforms a PageFor node.
 fn transform_for(
-	for_node: &reinhardt_pages_ast::PageFor,
+	for_node: &reinhardt_manouche::core::PageFor,
 	parent_tags: &[String],
 ) -> Result<TypedPageFor> {
 	let body = transform_nodes(&for_node.body, parent_tags)?;
@@ -910,7 +910,7 @@ mod tests {
 			proc_macro2::Span::call_site(),
 		);
 		elem.children
-			.push(PageNode::Text(reinhardt_pages_ast::PageText {
+			.push(PageNode::Text(reinhardt_manouche::core::PageText {
 				content: "text".to_string(),
 				span: proc_macro2::Span::call_site(),
 			}));
@@ -1369,7 +1369,7 @@ mod tests {
 
 	#[test]
 	fn test_validate_button_accessibility_whitespace_only() {
-		use reinhardt_pages_ast::{PageText, TypedPageNode};
+		use reinhardt_manouche::core::{PageText, TypedPageNode};
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Text(PageText {
 			content: "   ".to_string(),
@@ -1382,7 +1382,7 @@ mod tests {
 
 	#[test]
 	fn test_validate_button_accessibility_with_text() {
-		use reinhardt_pages_ast::{PageText, TypedPageNode};
+		use reinhardt_manouche::core::{PageText, TypedPageNode};
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Text(PageText {
 			content: "Click me".to_string(),
@@ -1395,7 +1395,7 @@ mod tests {
 
 	#[test]
 	fn test_validate_button_accessibility_with_nested_text() {
-		use reinhardt_pages_ast::{PageText, TypedPageElement, TypedPageNode};
+		use reinhardt_manouche::core::{PageText, TypedPageElement, TypedPageNode};
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Element(TypedPageElement {
 			tag: syn::Ident::new("span", proc_macro2::Span::call_site()),
@@ -1414,7 +1414,7 @@ mod tests {
 
 	#[test]
 	fn test_validate_button_accessibility_with_aria_label() {
-		use reinhardt_pages_ast::TypedPageAttr;
+		use reinhardt_manouche::core::TypedPageAttr;
 		let attrs = vec![TypedPageAttr {
 			name: syn::Ident::new("aria_label", proc_macro2::Span::call_site()),
 			value: AttrValue::from_expr(parse_quote!("Close")),
@@ -1428,7 +1428,7 @@ mod tests {
 
 	#[test]
 	fn test_validate_button_accessibility_with_expression() {
-		use reinhardt_pages_ast::{PageExpression, TypedPageNode};
+		use reinhardt_manouche::core::{PageExpression, TypedPageNode};
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Expression(PageExpression {
 			expr: parse_quote!(button_text),

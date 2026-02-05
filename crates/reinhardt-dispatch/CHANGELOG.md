@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.2...reinhardt-dispatch@v0.1.0-alpha.3) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-views, reinhardt-urls
+
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.1...reinhardt-dispatch@v0.1.0-alpha.2) - 2026-02-03
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
 - N/A
 
 ### Added
@@ -26,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - N/A
 
+
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
 
 ## [0.1.0-alpha.1] - 2026-01-23
 
