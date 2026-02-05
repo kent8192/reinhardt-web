@@ -6,6 +6,12 @@ Does the CI at commit `4e2c7fdbc1a23f54ad050102e752af2f087629de` generate a new 
 ## Answer
 **No, this CI run did NOT create a new release PR.**
 
+## Follow-up Question
+Does the CI at commit `1c8c1dfae798cbc7a476b417ff59bebdef3059ec` (which failed to publish) create a new release PR?
+
+## Answer to Follow-up
+**Yes, it SHOULD create a new release PR, but it currently shows "already up-to-date" and does NOT create one. This appears to be an issue with release-plz's behavior after a failed publish.**
+
 ## Investigation Summary
 
 ### Workflow Run Details
@@ -79,8 +85,95 @@ pr_labels = ["release", "automated"]  # Labels for Release PRs
 pr_name = "chore: release"    # Release PR title
 ```
 
+## Analysis of Failed Release at Commit 1c8c1df
+
+### Workflow Run Details
+- **Commit**: `1c8c1dfae798cbc7a476b417ff59bebdef3059ec`
+- **Workflow**: Release-plz (`.github/workflows/release-plz.yml`)
+- **Run ID**: 21696782575
+- **Check Suite ID**: 56455765381
+- **Status**: Completed with **failure**
+- **Date**: 2026-02-05T02:46:15Z
+- **Commit Type**: Merge of Release PR #194 (`release-plz-2026-02-05T01-33-00Z`)
+
+### What Happened
+1. **Release PR Job**: ✅ Succeeded
+   - Checked for new releases to prepare
+   - Result: `the repository is already up-to-date`
+   - Output: `release_pr_output: {"prs":[]}`
+
+2. **Release (Publish) Job**: ❌ Failed
+   - Attempted to publish crates to crates.io
+   - Published `reinhardt-core 0.1.0-alpha.3` successfully
+   - **Failed** when trying to publish `reinhardt-http 0.1.0-alpha.5`
+   - Error: `failed to select a version for the requirement 'reinhardt-urls = "^0.1.0-alpha.3"'`
+   - Reason: `reinhardt-urls 0.1.0-alpha.3` was not yet on crates.io (only 0.1.0-alpha.2 available)
+
+### The Problem
+
+This reveals a **dependency ordering issue** in the release process:
+- `reinhardt-http` depends on `reinhardt-urls ^0.1.0-alpha.3`
+- Release PR #194 bumped both versions
+- When merging the Release PR, the workflow tried to publish them
+- `reinhardt-http` failed because `reinhardt-urls` wasn't published yet (or wasn't in the right order)
+
+### Expected Behavior After Failed Publish
+
+After a Release PR merge that **fails to publish**, the workflow should:
+1. Recognize that the versions in the repository are ahead of what's on crates.io
+2. Create a new Release PR to retry the release
+3. Or at least not report "already up-to-date" when crates failed to publish
+
+### Actual Behavior
+
+The "Release PR" job reports:
+```
+INFO the repository is already up-to-date
+release_pr_output: {"prs":[]}
+```
+
+This is **incorrect** because:
+- The repository has versions that are NOT on crates.io
+- The publish job failed, so those versions were never released
+- A new Release PR should be created to retry
+
+### Why This Happens
+
+With `release_always = false`, release-plz checks if the current commit is from a merged Release PR branch (`release-plz-*`). Since commit `1c8c1df` IS from such a merge, the "Release" job runs. However, the "Release PR" job always runs and checks if there are new versions to release.
+
+The issue is that release-plz appears to:
+1. Compare local Cargo.toml versions with crates.io registry
+2. See that local versions are higher
+3. Conclude "already up-to-date" (meaning the local files don't need updating)
+4. Not consider that those versions **failed to publish**
+
+### The Real Question
+
+**Should the workflow create a new Release PR after commit 4e2c7fd?**
+
+**Yes**, because:
+1. The previous Release PR (merged as `1c8c1df`) failed to publish
+2. The repository contains unpublished versions
+3. Those versions need to be released to crates.io
+
+However, release-plz shows "already up-to-date" because it only checks if local files need updating, not if the registry publish succeeded.
+
 ## Conclusion
 
-The CI workflow at the referenced commit successfully ran but did not create a release PR because the repository was already up-to-date. This is the expected and correct behavior of release-plz when there are no version changes to be released.
+### For Commit 4e2c7fd
+The CI workflow at commit `4e2c7fdbc1a23f54ad050102e752af2f087629de` correctly did not create a release PR because the repository was already up-to-date (local versions ahead of registry, CHANGELOGs updated).
 
-To create a release PR, there would need to be conventional commits that require version bumps and those bumps haven't been applied yet.
+### For Commit 1c8c1df  
+The CI workflow at commit `1c8c1dfae798cbc7a476b417ff59bebdef3059ec` (the failed Release PR merge) shows a problem: it reports "already up-to-date" and creates no new Release PR, even though the publish failed. This is unexpected behavior.
+
+### The Real Issue
+
+The real issue is that **release-plz does not automatically create a new Release PR after a failed publish**. It only checks if local files need updating (version bumps, CHANGELOG), not if crates were successfully published to the registry.
+
+**To fix this**, you would need to:
+1. Manually trigger a re-run of the failed workflow, or
+2. Make a new commit to main to trigger release-plz again, or
+3. Manually create a new Release PR using `release-plz release-pr` locally, or
+4. Configure the workflow to detect failed publishes and automatically retry
+
+The current behavior where it says "already up-to-date" after a failed publish is technically correct from release-plz's perspective (the files don't need updating), but it's confusing because the versions aren't actually released to crates.io.
