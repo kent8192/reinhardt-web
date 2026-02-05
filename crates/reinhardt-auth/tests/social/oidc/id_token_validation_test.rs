@@ -2,7 +2,6 @@
 
 use chrono::{Duration, Utc};
 use reinhardt_auth::social::core::claims::IdToken;
-use reinhardt_auth::social::oidc::IdTokenValidator;
 use rstest::*;
 
 #[test]
@@ -27,9 +26,6 @@ fn test_id_token_validate_signature() {
 		locale: None,
 		additional_claims: Default::default(),
 	};
-
-	// Act - In real scenario, you would validate the signature
-	let validator = IdTokenValidator::new();
 
 	// Assert
 	// Signature validation requires actual JWKS, so we just verify token structure

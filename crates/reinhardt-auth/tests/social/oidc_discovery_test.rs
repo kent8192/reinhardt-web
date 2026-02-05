@@ -1,5 +1,6 @@
 //! OIDC discovery integration tests
 
+use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::oidc::{DiscoveryClient, OIDCDiscovery};
 use rstest::*;
 
@@ -9,12 +10,13 @@ async fn test_discovery_fetch_from_url() {
 	// In a real scenario, you would mock the HTTP response
 
 	// Arrange
-	let discovery_url = "https://accounts.google.com/.well-known/openid-configuration";
-	let client = DiscoveryClient::new();
+	let issuer_url = "https://accounts.google.com";
+	let oauth2_client = OAuth2Client::new();
+	let client = DiscoveryClient::new(oauth2_client);
 
 	// Act - This would make a real HTTP request
 	// For now, we document the expected behavior
-	let result = client.fetch(discovery_url).await;
+	let result = client.discover(issuer_url).await;
 
 	// Assert - In mocked environment, this would return a discovery document
 	// In test environment without mocks, we expect an error
