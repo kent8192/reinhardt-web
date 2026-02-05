@@ -26,7 +26,6 @@ reqwest = { workspace = true, features = ["json"] }
 rstest = { workspace = true }
 futures-util = { workspace = true }
 reinhardt-test = { workspace = true }
-reinhardt-urls = {workspace = true, features = ["routers"]}
 
 [features]
 default = ["parsers"]
