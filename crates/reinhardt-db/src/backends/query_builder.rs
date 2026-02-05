@@ -1883,47 +1883,6 @@ mod tests {
 	// ANALYZE Builder Tests
 	// ==========================================
 
-	// Mock SQLite backend for ANALYZE tests
-	struct MockSqliteBackend;
-
-	#[async_trait::async_trait]
-	impl DatabaseBackend for MockSqliteBackend {
-		fn database_type(&self) -> DatabaseType {
-			DatabaseType::Sqlite
-		}
-		fn placeholder(&self, index: usize) -> String {
-			format!("?{}", index)
-		}
-		fn supports_returning(&self) -> bool {
-			true
-		}
-		fn supports_on_conflict(&self) -> bool {
-			true
-		}
-		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
-		}
-		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
-			Ok(Row::new())
-		}
-		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
-			Ok(Vec::new())
-		}
-		async fn fetch_optional(
-			&self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Option<Row>> {
-			Ok(None)
-		}
-		fn as_any(&self) -> &dyn std::any::Any {
-			self
-		}
-		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
-		}
-	}
-
 	#[test]
 	fn test_analyze_builder_postgres_database_wide() {
 		let backend = Arc::new(MockBackend);
