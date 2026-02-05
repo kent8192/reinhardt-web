@@ -1,10 +1,6 @@
-//! reinhardt-taggit integration tests
+//! reinhardt-taggit-tests library crate
 //!
-//! Test suite for the reinhardt-taggit crate.
+//! This crate provides shared test fixtures and utilities.
+//! Actual tests are in separate test targets (unit, integration).
 
-mod fixtures;
-mod integration;
-mod unit;
-
-// Re-export fixtures for convenience
-pub use fixtures::*;
+pub mod fixtures;

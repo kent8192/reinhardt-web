@@ -30,6 +30,8 @@ pub async fn taggit_db() -> DatabaseConnection {
 /// Setup taggit schema (tags and tagged_items tables)
 ///
 /// This function creates the necessary tables for taggit tests.
+// Allows dead_code: Will be called by `taggit_db` when Phase 1.2 (migrations) is implemented
+#[allow(dead_code)]
 async fn setup_schema(_db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
 	// TODO: Implement schema setup
 	// This will be implemented in Phase 1.2 (migrations)

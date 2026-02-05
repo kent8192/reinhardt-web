@@ -324,6 +324,7 @@ members = [
   "crates/reinhardt-openapi",                  # OpenAPI router wrapper
   "crates/reinhardt-taggit",                   # Tagging system
   "crates/reinhardt-taggit/macros",            # Tagging macros
+  "crates/reinhardt-taggit/tests",             # Tagging tests
   # Integration tests
   "tests",
   "tests/integration",

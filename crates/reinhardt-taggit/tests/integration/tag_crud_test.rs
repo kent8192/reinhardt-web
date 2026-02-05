@@ -4,6 +4,7 @@
 
 use reinhardt_db::orm::connection::DatabaseConnection;
 use reinhardt_taggit::Tag;
+use rstest::rstest;
 
 /// Test Tag creation
 ///

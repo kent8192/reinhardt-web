@@ -151,5 +151,5 @@ fn test_tagged_item_polymorphic_content_types() {
 	assert_eq!(food_item.tag_id, 1);
 	assert_eq!(recipe_item.tag_id, 1);
 	assert_eq!(food_item.content_type, "Food");
-	assert_eq!(recipe.content_type, "Recipe");
+	assert_eq!(recipe_item.content_type, "Recipe");
 }

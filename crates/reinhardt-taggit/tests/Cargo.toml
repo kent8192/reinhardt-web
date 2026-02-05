@@ -5,9 +5,18 @@ edition = "2024"
 publish = false
 
 [lib]
+path = "lib.rs"
 doctest = false
 
-[dev-dependencies]
+[[test]]
+name = "unit"
+path = "unit.rs"
+
+[[test]]
+name = "integration"
+path = "integration.rs"
+
+[dependencies]
 # Crate under test
 reinhardt-taggit = { path = "../" }
 
@@ -18,9 +27,15 @@ reinhardt-test = { workspace = true }
 
 # Testing
 rstest = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
 tokio-test = "0.4"
 testcontainers = { workspace = true }
 
 # Utilities
 chrono = { workspace = true }
 serde = { workspace = true }
+
+[dev-dependencies]
+# Testing dependencies for [[test]] targets
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
