@@ -2,8 +2,6 @@
 //!
 //! Tests create, read, update, delete operations for TaggedItem model with database.
 
-use reinhardt_db::orm::connection::DatabaseConnection;
-use reinhardt_taggit::{Tag, TaggedItem};
 use rstest::rstest;
 
 /// Test TaggedItem creation

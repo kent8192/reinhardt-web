@@ -96,9 +96,13 @@ fn test_tag_equality() {
 	let tag2 = Tag::new("rust", "rust");
 	let tag3 = Tag::new("python", "python");
 
-	// Assert
-	assert_eq!(tag1, tag2);
-	assert_ne!(tag1, tag3);
+	// Assert - compare fields excluding created_at (which differs between instances)
+	assert_eq!(tag1.id, tag2.id);
+	assert_eq!(tag1.name, tag2.name);
+	assert_eq!(tag1.slug, tag2.slug);
+
+	assert_ne!(tag1.name, tag3.name);
+	assert_ne!(tag1.slug, tag3.slug);
 }
 
 /// Test Tag clone

@@ -2,8 +2,6 @@
 //!
 //! Tests the relationship between Tag and TaggedItem models.
 
-use reinhardt_db::orm::connection::DatabaseConnection;
-use reinhardt_taggit::{Tag, TaggedItem};
 use rstest::rstest;
 
 /// Test Tag-TaggedItem relationship

@@ -2,8 +2,6 @@
 //!
 //! Tests that TaggedItems are deleted when their associated Tag is deleted.
 
-use reinhardt_db::orm::connection::DatabaseConnection;
-use reinhardt_taggit::{Tag, TaggedItem};
 use rstest::rstest;
 
 /// Test CASCADE DELETE on Tag deletion

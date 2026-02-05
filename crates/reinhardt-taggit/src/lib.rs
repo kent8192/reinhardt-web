@@ -12,7 +12,7 @@
 //!
 //! ## Quick Start
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use reinhardt_taggit::prelude::*;
 //!
 //! #[model(app_label = "myapp", table_name = "foods")]

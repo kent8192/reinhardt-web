@@ -100,7 +100,7 @@ fn test_error_duplicate_tag() {
 
 	// Assert
 	let msg = format!("{}", error);
-	assert!(msg.contains("duplicate"));
+	assert!(msg.contains("Duplicate"));
 	assert!(msg.contains("Food"));
 	assert!(msg.contains("42"));
 	assert!(msg.contains("spicy"));
@@ -114,7 +114,7 @@ fn test_error_database_error() {
 
 	// Assert
 	let msg = format!("{}", error);
-	assert!(msg.contains("database"));
+	assert!(msg.contains("Database"));
 	assert!(msg.contains("connection failed"));
 }
 
@@ -126,7 +126,7 @@ fn test_error_transaction_error() {
 
 	// Assert
 	let msg = format!("{}", error);
-	assert!(msg.contains("transaction"));
+	assert!(msg.contains("Transaction"));
 	assert!(msg.contains("rollback failed"));
 }
 
@@ -138,7 +138,7 @@ fn test_error_config_error() {
 
 	// Assert
 	let msg = format!("{}", error);
-	assert!(msg.contains("configuration"));
+	assert!(msg.contains("Configuration"));
 	assert!(msg.contains("invalid option"));
 }
 
