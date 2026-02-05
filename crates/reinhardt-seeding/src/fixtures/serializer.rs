@@ -140,9 +140,11 @@ impl FixtureSerializer {
 	/// Serializes to JSON format.
 	fn serialize_json(&self, records: &[FixtureRecord]) -> SeedingResult<String> {
 		if self.indent > 0 {
-			serde_json::to_string_pretty(records).map_err(|e| SeedingError::SerializationError(e.to_string()))
+			serde_json::to_string_pretty(records)
+				.map_err(|e| SeedingError::SerializationError(e.to_string()))
 		} else {
-			serde_json::to_string(records).map_err(|e| SeedingError::SerializationError(e.to_string()))
+			serde_json::to_string(records)
+				.map_err(|e| SeedingError::SerializationError(e.to_string()))
 		}
 	}
 
@@ -226,7 +228,10 @@ mod tests {
 		let serializer = FixtureSerializer::new()
 			.with_format(FixtureFormat::Json)
 			.with_indent(0);
-		let records = vec![FixtureRecord::new("auth.User", json!({"username": "admin"}))];
+		let records = vec![FixtureRecord::new(
+			"auth.User",
+			json!({"username": "admin"}),
+		)];
 
 		let output = serializer.serialize(&records).unwrap();
 		assert!(!output.contains("\n  ")); // Not pretty printed

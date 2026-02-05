@@ -92,9 +92,7 @@ static TYPE_ID_REGISTRY: Lazy<RwLock<HashMap<TypeId, String>>> =
 /// ```
 pub fn register_model_loader<L: ModelLoader + 'static>(loader: L) {
 	let model_id = loader.model_id().to_string();
-	MODEL_REGISTRY
-		.write()
-		.insert(model_id, Arc::new(loader));
+	MODEL_REGISTRY.write().insert(model_id, Arc::new(loader));
 }
 
 /// Registers a model loader with type information for generic resolution.
@@ -109,9 +107,7 @@ pub(crate) fn register_model_loader_for_type<M: 'static, L: ModelLoader + 'stati
 	TYPE_ID_REGISTRY
 		.write()
 		.insert(TypeId::of::<M>(), model_id.clone());
-	MODEL_REGISTRY
-		.write()
-		.insert(model_id, Arc::new(loader));
+	MODEL_REGISTRY.write().insert(model_id, Arc::new(loader));
 }
 
 /// Model registry providing access to registered loaders.
@@ -190,9 +186,9 @@ impl ModelRegistry {
 	///
 	/// Returns an error if no loader is registered for the model.
 	pub async fn load_record(&self, record: &FixtureRecord) -> SeedingResult<serde_json::Value> {
-		let loader = self.get_loader(&record.model).ok_or_else(|| {
-			SeedingError::ModelNotFound(record.model.clone())
-		})?;
+		let loader = self
+			.get_loader(&record.model)
+			.ok_or_else(|| SeedingError::ModelNotFound(record.model.clone()))?;
 		loader.load_record(record).await
 	}
 

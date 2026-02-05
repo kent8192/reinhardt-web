@@ -238,18 +238,14 @@ impl FixtureLoader {
 
 	/// Loads fixtures from a JSON string.
 	pub async fn load_from_json(&self, json: &str) -> SeedingResult<LoadResult> {
-		let data = self
-			.parser
-			.parse_string(json, super::FixtureFormat::Json)?;
+		let data = self.parser.parse_string(json, super::FixtureFormat::Json)?;
 		self.load_data(&data).await
 	}
 
 	/// Loads fixtures from a YAML string.
 	#[cfg(feature = "yaml")]
 	pub async fn load_from_yaml(&self, yaml: &str) -> SeedingResult<LoadResult> {
-		let data = self
-			.parser
-			.parse_string(yaml, super::FixtureFormat::Yaml)?;
+		let data = self.parser.parse_string(yaml, super::FixtureFormat::Yaml)?;
 		self.load_data(&data).await
 	}
 }
@@ -263,13 +259,13 @@ impl Default for FixtureLoader {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::fixtures::{register_model_loader, FixtureRecord, ModelLoader};
+	use crate::fixtures::{FixtureRecord, ModelLoader, register_model_loader};
 	use async_trait::async_trait;
 	use rstest::rstest;
 	use serde_json::json;
 	use std::io::Write;
-	use std::sync::atomic::{AtomicUsize, Ordering};
 	use std::sync::Arc;
+	use std::sync::atomic::{AtomicUsize, Ordering};
 	use tempfile::NamedTempFile;
 
 	struct CountingLoader {

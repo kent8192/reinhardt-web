@@ -103,7 +103,10 @@ pub trait FactoryExt: Factory {
 	/// # Arguments
 	///
 	/// * `customizer` - Function that modifies the instance before persisting
-	fn create_with<F>(&self, customizer: F) -> impl Future<Output = SeedingResult<Self::Model>> + Send
+	fn create_with<F>(
+		&self,
+		customizer: F,
+	) -> impl Future<Output = SeedingResult<Self::Model>> + Send
 	where
 		F: FnOnce(&mut Self::Model) + Send;
 }

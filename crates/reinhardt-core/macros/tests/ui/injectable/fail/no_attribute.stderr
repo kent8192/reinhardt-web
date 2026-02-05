@@ -1,5 +1,5 @@
 error: Field must have either #[inject] or #[no_inject] attribute. Use #[inject] for dependency injection, or #[no_inject] for default initialization.
-  --> tests/ui/injectable/fail/no_attribute.rs:20:2
+  --> tests/ui/injectable/fail/no_attribute.rs:25:2
    |
-20 |     db: Database, // Error: must have #[inject] or #[no_inject]
+25 |     db: Database, // Error: must have #[inject] or #[no_inject]
    |     ^^^^^^^^^^^^

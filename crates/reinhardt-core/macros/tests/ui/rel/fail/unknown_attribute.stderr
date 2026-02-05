@@ -1,5 +1,0 @@
-error: Unknown rel attribute: Path { leading_colon: None, segments: [PathSegment { ident: Ident { ident: "unknown_option", span: #0 bytes(469..483) }, arguments: PathArguments::None }] }
-  --> tests/ui/rel/fail/unknown_attribute.rs:19:21
-   |
-19 |     #[rel(foreign_key, unknown_option = true)]
-   |                        ^^^^^^^^^^^^^^

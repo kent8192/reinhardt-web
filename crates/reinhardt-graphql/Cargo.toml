@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-graphql"
-version.workspace = true
+version = "0.1.0-alpha.1"
 description = "GraphQL API support for Reinhardt (facade crate)"
 edition.workspace = true
 license.workspace = true
@@ -27,7 +27,6 @@ subscription = [
 di = ["dep:reinhardt-di", "dep:reinhardt-graphql-macros"]
 # All features enabled
 full = ["graphql-grpc", "subscription", "di"]
-test-database = ["reinhardt-test/testcontainers"]
 
 [dependencies]
 # Core dependencies (merged from graphql-core)

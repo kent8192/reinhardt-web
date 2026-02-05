@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Fields, Result};
 
-use crate::faker_attr::{faker_type_ident, FactoryFieldAttr, FactoryStructAttr};
+use crate::faker_attr::{FactoryFieldAttr, FactoryStructAttr, faker_type_ident};
 
 /// Implements the Factory derive macro.
 pub(crate) fn derive_factory_impl(input: DeriveInput) -> Result<TokenStream> {
@@ -29,14 +29,14 @@ pub(crate) fn derive_factory_impl(input: DeriveInput) -> Result<TokenStream> {
 				return Err(Error::new_spanned(
 					&input,
 					"Factory derive only supports structs with named fields",
-				))
+				));
 			}
 		},
 		_ => {
 			return Err(Error::new_spanned(
 				&input,
 				"Factory derive only supports structs",
-			))
+			));
 		}
 	};
 

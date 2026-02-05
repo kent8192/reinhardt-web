@@ -9,9 +9,10 @@
   <p>Build with <em>all</em> the power of Django's batteries-included philosophy,<br/>
   or compose <em>only</em> what you need—your choice, your way.</p>
 
-[![Crates.io](https://img.shields.io/crates/v/reinhardt.svg)](https://crates.io/crates/reinhardt)
-[![Documentation](https://docs.rs/reinhardt/badge.svg)](https://docs.rs/reinhardt)
+[![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
+[![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
 
@@ -25,7 +26,7 @@ You may be looking for:
 - 📦 [Installation Options](#installation) - Choose your flavor: Micro, Standard, or Full
 - 📚 [Getting Started Guide](docs/GETTING_STARTED.md) - Step-by-step tutorial
 - 🎛️ [Feature Flags](docs/FEATURE_FLAGS.md) - Fine-tune your build
-- 📖 [API Documentation](https://docs.rs/reinhardt) - Complete API reference
+- 📖 [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 - 💬 [Community & Support](#getting-help) - Get help from the community
 
 ## Why Reinhardt?
@@ -106,10 +107,6 @@ Lightweight and fast, perfect for simple APIs:
 
 ```toml
 [dependencies]
-# Standalone crate
-reinhardt-micro = "0.1.0-alpha.1"
-
-# Or via main crate
 reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
@@ -984,7 +981,6 @@ Reinhardt offers modular components you can mix and match:
 | Configuration       | `reinhardt-conf`          | Settings management, environment loading    |
 | Commands            | `reinhardt-commands`      | Management CLI tools (startproject, etc.)   |
 | Shortcuts           | `reinhardt-shortcuts`     | Common utility functions                    |
-| Microservices       | `reinhardt-micro`         | All-in-one minimal setup (HTTP + routing + DI) |
 | **Database**        |                           |                                             |
 | ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc integration             |
 | **Authentication**  |                           |                                             |
