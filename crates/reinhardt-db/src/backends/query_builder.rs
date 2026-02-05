@@ -822,9 +822,7 @@ impl InsertFromSelectBuilder {
 				OnConflictAction::DoNothing { .. } => {
 					sql = sql.replacen("INSERT", "INSERT IGNORE", 1);
 				}
-				OnConflictAction::DoUpdate {
-					update_columns, ..
-				} => {
+				OnConflictAction::DoUpdate { update_columns, .. } => {
 					let update_str = update_columns
 						.iter()
 						.map(|col| format!("{} = VALUES({})", col, col))
