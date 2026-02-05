@@ -13,7 +13,7 @@
 
 use syn::Result;
 
-use reinhardt_pages_ast::TypedPageElement;
+use reinhardt_manouche::core::TypedPageElement;
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
@@ -1675,7 +1675,7 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 		Some(ContentModel::TextOnly) => {
 			// Text-only elements can have text and expressions, but not other elements
 			for child in &element.children {
-				if matches!(child, reinhardt_pages_ast::TypedPageNode::Element(_)) {
+				if matches!(child, reinhardt_manouche::core::TypedPageNode::Element(_)) {
 					return Err(syn::Error::new(
 						element.span,
 						format!(
@@ -1689,7 +1689,7 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 		Some(ContentModel::OnlyTags(allowed_tags)) => {
 			// Check that all child elements are in the allowed list
 			for child in &element.children {
-				if let reinhardt_pages_ast::TypedPageNode::Element(child_elem) = child {
+				if let reinhardt_manouche::core::TypedPageNode::Element(child_elem) = child {
 					let child_tag = child_elem.tag.to_string();
 					if !allowed_tags.contains(&child_tag.as_str()) {
 						return Err(syn::Error::new(
