@@ -13,7 +13,7 @@
 
 use syn::Result;
 
-use reinhardt_manouche::core::TypedPageElement;
+use crate::core::TypedPageElement;
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
@@ -1663,6 +1663,8 @@ fn validate_allowed_attributes(element: &TypedPageElement, allowed: &[&str]) -> 
 
 /// Validates content model constraints.
 fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Result<()> {
+	use crate::core::TypedPageNode;
+
 	match &spec.content_model {
 		Some(ContentModel::Empty) => {
 			if !element.children.is_empty() {
@@ -1675,7 +1677,7 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 		Some(ContentModel::TextOnly) => {
 			// Text-only elements can have text and expressions, but not other elements
 			for child in &element.children {
-				if matches!(child, reinhardt_manouche::core::TypedPageNode::Element(_)) {
+				if matches!(child, TypedPageNode::Element(_)) {
 					return Err(syn::Error::new(
 						element.span,
 						format!(
@@ -1689,7 +1691,7 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 		Some(ContentModel::OnlyTags(allowed_tags)) => {
 			// Check that all child elements are in the allowed list
 			for child in &element.children {
-				if let reinhardt_manouche::core::TypedPageNode::Element(child_elem) = child {
+				if let TypedPageNode::Element(child_elem) = child {
 					let child_tag = child_elem.tag.to_string();
 					if !allowed_tags.contains(&child_tag.as_str()) {
 						return Err(syn::Error::new(
@@ -2573,36 +2575,84 @@ pub(crate) fn is_svg_presentation_attr(attr: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
+
 	use super::*;
 
-	#[test]
-	fn test_get_element_spec() {
-		assert!(get_element_spec("img").is_some());
-		assert!(get_element_spec("a").is_some());
-		assert!(get_element_spec("button").is_some());
-		assert!(get_element_spec("div").is_some());
+	#[rstest]
+	fn test_get_element_spec_returns_spec_for_common_elements() {
+		// Arrange
+		let tags = ["img", "a", "button", "div"];
+
+		// Act & Assert
+		for tag in tags {
+			let spec = get_element_spec(tag);
+			assert!(spec.is_some(), "Expected spec for tag '{}'", tag);
+		}
 	}
 
-	#[test]
-	fn test_is_global_attribute() {
-		assert!(is_global_attribute("id"));
-		assert!(is_global_attribute("class"));
-		assert!(is_global_attribute("data-testid"));
-		assert!(is_global_attribute("aria-label"));
-		assert!(!is_global_attribute("href"));
+	#[rstest]
+	fn test_is_global_attribute_returns_true_for_standard_globals() {
+		// Arrange
+		let global_attrs = ["id", "class"];
+
+		// Act & Assert
+		for attr in global_attrs {
+			assert!(
+				is_global_attribute(attr),
+				"Expected '{}' to be a global attribute",
+				attr
+			);
+		}
 	}
 
-	#[test]
-	fn test_img_spec() {
-		assert_eq!(IMG_SPEC.tag, "img");
-		assert_eq!(IMG_SPEC.required_attrs.len(), 2);
-		assert!(IMG_SPEC.is_void);
-		assert!(!IMG_SPEC.is_interactive);
+	#[rstest]
+	fn test_is_global_attribute_returns_true_for_data_and_aria() {
+		// Arrange
+		let data_attr = "data-testid";
+		let aria_attr = "aria-label";
+
+		// Act & Assert
+		assert!(
+			is_global_attribute(data_attr),
+			"Expected 'data-testid' to be a global attribute"
+		);
+		assert!(
+			is_global_attribute(aria_attr),
+			"Expected 'aria-label' to be a global attribute"
+		);
 	}
 
-	#[test]
-	fn test_select_content_model() {
+	#[rstest]
+	fn test_is_global_attribute_returns_false_for_element_specific() {
+		// Arrange
+		let element_specific_attr = "href";
+
+		// Act
+		let result = is_global_attribute(element_specific_attr);
+
+		// Assert
+		assert!(!result, "Expected 'href' to not be a global attribute");
+	}
+
+	#[rstest]
+	fn test_img_spec_has_correct_properties() {
+		// Arrange & Act
+		let spec = &IMG_SPEC;
+
+		// Assert
+		assert_eq!(spec.tag, "img");
+		assert_eq!(spec.required_attrs.len(), 2);
+		assert!(spec.is_void);
+		assert!(!spec.is_interactive);
+	}
+
+	#[rstest]
+	fn test_select_content_model_allows_only_option_and_optgroup() {
+		// Arrange
 		let spec = get_element_spec("select").unwrap();
+
+		// Act & Assert
 		match &spec.content_model {
 			Some(ContentModel::OnlyTags(tags)) => {
 				assert!(tags.contains(&"option"));
@@ -2614,65 +2664,123 @@ mod tests {
 
 	// SVG Element Tests
 
-	#[test]
-	fn test_get_svg_element_spec() {
-		// Basic SVG elements
-		assert!(get_element_spec("svg").is_some());
-		assert!(get_element_spec("path").is_some());
-		assert!(get_element_spec("circle").is_some());
-		assert!(get_element_spec("rect").is_some());
-		assert!(get_element_spec("line").is_some());
-		assert!(get_element_spec("polyline").is_some());
-		assert!(get_element_spec("polygon").is_some());
-		assert!(get_element_spec("ellipse").is_some());
+	#[rstest]
+	fn test_get_svg_element_spec_returns_spec_for_basic_shapes() {
+		// Arrange
+		let basic_shapes = [
+			"svg", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse",
+		];
 
-		// Container elements
-		assert!(get_element_spec("g").is_some());
-		assert!(get_element_spec("defs").is_some());
-		assert!(get_element_spec("symbol").is_some());
-		assert!(get_element_spec("use").is_some());
-
-		// Text elements
-		assert!(get_element_spec("text").is_some());
-		assert!(get_element_spec("tspan").is_some());
-
-		// Gradient elements
-		assert!(get_element_spec("linearGradient").is_some());
-		assert!(get_element_spec("radialGradient").is_some());
-		assert!(get_element_spec("stop").is_some());
-
-		// Other SVG elements
-		assert!(get_element_spec("clipPath").is_some());
-		assert!(get_element_spec("mask").is_some());
-		assert!(get_element_spec("pattern").is_some());
-		assert!(get_element_spec("marker").is_some());
-		assert!(get_element_spec("foreignObject").is_some());
-		assert!(get_element_spec("desc").is_some());
+		// Act & Assert
+		for tag in basic_shapes {
+			let spec = get_element_spec(tag);
+			assert!(spec.is_some(), "Expected spec for SVG element '{}'", tag);
+		}
 	}
 
-	#[test]
-	fn test_is_svg_element() {
-		// Should return true for SVG elements
-		assert!(is_svg_element("svg"));
-		assert!(is_svg_element("path"));
-		assert!(is_svg_element("circle"));
-		assert!(is_svg_element("g"));
-		assert!(is_svg_element("linearGradient"));
+	#[rstest]
+	fn test_get_svg_element_spec_returns_spec_for_containers() {
+		// Arrange
+		let containers = ["g", "defs", "symbol", "use"];
 
-		// Should return false for HTML elements
-		assert!(!is_svg_element("div"));
-		assert!(!is_svg_element("span"));
-		assert!(!is_svg_element("img"));
+		// Act & Assert
+		for tag in containers {
+			let spec = get_element_spec(tag);
+			assert!(spec.is_some(), "Expected spec for SVG container '{}'", tag);
+		}
 	}
 
-	#[test]
-	fn test_svg_spec() {
+	#[rstest]
+	fn test_get_svg_element_spec_returns_spec_for_text_elements() {
+		// Arrange
+		let text_elements = ["text", "tspan"];
+
+		// Act & Assert
+		for tag in text_elements {
+			let spec = get_element_spec(tag);
+			assert!(
+				spec.is_some(),
+				"Expected spec for SVG text element '{}'",
+				tag
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_get_svg_element_spec_returns_spec_for_gradients() {
+		// Arrange
+		let gradient_elements = ["linearGradient", "radialGradient", "stop"];
+
+		// Act & Assert
+		for tag in gradient_elements {
+			let spec = get_element_spec(tag);
+			assert!(
+				spec.is_some(),
+				"Expected spec for SVG gradient element '{}'",
+				tag
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_get_svg_element_spec_returns_spec_for_other_svg() {
+		// Arrange
+		let other_svg = [
+			"clipPath",
+			"mask",
+			"pattern",
+			"marker",
+			"foreignObject",
+			"desc",
+		];
+
+		// Act & Assert
+		for tag in other_svg {
+			let spec = get_element_spec(tag);
+			assert!(spec.is_some(), "Expected spec for SVG element '{}'", tag);
+		}
+	}
+
+	#[rstest]
+	fn test_is_svg_element_returns_true_for_svg_elements() {
+		// Arrange
+		let svg_elements = ["svg", "path", "circle", "g", "linearGradient"];
+
+		// Act & Assert
+		for tag in svg_elements {
+			assert!(
+				is_svg_element(tag),
+				"Expected '{}' to be an SVG element",
+				tag
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_is_svg_element_returns_false_for_html_elements() {
+		// Arrange
+		let html_elements = ["div", "span", "img"];
+
+		// Act & Assert
+		for tag in html_elements {
+			assert!(
+				!is_svg_element(tag),
+				"Expected '{}' to not be an SVG element",
+				tag
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_svg_spec_has_correct_properties() {
+		// Arrange
 		let spec = get_element_spec("svg").unwrap();
+
+		// Act & Assert
 		assert_eq!(spec.tag, "svg");
 		assert!(!spec.is_void);
 		assert!(!spec.is_interactive);
 
-		// Check allowed attributes
 		if let Some(allowed) = spec.allowed_attrs {
 			assert!(allowed.contains(&"viewBox"));
 			assert!(allowed.contains(&"width"));
@@ -2681,14 +2789,16 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_path_spec_void() {
+	#[rstest]
+	fn test_path_spec_is_void_element() {
+		// Arrange
 		let spec = get_element_spec("path").unwrap();
+
+		// Act & Assert
 		assert_eq!(spec.tag, "path");
 		assert!(spec.is_void);
 		assert!(matches!(spec.content_model, Some(ContentModel::Empty)));
 
-		// Check d attribute is allowed
 		if let Some(allowed) = spec.allowed_attrs {
 			assert!(allowed.contains(&"d"));
 			assert!(allowed.contains(&"fill"));
@@ -2696,9 +2806,13 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_gradient_content_model() {
+	#[rstest]
+	fn test_gradient_content_model_allows_only_stop() {
+		// Arrange
 		let linear_spec = get_element_spec("linearGradient").unwrap();
+		let radial_spec = get_element_spec("radialGradient").unwrap();
+
+		// Act & Assert
 		match &linear_spec.content_model {
 			Some(ContentModel::OnlyTags(tags)) => {
 				assert!(tags.contains(&"stop"));
@@ -2707,7 +2821,6 @@ mod tests {
 			_ => panic!("Expected OnlyTags content model for linearGradient"),
 		}
 
-		let radial_spec = get_element_spec("radialGradient").unwrap();
 		match &radial_spec.content_model {
 			Some(ContentModel::OnlyTags(tags)) => {
 				assert!(tags.contains(&"stop"));
@@ -2717,24 +2830,42 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_svg_presentation_attrs() {
-		// Check common presentation attributes
-		assert!(is_svg_presentation_attr("fill"));
-		assert!(is_svg_presentation_attr("stroke"));
-		assert!(is_svg_presentation_attr("stroke-width"));
-		assert!(is_svg_presentation_attr("transform"));
-		assert!(is_svg_presentation_attr("opacity"));
+	#[rstest]
+	fn test_svg_presentation_attrs_includes_common_attrs() {
+		// Arrange
+		let common_presentation_attrs = ["fill", "stroke", "stroke-width", "transform", "opacity"];
 
-		// Should return false for non-presentation attributes
-		assert!(!is_svg_presentation_attr("viewBox"));
-		assert!(!is_svg_presentation_attr("d"));
-		assert!(!is_svg_presentation_attr("cx"));
+		// Act & Assert
+		for attr in common_presentation_attrs {
+			assert!(
+				is_svg_presentation_attr(attr),
+				"Expected '{}' to be an SVG presentation attribute",
+				attr
+			);
+		}
 	}
 
-	#[test]
-	fn test_desc_text_only() {
+	#[rstest]
+	fn test_svg_presentation_attrs_excludes_non_presentation() {
+		// Arrange
+		let non_presentation_attrs = ["viewBox", "d", "cx"];
+
+		// Act & Assert
+		for attr in non_presentation_attrs {
+			assert!(
+				!is_svg_presentation_attr(attr),
+				"Expected '{}' to not be an SVG presentation attribute",
+				attr
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_desc_has_text_only_content_model() {
+		// Arrange
 		let spec = get_element_spec("desc").unwrap();
+
+		// Act & Assert
 		assert!(matches!(spec.content_model, Some(ContentModel::TextOnly)));
 	}
 }

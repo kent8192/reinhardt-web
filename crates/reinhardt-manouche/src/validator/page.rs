@@ -14,10 +14,11 @@
 use proc_macro2::Span;
 use syn::{Expr, Result};
 
-use reinhardt_manouche::core::{
-	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
-	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode, TypedPageWatch, types::AttrValue,
+use crate::core::{
+	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageFor, PageIf,
+	PageMacro, PageNode, PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent,
+	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageNode,
+	TypedPageWatch, types::AttrValue,
 };
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
@@ -32,7 +33,7 @@ use reinhardt_manouche::core::{
 /// # Returns
 ///
 /// A `TypedPageMacro` with validated and type-safe attribute values.
-pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
+pub fn validate_page(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let typed_body = transform_body(&ast.body, &[])?;
 
 	Ok(TypedPageMacro {
@@ -100,10 +101,7 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 /// Transforms a PageIf node (if/else if/else).
 ///
 /// Recursively validates all branches.
-fn transform_if(
-	if_node: &reinhardt_manouche::core::PageIf,
-	parent_tags: &[String],
-) -> Result<TypedPageIf> {
+fn transform_if(if_node: &PageIf, parent_tags: &[String]) -> Result<TypedPageIf> {
 	// Transform then branch
 	let then_branch = transform_nodes(&if_node.then_branch, parent_tags)?;
 
@@ -138,10 +136,7 @@ fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<Type
 }
 
 /// Transforms a PageFor node.
-fn transform_for(
-	for_node: &reinhardt_manouche::core::PageFor,
-	parent_tags: &[String],
-) -> Result<TypedPageFor> {
+fn transform_for(for_node: &PageFor, parent_tags: &[String]) -> Result<TypedPageFor> {
 	let body = transform_nodes(&for_node.body, parent_tags)?;
 
 	Ok(TypedPageFor {
@@ -836,20 +831,29 @@ fn validate_required_attributes(tag: &str, attrs: &[TypedPageAttr], span: Span) 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::core::{PageExpression, PageText, TypedPageElement};
+	use rstest::rstest;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_validate_valid_closure() {
+		// Arrange
 		let event = PageEvent {
 			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
 			handler: parse_quote!(|_| {}),
 			span: proc_macro2::Span::call_site(),
 		};
-		assert!(validate_event_handler(&event).is_ok());
+
+		// Act
+		let result = validate_event_handler(&event);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_closure_with_one_arg() {
+		// Arrange
 		let event = PageEvent {
 			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
 			handler: parse_quote!(|e| {
@@ -857,65 +861,95 @@ mod tests {
 			}),
 			span: proc_macro2::Span::call_site(),
 		};
-		assert!(validate_event_handler(&event).is_ok());
+
+		// Act
+		let result = validate_event_handler(&event);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_closure_too_many_args() {
+		// Arrange
 		let event = PageEvent {
 			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
 			handler: parse_quote!(|a, b, c| {}),
 			span: proc_macro2::Span::call_site(),
 		};
+
+		// Act
 		let result = validate_event_handler(&event);
+
+		// Assert
 		assert!(result.is_err());
 		assert!(result.unwrap_err().to_string().contains("0 or 1 arguments"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_valid_data_attribute() {
+		// Arrange
 		let attr = PageAttr {
 			name: syn::Ident::new("data_testid", proc_macro2::Span::call_site()),
 			value: parse_quote!("test"),
 			span: proc_macro2::Span::call_site(),
 		};
-		assert!(validate_attribute(&attr, "div").is_ok());
+
+		// Act
+		let result = validate_attribute(&attr, "div");
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_invalid_data_attribute() {
+		// Arrange
 		let attr = PageAttr {
 			name: syn::Ident::new("data_", proc_macro2::Span::call_site()),
 			value: parse_quote!("test"),
 			span: proc_macro2::Span::call_site(),
 		};
+
+		// Act
 		let result = validate_attribute(&attr, "div");
+
+		// Assert
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_valid_aria_attribute() {
+		// Arrange
 		let attr = PageAttr {
 			name: syn::Ident::new("aria_label", proc_macro2::Span::call_site()),
 			value: parse_quote!("Navigation"),
 			span: proc_macro2::Span::call_site(),
 		};
-		assert!(validate_attribute(&attr, "div").is_ok());
+
+		// Act
+		let result = validate_attribute(&attr, "div");
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_void_element_with_children() {
+		// Arrange
 		let mut elem = PageElement::new(
 			syn::Ident::new("input", proc_macro2::Span::call_site()),
 			proc_macro2::Span::call_site(),
 		);
-		elem.children
-			.push(PageNode::Text(reinhardt_manouche::core::PageText {
-				content: "text".to_string(),
-				span: proc_macro2::Span::call_site(),
-			}));
+		elem.children.push(PageNode::Text(PageText {
+			content: "text".to_string(),
+			span: proc_macro2::Span::call_site(),
+		}));
 
+		// Act
 		let result = validate_element_nesting(&elem, &[]);
+
+		// Assert
 		assert!(result.is_err());
 		assert!(
 			result
@@ -925,14 +959,18 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_interactive_elements() {
+		// Arrange
 		let elem = PageElement::new(
 			syn::Ident::new("button", proc_macro2::Span::call_site()),
 			proc_macro2::Span::call_site(),
 		);
 
+		// Act
 		let result = validate_element_nesting(&elem, &["a".to_string()]);
+
+		// Assert
 		assert!(result.is_err());
 		assert!(
 			result
@@ -942,14 +980,18 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_img_missing_alt() {
+		// Arrange
 		let elem = PageElement::new(
 			syn::Ident::new("img", proc_macro2::Span::call_site()),
 			proc_macro2::Span::call_site(),
 		);
 
+		// Act
 		let result = validate_required_attributes("img", &[], elem.span);
+
+		// Assert
 		assert!(result.is_err());
 		assert!(
 			result
@@ -959,47 +1001,65 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transform_attrs_with_string_lit() {
+		// Arrange
 		let attrs = vec![PageAttr {
 			name: syn::Ident::new("src", proc_macro2::Span::call_site()),
 			value: parse_quote!("/image.png"),
 			span: proc_macro2::Span::call_site(),
 		}];
 
+		// Act
 		let result = transform_attrs(&attrs, "img");
+
+		// Assert
 		assert!(result.is_ok());
 		let typed_attrs = result.unwrap();
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_string_literal());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transform_attrs_with_dynamic() {
+		// Arrange
 		let attrs = vec![PageAttr {
 			name: syn::Ident::new("src", proc_macro2::Span::call_site()),
 			value: parse_quote!(image_url),
 			span: proc_macro2::Span::call_site(),
 		}];
 
+		// Act
 		let result = transform_attrs(&attrs, "div");
+
+		// Assert
 		assert!(result.is_ok());
 		let typed_attrs = result.unwrap();
 		assert_eq!(typed_attrs.len(), 1);
 		assert!(typed_attrs[0].value.is_dynamic());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_attr_type_img_src_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("/image.png"));
+
+		// Act
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_attr_type_img_src_dynamic() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(image_url));
+
+		// Act
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		assert!(
 			result
@@ -1009,10 +1069,15 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_attr_type_img_src_empty() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(""));
+
+		// Act
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		assert!(
 			result
@@ -1023,154 +1088,234 @@ mod tests {
 	}
 
 	// Boolean attribute tests - string literals are prohibited
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_string_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("disabled"));
+
+		// Act
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a string literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_string_empty() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(""));
+
+		// Act
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a string literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_bool_literal_true() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(true));
+
+		// Act
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a boolean literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_bool_literal_false() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(false));
+
+		// Act
 		let result = validate_attr_type("checked", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a boolean literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_int_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(1));
+
+		// Act
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a numeric literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_float_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(1.0));
+
+		// Act
 		let result =
 			validate_attr_type("required", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Boolean attribute"));
 		assert!(err_msg.contains("cannot have a numeric literal value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_dynamic_variable() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(is_disabled));
+
+		// Act
 		let result =
 			validate_attr_type("disabled", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_dynamic_function() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(is_disabled()));
+
+		// Act
 		let result = validate_attr_type("checked", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_boolean_attr_dynamic_conditional() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(if condition { true } else { false }));
+
+		// Act
 		let result =
 			validate_attr_type("readonly", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
 	// Numeric attribute tests - string and float literals are prohibited
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_string_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("100"));
+
+		// Act
 		let result =
 			validate_attr_type("maxlength", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Attribute"));
 		assert!(err_msg.contains("must be an integer literal or dynamic expression"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_float_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(100.0));
+
+		// Act
 		let result = validate_attr_type("rows", &value, "textarea", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Attribute"));
 		assert!(err_msg.contains("must be an integer, not a floating-point number"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_bool_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(true));
+
+		// Act
 		let result = validate_attr_type("min", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Attribute"));
 		assert!(err_msg.contains("must be an integer, not a boolean"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_int_literal() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(100));
+
+		// Act
 		let result =
 			validate_attr_type("maxlength", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_dynamic_variable() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(max_len));
+
+		// Act
 		let result =
 			validate_attr_type("maxlength", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_numeric_attr_dynamic_function() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(get_max_len()));
+
+		// Act
 		let result = validate_attr_type("cols", &value, "textarea", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
 	// URL attribute tests - dangerous schemes and empty strings are prohibited
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_javascript_scheme() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("javascript:alert('xss')"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Dangerous URL scheme"));
@@ -1178,97 +1323,152 @@ mod tests {
 		assert!(err_msg.contains("XSS"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_data_scheme() {
+		// Arrange
 		let value =
 			AttrValue::from_expr(parse_quote!("data:text/html,<script>alert('xss')</script>"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Dangerous URL scheme"));
 		assert!(err_msg.contains("data"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_vbscript_scheme() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("vbscript:msgbox('xss')"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Dangerous URL scheme"));
 		assert!(err_msg.contains("vbscript"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_case_insensitive() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("JavaScript:alert(1)"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Dangerous URL scheme"));
 		assert!(err_msg.contains("javascript"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_empty_string() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(""));
+
+		// Act
 		let result = validate_attr_type("action", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("cannot be empty"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_whitespace_string() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("   "));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("cannot be empty"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_https_scheme() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("https://example.com"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_relative_path() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("/path/to/page"));
+
+		// Act
 		let result = validate_attr_type("action", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_anchor() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("#section"));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_dynamic_variable() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(url_var));
+
+		// Act
 		let result = validate_attr_type("href", &value, "a", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_url_attr_img_src_excluded() {
+		// Arrange
 		// img src should not be validated as URL attribute (has separate rules)
 		let value = AttrValue::from_expr(parse_quote!("javascript:alert(1)"));
+
+		// Act
 		// This should fail with img src validation error, not URL validation error
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok()); // img src allows string literals (separate validation)
 	}
 
 	// Enumerated attribute tests - invalid values are prohibited
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_input_type_invalid() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("invalid"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Invalid value"));
@@ -1276,126 +1476,189 @@ mod tests {
 		assert!(err_msg.contains("input"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_input_type_text() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("text"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_input_type_email() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("email"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_button_type_invalid() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("invalid"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Invalid value"));
 		assert!(err_msg.contains("button"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_button_type_submit() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("submit"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "button", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_form_method_invalid() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("put"));
+
+		// Act
 		let result = validate_attr_type("method", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Invalid value"));
 		assert!(err_msg.contains("put"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_form_method_post() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("post"));
+
+		// Act
 		let result = validate_attr_type("method", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_form_enctype_invalid() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("invalid"));
+
+		// Act
 		let result = validate_attr_type("enctype", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("Invalid value"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_form_enctype_multipart() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("multipart/form-data"));
+
+		// Act
 		let result = validate_attr_type("enctype", &value, "form", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_script_type_module() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!("module"));
+
+		// Act
 		let result = validate_attr_type("type", &value, "script", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_enum_attr_dynamic_variable() {
+		// Arrange
 		let value = AttrValue::from_expr(parse_quote!(input_type));
+
+		// Act
 		let result = validate_attr_type("type", &value, "input", proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
 	// Accessibility tests - button elements must have text or aria-label
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_empty() {
+		// Arrange
 		let attrs = vec![];
 		let children = vec![];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 		let err_msg = result.unwrap_err().to_string();
 		assert!(err_msg.contains("requires accessible text"));
 		assert!(err_msg.contains("aria_label"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_whitespace_only() {
-		use reinhardt_manouche::core::{PageText, TypedPageNode};
+		// Arrange
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Text(PageText {
 			content: "   ".to_string(),
 			span: proc_macro2::Span::call_site(),
 		})];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_with_text() {
-		use reinhardt_manouche::core::{PageText, TypedPageNode};
+		// Arrange
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Text(PageText {
 			content: "Click me".to_string(),
 			span: proc_macro2::Span::call_site(),
 		})];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_with_nested_text() {
-		use reinhardt_manouche::core::{PageText, TypedPageElement, TypedPageNode};
+		// Arrange
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Element(TypedPageElement {
 			tag: syn::Ident::new("span", proc_macro2::Span::call_site()),
@@ -1407,36 +1670,48 @@ mod tests {
 			})],
 			span: proc_macro2::Span::call_site(),
 		})];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_with_aria_label() {
-		use reinhardt_manouche::core::TypedPageAttr;
+		// Arrange
 		let attrs = vec![TypedPageAttr {
 			name: syn::Ident::new("aria_label", proc_macro2::Span::call_site()),
 			value: AttrValue::from_expr(parse_quote!("Close")),
 			span: proc_macro2::Span::call_site(),
 		}];
 		let children = vec![];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_button_accessibility_with_expression() {
-		use reinhardt_manouche::core::{PageExpression, TypedPageNode};
+		// Arrange
 		let attrs = vec![];
 		let children = vec![TypedPageNode::Expression(PageExpression {
 			expr: parse_quote!(button_text),
 			braced: true,
 			span: proc_macro2::Span::call_site(),
 		})];
+
+		// Act
 		let result =
 			validate_button_accessibility(&attrs, &children, proc_macro2::Span::call_site());
+
+		// Assert
 		assert!(result.is_ok());
 	}
 }

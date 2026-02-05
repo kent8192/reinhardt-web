@@ -1,17 +1,14 @@
 [package]
-name = "reinhardt-pages-ast"
-version = "0.1.0-alpha.2"
+name = "reinhardt-manouche"
+version = "0.1.0-alpha.1"
 edition.workspace = true
 license.workspace = true
-description = "AST definitions for reinhardt-pages macro DSLs (shared between proc-macros and formatters)"
+description = "DSL definitions for reinhardt-pages macro (Manouche Jazz DSL)"
 repository.workspace = true
-keywords = ["ast", "parser", "wasm"]
-categories = ["parser-implementations", "wasm"]
+keywords = ["ast", "parser", "dsl", "macro"]
+categories = ["parser-implementations", "development-tools::procedural-macro-helpers"]
 
 [dependencies]
-# Re-export from reinhardt-manouche
-reinhardt-manouche = { workspace = true }
-
 # Documentation
 aquamarine = "0.5"
 
@@ -25,3 +22,6 @@ darling = "0.20"
 
 # Case conversion for identifiers
 convert_case = "0.6"
+
+[dev-dependencies]
+rstest = { workspace = true }
