@@ -1,7 +1,10 @@
 //! Test helpers for social authentication tests
 
+#[path = "helpers/assertions.rs"]
 pub mod assertions;
+#[path = "helpers/mock_server.rs"]
 pub mod mock_server;
+#[path = "helpers/test_fixtures.rs"]
 pub mod test_fixtures;
 
 // Re-export commonly used helpers
