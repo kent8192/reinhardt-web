@@ -301,6 +301,7 @@ members = [
   "crates/reinhardt-pages/ast",                        # WASM frontend AST
   "crates/reinhardt-manouche",                         # DSL definitions for pages macros
   "crates/reinhardt-mobile",                           # Mobile application support (WRY/TAO)
+  "crates/reinhardt-desktop",                          # Desktop application framework
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
