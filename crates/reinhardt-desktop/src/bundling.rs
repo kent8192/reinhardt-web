@@ -87,7 +87,7 @@ impl AssetCollector {
 }
 
 /// Configuration for asset bundling.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BundleConfig {
 	/// Whether to minify CSS.
 	pub minify_css: bool,
@@ -95,16 +95,6 @@ pub struct BundleConfig {
 	pub minify_js: bool,
 	/// Whether to add source maps.
 	pub source_maps: bool,
-}
-
-impl Default for BundleConfig {
-	fn default() -> Self {
-		Self {
-			minify_css: false,
-			minify_js: false,
-			source_maps: false,
-		}
-	}
 }
 
 /// Bundles assets for desktop applications.
