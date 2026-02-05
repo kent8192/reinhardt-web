@@ -40,6 +40,50 @@ impl AssetEntry {
 	}
 }
 
+/// Collects assets from IR traversal.
+#[derive(Debug, Default)]
+pub struct AssetCollector {
+	assets: Vec<AssetEntry>,
+}
+
+impl AssetCollector {
+	/// Creates a new asset collector.
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Adds a CSS asset.
+	pub fn add_css(&mut self, content: impl Into<String>, source: Option<&str>) {
+		let entry = match source {
+			Some(s) => AssetEntry::new(AssetType::Css, content.into(), s),
+			None => AssetEntry::inline(AssetType::Css, content.into()),
+		};
+		self.assets.push(entry);
+	}
+
+	/// Adds a JavaScript asset.
+	pub fn add_js(&mut self, content: impl Into<String>, source: Option<&str>) {
+		let entry = match source {
+			Some(s) => AssetEntry::new(AssetType::Js, content.into(), s),
+			None => AssetEntry::inline(AssetType::Js, content.into()),
+		};
+		self.assets.push(entry);
+	}
+
+	/// Gets all assets of a specific type.
+	pub fn get_assets(&self, asset_type: AssetType) -> Vec<&AssetEntry> {
+		self.assets
+			.iter()
+			.filter(|a| a.asset_type == asset_type)
+			.collect()
+	}
+
+	/// Consumes the collector and returns all assets.
+	pub fn into_assets(self) -> Vec<AssetEntry> {
+		self.assets
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -71,5 +115,48 @@ mod tests {
 		assert_eq!(entry.asset_type, AssetType::Js);
 		assert_eq!(entry.content, content);
 		assert_eq!(entry.source_path, None);
+	}
+
+	#[rstest]
+	fn test_asset_collector_add_css() {
+		// Arrange
+		let mut collector = AssetCollector::new();
+
+		// Act
+		collector.add_css("body { margin: 0; }", Some("reset.css"));
+
+		// Assert
+		let assets = collector.get_assets(AssetType::Css);
+		assert_eq!(assets.len(), 1);
+		assert_eq!(assets[0].content, "body { margin: 0; }");
+	}
+
+	#[rstest]
+	fn test_asset_collector_add_js() {
+		// Arrange
+		let mut collector = AssetCollector::new();
+
+		// Act
+		collector.add_js("console.log('hello');", Some("main.js"));
+
+		// Assert
+		let assets = collector.get_assets(AssetType::Js);
+		assert_eq!(assets.len(), 1);
+		assert_eq!(assets[0].content, "console.log('hello');");
+	}
+
+	#[rstest]
+	fn test_asset_collector_multiple_assets() {
+		// Arrange
+		let mut collector = AssetCollector::new();
+
+		// Act
+		collector.add_css(".a { }", None);
+		collector.add_css(".b { }", None);
+		collector.add_js("const x = 1;", None);
+
+		// Assert
+		assert_eq!(collector.get_assets(AssetType::Css).len(), 2);
+		assert_eq!(collector.get_assets(AssetType::Js).len(), 1);
 	}
 }
