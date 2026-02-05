@@ -208,26 +208,41 @@ When Release PR #194 merged (commit `1c8c1df`):
 
 ### Solutions to Publish the Updated Crates
 
-#### Option 1: Re-run the Failed Workflow (Recommended)
+#### Option 1: Re-run the Failed Workflow ~~(Recommended)~~ ⚠️ **WILL FAIL**
 
-The simplest solution since the versions are already bumped in the repository:
+**Important:** Re-running the failed workflow at commit `1c8c1df` will **NOT work** because:
 
-1. Go to the failed workflow run: https://github.com/kent8192/reinhardt-web/actions/runs/21696782575
-2. Click "Re-run all jobs" or "Re-run failed jobs"
-3. The "Release" job will attempt to publish again
-4. If successful, git tags will be created automatically
+1. The workflow checks out the specific commit where it ran (the Release PR merge commit `1c8c1df`)
+2. At that commit, the dependency issue still exists in Cargo.toml
+3. Re-running will hit the exact same dependency ordering problem
 
-**Note:** This only works if the dependency ordering issue is resolved (i.e., if the required dependencies are now available on crates.io).
+~~1. Go to the failed workflow run: https://github.com/kent8192/reinhardt-web/actions/runs/21696782575~~
+~~2. Click "Re-run all jobs" or "Re-run failed jobs"~~
+~~3. The "Release" job will attempt to publish again~~
 
-#### Option 2: Make a New Commit to Trigger release-plz
+**This option only works if:**
+- The dependency issue was external (crates.io registry was temporarily unavailable)
+- The required dependencies are now available on crates.io (published by another means)
+- But in this case, the dependency ordering issue exists in the code itself at that commit
 
-If the dependency issue is still present, you might need to:
+#### Option 2: Make a New Commit to Trigger release-plz (Recommended)
 
-1. Fix the dependency ordering issue (ensure all dependencies are published in the correct order)
-2. Make any small commit to main (e.g., update documentation)
-3. This triggers the release-plz workflow again
-4. Since versions are already bumped, it will show "already up-to-date" for Release PR
-5. But the "Release" job will attempt to publish again
+Since re-running won't work, you need to trigger the workflow on a newer commit:
+
+1. **Option A - If dependency issue is fixed in later commits:**
+   - The dependency issue may already be fixed in later commits to main
+   - Any push to main will trigger the workflow
+   - Make a small commit (e.g., update documentation) to trigger it
+   - The workflow will run on the latest main commit where the issue might be resolved
+
+2. **Option B - If dependency issue still exists:**
+   - Fix the dependency ordering in the code (ensure proper publish order)
+   - Commit the fix to main
+   - This triggers the release-plz workflow on the new commit
+   
+3. **What happens:**
+   - Since versions are already bumped, it will show "already up-to-date" for Release PR
+   - But the "Release" job will attempt to publish again with the fixed code
 
 #### Option 3: Manual Publish with release-plz CLI
 
