@@ -28,7 +28,13 @@ jobs:
           swap-storage: true
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Login to Docker Hub
+        uses: ./.github/actions/docker-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
@@ -69,6 +75,17 @@ jobs:
           rm -rf ~/.m2 || true
           echo "Disk usage after additional cleanup:"
           df -h
+
+      - name: Pre-pull Docker images
+        run: |
+          if [ -f .github/docker-images-unit-test.txt ]; then
+            while IFS= read -r image || [ -n "$image" ]; do
+              # Skip empty lines and comments
+              [[ -z "$image" || "$image" =~ ^# ]] && continue
+              echo "Pulling image: $image"
+              docker pull "$image" || echo "Warning: Failed to pull $image"
+            done < .github/docker-images-unit-test.txt
+          fi
 
       - name: Run unit tests
         run: cargo make unit-test
