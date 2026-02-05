@@ -30,6 +30,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Setup GTK dependencies
+        uses: ./.github/actions/setup-gtk
+
       - name: Login to Docker Hub
         uses: ./.github/actions/docker-login
         with:
