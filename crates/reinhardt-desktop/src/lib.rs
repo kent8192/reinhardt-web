@@ -28,6 +28,7 @@
 #![warn(missing_docs)]
 
 mod app;
+pub mod bundling;
 mod codegen;
 mod config;
 mod error;
