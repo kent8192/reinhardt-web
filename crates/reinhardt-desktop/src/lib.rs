@@ -32,6 +32,7 @@ pub mod bundling;
 mod codegen;
 mod config;
 mod error;
+pub mod hot_reload;
 mod ipc;
 mod protocol;
 mod webview;
