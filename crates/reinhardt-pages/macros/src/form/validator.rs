@@ -16,7 +16,7 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::{Error, Result};
 
-use reinhardt_pages_ast::{
+use reinhardt_manouche::core::{
 	ClientValidator, ClientValidatorRule, FormAction, FormCallbacks, FormDerived, FormFieldDef,
 	FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod, FormSlots, FormState,
 	FormValidator, FormWatch, IconPosition, TypedChoicesConfig, TypedClientValidator,
@@ -848,7 +848,7 @@ fn extract_icon(properties: &[FormFieldProperty]) -> Result<Option<TypedIcon>> {
 }
 
 /// Transforms a single icon child element recursively.
-fn transform_icon_child(child: &reinhardt_pages_ast::IconChild) -> Result<TypedIconChild> {
+fn transform_icon_child(child: &reinhardt_manouche::core::IconChild) -> Result<TypedIconChild> {
 	let attrs = child
 		.attrs
 		.iter()
