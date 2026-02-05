@@ -140,8 +140,8 @@ mod tests {
 		let past = create_timestamp_offset(300); // 5 minutes ago
 		let future = create_timestamp_offset(-300); // 5 minutes in future
 
-		assert!(past.len() > 0);
-		assert!(future.len() > 0);
+		assert!(!past.is_empty());
+		assert!(!future.is_empty());
 	}
 
 	#[test]
