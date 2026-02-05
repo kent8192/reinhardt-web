@@ -1,5 +1,7 @@
 //! Mock OAuth2/OIDC server for testing
 
+use bytes::Bytes;
+use http_body_util::Full;
 use hyper::{Method, StatusCode};
 use hyper::{Request, Response, body::Incoming};
 use hyper_util::rt::TokioIo;
@@ -20,6 +22,7 @@ pub struct MockConfig {
 	pub userinfo_endpoint: Option<String>,
 	pub jwks_endpoint: Option<String>,
 	pub discovery_endpoint: Option<String>,
+	pub redirect_uri: String,
 }
 
 impl Default for MockConfig {
@@ -32,6 +35,7 @@ impl Default for MockConfig {
 			discovery_endpoint: Some(
 				"http://localhost:9999/.well-known/openid-configuration".into(),
 			),
+			redirect_uri: "http://localhost:8080/callback".into(),
 		}
 	}
 }
@@ -204,7 +208,7 @@ impl Default for MockOAuth2Server {
 async fn handle_request(
 	req: Request<Incoming>,
 	state: Arc<Mutex<MockServerState>>,
-) -> Result<Response<hyper::body::Incoming>, hyper::Error> {
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
 	let path = req.uri().path();
 	let method = req.method();
 	let state_guard = state.lock().unwrap();
@@ -216,19 +220,19 @@ async fn handle_request(
 			// Return an error response to simulate network issues
 			return Ok(Response::builder()
 				.status(StatusCode::SERVICE_UNAVAILABLE)
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap());
 		}
 		ErrorMode::Unauthorized => {
 			return Ok(Response::builder()
 				.status(StatusCode::UNAUTHORIZED)
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap());
 		}
 		ErrorMode::ServerError => {
 			return Ok(Response::builder()
 				.status(StatusCode::INTERNAL_SERVER_ERROR)
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap());
 		}
 		_ => {}
@@ -250,7 +254,7 @@ async fn handle_request(
 			Ok(Response::builder()
 				.status(StatusCode::FOUND)
 				.header("Location", redirect_uri)
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap())
 		}
 
@@ -273,7 +277,7 @@ async fn handle_request(
 			Ok(Response::builder()
 				.status(StatusCode::OK)
 				.header("Content-Type", "application/json")
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap())
 		}
 
@@ -299,7 +303,7 @@ async fn handle_request(
 			Ok(Response::builder()
 				.status(StatusCode::OK)
 				.header("Content-Type", "application/json")
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap())
 		}
 
@@ -312,7 +316,7 @@ async fn handle_request(
 			Ok(Response::builder()
 				.status(StatusCode::OK)
 				.header("Content-Type", "application/json")
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap())
 		}
 
@@ -368,13 +372,13 @@ async fn handle_request(
 			Ok(Response::builder()
 				.status(StatusCode::OK)
 				.header("Content-Type", "application/json")
-				.body(hyper::body::Incoming::empty())
+				.body(Full::default())
 				.unwrap())
 		}
 
 		_ => Ok(Response::builder()
 			.status(StatusCode::NOT_FOUND)
-			.body(hyper::body::Incoming::empty())
+			.body(Full::default())
 			.unwrap()),
 	}
 }
