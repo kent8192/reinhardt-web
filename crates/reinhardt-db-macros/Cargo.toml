@@ -20,3 +20,4 @@ thiserror = { workspace = true }
 trybuild = { workspace = true }
 bson = "3.0"
 serde = { workspace = true, features = ["derive"] }
+rstest = { workspace = true }
