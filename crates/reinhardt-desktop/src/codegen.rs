@@ -6,12 +6,15 @@
 use reinhardt_manouche::codegen::IRVisitor;
 use reinhardt_manouche::ir::*;
 
+use crate::bundling::AssetCollector;
+
 /// Generates static HTML from component IR.
 ///
 /// This visitor produces HTML strings that can be bundled
 /// with the desktop application via `ProtocolHandler`.
 pub struct StaticHtmlVisitor {
 	output: String,
+	asset_collector: AssetCollector,
 }
 
 impl StaticHtmlVisitor {
@@ -25,12 +28,23 @@ impl StaticHtmlVisitor {
 	pub fn new() -> Self {
 		Self {
 			output: String::new(),
+			asset_collector: AssetCollector::new(),
 		}
 	}
 
 	/// Consumes the visitor and returns the generated HTML.
 	pub fn into_html(self) -> String {
 		self.output
+	}
+
+	/// Returns a reference to the collected assets.
+	pub fn asset_collector(&self) -> &AssetCollector {
+		&self.asset_collector
+	}
+
+	/// Consumes the visitor and returns both HTML and collected assets.
+	pub fn into_parts(self) -> (String, AssetCollector) {
+		(self.output, self.asset_collector)
 	}
 
 	/// Escapes HTML special characters.
@@ -353,11 +367,15 @@ impl IRVisitor for StaticHtmlVisitor {
 				}
 				self.output.push('>');
 				if let Some(content) = &script.content {
+					// Collect inline JS for bundling
+					self.asset_collector.add_js(content, None);
 					self.output.push_str(content);
 				}
 				self.output.push_str("</script>");
 			}
 			HeadElementIR::Style(style) => {
+				// Collect CSS for bundling
+				self.asset_collector.add_css(&style.content, None);
 				self.output.push_str("<style>");
 				self.output.push_str(&style.content);
 				self.output.push_str("</style>");
@@ -749,5 +767,93 @@ mod tests {
 		assert!(html.contains(r#"name="email""#));
 		assert!(html.contains(r#"required"#));
 		assert!(html.contains(r#"placeholder="you@example.com""#));
+	}
+
+	// Asset collection tests
+	#[rstest]
+	fn test_asset_collector_extracts_style() {
+		// Arrange
+		let mut visitor = StaticHtmlVisitor::new();
+		let head = HeadIR {
+			elements: vec![HeadElementIR::Style(StyleIR {
+				content: "body { color: red; }".to_string(),
+				span: Span::call_site(),
+			})],
+			span: Span::call_site(),
+		};
+
+		// Act
+		visitor.visit_head(&head);
+
+		// Assert
+		let collector = visitor.asset_collector();
+		let css_assets = collector.get_assets(crate::bundling::AssetType::Css);
+		assert_eq!(css_assets.len(), 1);
+		assert!(css_assets[0].content.contains("color: red"));
+	}
+
+	#[rstest]
+	fn test_asset_collector_extracts_inline_script() {
+		// Arrange
+		let mut visitor = StaticHtmlVisitor::new();
+		let head = HeadIR {
+			elements: vec![HeadElementIR::Script(ScriptIR {
+				src: None,
+				content: Some("console.log('hello');".to_string()),
+				is_async: false,
+				defer: false,
+				is_module: false,
+				span: Span::call_site(),
+			})],
+			span: Span::call_site(),
+		};
+
+		// Act
+		visitor.visit_head(&head);
+
+		// Assert
+		let collector = visitor.asset_collector();
+		let js_assets = collector.get_assets(crate::bundling::AssetType::Js);
+		assert_eq!(js_assets.len(), 1);
+		assert!(js_assets[0].content.contains("console.log"));
+	}
+
+	#[rstest]
+	fn test_into_parts_returns_html_and_assets() {
+		// Arrange
+		let mut visitor = StaticHtmlVisitor::new();
+		let head = HeadIR {
+			elements: vec![
+				HeadElementIR::Style(StyleIR {
+					content: ".test { }".to_string(),
+					span: Span::call_site(),
+				}),
+				HeadElementIR::Script(ScriptIR {
+					src: None,
+					content: Some("const x = 1;".to_string()),
+					is_async: false,
+					defer: false,
+					is_module: false,
+					span: Span::call_site(),
+				}),
+			],
+			span: Span::call_site(),
+		};
+
+		// Act
+		visitor.visit_head(&head);
+		let (html, collector) = visitor.into_parts();
+
+		// Assert
+		assert!(html.contains("<style>"));
+		assert!(html.contains("<script>"));
+		assert_eq!(
+			collector.get_assets(crate::bundling::AssetType::Css).len(),
+			1
+		);
+		assert_eq!(
+			collector.get_assets(crate::bundling::AssetType::Js).len(),
+			1
+		);
 	}
 }
