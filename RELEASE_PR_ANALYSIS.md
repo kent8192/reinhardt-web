@@ -177,3 +177,121 @@ The real issue is that **release-plz does not automatically create a new Release
 4. Configure the workflow to detect failed publishes and automatically retry
 
 The current behavior where it says "already up-to-date" after a failed publish is technically correct from release-plz's perspective (the files don't need updating), but it's confusing because the versions aren't actually released to crates.io.
+
+## How to Successfully Publish Updated Crates to crates.io
+
+### Understanding release-plz Change Detection
+
+**Important clarification:** release-plz does **NOT** detect changes primarily by git tags. Instead, it:
+
+1. **Analyzes conventional commits** since the last release
+2. **Compares local Cargo.toml versions** with crates.io registry versions
+3. **Determines version bumps** based on commit types (feat:, fix:, etc.)
+4. **Creates git tags** as part of the publishing process (not as a detection mechanism)
+
+Git tags are created **after** successful publishing, not before. The configuration shows:
+```toml
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "{{ package }}@v{{ version }}"
+```
+
+These tags are created by the `release-plz release` command when crates are successfully published.
+
+### Why the Failed Publish Didn't Create Tags
+
+When Release PR #194 merged (commit `1c8c1df`):
+1. The "Release PR" job ran and found "already up-to-date" (no new Release PR needed)
+2. The "Release" job tried to publish crates but **failed** on `reinhardt-http`
+3. Since the publish failed, **no git tags were created**
+4. The versions remain in Cargo.toml but aren't on crates.io
+
+### Solutions to Publish the Updated Crates
+
+#### Option 1: Re-run the Failed Workflow (Recommended)
+
+The simplest solution since the versions are already bumped in the repository:
+
+1. Go to the failed workflow run: https://github.com/kent8192/reinhardt-web/actions/runs/21696782575
+2. Click "Re-run all jobs" or "Re-run failed jobs"
+3. The "Release" job will attempt to publish again
+4. If successful, git tags will be created automatically
+
+**Note:** This only works if the dependency ordering issue is resolved (i.e., if the required dependencies are now available on crates.io).
+
+#### Option 2: Make a New Commit to Trigger release-plz
+
+If the dependency issue is still present, you might need to:
+
+1. Fix the dependency ordering issue (ensure all dependencies are published in the correct order)
+2. Make any small commit to main (e.g., update documentation)
+3. This triggers the release-plz workflow again
+4. Since versions are already bumped, it will show "already up-to-date" for Release PR
+5. But the "Release" job will attempt to publish again
+
+#### Option 3: Manual Publish with release-plz CLI
+
+If you have the release-plz CLI installed locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/kent8192/reinhardt-web.git
+cd reinhardt-web
+
+# Checkout the main branch
+git checkout main
+
+# Run release-plz release manually
+release-plz release --git-token $GITHUB_TOKEN --registry-token $CARGO_REGISTRY_TOKEN
+```
+
+This will attempt to publish all crates that have versions ahead of crates.io.
+
+#### Option 4: Fix the Dependency Ordering Issue
+
+The root cause was that `reinhardt-http` depends on `reinhardt-urls ^0.1.0-alpha.3`, but that version wasn't published yet. To prevent this in the future:
+
+1. **Ensure proper dependency order** in the release process
+2. **Use `dependencies_update = true`** in `release-plz.toml` (currently set to `false`) to let release-plz manage dependency version updates
+3. **Add a dependency graph check** to ensure dependencies are published before dependents
+
+The current configuration has:
+```toml
+dependencies_update = false
+```
+
+Changing this to `true` would let release-plz automatically update dependency versions in the workspace, which might help avoid version mismatches.
+
+### What Happens When the Publish Succeeds
+
+When crates are successfully published:
+
+1. **Crates uploaded to crates.io** ✅
+2. **Git tags created** for each published crate (e.g., `reinhardt-http@v0.1.0-alpha.5`) ✅
+3. **GitHub releases created** (if `git_release_enable = true`) ✅
+4. **Future commits will trigger new Release PRs** because release-plz will detect new commits since the last tags ✅
+
+### Detection After Failed Publish vs After Feature PR
+
+You asked: "I think release-plz detect changes by git tags, so it can detect differences when feature PRs merged into main crate unless git tag created in failed PR, right?"
+
+**Correction:** The detection mechanism is:
+
+1. **For Release PR creation**: 
+   - Analyzes conventional commits since last release
+   - Compares local Cargo.toml versions with crates.io
+   - If local > crates.io AND CHANGELOGs not yet updated → Create Release PR
+   - If local > crates.io BUT CHANGELOGs already updated → "already up-to-date"
+
+2. **For Publishing**:
+   - With `release_always = false`, only publishes if commit is from `release-plz-*` branch merge
+   - Publishes crates where local version > crates.io version
+   - Creates git tags **after** successful publish
+
+So in the failed publish case:
+- ❌ No git tags were created (publish failed)
+- ✅ Versions are still in Cargo.toml (ahead of crates.io)
+- ✅ Future feature PR merges will NOT create new Release PR (versions already bumped)
+- ⚠️ The unpublished versions need manual intervention to publish
+
+The key insight: **Git tags mark successful releases, they don't trigger detection**. Commits and version comparisons drive the detection logic.
