@@ -387,7 +387,7 @@ reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.5" }
 # Dev-dependencies without versions are pruned during publish.
 # Note: reinhardt-commands also uses reinhardt-test as an optional regular dependency for its
 # testcontainers feature - this may require reinhardt-test to be published first.
-reinhardt-test = { path = "crates/reinhardt-test" }
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.6" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.3" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.6" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.6" }
