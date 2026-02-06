@@ -5,7 +5,6 @@
 //! This crate provides attribute macros for:
 //! - ORM models: `#[model(...)]`
 //! - NoSQL documents: `#[document(...)]`
-//! - Field attributes: `#[field(...)]`
 //!
 //! ## Feature Flags
 //!
@@ -15,7 +14,7 @@
 //! ## NoSQL ODM Example
 //!
 //! ```rust,ignore
-//! use reinhardt_db_macros::{document, field};
+//! use reinhardt_db_macros::document;
 //! use bson::oid::ObjectId;
 //!
 //! #[document(collection = "users", backend = "mongodb")]
@@ -27,8 +26,14 @@
 //!     name: String,
 //! }
 //! ```
+//!
+//! Note: The `#[field(...)]` attribute is parsed by the `#[document]` macro
+//! and does not need to be imported separately.
 
 use proc_macro::TokenStream;
+
+mod document;
+mod field;
 
 /// Document macro for NoSQL ODM
 ///
@@ -41,46 +46,22 @@ use proc_macro::TokenStream;
 /// - `backend` - Database backend: "mongodb" (required)
 /// - `database` - Database name (optional, defaults to "default")
 ///
-/// ## Example
+/// ## Field Attributes
 ///
-/// ```rust,ignore
-/// use reinhardt_db_macros::{document, field};
-/// use bson::oid::ObjectId;
-///
-/// #[document(collection = "users", backend = "mongodb")]
-/// struct User {
-///     #[field(primary_key)]
-///     id: ObjectId,
-///     email: String,
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn document(_attr: TokenStream, item: TokenStream) -> TokenStream {
-	// TODO: Implement document macro expansion
-	// For now, just return the input unchanged
-	item
-}
-
-/// Field attribute for document/model fields
-///
-/// Provides metadata and validation for individual fields.
-///
-/// ## Attributes
-///
-/// - `primary_key` - Mark as primary key
+/// Fields can be annotated with `#[field(...)]` to provide metadata:
+/// - `primary_key` - Mark as primary key (required for one field)
 /// - `required` - Field is required (non-null)
 /// - `unique` - Field must be unique
 /// - `index` - Create index on this field
 /// - `default` - Default value expression
 /// - `rename` - Rename field in database
-/// - `validate` - Custom validation function
 /// - `min` / `max` - Numeric range constraints
-/// - `references` - Foreign key reference
 ///
 /// ## Example
 ///
 /// ```rust,ignore
-/// use reinhardt_db_macros::{document, field};
+/// use reinhardt_db_macros::document;
+/// use bson::oid::ObjectId;
 ///
 /// #[document(collection = "users", backend = "mongodb")]
 /// struct User {
@@ -88,15 +69,11 @@ pub fn document(_attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     id: ObjectId,
 ///     #[field(required, unique)]
 ///     email: String,
-///     #[field(default = "Anonymous")]
-///     name: String,
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn field(_attr: TokenStream, item: TokenStream) -> TokenStream {
-	// TODO: Implement field attribute processing
-	// For now, just return the input unchanged
-	item
+pub fn document(attr: TokenStream, item: TokenStream) -> TokenStream {
+	document::document_impl(attr, item)
 }
 
 /// Model derive macro for ORM

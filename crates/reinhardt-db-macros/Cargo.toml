@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }
-bson = "3.0"
+bson = { version = "3.0", features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 rstest = { workspace = true }
+reinhardt-db = { path = "../reinhardt-db" }
