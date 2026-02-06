@@ -82,7 +82,7 @@ async fn test_insert_max_length_string(#[future] users_table: TestPool) {
 
 	// Create a string with exactly 255 characters (max length for name field)
 	let max_name = "a".repeat(255);
-	let max_email = format!("{}@example.com", "b".repeat(244)); // 255 total
+	let max_email = format!("{}@example.com", "b".repeat(243)); // 255 total
 
 	let stmt = Query::insert()
 		.into_table("users")
