@@ -6,7 +6,7 @@ use chrono::Utc;
 use reinhardt_debug_toolbar::{
 	context::{RequestInfo, ToolbarContext},
 	middleware::ToolbarConfig,
-	panels::{Panel, registry::PanelRegistry, request::RequestPanel, sql::SqlPanel},
+	panels::{registry::PanelRegistry, request::RequestPanel, sql::SqlPanel},
 };
 use rstest::*;
 

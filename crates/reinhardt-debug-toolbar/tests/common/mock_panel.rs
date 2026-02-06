@@ -196,7 +196,7 @@ impl Panel for MockPanel {
 			.unwrap_or_else(|| self.create_default_stats()))
 	}
 
-	fn render(&self, stats: &PanelStats) -> ToolbarResult<String> {
+	fn render(&self, _stats: &PanelStats) -> ToolbarResult<String> {
 		self.render_count.fetch_add(1, Ordering::SeqCst);
 
 		if self.should_fail_render {
@@ -216,7 +216,7 @@ impl Panel for MockPanel {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::fixtures::test_context;
+	use crate::common::fixtures::test_context;
 	use rstest::rstest;
 
 	#[rstest]
