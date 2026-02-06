@@ -1,6 +1,5 @@
 //! Core `Document` trait definition.
 
-use async_trait::async_trait;
 use bson::Document as BsonDocument;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -20,7 +19,6 @@ use super::error::OdmResult;
 ///     name: String,
 /// }
 /// ```
-#[async_trait]
 pub trait Document: Serialize + DeserializeOwned + Send + Sync + 'static {
 	/// Primary key type (e.g., `ObjectId`, `Uuid`, `i64`).
 	type Id: Serialize + DeserializeOwned + Send + Sync;
