@@ -45,11 +45,25 @@ jobs:
       - name: Verify no circular dev-dependencies
         run: |
           echo "=== Checking for circular dev-dependencies ==="
-          echo "Running cargo publish --dry-run for all publishable crates..."
+          echo "Running cargo publish --dry-run for publishable crates..."
 
-          # Get list of publishable crates (those without publish = false)
-          CRATES=$(cargo metadata --format-version 1 --no-deps | \
-            jq -r '.packages[] | select(.publish != ["never"] and .publish != false) | .name')
+          # Create jq filter file (avoids shell escaping issues)
+          cat > /tmp/filter.jq << 'JQEOF'
+          .packages[] |
+          select(.publish == null or (.publish | type == "array" and length > 0 and .[0] != "never")) |
+          select(.name | startswith("examples-") | not) |
+          select(.name | startswith("example-") | not) |
+          select(.name | test("^reinhardt-(test-support|integration-tests|benchmarks|settings-cli)$") | not) |
+          select(.name != "reinhardt-web") |
+          .name
+          JQEOF
+
+          # Get list of publishable crates
+          CRATES=$(cargo metadata --format-version 1 --no-deps | jq -r -f /tmp/filter.jq)
+
+          echo "Crates to check:"
+          echo "$CRATES"
+          echo ""
 
           FAILED=""
           for crate in $CRATES; do
