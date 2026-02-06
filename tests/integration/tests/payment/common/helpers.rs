@@ -82,6 +82,9 @@ pub fn assert_valid_payment_intent_transition(from: PaymentIntentStatus, to: Pay
 			PaymentIntentStatus::RequiresConfirmation,
 			PaymentIntentStatus::Processing
 		) | (
+			PaymentIntentStatus::RequiresConfirmation,
+			PaymentIntentStatus::Succeeded
+		) | (
 			PaymentIntentStatus::RequiresAction,
 			PaymentIntentStatus::Processing
 		) | (
@@ -153,6 +156,10 @@ mod tests {
 		);
 		assert_valid_payment_intent_transition(
 			PaymentIntentStatus::RequiresConfirmation,
+			PaymentIntentStatus::Succeeded,
+		);
+		assert_valid_payment_intent_transition(
+			PaymentIntentStatus::Processing,
 			PaymentIntentStatus::Succeeded,
 		);
 
