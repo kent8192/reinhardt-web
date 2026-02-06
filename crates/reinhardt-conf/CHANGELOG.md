@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.6...reinhardt-conf@v0.1.0-alpha.7) - 2026-02-06
-
-### Other
-
-- updated the following local packages: reinhardt-utils
-
 ## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.5...reinhardt-conf@v0.1.0-alpha.6) - 2026-02-03
 
 ### Other
