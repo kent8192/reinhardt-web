@@ -13,6 +13,13 @@ use sha2::{Digest, Sha256};
 pub struct CodeVerifier(String);
 
 impl CodeVerifier {
+	/// Creates a code verifier from a raw string value
+	///
+	/// Used when reconstructing a verifier from stored state data.
+	pub fn from_raw(value: String) -> Self {
+		Self(value)
+	}
+
 	/// Returns the verifier as a string slice
 	pub fn as_str(&self) -> &str {
 		&self.0
@@ -45,6 +52,17 @@ pub struct CodeChallenge {
 }
 
 impl CodeChallenge {
+	/// Creates a code challenge from a raw string value
+	///
+	/// Assumes S256 challenge method since the raw value has already been hashed.
+	/// Used when the challenge string is received from the `OAuthProvider` trait.
+	pub fn from_raw(value: String) -> Self {
+		Self {
+			challenge: value,
+			method: ChallengeMethod::S256,
+		}
+	}
+
 	/// Returns the challenge as a string slice
 	pub fn as_str(&self) -> &str {
 		&self.challenge
