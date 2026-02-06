@@ -1,5 +1,7 @@
 //! Test helpers for social authentication tests
 
+#![cfg(feature = "social")]
+
 #[path = "helpers/assertions.rs"]
 pub mod assertions;
 #[path = "helpers/mock_server.rs"]
