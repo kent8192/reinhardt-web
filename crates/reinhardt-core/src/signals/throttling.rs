@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Signal throttling system for rate-limiting signal emissions
 //!
 //! This module provides functionality to throttle signal emissions based on various strategies,
