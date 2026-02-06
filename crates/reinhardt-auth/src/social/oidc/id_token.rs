@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use jsonwebtoken::{Algorithm, Validation, decode, decode_header};
+use jsonwebtoken::{Validation, decode, decode_header};
 
 use super::jwks::JwksCache;
 use crate::social::core::{IdToken, SocialAuthError};
@@ -79,7 +79,7 @@ impl IdTokenValidator {
 		let decoding_key = self.jwks_cache.get_key(jwks_uri, &kid).await?;
 
 		// Configure validation
-		let mut validation = Validation::new(header.alg.try_into().unwrap_or(Algorithm::RS256));
+		let mut validation = Validation::new(header.alg);
 		validation.set_issuer(&[&self.config.issuer]);
 		validation.set_audience(&[&self.config.audience]);
 		validation.leeway = self.config.clock_skew as u64;
