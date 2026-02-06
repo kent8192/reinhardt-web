@@ -1,7 +1,8 @@
 //! GraphQL types and input objects for issues
 
-use async_graphql::{Context, Enum, ID, InputObject, Object, Result as GqlResult};
+use async_graphql::{Context, Enum, ID, InputObject, Object, Result as GqlResult, SimpleObject};
 use chrono::{DateTime, Utc};
+use validator::Validate;
 
 use crate::apps::issues::models::Issue;
 
@@ -107,21 +108,67 @@ impl IssueType {
 }
 
 /// Input for creating an issue
-#[derive(InputObject)]
+#[derive(InputObject, Validate)]
 pub struct CreateIssueInput {
 	/// Project ID to create the issue in
 	pub project_id: ID,
-	/// Issue title
+	/// Issue title (1-200 characters)
+	#[validate(length(min = 1, max = 200))]
 	pub title: String,
-	/// Issue body (supports Markdown)
+	/// Issue body (supports Markdown, max 10000 characters)
+	#[validate(length(max = 10000))]
 	pub body: String,
 }
 
 /// Input for updating an issue
-#[derive(InputObject)]
+#[derive(InputObject, Validate)]
 pub struct UpdateIssueInput {
-	/// New title (optional)
+	/// New title (optional, 1-200 characters if provided)
+	#[validate(length(min = 1, max = 200))]
 	pub title: Option<String>,
-	/// New body (optional)
+	/// New body (optional, max 10000 characters if provided)
+	#[validate(length(max = 10000))]
 	pub body: Option<String>,
+}
+
+/// Pagination input for list queries
+#[derive(InputObject)]
+pub struct PaginationInput {
+	/// Page number (1-based, defaults to 1)
+	pub page: Option<i32>,
+	/// Number of items per page (defaults to 10)
+	pub page_size: Option<i32>,
+}
+
+impl Default for PaginationInput {
+	fn default() -> Self {
+		Self {
+			page: Some(1),
+			page_size: Some(10),
+		}
+	}
+}
+
+/// Pagination metadata for list responses
+#[derive(SimpleObject)]
+pub struct PageInfo {
+	/// Whether there is a next page
+	pub has_next_page: bool,
+	/// Whether there is a previous page
+	pub has_previous_page: bool,
+	/// Total number of items across all pages
+	pub total_count: i32,
+	/// Current page number (1-based)
+	pub page: i32,
+	/// Number of items per page
+	pub page_size: i32,
+}
+
+/// Paginated issue connection
+#[derive(SimpleObject)]
+pub struct IssueConnection {
+	/// List of issues on the current page
+	pub edges: Vec<IssueType>,
+	/// Pagination metadata
+	pub page_info: PageInfo,
 }

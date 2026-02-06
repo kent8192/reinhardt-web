@@ -28,7 +28,7 @@ jobs:
           swap-storage: true
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust with clippy
         uses: ./.github/actions/setup-rust

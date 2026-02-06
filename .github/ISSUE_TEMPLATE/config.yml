@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+	- name: Contributing Guidelines
+		url: https://github.com/kent8192/reinhardt-web/blob/main/CONTRIBUTING.md
+		about: Please review the contributing guidelines before creating an issue or pull request.
+	- name: GitHub Discussions
+		url: https://github.com/kent8192/reinhardt-web/discussions
+		about: Use GitHub Discussions for questions, ideas, and general discussion.
+	- name: Documentation
+		url: https://github.com/kent8192/reinhardt-web/blob/main/docs/ISSUE_GUIDELINES.md
+		about: Review issue guidelines for detailed information on creating issues.
+	- name: Security Vulnerability Report
+		url: https://github.com/kent8192/reinhardt-web/security/advisories
+		about: Report security vulnerabilities privately via GitHub Security Advisories.
