@@ -42,6 +42,7 @@ reinhardt-tasks = { workspace = true, features = [
   "rabbitmq-backend",
 ] }
 reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "metadata", "openapi", "serializers", "throttling", "versioning"]}
+reinhardt-openapi-macros = { workspace = true }
 reinhardt-throttling = { workspace = true }
 reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
@@ -73,6 +74,9 @@ serde_json = { workspace = true }
 # Template engine
 tera = { workspace = true }
 
+# OpenAPI
+utoipa = { version = "^5.4.0", features = ["url", "uuid", "yaml"] }
+
 # Testing framework
 rstest = { workspace = true }
 serial_test = { workspace = true }
@@ -94,6 +98,7 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 data-encoding = "2.7"
 futures = { workspace = true }
+futures-util = "0.3"
 hex = "0.4"
 rand = { workspace = true }
 sea-query = { workspace = true }
