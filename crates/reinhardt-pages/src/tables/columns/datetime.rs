@@ -56,9 +56,21 @@ impl ColumnTrait for DateTimeColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// TODO: Implement datetime formatting
-		td().text("datetime").build()
+	fn render(&self, value: &dyn Any) -> Element {
+		#[cfg(feature = "chrono")]
+		{
+			if let Some(dt) = value.downcast_ref::<chrono::NaiveDateTime>() {
+				return td().text(&dt.format(&self.format).to_string()).build();
+			}
+			if let Some(dt) = value.downcast_ref::<chrono::DateTime<chrono::Utc>>() {
+				return td().text(&dt.format(&self.format).to_string()).build();
+			}
+		}
+		if let Some(s) = value.downcast_ref::<String>() {
+			td().text(s).build()
+		} else {
+			td().text("-").build()
+		}
 	}
 
 	fn is_orderable(&self) -> bool {

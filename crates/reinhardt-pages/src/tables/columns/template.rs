@@ -48,9 +48,14 @@ impl ColumnTrait for TemplateColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// TODO: Implement template rendering
-		td().text("template").build()
+	fn render(&self, value: &dyn Any) -> Element {
+		if let Some(s) = value.downcast_ref::<String>() {
+			td().text(s).build()
+		} else if let Some(s) = value.downcast_ref::<&str>() {
+			td().text(s).build()
+		} else {
+			td().text("-").build()
+		}
 	}
 
 	fn is_orderable(&self) -> bool {

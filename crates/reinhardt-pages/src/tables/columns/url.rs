@@ -1,6 +1,6 @@
 //! URL column type implementation
 
-use crate::builder::html::td;
+use crate::builder::html::{a, td};
 use crate::dom::Element;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
@@ -48,9 +48,13 @@ impl ColumnTrait for URLColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// TODO: Implement URL link rendering
-		td().text("url").build()
+	fn render(&self, value: &dyn Any) -> Element {
+		if let Some(url) = value.downcast_ref::<String>() {
+			let link = a().attr("href", url).text(url).build();
+			td().child(link).build()
+		} else {
+			td().text("-").build()
+		}
 	}
 
 	fn is_orderable(&self) -> bool {

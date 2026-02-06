@@ -1,6 +1,6 @@
 //! JSON column type implementation
 
-use crate::builder::html::td;
+use crate::builder::html::{pre, td};
 use crate::dom::Element;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
@@ -48,9 +48,17 @@ impl ColumnTrait for JSONColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// TODO: Implement JSON rendering
-		td().text("json").build()
+	fn render(&self, value: &dyn Any) -> Element {
+		if let Some(json_val) = value.downcast_ref::<serde_json::Value>() {
+			let formatted =
+				serde_json::to_string_pretty(json_val).unwrap_or_else(|_| json_val.to_string());
+			let code = pre().text(&formatted).build();
+			td().child(code).build()
+		} else if let Some(s) = value.downcast_ref::<String>() {
+			td().text(s).build()
+		} else {
+			td().text("-").build()
+		}
 	}
 
 	fn is_orderable(&self) -> bool {
