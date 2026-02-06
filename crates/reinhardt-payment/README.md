@@ -24,12 +24,12 @@ reinhardt-payment = "0.1.0"
 
 ```rust
 use reinhardt_payment::{PaymentProvider, PaymentIntentParams};
-use reinhardt_payment::provider::StripeProvider;
+use reinhardt_payment_mocks::MockStripeProvider;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize Stripe provider
-    let provider = StripeProvider::new("sk_test_...".to_string());
+    // Initialize mock provider (for testing)
+    let provider = MockStripeProvider::new("sk_test_...".to_string());
 
     // Create payment intent
     let params = PaymentIntentParams {
@@ -90,14 +90,14 @@ match event {
 
 ```rust
 use reinhardt_payment::{TokenVault, CardData};
-use reinhardt_payment::vault::BasisTheoryVault;
+use reinhardt_payment_mocks::MockBasisTheoryVault;
 
-let vault = BasisTheoryVault::new("bt_api_key_...".to_string());
+let vault = MockBasisTheoryVault::new("bt_api_key_...".to_string());
 
 let card = CardData {
     number: "4242424242424242".to_string(),
     exp_month: 12,
-    exp_year: 2025,
+    exp_year: 2030,
     cvc: "123".to_string(),
 };
 
