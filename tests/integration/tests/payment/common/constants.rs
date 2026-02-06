@@ -26,3 +26,10 @@ pub const TEST_CUSTOMER_ID: &str = "cus_test_123";
 
 /// Test price IDs.
 pub const TEST_PRICE_ID: &str = "price_test_123";
+
+/// Returns a valid future expiration year for test card data.
+///
+/// Dynamically computed to prevent tests from breaking due to time-based expiration.
+pub fn valid_test_exp_year() -> u16 {
+	chrono::Datelike::year(&chrono::Utc::now()) as u16 + 5
+}
