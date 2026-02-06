@@ -44,7 +44,7 @@ async fn test_insert_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	let (_container, db) = mongodb.await;
 	let user = TestUser::new("test@example.com", "Test User");
 	let collection = "test_users";
-	let user_doc = bson::to_document(&user).unwrap();
+	let user_doc = bson::serialize_to_document(&user).unwrap();
 
 	// Act: Insert document
 	let id = db.insert_one(collection, user_doc).await.unwrap();
@@ -68,7 +68,7 @@ async fn test_find_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDB
 	let (_container, db) = mongodb.await;
 	let user = TestUser::new("find@example.com", "Find User");
 	let collection = "test_users";
-	let user_doc = bson::to_document(&user).unwrap();
+	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc.clone()).await.unwrap();
 
 	// Act: Find document by ID
@@ -97,7 +97,7 @@ async fn test_update_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	let (_container, db) = mongodb.await;
 	let user = TestUser::new("update@example.com", "Original Name");
 	let collection = "test_users";
-	let user_doc = bson::to_document(&user).unwrap();
+	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc).await.unwrap();
 
 	// Act: Update document
@@ -130,7 +130,7 @@ async fn test_delete_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	let (_container, db) = mongodb.await;
 	let user = TestUser::new("delete@example.com", "Delete User");
 	let collection = "test_users";
-	let user_doc = bson::to_document(&user).unwrap();
+	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc).await.unwrap();
 
 	// Act: Delete document
@@ -161,7 +161,7 @@ async fn test_find_many(#[future] mongodb: (ContainerAsync<GenericImage>, MongoD
 
 	for i in 0..5 {
 		let user = TestUser::new(&format!("many{}@example.com", i), &format!("User {}", i));
-		let user_doc = bson::to_document(&user).unwrap();
+		let user_doc = bson::serialize_to_document(&user).unwrap();
 		let id = db.insert_one(collection, user_doc).await.unwrap();
 		inserted_ids.push(id);
 	}

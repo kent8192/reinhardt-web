@@ -76,10 +76,10 @@ async fn test_unique_index_enforcement(
 	let collection = "test_unique_index";
 
 	// Create unique index via MongoDB driver
-	let index = mongodb::IndexModel::builder()
+	let index = ::mongodb::IndexModel::builder()
 		.keys(doc! { "email": 1 })
 		.options(
-			mongodb::options::IndexOptions::builder()
+			::mongodb::options::IndexOptions::builder()
 				.unique(true)
 				.build(),
 		)
