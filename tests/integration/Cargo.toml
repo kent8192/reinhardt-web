@@ -65,7 +65,7 @@ sqlx = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 # Serialization
-bson = "3.0"
+bson = { version = "3.0", features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
