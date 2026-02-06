@@ -30,6 +30,10 @@ jobs:
     name: Clippy
     uses: ./.github/workflows/clippy.yml
 
+  publish-check:
+    name: Publish Check
+    uses: ./.github/workflows/publish-check.yml
+
   # Phase 1: All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
@@ -72,6 +76,7 @@ jobs:
       - check
       - fmt
       - clippy
+      - publish-check
       - unit-test
       - intra-crate-integration-test
       - cross-crate-integration-test
