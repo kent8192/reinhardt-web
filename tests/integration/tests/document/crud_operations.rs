@@ -48,12 +48,13 @@ async fn test_insert_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 
 	// Act: Insert document
 	let id = db.insert_one(collection, user_doc).await.unwrap();
+	let oid = ObjectId::parse_str(&id).unwrap();
 
 	// Assert: ID is valid
 	assert!(!id.is_empty());
 
 	// Cleanup: Remove test document
-	db.delete_one(collection, doc! { "_id": id }).await.ok();
+	db.delete_one(collection, doc! { "_id": oid }).await.ok();
 }
 
 /// Test document finding
@@ -70,9 +71,10 @@ async fn test_find_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDB
 	let collection = "test_users";
 	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc.clone()).await.unwrap();
+	let oid = ObjectId::parse_str(&id).unwrap();
 
 	// Act: Find document by ID
-	let filter = doc! { "_id": &id };
+	let filter = doc! { "_id": &oid };
 	let found = db.find_one(collection, filter).await.unwrap();
 
 	// Assert: Document found with correct data
@@ -81,7 +83,7 @@ async fn test_find_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDB
 	assert_eq!(found_doc.get_str("email").unwrap(), "find@example.com");
 
 	// Cleanup
-	db.delete_one(collection, doc! { "_id": id }).await.ok();
+	db.delete_one(collection, doc! { "_id": oid }).await.ok();
 }
 
 /// Test document update
@@ -99,9 +101,10 @@ async fn test_update_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	let collection = "test_users";
 	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc).await.unwrap();
+	let oid = ObjectId::parse_str(&id).unwrap();
 
 	// Act: Update document
-	let filter = doc! { "_id": &id };
+	let filter = doc! { "_id": &oid };
 	let update = doc! { "$set": { "name": "Updated Name" } };
 	let result = db.update_one(collection, filter, update).await.unwrap();
 
@@ -110,12 +113,12 @@ async fn test_update_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	assert_eq!(result.modified_count, 1);
 
 	// Verify: Name was updated
-	let filter = doc! { "_id": &id };
+	let filter = doc! { "_id": &oid };
 	let found = db.find_one(collection, filter).await.unwrap().unwrap();
 	assert_eq!(found.get_str("name").unwrap(), "Updated Name");
 
 	// Cleanup
-	db.delete_one(collection, doc! { "_id": id }).await.ok();
+	db.delete_one(collection, doc! { "_id": oid }).await.ok();
 }
 
 /// Test document deletion
@@ -132,16 +135,17 @@ async fn test_delete_one(#[future] mongodb: (ContainerAsync<GenericImage>, Mongo
 	let collection = "test_users";
 	let user_doc = bson::serialize_to_document(&user).unwrap();
 	let id = db.insert_one(collection, user_doc).await.unwrap();
+	let oid = ObjectId::parse_str(&id).unwrap();
 
 	// Act: Delete document
-	let filter = doc! { "_id": &id };
+	let filter = doc! { "_id": &oid };
 	let count = db.delete_one(collection, filter).await.unwrap();
 
 	// Assert: One document deleted
 	assert_eq!(count, 1);
 
 	// Verify: Document no longer exists
-	let filter = doc! { "_id": &id };
+	let filter = doc! { "_id": &oid };
 	let found = db.find_one(collection, filter).await.unwrap();
 	assert!(found.is_none());
 }
@@ -176,6 +180,7 @@ async fn test_find_many(#[future] mongodb: (ContainerAsync<GenericImage>, MongoD
 
 	// Cleanup
 	for id in inserted_ids {
-		db.delete_one(collection, doc! { "_id": id }).await.ok();
+		let oid = ObjectId::parse_str(&id).unwrap();
+		db.delete_one(collection, doc! { "_id": oid }).await.ok();
 	}
 }
