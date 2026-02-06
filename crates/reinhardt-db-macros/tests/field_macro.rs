@@ -1,13 +1,4 @@
 //! Field Attribute Tests
 //!
-//! Tests for the `#[field(...)]` attribute macro.
-
-use reinhardt_db_macros::{document, field};
-use rstest::rstest;
-
-/// Test placeholder - will be implemented when macro expansion is complete
-#[rstest]
-fn test_placeholder() {
-	// Placeholder for initial test structure
-	assert!(true);
-}
+//! Tests for the `#[field(...)]` helper attribute used within `#[document]`.
+//! Compilation behavior is validated via trybuild UI tests in `tests/ui/`.

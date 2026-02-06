@@ -1,13 +1,4 @@
 //! Document Macro Tests
 //!
 //! Tests for the `#[document(...)]` attribute macro.
-
-use reinhardt_db_macros::document;
-use rstest::rstest;
-
-/// Test placeholder - will be implemented when macro expansion is complete
-#[rstest]
-fn test_placeholder() {
-	// Placeholder for initial test structure
-	assert!(true);
-}
+//! Compilation behavior is validated via trybuild UI tests in `tests/ui/`.
