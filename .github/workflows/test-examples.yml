@@ -60,23 +60,23 @@ jobs:
           tool: cargo-nextest
 
       - name: Check Format
-        working-directory: local/${{ matrix.example }}
+        working-directory: examples/local/${{ matrix.example }}
         run: cargo fmt --check
 
       - name: Clippy
-        working-directory: local/${{ matrix.example }}
+        working-directory: examples/local/${{ matrix.example }}
         run: cargo clippy --all-features -- -D warnings
 
       - name: Build
-        working-directory: local/${{ matrix.example }}
+        working-directory: examples/local/${{ matrix.example }}
         run: cargo build --all-features
 
       - name: Test
-        working-directory: local/${{ matrix.example }}
+        working-directory: examples/local/${{ matrix.example }}
         run: cargo nextest run --all-features
 
       - name: Doc Test
-        working-directory: local/${{ matrix.example }}
+        working-directory: examples/local/${{ matrix.example }}
         run: cargo test --doc --all-features
 
   test-common-crates:
@@ -90,11 +90,11 @@ jobs:
         uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Test common
-        working-directory: remote/common
+        working-directory: examples/remote/common
         run: cargo test --all-features
 
       - name: Test test-macros
-        working-directory: remote/test-macros
+        working-directory: examples/remote/test-macros
         run: cargo test --all-features
 
   compatibility-report:
