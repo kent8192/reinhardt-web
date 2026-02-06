@@ -15,6 +15,8 @@ use uuid::Uuid;
 pub struct MockBasisTheoryVault {
 	_api_key: String,
 	tokens: Arc<RwLock<HashMap<String, Token>>>,
+	/// Stores the last four digits of the card number per token ID.
+	card_last_four: Arc<RwLock<HashMap<String, String>>>,
 	deleted_tokens: Arc<RwLock<HashMap<String, ()>>>,
 	fail_next: Arc<RwLock<bool>>,
 }
@@ -29,6 +31,7 @@ impl MockBasisTheoryVault {
 		Self {
 			_api_key: api_key.into(),
 			tokens: Arc::new(RwLock::new(HashMap::new())),
+			card_last_four: Arc::new(RwLock::new(HashMap::new())),
 			deleted_tokens: Arc::new(RwLock::new(HashMap::new())),
 			fail_next: Arc::new(RwLock::new(false)),
 		}
@@ -46,6 +49,7 @@ impl MockBasisTheoryVault {
 	/// Clears all stored data.
 	pub async fn clear(&self) {
 		self.tokens.write().await.clear();
+		self.card_last_four.write().await.clear();
 		self.deleted_tokens.write().await.clear();
 	}
 
@@ -72,16 +76,20 @@ impl MockBasisTheoryVault {
 		Ok(())
 	}
 
-	/// Creates a masked display for the card number.
-	fn mask_card_number(number: &str) -> String {
-		let last_four = number
+	/// Extracts the last four digits from a card number.
+	fn extract_last_four(number: &str) -> String {
+		number
 			.chars()
 			.rev()
 			.take(4)
 			.collect::<Vec<_>>()
 			.into_iter()
 			.rev()
-			.collect::<String>();
+			.collect()
+	}
+
+	/// Creates a masked display from the last four digits.
+	fn mask_from_last_four(last_four: &str) -> String {
 		format!("XXXX-XXXX-XXXX-{}", last_four)
 	}
 }
@@ -111,12 +119,17 @@ impl TokenVault for MockBasisTheoryVault {
 			return Err(VaultError::InvalidCardData("Card has expired".to_string()));
 		}
 
+		let last_four = Self::extract_last_four(&card.number);
 		let token = Token {
 			id: format!("bt_token_{}", Uuid::new_v4()),
 			created_at: now,
-			fingerprint: format!("fp_{}", card.number.len()),
+			fingerprint: format!("fp_{}", last_four),
 		};
 
+		self.card_last_four
+			.write()
+			.await
+			.insert(token.id.clone(), last_four);
 		self.tokens
 			.write()
 			.await
@@ -162,10 +175,16 @@ impl TokenVault for MockBasisTheoryVault {
 			.get(token_id)
 			.ok_or_else(|| VaultError::TokenNotFound(token_id.to_string()))?;
 
+		let last_four_map = self.card_last_four.read().await;
+		let last_four = last_four_map
+			.get(token_id)
+			.map(|s| s.as_str())
+			.unwrap_or("0000");
+
 		Ok(TokenInfo {
 			id: token.id.clone(),
 			type_: "card".to_string(),
-			mask: Self::mask_card_number(&token.fingerprint[3..]), // Extract length from fingerprint
+			mask: Self::mask_from_last_four(last_four),
 			metadata: HashMap::new(),
 		})
 	}
