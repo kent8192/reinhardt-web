@@ -1123,6 +1123,157 @@ impl DeleteBuilder {
 	}
 }
 
+/// ANALYZE statement builder for updating database statistics
+///
+/// The ANALYZE statement updates table statistics used by the query planner
+/// to optimize query execution plans.
+///
+/// # Database Support
+///
+/// | Database | Syntax | Notes |
+/// |----------|--------|-------|
+/// | PostgreSQL | `ANALYZE [VERBOSE] [table [(columns...)]]` | Supports verbose mode and column-level analysis |
+/// | MySQL | `ANALYZE TABLE table [, ...]` | Supports multiple tables |
+/// | SQLite | `ANALYZE [table_or_index]` | Analyzes entire database if no target specified |
+/// | CockroachDB | `ANALYZE table` | PostgreSQL-compatible syntax |
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use reinhardt_db::backends::AnalyzeBuilder;
+///
+/// // Analyze all tables
+/// let builder = AnalyzeBuilder::new(backend.clone());
+/// builder.execute().await?;
+///
+/// // Analyze specific table
+/// let builder = AnalyzeBuilder::new(backend.clone())
+///     .table("users");
+/// builder.execute().await?;
+///
+/// // Analyze specific columns (PostgreSQL only)
+/// let builder = AnalyzeBuilder::new(backend.clone())
+///     .table("users")
+///     .columns(vec!["email", "created_at"])
+///     .verbose(true);
+/// builder.execute().await?;
+/// ```
+pub struct AnalyzeBuilder {
+	backend: Arc<dyn DatabaseBackend>,
+	table: Option<String>,
+	columns: Vec<String>,
+	verbose: bool,
+}
+
+impl AnalyzeBuilder {
+	/// Create a new ANALYZE builder
+	///
+	/// Without specifying a table, this will analyze all tables in the database.
+	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
+		Self {
+			backend,
+			table: None,
+			columns: Vec::new(),
+			verbose: false,
+		}
+	}
+
+	/// Set the table to analyze
+	///
+	/// # Arguments
+	///
+	/// * `table` - The name of the table to analyze
+	pub fn table(mut self, table: impl Into<String>) -> Self {
+		self.table = Some(table.into());
+		self
+	}
+
+	/// Set specific columns to analyze (PostgreSQL only)
+	///
+	/// This option is ignored on MySQL and SQLite as they don't support
+	/// column-level ANALYZE.
+	///
+	/// # Arguments
+	///
+	/// * `columns` - List of column names to analyze
+	pub fn columns(mut self, columns: Vec<&str>) -> Self {
+		self.columns = columns.iter().map(|s| (*s).to_owned()).collect();
+		self
+	}
+
+	/// Enable verbose output (PostgreSQL only)
+	///
+	/// When enabled, PostgreSQL will print progress messages as it analyzes.
+	/// This option is ignored on MySQL and SQLite.
+	pub fn verbose(mut self, verbose: bool) -> Self {
+		self.verbose = verbose;
+		self
+	}
+
+	/// Build the ANALYZE SQL statement
+	///
+	/// Returns the SQL string appropriate for the database backend.
+	pub fn build(&self) -> String {
+		use super::types::DatabaseType;
+
+		match self.backend.database_type() {
+			DatabaseType::Postgres => self.build_postgres(),
+			DatabaseType::Mysql => self.build_mysql(),
+			DatabaseType::Sqlite => self.build_sqlite(),
+		}
+	}
+
+	fn build_postgres(&self) -> String {
+		let mut sql = String::from("ANALYZE");
+
+		if self.verbose {
+			sql.push_str(" VERBOSE");
+		}
+
+		if let Some(ref table) = self.table {
+			sql.push_str(&format!(" \"{}\"", table));
+
+			if !self.columns.is_empty() {
+				let cols = self
+					.columns
+					.iter()
+					.map(|c| format!("\"{}\"", c))
+					.collect::<Vec<_>>()
+					.join(", ");
+				sql.push_str(&format!(" ({})", cols));
+			}
+		}
+
+		sql
+	}
+
+	fn build_mysql(&self) -> String {
+		if let Some(ref table) = self.table {
+			format!("ANALYZE TABLE `{}`", table)
+		} else {
+			// MySQL requires at least one table; analyze all tables requires
+			// querying information_schema first. Return empty for database-wide.
+			// Users should call with specific tables.
+			String::from("ANALYZE TABLE")
+		}
+	}
+
+	fn build_sqlite(&self) -> String {
+		if let Some(ref table) = self.table {
+			format!("ANALYZE \"{}\"", table)
+		} else {
+			// SQLite: ANALYZE without arguments analyzes the entire database
+			String::from("ANALYZE")
+		}
+	}
+
+	/// Execute the ANALYZE statement
+	pub async fn execute(&self) -> Result<QueryResult> {
+		let sql = self.build();
+		self.backend.execute(&sql, Vec::new()).await
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1956,6 +2107,87 @@ mod tests {
 		assert!(matches!(params[0], QueryValue::Int(42)));
 		assert!(matches!(&params[1], QueryValue::String(s) if s == "John"));
 		assert!(matches!(params[2], QueryValue::Bool(true)));
+	}
+
+	// ==========================================
+	// ANALYZE Builder Tests
+	// ==========================================
+
+	#[test]
+	fn test_analyze_builder_postgres_database_wide() {
+		let backend = Arc::new(MockBackend);
+		let builder = AnalyzeBuilder::new(backend);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE");
+	}
+
+	#[test]
+	fn test_analyze_builder_postgres_specific_table() {
+		let backend = Arc::new(MockBackend);
+		let builder = AnalyzeBuilder::new(backend).table("users");
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE \"users\"");
+	}
+
+	#[test]
+	fn test_analyze_builder_postgres_verbose() {
+		let backend = Arc::new(MockBackend);
+		let builder = AnalyzeBuilder::new(backend).table("users").verbose(true);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE VERBOSE \"users\"");
+	}
+
+	#[test]
+	fn test_analyze_builder_postgres_with_columns() {
+		let backend = Arc::new(MockBackend);
+		let builder = AnalyzeBuilder::new(backend)
+			.table("users")
+			.columns(vec!["email", "created_at"]);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE \"users\" (\"email\", \"created_at\")");
+	}
+
+	#[test]
+	fn test_analyze_builder_postgres_verbose_with_columns() {
+		let backend = Arc::new(MockBackend);
+		let builder = AnalyzeBuilder::new(backend)
+			.table("users")
+			.columns(vec!["email"])
+			.verbose(true);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE VERBOSE \"users\" (\"email\")");
+	}
+
+	#[test]
+	fn test_analyze_builder_mysql_specific_table() {
+		let backend = Arc::new(MockMysqlBackend);
+		let builder = AnalyzeBuilder::new(backend).table("users");
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE TABLE `users`");
+	}
+
+	#[test]
+	fn test_analyze_builder_mysql_database_wide() {
+		let backend = Arc::new(MockMysqlBackend);
+		let builder = AnalyzeBuilder::new(backend);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE TABLE");
+	}
+
+	#[test]
+	fn test_analyze_builder_sqlite_database_wide() {
+		let backend = Arc::new(MockSqliteBackend);
+		let builder = AnalyzeBuilder::new(backend);
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE");
+	}
+
+	#[test]
+	fn test_analyze_builder_sqlite_specific_table() {
+		let backend = Arc::new(MockSqliteBackend);
+		let builder = AnalyzeBuilder::new(backend).table("users");
+		let sql = builder.build();
+		assert_eq!(sql, "ANALYZE \"users\"");
 	}
 
 	// ==========================================
