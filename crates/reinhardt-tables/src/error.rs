@@ -13,6 +13,10 @@ pub enum TableError {
 	#[error("Invalid sort order: {0}")]
 	InvalidSortOrder(String),
 
+	/// Column is not filterable
+	#[error("Column '{0}' is not filterable")]
+	ColumnNotFilterable(String),
+
 	/// Invalid page number specified
 	#[error("Invalid page number: {0}")]
 	InvalidPageNumber(usize),

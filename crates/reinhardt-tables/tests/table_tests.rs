@@ -327,7 +327,7 @@ fn test_table_filter_non_filterable_column(sample_users: Vec<TestUser>) {
 	use reinhardt_tables::TableError;
 	assert!(matches!(
 		result.unwrap_err(),
-		TableError::InvalidSortOrder(_)
+		TableError::ColumnNotFilterable(_)
 	));
 }
 

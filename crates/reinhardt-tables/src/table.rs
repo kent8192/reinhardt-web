@@ -197,10 +197,9 @@ impl<R> Table for SimpleTable<R> {
 				.ok_or_else(|| crate::error::TableError::ColumnNotFound(field.to_string()))?;
 
 			if !column.filterable() {
-				return Err(crate::error::TableError::InvalidSortOrder(format!(
-					"Column '{}' is not filterable",
-					field
-				)));
+				return Err(crate::error::TableError::ColumnNotFilterable(
+					field.to_string(),
+				));
 			}
 		}
 
