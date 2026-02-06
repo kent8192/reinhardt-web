@@ -44,10 +44,12 @@ reinhardt-rest = { workspace = true, features = ["browsable-api", "filters", "me
 reinhardt-throttling = { workspace = true }
 reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
-reinhardt-utils = { workspace = true, features = ["cache", "logging", "static", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
+reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-pages = { workspace = true }
 reinhardt-commands = { workspace = true, features = ["migrations"] }
+reinhardt-payment = { workspace = true }
+reinhardt-payment-mocks = { workspace = true }
 
 # Web framework (using reinhardt-apps)
 tokio = { version = "1.0", features = ["full"] }
@@ -110,6 +112,8 @@ totp-lite = "2.0"
 rand = "0.8"
 subtle = "2.5"
 hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
 
 # Testing utilities
 tempfile = "3.14"
