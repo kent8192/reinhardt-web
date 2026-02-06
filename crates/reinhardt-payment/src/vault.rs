@@ -2,6 +2,9 @@
 
 use async_trait::async_trait;
 
+// Re-export VaultError from types module (canonical definition)
+pub use crate::types::error::VaultError;
+
 /// Card data for tokenization.
 ///
 /// **Security Note**: This type does not implement `Debug` or `Display`
@@ -50,30 +53,6 @@ pub struct PaymentResult {
 	pub status: String,
 	/// Payment intent ID
 	pub payment_intent_id: String,
-}
-
-/// Vault operation errors.
-#[derive(Debug, thiserror::Error)]
-pub enum VaultError {
-	/// Invalid card data
-	#[error("Invalid card data: {0}")]
-	InvalidCardData(String),
-
-	/// Tokenization failed
-	#[error("Tokenization failed: {0}")]
-	TokenizationFailed(String),
-
-	/// Token not found
-	#[error("Token not found: {0}")]
-	TokenNotFound(String),
-
-	/// Network error
-	#[error("Network error: {0}")]
-	NetworkError(#[from] reqwest::Error),
-
-	/// API error
-	#[error("API error: {0}")]
-	ApiError(String),
 }
 
 /// Token vault abstraction for secure card data storage.
