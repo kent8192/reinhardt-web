@@ -59,13 +59,18 @@ jobs:
         with:
           tool: cargo-nextest
 
+      - name: Install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
+
       - name: Check Format
         working-directory: examples/local/${{ matrix.example }}
-        run: cargo fmt --check
+        run: cargo make fmt-check
 
       - name: Clippy
         working-directory: examples/local/${{ matrix.example }}
-        run: cargo clippy --all-features -- -D warnings
+        run: cargo make clippy-check
 
       - name: Build
         working-directory: examples/local/${{ matrix.example }}
