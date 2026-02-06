@@ -41,16 +41,39 @@ full = [
 ]
 
 [dev-dependencies]
+# Test framework
 rstest = { workspace = true }
 pretty_assertions = "1.4"
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+proptest = "1.4"
 
-# TestContainers integration
+# Reinhardt dependencies
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
-sqlx = { workspace = true }
-testcontainers = { workspace = true }
+reinhardt-db = { workspace = true, features = ["orm"] }
+reinhardt-macros = { workspace = true }
+reinhardt-core = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 async-trait = { workspace = true }
+
+# Database testing
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "chrono", "uuid", "json"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true, features = ["postgres"] }
+
+# SQL building
+sea-query = { workspace = true }
+
+# Additional dependencies
+rust_decimal = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+chrono = { workspace = true }
 uuid = { workspace = true }
 
-# Property-based testing
-proptest = "1.4"
+# Macro dependencies
+ctor = "0.2"
+
+# Integration tests
+[[test]]
+name = "dml"
+path = "tests/dml.rs"
