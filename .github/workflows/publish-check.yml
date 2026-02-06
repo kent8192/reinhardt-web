@@ -12,6 +12,8 @@ jobs:
   publish-check:
     name: Publish Dry-Run Check
     runs-on: ubuntu-latest
+    # Skip for release-plz branches - new versions not yet on crates.io
+    if: ${{ !startsWith(github.head_ref || github.ref_name, 'release-plz-') }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
