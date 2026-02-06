@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.4...reinhardt-web@v0.1.0-alpha.5) - 2026-02-06
+
+### Fixed
+
+- *(ci)* improve publish-check filter for non-publishable crates
+- remove reinhardt-urls from doc example to avoid circular dependency
+- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
+- remove unused dev-dependencies from reinhardt-rest
+- remove reinhardt-di self-reference dev-dependency
+
+### Other
+
+- skip publish-check for release-plz branches
+- add secrets inherit to reusable workflows
+- install protoc for reinhardt-grpc build
+- add publish dry-run check to detect circular dev-dependencies
+
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.3...reinhardt-web@v0.1.0-alpha.4) - 2026-02-03
 
 ### Other
