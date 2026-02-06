@@ -1,8 +1,9 @@
-use reinhardt_db_macros::{document, field};
-use bson::oid::ObjectId;
+use reinhardt_db_macros::document;
 
 #[document(backend = "mongodb")]
 struct User {
     #[field(primary_key)]
-    id: ObjectId,
+    id: String,
 }
+
+fn main() {}

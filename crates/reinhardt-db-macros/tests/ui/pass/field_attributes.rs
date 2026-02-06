@@ -1,10 +1,12 @@
-use reinhardt_db_macros::{document, field};
+use reinhardt_db_macros::document;
 use bson::oid::ObjectId;
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize)]
 #[document(collection = "users", backend = "mongodb")]
 struct User {
     #[field(primary_key)]
-    id: ObjectId,
+    id: Option<ObjectId>,
 
     #[field(required, unique)]
     email: String,
@@ -18,3 +20,5 @@ struct User {
     #[field(min = 0, max = 120)]
     score: i32,
 }
+
+fn main() {}

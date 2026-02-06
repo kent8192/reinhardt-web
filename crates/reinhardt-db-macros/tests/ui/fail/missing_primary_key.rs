@@ -4,3 +4,5 @@ use reinhardt_db_macros::document;
 struct User {
     name: String,
 }
+
+fn main() {}
