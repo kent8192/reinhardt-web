@@ -1,10 +1,9 @@
-//! Unsupported backend should fail
-
 use reinhardt_db_macros::document;
 
-#[document(collection = "users", backend = "redis")]
+#[document(collection = "users", backend = "postgres")]
 struct User {
-	id: String,
+    #[field(primary_key)]
+    id: String,
 }
 
 fn main() {}

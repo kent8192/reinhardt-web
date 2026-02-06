@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, parse_macro_input};
 
 pub(crate) mod attr_parser;
 
@@ -14,7 +14,7 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 	let attrs = parse_macro_input!(attr as DocumentAttrs);
 
 	// Parse the struct
-	let input = parse_macro_input!(item as DeriveInput);
+	let mut input = parse_macro_input!(item as DeriveInput);
 
 	// Extract struct information
 	let struct_name = &input.ident;
@@ -70,7 +70,11 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 	let (id_type, id_field_name) = if let Some(field) = primary_key_field {
 		let ty = &field.ty;
 		let name = field.ident.as_ref().unwrap();
-		(quote! { #ty }, quote! { #name })
+
+		// Extract inner type from Option<T> -> T
+		let inner_type = extract_option_inner_type(ty).unwrap_or_else(|| ty.clone());
+
+		(quote! { #inner_type }, quote! { #name })
 	} else {
 		return syn::Error::new_spanned(
 			&input,
@@ -79,6 +83,16 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 		.to_compile_error()
 		.into();
 	};
+
+	// Strip #[field(...)] attributes from fields before output
+	// This is necessary because #[field] is not a real attribute macro that Rust can process
+	if let Data::Struct(ref mut data) = input.data
+		&& let Fields::Named(ref mut fields) = data.fields
+	{
+		for field in fields.named.iter_mut() {
+			field.attrs.retain(|attr| !attr.path().is_ident("field"));
+		}
+	}
 
 	// Generate Document trait implementation
 	let expanded = quote! {
@@ -102,4 +116,29 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 	};
 
 	TokenStream::from(expanded)
+}
+
+/// Extracts the inner type from `Option<T>`, returning `Some(T)` if successful.
+/// Returns `None` if the type is not an `Option`.
+fn extract_option_inner_type(ty: &Type) -> Option<Type> {
+	let Type::Path(type_path) = ty else {
+		return None;
+	};
+
+	let last_segment = type_path.path.segments.last()?;
+
+	// Check if this is Option (or std::option::Option, core::option::Option)
+	if last_segment.ident != "Option" {
+		return None;
+	}
+
+	let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
+		return None;
+	};
+
+	if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+		return Some(inner_ty.clone());
+	}
+
+	None
 }

@@ -1,47 +1,74 @@
-//! Procedural macros for reinhardt-db NoSQL ODM
+//! # Reinhardt DB Macros
 //!
-//! This crate provides attribute macros for defining MongoDB documents:
-//! - `#[document(...)]`: Defines a struct as a MongoDB document
-//! - `#[field(...)]`: Adds metadata to document fields
+//! Procedural macros for the Reinhardt database layer.
 //!
-//! ## Example
+//! This crate provides attribute macros for:
+//! - ORM models: `#[model(...)]`
+//! - NoSQL documents: `#[document(...)]`
 //!
-//! ```ignore
-//! use reinhardt_db_macros::{document, field};
+//! ## Feature Flags
+//!
+//! - `orm` - Enable ORM model macros (SQL)
+//! - `nosql` - Enable NoSQL document macros (MongoDB, etc.)
+//!
+//! ## NoSQL ODM Example
+//!
+//! ```rust,ignore
+//! use reinhardt_db_macros::document;
+//! use bson::oid::ObjectId;
 //!
 //! #[document(collection = "users", backend = "mongodb")]
 //! struct User {
 //!     #[field(primary_key)]
 //!     id: ObjectId,
-//!
 //!     #[field(required, unique)]
 //!     email: String,
-//!
 //!     name: String,
 //! }
 //! ```
+//!
+//! Note: The `#[field(...)]` attribute is parsed by the `#[document]` macro
+//! and does not need to be imported separately.
 
 use proc_macro::TokenStream;
 
 mod document;
 mod field;
 
-/// Defines a struct as a MongoDB document.
+/// Document macro for NoSQL ODM
+///
+/// Generates the `Document` trait implementation for structs representing
+/// NoSQL database documents (e.g., MongoDB collections).
 ///
 /// ## Attributes
 ///
-/// - `collection` (required): The MongoDB collection name
-/// - `backend` (required): Must be `"mongodb"`
-/// - `database` (optional): The database name
+/// - `collection` - Collection/table name (required)
+/// - `backend` - Database backend: "mongodb" (required)
+/// - `database` - Database name (optional, defaults to "default")
+///
+/// ## Field Attributes
+///
+/// Fields can be annotated with `#[field(...)]` to provide metadata:
+/// - `primary_key` - Mark as primary key (required for one field)
+/// - `required` - Field is required (non-null)
+/// - `unique` - Field must be unique
+/// - `index` - Create index on this field
+/// - `default` - Default value expression
+/// - `rename` - Rename field in database
+/// - `min` / `max` - Numeric range constraints
 ///
 /// ## Example
 ///
-/// ```ignore
+/// ```rust,ignore
+/// use reinhardt_db_macros::document;
+/// use bson::oid::ObjectId;
+///
 /// #[document(collection = "users", backend = "mongodb")]
 /// struct User {
 ///     #[field(primary_key)]
 ///     id: ObjectId,
-///     name: String,
+///     #[field(required, unique)]
+///     email: String,
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -49,28 +76,24 @@ pub fn document(attr: TokenStream, item: TokenStream) -> TokenStream {
 	document::document_impl(attr, item)
 }
 
-/// Adds metadata to document fields.
+/// Model derive macro for ORM
 ///
-/// ## Supported Attributes
-///
-/// - `primary_key`: Marks the field as the primary key
-/// - `index`: Creates an index on the field
-/// - `unique`: Creates a unique index on the field
-/// - `required`: Makes the field required
-/// - `default`: Specifies a default value
-/// - `rename`: Renames the field in BSON
-/// - `validate`: Specifies a validation function
-/// - `min`: Minimum value (for numbers)
-/// - `max`: Maximum value (for numbers)
-/// - `references`: Marks the field as a foreign key reference
+/// Automatically derives the `Model` trait for SQL ORM models.
 ///
 /// ## Example
 ///
-/// ```ignore
-/// #[field(required, unique, validate = "email")]
-/// email: String,
+/// ```rust,ignore
+/// use reinhardt_db_macros::Model;
+///
+/// #[derive(Model)]
+/// struct User {
+///     id: i32,
+///     email: String,
+/// }
 /// ```
-#[proc_macro_attribute]
-pub fn field(attr: TokenStream, item: TokenStream) -> TokenStream {
-	field::field_impl(attr, item)
+#[proc_macro_derive(Model)]
+pub fn derive_model(_input: TokenStream) -> TokenStream {
+	// TODO: Implement Model derive macro
+	// For now, return empty implementation
+	TokenStream::new()
 }

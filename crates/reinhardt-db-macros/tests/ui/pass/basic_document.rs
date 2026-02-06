@@ -1,6 +1,14 @@
-//! Basic document macro usage
+use reinhardt_db_macros::document;
+use bson::oid::ObjectId;
+use serde::{Serialize, Deserialize};
 
-fn main() {
-	// This test verifies that the document macro compiles successfully.
-	// The actual runtime functionality will be tested in integration tests.
+#[derive(Serialize, Deserialize)]
+#[document(collection = "users", backend = "mongodb")]
+struct User {
+    #[field(primary_key)]
+    id: Option<ObjectId>,
+    name: String,
+    email: String,
 }
+
+fn main() {}

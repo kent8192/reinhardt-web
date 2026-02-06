@@ -27,7 +27,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
-## [0.1.0] - 2025-11-16
-
-### Added
-- Initial release with procedural macros for GraphQL schema definition and code generation

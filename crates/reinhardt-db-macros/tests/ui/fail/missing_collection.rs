@@ -1,10 +1,9 @@
-//! Document without collection attribute should fail
-
 use reinhardt_db_macros::document;
 
 #[document(backend = "mongodb")]
 struct User {
-	id: String,
+    #[field(primary_key)]
+    id: String,
 }
 
 fn main() {}
