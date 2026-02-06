@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute {
 /// Verifies that updating a column to its current value works correctly.
 #[rstest]
 #[tokio::test]
-async fn test_update_to_same_value(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_to_same_value(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// First get current value
@@ -84,7 +83,7 @@ async fn test_update_to_same_value(#[future] users_with_data: (Arc<PgPool>, Vec<
 /// Verifies that updating a column to NULL works correctly.
 #[rstest]
 #[tokio::test]
-async fn test_update_to_null(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_to_null(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::update()
@@ -114,7 +113,7 @@ async fn test_update_to_null(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 /// Verifies that updating from empty string to a value works correctly.
 #[rstest]
 #[tokio::test]
-async fn test_update_empty_to_value(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_empty_to_value(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// First set to empty string
@@ -155,7 +154,7 @@ async fn test_update_empty_to_value(#[future] users_with_data: (Arc<PgPool>, Vec
 /// Verifies that updating from a value to empty string works correctly.
 #[rstest]
 #[tokio::test]
-async fn test_update_value_to_empty(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_value_to_empty(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::update()

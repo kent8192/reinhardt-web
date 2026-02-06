@@ -4,11 +4,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute_query {
@@ -50,7 +48,7 @@ macro_rules! bind_and_execute_query {
 #[rstest]
 #[tokio::test]
 #[ignore = "CTE (WITH clause) support not yet implemented (Issue #68)"]
-async fn test_select_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_cte(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add WITH clause when implemented
@@ -72,7 +70,7 @@ async fn test_select_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 #[rstest]
 #[tokio::test]
 #[ignore = "UNION support not yet implemented (Issue #69)"]
-async fn test_select_with_union(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_union(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add UNION when implemented
@@ -94,7 +92,7 @@ async fn test_select_with_union(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 #[rstest]
 #[tokio::test]
 #[ignore = "DISTINCT ON not yet implemented (Issue #70)"]
-async fn test_select_with_distinct_on(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_distinct_on(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add DISTINCT ON when implemented
@@ -116,7 +114,7 @@ async fn test_select_with_distinct_on(#[future] users_with_data: (Arc<PgPool>, V
 #[rstest]
 #[tokio::test]
 #[ignore = "Window functions not yet implemented (Issue #71)"]
-async fn test_select_with_window_function(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_window_function(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add window function support when implemented

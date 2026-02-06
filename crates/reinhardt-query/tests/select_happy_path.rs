@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute_query {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute_query {
 /// Verifies that Query::select() can select all columns correctly.
 #[rstest]
 #[tokio::test]
-async fn test_select_all_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_all_columns(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select().from("users").to_owned();
@@ -67,7 +66,7 @@ async fn test_select_all_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i3
 /// Verifies that Query::select() can select specific columns correctly.
 #[rstest]
 #[tokio::test]
-async fn test_select_specific_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_specific_columns(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
@@ -88,7 +87,7 @@ async fn test_select_specific_columns(#[future] users_with_data: (Arc<PgPool>, V
 /// Verifies that Query::select() can filter rows using WHERE clause.
 #[rstest]
 #[tokio::test]
-async fn test_select_with_where(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_where(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
@@ -108,7 +107,7 @@ async fn test_select_with_where(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 /// Verifies that Query::select() can sort results using ORDER BY.
 #[rstest]
 #[tokio::test]
-async fn test_select_with_order_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_order_by(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
@@ -132,7 +131,7 @@ async fn test_select_with_order_by(#[future] users_with_data: (Arc<PgPool>, Vec<
 /// Verifies that Query::select() can limit results using LIMIT.
 #[rstest]
 #[tokio::test]
-async fn test_select_with_limit(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_limit(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select().from("users").limit(2).to_owned();
@@ -149,7 +148,7 @@ async fn test_select_with_limit(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 /// Verifies that Query::select() can skip rows using OFFSET.
 #[rstest]
 #[tokio::test]
-async fn test_select_with_offset(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_offset(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select().from("users").limit(2).offset(1).to_owned();

@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_table;
+use fixtures::{TestPool, users_table};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute {
 /// Verifies that empty strings are correctly inserted (not treated as NULL).
 #[rstest]
 #[tokio::test]
-async fn test_insert_empty_string(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_empty_string(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -78,7 +77,7 @@ async fn test_insert_empty_string(#[future] users_table: Arc<PgPool>) {
 /// Verifies that strings at the maximum length limit are correctly handled.
 #[rstest]
 #[tokio::test]
-async fn test_insert_max_length_string(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_max_length_string(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	// Create a string with exactly 255 characters (max length for name field)
@@ -117,7 +116,7 @@ async fn test_insert_max_length_string(#[future] users_table: Arc<PgPool>) {
 /// Verifies that zero values (0, 0.0) are correctly inserted (not treated as NULL).
 #[rstest]
 #[tokio::test]
-async fn test_insert_zero_values(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_zero_values(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -151,7 +150,7 @@ async fn test_insert_zero_values(#[future] users_table: Arc<PgPool>) {
 /// Verifies that negative values are correctly inserted.
 #[rstest]
 #[tokio::test]
-async fn test_insert_negative_values(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_negative_values(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	// Note: Age doesn't make sense as negative, but we're testing the capability
@@ -186,7 +185,7 @@ async fn test_insert_negative_values(#[future] users_table: Arc<PgPool>) {
 /// Verifies that Unicode strings (emoji, multi-byte characters) are correctly handled.
 #[rstest]
 #[tokio::test]
-async fn test_insert_unicode_chars(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_unicode_chars(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	// Test with emoji and multi-byte characters

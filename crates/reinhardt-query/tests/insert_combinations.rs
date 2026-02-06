@@ -4,11 +4,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -50,7 +48,7 @@ macro_rules! bind_and_execute {
 #[rstest]
 #[tokio::test]
 #[ignore = "ON CONFLICT DO UPDATE not yet implemented (Issue #46)"]
-async fn test_insert_on_conflict_do_update(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_insert_on_conflict_do_update(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Try to upsert Alice with new age
@@ -92,7 +90,7 @@ async fn test_insert_on_conflict_do_update(#[future] users_with_data: (Arc<PgPoo
 #[rstest]
 #[tokio::test]
 #[ignore = "CTE (WITH clause) support not yet implemented (Issue #58)"]
-async fn test_insert_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_insert_with_cte(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add WITH clause when implemented
@@ -131,7 +129,7 @@ async fn test_insert_with_cte(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 #[rstest]
 #[tokio::test]
 #[ignore = "INSERT from subquery not yet implemented (Issue #59)"]
-async fn test_insert_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_insert_with_subquery(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement INSERT from subquery

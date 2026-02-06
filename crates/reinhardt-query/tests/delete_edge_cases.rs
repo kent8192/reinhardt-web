@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute {
 /// Verifies that deleting with a non-matching condition affects 0 rows.
 #[rstest]
 #[tokio::test]
-async fn test_delete_zero_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_delete_zero_rows(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::delete()
@@ -73,7 +72,7 @@ async fn test_delete_zero_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 /// Note: This test creates an orders table with FK cascade to test cascade deletion.
 #[rstest]
 #[tokio::test]
-async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_delete_with_cascade(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Create orders table with FK cascade
@@ -145,7 +144,7 @@ async fn test_delete_with_cascade(#[future] users_with_data: (Arc<PgPool>, Vec<i
 /// Verifies that soft delete pattern (setting active=false instead of deleting) works correctly.
 #[rstest]
 #[tokio::test]
-async fn test_delete_soft_delete_pattern(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_delete_soft_delete_pattern(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Soft delete: set active=false instead of actual deletion

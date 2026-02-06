@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute_query {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute_query {
 /// Verifies that SELECT with non-matching condition returns empty result set.
 #[rstest]
 #[tokio::test]
-async fn test_select_empty_result(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_empty_result(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select()
@@ -64,7 +63,7 @@ async fn test_select_empty_result(#[future] users_with_data: (Arc<PgPool>, Vec<i
 /// Verifies that SELECT correctly handles NULL values in results.
 #[rstest]
 #[tokio::test]
-async fn test_select_with_null_values(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_with_null_values(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// First, update one user to have NULL age
@@ -107,7 +106,7 @@ async fn test_select_with_null_values(#[future] users_with_data: (Arc<PgPool>, V
 /// Verifies that SELECT with LIMIT 0 returns empty result set.
 #[rstest]
 #[tokio::test]
-async fn test_select_limit_zero(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_limit_zero(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select().from("users").limit(0).to_owned();
@@ -124,7 +123,7 @@ async fn test_select_limit_zero(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 /// Verifies that SELECT with OFFSET larger than result set returns empty result set.
 #[rstest]
 #[tokio::test]
-async fn test_select_offset_beyond_rows(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_offset_beyond_rows(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::select().from("users").offset(1000).to_owned();

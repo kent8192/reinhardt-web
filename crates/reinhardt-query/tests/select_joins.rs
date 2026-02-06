@@ -2,11 +2,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute_query {
@@ -48,7 +46,7 @@ macro_rules! bind_and_execute_query {
 #[rstest]
 #[tokio::test]
 #[ignore = "INNER JOIN not yet implemented (Issue #54)"]
-async fn test_select_inner_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_inner_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Create orders table
@@ -103,7 +101,7 @@ async fn test_select_inner_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 #[rstest]
 #[tokio::test]
 #[ignore = "LEFT JOIN not yet implemented (Issue #55)"]
-async fn test_select_left_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_left_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement LEFT JOIN when supported
@@ -125,7 +123,7 @@ async fn test_select_left_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 #[rstest]
 #[tokio::test]
 #[ignore = "RIGHT JOIN not yet implemented (Issue #56)"]
-async fn test_select_right_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_right_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement RIGHT JOIN when supported
@@ -147,7 +145,7 @@ async fn test_select_right_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 #[rstest]
 #[tokio::test]
 #[ignore = "FULL OUTER JOIN not yet implemented (Issue #57)"]
-async fn test_select_full_outer_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_full_outer_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement FULL OUTER JOIN when supported
@@ -169,7 +167,7 @@ async fn test_select_full_outer_join(#[future] users_with_data: (Arc<PgPool>, Ve
 #[rstest]
 #[tokio::test]
 #[ignore = "CROSS JOIN not yet implemented (Issue #58)"]
-async fn test_select_cross_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_cross_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement CROSS JOIN when supported
@@ -191,7 +189,7 @@ async fn test_select_cross_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32
 #[rstest]
 #[tokio::test]
 #[ignore = "SELF JOIN not yet implemented (Issue #59)"]
-async fn test_select_self_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_self_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement SELF JOIN when supported
@@ -213,7 +211,7 @@ async fn test_select_self_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 #[rstest]
 #[tokio::test]
 #[ignore = "Multiple JOINs not yet implemented (Issue #60)"]
-async fn test_select_multiple_joins(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_multiple_joins(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Implement multiple JOINs when supported

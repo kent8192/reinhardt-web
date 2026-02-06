@@ -4,11 +4,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -50,7 +49,7 @@ macro_rules! bind_and_execute {
 #[rstest]
 #[tokio::test]
 #[ignore = "UPDATE with JOIN not yet implemented (Issue #49)"]
-async fn test_update_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_with_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add JOIN support when implemented
@@ -87,7 +86,7 @@ async fn test_update_with_join(#[future] users_with_data: (Arc<PgPool>, Vec<i32>
 #[rstest]
 #[tokio::test]
 #[ignore = "CASE expression support not yet implemented (Issue #50)"]
-async fn test_update_with_case_expression(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_with_case_expression(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add CASE expression when implemented
@@ -122,7 +121,7 @@ async fn test_update_with_case_expression(#[future] users_with_data: (Arc<PgPool
 #[rstest]
 #[tokio::test]
 #[ignore = "UPDATE with subquery not yet implemented (Issue #51)"]
-async fn test_update_with_subquery(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_update_with_subquery(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// TODO: Add subquery support when implemented

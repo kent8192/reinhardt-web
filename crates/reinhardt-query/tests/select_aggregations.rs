@@ -2,11 +2,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Test COUNT aggregation
 ///
@@ -17,7 +15,7 @@ use std::sync::Arc;
 #[rstest]
 #[tokio::test]
 #[ignore = "COUNT aggregation not yet implemented (Issue #61)"]
-async fn test_select_count(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_count(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement COUNT when supported
@@ -40,7 +38,7 @@ async fn test_select_count(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[rstest]
 #[tokio::test]
 #[ignore = "SUM aggregation not yet implemented (Issue #62)"]
-async fn test_select_sum(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_sum(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement SUM when supported
@@ -61,7 +59,7 @@ async fn test_select_sum(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[rstest]
 #[tokio::test]
 #[ignore = "AVG aggregation not yet implemented (Issue #63)"]
-async fn test_select_avg(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_avg(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement AVG when supported
@@ -82,7 +80,7 @@ async fn test_select_avg(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
 #[rstest]
 #[tokio::test]
 #[ignore = "MIN/MAX aggregation not yet implemented (Issue #64)"]
-async fn test_select_min_max(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_min_max(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement MIN/MAX when supported
@@ -103,7 +101,7 @@ async fn test_select_min_max(#[future] users_with_data: (Arc<PgPool>, Vec<i32>))
 #[rstest]
 #[tokio::test]
 #[ignore = "GROUP BY not yet implemented (Issue #65)"]
-async fn test_select_group_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_group_by(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement GROUP BY when supported
@@ -124,7 +122,7 @@ async fn test_select_group_by(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)
 #[rstest]
 #[tokio::test]
 #[ignore = "HAVING not yet implemented (Issue #66)"]
-async fn test_select_having(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_having(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement HAVING when supported
@@ -145,7 +143,7 @@ async fn test_select_having(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) 
 #[rstest]
 #[tokio::test]
 #[ignore = "Multiple column GROUP BY not yet implemented (Issue #67)"]
-async fn test_select_group_by_multiple_columns(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_group_by_multiple_columns(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (_pool, _ids) = users_with_data.await;
 
 	// TODO: Implement multiple column GROUP BY when supported

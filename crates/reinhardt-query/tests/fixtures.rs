@@ -78,18 +78,45 @@ use rstest::*;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
+/// Wrapper that holds both the PostgreSQL container and connection pool.
+///
+/// The `ContainerAsync` must outlive the pool; dropping it destroys the
+/// Docker container and makes every connection fail with `PoolTimedOut`.
+pub(crate) struct TestPool {
+	#[allow(dead_code)] // Container kept alive to prevent PoolTimedOut
+	_container: ContainerAsync<GenericImage>,
+	pool: Arc<PgPool>,
+}
+
+impl AsRef<PgPool> for TestPool {
+	fn as_ref(&self) -> &PgPool {
+		self.pool.as_ref()
+	}
+}
+
+impl std::ops::Deref for TestPool {
+	type Target = PgPool;
+
+	fn deref(&self) -> &PgPool {
+		self.pool.as_ref()
+	}
+}
+
 /// PostgreSQL database pool fixture
 #[fixture]
 pub async fn pg_pool(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
-) -> Arc<PgPool> {
-	let (_container, pool, _port, _url) = postgres_container.await;
-	pool
+) -> TestPool {
+	let (container, pool, _port, _url) = postgres_container.await;
+	TestPool {
+		_container: container,
+		pool,
+	}
 }
 
 /// Empty database pool fixture (alias for pg_pool)
 #[fixture]
-pub async fn empty_db(#[future] pg_pool: Arc<PgPool>) -> Arc<PgPool> {
+pub async fn empty_db(#[future] pg_pool: TestPool) -> TestPool {
 	pg_pool.await
 }
 
@@ -101,7 +128,7 @@ use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, PostgresQueryBuilder, T
 
 /// Users table fixture
 #[fixture]
-pub async fn users_table(#[future] pg_pool: Arc<PgPool>) -> Arc<PgPool> {
+pub async fn users_table(#[future] pg_pool: TestPool) -> TestPool {
 	let pool = pg_pool.await;
 
 	let create_table = Table::create()
@@ -136,7 +163,7 @@ pub async fn users_table(#[future] pg_pool: Arc<PgPool>) -> Arc<PgPool> {
 
 /// Products table fixture
 #[fixture]
-pub async fn products_table(#[future] pg_pool: Arc<PgPool>) -> Arc<PgPool> {
+pub async fn products_table(#[future] pg_pool: TestPool) -> TestPool {
 	let pool = pg_pool.await;
 
 	let create_table = Table::create()
@@ -172,7 +199,7 @@ pub async fn products_table(#[future] pg_pool: Arc<PgPool>) -> Arc<PgPool> {
 
 /// Orders table fixture (with foreign key to users)
 #[fixture]
-pub async fn orders_table(#[future] users_table: Arc<PgPool>) -> Arc<PgPool> {
+pub async fn orders_table(#[future] users_table: TestPool) -> TestPool {
 	let pool = users_table.await;
 
 	let create_table = Table::create()
@@ -209,7 +236,7 @@ pub async fn orders_table(#[future] users_table: Arc<PgPool>) -> Arc<PgPool> {
 
 /// Users table with sample data fixture
 #[fixture]
-pub async fn users_with_data(#[future] users_table: Arc<PgPool>) -> (Arc<PgPool>, Vec<i32>) {
+pub async fn users_with_data(#[future] users_table: TestPool) -> (TestPool, Vec<i32>) {
 	let pool = users_table.await;
 
 	// Insert sample users using SQL
@@ -254,7 +281,7 @@ pub async fn users_with_data(#[future] users_table: Arc<PgPool>) -> (Arc<PgPool>
 
 /// Products table with sample data fixture
 #[fixture]
-pub async fn products_with_data(#[future] products_table: Arc<PgPool>) -> (Arc<PgPool>, Vec<i32>) {
+pub async fn products_with_data(#[future] products_table: TestPool) -> (TestPool, Vec<i32>) {
 	let pool = products_table.await;
 
 	// Insert sample products using SQL

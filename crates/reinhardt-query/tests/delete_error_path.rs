@@ -2,11 +2,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +42,7 @@ macro_rules! bind_and_execute {
 /// Verifies that deleting a nonexistent row affects 0 rows.
 #[rstest]
 #[tokio::test]
-async fn test_delete_nonexistent_row(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_delete_nonexistent_row(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	let stmt = Query::delete()
@@ -73,7 +71,7 @@ async fn test_delete_nonexistent_row(#[future] users_with_data: (Arc<PgPool>, Ve
 /// Note: This test creates an orders table with FK to test constraint violation.
 #[rstest]
 #[tokio::test]
-async fn test_delete_fk_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_delete_fk_violation(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Create orders table with FK restrict (no cascade)

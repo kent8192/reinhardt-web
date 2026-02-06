@@ -2,11 +2,10 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_table;
+use fixtures::{TestPool, users_table};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use sqlx::Row;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +43,7 @@ macro_rules! bind_and_execute {
 /// Verifies that Query::insert() can insert a single row correctly.
 #[rstest]
 #[tokio::test]
-async fn test_insert_single_row(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_single_row(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -80,7 +79,7 @@ async fn test_insert_single_row(#[future] users_table: Arc<PgPool>) {
 /// Verifies that Query::insert() can insert multiple rows in a single statement.
 #[rstest]
 #[tokio::test]
-async fn test_insert_multiple_rows(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_multiple_rows(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -118,7 +117,7 @@ async fn test_insert_multiple_rows(#[future] users_table: Arc<PgPool>) {
 /// Verifies that Query::insert() can return inserted values using RETURNING.
 #[rstest]
 #[tokio::test]
-async fn test_insert_with_returning(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_with_returning(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -152,7 +151,7 @@ async fn test_insert_with_returning(#[future] users_table: Arc<PgPool>) {
 /// Verifies that columns with DEFAULT values are correctly handled.
 #[rstest]
 #[tokio::test]
-async fn test_insert_with_default_values(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_with_default_values(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -186,7 +185,7 @@ async fn test_insert_with_default_values(#[future] users_table: Arc<PgPool>) {
 /// Verifies that NULL values are correctly inserted.
 #[rstest]
 #[tokio::test]
-async fn test_insert_with_null_values(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_with_null_values(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -219,7 +218,7 @@ async fn test_insert_with_null_values(#[future] users_table: Arc<PgPool>) {
 /// Verifies that all supported column types work correctly.
 #[rstest]
 #[tokio::test]
-async fn test_insert_all_column_types(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_all_column_types(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let stmt = Query::insert()
@@ -255,7 +254,7 @@ async fn test_insert_all_column_types(#[future] users_table: Arc<PgPool>) {
 /// Verifies that Query::insert() can handle bulk insertions efficiently.
 #[rstest]
 #[tokio::test]
-async fn test_insert_bulk_100_rows(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_bulk_100_rows(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	let mut stmt = Query::insert()

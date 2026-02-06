@@ -2,18 +2,16 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::users_with_data;
+use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Test select invalid column
 ///
 /// Verifies that selecting a non-existent column results in a database error.
 #[rstest]
 #[tokio::test]
-async fn test_select_invalid_column(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_invalid_column(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Try to select a non-existent column
@@ -42,7 +40,7 @@ async fn test_select_invalid_column(#[future] users_with_data: (Arc<PgPool>, Vec
 /// Verifies that selecting from a non-existent table results in a database error.
 #[rstest]
 #[tokio::test]
-async fn test_select_invalid_table(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_select_invalid_table(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Try to select from a non-existent table

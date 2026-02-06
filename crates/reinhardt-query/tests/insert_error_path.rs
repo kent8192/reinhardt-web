@@ -2,11 +2,9 @@
 
 #[path = "fixtures.rs"]
 mod fixtures;
-use fixtures::{users_table, users_with_data};
+use fixtures::{TestPool, users_table, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
-use sqlx::PgPool;
-use std::sync::Arc;
 
 /// Macro to bind values and execute query
 macro_rules! bind_and_execute {
@@ -44,7 +42,7 @@ macro_rules! bind_and_execute {
 /// Verifies that inserting a duplicate unique key results in a database error.
 #[rstest]
 #[tokio::test]
-async fn test_insert_duplicate_key_violation(#[future] users_with_data: (Arc<PgPool>, Vec<i32>)) {
+async fn test_insert_duplicate_key_violation(#[future] users_with_data: (TestPool, Vec<i32>)) {
 	let (pool, _ids) = users_with_data.await;
 
 	// Try to insert with duplicate email
@@ -83,7 +81,7 @@ async fn test_insert_duplicate_key_violation(#[future] users_with_data: (Arc<PgP
 /// Verifies that inserting NULL into a NOT NULL column results in a database error.
 #[rstest]
 #[tokio::test]
-async fn test_insert_null_not_null_violation(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_null_not_null_violation(#[future] users_table: TestPool) {
 	let _pool = users_table.await;
 
 	// Try to insert without required name field
@@ -113,7 +111,7 @@ async fn test_insert_null_not_null_violation(#[future] users_table: Arc<PgPool>)
 /// Verifies that inserting with invalid foreign key results in a database error.
 #[rstest]
 #[tokio::test]
-async fn test_insert_fk_violation(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_fk_violation(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	// First create orders table (requires users table which we have)
@@ -189,7 +187,7 @@ async fn test_insert_fk_violation(#[future] users_table: Arc<PgPool>) {
 /// Verifies that CHECK constraints are enforced. Since our test tables don't have CHECK constraints, we verify SQL structure instead.
 #[rstest]
 #[tokio::test]
-async fn test_insert_check_constraint_violation(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_check_constraint_violation(#[future] users_table: TestPool) {
 	let pool = users_table.await;
 
 	// Insert with valid data
@@ -219,7 +217,7 @@ async fn test_insert_check_constraint_violation(#[future] users_table: Arc<PgPoo
 /// Verifies that attempting to bind incorrect types results in appropriate errors.
 #[rstest]
 #[tokio::test]
-async fn test_insert_type_mismatch(#[future] users_table: Arc<PgPool>) {
+async fn test_insert_type_mismatch(#[future] users_table: TestPool) {
 	let _pool = users_table.await;
 
 	// Build INSERT statement
