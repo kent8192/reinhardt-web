@@ -68,11 +68,11 @@ impl TestFileSetup {
 
 /// Common assertions for static file tests
 pub mod assertions {
-	use reinhardt_utils::r#static::handler::StaticError;
+	use reinhardt_utils::staticfiles::handler::StaticError;
 
 	/// Asserts that a file is served successfully
 	pub fn assert_file_served_successfully(
-		result: Result<reinhardt_utils::r#static::handler::StaticFile, StaticError>,
+		result: Result<reinhardt_utils::staticfiles::handler::StaticFile, StaticError>,
 		expected_content: &[u8],
 	) {
 		assert!(result.is_ok(), "File should be served successfully");
@@ -82,7 +82,7 @@ pub mod assertions {
 
 	/// Asserts that a file not found error occurs
 	pub fn assert_file_not_found_error(
-		result: Result<reinhardt_utils::r#static::handler::StaticFile, StaticError>,
+		result: Result<reinhardt_utils::staticfiles::handler::StaticFile, StaticError>,
 	) {
 		assert!(result.is_err(), "Should return error for non-existent file");
 		assert!(matches!(result.unwrap_err(), StaticError::NotFound(_)));
@@ -90,7 +90,7 @@ pub mod assertions {
 
 	/// Asserts that directory traversal attacks are blocked
 	pub fn assert_directory_traversal_blocked(
-		result: Result<reinhardt_utils::r#static::handler::StaticFile, StaticError>,
+		result: Result<reinhardt_utils::staticfiles::handler::StaticFile, StaticError>,
 	) {
 		assert!(result.is_err(), "Directory traversal should be blocked");
 	}
@@ -98,7 +98,7 @@ pub mod assertions {
 
 /// Common helpers for configuration tests
 pub mod config_helpers {
-	use reinhardt_utils::r#static::storage::StaticFilesConfig;
+	use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 	use std::path::{Path, PathBuf};
 
 	/// Creates a default configuration
@@ -136,8 +136,8 @@ pub mod config_helpers {
 /// Common helpers for integration tests
 pub mod integration_helpers {
 	use super::*;
-	use reinhardt_utils::r#static::handler::StaticFileHandler;
-	use reinhardt_utils::r#static::storage::{StaticFilesConfig, StaticFilesFinder};
+	use reinhardt_utils::staticfiles::handler::StaticFileHandler;
+	use reinhardt_utils::staticfiles::storage::{StaticFilesConfig, StaticFilesFinder};
 
 	/// Setup for integration tests
 	pub struct IntegrationTestSetup {
