@@ -6,6 +6,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Simple tagging system for Reinhardt framework - inspired by django-taggit"
+# Disable auto-detection of tests directory (tests/ contains a separate crate)
+autotests = false
 
 [dependencies]
 # Reinhardt ecosystem
