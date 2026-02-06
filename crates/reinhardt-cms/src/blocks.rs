@@ -66,8 +66,13 @@ impl StreamField {
 	}
 
 	/// Render all blocks to HTML
-	pub fn render(&self, _registry: &BlockLibrary) -> CmsResult<String> {
-		todo!("Implement StreamField rendering")
+	pub fn render(&self, registry: &BlockLibrary) -> CmsResult<String> {
+		let mut html = String::new();
+		for block in &self.blocks {
+			let block_instance = registry.create_block(&block.block_type, block.data.clone())?;
+			html.push_str(&block_instance.render()?);
+		}
+		Ok(html)
 	}
 }
 
@@ -79,6 +84,8 @@ impl Default for StreamField {
 
 /// Registry of available block types
 pub struct BlockLibrary {
+	// Block factory closures require nested generics for dynamic dispatch
+	#[allow(clippy::type_complexity)]
 	blocks: HashMap<BlockType, Box<dyn Fn(JsonValue) -> CmsResult<Box<dyn Block>>>>,
 }
 
