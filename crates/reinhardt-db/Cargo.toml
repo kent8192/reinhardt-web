@@ -81,7 +81,7 @@ prettyplease = "0.2"
 walkdir = "2.5"
 aquamarine = { workspace = true }
 mongodb = { version = "3.0", optional = true, features = ["bson-3"] }
-bson = { version = "3.0.0" }
+bson = { version = "3.0.0", optional = true }
 redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-async"] }
 cassandra-cpp = { version = "3.0", optional = true }
 aws-sdk-dynamodb = { version = "1.0", optional = true }
@@ -121,7 +121,7 @@ migrations = ["refinery"]
 hybrid = []
 associations = []
 contenttypes = []
-nosql = []
+nosql = ["dep:bson"]
 backends-settings = ["backends"]
 
 # DI integration - enables Injectable implementation for DatabaseConnection
@@ -163,7 +163,7 @@ database = []
 db-sqlite = []
 db-postgres = []
 db-mysql = []
-mongodb = ["dep:mongodb"]
+mongodb = ["dep:mongodb", "nosql"]
 redis = ["dep:redis"]
 cassandra = ["dep:cassandra-cpp"]
 dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
