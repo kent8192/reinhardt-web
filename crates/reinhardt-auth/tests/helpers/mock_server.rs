@@ -117,12 +117,12 @@ impl MockOAuth2Server {
 	}
 
 	/// Enable OIDC endpoints (discovery, JWKS)
-	pub fn with_oidc(mut self) -> Self {
+	pub fn with_oidc(self) -> Self {
 		self
 	}
 
 	/// Enable UserInfo endpoint
-	pub fn with_userinfo(mut self) -> Self {
+	pub fn with_userinfo(self) -> Self {
 		self
 	}
 
