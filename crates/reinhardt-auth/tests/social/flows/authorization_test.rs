@@ -134,7 +134,7 @@ async fn test_authorization_url_required_parameters() {
 				Ok(url) => {
 					assert!(url.contains("response_type=code"));
 					assert!(url.contains("state=test_state"));
-					assert!(url.contains("redirect_uri=http://localhost:8080/callback"));
+					assert!(url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback"));
 				}
 				Err(_) => {
 					assert!(true, "URL generation may fail in test environment");

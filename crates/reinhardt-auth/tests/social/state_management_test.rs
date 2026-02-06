@@ -141,10 +141,11 @@ async fn test_state_custom_ttl() {
 
 	// Assert
 	assert!(!retrieved.is_expired());
-	assert_eq!(
-		retrieved.expires_at - Utc::now(),
-		Duration::minutes(30),
-		"Custom TTL should be respected"
+	let remaining = (retrieved.expires_at - Utc::now()).num_seconds();
+	assert!(
+		remaining >= 29 * 60 && remaining <= 30 * 60,
+		"Custom TTL should be approximately 30 minutes, got: {} seconds",
+		remaining
 	);
 }
 
