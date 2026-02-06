@@ -84,7 +84,7 @@ pub fn test_card_data() -> CardData {
 	CardData {
 		number: TEST_CARD_VISA.to_string(),
 		exp_month: 12,
-		exp_year: 2025,
+		exp_year: valid_test_exp_year(),
 		cvc: "123".to_string(),
 	}
 }
@@ -94,7 +94,7 @@ pub fn invalid_card_data_short() -> CardData {
 	CardData {
 		number: "123".to_string(),
 		exp_month: 12,
-		exp_year: 2025,
+		exp_year: valid_test_exp_year(),
 		cvc: "123".to_string(),
 	}
 }
@@ -147,7 +147,7 @@ mod tests {
 		let card = test_card_data();
 		assert_eq!(card.number, "4242424242424242");
 		assert_eq!(card.exp_month, 12);
-		assert_eq!(card.exp_year, 2025);
+		assert_eq!(card.exp_year, valid_test_exp_year());
 		assert_eq!(card.cvc, "123");
 	}
 }

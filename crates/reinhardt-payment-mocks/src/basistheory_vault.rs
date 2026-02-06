@@ -195,6 +195,10 @@ impl TokenVault for MockBasisTheoryVault {
 mod tests {
 	use super::*;
 
+	fn valid_test_exp_year() -> u16 {
+		chrono::Utc::now().year() as u16 + 5
+	}
+
 	#[tokio::test]
 	async fn test_create_mock_vault() {
 		let vault = MockBasisTheoryVault::new("bt_test_mock_key");
@@ -207,7 +211,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -224,7 +228,7 @@ mod tests {
 		let card = CardData {
 			number: "123".to_string(), // Too short
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -252,7 +256,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -282,7 +286,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -301,7 +305,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -317,7 +321,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
@@ -334,7 +338,7 @@ mod tests {
 		let card = CardData {
 			number: "4242424242424242".to_string(),
 			exp_month: 12,
-			exp_year: 2025,
+			exp_year: valid_test_exp_year(),
 			cvc: "123".to_string(),
 		};
 
