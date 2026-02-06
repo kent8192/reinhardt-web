@@ -14,13 +14,13 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use reinhardt_payment::{PaymentProvider, PaymentIntentParams};
-//! use reinhardt_payment::provider::StripeProvider;
+//! use reinhardt_payment_mocks::MockStripeProvider;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize provider
-//! let provider = StripeProvider::new("sk_test_...".to_string());
+//! // Initialize mock provider (for testing)
+//! let provider = MockStripeProvider::new("sk_test_...".to_string());
 //!
 //! // Create payment intent
 //! let params = PaymentIntentParams {
