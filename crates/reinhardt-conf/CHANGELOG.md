@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.5...reinhardt-conf@v0.1.0-alpha.6) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-utils
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.4...reinhardt-conf@v0.1.0-alpha.5) - 2026-02-03
+
+### Other
+
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 ### Breaking Changes
 - N/A
 
@@ -28,13 +41,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - N/A
 
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.4] - 2026-01-30
+
+### Changed
+
+- Re-release of 0.1.0-alpha.3 content after version correction
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
+
+
+## [0.1.0-alpha.3] - 2026-01-29 [YANKED]
+
+**Note:** This version was yanked due to version skipping in the main crate (`reinhardt-web`). Use the latest available version instead.
+
+### Changed
+
+- Update imports for `reinhardt_utils::staticfiles` module rename (#114)
+
 ## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
 
 - Initial crates.io release
 
-## [0.1.0] - 2025-11-16
-
-### Added
-- Initial release with configuration management with environment-based settings and type-safe access

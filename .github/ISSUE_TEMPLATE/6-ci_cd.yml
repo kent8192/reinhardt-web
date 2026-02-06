@@ -1,0 +1,124 @@
+name: CI/CD Issue
+description: Report a CI/CD workflow issue
+title: "[CI]: <brief description>"
+labels: ["ci-cd"]
+body:
+	- type: markdown
+		attributes:
+			value: |
+				Thanks for reporting a CI/CD issue! Please provide as much detail as possible.
+
+	- type: dropdown
+		attributes:
+			label: Affected Workflow
+			description: Select the affected CI/CD workflow
+			options:
+				- check.yml
+				- fmt.yml
+				- clippy.yml
+				- unit-test.yml
+				- doc-test.yml
+				- cross-crate-integration-test.yml
+				- intra-crate-integration-test.yml
+				- examples-test.yml
+				- ui-test.yml
+				- publish-dry-run.yml
+				- publish-on-merge.yml
+				- Other (specify below)
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Issue Description
+			description: Clearly describe the CI/CD issue
+			placeholder: |
+				Example: The cross-crate integration test workflow fails consistently on
+				the main branch with an authentication error when starting the
+				TestContainers database.
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Steps to Reproduce
+			description: Steps to reproduce the CI/CD issue
+			placeholder: |
+				1. Push to main branch
+				2. GitHub Actions workflow cross-crate-integration-test.yml starts
+				3. Workflow fails at "Start TestContainers" step
+				4. Error: "Cannot connect to Docker daemon"
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Error Logs
+			description: Paste the relevant error logs
+			placeholder: |
+				Run: test error: Failed to start database container
+				Error: Cannot connect to Docker daemon at unix:///var/run/docker.sock
+				Is the docker daemon running?
+			render: shell
+		validations:
+			required: true
+
+	- type: dropdown
+		attributes:
+			label: Runner OS
+			description: Select the GitHub Actions runner operating system
+			options:
+				- ubuntu-latest
+				- macos-latest
+				- windows-latest
+				- Self-hosted
+			multiple: true
+		validations:
+			required: true
+
+	- type: input
+		attributes:
+			label: Workflow Run URL
+			description: Link to the failed workflow run
+			placeholder: https://github.com/kent8192/reinhardt-web/actions/runs/1234567890
+		validations:
+			required: false
+
+	- type: textarea
+		attributes:
+			label: Local Test Results
+			description: Do the tests pass locally? If yes, what's different?
+			placeholder: |
+				Tests pass locally with:
+				- Docker Desktop running
+				- macOS 14.0
+				- Rust 1.91.1
+
+				Difference in CI:
+				- CI runner: ubuntu-latest
+				- Possibly Docker daemon not running?
+		validations:
+			required: true
+
+	- type: checkboxes
+		attributes:
+			label: Impact Assessment
+			description: Help us assess the impact of this CI/CD issue
+			options:
+				- label: "Blocks all pull requests from merging"
+				- label: "Affects specific workflows only"
+				- label: "Intermittent failure (not consistent)"
+				- label: "Workaround available"
+		validations:
+			required: true
+
+	- type: textarea
+		attributes:
+			label: Additional Context
+			description: Any other context or relevant information
+			placeholder: |
+				- Issue started after merging commit abc123
+				- Affects both main and feature branches
+				- Related issue: #123
+		validations:
+			required: false

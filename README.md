@@ -9,9 +9,12 @@
   <p>Build with <em>all</em> the power of Django's batteries-included philosophy,<br/>
   or compose <em>only</em> what you need—your choice, your way.</p>
 
-[![Crates.io](https://img.shields.io/crates/v/reinhardt.svg)](https://crates.io/crates/reinhardt)
-[![Documentation](https://docs.rs/reinhardt/badge.svg)](https://docs.rs/reinhardt)
+[![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
+[![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
+
+🌐 **English** | [日本語](docs/readme-langs/README_JA.md) | [简体中文](docs/readme-langs/README_ZH_CN.md) | [繁體中文](docs/readme-langs/README_ZH_TW.md) | [Русский](docs/readme-langs/README_RU.md) | [Українська](docs/readme-langs/README_UK.md) | [فارسی](docs/readme-langs/README_FA.md) | [العربية](docs/readme-langs/README_AR.md)
 
 </div>
 
@@ -25,7 +28,7 @@ You may be looking for:
 - 📦 [Installation Options](#installation) - Choose your flavor: Micro, Standard, or Full
 - 📚 [Getting Started Guide](docs/GETTING_STARTED.md) - Step-by-step tutorial
 - 🎛️ [Feature Flags](docs/FEATURE_FLAGS.md) - Fine-tune your build
-- 📖 [API Documentation](https://docs.rs/reinhardt) - Complete API reference
+- 📖 [API Documentation](https://docs.rs/reinhardt-web) - Complete API reference
 - 💬 [Community & Support](#getting-help) - Get help from the community
 
 ## Why Reinhardt?

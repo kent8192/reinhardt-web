@@ -2,15 +2,19 @@
 //!
 //! This module contains Query, Mutation, and Subscription resolvers for issue operations.
 
-use async_graphql::{Context, ID, Object, Result as GqlResult, Subscription};
+use async_graphql::{Context, ErrorExtensions, ID, Object, Result as GqlResult, Subscription};
 use futures_util::Stream;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
+use validator::Validate;
 
+use crate::apps::issues::errors::ApiError;
 use crate::apps::issues::models::Issue;
-use crate::apps::issues::serializers::{CreateIssueInput, IssueType, UpdateIssueInput};
+use crate::apps::issues::serializers::{
+	CreateIssueInput, IssueConnection, IssueType, PageInfo, PaginationInput, UpdateIssueInput,
+};
 
 /// Issue event types for subscriptions
 #[derive(Debug, Clone)]
@@ -123,15 +127,47 @@ impl IssueQuery {
 		Ok(issue.map(IssueType))
 	}
 
-	/// List issues, optionally filtered by project
-	async fn issues(&self, ctx: &Context<'_>, project_id: Option<ID>) -> GqlResult<Vec<IssueType>> {
+	/// List issues, optionally filtered by project, with pagination support
+	async fn issues(
+		&self,
+		ctx: &Context<'_>,
+		project_id: Option<ID>,
+		pagination: Option<PaginationInput>,
+	) -> GqlResult<IssueConnection> {
 		let storage = ctx.data::<IssueStorage>()?;
-		let issues = if let Some(pid) = project_id {
+		let all_issues = if let Some(pid) = project_id {
 			storage.get_issues_by_project(pid.as_str()).await
 		} else {
 			storage.list_issues().await
 		};
-		Ok(issues.into_iter().map(IssueType).collect())
+
+		// Apply pagination
+		let pagination = pagination.unwrap_or_default();
+		let page = pagination.page.unwrap_or(1).max(1);
+		let page_size = pagination.page_size.unwrap_or(10).max(1);
+
+		let total_count = all_issues.len() as i32;
+		let start = ((page - 1) * page_size) as usize;
+
+		let edges: Vec<IssueType> = all_issues
+			.into_iter()
+			.skip(start)
+			.take(page_size as usize)
+			.map(IssueType)
+			.collect();
+
+		let total_pages = (total_count + page_size - 1) / page_size;
+
+		Ok(IssueConnection {
+			edges,
+			page_info: PageInfo {
+				has_next_page: page < total_pages,
+				has_previous_page: page > 1,
+				total_count,
+				page,
+				page_size,
+			},
+		})
 	}
 }
 
@@ -147,17 +183,22 @@ impl IssueMutation {
 		ctx: &Context<'_>,
 		input: CreateIssueInput,
 	) -> GqlResult<IssueType> {
+		// Validate input
+		input
+			.validate()
+			.map_err(|e| ApiError::InvalidInput(format!("Validation error: {}", e)).extend())?;
+
 		use reinhardt::Claims;
 		let claims = ctx
 			.data::<Claims>()
-			.map_err(|_| async_graphql::Error::new("Authentication required"))?;
+			.map_err(|_| ApiError::Unauthorized("Authentication required".to_string()).extend())?;
 		let storage = ctx.data::<IssueStorage>()?;
 		let broadcaster = ctx.data::<IssueEventBroadcaster>()?;
 
 		let project_id = Uuid::parse_str(input.project_id.as_str())
-			.map_err(|_| async_graphql::Error::new("Invalid project ID"))?;
+			.map_err(|_| ApiError::InvalidInput("Invalid project ID".to_string()).extend())?;
 		let author_id = Uuid::parse_str(&claims.sub)
-			.map_err(|_| async_graphql::Error::new("Invalid user ID"))?;
+			.map_err(|_| ApiError::InvalidInput("Invalid user ID".to_string()).extend())?;
 
 		let number = storage.get_next_number(&project_id.to_string()).await;
 
@@ -185,13 +226,18 @@ impl IssueMutation {
 		id: ID,
 		input: UpdateIssueInput,
 	) -> GqlResult<IssueType> {
+		// Validate input
+		input
+			.validate()
+			.map_err(|e| ApiError::InvalidInput(format!("Validation error: {}", e)).extend())?;
+
 		let storage = ctx.data::<IssueStorage>()?;
 		let broadcaster = ctx.data::<IssueEventBroadcaster>()?;
 
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		// Update issue using setters
 		let mut updated_issue = issue.clone();
@@ -218,7 +264,7 @@ impl IssueMutation {
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		let mut closed_issue = issue.clone();
 		closed_issue.set_state("closed".to_string());
@@ -239,7 +285,7 @@ impl IssueMutation {
 		let issue = storage
 			.get_issue(id.as_str())
 			.await
-			.ok_or_else(|| async_graphql::Error::new("Issue not found"))?;
+			.ok_or_else(|| ApiError::NotFound("Issue not found".to_string()).extend())?;
 
 		let mut reopened_issue = issue.clone();
 		reopened_issue.set_state("open".to_string());
