@@ -2,7 +2,7 @@
 //!
 //! This module provides Django-inspired aggregation functionality.
 
-use sea_query::{Alias, Iden};
+use reinhardt_query::prelude::{Alias, Iden};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

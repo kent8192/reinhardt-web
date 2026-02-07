@@ -4,9 +4,9 @@
 //! relative to a parent model or set of fields.
 
 use crate::orm::query_types::DbBackend;
-use sea_query::{
-	Alias, Expr, ExprTrait, Func, MysqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
-	SqliteQueryBuilder,
+use reinhardt_query::prelude::{QueryStatementBuilder, 
+	Alias, Expr, ExprTrait, Func, MySqlQueryBuilder, Order, PostgresQueryBuilder,
+	Query as SeaQuery, SqliteQueryBuilder,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{AnyPool, Row};
@@ -168,7 +168,7 @@ impl OrderedModel {
 		// Build SELECT MAX(order_field) FROM table WHERE filters
 		let mut select_stmt = SeaQuery::select()
 			.from(Alias::new(&self.table_name))
-			.expr(Func::max(Expr::col(Alias::new(&self.order_field))))
+			.expr(Func::max(Expr::col(Alias::new(&self.order_field)).into_simple_expr()))
 			.to_owned();
 
 		// Add WHERE clauses for filters
@@ -181,7 +181,7 @@ impl OrderedModel {
 		// Build SQL based on backend
 		let (sql, values) = match backend {
 			DbBackend::Postgres => select_stmt.build(PostgresQueryBuilder),
-			DbBackend::Mysql => select_stmt.build(MysqlQueryBuilder),
+			DbBackend::Mysql => select_stmt.build(MySqlQueryBuilder),
 			DbBackend::Sqlite => select_stmt.build(SqliteQueryBuilder),
 		};
 
@@ -298,7 +298,7 @@ impl OrderedModel {
 			.from(Alias::new(&self.table_name))
 			.column(Alias::new("id"))
 			.column(Alias::new(&self.order_field))
-			.order_by(Alias::new(&self.order_field), sea_query::Order::Asc)
+			.order_by(Alias::new(&self.order_field), Order::Asc)
 			.to_owned();
 
 		// Add WHERE clauses for filters
@@ -311,7 +311,7 @@ impl OrderedModel {
 		// Build and execute SELECT query
 		let (sql, values) = match backend {
 			DbBackend::Postgres => select_stmt.build(PostgresQueryBuilder),
-			DbBackend::Mysql => select_stmt.build(MysqlQueryBuilder),
+			DbBackend::Mysql => select_stmt.build(MySqlQueryBuilder),
 			DbBackend::Sqlite => select_stmt.build(SqliteQueryBuilder),
 		};
 
@@ -345,7 +345,7 @@ impl OrderedModel {
 			// Build and execute UPDATE query
 			let (update_sql, update_values) = match backend {
 				DbBackend::Postgres => update_stmt.build(PostgresQueryBuilder),
-				DbBackend::Mysql => update_stmt.build(MysqlQueryBuilder),
+				DbBackend::Mysql => update_stmt.build(MySqlQueryBuilder),
 				DbBackend::Sqlite => update_stmt.build(SqliteQueryBuilder),
 			};
 
@@ -380,34 +380,34 @@ impl OrderedModel {
 	}
 }
 
-/// Convert OrderValue to sea-query Value
-fn order_value_to_sea_value(value: &OrderValue) -> sea_query::Value {
+/// Convert OrderValue to reinhardt-query Value
+fn order_value_to_sea_value(value: &OrderValue) -> reinhardt_query::value::Value {
 	match value {
-		OrderValue::Integer(i) => sea_query::Value::BigInt(Some(*i)),
-		OrderValue::String(s) => sea_query::Value::String(Some(s.clone())),
-		OrderValue::Boolean(b) => sea_query::Value::Bool(Some(*b)),
+		OrderValue::Integer(i) => reinhardt_query::value::Value::BigInt(Some(*i)),
+		OrderValue::String(s) => reinhardt_query::value::Value::String(Some(Box::new(s.clone()))),
+		OrderValue::Boolean(b) => reinhardt_query::value::Value::Bool(Some(*b)),
 	}
 }
 
-/// Bind sea-query Value to sqlx query
+/// Bind reinhardt-query Value to sqlx query
 fn bind_sea_value<'a>(
 	query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
-	value: &sea_query::Value,
+	value: &reinhardt_query::value::Value,
 ) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
 	match value {
-		sea_query::Value::Bool(Some(b)) => query.bind(*b),
-		sea_query::Value::TinyInt(Some(i)) => query.bind(*i as i32),
-		sea_query::Value::SmallInt(Some(i)) => query.bind(*i as i32),
-		sea_query::Value::Int(Some(i)) => query.bind(*i),
-		sea_query::Value::BigInt(Some(i)) => query.bind(*i),
-		sea_query::Value::TinyUnsigned(Some(i)) => query.bind(*i as i32),
-		sea_query::Value::SmallUnsigned(Some(i)) => query.bind(*i as i32),
-		sea_query::Value::Unsigned(Some(i)) => query.bind(*i as i64),
-		sea_query::Value::BigUnsigned(Some(i)) => query.bind(*i as i64),
-		sea_query::Value::Float(Some(f)) => query.bind(*f),
-		sea_query::Value::Double(Some(f)) => query.bind(*f),
-		sea_query::Value::String(Some(s)) => query.bind(s.clone()),
-		sea_query::Value::Bytes(Some(b)) => query.bind(b.clone()),
+		reinhardt_query::value::Value::Bool(Some(b)) => query.bind(*b),
+		reinhardt_query::value::Value::TinyInt(Some(i)) => query.bind(*i as i32),
+		reinhardt_query::value::Value::SmallInt(Some(i)) => query.bind(*i as i32),
+		reinhardt_query::value::Value::Int(Some(i)) => query.bind(*i),
+		reinhardt_query::value::Value::BigInt(Some(i)) => query.bind(*i),
+		reinhardt_query::value::Value::TinyUnsigned(Some(i)) => query.bind(*i as i32),
+		reinhardt_query::value::Value::SmallUnsigned(Some(i)) => query.bind(*i as i32),
+		reinhardt_query::value::Value::Unsigned(Some(i)) => query.bind(*i as i64),
+		reinhardt_query::value::Value::BigUnsigned(Some(i)) => query.bind(*i as i64),
+		reinhardt_query::value::Value::Float(Some(f)) => query.bind(*f),
+		reinhardt_query::value::Value::Double(Some(f)) => query.bind(*f),
+		reinhardt_query::value::Value::String(Some(s)) => query.bind(s.as_ref().clone()),
+		reinhardt_query::value::Value::Bytes(Some(b)) => query.bind(b.as_ref().clone()),
 		_ => query.bind(None::<i32>), // NULL values
 	}
 }

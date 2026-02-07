@@ -7,7 +7,7 @@ use super::aggregate::{AggregateFunction, ComparisonExpr, ComparisonValue};
 use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType, LookupValue};
 use crate::orm::Model;
-use sea_query::SimpleExpr;
+use reinhardt_query::prelude::SimpleExpr;
 
 /// Compiles field lookups into SQL
 pub struct QueryFieldCompiler;
@@ -25,7 +25,7 @@ impl QueryFieldCompiler {
 	/// This wraps the compiled SQL in `Expr::cust()` for integration with SeaQuery conditions.
 	pub fn compile_to_expr<M: Model>(lookup: &Lookup<M>) -> SimpleExpr {
 		let sql = Self::compile(lookup);
-		sea_query::Expr::cust(sql)
+		reinhardt_query::prelude::Expr::cust(sql).into_simple_expr()
 	}
 
 	/// Compile for SQLite (uses LIKE with LOWER() for case-insensitive)

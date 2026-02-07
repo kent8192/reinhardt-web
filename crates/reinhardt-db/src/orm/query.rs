@@ -8,9 +8,9 @@ use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
-use sea_query::{
-	Alias, Asterisk, ColumnName, Condition, Expr, ExprTrait, JoinType as SeaJoinType, Order,
-	PostgresQueryBuilder, Query as SeaQuery, SelectStatement, TableName,
+use reinhardt_query::prelude::{
+	Alias, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType, Order,
+	PostgresQueryBuilder, Query as SeaQuery, QueryBuilder, SelectStatement,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -2424,22 +2424,22 @@ where
 				(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
 					// For correlated subqueries, reference outer query field
 					// e.g., WHERE books.author_id = authors.id (where authors is from outer query)
-					Expr::cust(format!("{} = {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} = {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} != {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} != {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} > {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} > {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} >= {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} >= {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} < {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} < {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
-					Expr::cust(format!("{} <= {}", filter.field, outer.to_sql()))
+					Expr::cust(format!("{} <= {}", filter.field, outer.to_sql())).into_simple_expr()
 				}
 				// Expression comparisons (F("a") * F("b") etc.)
 				(FilterOperator::Eq, FilterValue::Expression(expr)) => {
@@ -2530,7 +2530,7 @@ where
 					col.is_in(vec![*b])
 				}
 				(FilterOperator::In, FilterValue::Null) => {
-					col.is_in(vec![sea_query::Value::Int(None)])
+					col.is_in(vec![reinhardt_query::value::Value::Int(None)])
 				}
 				(FilterOperator::NotIn, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.is_not_in(vec![*i])
@@ -2540,7 +2540,7 @@ where
 					col.is_not_in(vec![*b])
 				}
 				(FilterOperator::NotIn, FilterValue::Null) => {
-					col.is_not_in(vec![sea_query::Value::Int(None)])
+					col.is_not_in(vec![reinhardt_query::value::Value::Int(None)])
 				}
 				// IsNull/IsNotNull operators
 				(FilterOperator::IsNull, _) => col.is_null(),
@@ -2553,7 +2553,7 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} @> ARRAY[{}]", filter.field, array_str))
+					Expr::cust(format!("{} @> ARRAY[{}]", filter.field, array_str)).into_simple_expr()
 				}
 				(FilterOperator::ArrayContainedBy, FilterValue::Array(arr)) => {
 					// field <@ ARRAY['value1', 'value2']
@@ -2562,7 +2562,7 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} <@ ARRAY[{}]", filter.field, array_str))
+					Expr::cust(format!("{} <@ ARRAY[{}]", filter.field, array_str)).into_simple_expr()
 				}
 				(FilterOperator::ArrayOverlap, FilterValue::Array(arr)) => {
 					// field && ARRAY['value1', 'value2']
@@ -2571,7 +2571,7 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} && ARRAY[{}]", filter.field, array_str))
+					Expr::cust(format!("{} && ARRAY[{}]", filter.field, array_str)).into_simple_expr()
 				}
 				// PostgreSQL Full-text search
 				(FilterOperator::FullTextMatch, FilterValue::String(query)) => {
@@ -2579,20 +2579,20 @@ where
 					Expr::cust(format!(
 						"{} @@ plainto_tsquery('english', '{}')",
 						filter.field, query
-					))
+					)).into_simple_expr()
 				}
 				// PostgreSQL JSONB operators
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> '{"key": "value"}'::jsonb
-					Expr::cust(format!("{} @> '{}'::jsonb", filter.field, json))
+					Expr::cust(format!("{} @> '{}'::jsonb", filter.field, json)).into_simple_expr()
 				}
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ '{"key": "value"}'::jsonb
-					Expr::cust(format!("{} <@ '{}'::jsonb", filter.field, json))
+					Expr::cust(format!("{} <@ '{}'::jsonb", filter.field, json)).into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key'
-					Expr::cust(format!("{} ? '{}'", filter.field, key))
+					Expr::cust(format!("{} ? '{}'", filter.field, key)).into_simple_expr()
 				}
 				(FilterOperator::JsonbAnyKeyExists, FilterValue::Array(keys)) => {
 					// field ?| array['key1', 'key2']
@@ -2601,7 +2601,7 @@ where
 						.map(|k| format!("'{}'", k))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} ?| array[{}]", filter.field, keys_str))
+					Expr::cust(format!("{} ?| array[{}]", filter.field, keys_str)).into_simple_expr()
 				}
 				(FilterOperator::JsonbAllKeysExist, FilterValue::Array(keys)) => {
 					// field ?& array['key1', 'key2']
@@ -2610,24 +2610,24 @@ where
 						.map(|k| format!("'{}'", k))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} ?& array[{}]", filter.field, keys_str))
+					Expr::cust(format!("{} ?& array[{}]", filter.field, keys_str)).into_simple_expr()
 				}
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? '$.path'
-					Expr::cust(format!("{} @? '{}'", filter.field, path))
+					Expr::cust(format!("{} @? '{}'", filter.field, path)).into_simple_expr()
 				}
 				// PostgreSQL Range operators
 				(FilterOperator::RangeContains, v) => {
 					let val = Self::filter_value_to_sql_string(v);
-					Expr::cust(format!("{} @> {}", filter.field, val))
+					Expr::cust(format!("{} @> {}", filter.field, val)).into_simple_expr()
 				}
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ '[1,10)'::int4range
-					Expr::cust(format!("{} <@ '{}'", filter.field, range))
+					Expr::cust(format!("{} <@ '{}'", filter.field, range)).into_simple_expr()
 				}
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && '[1,10)'::int4range
-					Expr::cust(format!("{} && '{}'", filter.field, range))
+					Expr::cust(format!("{} && '{}'", filter.field, range)).into_simple_expr()
 				}
 				// Fallback for unsupported combinations
 				_ => {
@@ -2644,19 +2644,19 @@ where
 			let expr = match subq_cond {
 				SubqueryCondition::In { field, subquery } => {
 					// field IN (subquery)
-					Expr::cust(format!("{} IN {}", field, subquery))
+					Expr::cust(format!("{} IN {}", field, subquery)).into_simple_expr()
 				}
 				SubqueryCondition::NotIn { field, subquery } => {
 					// field NOT IN (subquery)
-					Expr::cust(format!("{} NOT IN {}", field, subquery))
+					Expr::cust(format!("{} NOT IN {}", field, subquery)).into_simple_expr()
 				}
 				SubqueryCondition::Exists { subquery } => {
 					// EXISTS (subquery)
-					Expr::cust(format!("EXISTS {}", subquery))
+					Expr::cust(format!("EXISTS {}", subquery)).into_simple_expr()
 				}
 				SubqueryCondition::NotExists { subquery } => {
 					// NOT EXISTS (subquery)
-					Expr::cust(format!("NOT EXISTS {}", subquery))
+					Expr::cust(format!("NOT EXISTS {}", subquery)).into_simple_expr()
 				}
 			};
 
@@ -2666,7 +2666,7 @@ where
 		Some(cond)
 	}
 
-	/// Convert FilterValue to sea_query::Value
+	/// Convert FilterValue to reinhardt_query::value::Value
 	/// Convert Expression to SeaQuery Expr for use in WHERE clauses
 	///
 	/// Uses Expr::cust() for arithmetic operations as SeaQuery doesn't provide
@@ -2730,12 +2730,12 @@ where
 		value.to_sql()
 	}
 
-	fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
+	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
 			FilterValue::String(s) => {
 				// Try to parse as UUID first for proper PostgreSQL uuid column handling
 				if let Ok(uuid) = Uuid::parse_str(s) {
-					sea_query::Value::Uuid(Some(uuid))
+					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
 				} else {
 					s.clone().into()
 				}
@@ -2743,7 +2743,7 @@ where
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
-			FilterValue::Null => sea_query::Value::Int(None),
+			FilterValue::Null => reinhardt_query::value::Value::Int(None),
 			FilterValue::Array(arr) => arr.join(",").into(),
 			// FieldRef, Expression, and OuterRef are typically handled separately
 			// in build_where_condition(), but provide proper conversion as fallback
@@ -2794,9 +2794,9 @@ where
 		}
 	}
 
-	/// Parse array string into `Vec<sea_query::Value>`
+	/// Parse array string into `Vec<reinhardt_query::value::Value>`
 	/// Supports comma-separated values or JSON array format
-	fn parse_array_string(s: &str) -> Vec<sea_query::Value> {
+	fn parse_array_string(s: &str) -> Vec<reinhardt_query::value::Value> {
 		let trimmed = s.trim();
 
 		// Try parsing as JSON array first
@@ -2832,15 +2832,15 @@ where
 			.collect()
 	}
 
-	/// Convert FilterValue to array of sea_query::Value
+	/// Convert FilterValue to array of reinhardt_query::value::Value
 	#[allow(dead_code)]
-	fn value_to_array(v: &FilterValue) -> Vec<sea_query::Value> {
+	fn value_to_array(v: &FilterValue) -> Vec<reinhardt_query::value::Value> {
 		match v {
 			FilterValue::String(s) => Self::parse_array_string(s),
 			FilterValue::Integer(i) | FilterValue::Int(i) => vec![(*i).into()],
 			FilterValue::Float(f) => vec![(*f).into()],
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
-			FilterValue::Null => vec![sea_query::Value::Int(None)],
+			FilterValue::Null => vec![reinhardt_query::value::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
 			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
 			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
@@ -2873,8 +2873,8 @@ where
 		}
 
 		// Convert to SQL string
-		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		use reinhardt_query::prelude::PostgresQueryBuilder;
+		let sql = PostgresQueryBuilder.build_select(&stmt).0;
 
 		// Extract WHERE clause portion by finding the WHERE keyword
 		let where_clause = if let Some(idx) = sql.find(" WHERE ") {
@@ -2993,7 +2993,7 @@ where
 		}
 
 		// Add main table columns
-		stmt.column((Alias::new(table_name), Asterisk));
+		stmt.column(ColumnRef::table_asterisk(Alias::new(table_name)));
 
 		// Add LEFT JOIN for each related field
 		for related_field in &self.select_related_fields {
@@ -3011,7 +3011,7 @@ where
 			);
 
 			// Add related table columns to SELECT
-			stmt.column((related_alias, Asterisk));
+			stmt.column(ColumnRef::table_asterisk(related_alias));
 		}
 
 		// Apply manual JOINs
@@ -3071,17 +3071,17 @@ where
 				} => {
 					// Build aggregate function expression
 					let agg_expr = match func {
-						AggregateFunc::Avg => Expr::col(Alias::new(field)).avg(),
+						AggregateFunc::Avg => Func::avg(Expr::col(Alias::new(field)).into_simple_expr()),
 						AggregateFunc::Count => {
 							if field == "*" {
-								Expr::col(Asterisk).count()
+								Func::count(Expr::asterisk().into_simple_expr())
 							} else {
-								Expr::col(Alias::new(field)).count()
+								Func::count(Expr::col(Alias::new(field)).into_simple_expr())
 							}
 						}
-						AggregateFunc::Sum => Expr::col(Alias::new(field)).sum(),
-						AggregateFunc::Min => Expr::col(Alias::new(field)).min(),
-						AggregateFunc::Max => Expr::col(Alias::new(field)).max(),
+						AggregateFunc::Sum => Func::sum(Expr::col(Alias::new(field)).into_simple_expr()),
+						AggregateFunc::Min => Func::min(Expr::col(Alias::new(field)).into_simple_expr()),
+						AggregateFunc::Max => Func::max(Expr::col(Alias::new(field)).into_simple_expr()),
 					};
 
 					// Build comparison expression
@@ -3112,7 +3112,7 @@ where
 						},
 					};
 
-					stmt.cond_having(having_expr);
+					stmt.and_having(having_expr);
 				}
 			}
 		}
@@ -3296,10 +3296,10 @@ where
 		let fk_field = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
 
 		let mut stmt = SeaQuery::select();
-		stmt.from(related_table).column(Asterisk);
+		stmt.from(related_table).column(ColumnRef::Asterisk);
 
 		// Add IN clause with pk_values
-		let values: Vec<sea_query::Value> = pk_values.iter().map(|&id| id.into()).collect();
+		let values: Vec<reinhardt_query::value::Value> = pk_values.iter().map(|&id| id.into()).collect();
 		stmt.and_where(Expr::col(fk_field).is_in(values));
 
 		stmt.to_owned()
@@ -3323,7 +3323,7 @@ where
 
 		let mut stmt = SeaQuery::select();
 		stmt.from(related_table.clone())
-			.column((related_table.clone(), Asterisk))
+			.column(ColumnRef::table_asterisk(related_table.clone()))
 			.column((junction_table.clone(), junction_main_fk.clone()))
 			.inner_join(
 				junction_table.clone(),
@@ -3332,7 +3332,7 @@ where
 			);
 
 		// Add IN clause with pk_values
-		let values: Vec<sea_query::Value> = pk_values.iter().map(|&id| id.into()).collect();
+		let values: Vec<reinhardt_query::value::Value> = pk_values.iter().map(|&id| id.into()).collect();
 		stmt.and_where(Expr::col((junction_table, junction_main_fk)).is_in(values));
 
 		stmt.to_owned()
@@ -3421,7 +3421,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(Asterisk);
+				stmt.column(ColumnRef::Asterisk);
 			}
 
 			if let Some(cond) = self.build_where_condition() {
@@ -3462,7 +3462,7 @@ where
 		// Convert SeaQuery statement to SQL with inline parameters
 		// Note: Using to_string() embeds parameters directly in SQL (safe with SeaQuery's escaping)
 		// This is necessary because DatabaseConnection::query() doesn't support parameter binding
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let sql = PostgresQueryBuilder.build_select(&stmt).0;
 
 		// Execute query and deserialize results
 		let rows = conn.query(&sql, vec![]).await?;
@@ -3661,7 +3661,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(Asterisk);
+				stmt.column(ColumnRef::Asterisk);
 			}
 
 			if let Some(cond) = self.build_where_condition() {
@@ -3698,7 +3698,7 @@ where
 			self.select_related_query()
 		};
 
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let sql = PostgresQueryBuilder.build_select(&stmt).0;
 
 		let rows = conn.query(&sql, vec![]).await?;
 		rows.into_iter()
@@ -3854,14 +3854,14 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
-		use sea_query::{Func, PostgresQueryBuilder};
+		use reinhardt_query::prelude::{Func, PostgresQueryBuilder, QueryBuilder};
 
 		let conn = super::manager::get_connection().await?;
 
-		// Build COUNT query using SeaQuery
+		// Build COUNT query using reinhardt-query
 		let mut stmt = SeaQuery::select();
 		stmt.from(Alias::new(T::table_name()))
-			.expr(Func::count(Expr::col(Asterisk)));
+			.expr(Func::count(Expr::asterisk().into_simple_expr()));
 
 		// Add WHERE conditions
 		if let Some(cond) = self.build_where_condition() {
@@ -3869,9 +3869,9 @@ where
 		}
 
 		// Convert to SQL and extract parameter values
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
 
-		// Convert sea_query::Values to QueryValue
+		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
 
 		// Execute query with parameters
@@ -3987,7 +3987,7 @@ where
 	pub fn update_query(
 		&self,
 		updates: &HashMap<String, UpdateValue>,
-	) -> sea_query::UpdateStatement {
+	) -> reinhardt_query::prelude::UpdateStatement {
 		let mut stmt = SeaQuery::update();
 		stmt.table(Alias::new(T::table_name()));
 
@@ -3998,7 +3998,7 @@ where
 				UpdateValue::Integer(i) => Expr::val(*i),
 				UpdateValue::Float(f) => Expr::val(*f),
 				UpdateValue::Boolean(b) => Expr::val(*b),
-				UpdateValue::Null => Expr::val(sea_query::Value::Int(None)),
+				UpdateValue::Null => Expr::val(reinhardt_query::value::Value::Int(None)),
 				UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
 				UpdateValue::Expression(expr) => Self::expression_to_seaquery(expr),
 			};
@@ -4052,8 +4052,8 @@ where
 	/// ```
 	pub fn update_sql(&self, updates: &HashMap<String, UpdateValue>) -> (String, Vec<String>) {
 		let stmt = self.update_query(updates);
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
+		let (sql, values) = PostgresQueryBuilder.build_update(&stmt);
 		let params: Vec<String> = values
 			.iter()
 			.map(|v| Self::sea_value_to_string(v))
@@ -4062,8 +4062,8 @@ where
 	}
 
 	/// Convert SeaQuery Value to String without SQL quoting
-	fn sea_value_to_string(value: &sea_query::Value) -> String {
-		use sea_query::Value;
+	fn sea_value_to_string(value: &reinhardt_query::value::Value) -> String {
+		use reinhardt_query::value::Value;
 		match value {
 			Value::Bool(Some(b)) => b.to_string(),
 			Value::TinyInt(Some(i)) => i.to_string(),
@@ -4120,7 +4120,7 @@ where
 	/// // params: ["1"]
 	/// ```
 	/// Generate DELETE statement using SeaQuery
-	pub fn delete_query(&self) -> sea_query::DeleteStatement {
+	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
 		if self.filters.is_empty() {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
@@ -4140,8 +4140,8 @@ where
 
 	pub fn delete_sql(&self) -> (String, Vec<String>) {
 		let stmt = self.delete_query();
-		use sea_query::PostgresQueryBuilder;
-		let (sql, values) = stmt.build(PostgresQueryBuilder);
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
+		let (sql, values) = PostgresQueryBuilder.build_delete(&stmt);
 		let params: Vec<String> = values
 			.iter()
 			.map(|v| Self::sea_value_to_string(v))
@@ -4203,7 +4203,7 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use sea_query::{Alias, BinOper, Expr, ExprTrait, PostgresQueryBuilder, Value};
+		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value};
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
@@ -4220,13 +4220,13 @@ where
 			))
 		})?;
 
-		// Build SELECT query using sea-query
+		// Build SELECT query using reinhardt-query
 		let table_name = T::table_name();
 		let mut query = SeaQuery::select();
 
 		// Use Alias::new for table name
 		let table_alias = Alias::new(table_name);
-		query.from(table_alias).column(sea_query::Asterisk);
+		query.from(table_alias).column(ColumnRef::Asterisk);
 
 		// Add WHERE conditions for each composite PK field
 		for field_name in composite_pk.fields() {
@@ -4246,7 +4246,7 @@ where
 				}
 				super::composite_pk::PkValue::String(v) => {
 					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::String(Some(v.clone()))));
+						.binary(BinOper::Equal, Expr::value(Value::String(Some(Box::new(v.clone())))));
 					query.and_where(condition);
 				}
 				&super::composite_pk::PkValue::Bool(v) => {
@@ -4258,7 +4258,7 @@ where
 		}
 
 		// Build SQL with parameter binding
-		let sql = query.to_string(PostgresQueryBuilder);
+		let sql = PostgresQueryBuilder.build_select(&query).0;
 
 		// Execute query using database connection
 		let conn = super::manager::get_connection().await?;
@@ -4536,7 +4536,7 @@ where
 					}
 				}
 			} else {
-				stmt.column(Asterisk);
+				stmt.column(ColumnRef::Asterisk);
 			}
 
 			// Apply JOINs
@@ -4599,17 +4599,17 @@ where
 					} => {
 						// Build aggregate function expression
 						let agg_expr = match func {
-							AggregateFunc::Avg => Expr::col(Alias::new(field)).avg(),
+							AggregateFunc::Avg => Func::avg(Expr::col(Alias::new(field)).into_simple_expr()),
 							AggregateFunc::Count => {
 								if field == "*" {
-									Expr::col(Asterisk).count()
+									Func::count(Expr::asterisk().into_simple_expr())
 								} else {
-									Expr::col(Alias::new(field)).count()
+									Func::count(Expr::col(Alias::new(field)).into_simple_expr())
 								}
 							}
-							AggregateFunc::Sum => Expr::col(Alias::new(field)).sum(),
-							AggregateFunc::Min => Expr::col(Alias::new(field)).min(),
-							AggregateFunc::Max => Expr::col(Alias::new(field)).max(),
+							AggregateFunc::Sum => Func::sum(Expr::col(Alias::new(field)).into_simple_expr()),
+							AggregateFunc::Min => Func::min(Expr::col(Alias::new(field)).into_simple_expr()),
+							AggregateFunc::Max => Func::max(Expr::col(Alias::new(field)).into_simple_expr()),
 						};
 
 						// Build comparison expression
@@ -4640,7 +4640,7 @@ where
 							},
 						};
 
-						stmt.cond_having(having_expr);
+						stmt.and_having(having_expr);
 					}
 				}
 			}
@@ -4689,8 +4689,8 @@ where
 			stmt.expr_as(Expr::cust(value_sql), Alias::new(alias));
 		}
 
-		use sea_query::PostgresQueryBuilder;
-		let mut select_sql = stmt.to_string(PostgresQueryBuilder);
+		use reinhardt_query::prelude::PostgresQueryBuilder;
+		let mut select_sql = PostgresQueryBuilder.build_select(&stmt).0;
 
 		// Insert LATERAL JOIN clauses after FROM clause
 		if !self.lateral_joins.is_empty() {
@@ -5444,30 +5444,27 @@ impl FilterValue {
 ///
 /// This function also detects raw SQL expressions (containing parentheses, like `COUNT(*)`,
 /// `AVG(price)`) and returns them wrapped in `Expr::cust()` instead of as column references.
-fn parse_column_reference(field: &str) -> sea_query::ColumnRef {
+fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
+	use reinhardt_query::prelude::ColumnRef;
+
 	// Detect raw SQL expressions by checking for parentheses
 	// Examples: COUNT(*), AVG(price), SUM(amount), MAX(value)
 	if field.contains('(') && field.contains(')') {
-		// Use SimpleExpr wrapped in ColumnRef for raw SQL expressions
-		sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+		// Use column reference with raw expression name
+		ColumnRef::column(Alias::new(field))
 	} else if field.contains('.') {
 		// Qualified column reference (table.column format)
 		let parts: Vec<&str> = field.split('.').collect();
 		if parts.len() == 2 {
 			// Produces: "table"."column" instead of "table.column"
-			let table_name = TableName(None, sea_query::SeaRc::new(Alias::new(parts[0])));
-			let column_name = ColumnName(
-				Some(table_name),
-				sea_query::SeaRc::new(Alias::new(parts[1])),
-			);
-			sea_query::ColumnRef::Column(column_name)
+			ColumnRef::table_column(Alias::new(parts[0]), Alias::new(parts[1]))
 		} else {
 			// Fallback for unexpected formats (e.g., schema.table.column)
-			sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+			ColumnRef::column(Alias::new(field))
 		}
 	} else {
 		// Simple column reference
-		sea_query::ColumnRef::Column(sea_query::SeaRc::new(Alias::new(field)).into())
+		ColumnRef::column(Alias::new(field))
 	}
 }
 
@@ -5687,8 +5684,8 @@ mod tests {
 		let (sql, params) = queryset.update_sql(&updates);
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE \"id\" > $3 AND \"email\" LIKE $4";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE \"id\" > $3 AND \"email\" LIKE $4";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4)";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -5735,7 +5732,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE \"username\" = $1 AND \"email\" LIKE $2"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2)"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -5767,7 +5764,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE \"id\" >= $1 AND \"username\" <> $2"
+			"DELETE FROM \"test_users\" WHERE (\"id\" >= $1 AND \"username\" <> $2)"
 		);
 		assert_eq!(params, vec!["5", "admin"]);
 	}
@@ -5813,8 +5810,8 @@ mod tests {
 		let stmt = queryset.select_related_query();
 
 		// Convert to SQL to verify structure
-		use sea_query::PostgresQueryBuilder;
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
+		let sql = stmt.build(PostgresQueryBuilder).0;
 
 		assert!(sql.contains("SELECT"));
 		assert!(sql.contains("test_users"));
@@ -5857,8 +5854,8 @@ mod tests {
 
 		// Check select_related generates query
 		let select_stmt = queryset.select_related_query();
-		use sea_query::PostgresQueryBuilder;
-		let select_sql = select_stmt.to_string(PostgresQueryBuilder);
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
+		let select_sql = select_stmt.build(PostgresQueryBuilder).0;
 		assert!(select_sql.contains("LEFT JOIN"));
 
 		// Check prefetch_related generates queries

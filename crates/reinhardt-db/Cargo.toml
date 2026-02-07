@@ -25,17 +25,7 @@ sqlx = { version = "0.8", features = [
   "tls-rustls",
   "uuid",
 ] }
-sea-query = { version = "1.0.0-rc.29", features = [
-  "backend-mysql",
-  "backend-postgres",
-  "backend-sqlite",
-  "postgres-array",
-  "sqlx-utils",
-  "with-chrono",
-  "with-json",
-  "with-rust_decimal",
-  "with-uuid",
-] }
+reinhardt-query = { workspace = true, features = ["full", "thread-safe"] }
 
 # Async runtime
 tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"] }
