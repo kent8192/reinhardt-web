@@ -6,8 +6,10 @@
 
 use super::super::backends::types::QueryValue;
 use crate::orm::Model;
+use reinhardt_query::prelude::{
+	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,
+};
 use rust_decimal::prelude::ToPrimitive;
-use reinhardt_query::prelude::{QueryStatementBuilder, Alias, ColumnRef, Expr, ExprTrait, Func, Query, SelectStatement};
 use std::marker::PhantomData;
 
 /// Query execution result types
@@ -114,7 +116,9 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		SV::ChronoDateTimeUtc(Some(dt)) => QueryValue::Timestamp(*dt),
 
 		// For other datetime types, convert to UTC if possible
-		SV::ChronoDateTimeLocal(Some(dt)) => QueryValue::Timestamp((*dt).with_timezone(&chrono::Utc)),
+		SV::ChronoDateTimeLocal(Some(dt)) => {
+			QueryValue::Timestamp((*dt).with_timezone(&chrono::Utc))
+		}
 		SV::ChronoDateTimeWithTimeZone(Some(dt)) => {
 			QueryValue::Timestamp((*dt).with_timezone(&chrono::Utc))
 		}
@@ -365,7 +369,9 @@ where
 		Query::select()
 			.from(Alias::new(T::table_name()))
 			.column(ColumnRef::Asterisk)
-			.and_where(Expr::col(Alias::new(T::primary_key_field())).eq(Expr::val(pk.clone().into())))
+			.and_where(
+				Expr::col(Alias::new(T::primary_key_field())).eq(Expr::val(pk.clone().into())),
+			)
 			.limit(1)
 			.to_owned()
 	}
@@ -794,7 +800,7 @@ mod tests {
 
 	#[test]
 	fn test_execution_get() {
-		use reinhardt_query::prelude::{QueryStatementBuilder, Alias, PostgresQueryBuilder, Query};
+		use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 		let stmt = Query::select()
 			.from(Alias::new("users"))
@@ -809,7 +815,7 @@ mod tests {
 
 	#[test]
 	fn test_all() {
-		use reinhardt_query::prelude::{QueryStatementBuilder, Alias, PostgresQueryBuilder, Query};
+		use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 		let stmt = Query::select()
 			.from(Alias::new("users"))
@@ -824,7 +830,9 @@ mod tests {
 
 	#[test]
 	fn test_first() {
-		use reinhardt_query::prelude::{QueryStatementBuilder, Alias, Expr, PostgresQueryBuilder, Query};
+		use reinhardt_query::prelude::{
+			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
+		};
 
 		let stmt = Query::select()
 			.from(Alias::new("users"))
@@ -839,7 +847,9 @@ mod tests {
 
 	#[test]
 	fn test_execution_count() {
-		use reinhardt_query::prelude::{QueryStatementBuilder, Alias, Expr, PostgresQueryBuilder, Query};
+		use reinhardt_query::prelude::{
+			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
+		};
 
 		let stmt = Query::select()
 			.from(Alias::new("users"))
@@ -854,7 +864,9 @@ mod tests {
 
 	#[test]
 	fn test_execution_exists() {
-		use reinhardt_query::prelude::{QueryStatementBuilder, Alias, Expr, PostgresQueryBuilder, Query};
+		use reinhardt_query::prelude::{
+			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
+		};
 
 		let stmt = Query::select()
 			.from(Alias::new("users"))

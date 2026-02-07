@@ -355,7 +355,9 @@ impl InsertBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::insert()
 			.into_table(Alias::new(&self.table))
@@ -758,7 +760,9 @@ impl InsertFromSelectBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		// Build INSERT ... SELECT manually since InsertStatement doesn't support select_from
 		let quote = match self.backend.database_type() {
@@ -919,7 +923,9 @@ impl UpdateBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		// Sentinel placeholder for NOW() values (replaced in final SQL)
 		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
@@ -1018,7 +1024,9 @@ impl SelectBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
 
@@ -1101,7 +1109,9 @@ impl DeleteBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::delete()
 			.from_table(Alias::new(&self.table))
@@ -1689,10 +1699,7 @@ mod tests {
 		let (sql, _) = builder.build();
 
 		// Assert - MySQL uses INSERT IGNORE syntax (reinhardt-query uses parameterized queries)
-		assert_eq!(
-			sql,
-			"INSERT IGNORE INTO `users` (`email`) VALUES (?)"
-		);
+		assert_eq!(sql, "INSERT IGNORE INTO `users` (`email`) VALUES (?)");
 	}
 
 	#[test]

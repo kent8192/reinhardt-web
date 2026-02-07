@@ -127,7 +127,6 @@ impl QueryStatementBuilder for AttachDatabaseStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AttachDatabaseStatement {}

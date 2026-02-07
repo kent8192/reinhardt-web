@@ -3,8 +3,10 @@
 //! Provides factory functions for creating DMRoom and DMMessage records.
 
 use chrono::Utc;
+use reinhardt_query::prelude::{
+	Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use rstest::*;
-use reinhardt_query::prelude::{Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -111,10 +113,7 @@ impl DMRoomFactory {
 	) -> Result<(), sqlx::Error> {
 		let sql = Query::insert()
 			.into_table(Alias::new("dm_room_members"))
-			.columns([
-				Alias::new("dmroom_id"),
-				Alias::new("user_id"),
-			])
+			.columns([Alias::new("dmroom_id"), Alias::new("user_id")])
 			.values_panic([room_id.into(), user_id.into()])
 			.to_string(PostgresQueryBuilder);
 

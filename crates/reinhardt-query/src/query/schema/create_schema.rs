@@ -147,7 +147,6 @@ impl QueryStatementBuilder for CreateSchemaStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateSchemaStatement {}

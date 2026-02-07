@@ -182,7 +182,6 @@ impl QueryStatementBuilder for DropFunctionStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropFunctionStatement {}

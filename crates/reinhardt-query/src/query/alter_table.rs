@@ -428,7 +428,6 @@ impl QueryStatementBuilder for AlterTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterTableStatement {}

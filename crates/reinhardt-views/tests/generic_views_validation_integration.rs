@@ -23,15 +23,15 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{
 	CreateAPIView, DestroyAPIView, ListAPIView, RetrieveAPIView, UpdateAPIView, View,
 };
 use rstest::*;
-use reinhardt_query::prelude::{
-	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
-};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
@@ -100,7 +100,11 @@ async fn articles_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 				.auto_increment(true)
 				.primary_key(true),
 		)
-		.col(ColumnDef::new(Articles::Title).string_len(200).not_null(true))
+		.col(
+			ColumnDef::new(Articles::Title)
+				.string_len(200)
+				.not_null(true),
+		)
 		.col(ColumnDef::new(Articles::Content).text().not_null(true))
 		.col(
 			ColumnDef::new(Articles::Published)

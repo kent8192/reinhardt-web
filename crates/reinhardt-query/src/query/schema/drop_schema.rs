@@ -147,7 +147,6 @@ impl QueryStatementBuilder for DropSchemaStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropSchemaStatement {}

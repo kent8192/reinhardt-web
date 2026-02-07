@@ -162,13 +162,11 @@ fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
 		(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
 		(FilterOperator::In, FilterValue::String(s)) => {
-			let values: Vec<Value> =
-				s.split(',').map(|v| v.trim().into_value()).collect();
+			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_in(values)
 		}
 		(FilterOperator::NotIn, FilterValue::String(s)) => {
-			let values: Vec<Value> =
-				s.split(',').map(|v| v.trim().into_value()).collect();
+			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_not_in(values)
 		}
 

@@ -16,11 +16,13 @@
 use chrono::Utc;
 use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser};
 use reinhardt_di::{InjectionContext, SingletonScope};
+use reinhardt_query::prelude::{
+	ColumnDef, Expr, ExprTrait, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_test::fixtures::auth::{test_user, TestUser};
 use reinhardt_test::fixtures::singleton_scope;
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
-use reinhardt_query::prelude::{ColumnDef, Expr, ExprTrait, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -74,7 +76,11 @@ async fn create_auth_user_table(pool: &PgPool) {
 				.string_len(150)
 				.not_null(true),
 		)
-		.col(ColumnDef::new(AuthUser::Email).string_len(254).not_null(true))
+		.col(
+			ColumnDef::new(AuthUser::Email)
+				.string_len(254)
+				.not_null(true),
+		)
 		.col(
 			ColumnDef::new(AuthUser::IsActive)
 				.boolean()

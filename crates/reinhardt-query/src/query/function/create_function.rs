@@ -243,7 +243,6 @@ impl QueryStatementBuilder for CreateFunctionStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateFunctionStatement {}

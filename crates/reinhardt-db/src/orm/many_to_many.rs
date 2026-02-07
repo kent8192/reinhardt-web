@@ -83,8 +83,8 @@ impl AssociationTable {
 			"jsonb" => ColumnType::JsonBinary,
 			"uuid" => ColumnType::Uuid,
 			"binary" | "blob" => ColumnType::Binary(Some(255)), // Default binary length
-			"varbinary" => ColumnType::VarBinary(255),    // Default varbinary length
-			"char" => ColumnType::Char(Some(1)),          // Default char length
+			"varbinary" => ColumnType::VarBinary(255),          // Default varbinary length
+			"char" => ColumnType::Char(Some(1)),                // Default char length
 			_ => {
 				// For VARCHAR(N), CHAR(N), DECIMAL(P,S) patterns, use custom
 				ColumnType::Custom(type_str.to_string())
@@ -426,7 +426,9 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 		right_id: i64,
 		builder: T,
 	) -> String {
-		builder.build_delete(&self.remove_query(left_id, right_id)).0
+		builder
+			.build_delete(&self.remove_query(left_id, right_id))
+			.0
 	}
 	/// Get association table reference
 	///
@@ -583,8 +585,7 @@ mod tests {
 		let sql = m2m.add_sql(1, 10, SqliteQueryBuilder);
 		// reinhardt-query uses parameterized queries
 		assert_eq!(
-			sql,
-			"INSERT INTO \"student_courses\" (\"student_id\", \"course_id\") VALUES (?, ?)",
+			sql, "INSERT INTO \"student_courses\" (\"student_id\", \"course_id\") VALUES (?, ?)",
 			"Expected exact INSERT SQL, got: {}",
 			sql
 		);
@@ -600,8 +601,7 @@ mod tests {
 		let sql = m2m.remove_sql(1, 10, SqliteQueryBuilder);
 		// reinhardt-query uses parameterized queries
 		assert_eq!(
-			sql,
-			"DELETE FROM \"student_courses\" WHERE \"student_id\" = ? AND \"course_id\" = ?",
+			sql, "DELETE FROM \"student_courses\" WHERE \"student_id\" = ? AND \"course_id\" = ?",
 			"Expected exact DELETE SQL, got: {}",
 			sql
 		);

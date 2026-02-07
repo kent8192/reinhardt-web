@@ -104,7 +104,6 @@ impl QueryStatementBuilder for DetachDatabaseStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DetachDatabaseStatement {}

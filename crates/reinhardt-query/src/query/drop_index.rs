@@ -178,7 +178,6 @@ impl QueryStatementBuilder for DropIndexStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropIndexStatement {}

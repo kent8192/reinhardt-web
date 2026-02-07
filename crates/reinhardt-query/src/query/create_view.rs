@@ -203,7 +203,6 @@ impl QueryStatementBuilder for CreateViewStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateViewStatement {}

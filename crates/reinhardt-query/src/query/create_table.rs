@@ -415,7 +415,6 @@ impl QueryStatementBuilder for CreateTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateTableStatement {}

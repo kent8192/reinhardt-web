@@ -137,7 +137,6 @@ impl QueryStatementBuilder for CheckTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CheckTableStatement {}

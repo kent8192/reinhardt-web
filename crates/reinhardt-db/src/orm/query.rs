@@ -2553,7 +2553,8 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} @> ARRAY[{}]", filter.field, array_str)).into_simple_expr()
+					Expr::cust(format!("{} @> ARRAY[{}]", filter.field, array_str))
+						.into_simple_expr()
 				}
 				(FilterOperator::ArrayContainedBy, FilterValue::Array(arr)) => {
 					// field <@ ARRAY['value1', 'value2']
@@ -2562,7 +2563,8 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} <@ ARRAY[{}]", filter.field, array_str)).into_simple_expr()
+					Expr::cust(format!("{} <@ ARRAY[{}]", filter.field, array_str))
+						.into_simple_expr()
 				}
 				(FilterOperator::ArrayOverlap, FilterValue::Array(arr)) => {
 					// field && ARRAY['value1', 'value2']
@@ -2571,7 +2573,8 @@ where
 						.map(|s| format!("'{}'", s))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} && ARRAY[{}]", filter.field, array_str)).into_simple_expr()
+					Expr::cust(format!("{} && ARRAY[{}]", filter.field, array_str))
+						.into_simple_expr()
 				}
 				// PostgreSQL Full-text search
 				(FilterOperator::FullTextMatch, FilterValue::String(query)) => {
@@ -2579,7 +2582,8 @@ where
 					Expr::cust(format!(
 						"{} @@ plainto_tsquery('english', '{}')",
 						filter.field, query
-					)).into_simple_expr()
+					))
+					.into_simple_expr()
 				}
 				// PostgreSQL JSONB operators
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
@@ -2601,7 +2605,8 @@ where
 						.map(|k| format!("'{}'", k))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} ?| array[{}]", filter.field, keys_str)).into_simple_expr()
+					Expr::cust(format!("{} ?| array[{}]", filter.field, keys_str))
+						.into_simple_expr()
 				}
 				(FilterOperator::JsonbAllKeysExist, FilterValue::Array(keys)) => {
 					// field ?& array['key1', 'key2']
@@ -2610,7 +2615,8 @@ where
 						.map(|k| format!("'{}'", k))
 						.collect::<Vec<_>>()
 						.join(", ");
-					Expr::cust(format!("{} ?& array[{}]", filter.field, keys_str)).into_simple_expr()
+					Expr::cust(format!("{} ?& array[{}]", filter.field, keys_str))
+						.into_simple_expr()
 				}
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? '$.path'
@@ -3071,7 +3077,9 @@ where
 				} => {
 					// Build aggregate function expression
 					let agg_expr = match func {
-						AggregateFunc::Avg => Func::avg(Expr::col(Alias::new(field)).into_simple_expr()),
+						AggregateFunc::Avg => {
+							Func::avg(Expr::col(Alias::new(field)).into_simple_expr())
+						}
 						AggregateFunc::Count => {
 							if field == "*" {
 								Func::count(Expr::asterisk().into_simple_expr())
@@ -3079,9 +3087,15 @@ where
 								Func::count(Expr::col(Alias::new(field)).into_simple_expr())
 							}
 						}
-						AggregateFunc::Sum => Func::sum(Expr::col(Alias::new(field)).into_simple_expr()),
-						AggregateFunc::Min => Func::min(Expr::col(Alias::new(field)).into_simple_expr()),
-						AggregateFunc::Max => Func::max(Expr::col(Alias::new(field)).into_simple_expr()),
+						AggregateFunc::Sum => {
+							Func::sum(Expr::col(Alias::new(field)).into_simple_expr())
+						}
+						AggregateFunc::Min => {
+							Func::min(Expr::col(Alias::new(field)).into_simple_expr())
+						}
+						AggregateFunc::Max => {
+							Func::max(Expr::col(Alias::new(field)).into_simple_expr())
+						}
 					};
 
 					// Build comparison expression
@@ -3299,7 +3313,8 @@ where
 		stmt.from(related_table).column(ColumnRef::Asterisk);
 
 		// Add IN clause with pk_values
-		let values: Vec<reinhardt_query::value::Value> = pk_values.iter().map(|&id| id.into()).collect();
+		let values: Vec<reinhardt_query::value::Value> =
+			pk_values.iter().map(|&id| id.into()).collect();
 		stmt.and_where(Expr::col(fk_field).is_in(values));
 
 		stmt.to_owned()
@@ -3332,7 +3347,8 @@ where
 			);
 
 		// Add IN clause with pk_values
-		let values: Vec<reinhardt_query::value::Value> = pk_values.iter().map(|&id| id.into()).collect();
+		let values: Vec<reinhardt_query::value::Value> =
+			pk_values.iter().map(|&id| id.into()).collect();
 		stmt.and_where(Expr::col((junction_table, junction_main_fk)).is_in(values));
 
 		stmt.to_owned()
@@ -4203,7 +4219,9 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value};
+		use reinhardt_query::prelude::{
+			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value,
+		};
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
@@ -4245,8 +4263,10 @@ where
 					query.and_where(condition);
 				}
 				super::composite_pk::PkValue::String(v) => {
-					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::String(Some(Box::new(v.clone())))));
+					let condition = Expr::col(col_alias).binary(
+						BinOper::Equal,
+						Expr::value(Value::String(Some(Box::new(v.clone())))),
+					);
 					query.and_where(condition);
 				}
 				&super::composite_pk::PkValue::Bool(v) => {
@@ -4599,7 +4619,9 @@ where
 					} => {
 						// Build aggregate function expression
 						let agg_expr = match func {
-							AggregateFunc::Avg => Func::avg(Expr::col(Alias::new(field)).into_simple_expr()),
+							AggregateFunc::Avg => {
+								Func::avg(Expr::col(Alias::new(field)).into_simple_expr())
+							}
 							AggregateFunc::Count => {
 								if field == "*" {
 									Func::count(Expr::asterisk().into_simple_expr())
@@ -4607,9 +4629,15 @@ where
 									Func::count(Expr::col(Alias::new(field)).into_simple_expr())
 								}
 							}
-							AggregateFunc::Sum => Func::sum(Expr::col(Alias::new(field)).into_simple_expr()),
-							AggregateFunc::Min => Func::min(Expr::col(Alias::new(field)).into_simple_expr()),
-							AggregateFunc::Max => Func::max(Expr::col(Alias::new(field)).into_simple_expr()),
+							AggregateFunc::Sum => {
+								Func::sum(Expr::col(Alias::new(field)).into_simple_expr())
+							}
+							AggregateFunc::Min => {
+								Func::min(Expr::col(Alias::new(field)).into_simple_expr())
+							}
+							AggregateFunc::Max => {
+								Func::max(Expr::col(Alias::new(field)).into_simple_expr())
+							}
 						};
 
 						// Build comparison expression

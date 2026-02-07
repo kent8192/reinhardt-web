@@ -3,8 +3,10 @@
 //! Provides factory functions for creating Tweet records in the database.
 
 use chrono::Utc;
+use reinhardt_query::prelude::{
+	Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use rstest::*;
-use reinhardt_query::prelude::{Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use uuid::Uuid;
 

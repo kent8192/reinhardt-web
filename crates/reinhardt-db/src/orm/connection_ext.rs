@@ -4,7 +4,9 @@
 //! to support executing reinhardt-query statement objects directly.
 
 use async_trait::async_trait;
-use reinhardt_query::prelude::{DeleteStatement, InsertStatement, SelectStatement, UpdateStatement};
+use reinhardt_query::prelude::{
+	DeleteStatement, InsertStatement, SelectStatement, UpdateStatement,
+};
 
 use crate::orm::query_types::{DbBackend, QueryStatement};
 

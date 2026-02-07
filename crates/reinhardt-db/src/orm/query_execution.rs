@@ -109,7 +109,9 @@ impl QueryCompiler {
 		match operator.to_uppercase().as_str() {
 			"IS NULL" => Expr::cust(format!("{} IS NULL", field)).into_simple_expr(),
 			"IS NOT NULL" => Expr::cust(format!("{} IS NOT NULL", field)).into_simple_expr(),
-			_ => Expr::cust(format!("{} {} {}", field, operator, formatted_value)).into_simple_expr(),
+			_ => {
+				Expr::cust(format!("{} {} {}", field, operator, formatted_value)).into_simple_expr()
+			}
 		}
 	}
 

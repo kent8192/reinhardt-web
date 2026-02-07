@@ -221,7 +221,6 @@ impl QueryStatementBuilder for UpdateStatement {
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
 	}
-
 }
 
 impl QueryStatementWriter for UpdateStatement {}

@@ -179,7 +179,6 @@ impl QueryStatementBuilder for TruncateTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for TruncateTableStatement {}

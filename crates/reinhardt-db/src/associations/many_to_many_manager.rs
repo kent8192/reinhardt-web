@@ -121,10 +121,7 @@ where
 				Alias::new(&self.source_field),
 				Alias::new(&self.target_field),
 			])
-			.values_panic([
-				self.source_pk.to_string(),
-				target_pk.to_string(),
-			])
+			.values_panic([self.source_pk.to_string(), target_pk.to_string()])
 			.on_conflict(
 				OnConflict::columns([
 					Alias::new(&self.source_field),

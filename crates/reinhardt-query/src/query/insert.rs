@@ -270,7 +270,6 @@ impl QueryStatementBuilder for InsertStatement {
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
 	}
-
 }
 
 impl QueryStatementWriter for InsertStatement {}

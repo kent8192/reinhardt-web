@@ -174,7 +174,6 @@ impl QueryStatementBuilder for DropTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropTableStatement {}

@@ -42,8 +42,8 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use crate::orm::Model;
 use reinhardt_query::prelude::{
-	Alias, BinOper, ColumnRef, Expr, Func, MySqlQueryBuilder, PostgresQueryBuilder,
-	Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
+	Alias, BinOper, ColumnRef, Expr, Func, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryBuilder, SelectStatement, SqliteQueryBuilder,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;

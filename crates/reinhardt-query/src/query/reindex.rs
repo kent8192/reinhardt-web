@@ -190,5 +190,4 @@ impl QueryStatementBuilder for ReindexStatement {
 			panic!("Unsupported query builder type");
 		}
 	}
-
 }

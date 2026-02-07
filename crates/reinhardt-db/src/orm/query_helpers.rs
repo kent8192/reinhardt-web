@@ -338,7 +338,10 @@ pub fn build_exists_query(inner: SelectStatement) -> SelectStatement {
 /// assert!(sql.contains("IN"));
 /// assert_eq!(values.0.len(), 3);
 /// ```
-pub fn build_in_query<M: Model>(column: &str, values: Vec<reinhardt_query::value::Value>) -> SelectStatement {
+pub fn build_in_query<M: Model>(
+	column: &str,
+	values: Vec<reinhardt_query::value::Value>,
+) -> SelectStatement {
 	Query::select()
 		.from(Alias::new(M::table_name()))
 		.column(ColumnRef::Asterisk)
@@ -349,7 +352,9 @@ pub fn build_in_query<M: Model>(column: &str, values: Vec<reinhardt_query::value
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqliteQueryBuilder};
+	use reinhardt_query::prelude::{
+		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqliteQueryBuilder,
+	};
 	use serde::{Deserialize, Serialize};
 
 	// Mock Model for testing

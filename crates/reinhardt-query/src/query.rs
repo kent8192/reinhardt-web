@@ -88,12 +88,12 @@ mod create_trigger;
 mod create_view;
 mod database;
 mod delete;
-mod foreign_key;
 mod drop_index;
 mod drop_table;
 mod drop_trigger;
 mod drop_view;
 pub mod event;
+mod foreign_key;
 pub mod function;
 mod insert;
 pub mod maintenance;
@@ -121,12 +121,12 @@ pub use database::{
 	DetachDatabaseStatement, DropDatabaseStatement,
 };
 pub use delete::*;
-pub use foreign_key::*;
 pub use drop_index::*;
 pub use drop_table::*;
 pub use drop_trigger::*;
 pub use drop_view::*;
 pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
+pub use foreign_key::*;
 pub use function::{AlterFunctionStatement, CreateFunctionStatement, DropFunctionStatement};
 pub use insert::*;
 pub use maintenance::{CheckTableStatement, OptimizeTableStatement, RepairTableStatement};

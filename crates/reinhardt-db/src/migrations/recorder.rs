@@ -269,9 +269,9 @@ impl DatabaseMigrationRecorder {
 	/// This is called by ensure_schema_table() after acquiring the lock.
 	async fn ensure_schema_table_internal(&self) -> super::Result<()> {
 		use crate::backends::types::DatabaseType;
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
+		use reinhardt_query::prelude::{
 			Alias, ColumnDef, Expr, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			SqliteQueryBuilder,
+			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		// Build SQL using appropriate query builder based on database type
@@ -288,11 +288,7 @@ impl DatabaseMigrationRecorder {
 						.primary_key(true),
 				)
 				.col(ColumnDef::new("app").string_len(255).not_null(true))
-				.col(
-					ColumnDef::new("name")
-						.string_len(255)
-						.not_null(true),
-				)
+				.col(ColumnDef::new("name").string_len(255).not_null(true))
 				.col(
 					ColumnDef::new("applied")
 						.timestamp()
@@ -380,9 +376,9 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn is_applied(&self, app: &str, name: &str) -> super::Result<bool> {
 		use crate::backends::types::DatabaseType;
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
+		use reinhardt_query::prelude::{
 			Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			SqliteQueryBuilder,
+			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		// Build SELECT EXISTS query using reinhardt-query
@@ -449,8 +445,7 @@ impl DatabaseMigrationRecorder {
 	pub async fn record_applied(&self, app: &str, name: &str) -> super::Result<()> {
 		use crate::backends::types::DatabaseType;
 		use reinhardt_query::prelude::{
-			Alias, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder,
-			SqliteQueryBuilder,
+			Alias, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SqliteQueryBuilder,
 		};
 
 		// Build INSERT query using reinhardt-query
@@ -509,8 +504,9 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn get_applied_migrations(&self) -> super::Result<Vec<MigrationRecord>> {
 		use crate::backends::types::DatabaseType;
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
-			Alias, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query, SqliteQueryBuilder,
+		use reinhardt_query::prelude::{
+			Alias, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+			SqliteQueryBuilder,
 		};
 
 		// Build SELECT query using reinhardt-query
@@ -578,9 +574,9 @@ impl DatabaseMigrationRecorder {
 	/// Used when rolling back migrations.
 	pub async fn unapply(&self, app: &str, name: &str) -> super::Result<()> {
 		use crate::backends::types::DatabaseType;
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
+		use reinhardt_query::prelude::{
 			Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			SqliteQueryBuilder,
+			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		// Build DELETE query using reinhardt-query
@@ -626,9 +622,9 @@ impl DatabaseMigrationRecorder {
 	/// ```
 	pub async fn get_applied_for_app(&self, app: &str) -> super::Result<Vec<MigrationRecord>> {
 		use crate::backends::types::DatabaseType;
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
+		use reinhardt_query::prelude::{
 			Alias, Expr, ExprTrait, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query,
-			SqliteQueryBuilder,
+			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		// Build SELECT query using reinhardt-query with app filter

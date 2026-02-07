@@ -233,9 +233,9 @@ impl DatabaseMigrationExecutor {
 	/// # }
 	/// ```
 	async fn table_exists(&self, table_name: &str) -> Result<bool> {
-		use reinhardt_query::prelude::{QueryStatementBuilder, 
+		use reinhardt_query::prelude::{
 			Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			SqliteQueryBuilder,
+			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		match self.db_type {

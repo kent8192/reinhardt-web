@@ -11,7 +11,9 @@ use super::types::DatabaseDialect;
 use crate::orm::Model;
 use crate::orm::expressions::Q;
 use crate::orm::query_execution::QueryCompiler;
-use reinhardt_query::prelude::{QueryStatementBuilder, MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+use reinhardt_query::prelude::{
+	MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+};
 use std::marker::PhantomData;
 
 /// Async query builder

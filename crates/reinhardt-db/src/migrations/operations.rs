@@ -3218,7 +3218,9 @@ impl Operation {
 				stmt.table(Alias::new(table.as_str()));
 
 				let mut col = ColumnDef::new(Alias::new(column_name.as_str()));
-				col = col.string_len(50).default(SimpleExpr::from(default_value.to_string()));
+				col = col
+					.string_len(50)
+					.default(SimpleExpr::from(default_value.to_string()));
 				stmt.add_column(col);
 
 				OperationStatement::TableAlter(stmt.to_owned())

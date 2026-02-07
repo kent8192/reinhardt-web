@@ -5,8 +5,8 @@
 use reinhardt_query::prelude::{
 	AlterTableStatement, CreateIndexStatement, CreateTableStatement, DeleteStatement,
 	DropIndexStatement, DropTableStatement, InsertStatement, MySqlQueryBuilder,
-	PostgresQueryBuilder, QueryBuilder, SelectStatement, SqliteQueryBuilder,
-	UpdateStatement, Values,
+	PostgresQueryBuilder, QueryBuilder, SelectStatement, SqliteQueryBuilder, UpdateStatement,
+	Values,
 };
 
 /// Database backend type
@@ -80,9 +80,7 @@ impl QueryStatement {
 			}
 			(QueryStatement::AlterTable(stmt), DbBackend::Postgres) => pg.build_alter_table(stmt),
 			(QueryStatement::AlterTable(stmt), DbBackend::Mysql) => mysql.build_alter_table(stmt),
-			(QueryStatement::AlterTable(stmt), DbBackend::Sqlite) => {
-				sqlite.build_alter_table(stmt)
-			}
+			(QueryStatement::AlterTable(stmt), DbBackend::Sqlite) => sqlite.build_alter_table(stmt),
 			(QueryStatement::DropTable(stmt), DbBackend::Postgres) => pg.build_drop_table(stmt),
 			(QueryStatement::DropTable(stmt), DbBackend::Mysql) => mysql.build_drop_table(stmt),
 			(QueryStatement::DropTable(stmt), DbBackend::Sqlite) => sqlite.build_drop_table(stmt),
@@ -91,12 +89,8 @@ impl QueryStatement {
 			(QueryStatement::RenameTable(stmt), DbBackend::Sqlite) => {
 				sqlite.build_alter_table(stmt)
 			}
-			(QueryStatement::CreateIndex(stmt), DbBackend::Postgres) => {
-				pg.build_create_index(stmt)
-			}
-			(QueryStatement::CreateIndex(stmt), DbBackend::Mysql) => {
-				mysql.build_create_index(stmt)
-			}
+			(QueryStatement::CreateIndex(stmt), DbBackend::Postgres) => pg.build_create_index(stmt),
+			(QueryStatement::CreateIndex(stmt), DbBackend::Mysql) => mysql.build_create_index(stmt),
 			(QueryStatement::CreateIndex(stmt), DbBackend::Sqlite) => {
 				sqlite.build_create_index(stmt)
 			}

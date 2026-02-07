@@ -25,9 +25,9 @@ use reinhardt_db::migrations::{
 	operations::{Constraint, Operation},
 	ColumnDefinition, FieldType, ForeignKeyAction, Migration,
 };
+use reinhardt_query::prelude::{Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use reinhardt_query::prelude::{Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder};
 use sqlx::PgPool;
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};

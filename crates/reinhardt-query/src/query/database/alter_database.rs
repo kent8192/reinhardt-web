@@ -237,7 +237,6 @@ impl QueryStatementBuilder for AlterDatabaseStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterDatabaseStatement {}

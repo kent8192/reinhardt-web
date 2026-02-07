@@ -199,9 +199,7 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 		columns: &[(&str, &str)],
 	) -> CreateTableStatement {
 		let mut binding = Query::create_table();
-		let stmt = binding
-			.table(Alias::new(table))
-			.if_not_exists();
+		let stmt = binding.table(Alias::new(table)).if_not_exists();
 
 		for (name, definition) in columns {
 			// Use custom() for raw type definitions since we receive them as strings
@@ -214,9 +212,7 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 	/// Generate DROP TABLE statement using reinhardt-query
 	fn drop_table_statement(&self, table: &str, cascade: bool) -> DropTableStatement {
 		let mut binding = Query::drop_table();
-		let stmt = binding
-			.table(Alias::new(table))
-			.if_exists();
+		let stmt = binding.table(Alias::new(table)).if_exists();
 
 		if cascade {
 			stmt.cascade();
@@ -306,9 +302,7 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 		}
 
 		let mut binding = Query::create_index();
-		let stmt = binding
-			.name(Alias::new(name))
-			.table(Alias::new(table));
+		let stmt = binding.name(Alias::new(name)).table(Alias::new(table));
 
 		if unique {
 			stmt.unique();
@@ -324,10 +318,7 @@ pub trait BaseDatabaseSchemaEditor: Send + Sync {
 	/// Generate DROP INDEX statement using reinhardt-query
 	fn drop_index_statement(&self, name: &str) -> DropIndexStatement {
 		let mut binding = Query::drop_index();
-		binding
-			.name(Alias::new(name))
-			.if_exists()
-			.to_owned()
+		binding.name(Alias::new(name)).if_exists().to_owned()
 	}
 
 	/// Generate CREATE SCHEMA statement

@@ -296,7 +296,6 @@ impl QueryStatementBuilder for CreateDatabaseStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateDatabaseStatement {}

@@ -461,13 +461,20 @@ pub fn dcl_test_table_with_fk() -> (CreateTableStatement, CreateTableStatement, 
 		.col(ColumnDef::new(Alias::new("value")).text())
 		.foreign_key_from_builder(&mut fk);
 
-	(parent_stmt.take(), child_stmt.take(), parent_name, child_name)
+	(
+		parent_stmt.take(),
+		child_stmt.take(),
+		parent_name,
+		child_name,
+	)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder};
+	use reinhardt_query::prelude::{
+		MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
+	};
 	use serial_test::serial;
 
 	#[test]

@@ -5,9 +5,11 @@
 
 use reinhardt_commands::{CommandContext, MigrateCommand};
 use reinhardt_db::migrations::{Migration, Operation};
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
 use rstest::*;
-use reinhardt_query::prelude::{Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -165,7 +167,11 @@ impl PostgresWithSchema {
 					.auto_increment(true)
 					.primary_key(true),
 			)
-			.col(ColumnDef::new(Alias::new("username")).string().not_null(true))
+			.col(
+				ColumnDef::new(Alias::new("username"))
+					.string()
+					.not_null(true),
+			)
 			.col(ColumnDef::new(Alias::new("email")).string().not_null(true))
 			.col(
 				ColumnDef::new(Alias::new("is_active"))
@@ -191,7 +197,11 @@ impl PostgresWithSchema {
 			)
 			.col(ColumnDef::new(Alias::new("title")).string().not_null(true))
 			.col(ColumnDef::new(Alias::new("content")).text())
-			.col(ColumnDef::new(Alias::new("author_id")).integer().not_null(true))
+			.col(
+				ColumnDef::new(Alias::new("author_id"))
+					.integer()
+					.not_null(true),
+			)
 			.col(
 				ColumnDef::new(Alias::new("published"))
 					.boolean()
@@ -220,8 +230,16 @@ impl PostgresWithSchema {
 					.auto_increment(true)
 					.primary_key(true),
 			)
-			.col(ColumnDef::new(Alias::new("post_id")).integer().not_null(true))
-			.col(ColumnDef::new(Alias::new("user_id")).integer().not_null(true))
+			.col(
+				ColumnDef::new(Alias::new("post_id"))
+					.integer()
+					.not_null(true),
+			)
+			.col(
+				ColumnDef::new(Alias::new("user_id"))
+					.integer()
+					.not_null(true),
+			)
 			.col(ColumnDef::new(Alias::new("body")).text().not_null(true))
 			.to_string(PostgresQueryBuilder::new());
 
@@ -617,7 +635,6 @@ pub fn plugin_manifest_with_plugins() -> PluginManifestFixture {
 /// Helper to insert test data into a PostgreSQL database using reinhardt-query
 #[allow(dead_code)] // May be used in future tests
 pub(crate) async fn insert_test_users(pool: &PgPool) -> Result<Vec<i32>, sqlx::Error> {
-
 	let mut user_ids = vec![];
 
 	// Insert test users
@@ -649,7 +666,6 @@ pub(crate) async fn insert_test_posts(
 	pool: &PgPool,
 	author_ids: &[i32],
 ) -> Result<Vec<i32>, sqlx::Error> {
-
 	let mut post_ids = vec![];
 
 	let posts = [

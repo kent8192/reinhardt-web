@@ -783,9 +783,13 @@ impl Session {
 
 						// Build and execute SQL
 						let (sql, values) = match backend {
-							DbBackend::Postgres => PostgresQueryBuilder::new().build_update(&update_stmt),
+							DbBackend::Postgres => {
+								PostgresQueryBuilder::new().build_update(&update_stmt)
+							}
 							DbBackend::Mysql => MySqlQueryBuilder::new().build_update(&update_stmt),
-							DbBackend::Sqlite => SqliteQueryBuilder::new().build_update(&update_stmt),
+							DbBackend::Sqlite => {
+								SqliteQueryBuilder::new().build_update(&update_stmt)
+							}
 						};
 
 						self.execute_with_values(&sql, &values).await?;
@@ -830,9 +834,13 @@ impl Session {
 
 						// Build and execute SQL
 						let (sql, values) = match backend {
-							DbBackend::Postgres => PostgresQueryBuilder::new().build_insert(&insert_stmt),
+							DbBackend::Postgres => {
+								PostgresQueryBuilder::new().build_insert(&insert_stmt)
+							}
 							DbBackend::Mysql => MySqlQueryBuilder::new().build_insert(&insert_stmt),
-							DbBackend::Sqlite => SqliteQueryBuilder::new().build_insert(&insert_stmt),
+							DbBackend::Sqlite => {
+								SqliteQueryBuilder::new().build_insert(&insert_stmt)
+							}
 						};
 
 						// Execute and get generated ID if available

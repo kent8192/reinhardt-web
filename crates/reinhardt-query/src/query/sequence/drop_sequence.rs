@@ -175,7 +175,6 @@ impl QueryStatementBuilder for DropSequenceStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropSequenceStatement {}

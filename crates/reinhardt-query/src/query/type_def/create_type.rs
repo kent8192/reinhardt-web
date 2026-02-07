@@ -303,7 +303,6 @@ impl QueryStatementBuilder for CreateTypeStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateTypeStatement {}

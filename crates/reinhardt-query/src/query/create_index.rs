@@ -318,7 +318,6 @@ impl QueryStatementBuilder for CreateIndexStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateIndexStatement {}

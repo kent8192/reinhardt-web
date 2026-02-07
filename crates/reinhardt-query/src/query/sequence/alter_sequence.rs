@@ -311,7 +311,6 @@ impl QueryStatementBuilder for AlterSequenceStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterSequenceStatement {}

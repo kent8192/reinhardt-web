@@ -40,9 +40,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "database")]
 use async_trait::async_trait;
 #[cfg(feature = "database")]
-use reinhardt_query::prelude::{QueryStatementBuilder,
+use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnDef, Cond, Expr, Order, PostgresQueryBuilder, Query,
-	SqliteQueryBuilder,
+	QueryStatementBuilder, SqliteQueryBuilder,
 };
 #[cfg(feature = "database")]
 use reinhardt_query::value::{Value, Values};
@@ -313,16 +313,8 @@ impl ContentTypePersistence {
 					.auto_increment(true)
 					.primary_key(true),
 			)
-			.col(
-				ColumnDef::new("app_label")
-					.string_len(100)
-					.not_null(true),
-			)
-			.col(
-				ColumnDef::new("model")
-					.string_len(100)
-					.not_null(true),
-			)
+			.col(ColumnDef::new("app_label").string_len(100).not_null(true))
+			.col(ColumnDef::new("model").string_len(100).not_null(true))
 			.to_owned();
 
 		// Select appropriate QueryBuilder based on database URL
@@ -531,8 +523,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 			])
 			.from(Alias::new("django_content_type"))
 			.cond_where(
-				Cond::all()
-					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
+				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
 		let (sql, values) = self.build_sql_with_values(stmt);
@@ -730,8 +721,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 		let stmt = Query::delete()
 			.from_table(Alias::new("django_content_type"))
 			.cond_where(
-				Cond::all()
-					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
+				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
 		let (sql, values) = self.build_sql_with_values(stmt);

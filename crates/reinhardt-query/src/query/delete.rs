@@ -168,7 +168,6 @@ impl QueryStatementBuilder for DeleteStatement {
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
 	}
-
 }
 
 impl QueryStatementWriter for DeleteStatement {}

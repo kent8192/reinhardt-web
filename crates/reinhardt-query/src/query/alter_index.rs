@@ -129,5 +129,4 @@ impl QueryStatementBuilder for AlterIndexStatement {
 			panic!("Unsupported query builder type");
 		}
 	}
-
 }

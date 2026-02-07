@@ -19,9 +19,11 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, Version};
 use reinhardt_http::Request;
 use reinhardt_macros::model;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_test::fixtures::get_test_pool;
 use rstest::*;
-use reinhardt_query::prelude::{ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use sqlx::{PgPool, Row};
@@ -94,11 +96,7 @@ async fn setup_property() -> PgPool {
 				.integer()
 				.not_null(true),
 		)
-		.col(
-			ColumnDef::new(PropertyItems::Score)
-				.double()
-				.not_null(true),
-		)
+		.col(ColumnDef::new(PropertyItems::Score).double().not_null(true))
 		.col(
 			ColumnDef::new(PropertyItems::Active)
 				.boolean()

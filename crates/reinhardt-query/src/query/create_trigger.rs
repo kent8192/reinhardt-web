@@ -271,7 +271,6 @@ impl QueryStatementBuilder for CreateTriggerStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateTriggerStatement {}

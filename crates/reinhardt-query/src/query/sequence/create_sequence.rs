@@ -261,7 +261,6 @@ impl QueryStatementBuilder for CreateSequenceStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateSequenceStatement {}

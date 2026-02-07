@@ -230,7 +230,6 @@ impl QueryStatementBuilder for AlterProcedureStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterProcedureStatement {}

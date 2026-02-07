@@ -193,7 +193,6 @@ impl QueryStatementBuilder for DropViewStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropViewStatement {}

@@ -230,7 +230,6 @@ impl QueryStatementBuilder for RepairTableStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for RepairTableStatement {}

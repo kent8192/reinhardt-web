@@ -341,10 +341,7 @@ pub mod sql_build_helpers {
 	}
 
 	/// Build DROP INDEX SQL for the given database type
-	pub fn build_drop_index(
-		db_type: DatabaseType,
-		stmt: &DropIndexStatement,
-	) -> (String, Values) {
+	pub fn build_drop_index(db_type: DatabaseType, stmt: &DropIndexStatement) -> (String, Values) {
 		match db_type {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_drop_index(stmt),
 			DatabaseType::Mysql => MySqlQueryBuilder.build_drop_index(stmt),

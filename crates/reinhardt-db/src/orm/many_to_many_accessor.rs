@@ -13,18 +13,14 @@ use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::relationship::RelationshipType;
 use crate::orm::Model;
 use reinhardt_query::prelude::{
-	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement,
-	MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder,
-	SelectStatement, SqliteQueryBuilder, Values,
+	Alias, BinOper, ColumnRef, DeleteStatement, Expr, Func, InsertStatement, MySqlQueryBuilder,
+	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder, Values,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 
 /// Build SELECT SQL using the appropriate QueryBuilder for the given backend.
-fn build_select_sql(
-	stmt: &SelectStatement,
-	backend: DatabaseBackend,
-) -> (String, Values) {
+fn build_select_sql(stmt: &SelectStatement, backend: DatabaseBackend) -> (String, Values) {
 	match backend {
 		DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(stmt),
 		DatabaseBackend::MySql => MySqlQueryBuilder.build_select(stmt),
@@ -33,10 +29,7 @@ fn build_select_sql(
 }
 
 /// Build INSERT SQL using the appropriate QueryBuilder for the given backend.
-fn build_insert_sql(
-	stmt: &InsertStatement,
-	backend: DatabaseBackend,
-) -> (String, Values) {
+fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
 	match backend {
 		DatabaseBackend::Postgres => PostgresQueryBuilder.build_insert(stmt),
 		DatabaseBackend::MySql => MySqlQueryBuilder.build_insert(stmt),
@@ -45,10 +38,7 @@ fn build_insert_sql(
 }
 
 /// Build DELETE SQL using the appropriate QueryBuilder for the given backend.
-fn build_delete_sql(
-	stmt: &DeleteStatement,
-	backend: DatabaseBackend,
-) -> (String, Values) {
+fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String, Values) {
 	match backend {
 		DatabaseBackend::Postgres => PostgresQueryBuilder.build_delete(stmt),
 		DatabaseBackend::MySql => MySqlQueryBuilder.build_delete(stmt),

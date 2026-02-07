@@ -226,7 +226,6 @@ impl QueryStatementBuilder for CreateProcedureStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CreateProcedureStatement {}

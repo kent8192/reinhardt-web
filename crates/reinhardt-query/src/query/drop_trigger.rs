@@ -196,7 +196,6 @@ impl QueryStatementBuilder for DropTriggerStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for DropTriggerStatement {}

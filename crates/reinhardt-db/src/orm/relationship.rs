@@ -8,7 +8,9 @@
 
 use crate::orm::Model;
 use crate::orm::loading::LoadingStrategy;
-use reinhardt_query::prelude::{QueryStatementBuilder, Alias, ColumnRef, Expr, ExprTrait, Order, Query, SelectStatement};
+use reinhardt_query::prelude::{
+	Alias, ColumnRef, Expr, ExprTrait, Order, Query, QueryStatementBuilder, SelectStatement,
+};
 use std::marker::PhantomData;
 
 /// Relationship type - defines cardinality
@@ -492,7 +494,9 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	where
 		V: Into<reinhardt_query::value::Value>,
 	{
-		use reinhardt_query::prelude::{QueryStatementBuilder, MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+		};
 
 		if let Some(stmt) = self.load_query(parent_id) {
 			match dialect {

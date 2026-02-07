@@ -5,8 +5,8 @@
 //! ContentType operations through the ORM are made possible.
 
 #[cfg(feature = "database")]
-use reinhardt_query::prelude::{QueryStatementBuilder,
-	Alias, BinOper, Cond, Expr, Func, Order, Query, SqliteQueryBuilder,
+use reinhardt_query::prelude::{
+	Alias, BinOper, Cond, Expr, Func, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
 };
 #[cfg(feature = "database")]
 use reinhardt_query::value::Values;
@@ -201,10 +201,12 @@ impl ContentTypeQuery {
 		for filter in &self.filters {
 			let condition = match filter {
 				ContentTypeFilter::AppLabel(app_label) => Cond::all().add(
-					Expr::col(Alias::new("app_label")).binary(BinOper::Equal, Expr::val(app_label.clone())),
+					Expr::col(Alias::new("app_label"))
+						.binary(BinOper::Equal, Expr::val(app_label.clone())),
 				),
-				ContentTypeFilter::Model(model) => Cond::all()
-					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model.clone()))),
+				ContentTypeFilter::Model(model) => Cond::all().add(
+					Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model.clone())),
+				),
 				ContentTypeFilter::Id(id) => Cond::all()
 					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(*id))),
 			};
@@ -357,10 +359,12 @@ impl ContentTypeQuery {
 		for filter in &self.filters {
 			let condition = match filter {
 				ContentTypeFilter::AppLabel(app_label) => Cond::all().add(
-					Expr::col(Alias::new("app_label")).binary(BinOper::Equal, Expr::val(app_label.clone())),
+					Expr::col(Alias::new("app_label"))
+						.binary(BinOper::Equal, Expr::val(app_label.clone())),
 				),
-				ContentTypeFilter::Model(model) => Cond::all()
-					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model.clone()))),
+				ContentTypeFilter::Model(model) => Cond::all().add(
+					Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model.clone())),
+				),
 				ContentTypeFilter::Id(id) => Cond::all()
 					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(*id))),
 			};
@@ -474,8 +478,7 @@ impl ContentTypeTransaction {
 		let stmt = Query::delete()
 			.from_table(Alias::new("django_content_type"))
 			.cond_where(
-				Cond::all()
-					.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
+				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
 		let (sql, values) = stmt.build(SqliteQueryBuilder);

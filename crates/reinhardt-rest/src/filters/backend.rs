@@ -36,7 +36,9 @@
 
 use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
-use reinhardt_query::prelude::{Cond, Expr, MySqlQueryBuilder, Order, Query, QueryStatementBuilder};
+use reinhardt_query::prelude::{
+	Cond, Expr, MySqlQueryBuilder, Order, Query, QueryStatementBuilder,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 

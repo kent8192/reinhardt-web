@@ -20,14 +20,14 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::viewsets::PaginationConfig;
 use reinhardt_views::{ListAPIView, View};
 use rstest::*;
-use reinhardt_query::prelude::{
-	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
-};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;

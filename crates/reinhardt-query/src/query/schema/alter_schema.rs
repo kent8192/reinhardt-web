@@ -167,7 +167,6 @@ impl QueryStatementBuilder for AlterSchemaStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterSchemaStatement {}

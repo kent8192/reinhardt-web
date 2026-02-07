@@ -7,9 +7,11 @@
 //! 4. reinhardt-query builder injection
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
-use reinhardt_query::prelude::{Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use std::sync::Arc;
 

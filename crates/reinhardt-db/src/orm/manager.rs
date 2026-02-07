@@ -802,25 +802,23 @@ impl<M: Model> Manager<M> {
 
 				// 2.1 Try RFC3339 strict format first (e.g., "2024-01-01T00:00:00+00:00")
 				if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-					return reinhardt_query::value::Value::ChronoDateTimeUtc(
-						Some(Box::new(dt.with_timezone(&chrono::Utc))),
-					);
+					return reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(
+						dt.with_timezone(&chrono::Utc),
+					)));
 				}
 
 				// 2.2 Try chrono's FromStr trait for DateTime<Utc>
 				//    This handles formats like "2024-01-01T00:00:00Z" with optional subseconds
 				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::Utc>>() {
-					return reinhardt_query::value::Value::ChronoDateTimeUtc(
-						Some(Box::new(dt)),
-					);
+					return reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(dt)));
 				}
 
 				// 2.3 Try parsing with FixedOffset timezone then convert to UTC
 				//    Handles formats like "2024-01-01T00:00:00.123456789+00:00"
 				if let Ok(dt) = s.parse::<chrono::DateTime<chrono::FixedOffset>>() {
-					return reinhardt_query::value::Value::ChronoDateTimeUtc(
-						Some(Box::new(dt.with_timezone(&chrono::Utc))),
-					);
+					return reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(
+						dt.with_timezone(&chrono::Utc),
+					)));
 				}
 
 				// Fallback: treat as regular string (non-datetime, non-UUID values)
@@ -831,7 +829,10 @@ impl<M: Model> Manager<M> {
 				// Array(ArrayType, Option<Box<Vec<Value>>>)
 				let values: Vec<reinhardt_query::value::Value> =
 					arr.iter().map(|v| Self::json_to_sea_value(v)).collect();
-				reinhardt_query::value::Value::Array(reinhardt_query::value::ArrayType::String, Some(Box::new(values)))
+				reinhardt_query::value::Value::Array(
+					reinhardt_query::value::ArrayType::String,
+					Some(Box::new(values)),
+				)
 			}
 			serde_json::Value::Object(_obj) => {
 				// Use reinhardt-query's Json type for PostgreSQL JSONB/JSON columns
@@ -880,9 +881,13 @@ impl<M: Model> Manager<M> {
 
 			// Timestamp handling
 			// ChronoDateTime contains NaiveDateTime, convert to UTC
-			reinhardt_query::value::Value::ChronoDateTime(Some(dt)) => QueryValue::Timestamp(dt.and_utc()),
+			reinhardt_query::value::Value::ChronoDateTime(Some(dt)) => {
+				QueryValue::Timestamp(dt.and_utc())
+			}
 			reinhardt_query::value::Value::ChronoDateTime(None) => QueryValue::Null,
-			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(dt)) => QueryValue::Timestamp(*dt),
+			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(dt)) => {
+				QueryValue::Timestamp(*dt)
+			}
 			reinhardt_query::value::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
 
 			// UUID handling
@@ -1124,10 +1129,7 @@ impl<M: Model> Manager<M> {
 		// Build SeaQuery SELECT COUNT(*) statement with explicit alias
 		let stmt = Query::select()
 			.from(Alias::new(M::table_name()))
-			.expr_as(
-				Func::count(Expr::asterisk().into()),
-				Alias::new("count"),
-			)
+			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
 			.to_owned();
 
 		let (sql, values) = build_select_sql(&stmt, conn.backend());

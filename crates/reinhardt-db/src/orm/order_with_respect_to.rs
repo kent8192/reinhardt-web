@@ -4,9 +4,9 @@
 //! relative to a parent model or set of fields.
 
 use crate::orm::query_types::DbBackend;
-use reinhardt_query::prelude::{QueryStatementBuilder, 
+use reinhardt_query::prelude::{
 	Alias, Expr, ExprTrait, Func, MySqlQueryBuilder, Order, PostgresQueryBuilder,
-	Query as SeaQuery, SqliteQueryBuilder,
+	Query as SeaQuery, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{AnyPool, Row};
@@ -168,7 +168,9 @@ impl OrderedModel {
 		// Build SELECT MAX(order_field) FROM table WHERE filters
 		let mut select_stmt = SeaQuery::select()
 			.from(Alias::new(&self.table_name))
-			.expr(Func::max(Expr::col(Alias::new(&self.order_field)).into_simple_expr()))
+			.expr(Func::max(
+				Expr::col(Alias::new(&self.order_field)).into_simple_expr(),
+			))
 			.to_owned();
 
 		// Add WHERE clauses for filters

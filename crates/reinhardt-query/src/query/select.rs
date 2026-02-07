@@ -300,8 +300,7 @@ impl SelectStatement {
 	///
 	/// Equivalent to `FROM (SELECT ...) AS alias`.
 	pub fn from_subquery(&mut self, query: SelectStatement, alias: impl IntoIden) -> &mut Self {
-		self.from
-			.push(TableRef::SubQuery(query, alias.into_iden()));
+		self.from.push(TableRef::SubQuery(query, alias.into_iden()));
 		self
 	}
 
@@ -828,7 +827,6 @@ impl QueryStatementBuilder for SelectStatement {
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
 	}
-
 }
 
 impl QueryStatementWriter for SelectStatement {}

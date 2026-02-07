@@ -129,11 +129,7 @@ impl DatabaseAuditBackend {
 					.not_null(true),
 			)
 			.col(ColumnDef::new(Alias::new("user")).text())
-			.col(
-				ColumnDef::new(Alias::new("changes"))
-					.text()
-					.not_null(true),
-			)
+			.col(ColumnDef::new(Alias::new("changes")).text().not_null(true))
 			.to_owned();
 		let sql = self.build_table_sql(stmt);
 		sqlx::query(&sql)

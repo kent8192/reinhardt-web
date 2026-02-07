@@ -150,7 +150,6 @@ impl QueryStatementBuilder for CommentStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for CommentStatement {}

@@ -330,7 +330,6 @@ impl QueryStatementBuilder for AlterTypeStatement {
 		}
 		panic!("Unsupported query builder type");
 	}
-
 }
 
 impl QueryStatementWriter for AlterTypeStatement {}

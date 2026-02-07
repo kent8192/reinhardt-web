@@ -50,7 +50,9 @@
 #[cfg(feature = "dynamic-database")]
 use chrono::{DateTime, Duration, Utc};
 #[cfg(feature = "dynamic-database")]
-use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder};
+use reinhardt_query::prelude::{
+	MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+};
 #[cfg(feature = "dynamic-database")]
 use sqlx::{AnyPool, Row};
 #[cfg(feature = "dynamic-database")]
@@ -215,7 +217,10 @@ impl DatabaseBackend {
 	///
 	/// Uses reinhardt-query to generate database-specific SQL syntax for index creation.
 	#[cfg(feature = "dynamic-database")]
-	fn build_index_sql(&self, statement: &reinhardt_query::prelude::CreateIndexStatement) -> String {
+	fn build_index_sql(
+		&self,
+		statement: &reinhardt_query::prelude::CreateIndexStatement,
+	) -> String {
 		match self.detect_backend() {
 			"postgres" => statement.to_string(PostgresQueryBuilder),
 			"mysql" => statement.to_string(MySqlQueryBuilder),
