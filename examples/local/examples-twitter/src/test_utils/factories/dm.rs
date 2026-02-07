@@ -4,7 +4,8 @@
 
 use chrono::Utc;
 use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Value,
 };
 use rstest::*;
 use sqlx::PgPool;
@@ -48,11 +49,11 @@ impl DMRoomFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				Option::<String>::None.into(),
-				false.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Option::<String>::None.into_value(),
+				Value::from(false),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 
@@ -86,11 +87,11 @@ impl DMRoomFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				Some(name.to_string()).into(),
-				true.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Some(name.to_string()).into_value(),
+				Value::from(true),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 
@@ -114,7 +115,7 @@ impl DMRoomFactory {
 		let sql = Query::insert()
 			.into_table(Alias::new("dm_room_members"))
 			.columns([Alias::new("dmroom_id"), Alias::new("user_id")])
-			.values_panic([room_id.into(), user_id.into()])
+			.values_panic([Value::from(room_id), Value::from(user_id)])
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&sql).execute(pool).await?;
@@ -229,13 +230,13 @@ impl DMMessageFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				room_id.into(),
-				sender_id.into(),
-				content.into(),
-				false.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Value::from(room_id),
+				Value::from(sender_id),
+				Value::from(content),
+				Value::from(false),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 

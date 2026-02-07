@@ -6,7 +6,7 @@
 use chrono::Utc;
 use reinhardt::{Argon2Hasher, PasswordHasher};
 use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, Expr, ExprTrait, IntoValue, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use rstest::*;
 use sqlx::PgPool;
@@ -63,13 +63,13 @@ impl UserFactory {
 				Alias::new("bio"),
 			])
 			.values_panic([
-				test_user.id.into(),
-				test_user.username.clone().into(),
-				test_user.email.clone().into(),
-				password_hash.into(),
-				test_user.is_active.into(),
-				Utc::now().into(),
-				test_user.bio.clone().into(),
+				Value::from(test_user.id),
+				Value::from(test_user.username.clone()),
+				Value::from(test_user.email.clone()),
+				Value::from(password_hash),
+				Value::from(test_user.is_active),
+				Value::from(Utc::now()),
+				test_user.bio.clone().into_value(),
 			])
 			.to_string(PostgresQueryBuilder);
 
@@ -184,14 +184,14 @@ impl ProfileFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				user_id.into(),
-				bio.into(),
-				avatar_url.into(),
-				Option::<String>::None.into(),
-				Option::<String>::None.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Value::from(user_id),
+				Value::from(bio),
+				Value::from(avatar_url),
+				Option::<String>::None.into_value(),
+				Option::<String>::None.into_value(),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 

@@ -18,6 +18,7 @@ use reinhardt_auth::{BaseUser, CurrentUser, DefaultUser};
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_query::prelude::{
 	ColumnDef, Expr, ExprTrait, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Value,
 };
 use reinhardt_test::fixtures::auth::{test_user, TestUser};
 use reinhardt_test::fixtures::singleton_scope;
@@ -98,7 +99,11 @@ async fn insert_user(pool: &PgPool, id: Uuid, username: &str, email: &str) {
 	let insert = insert_stmt
 		.into_table(AuthUser::Table.into_iden())
 		.columns([AuthUser::Id, AuthUser::Username, AuthUser::Email])
-		.values_panic([id.to_string().into(), username.into(), email.into()])
+		.values_panic([
+			Value::from(id.to_string()),
+			Value::from(username),
+			Value::from(email),
+		])
 		.to_string(PostgresQueryBuilder::new());
 
 	sqlx::query(&insert).execute(pool).await.unwrap();

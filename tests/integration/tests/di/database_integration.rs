@@ -8,7 +8,7 @@
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, ColumnDef, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::testcontainers::{postgres_container, ContainerAsync, GenericImage};
 use rstest::*;
@@ -46,7 +46,7 @@ impl UserRepository {
 		let query = insert_stmt
 			.into_table(Alias::new("users"))
 			.columns([Alias::new("name")])
-			.values_panic([name.into()])
+			.values_panic([Value::from(name)])
 			.returning_col(Alias::new("id"))
 			.to_string(PostgresQueryBuilder::new());
 
@@ -196,7 +196,7 @@ async fn test_transaction_scope(
 	let insert = insert_stmt
 		.into_table(Alias::new("users"))
 		.columns([Alias::new("name")])
-		.values_panic(["Bob".into()])
+		.values_panic([Value::from("Bob")])
 		.to_string(PostgresQueryBuilder::new());
 
 	sqlx::query(&insert).execute(&mut *tx).await.unwrap();
@@ -258,7 +258,7 @@ async fn test_reinhardt_query_builder_injection(
 	let insert = insert_stmt
 		.into_table(Alias::new("users"))
 		.columns([Alias::new("name")])
-		.values_panic(["Charlie".into()])
+		.values_panic([Value::from("Charlie")])
 		.to_string(PostgresQueryBuilder::new());
 
 	sqlx::query(&insert)

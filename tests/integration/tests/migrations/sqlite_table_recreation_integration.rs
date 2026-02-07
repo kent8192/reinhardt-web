@@ -25,7 +25,9 @@ use reinhardt_db::migrations::{
 	operations::{Constraint, Operation},
 	ColumnDefinition, FieldType, ForeignKeyAction, Migration,
 };
-use reinhardt_query::prelude::{Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder};
+use reinhardt_query::prelude::{
+	Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder, Value,
+};
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::PgPool;
@@ -250,8 +252,16 @@ async fn test_drop_column_preserves_data(
 			RecreationTestCol::Email,
 			RecreationTestCol::Age,
 		])
-		.values_panic(["Alice".into(), "alice@example.com".into(), 30i32.into()])
-		.values_panic(["Bob".into(), "bob@example.com".into(), 25i32.into()])
+		.values_panic([
+			Value::from("Alice"),
+			Value::from("alice@example.com"),
+			Value::from(30i32),
+		])
+		.values_panic([
+			Value::from("Bob"),
+			Value::from("bob@example.com"),
+			Value::from(25i32),
+		])
 		.to_string(SqliteQueryBuilder::new());
 
 	conn.execute(&insert_sql, vec![])
@@ -361,7 +371,11 @@ async fn test_alter_column_type_preserves_data(
 			RecreationTestCol::Email,
 			RecreationTestCol::Age,
 		])
-		.values_panic(["Charlie".into(), "charlie@test.com".into(), 35i32.into()])
+		.values_panic([
+			Value::from("Charlie"),
+			Value::from("charlie@test.com"),
+			Value::from(35i32),
+		])
 		.to_string(SqliteQueryBuilder::new());
 
 	conn.execute(&insert_sql, vec![])

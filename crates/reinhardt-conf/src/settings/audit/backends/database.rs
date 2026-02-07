@@ -313,6 +313,7 @@ impl AuditBackend for DatabaseAuditBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_query::Func;
 	use serde_json::json;
 	use std::sync::Once;
 

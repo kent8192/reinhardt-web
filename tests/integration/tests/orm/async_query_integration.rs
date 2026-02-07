@@ -19,6 +19,7 @@ use reinhardt_db::orm::{
 use reinhardt_db::{orm::Model, DatabaseConnection};
 use reinhardt_integration_tests::migrations::apply_async_query_test_migrations;
 use reinhardt_macros::model;
+use reinhardt_query::QueryStatementBuilder;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};

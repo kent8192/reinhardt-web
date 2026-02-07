@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use rstest::*;
 use sqlx::PgPool;
@@ -49,13 +49,13 @@ impl TweetFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				user_id.into(),
-				content.into(),
-				0i32.into(),
-				0i32.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Value::from(user_id),
+				Value::from(content),
+				Value::from(0i32),
+				Value::from(0i32),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 
@@ -88,13 +88,13 @@ impl TweetFactory {
 				Alias::new("updated_at"),
 			])
 			.values_panic([
-				id.into(),
-				user_id.into(),
-				content.into(),
-				like_count.into(),
-				retweet_count.into(),
-				now.into(),
-				now.into(),
+				Value::from(id),
+				Value::from(user_id),
+				Value::from(content),
+				Value::from(like_count),
+				Value::from(retweet_count),
+				Value::from(now),
+				Value::from(now),
 			])
 			.to_string(PostgresQueryBuilder);
 

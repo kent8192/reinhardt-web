@@ -6,7 +6,7 @@
 use reinhardt_commands::{CommandContext, MigrateCommand};
 use reinhardt_db::migrations::{Migration, Operation};
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
 use rstest::*;
@@ -649,7 +649,7 @@ pub(crate) async fn insert_test_users(pool: &PgPool) -> Result<Vec<i32>, sqlx::E
 		let insert = insert_stmt
 			.into_table(Alias::new("users"))
 			.columns([Alias::new("username"), Alias::new("email")])
-			.values_panic([username.into(), email.into()])
+			.values_panic([Value::from(username), Value::from(email)])
 			.returning_col(Alias::new("id"))
 			.to_string(PostgresQueryBuilder::new());
 
@@ -687,10 +687,10 @@ pub(crate) async fn insert_test_posts(
 				Alias::new("published"),
 			])
 			.values_panic([
-				(*title).into(),
-				(*content).into(),
-				author_id.into(),
-				(*published).into(),
+				Value::from(*title),
+				Value::from(*content),
+				Value::from(author_id),
+				Value::from(*published),
 			])
 			.returning_col(Alias::new("id"))
 			.to_string(PostgresQueryBuilder::new());
