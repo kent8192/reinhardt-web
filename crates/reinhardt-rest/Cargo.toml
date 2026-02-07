@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-rest"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.7"
 description = "REST API framework aggregator for Reinhardt"
 edition.workspace = true
 license.workspace = true
@@ -136,9 +136,5 @@ reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
 sea-orm = { workspace = true }
-reinhardt-pages = { workspace = true }
-reinhardt-server = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 serial_test = { workspace = true }
-# Router integration (causes circular dependency, only for testing)
-reinhardt-urls = { workspace = true, features = ["routers"] }

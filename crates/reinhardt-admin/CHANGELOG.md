@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.3...reinhardt-admin@v0.1.0-alpha.4) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-urls, reinhardt-pages
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.2...reinhardt-admin@v0.1.0-alpha.3) - 2026-02-03
 
 ### Other
