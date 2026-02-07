@@ -6,7 +6,7 @@
 use chrono::Utc;
 use reinhardt::{Argon2Hasher, PasswordHasher};
 use rstest::*;
-use sea_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
+use reinhardt_query::prelude::{Alias, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -50,15 +50,15 @@ impl UserFactory {
 			.expect("Password hashing should not fail");
 
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("auth_user"))
+			.into_table(Alias::new("auth_user"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("username"),
-				sea_query::Alias::new("email"),
-				sea_query::Alias::new("password_hash"),
-				sea_query::Alias::new("is_active"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("bio"),
+				Alias::new("id"),
+				Alias::new("username"),
+				Alias::new("email"),
+				Alias::new("password_hash"),
+				Alias::new("is_active"),
+				Alias::new("created_at"),
+				Alias::new("bio"),
 			])
 			.values_panic([
 				test_user.id.into(),
@@ -102,17 +102,17 @@ impl UserFactory {
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<User, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("username"),
-				sea_query::Alias::new("email"),
-				sea_query::Alias::new("password_hash"),
-				sea_query::Alias::new("is_active"),
-				sea_query::Alias::new("last_login"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("bio"),
+				Alias::new("id"),
+				Alias::new("username"),
+				Alias::new("email"),
+				Alias::new("password_hash"),
+				Alias::new("is_active"),
+				Alias::new("last_login"),
+				Alias::new("created_at"),
+				Alias::new("bio"),
 			])
-			.from(sea_query::Alias::new("auth_user"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from(Alias::new("auth_user"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, User>(&sql).fetch_one(pool).await
@@ -126,17 +126,17 @@ impl UserFactory {
 	) -> Result<User, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("username"),
-				sea_query::Alias::new("email"),
-				sea_query::Alias::new("password_hash"),
-				sea_query::Alias::new("is_active"),
-				sea_query::Alias::new("last_login"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("bio"),
+				Alias::new("id"),
+				Alias::new("username"),
+				Alias::new("email"),
+				Alias::new("password_hash"),
+				Alias::new("is_active"),
+				Alias::new("last_login"),
+				Alias::new("created_at"),
+				Alias::new("bio"),
 			])
-			.from(sea_query::Alias::new("auth_user"))
-			.and_where(Expr::col(sea_query::Alias::new("username")).eq(Expr::val(username)))
+			.from(Alias::new("auth_user"))
+			.and_where(Expr::col(Alias::new("username")).eq(Expr::val(username)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, User>(&sql).fetch_one(pool).await
@@ -170,16 +170,16 @@ impl ProfileFactory {
 		let now = Utc::now();
 
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("profile_profile"))
+			.into_table(Alias::new("profile_profile"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("bio"),
-				sea_query::Alias::new("avatar_url"),
-				sea_query::Alias::new("location"),
-				sea_query::Alias::new("website"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("bio"),
+				Alias::new("avatar_url"),
+				Alias::new("location"),
+				Alias::new("website"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -211,17 +211,17 @@ impl ProfileFactory {
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<Profile, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("bio"),
-				sea_query::Alias::new("avatar_url"),
-				sea_query::Alias::new("location"),
-				sea_query::Alias::new("website"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("bio"),
+				Alias::new("avatar_url"),
+				Alias::new("location"),
+				Alias::new("website"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("profile_profile"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from(Alias::new("profile_profile"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, Profile>(&sql).fetch_one(pool).await
@@ -235,17 +235,17 @@ impl ProfileFactory {
 	) -> Result<Profile, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("bio"),
-				sea_query::Alias::new("avatar_url"),
-				sea_query::Alias::new("location"),
-				sea_query::Alias::new("website"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("bio"),
+				Alias::new("avatar_url"),
+				Alias::new("location"),
+				Alias::new("website"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("profile_profile"))
-			.and_where(Expr::col(sea_query::Alias::new("user_id")).eq(Expr::val(user_id)))
+			.from(Alias::new("profile_profile"))
+			.and_where(Expr::col(Alias::new("user_id")).eq(Expr::val(user_id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, Profile>(&sql).fetch_one(pool).await

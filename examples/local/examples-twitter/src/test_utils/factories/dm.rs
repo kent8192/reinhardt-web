@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use rstest::*;
-use sea_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
+use reinhardt_query::prelude::{Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -37,13 +37,13 @@ impl DMRoomFactory {
 
 		// Insert room
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("dm_room"))
+			.into_table(Alias::new("dm_room"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("name"),
-				sea_query::Alias::new("is_group"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("name"),
+				Alias::new("is_group"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -75,13 +75,13 @@ impl DMRoomFactory {
 
 		// Insert room
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("dm_room"))
+			.into_table(Alias::new("dm_room"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("name"),
-				sea_query::Alias::new("is_group"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("name"),
+				Alias::new("is_group"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -110,10 +110,10 @@ impl DMRoomFactory {
 		user_id: Uuid,
 	) -> Result<(), sqlx::Error> {
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("dm_room_members"))
+			.into_table(Alias::new("dm_room_members"))
 			.columns([
-				sea_query::Alias::new("dmroom_id"),
-				sea_query::Alias::new("user_id"),
+				Alias::new("dmroom_id"),
+				Alias::new("user_id"),
 			])
 			.values_panic([room_id.into(), user_id.into()])
 			.to_string(PostgresQueryBuilder);
@@ -126,14 +126,14 @@ impl DMRoomFactory {
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<DMRoom, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("name"),
-				sea_query::Alias::new("is_group"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("name"),
+				Alias::new("is_group"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("dm_room"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from(Alias::new("dm_room"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, DMRoom>(&sql).fetch_one(pool).await
@@ -169,22 +169,22 @@ impl DMRoomFactory {
 	pub async fn delete(&self, pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
 		// Delete messages first (FK constraint)
 		let sql = Query::delete()
-			.from_table(sea_query::Alias::new("dm_message"))
-			.and_where(Expr::col(sea_query::Alias::new("room_id")).eq(Expr::val(id)))
+			.from_table(Alias::new("dm_message"))
+			.and_where(Expr::col(Alias::new("room_id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 		sqlx::query(&sql).execute(pool).await?;
 
 		// Delete members
 		let sql = Query::delete()
-			.from_table(sea_query::Alias::new("dm_room_members"))
-			.and_where(Expr::col(sea_query::Alias::new("dmroom_id")).eq(Expr::val(id)))
+			.from_table(Alias::new("dm_room_members"))
+			.and_where(Expr::col(Alias::new("dmroom_id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 		sqlx::query(&sql).execute(pool).await?;
 
 		// Delete room
 		let sql = Query::delete()
-			.from_table(sea_query::Alias::new("dm_room"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from_table(Alias::new("dm_room"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 		sqlx::query(&sql).execute(pool).await?;
 
@@ -219,15 +219,15 @@ impl DMMessageFactory {
 		let now = Utc::now();
 
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("dm_message"))
+			.into_table(Alias::new("dm_message"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("room_id"),
-				sea_query::Alias::new("sender_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("is_read"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("room_id"),
+				Alias::new("sender_id"),
+				Alias::new("content"),
+				Alias::new("is_read"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -265,16 +265,16 @@ impl DMMessageFactory {
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<DMMessage, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("room_id"),
-				sea_query::Alias::new("sender_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("is_read"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("room_id"),
+				Alias::new("sender_id"),
+				Alias::new("content"),
+				Alias::new("is_read"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("dm_message"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from(Alias::new("dm_message"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, DMMessage>(&sql).fetch_one(pool).await
@@ -289,17 +289,17 @@ impl DMMessageFactory {
 	) -> Result<Vec<DMMessage>, sqlx::Error> {
 		let mut query = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("room_id"),
-				sea_query::Alias::new("sender_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("is_read"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("room_id"),
+				Alias::new("sender_id"),
+				Alias::new("content"),
+				Alias::new("is_read"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("dm_message"))
-			.and_where(Expr::col(sea_query::Alias::new("room_id")).eq(Expr::val(room_id)))
-			.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
+			.from(Alias::new("dm_message"))
+			.and_where(Expr::col(Alias::new("room_id")).eq(Expr::val(room_id)))
+			.order_by(Alias::new("created_at"), Order::Desc)
 			.to_owned();
 
 		if let Some(l) = limit {
@@ -321,9 +321,9 @@ impl DMMessageFactory {
 	/// Mark a message as read.
 	pub async fn mark_as_read(&self, pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
 		let sql = Query::update()
-			.table(sea_query::Alias::new("dm_message"))
-			.value(sea_query::Alias::new("is_read"), true)
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.table(Alias::new("dm_message"))
+			.value(Alias::new("is_read"), true)
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&sql).execute(pool).await?;
@@ -348,8 +348,8 @@ impl DMMessageFactory {
 	/// Delete a message by ID.
 	pub async fn delete(&self, pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
 		let sql = Query::delete()
-			.from_table(sea_query::Alias::new("dm_message"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from_table(Alias::new("dm_message"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&sql).execute(pool).await?;

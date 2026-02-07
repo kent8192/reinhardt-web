@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use rstest::*;
-use sea_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
+use reinhardt_query::prelude::{Alias, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -36,15 +36,15 @@ impl TweetFactory {
 		let now = Utc::now();
 
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("tweet_tweet"))
+			.into_table(Alias::new("tweet_tweet"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("like_count"),
-				sea_query::Alias::new("retweet_count"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("content"),
+				Alias::new("like_count"),
+				Alias::new("retweet_count"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -75,15 +75,15 @@ impl TweetFactory {
 		let now = Utc::now();
 
 		let sql = Query::insert()
-			.into_table(sea_query::Alias::new("tweet_tweet"))
+			.into_table(Alias::new("tweet_tweet"))
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("like_count"),
-				sea_query::Alias::new("retweet_count"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("content"),
+				Alias::new("like_count"),
+				Alias::new("retweet_count"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
 			.values_panic([
 				id.into(),
@@ -120,16 +120,16 @@ impl TweetFactory {
 	pub async fn find_by_id(&self, pool: &PgPool, id: Uuid) -> Result<Tweet, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("like_count"),
-				sea_query::Alias::new("retweet_count"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("content"),
+				Alias::new("like_count"),
+				Alias::new("retweet_count"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("tweet_tweet"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from(Alias::new("tweet_tweet"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, Tweet>(&sql).fetch_one(pool).await
@@ -143,17 +143,17 @@ impl TweetFactory {
 	) -> Result<Vec<Tweet>, sqlx::Error> {
 		let sql = Query::select()
 			.columns([
-				sea_query::Alias::new("id"),
-				sea_query::Alias::new("user_id"),
-				sea_query::Alias::new("content"),
-				sea_query::Alias::new("like_count"),
-				sea_query::Alias::new("retweet_count"),
-				sea_query::Alias::new("created_at"),
-				sea_query::Alias::new("updated_at"),
+				Alias::new("id"),
+				Alias::new("user_id"),
+				Alias::new("content"),
+				Alias::new("like_count"),
+				Alias::new("retweet_count"),
+				Alias::new("created_at"),
+				Alias::new("updated_at"),
 			])
-			.from(sea_query::Alias::new("tweet_tweet"))
-			.and_where(Expr::col(sea_query::Alias::new("user_id")).eq(Expr::val(user_id)))
-			.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
+			.from(Alias::new("tweet_tweet"))
+			.and_where(Expr::col(Alias::new("user_id")).eq(Expr::val(user_id)))
+			.order_by(Alias::new("created_at"), Order::Desc)
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query_as::<_, Tweet>(&sql).fetch_all(pool).await
@@ -170,8 +170,8 @@ impl TweetFactory {
 	/// Delete a tweet by ID.
 	pub async fn delete(&self, pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
 		let sql = Query::delete()
-			.from_table(sea_query::Alias::new("tweet_tweet"))
-			.and_where(Expr::col(sea_query::Alias::new("id")).eq(Expr::val(id)))
+			.from_table(Alias::new("tweet_tweet"))
+			.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))
 			.to_string(PostgresQueryBuilder);
 
 		sqlx::query(&sql).execute(pool).await?;
