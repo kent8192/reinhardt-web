@@ -13,3 +13,6 @@ pub mod field_indexes;
 
 #[path = "field/validation.rs"]
 pub mod field_validation;
+
+#[path = "integration/mongodb_backend.rs"]
+pub mod mongodb_backend;
