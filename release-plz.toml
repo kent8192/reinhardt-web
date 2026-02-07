@@ -96,3 +96,36 @@ publish = false
 
 [changelog]
 protect_breaking_commits = true
+sort_commits = "oldest"
+
+# Commit parsers: evaluated in order, first match wins.
+# Skip rules come before mapping rules.
+# See docs/COMMIT_GUIDELINE.md "CG: CHANGELOG Generation Guidelines" section.
+commit_parsers = [
+  # Skip: automated commits not relevant to release notes
+  { message = "^chore: release", skip = true },
+  { message = "^Merge", skip = true },
+  { message = "^Revert \"", skip = true },
+  { message = "^Initial plan", skip = true },
+  # Map: commit types to Keep a Changelog sections
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^revert", group = "Reverted" },
+  { message = "^deprecated", group = "Deprecated" },
+  { message = "^security", group = "Security" },
+  { message = "^chore", group = "Maintenance" },
+  { message = "^ci", group = "Maintenance" },
+  { message = "^build", group = "Maintenance" },
+  { message = "^test", group = "Testing" },
+  { message = "^style", group = "Styling" },
+  # Catch-all
+  { message = "^.*", group = "Other" },
+]
+
+# Convert GitHub issue/PR references to clickable links
+commit_preprocessors = [
+  { pattern = '#(\d+)', replace = "[#${1}](https://github.com/kent8192/reinhardt-web/issues/${1})" },
+]
