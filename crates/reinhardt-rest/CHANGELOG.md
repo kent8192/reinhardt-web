@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.5...reinhardt-rest@v0.1.0-alpha.6) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-pages, reinhardt-http, reinhardt-utils, reinhardt-server, reinhardt-db, reinhardt-db, reinhardt-auth, reinhardt-auth
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.4...reinhardt-rest@v0.1.0-alpha.5) - 2026-02-03
+
+### Other
+
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
+
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 

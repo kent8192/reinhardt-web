@@ -68,6 +68,8 @@ impl PageEditor {
 
 	/// Render the edit form for a page
 	pub async fn render_edit_form(&self, page_id: PageId) -> CmsResult<String> {
+		use reinhardt_core::types::page::{IntoPage, PageElement};
+
 		// Get page data from cache or use empty object
 		let page_data = self
 			.page_cache
@@ -75,40 +77,88 @@ impl PageEditor {
 			.cloned()
 			.unwrap_or_else(|| serde_json::json!({}));
 
-		// Generate a simple HTML form
-		// TODO: Use reinhardt-pages for proper component rendering
-		let form_html = format!(
-			r#"<form id="page-edit-form" data-page-id="{}">
-	<div class="form-group">
-		<label for="title">Title</label>
-		<input type="text" id="title" name="title" value="{}" class="form-control" required />
-	</div>
-	<div class="form-group">
-		<label for="slug">Slug</label>
-		<input type="text" id="slug" name="slug" value="{}" class="form-control" required />
-	</div>
-	<div class="form-group">
-		<label for="content">Content</label>
-		<textarea id="content" name="content" class="form-control" rows="10">{}</textarea>
-	</div>
-	<div class="form-actions">
-		<button type="submit" class="btn btn-primary">Save</button>
-		<button type="button" class="btn btn-secondary" onclick="history.back()">Cancel</button>
-	</div>
-</form>"#,
-			page_id,
-			page_data
-				.get("title")
-				.and_then(|v| v.as_str())
-				.unwrap_or(""),
-			page_data.get("slug").and_then(|v| v.as_str()).unwrap_or(""),
-			page_data
-				.get("content")
-				.and_then(|v| v.as_str())
-				.unwrap_or(""),
-		);
+		let title_value = page_data
+			.get("title")
+			.and_then(|v| v.as_str())
+			.unwrap_or("");
+		let slug_value = page_data.get("slug").and_then(|v| v.as_str()).unwrap_or("");
+		let content_value = page_data
+			.get("content")
+			.and_then(|v| v.as_str())
+			.unwrap_or("");
 
-		Ok(form_html)
+		let form = PageElement::new("form")
+			.attr("id", "page-edit-form")
+			.attr("data-page-id", page_id.to_string())
+			.child(
+				PageElement::new("div")
+					.attr("class", "form-group")
+					.child(
+						PageElement::new("label")
+							.attr("for", "title")
+							.child("Title"),
+					)
+					.child(
+						PageElement::new("input")
+							.attr("type", "text")
+							.attr("id", "title")
+							.attr("name", "title")
+							.attr("value", title_value.to_string())
+							.attr("class", "form-control")
+							.bool_attr("required", true),
+					),
+			)
+			.child(
+				PageElement::new("div")
+					.attr("class", "form-group")
+					.child(PageElement::new("label").attr("for", "slug").child("Slug"))
+					.child(
+						PageElement::new("input")
+							.attr("type", "text")
+							.attr("id", "slug")
+							.attr("name", "slug")
+							.attr("value", slug_value.to_string())
+							.attr("class", "form-control")
+							.bool_attr("required", true),
+					),
+			)
+			.child(
+				PageElement::new("div")
+					.attr("class", "form-group")
+					.child(
+						PageElement::new("label")
+							.attr("for", "content")
+							.child("Content"),
+					)
+					.child(
+						PageElement::new("textarea")
+							.attr("id", "content")
+							.attr("name", "content")
+							.attr("class", "form-control")
+							.attr("rows", "10")
+							.child(content_value.to_string()),
+					),
+			)
+			.child(
+				PageElement::new("div")
+					.attr("class", "form-actions")
+					.child(
+						PageElement::new("button")
+							.attr("type", "submit")
+							.attr("class", "btn btn-primary")
+							.child("Save"),
+					)
+					.child(
+						PageElement::new("button")
+							.attr("type", "button")
+							.attr("class", "btn btn-secondary")
+							.attr("onclick", "history.back()")
+							.child("Cancel"),
+					),
+			)
+			.into_page();
+
+		Ok(form.render_to_string())
 	}
 
 	/// Save page changes
