@@ -2,10 +2,12 @@
 //!
 //! Tests MongoDB-specific functionality.
 
-use reinhardt_db::nosql::traits::DocumentBackend;
-use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
+use crate::mongodb_fixtures::mongodb;
 use bson::doc;
+use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
+use reinhardt_db::nosql::traits::{DocumentBackend, NoSQLBackend};
 use rstest::*;
+use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test MongoDB connection
 ///
@@ -15,16 +17,16 @@ use rstest::*;
 #[rstest]
 #[tokio::test]
 async fn test_mongodb_connection(
-    #[future] mongodb: MongoDBBackend,
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
 ) {
-    // Arrange: Get MongoDB backend
-    let db = mongodb.await;
+	// Arrange: Get MongoDB backend
+	let (_container, db) = mongodb.await;
 
-    // Act: Ping database
-    let result = db.execute_command("ping", doc! {}).await;
+	// Act: Health check (ping database)
+	let result = db.health_check().await;
 
-    // Assert: Connection successful
-    assert!(result.is_ok());
+	// Assert: Connection successful
+	assert!(result.is_ok());
 }
 
 /// Test aggregation pipeline
@@ -35,31 +37,35 @@ async fn test_mongodb_connection(
 #[rstest]
 #[tokio::test]
 async fn test_aggregation_pipeline(
-    #[future] mongodb: MongoDBBackend,
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
 ) {
-    let db = mongodb.await;
-    let collection = "test_aggregation";
+	let (_container, db) = mongodb.await;
+	let collection = "test_aggregation";
 
-    // Arrange: Insert test documents
-    for i in 1..=10 {
-        let doc = doc! { "category": if i % 2 == 0 { "A" } else { "B" }, "value": i };
-        db.insert_one(collection, doc).await.ok();
-    }
+	// Arrange: Insert test documents
+	for i in 1..=10 {
+		let doc = doc! { "category": if i % 2 == 0 { "A" } else { "B" }, "value": i };
+		db.insert_one(collection, doc).await.ok();
+	}
 
-    // Act: Run aggregation
-    let pipeline = vec![
-        doc! { "$match": { "category": "A" } },
-        doc! { "$group": {
-            "_id": "$category",
-            "total": { "$sum": "$value" }
-        }},
-    ];
+	// Act: Run aggregation
+	let pipeline = vec![
+		doc! { "$match": { "category": "A" } },
+		doc! { "$group": {
+			"_id": "$category",
+			"total": { "$sum": "$value" }
+		}},
+	];
 
-    let results = db.aggregate(collection, pipeline).await.unwrap();
+	let results = db.aggregate(collection, pipeline).await.unwrap();
 
-    // Assert: Aggregation results
-    assert!(!results.is_empty());
+	// Assert: Aggregation results
+	assert!(!results.is_empty());
 
-    // Cleanup
-    db.drop_collection(collection).await.ok();
+	// Cleanup: Drop the entire collection
+	db.database()
+		.collection::<bson::Document>(collection)
+		.drop()
+		.await
+		.ok();
 }
