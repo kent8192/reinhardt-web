@@ -15,7 +15,7 @@ pr_labels = ["release", "automated"]
 pr_name = "chore: release"
 
 # Git release settings
-git_release_enable = true
+git_release_enable = false
 git_tag_enable = true
 git_tag_name = "{{ package }}@v{{ version }}"
 git_release_type = "auto"
@@ -37,6 +37,11 @@ release_always = false
 
 # Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
 publish_no_verify = true
+
+# Main crate: only reinhardt-web gets GitHub Releases
+[[package]]
+name = "reinhardt-web"
+git_release_enable = true
 
 # Non-published packages (tests, examples, internal tools)
 [[package]]
