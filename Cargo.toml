@@ -284,6 +284,7 @@ resolver = "3"
 members = [
   # Core framework (always included)
   "crates/reinhardt-query",
+  "crates/reinhardt-query/macros",
   "crates/reinhardt-apps",
   "crates/reinhardt-conf",
   "crates/reinhardt-conf/crates/settings-cli",

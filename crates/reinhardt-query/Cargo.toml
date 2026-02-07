@@ -11,6 +11,9 @@ description = "SQL query builder for Reinhardt framework, compatible with SeaQue
 # Core dependencies
 thiserror = { workspace = true }
 
+# Derive macros
+reinhardt-query-macros = { path = "macros", optional = true }
+
 # Feature-gated dependencies
 chrono = { workspace = true, optional = true }
 uuid = { version = "1.0", optional = true }
@@ -24,6 +27,9 @@ default = []
 # Thread-safe mode (uses Arc instead of Rc)
 thread-safe = []
 
+# Derive macros
+derive = ["dep:reinhardt-query-macros"]
+
 # Optional type support
 with-chrono = ["dep:chrono"]
 with-uuid = ["dep:uuid"]
@@ -33,6 +39,7 @@ with-bigdecimal = ["dep:bigdecimal"]
 
 # All optional features
 full = [
+	"derive",
 	"with-chrono",
 	"with-uuid",
 	"with-json",
