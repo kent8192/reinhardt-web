@@ -170,6 +170,133 @@ impl ColumnDef {
 		self.comment = Some(comment.into());
 		self
 	}
+
+	// Convenience type methods
+
+	/// Set column type to INTEGER
+	pub fn integer(self) -> Self {
+		self.column_type(ColumnType::Integer)
+	}
+
+	/// Set column type to BIGINT
+	pub fn big_integer(self) -> Self {
+		self.column_type(ColumnType::BigInteger)
+	}
+
+	/// Set column type to SMALLINT
+	pub fn small_integer(self) -> Self {
+		self.column_type(ColumnType::SmallInteger)
+	}
+
+	/// Set column type to TINYINT
+	pub fn tiny_integer(self) -> Self {
+		self.column_type(ColumnType::TinyInteger)
+	}
+
+	/// Set column type to VARCHAR (no length limit)
+	pub fn string(self) -> Self {
+		self.column_type(ColumnType::String(None))
+	}
+
+	/// Set column type to VARCHAR(len)
+	pub fn string_len(self, len: u32) -> Self {
+		self.column_type(ColumnType::String(Some(len)))
+	}
+
+	/// Set column type to CHAR (no length limit)
+	pub fn char(self) -> Self {
+		self.column_type(ColumnType::Char(None))
+	}
+
+	/// Set column type to CHAR(len)
+	pub fn char_len(self, len: u32) -> Self {
+		self.column_type(ColumnType::Char(Some(len)))
+	}
+
+	/// Set column type to TEXT
+	pub fn text(self) -> Self {
+		self.column_type(ColumnType::Text)
+	}
+
+	/// Set column type to BOOLEAN
+	pub fn boolean(self) -> Self {
+		self.column_type(ColumnType::Boolean)
+	}
+
+	/// Set column type to FLOAT
+	pub fn float(self) -> Self {
+		self.column_type(ColumnType::Float)
+	}
+
+	/// Set column type to DOUBLE
+	pub fn double(self) -> Self {
+		self.column_type(ColumnType::Double)
+	}
+
+	/// Set column type to DECIMAL(precision, scale)
+	pub fn decimal(self, precision: u32, scale: u32) -> Self {
+		self.column_type(ColumnType::Decimal(Some((precision, scale))))
+	}
+
+	/// Set column type to DATE
+	pub fn date(self) -> Self {
+		self.column_type(ColumnType::Date)
+	}
+
+	/// Set column type to TIME
+	pub fn time(self) -> Self {
+		self.column_type(ColumnType::Time)
+	}
+
+	/// Set column type to DATETIME
+	pub fn date_time(self) -> Self {
+		self.column_type(ColumnType::DateTime)
+	}
+
+	/// Set column type to TIMESTAMP
+	pub fn timestamp(self) -> Self {
+		self.column_type(ColumnType::Timestamp)
+	}
+
+	/// Set column type to TIMESTAMPTZ
+	pub fn timestamp_with_time_zone(self) -> Self {
+		self.column_type(ColumnType::TimestampWithTimeZone)
+	}
+
+	/// Set column type to UUID
+	pub fn uuid(self) -> Self {
+		self.column_type(ColumnType::Uuid)
+	}
+
+	/// Set column type to JSON
+	pub fn json(self) -> Self {
+		self.column_type(ColumnType::Json)
+	}
+
+	/// Set column type to JSONB
+	pub fn json_binary(self) -> Self {
+		self.column_type(ColumnType::JsonBinary)
+	}
+
+	/// Set column type to BLOB
+	pub fn blob(self) -> Self {
+		self.column_type(ColumnType::Blob)
+	}
+
+	/// Set column type to BINARY(len)
+	pub fn binary(self, len: u32) -> Self {
+		self.column_type(ColumnType::Binary(Some(len)))
+	}
+
+	/// Set column type to a custom type
+	pub fn custom<S: Into<String>>(self, name: S) -> Self {
+		self.column_type(ColumnType::Custom(name.into()))
+	}
+
+	/// Set column type to ARRAY of given element type
+	pub fn array(self, element_type: ColumnType) -> Self {
+		self.column_type(ColumnType::Array(Box::new(element_type)))
+	}
 }
 
 /// Table constraint
@@ -311,5 +438,108 @@ impl IndexDef {
 	pub fn r#where(mut self, expr: SimpleExpr) -> Self {
 		self.r#where = Some(expr);
 		self
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_column_def_integer() {
+		// Arrange & Act
+		let col = ColumnDef::new("age").integer().not_null(true);
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Integer));
+		assert!(col.not_null);
+	}
+
+	#[rstest]
+	fn test_column_def_string_len() {
+		// Arrange & Act
+		let col = ColumnDef::new("name").string_len(100);
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::String(Some(100))));
+	}
+
+	#[rstest]
+	fn test_column_def_text() {
+		// Arrange & Act
+		let col = ColumnDef::new("bio").text();
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Text));
+	}
+
+	#[rstest]
+	fn test_column_def_boolean() {
+		// Arrange & Act
+		let col = ColumnDef::new("active").boolean();
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Boolean));
+	}
+
+	#[rstest]
+	fn test_column_def_timestamp() {
+		// Arrange & Act
+		let col = ColumnDef::new("created_at").timestamp();
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Timestamp));
+	}
+
+	#[rstest]
+	fn test_column_def_uuid() {
+		// Arrange & Act
+		let col = ColumnDef::new("id").uuid().primary_key(true);
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Uuid));
+		assert!(col.primary_key);
+	}
+
+	#[rstest]
+	fn test_column_def_chaining() {
+		// Arrange & Act
+		let col = ColumnDef::new("email")
+			.string_len(255)
+			.not_null(true)
+			.unique(true);
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::String(Some(255))));
+		assert!(col.not_null);
+		assert!(col.unique);
+	}
+
+	#[rstest]
+	fn test_column_def_json_binary() {
+		// Arrange & Act
+		let col = ColumnDef::new("data").json_binary();
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::JsonBinary));
+	}
+
+	#[rstest]
+	fn test_column_def_decimal() {
+		// Arrange & Act
+		let col = ColumnDef::new("price").decimal(10, 2);
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Decimal(Some((10, 2)))));
+	}
+
+	#[rstest]
+	fn test_column_def_custom() {
+		// Arrange & Act
+		let col = ColumnDef::new("data").custom("CITEXT");
+
+		// Assert
+		assert_eq!(col.column_type, Some(ColumnType::Custom("CITEXT".to_string())));
 	}
 }
