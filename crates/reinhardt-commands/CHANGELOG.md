@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.7...reinhardt-commands@v0.1.0-alpha.8) - 2026-02-07
+
+### Fixed
+
+- add version to reinhardt-test workspace dependency for crates.io publishing
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.6...reinhardt-commands@v0.1.0-alpha.7) - 2026-02-06
 
 ### Other
