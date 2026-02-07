@@ -341,9 +341,11 @@ pub mod backend;
 /// use reinhardt_query::prelude::*;
 /// ```
 pub mod prelude {
+	// Backend builders
 	pub use crate::backend::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter, SqliteQueryBuilder,
 	};
+	// DCL statements
 	pub use crate::dcl::{
 		AlterRoleStatement, AlterUserStatement, CreateRoleStatement, CreateUserStatement,
 		DefaultRoleSpec, DropRoleStatement, DropUserStatement, GrantRoleStatement, GrantStatement,
@@ -351,22 +353,43 @@ pub mod prelude {
 		RevokeRoleStatement, RevokeStatement, RoleAttribute, RoleSpecification, RoleTarget,
 		SetDefaultRoleStatement, SetRoleStatement, UserOption,
 	};
+	// Expression system
 	pub use crate::expr::{
 		CaseExprBuilder, CaseStatement, Cond, Condition, ConditionExpression, ConditionHolder,
-		ConditionType, Expr, ExprTrait, IntoCondition, Keyword, SimpleExpr,
+		ConditionType, Expr, ExprTrait, Func, IntoCondition, Keyword, SimpleExpr,
 	};
+	// DML query builders
+	pub use crate::query::{
+		DeleteStatement, InsertStatement, OnConflict, Query, QueryBuilderTrait,
+		QueryStatementBuilder, QueryStatementWriter, SelectStatement, UpdateStatement,
+	};
+	// DDL query builders
+	pub use crate::query::{
+		AlterIndexStatement, AlterTableStatement, CreateIndexStatement, CreateTableStatement,
+		CreateViewStatement, DropIndexStatement, DropTableStatement, DropViewStatement,
+		TruncateTableStatement,
+	};
+	// Function/Procedure/Type DDL
 	pub use crate::query::{
 		AlterFunctionStatement, AlterProcedureStatement, AlterTypeStatement,
-		CreateFunctionStatement, CreateProcedureStatement, CreateTypeStatement, DeleteStatement,
-		DropFunctionStatement, DropProcedureStatement, DropTypeStatement, InsertStatement, Query,
-		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
-		UpdateStatement,
+		CreateFunctionStatement, CreateProcedureStatement, CreateTypeStatement,
+		DropFunctionStatement, DropProcedureStatement, DropTypeStatement,
 	};
+	// Type system
 	pub use crate::types::{
 		Alias, ColumnRef, DynIden, Iden, IdenStatic, IntoColumnRef, IntoIden, IntoTableRef, Order,
 		TableRef,
 	};
+	// DDL types
+	pub use crate::types::{
+		ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint,
+	};
+	pub use crate::types::{BinOper, JoinType};
+	// Value system
 	pub use crate::value::{ArrayType, IntoValue, Value, ValueTuple, Values};
+	// Iden derive macro (feature-gated)
+	#[cfg(feature = "derive")]
+	pub use reinhardt_query_macros::Iden;
 }
 
 // Re-export commonly used types at crate root
