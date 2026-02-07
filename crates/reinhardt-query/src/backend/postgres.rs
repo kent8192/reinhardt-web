@@ -936,6 +936,44 @@ impl QueryBuilder for PostgresQueryBuilder {
 			});
 		}
 
+		// ON CONFLICT clause
+		if let Some(on_conflict) = &stmt.on_conflict {
+			use crate::query::{OnConflictAction, OnConflictTarget};
+			writer.push_keyword("ON CONFLICT");
+			writer.push_space();
+
+			// Target columns
+			writer.push("(");
+			match &on_conflict.target {
+				OnConflictTarget::Column(col) => {
+					writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+				}
+				OnConflictTarget::Columns(cols) => {
+					writer.push_list(cols, ", ", |w, col| {
+						w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+					});
+				}
+			}
+			writer.push(")");
+
+			// Action
+			match &on_conflict.action {
+				OnConflictAction::DoNothing => {
+					writer.push_keyword("DO NOTHING");
+				}
+				OnConflictAction::DoUpdate(cols) => {
+					writer.push_keyword("DO UPDATE SET");
+					writer.push_space();
+					writer.push_list(cols, ", ", |w, col| {
+						let col_str = col.to_string();
+						w.push_identifier(&col_str, |s| self.escape_iden(s));
+						w.push(" = EXCLUDED.");
+						w.push_identifier(&col_str, |s| self.escape_iden(s));
+					});
+				}
+			}
+		}
+
 		// RETURNING clause (PostgreSQL specific)
 		if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");

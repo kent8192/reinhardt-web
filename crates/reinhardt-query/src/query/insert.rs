@@ -33,6 +33,7 @@ pub struct InsertStatement {
 	pub(crate) columns: Vec<DynIden>,
 	pub(crate) values: Vec<Vec<Value>>,
 	pub(crate) returning: Option<ReturningClause>,
+	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
 }
 
 impl InsertStatement {
@@ -43,6 +44,7 @@ impl InsertStatement {
 			columns: Vec::new(),
 			values: Vec::new(),
 			returning: None,
+			on_conflict: None,
 		}
 	}
 
@@ -53,6 +55,7 @@ impl InsertStatement {
 			columns: std::mem::take(&mut self.columns),
 			values: std::mem::take(&mut self.values),
 			returning: self.returning.take(),
+			on_conflict: self.on_conflict.take(),
 		}
 	}
 
@@ -195,6 +198,25 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self
+	}
+
+	/// Set ON CONFLICT clause for upsert behavior.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::query::OnConflict;
+	///
+	/// let query = Query::insert()
+	///     .into_table("users")
+	///     .columns(["id", "name"])
+	///     .values_panic([1, "Alice"])
+	///     .on_conflict(OnConflict::column("id").update_columns(["name"]));
+	/// ```
+	pub fn on_conflict(&mut self, on_conflict: super::on_conflict::OnConflict) -> &mut Self {
+		self.on_conflict = Some(on_conflict);
 		self
 	}
 

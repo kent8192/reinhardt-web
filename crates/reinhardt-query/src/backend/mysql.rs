@@ -770,6 +770,36 @@ impl QueryBuilder for MySqlQueryBuilder {
 			});
 		}
 
+		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
+		if let Some(on_conflict) = &stmt.on_conflict {
+			use crate::query::OnConflictAction;
+			match &on_conflict.action {
+				OnConflictAction::DoNothing => {
+					// MySQL doesn't have DO NOTHING directly;
+					// use ON DUPLICATE KEY UPDATE with no-op pattern
+					if !stmt.columns.is_empty() {
+						let col_str = stmt.columns[0].to_string();
+						writer.push_keyword("ON DUPLICATE KEY UPDATE");
+						writer.push_space();
+						writer.push_identifier(&col_str, |s| self.escape_iden(s));
+						writer.push(" = ");
+						writer.push_identifier(&col_str, |s| self.escape_iden(s));
+					}
+				}
+				OnConflictAction::DoUpdate(cols) => {
+					writer.push_keyword("ON DUPLICATE KEY UPDATE");
+					writer.push_space();
+					writer.push_list(cols, ", ", |w, col| {
+						let col_str = col.to_string();
+						w.push_identifier(&col_str, |s| self.escape_iden(s));
+						w.push(" = VALUES(");
+						w.push_identifier(&col_str, |s| self.escape_iden(s));
+						w.push(")");
+					});
+				}
+			}
+		}
+
 		// RETURNING clause - NOT SUPPORTED in MySQL
 		if stmt.returning.is_some() {
 			panic!("MySQL does not support RETURNING clause. Use LAST_INSERT_ID() instead.");
