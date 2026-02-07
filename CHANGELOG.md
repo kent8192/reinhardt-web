@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-07
+
+### Documentation
+
+- *(release)* add custom commit_parsers to release-plz.toml for CHANGELOG categorization
+- *(commit)* add CHANGELOG generation guidelines and update commit types
+- update CLAUDE.md and RELEASE_PROCESS.md with CHANGELOG mapping references
+
 ## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.5...reinhardt-web@v0.1.0-alpha.6) - 2026-02-07
 
 ### Other
