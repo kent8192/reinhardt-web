@@ -131,6 +131,7 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
+- CHANGELOG generation guidelines (CG-1 ~ CG-6)
 
 ### Release & Publishing Policy
 
@@ -151,6 +152,22 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 | `fix:` | PATCH |
 | `feat!:` or `BREAKING CHANGE:` | MAJOR |
 | Other types | PATCH |
+
+**Commit-to-CHANGELOG Mapping:**
+
+| Commit Type | CHANGELOG Section |
+|-------------|-------------------|
+| `feat` | Added |
+| `fix` | Fixed |
+| `perf` | Performance |
+| `refactor` | Changed |
+| `docs` | Documentation |
+| `revert` | Reverted |
+| `deprecated` | Deprecated |
+| `security` | Security |
+| `chore`, `ci`, `build` | Maintenance |
+| `test` | Testing |
+| `style` | Styling |
 
 **Tagging Strategy (Per-Crate Tagging):**
 - Format: `[crate-name]@v[version]`
@@ -331,6 +348,9 @@ Before submitting code:
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
 - Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
 - Use conventional commit format for proper version detection by release-plz
+- Write commit descriptions as standalone CHANGELOG entries (meaningful without additional context)
+- Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
+- Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
 - Review Release PRs created by release-plz before merging
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Search existing issues before creating new ones
@@ -371,6 +391,7 @@ Before submitting code:
 - Manually bump versions in feature branches (let release-plz handle it)
 - Create release tags manually (release-plz creates them automatically)
 - Skip reviewing Release PRs before merging
+- Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
@@ -398,7 +419,7 @@ For comprehensive guidelines, see:
 - **Testing**: docs/TESTING_STANDARDS.md
 - **Anti-Patterns**: docs/ANTI_PATTERNS.md
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: docs/COMMIT_GUIDELINE.md
+- **Git Commits**: docs/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: docs/RELEASE_PROCESS.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
 - **Security Policy**: SECURITY.md
