@@ -1,5 +1,7 @@
 //! Integration tests for social authentication module
 
+#![cfg(feature = "social")]
+
 #[path = "social/claims_test.rs"]
 mod claims_test;
 #[path = "social/config_test.rs"]
