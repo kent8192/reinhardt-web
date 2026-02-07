@@ -5602,7 +5602,7 @@ mod tests {
 		stmt.constraints.push(TableConstraint::ForeignKey {
 			name: Some("fk_user".into_iden()),
 			columns: vec!["user_id".into_iden()],
-			ref_table: "users".into_table_ref(),
+			ref_table: Box::new("users".into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: Some(ForeignKeyAction::Restrict),

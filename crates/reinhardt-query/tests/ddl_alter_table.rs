@@ -548,7 +548,7 @@ async fn test_postgres_alter_table_add_foreign_key_constraint(
 		.add_constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: Some(ForeignKeyAction::Restrict),
@@ -1027,7 +1027,7 @@ async fn test_postgres_state_transition_foreign_key_cycle(
 		.add_constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,

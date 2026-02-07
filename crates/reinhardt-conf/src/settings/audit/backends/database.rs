@@ -6,8 +6,8 @@ use super::super::{AuditBackend, AuditEvent, ChangeRecord, EventFilter, EventTyp
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, Func, IntoValue, MySqlQueryBuilder,
-	Order, PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, IntoValue, MySqlQueryBuilder, Order,
+	PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde_json;
 use sqlx::{AnyPool, Row};

@@ -363,7 +363,7 @@ async fn test_postgres_truncate_cascade(
 		.add_constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: None,
 			on_update: None,
@@ -500,7 +500,7 @@ async fn test_postgres_truncate_fk_reference_without_cascade_fails(
 		.add_constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: None,
 			on_update: None,
@@ -739,7 +739,7 @@ async fn test_postgres_truncate_decision_table(
 			.add_constraint(TableConstraint::ForeignKey {
 				name: Some(fk_name.clone().into_iden()),
 				columns: vec!["parent_id".into_iden()],
-				ref_table: parent_table.clone().into_table_ref(),
+				ref_table: Box::new(parent_table.clone().into_table_ref()),
 				ref_columns: vec!["id".into_iden()],
 				on_delete: None,
 				on_update: None,
@@ -956,7 +956,7 @@ async fn test_postgres_truncate_restrict(
 		.add_constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: None,
 			on_update: None,

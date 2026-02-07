@@ -31,10 +31,10 @@ pub fn inline_params(sql: &str, values: &Values) -> String {
 		// Positional `?` placeholders (MySQL/SQLite)
 		let mut result = String::with_capacity(sql.len());
 		let mut val_idx = 0;
-		let mut chars = sql.chars().peekable();
+		let chars = sql.chars().peekable();
 		let mut in_single_quote = false;
 
-		while let Some(ch) = chars.next() {
+		for ch in chars {
 			// Track single-quoted strings to avoid replacing `?` inside them
 			if ch == '\'' {
 				in_single_quote = !in_single_quote;

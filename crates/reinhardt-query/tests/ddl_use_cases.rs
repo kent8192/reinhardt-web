@@ -141,7 +141,7 @@ async fn test_ecommerce_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["user_id".to_string().into_iden()],
-			ref_table: users_table.clone().into_table_ref(),
+			ref_table: Box::new(users_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -188,7 +188,7 @@ async fn test_ecommerce_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["order_id".to_string().into_iden()],
-			ref_table: orders_table.clone().into_table_ref(),
+			ref_table: Box::new(orders_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -196,7 +196,7 @@ async fn test_ecommerce_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["product_id".to_string().into_iden()],
-			ref_table: products_table.clone().into_table_ref(),
+			ref_table: Box::new(products_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Restrict),
 			on_update: None,
@@ -440,7 +440,7 @@ async fn test_user_auth_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["user_id".to_string().into_iden()],
-			ref_table: users_table.clone().into_table_ref(),
+			ref_table: Box::new(users_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -448,7 +448,7 @@ async fn test_user_auth_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["role_id".to_string().into_iden()],
-			ref_table: roles_table.clone().into_table_ref(),
+			ref_table: Box::new(roles_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -484,7 +484,7 @@ async fn test_user_auth_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["role_id".to_string().into_iden()],
-			ref_table: roles_table.clone().into_table_ref(),
+			ref_table: Box::new(roles_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -492,7 +492,7 @@ async fn test_user_auth_schema(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["permission_id".to_string().into_iden()],
-			ref_table: permissions_table.clone().into_table_ref(),
+			ref_table: Box::new(permissions_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -606,7 +606,7 @@ async fn test_blog_cascade_deletes(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["author_id".to_string().into_iden()],
-			ref_table: authors_table.clone().into_table_ref(),
+			ref_table: Box::new(authors_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,
@@ -642,7 +642,7 @@ async fn test_blog_cascade_deletes(
 		.constraint(TableConstraint::ForeignKey {
 			name: None,
 			columns: vec!["post_id".to_string().into_iden()],
-			ref_table: posts_table.clone().into_table_ref(),
+			ref_table: Box::new(posts_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: None,

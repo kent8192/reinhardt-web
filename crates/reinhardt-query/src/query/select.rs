@@ -300,7 +300,8 @@ impl SelectStatement {
 	///
 	/// Equivalent to `FROM (SELECT ...) AS alias`.
 	pub fn from_subquery(&mut self, query: SelectStatement, alias: impl IntoIden) -> &mut Self {
-		self.from.push(TableRef::SubQuery(query, alias.into_iden()));
+		self.from
+			.push(TableRef::SubQuery(Box::new(query), alias.into_iden()));
 		self
 	}
 

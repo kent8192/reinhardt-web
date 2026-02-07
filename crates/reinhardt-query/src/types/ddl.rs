@@ -338,7 +338,7 @@ pub enum TableConstraint {
 		/// Columns in this table
 		columns: Vec<DynIden>,
 		/// Referenced table
-		ref_table: TableRef,
+		ref_table: Box<TableRef>,
 		/// Referenced columns
 		ref_columns: Vec<DynIden>,
 		/// ON DELETE action

@@ -369,11 +369,7 @@ impl InsertBuilder {
 
 		// Add values
 		if !self.values.is_empty() {
-			let sea_values: Vec<Value> = self
-				.values
-				.iter()
-				.map(|v| query_value_to_sea_value(v))
-				.collect();
+			let sea_values: Vec<Value> = self.values.iter().map(query_value_to_sea_value).collect();
 			stmt.values(sea_values).unwrap();
 		}
 
