@@ -78,8 +78,7 @@ impl OnConflict {
 		I: IntoIterator<Item = C>,
 		C: IntoIden,
 	{
-		self.action =
-			OnConflictAction::DoUpdate(cols.into_iter().map(|c| c.into_iden()).collect());
+		self.action = OnConflictAction::DoUpdate(cols.into_iter().map(|c| c.into_iden()).collect());
 		self
 	}
 

@@ -381,10 +381,8 @@ pub mod prelude {
 		TableRef,
 	};
 	// DDL types
-	pub use crate::types::{
-		ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint,
-	};
 	pub use crate::types::{BinOper, JoinType};
+	pub use crate::types::{ColumnDef, ColumnType, ForeignKeyAction, IndexDef, TableConstraint};
 	// Value system
 	pub use crate::value::{ArrayType, IntoValue, Value, ValueTuple, Values};
 	// Iden derive macro (feature-gated)

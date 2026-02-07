@@ -540,6 +540,9 @@ mod tests {
 		let col = ColumnDef::new("data").custom("CITEXT");
 
 		// Assert
-		assert_eq!(col.column_type, Some(ColumnType::Custom("CITEXT".to_string())));
+		assert_eq!(
+			col.column_type,
+			Some(ColumnType::Custom("CITEXT".to_string()))
+		);
 	}
 }

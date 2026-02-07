@@ -176,10 +176,7 @@ mod tests {
 			assert_eq!(name.to_string(), "COALESCE");
 			assert_eq!(args.len(), 2);
 			assert!(matches!(args[0], SimpleExpr::Column(_)));
-			assert!(matches!(
-				args[1],
-				SimpleExpr::Value(Value::String(Some(_)))
-			));
+			assert!(matches!(args[1], SimpleExpr::Value(Value::String(Some(_)))));
 		} else {
 			panic!("Expected FunctionCall variant");
 		}
