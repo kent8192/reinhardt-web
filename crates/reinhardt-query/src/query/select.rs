@@ -283,6 +283,34 @@ impl SelectStatement {
 		self
 	}
 
+	/// Add a table with alias to the FROM clause
+	///
+	/// Equivalent to `FROM table AS alias`.
+	pub fn from_as<T, A>(&mut self, tbl: T, alias: A) -> &mut Self
+	where
+		T: IntoIden,
+		A: IntoIden,
+	{
+		self.from
+			.push(TableRef::TableAlias(tbl.into_iden(), alias.into_iden()));
+		self
+	}
+
+	/// Add a subquery to the FROM clause
+	///
+	/// Equivalent to `FROM (SELECT ...) AS alias`.
+	pub fn from_subquery(&mut self, query: SelectStatement, alias: impl IntoIden) -> &mut Self {
+		self.from
+			.push(TableRef::SubQuery(query, alias.into_iden()));
+		self
+	}
+
+	/// Clear all column selections
+	pub fn clear_selects(&mut self) -> &mut Self {
+		self.selects.clear();
+		self
+	}
+
 	// JOIN clause methods
 
 	/// Add a JOIN clause
@@ -423,6 +451,14 @@ impl SelectStatement {
 	{
 		self.groups.push(SimpleExpr::Column(col.into_column_ref()));
 		self
+	}
+
+	/// Add a column to the GROUP BY clause (alias for `group_by`)
+	pub fn group_by_col<C>(&mut self, col: C) -> &mut Self
+	where
+		C: IntoColumnRef,
+	{
+		self.group_by(col)
 	}
 
 	/// Add multiple GROUP BY columns

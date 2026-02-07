@@ -288,6 +288,18 @@ impl ColumnDef {
 		self.column_type(ColumnType::Binary(Some(len)))
 	}
 
+	/// Set column type to BINARY(len)
+	///
+	/// Alias for [`binary`](Self::binary) for sea-query compatibility.
+	pub fn binary_len(self, len: u32) -> Self {
+		self.column_type(ColumnType::Binary(Some(len)))
+	}
+
+	/// Set column type to VARBINARY(len)
+	pub fn var_binary(self, len: u32) -> Self {
+		self.column_type(ColumnType::VarBinary(len))
+	}
+
 	/// Set column type to a custom type
 	pub fn custom<S: Into<String>>(self, name: S) -> Self {
 		self.column_type(ColumnType::Custom(name.into()))

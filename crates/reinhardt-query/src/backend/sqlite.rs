@@ -117,6 +117,15 @@ impl SqliteQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			TableRef::SubQuery(query, alias) => {
+				let (sql, _) = self.build_select(query);
+				writer.push("(");
+				writer.push(&sql);
+				writer.push(")");
+				writer.push_keyword("AS");
+				writer.push_space();
+				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+			}
 		}
 	}
 
@@ -293,6 +302,23 @@ impl SqliteQueryBuilder {
 				}
 				writer.push_space();
 				writer.push_keyword("END");
+			}
+			SimpleExpr::Custom(sql) => {
+				writer.push(sql);
+			}
+			SimpleExpr::CustomWithExpr(template, exprs) => {
+				// Replace `?` placeholders with the rendered expressions
+				let mut parts = template.split('?');
+				if let Some(first) = parts.next() {
+					writer.push(first);
+				}
+				let mut expr_iter = exprs.iter();
+				for part in parts {
+					if let Some(expr) = expr_iter.next() {
+						self.write_simple_expr(writer, expr);
+					}
+					writer.push(part);
+				}
 			}
 			_ => {
 				writer.push("(EXPR)");
@@ -5153,5 +5179,15 @@ mod tests {
 			.user("app_user");
 
 		let _ = builder.build_set_default_role(&stmt);
+	}
+}
+
+impl crate::query::QueryBuilderTrait for SqliteQueryBuilder {
+	fn placeholder(&self) -> (&str, bool) {
+		("?", false)
+	}
+
+	fn quote_char(&self) -> char {
+		'"'
 	}
 }

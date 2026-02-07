@@ -360,8 +360,9 @@ pub mod prelude {
 	};
 	// DML query builders
 	pub use crate::query::{
-		DeleteStatement, InsertStatement, OnConflict, Query, QueryBuilderTrait,
-		QueryStatementBuilder, QueryStatementWriter, SelectStatement, UpdateStatement,
+		DeleteStatement, ForeignKey, ForeignKeyCreateStatement, InsertStatement, OnConflict, Query,
+		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
+		UpdateStatement,
 	};
 	// DDL query builders
 	pub use crate::query::{

@@ -88,6 +88,7 @@ mod create_trigger;
 mod create_view;
 mod database;
 mod delete;
+mod foreign_key;
 mod drop_index;
 mod drop_table;
 mod drop_trigger;
@@ -120,6 +121,7 @@ pub use database::{
 	DetachDatabaseStatement, DropDatabaseStatement,
 };
 pub use delete::*;
+pub use foreign_key::*;
 pub use drop_index::*;
 pub use drop_table::*;
 pub use drop_trigger::*;

@@ -3,7 +3,7 @@
 //! This module provides the `UpdateStatement` type for building SQL UPDATE queries.
 
 use crate::{
-	expr::{ConditionHolder, IntoCondition},
+	expr::{Condition, ConditionHolder, IntoCondition},
 	types::{DynIden, IntoIden, IntoTableRef, TableRef},
 	value::{IntoValue, Value, Values},
 };
@@ -137,6 +137,14 @@ impl UpdateStatement {
 	where
 		C: IntoCondition,
 	{
+		self.r#where.add_and(condition);
+		self
+	}
+
+	/// Add a conditional WHERE clause.
+	///
+	/// This is an alias for [`and_where`](Self::and_where) that accepts a [`Condition`].
+	pub fn cond_where(&mut self, condition: Condition) -> &mut Self {
 		self.r#where.add_and(condition);
 		self
 	}

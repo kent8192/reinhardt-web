@@ -347,6 +347,45 @@ impl CreateTableStatement {
 		});
 		self
 	}
+
+	/// Add a foreign key constraint from a [`ForeignKeyCreateStatement`] builder.
+	///
+	/// This method accepts the builder-pattern style used by
+	/// [`ForeignKey::create()`](super::ForeignKey::create).
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let mut fk = ForeignKey::create();
+	/// fk.from_tbl(Alias::new("posts"))
+	///     .from_col(Alias::new("user_id"))
+	///     .to_tbl(Alias::new("users"))
+	///     .to_col(Alias::new("id"));
+	///
+	/// let mut stmt = Query::create_table();
+	/// stmt.table("posts")
+	///     .foreign_key_from_builder(&mut fk);
+	/// ```
+	pub fn foreign_key_from_builder(
+		&mut self,
+		fk: &mut super::ForeignKeyCreateStatement,
+	) -> &mut Self {
+		let ref_table = fk
+			.to_tbl
+			.take()
+			.expect("ForeignKeyCreateStatement: to_tbl is required");
+		self.constraints.push(TableConstraint::ForeignKey {
+			name: fk.name.take(),
+			columns: std::mem::take(&mut fk.from_cols),
+			ref_table,
+			ref_columns: std::mem::take(&mut fk.to_cols),
+			on_delete: fk.on_delete.take(),
+			on_update: fk.on_update.take(),
+		});
+		self
+	}
 }
 
 impl Default for CreateTableStatement {
