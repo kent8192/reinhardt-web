@@ -179,7 +179,7 @@ impl InsertStatement {
 		self
 	}
 
-	/// Add a RETURNING clause
+	/// Add a RETURNING clause with multiple columns
 	///
 	/// # Examples
 	///
@@ -198,6 +198,27 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self
+	}
+
+	/// Add a RETURNING clause for a single column
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::insert()
+	///     .into_table("users")
+	///     .columns(["name"])
+	///     .values_panic(["Alice"])
+	///     .returning_col(Alias::new("id"));
+	/// ```
+	pub fn returning_col<C>(&mut self, col: C) -> &mut Self
+	where
+		C: crate::types::IntoColumnRef,
+	{
+		self.returning = Some(ReturningClause::columns([col]));
 		self
 	}
 
