@@ -6,8 +6,10 @@
 use super::ordering_field::OrderingField;
 use super::{FilterBackend, FilterResult};
 use async_trait::async_trait;
-use reinhardt_db::orm::{Lookup, Model, QueryFieldCompiler};
-use sea_query::{Cond, Expr, MysqlQueryBuilder, Query};
+use reinhardt_db::orm::{
+	Cond, Expr, Lookup, Model, MySqlQueryBuilder, QueryFieldCompiler, QueryStatementBuilder,
+	SeaQuery as Query,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -295,7 +297,7 @@ impl<M: Model> QueryFilter<M> {
 		let query = Query::select()
 			.expr(Expr::val(1))
 			.cond_where(main_cond)
-			.to_string(MysqlQueryBuilder);
+			.to_string(MySqlQueryBuilder);
 
 		// Extract just the WHERE portion (after "WHERE ")
 		query.find("WHERE ").map(|idx| query[idx + 6..].to_string())
