@@ -36,7 +36,7 @@
 
 use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
-use sea_query::{Cond, Expr, MysqlQueryBuilder, Order, Query};
+use reinhardt_query::prelude::{Cond, Expr, MySqlQueryBuilder, Order, Query, QueryStatementBuilder};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -284,7 +284,7 @@ impl SimpleSearchBackend {
 		let query = Query::select()
 			.expr(Expr::val(1))
 			.cond_where(condition)
-			.to_string(MysqlQueryBuilder);
+			.to_string(MySqlQueryBuilder);
 
 		// Extract just the WHERE condition portion (after "WHERE ")
 		if let Some(idx) = query.find("WHERE ") {
@@ -400,8 +400,6 @@ impl SimpleOrderingBackend {
 		let order_str = match order {
 			Order::Asc => "ASC",
 			Order::Desc => "DESC",
-			// Handle any other Order variants (e.g., Order::Field for custom ordering)
-			_ => "ASC", // Default to ASC for unhandled cases
 		};
 		format!("{} {}", field, order_str)
 	}
