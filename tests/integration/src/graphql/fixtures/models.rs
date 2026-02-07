@@ -5,7 +5,7 @@
 
 use crate::prelude::*;
 use reinhardt_db::orm::Model;
-use sea_query::{Iden, PostgresQueryBuilder, Query};
+use reinhardt_query::prelude::{Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder};
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -72,10 +72,11 @@ impl Post {
 }
 
 // ============================================================================
-// Table Definitions for SeaQuery
+// Table Definitions for reinhardt-query
 // ============================================================================
 
-/// Table name identifiers for SeaQuery
+/// Table name identifiers for reinhardt-query
+#[derive(Debug)]
 pub enum Tables {
 	Users,
 	Posts,
@@ -113,7 +114,7 @@ async fn user_model_fixture(
 	// we would extract it from schema data)
 	let pool = get_pool_from_test_container().await;
 
-	// Create user using SeaQuery (not raw SQL)
+	// Create user using reinhardt-query (not raw SQL)
 	let user = create_test_user_with_seaquery(&pool).await;
 
 	(schema, user)
@@ -127,14 +128,14 @@ async fn post_model_fixture(
 	let (schema, user) = user_model_fixture.await;
 	let pool = get_pool_from_test_container().await;
 
-	// Create post using SeaQuery
+	// Create post using reinhardt-query
 	let post = create_test_post_with_seaquery(&pool, user.id).await;
 
 	(schema, user, post)
 }
 
 // ============================================================================
-// Helper Functions using SeaQuery
+// Helper Functions using reinhardt-query
 // ============================================================================
 
 /// Get database pool from test container (simplified implementation).
@@ -150,15 +151,16 @@ async fn get_pool_from_test_container() -> Arc<PgPool> {
 	unimplemented!("Need to implement pool extraction from test container")
 }
 
-/// Create a test user in the database using SeaQuery.
+/// Create a test user in the database using reinhardt-query.
 async fn create_test_user_with_seaquery(pool: &PgPool) -> User {
-	// Use SeaQuery to build SQL (not raw strings)
-	let insert_query = Query::insert()
-		.into_table(Tables::Users)
+	// Use reinhardt-query to build SQL (not raw strings)
+	let mut insert_stmt = Query::insert();
+	let insert_query = insert_stmt
+		.into_table(Tables::Users.into_iden())
 		.columns([User::name(), User::email(), User::is_active()])
 		.values(["Test User".into(), "test@example.com".into(), true.into()])
 		.unwrap()
-		.to_string(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder::new());
 
 	// Execute the query
 	sqlx::query(&insert_query)
@@ -170,14 +172,15 @@ async fn create_test_user_with_seaquery(pool: &PgPool) -> User {
 	User::new(1, "Test User".to_string(), "test@example.com".to_string())
 }
 
-/// Create a test post in the database using SeaQuery.
+/// Create a test post in the database using reinhardt-query.
 async fn create_test_post_with_seaquery(pool: &PgPool, author_id: i32) -> Post {
-	let insert_query = Query::insert()
-		.into_table(Tables::Posts)
+	let mut insert_stmt = Query::insert();
+	let insert_query = insert_stmt
+		.into_table(Tables::Posts.into_iden())
 		.columns([Post::title(), Post::content(), Post::author_id()])
 		.values(["Test Post".into(), "Test content".into(), author_id.into()])
 		.unwrap()
-		.to_string(PostgresQueryBuilder);
+		.to_string(PostgresQueryBuilder::new());
 
 	sqlx::query(&insert_query)
 		.execute(pool)

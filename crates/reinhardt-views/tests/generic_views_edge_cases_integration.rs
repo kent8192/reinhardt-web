@@ -32,7 +32,9 @@ use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{CreateAPIView, ListAPIView, View};
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -62,10 +64,10 @@ struct EdgeTestItem {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum EdgeTestItems {
 	Table,
 	Id,
@@ -93,24 +95,24 @@ async fn edge_items_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
 	// Create edge_test_items table with nullable fields
-	let create_table_stmt = Table::create()
-		.table(EdgeTestItems::Table)
+	let mut create_table_stmt = Query::create_table();
+	create_table_stmt
+		.table(EdgeTestItems::Table.into_iden())
 		.if_not_exists()
 		.col(
 			ColumnDef::new(EdgeTestItems::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
 		.col(ColumnDef::new(EdgeTestItems::Name).string_len(5000))
 		.col(ColumnDef::new(EdgeTestItems::Description).text())
 		.col(ColumnDef::new(EdgeTestItems::Quantity).big_integer())
 		.col(ColumnDef::new(EdgeTestItems::Active).boolean())
-		.col(ColumnDef::new(EdgeTestItems::CreatedAt).timestamp_with_time_zone())
-		.to_owned();
+		.col(ColumnDef::new(EdgeTestItems::CreatedAt).timestamp_with_time_zone());
 
-	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
+	let sql = create_table_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await

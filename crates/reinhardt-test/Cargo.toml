@@ -70,7 +70,7 @@ mime = "0.3"
 base64-simd = "0.8"
 uuid = { workspace = true }
 chrono = { workspace = true }
-sea-query = { version = "1.0.0-rc", features = ["derive", "postgres-array"] }
+reinhardt-query = { workspace = true, features = ["derive"] }
 env_logger = "0.11"
 reqwest = { version = "0.12", features = ["json", "cookies"] }
 urlencoding = "2.1"

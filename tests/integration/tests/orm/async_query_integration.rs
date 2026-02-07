@@ -101,7 +101,7 @@ mod postgres_tests {
 			None,
 		);
 
-		let sql = stmt.to_string(sea_query::PostgresQueryBuilder);
+		let sql = stmt.to_string(reinhardt_query::prelude::PostgresQueryBuilder::new());
 		assert!(sql.contains("test_model"));
 		assert!(sql.contains("ORDER BY"));
 	}
@@ -256,7 +256,7 @@ mod mysql_tests {
 			None,
 		);
 
-		let sql = stmt.to_string(sea_query::MysqlQueryBuilder);
+		let sql = stmt.to_string(reinhardt_query::prelude::MySqlQueryBuilder::new());
 		assert!(sql.contains("test_model"));
 		assert!(sql.contains("ORDER BY"));
 
