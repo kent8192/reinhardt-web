@@ -1,19 +1,84 @@
 //! Apple OIDC provider
 
+use std::sync::Arc;
+
 use crate::social::core::{
-	OAuthProvider, ProviderConfig, SocialAuthError, StandardClaims, TokenResponse,
+	IdToken, OAuth2Client, OAuthProvider, ProviderConfig, SocialAuthError, StandardClaims,
+	TokenResponse,
 };
+use crate::social::flow::pkce::{CodeChallenge, CodeVerifier};
+use crate::social::flow::{AuthorizationFlow, RefreshFlow, TokenExchangeFlow};
+use crate::social::oidc::id_token::ValidationConfig;
+use crate::social::oidc::{DiscoveryClient, IdTokenValidator, JwksCache, OIDCDiscovery};
 use async_trait::async_trait;
 
 /// Apple OIDC provider
+///
+/// Implements OIDC authentication flow with dynamic endpoint discovery.
+/// Apple provides user information exclusively through the ID token;
+/// the UserInfo endpoint is not supported.
 pub struct AppleProvider {
-	// Implementation pending
+	config: ProviderConfig,
+	auth_flow: AuthorizationFlow,
+	token_exchange: TokenExchangeFlow,
+	refresh_flow: RefreshFlow,
+	discovery_client: DiscoveryClient,
+	id_token_validator: IdTokenValidator,
 }
 
 impl AppleProvider {
 	/// Create a new Apple provider
-	pub async fn new(_config: ProviderConfig) -> Result<Self, SocialAuthError> {
-		todo!("TASK-017: Implement AppleProvider")
+	///
+	/// Validates that the configuration contains OIDC settings
+	/// and constructs all sub-components. No network calls are made.
+	///
+	/// # Note
+	///
+	/// Apple Sign In requires a dynamically generated JWT as the client_secret.
+	/// TODO: Implement JWT client_secret generation using team_id and key_id.
+	/// Currently, the client_secret from `ProviderConfig::apple()` is empty.
+	pub async fn new(config: ProviderConfig) -> Result<Self, SocialAuthError> {
+		if config.oidc.is_none() {
+			return Err(SocialAuthError::InvalidConfiguration(
+				"Apple provider requires OIDC configuration".into(),
+			));
+		}
+
+		let auth_flow = AuthorizationFlow::new(config.clone());
+		let token_exchange = TokenExchangeFlow::new(OAuth2Client::new(), config.clone());
+		let refresh_flow = RefreshFlow::new(OAuth2Client::new(), config.clone());
+		let discovery_client = DiscoveryClient::new(OAuth2Client::new());
+
+		let jwks_cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+		let validation_config = ValidationConfig::new(
+			"https://appleid.apple.com".to_string(),
+			config.client_id.clone(),
+		);
+		let id_token_validator = IdTokenValidator::new(jwks_cache, validation_config);
+
+		Ok(Self {
+			config,
+			auth_flow,
+			token_exchange,
+			refresh_flow,
+			discovery_client,
+			id_token_validator,
+		})
+	}
+
+	/// Fetches the OIDC discovery document for this provider
+	async fn discover(&self) -> Result<OIDCDiscovery, SocialAuthError> {
+		let oidc_config =
+			self.config.oidc.as_ref().ok_or_else(|| {
+				SocialAuthError::InvalidConfiguration("Missing OIDC config".into())
+			})?;
+
+		let issuer = oidc_config
+			.discovery_url
+			.trim_end_matches("/.well-known/openid-configuration")
+			.to_string();
+
+		self.discovery_client.discover(&issuer).await
 	}
 }
 
@@ -29,26 +94,59 @@ impl OAuthProvider for AppleProvider {
 
 	async fn authorization_url(
 		&self,
-		_state: &str,
-		_nonce: Option<&str>,
-		_code_challenge: Option<&str>,
+		state: &str,
+		nonce: Option<&str>,
+		code_challenge: Option<&str>,
 	) -> Result<String, SocialAuthError> {
-		todo!()
+		let discovery = self.discover().await?;
+		let challenge = code_challenge.map(|c| CodeChallenge::from_raw(c.to_string()));
+
+		self.auth_flow.build_url(
+			&discovery.authorization_endpoint,
+			state,
+			nonce,
+			challenge.as_ref(),
+		)
 	}
 
 	async fn exchange_code(
 		&self,
-		_code: &str,
-		_code_verifier: Option<&str>,
+		code: &str,
+		code_verifier: Option<&str>,
 	) -> Result<TokenResponse, SocialAuthError> {
-		todo!()
+		let discovery = self.discover().await?;
+		let verifier = code_verifier.map(|v| CodeVerifier::from_raw(v.to_string()));
+
+		self.token_exchange
+			.exchange(&discovery.token_endpoint, code, verifier.as_ref())
+			.await
 	}
 
-	async fn refresh_token(&self, _refresh_token: &str) -> Result<TokenResponse, SocialAuthError> {
-		todo!()
+	async fn refresh_token(&self, refresh_token: &str) -> Result<TokenResponse, SocialAuthError> {
+		let discovery = self.discover().await?;
+
+		self.refresh_flow
+			.refresh(&discovery.token_endpoint, refresh_token)
+			.await
+	}
+
+	async fn validate_id_token(
+		&self,
+		id_token: &str,
+		nonce: Option<&str>,
+	) -> Result<IdToken, SocialAuthError> {
+		let discovery = self.discover().await?;
+
+		self.id_token_validator
+			.validate(id_token, &discovery.jwks_uri, nonce)
+			.await
 	}
 
 	async fn get_user_info(&self, _access_token: &str) -> Result<StandardClaims, SocialAuthError> {
-		todo!()
+		// Apple does not provide a UserInfo endpoint.
+		// All user information is returned in the ID token.
+		Err(SocialAuthError::NotSupported(
+			"Apple does not support UserInfo endpoint; use ID token claims instead".into(),
+		))
 	}
 }

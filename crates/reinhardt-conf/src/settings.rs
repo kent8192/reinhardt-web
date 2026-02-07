@@ -37,7 +37,7 @@ pub mod database_config;
 pub mod docs;
 pub mod testing;
 
-use reinhardt_utils::r#static::storage::StaticFilesConfig;
+use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

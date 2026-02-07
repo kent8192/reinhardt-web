@@ -492,6 +492,7 @@ fn generate_watch_methods(
 /// let form = form.clone();
 /// let count_memo = Memo::new(move || form.char_count());
 /// ```
+// Parameter reserved for future crate path customization
 #[allow(unused_variables)]
 fn generate_derived_methods(
 	derived: &Option<TypedFormDerived>,
