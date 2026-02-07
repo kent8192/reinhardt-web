@@ -625,6 +625,20 @@ impl Expr {
 	pub fn as_simple_expr(&self) -> &SimpleExpr {
 		&self.0
 	}
+
+	/// Create an aliased expression (AS).
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_query::expr::Expr;
+	///
+	/// let expr = Expr::col("name").expr_as("alias_name");
+	/// ```
+	#[must_use]
+	pub fn expr_as<T: IntoIden>(self, alias: T) -> SimpleExpr {
+		SimpleExpr::AsEnum(alias.into_iden(), Box::new(self.0))
+	}
 }
 
 // Allow Expr to be converted into SimpleExpr

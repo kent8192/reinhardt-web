@@ -13,6 +13,7 @@ mod condition;
 #[allow(clippy::module_inception)]
 mod expr;
 mod expr_trait;
+mod func;
 mod simple_expr;
 
 pub use condition::{
@@ -20,6 +21,7 @@ pub use condition::{
 };
 pub use expr::{CaseExprBuilder, Expr};
 pub use expr_trait::ExprTrait;
+pub use func::Func;
 pub use simple_expr::{CaseStatement, Keyword, SimpleExpr, SubQueryOper};
 
 #[cfg(test)]
