@@ -271,10 +271,6 @@ impl QueryStatementBuilder for InsertStatement {
 		);
 	}
 
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _values) = self.build(query_builder);
-		sql
-	}
 }
 
 impl QueryStatementWriter for InsertStatement {}

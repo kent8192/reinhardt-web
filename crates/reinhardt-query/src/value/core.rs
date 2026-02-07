@@ -167,6 +167,125 @@ impl Value {
 	}
 }
 
+impl Value {
+	/// Convert this value to a SQL literal string suitable for inlining
+	/// into a SQL statement.
+	///
+	/// This is used by `QueryStatementBuilder::to_string()` to produce
+	/// SQL with values inlined (for debugging and non-parameterized use).
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_query::Value;
+	///
+	/// assert_eq!(Value::Int(Some(42)).to_sql_literal(), "42");
+	/// assert_eq!(Value::Int(None).to_sql_literal(), "NULL");
+	/// assert_eq!(
+	///     Value::String(Some(Box::new("hello".to_string()))).to_sql_literal(),
+	///     "'hello'"
+	/// );
+	/// assert_eq!(
+	///     Value::String(Some(Box::new("it's".to_string()))).to_sql_literal(),
+	///     "'it''s'"
+	/// );
+	/// ```
+	#[must_use]
+	pub fn to_sql_literal(&self) -> String {
+		match self {
+			Self::Bool(Some(v)) => {
+				if *v {
+					"TRUE".to_string()
+				} else {
+					"FALSE".to_string()
+				}
+			}
+			Self::Bool(None) => "NULL".to_string(),
+			Self::TinyInt(Some(v)) => v.to_string(),
+			Self::TinyInt(None) => "NULL".to_string(),
+			Self::SmallInt(Some(v)) => v.to_string(),
+			Self::SmallInt(None) => "NULL".to_string(),
+			Self::Int(Some(v)) => v.to_string(),
+			Self::Int(None) => "NULL".to_string(),
+			Self::BigInt(Some(v)) => v.to_string(),
+			Self::BigInt(None) => "NULL".to_string(),
+			Self::TinyUnsigned(Some(v)) => v.to_string(),
+			Self::TinyUnsigned(None) => "NULL".to_string(),
+			Self::SmallUnsigned(Some(v)) => v.to_string(),
+			Self::SmallUnsigned(None) => "NULL".to_string(),
+			Self::Unsigned(Some(v)) => v.to_string(),
+			Self::Unsigned(None) => "NULL".to_string(),
+			Self::BigUnsigned(Some(v)) => v.to_string(),
+			Self::BigUnsigned(None) => "NULL".to_string(),
+			Self::Float(Some(v)) => v.to_string(),
+			Self::Float(None) => "NULL".to_string(),
+			Self::Double(Some(v)) => v.to_string(),
+			Self::Double(None) => "NULL".to_string(),
+			Self::Char(Some(v)) => format!("'{}'", v),
+			Self::Char(None) => "NULL".to_string(),
+			Self::String(Some(v)) => {
+				// Escape single quotes by doubling them
+				format!("'{}'", v.replace('\'', "''"))
+			}
+			Self::String(None) => "NULL".to_string(),
+			Self::Bytes(Some(v)) => {
+				// Render as hex-encoded string with X prefix
+				let hex: String = v.iter().map(|b| format!("{:02X}", b)).collect();
+				format!("X'{}'", hex)
+			}
+			Self::Bytes(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDate(Some(v)) => format!("'{}'", v),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDate(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoTime(Some(v)) => format!("'{}'", v),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoTime(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTime(Some(v)) => format!("'{}'", v),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTime(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeUtc(Some(v)) => format!("'{}'", v.to_rfc3339()),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeUtc(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeLocal(Some(v)) => format!("'{}'", v.to_rfc3339()),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeLocal(None) => "NULL".to_string(),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeWithTimeZone(Some(v)) => format!("'{}'", v.to_rfc3339()),
+			#[cfg(feature = "with-chrono")]
+			Self::ChronoDateTimeWithTimeZone(None) => "NULL".to_string(),
+			#[cfg(feature = "with-uuid")]
+			Self::Uuid(Some(v)) => format!("'{}'", v),
+			#[cfg(feature = "with-uuid")]
+			Self::Uuid(None) => "NULL".to_string(),
+			#[cfg(feature = "with-json")]
+			Self::Json(Some(v)) => {
+				let json_str = serde_json::to_string(v.as_ref()).unwrap_or_default();
+				format!("'{}'", json_str.replace('\'', "''"))
+			}
+			#[cfg(feature = "with-json")]
+			Self::Json(None) => "NULL".to_string(),
+			#[cfg(feature = "with-rust_decimal")]
+			Self::Decimal(Some(v)) => v.to_string(),
+			#[cfg(feature = "with-rust_decimal")]
+			Self::Decimal(None) => "NULL".to_string(),
+			#[cfg(feature = "with-bigdecimal")]
+			Self::BigDecimal(Some(v)) => v.to_string(),
+			#[cfg(feature = "with-bigdecimal")]
+			Self::BigDecimal(None) => "NULL".to_string(),
+			Self::Array(_, Some(values)) => {
+				let items: Vec<String> = values.iter().map(|v| v.to_sql_literal()).collect();
+				format!("ARRAY[{}]", items.join(","))
+			}
+			Self::Array(_, None) => "NULL".to_string(),
+		}
+	}
+}
+
 impl Default for Value {
 	/// Returns the default value, which is a null string.
 	fn default() -> Self {

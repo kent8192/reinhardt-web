@@ -319,6 +319,9 @@ impl MySqlQueryBuilder {
 					writer.push(part);
 				}
 			}
+			SimpleExpr::Asterisk => {
+				writer.push("*");
+			}
 			_ => {
 				writer.push("(EXPR)");
 			}

@@ -829,10 +829,6 @@ impl QueryStatementBuilder for SelectStatement {
 		);
 	}
 
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _values) = self.build(query_builder);
-		sql
-	}
 }
 
 impl QueryStatementWriter for SelectStatement {}
