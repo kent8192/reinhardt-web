@@ -65,11 +65,3 @@ rstest = { workspace = true }
 assert-json-diff = { workspace = true }
 predicates = { workspace = true }
 serial_test = { workspace = true }
-reinhardt-test = { workspace = true, features = ["testcontainers"] }
-chrono = { workspace = true }
-sea-query = { workspace = true }
-sqlx = { workspace = true, features = ["any", "postgres", "runtime-tokio"]}
-ctor = { workspace = true }
-futures = { workspace = true }
-reinhardt-db = {workspace = true, features = ["migrations"]}
-async-trait = { workspace = true }
