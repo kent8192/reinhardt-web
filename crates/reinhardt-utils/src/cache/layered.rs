@@ -471,6 +471,26 @@ mod tests {
 	use super::*;
 	use std::time::Duration;
 
+	/// Polls a condition until it returns true or timeout is reached.
+	async fn poll_until<F, Fut>(
+		timeout: std::time::Duration,
+		interval: std::time::Duration,
+		mut condition: F,
+	) -> Result<(), String>
+	where
+		F: FnMut() -> Fut,
+		Fut: std::future::Future<Output = bool>,
+	{
+		let start = std::time::Instant::now();
+		while start.elapsed() < timeout {
+			if condition().await {
+				return Ok(());
+			}
+			tokio::time::sleep(interval).await;
+		}
+		Err(format!("Timeout after {:?} waiting for condition", timeout))
+	}
+
 	#[tokio::test]
 	async fn test_passive_expiration() {
 		let store = LayeredCacheStore::new();
@@ -488,7 +508,7 @@ mod tests {
 		assert!(store.get("key1").await.is_some());
 
 		// Poll until key expires and is deleted on access (passive expiration)
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(150),
 			Duration::from_millis(10),
 			|| async { store.get("key1").await.is_none() },
@@ -519,7 +539,7 @@ mod tests {
 		assert_eq!(store.len().await, 50);
 
 		// Poll until keys expire
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(150),
 			Duration::from_millis(10),
 			|| async {
@@ -558,7 +578,7 @@ mod tests {
 		}
 
 		// Poll until expired keys actually expire
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(150),
 			Duration::from_millis(10),
 			|| async { store.get("expired0").await.is_none() },
@@ -596,7 +616,7 @@ mod tests {
 		assert_eq!(store.len().await, 100);
 
 		// Poll until keys expire (1 second TTL + buffer)
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_secs(2),
 			Duration::from_millis(100),
 			|| async { store.get("key0").await.is_none() },

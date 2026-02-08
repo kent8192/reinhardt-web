@@ -294,6 +294,26 @@ mod tests {
 	use super::*;
 	use std::time::Duration;
 
+	/// Polls a condition until it returns true or timeout is reached.
+	async fn poll_until<F, Fut>(
+		timeout: std::time::Duration,
+		interval: std::time::Duration,
+		mut condition: F,
+	) -> Result<(), String>
+	where
+		F: FnMut() -> Fut,
+		Fut: std::future::Future<Output = bool>,
+	{
+		let start = std::time::Instant::now();
+		while start.elapsed() < timeout {
+			if condition().await {
+				return Ok(());
+			}
+			tokio::time::sleep(interval).await;
+		}
+		Err(format!("Timeout after {:?} waiting for condition", timeout))
+	}
+
 	fn get_test_dir(name: &str) -> PathBuf {
 		PathBuf::from(format!("/tmp/reinhardt_file_cache_test_{}", name))
 	}
@@ -339,7 +359,7 @@ mod tests {
 		assert_eq!(value, Some("value1".to_string()));
 
 		// Poll until key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -363,7 +383,7 @@ mod tests {
 		cache.set("key2", &"value2", None).await.unwrap();
 
 		// Poll until first key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
