@@ -84,7 +84,7 @@ impl UpdateStatement {
 	/// let query = Query::update()
 	///     .table("users")
 	///     .value("active", false)
-	///     .value("updated_at", Expr::current_timestamp());
+	///     .value("name", "Alice");
 	/// ```
 	pub fn value<C, V>(&mut self, col: C, val: V) -> &mut Self
 	where

@@ -457,8 +457,9 @@ impl DatabaseMigrationRecorder {
 			.values_panic([app.to_string(), name.to_string(), now])
 			.to_owned();
 
-		// Add conflict resolution for concurrent execution
-		// Use to_string() to inline values into SQL (no parameter binding needed)
+		// Add conflict resolution for concurrent execution.
+		// Use to_string() to inline values directly into SQL, avoiding parameter
+		// binding since execute() is called with empty params.
 		let sql = match self.connection.database_type() {
 			DatabaseType::Postgres => {
 				// PostgreSQL: ON CONFLICT DO NOTHING
