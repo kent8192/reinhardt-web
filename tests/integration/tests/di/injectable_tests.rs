@@ -132,10 +132,11 @@ async fn injectable_returns_error(injection_context: InjectionContext) {
 }
 
 #[serial_test::serial(cached_service_counter)]
-#[rstest]
 #[tokio::test]
-async fn injectable_cached_in_request_scope(injection_context: InjectionContext) {
+async fn injectable_cached_in_request_scope() {
 	// Arrange
+	let singleton_scope = Arc::new(reinhardt_di::SingletonScope::new());
+	let injection_context = InjectionContext::builder(singleton_scope).build();
 	unsafe {
 		CACHED_SERVICE_COUNTER = 0;
 	}
@@ -156,10 +157,11 @@ async fn injectable_cached_in_request_scope(injection_context: InjectionContext)
 }
 
 #[serial_test::serial(singleton_counter)]
-#[rstest]
 #[tokio::test]
-async fn injectable_singleton_cached(injection_context: InjectionContext) {
+async fn injectable_singleton_cached() {
 	// Arrange
+	let singleton_scope = Arc::new(reinhardt_di::SingletonScope::new());
+	let injection_context = InjectionContext::builder(singleton_scope).build();
 	unsafe {
 		SINGLETON_COUNTER = 0;
 	}

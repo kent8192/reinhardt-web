@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-server"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.4"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -34,7 +34,6 @@ server-full = ["server", "graphql", "websocket"]
 full = ["graphql", "websocket"]
 
 [dev-dependencies]
-reinhardt-test = { workspace = true }
 tokio-test = "0.4"
 anyhow = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
