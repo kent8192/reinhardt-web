@@ -29,7 +29,7 @@ impl QueryCompiler {
 		Self { dialect }
 	}
 
-	/// Convert Q expression to SeaQuery Condition
+	/// Convert Q expression to reinhardt-query Condition
 	fn q_to_condition(q: &Q) -> Condition {
 		match q {
 			Q::Condition {

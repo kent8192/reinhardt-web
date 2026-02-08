@@ -5,8 +5,8 @@
 
 use crate::orm::query_types::DbBackend;
 use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, Func, MySqlQueryBuilder, Order, PostgresQueryBuilder,
-	Query as SeaQuery, QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, Expr, ExprTrait, Func, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{AnyPool, Row};
@@ -166,7 +166,7 @@ impl OrderedModel {
 		let backend = self.get_backend();
 
 		// Build SELECT MAX(order_field) FROM table WHERE filters
-		let mut select_stmt = SeaQuery::select()
+		let mut select_stmt = Query::select()
 			.from(Alias::new(&self.table_name))
 			.expr(Func::max(
 				Expr::col(Alias::new(&self.order_field)).into_simple_expr(),
@@ -296,7 +296,7 @@ impl OrderedModel {
 		let backend = self.get_backend();
 
 		// Step 1: Query all IDs in the scope, ordered by current order field
-		let mut select_stmt = SeaQuery::select()
+		let mut select_stmt = Query::select()
 			.from(Alias::new(&self.table_name))
 			.column(Alias::new("id"))
 			.column(Alias::new(&self.order_field))
@@ -338,7 +338,7 @@ impl OrderedModel {
 			new_orders.push(new_order);
 
 			// Build UPDATE statement for this record
-			let update_stmt = SeaQuery::update()
+			let update_stmt = Query::update()
 				.table(Alias::new(&self.table_name))
 				.value(Alias::new(&self.order_field), new_order)
 				.and_where(Expr::col(Alias::new("id")).eq(Expr::val(id)))

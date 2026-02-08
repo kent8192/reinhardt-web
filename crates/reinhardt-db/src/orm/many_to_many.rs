@@ -193,7 +193,7 @@ impl AssociationTable {
 		col_def
 	}
 
-	/// Generate SeaQuery CREATE TABLE statement for the association table
+	/// Generate reinhardt-query CREATE TABLE statement for the association table
 	///
 	/// Returns a TableCreateStatement that can be converted to SQL.
 	pub fn to_create_statement(&self) -> reinhardt_query::prelude::CreateTableStatement {
@@ -348,7 +348,7 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 		self.cascade.push(option.into());
 		self
 	}
-	/// Generate SeaQuery SELECT statement for joining through the association table
+	/// Generate reinhardt-query SELECT statement for joining through the association table
 	///
 	/// Returns a SelectStatement with JOINs through the association table.
 	pub fn join_query(&self) -> SelectStatement {
@@ -384,7 +384,7 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 		self.join_query().to_string(builder)
 	}
 
-	/// Generate SeaQuery INSERT statement for adding a relationship
+	/// Generate reinhardt-query INSERT statement for adding a relationship
 	///
 	pub fn add_query(&self, left_id: i64, right_id: i64) -> InsertStatement {
 		Query::insert()
@@ -408,7 +408,7 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 		builder.build_insert(&self.add_query(left_id, right_id)).0
 	}
 
-	/// Generate SeaQuery DELETE statement for removing a relationship
+	/// Generate reinhardt-query DELETE statement for removing a relationship
 	///
 	pub fn remove_query(&self, left_id: i64, right_id: i64) -> DeleteStatement {
 		Query::delete()

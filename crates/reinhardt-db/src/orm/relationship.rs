@@ -362,7 +362,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 	pub fn loading_strategy(&self) -> LoadingStrategy {
 		self.loading_strategy
 	}
-	/// Generate SeaQuery statement for loading related records
+	/// Generate reinhardt-query statement for loading related records
 	///
 	/// Returns a SelectStatement for Lazy/Selectin/Dynamic strategies,
 	/// or None for Joined (handled differently), NoLoad, WriteOnly strategies.
@@ -488,7 +488,7 @@ impl<P: Model, C: Model> Relationship<P, C> {
 
 	/// Generate SQL string for loading (convenience method)
 	///
-	/// This converts the SeaQuery statement to SQL string.
+	/// This converts the reinhardt-query statement to SQL string.
 	/// Use this only when you need the final SQL string.
 	pub fn load_sql<V>(&self, parent_id: V, dialect: super::types::DatabaseDialect) -> String
 	where

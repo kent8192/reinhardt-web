@@ -282,7 +282,7 @@ pub use reverse_accessor::ReverseAccessor;
 // Django ORM compatibility layer
 pub use manager::Manager;
 // Query types are always available
-pub use query::{Filter, FilterCondition, FilterOperator, FilterValue, Query, QuerySet};
+pub use query::{Filter, FilterCondition, FilterOperator, FilterValue, OrmQuery, QuerySet};
 
 // Advanced ORM features
 pub use absolute_url_overrides::{HasAbsoluteUrl, clear_url_overrides, register_url_override};
@@ -294,6 +294,6 @@ pub use order_with_respect_to::{OrderError, OrderValue, OrderedModel};
 
 // reinhardt-query re-exports for query building in client code
 pub use reinhardt_query::prelude::{
-	Alias, ColumnRef, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder,
-	Query as SeaQuery, QueryStatementBuilder, QueryStatementWriter, SqliteQueryBuilder,
+	Alias, ColumnRef, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, QueryStatementWriter, SqliteQueryBuilder,
 };

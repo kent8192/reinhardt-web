@@ -580,7 +580,7 @@ where
 		let source_field = format!("{}_id", Self::table_name_lower(S::table_name()));
 		let target_field = format!("{}_id", Self::table_name_lower(T::table_name()));
 
-		// Build JOIN query using SeaQuery
+		// Build JOIN query using reinhardt-query
 		let mut query = Query::select();
 		query.from(Alias::new(S::table_name()));
 
@@ -726,7 +726,7 @@ mod tests {
 		assert!(sql.contains("INNER JOIN"));
 		assert!(sql.contains("dm_room_members"));
 		assert!(sql.contains("user_id"));
-		// Note: SeaQuery uses parameterized queries, so the value may be in a parameter
+		// Note: reinhardt-query uses parameterized queries, so the value may be in a parameter
 		// instead of inline in the SQL string
 	}
 

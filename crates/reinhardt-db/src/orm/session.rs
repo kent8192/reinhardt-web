@@ -5,11 +5,11 @@
 
 use super::transaction::Transaction;
 use crate::orm::model::Model;
-use crate::orm::query::Query;
+use crate::orm::query::OrmQuery;
 use crate::orm::query_types::DbBackend;
 use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
-	QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder,
+	QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde_json::Value;
 use sqlx::{AnyPool, Row};
@@ -290,7 +290,7 @@ impl Session {
 
 		// Build SELECT query using reinhardt-query
 		let pk_field = T::primary_key_field();
-		let mut select_query = SeaQuery::select();
+		let mut select_query = Query::select();
 		select_query.from(Alias::new(T::table_name()));
 
 		// Add all fields to SELECT
@@ -696,8 +696,8 @@ impl Session {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn query<T: Model>(&self) -> Query {
-		Query::new()
+	pub fn query<T: Model>(&self) -> OrmQuery {
+		OrmQuery::new()
 	}
 
 	/// Flush all pending changes to the database
@@ -747,7 +747,7 @@ impl Session {
 					if has_pk {
 						// UPDATE existing record
 						let mut update_stmt =
-							SeaQuery::update().table(Alias::new(table_name)).to_owned();
+							Query::update().table(Alias::new(table_name)).to_owned();
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
@@ -795,7 +795,7 @@ impl Session {
 						self.execute_with_values(&sql, &values).await?;
 					} else {
 						// INSERT new record
-						let mut insert_stmt = SeaQuery::insert()
+						let mut insert_stmt = Query::insert()
 							.into_table(Alias::new(table_name))
 							.to_owned();
 
@@ -883,7 +883,7 @@ impl Session {
 			let pk_value_str = parts[1];
 
 			// Build DELETE statement
-			let mut delete_stmt = SeaQuery::delete()
+			let mut delete_stmt = Query::delete()
 				.from_table(Alias::new(table_name))
 				.to_owned();
 

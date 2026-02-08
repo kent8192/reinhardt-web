@@ -661,7 +661,7 @@ impl<M: Model> Manager<M> {
 		QuerySet::new().get_composite(pk_values).await
 	}
 
-	/// Create a new record using SeaQuery for SQL injection protection
+	/// Create a new record using reinhardt-query for SQL injection protection
 	pub async fn create(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
 		self.create_with_conn(&conn, model).await
@@ -708,7 +708,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		// Build SeaQuery INSERT statement
+		// Build reinhardt-query INSERT statement
 		let mut stmt = Query::insert();
 		stmt.into_table(Alias::new(M::table_name()));
 
@@ -758,7 +758,7 @@ impl<M: Model> Manager<M> {
 		stmt.values_panic(values);
 
 		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with SeaQuery
+		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
 		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
 		stmt.returning(all_columns);
 
@@ -928,7 +928,7 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
-	/// Update an existing record using SeaQuery for SQL injection protection
+	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
 		self.update_with_conn(&conn, model).await
@@ -977,7 +977,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
-		// Build SeaQuery UPDATE statement
+		// Build reinhardt-query UPDATE statement
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(M::table_name()));
 
@@ -1008,7 +1008,7 @@ impl<M: Model> Manager<M> {
 		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
 
 		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with SeaQuery
+		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
 		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
 		stmt.returning(all_columns);
 
@@ -1025,7 +1025,7 @@ impl<M: Model> Manager<M> {
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
-	/// Delete a record using SeaQuery for SQL injection protection
+	/// Delete a record using reinhardt-query for SQL injection protection
 	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 		let conn = get_connection().await?;
 		self.delete_with_conn(&conn, pk).await
@@ -1063,7 +1063,7 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		pk: M::PrimaryKey,
 	) -> reinhardt_core::exception::Result<()> {
-		// Build SeaQuery DELETE statement
+		// Build reinhardt-query DELETE statement
 		let mut stmt = Query::delete();
 
 		// Try to parse as i64 first (common for primary keys), fallback to string
@@ -1090,7 +1090,7 @@ impl<M: Model> Manager<M> {
 		Ok(())
 	}
 
-	/// Count records using SeaQuery
+	/// Count records using reinhardt-query
 	pub async fn count(&self) -> reinhardt_core::exception::Result<i64> {
 		let conn = get_connection().await?;
 		self.count_with_conn(&conn).await
@@ -1126,7 +1126,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		conn: &DatabaseConnection,
 	) -> reinhardt_core::exception::Result<i64> {
-		// Build SeaQuery SELECT COUNT(*) statement with explicit alias
+		// Build reinhardt-query SELECT COUNT(*) statement with explicit alias
 		let stmt = Query::select()
 			.from(Alias::new(M::table_name()))
 			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
@@ -1145,7 +1145,7 @@ impl<M: Model> Manager<M> {
 		})
 	}
 
-	/// Bulk create multiple records using SeaQuery (similar to Django's bulk_create())
+	/// Bulk create multiple records using reinhardt-query (similar to Django's bulk_create())
 	pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
 		if models.is_empty() {
 			return None;
@@ -1166,7 +1166,7 @@ impl<M: Model> Manager<M> {
 
 		let fields: Vec<_> = first_obj.keys().map(|k| Alias::new(k.as_str())).collect();
 
-		// Build SeaQuery INSERT statement
+		// Build reinhardt-query INSERT statement
 		let mut stmt = Query::insert();
 		stmt.into_table(Alias::new(M::table_name())).columns(fields);
 
@@ -1427,13 +1427,13 @@ impl<M: Model> Manager<M> {
 		Ok(total_updated)
 	}
 
-	/// Get or create - SQL generation using SeaQuery (for testing)
+	/// Get or create - SQL generation using reinhardt-query (for testing)
 	pub fn get_or_create_queries(
 		&self,
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
 	) -> (SelectStatement, InsertStatement) {
-		// Generate SELECT query with SeaQuery
+		// Generate SELECT query with reinhardt-query
 		let mut select_stmt = Query::select();
 		select_stmt
 			.from(Alias::new(M::table_name()))
@@ -1443,7 +1443,7 @@ impl<M: Model> Manager<M> {
 			select_stmt.and_where(Expr::col(Alias::new(k.as_str())).eq(v.as_str()));
 		}
 
-		// Generate INSERT query with SeaQuery
+		// Generate INSERT query with reinhardt-query
 		let mut insert_fields = lookup_fields.clone();
 		insert_fields.extend(defaults.clone());
 
@@ -1677,7 +1677,7 @@ mod tests {
 		let (select_sql, insert_sql) =
 			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
 
-		// SeaQuery uses quoted identifiers and TestUser table is "test_user"
+		// reinhardt-query uses quoted identifiers and TestUser table is "test_user"
 		assert!(select_sql.contains("SELECT") && select_sql.contains("FROM"));
 		assert!(select_sql.contains("test_user"));
 		assert!(select_sql.contains("email"));
@@ -1701,7 +1701,7 @@ mod tests {
 
 		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
 
-		// SeaQuery uses quoted identifiers and TestUser table is "test_user"
+		// reinhardt-query uses quoted identifiers and TestUser table is "test_user"
 		assert!(sql.contains("INSERT"));
 		assert!(sql.contains("test_user"));
 		assert!(sql.contains("name"));
@@ -1743,7 +1743,7 @@ mod tests {
 		let fields = vec!["name".to_string(), "email".to_string()];
 		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
 
-		// SeaQuery uses quoted identifiers and TestUser table is "test_user"
+		// reinhardt-query uses quoted identifiers and TestUser table is "test_user"
 		assert!(sql.contains("UPDATE"));
 		assert!(sql.contains("test_user"));
 		assert!(sql.contains("SET"));
@@ -1865,7 +1865,7 @@ mod tests {
 		let value = json!("hello");
 		let sea_value = super::Manager::<TestUser>::json_to_sea_value(&value);
 
-		// SeaQuery Value should contain the string
+		// reinhardt-query Value should contain the string
 		let debug_str = format!("{:?}", sea_value);
 		assert!(debug_str.contains("hello") || debug_str.contains("String"));
 	}

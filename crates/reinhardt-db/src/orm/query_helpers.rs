@@ -1,6 +1,6 @@
 //! Query helper functions
 //!
-//! Common query patterns using SeaQuery for ORM operations.
+//! Common query patterns using reinhardt-query for ORM operations.
 
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, Query,

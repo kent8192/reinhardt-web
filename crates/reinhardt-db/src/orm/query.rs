@@ -10,7 +10,7 @@ use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType, Order,
-	PostgresQueryBuilder, Query as SeaQuery, QueryStatementBuilder, SelectStatement,
+	PostgresQueryBuilder, Query, QueryStatementBuilder, SelectStatement,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -291,11 +291,11 @@ impl From<uuid::Uuid> for FilterValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct Query {
+pub struct OrmQuery {
 	filters: Vec<Filter>,
 }
 
-impl Query {
+impl OrmQuery {
 	pub fn new() -> Self {
 		Self {
 			filters: Vec::new(),
@@ -308,7 +308,7 @@ impl Query {
 	}
 }
 
-impl Default for Query {
+impl Default for OrmQuery {
 	fn default() -> Self {
 		Self::new()
 	}
@@ -2388,7 +2388,7 @@ where
 		self
 	}
 
-	/// Build WHERE condition using SeaQuery from accumulated filters
+	/// Build WHERE condition using reinhardt-query from accumulated filters
 	fn build_where_condition(&self) -> Option<Condition> {
 		// Early return only if both filters and subquery_conditions are empty
 		if self.filters.is_empty() && self.subquery_conditions.is_empty() {
@@ -2443,22 +2443,22 @@ where
 				}
 				// Expression comparisons (F("a") * F("b") etc.)
 				(FilterOperator::Eq, FilterValue::Expression(expr)) => {
-					col.eq(Self::expression_to_seaquery(expr))
+					col.eq(Self::expression_to_query_expr(expr))
 				}
 				(FilterOperator::Ne, FilterValue::Expression(expr)) => {
-					col.ne(Self::expression_to_seaquery(expr))
+					col.ne(Self::expression_to_query_expr(expr))
 				}
 				(FilterOperator::Gt, FilterValue::Expression(expr)) => {
-					col.gt(Self::expression_to_seaquery(expr))
+					col.gt(Self::expression_to_query_expr(expr))
 				}
 				(FilterOperator::Gte, FilterValue::Expression(expr)) => {
-					col.gte(Self::expression_to_seaquery(expr))
+					col.gte(Self::expression_to_query_expr(expr))
 				}
 				(FilterOperator::Lt, FilterValue::Expression(expr)) => {
-					col.lt(Self::expression_to_seaquery(expr))
+					col.lt(Self::expression_to_query_expr(expr))
 				}
 				(FilterOperator::Lte, FilterValue::Expression(expr)) => {
-					col.lte(Self::expression_to_seaquery(expr))
+					col.lte(Self::expression_to_query_expr(expr))
 				}
 				// NULL checks
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
@@ -2673,12 +2673,12 @@ where
 	}
 
 	/// Convert FilterValue to reinhardt_query::value::Value
-	/// Convert Expression to SeaQuery Expr for use in WHERE clauses
+	/// Convert Expression to reinhardt-query Expr for use in WHERE clauses
 	///
-	/// Uses Expr::cust() for arithmetic operations as SeaQuery doesn't provide
+	/// Uses Expr::cust() for arithmetic operations as reinhardt-query doesn't provide
 	/// multiply/divide/etc. methods. SQL injection risk is low since F() only
 	/// accepts field names.
-	fn expression_to_seaquery(expr: &super::annotation::Expression) -> Expr {
+	fn expression_to_query_expr(expr: &super::annotation::Expression) -> Expr {
 		use crate::orm::annotation::Expression;
 
 		match expr {
@@ -2860,7 +2860,7 @@ where
 	///
 	/// This method is maintained for backward compatibility with existing code that
 	/// expects a string-based WHERE clause. New code should use `build_where_condition()`
-	/// which returns a `Condition` object that can be directly added to SeaQuery statements.
+	/// which returns a `Condition` object that can be directly added to reinhardt-query statements.
 	///
 	/// This method generates a complete SELECT statement internally and extracts only
 	/// the WHERE portion, which is less efficient than using `build_where_condition()`.
@@ -2870,8 +2870,8 @@ where
 			return (String::new(), Vec::new());
 		}
 
-		// Build SeaQuery condition
-		let mut stmt = SeaQuery::select();
+		// Build reinhardt-query condition
+		let mut stmt = Query::select();
 		stmt.from(Alias::new("dummy"));
 
 		if let Some(cond) = self.build_where_condition() {
@@ -2948,7 +2948,7 @@ where
 
 	/// Generate SELECT query with JOIN clauses for select_related fields
 	///
-	/// Returns SeaQuery SelectStatement with LEFT JOIN for each related field to enable eager loading.
+	/// Returns reinhardt-query SelectStatement with LEFT JOIN for each related field to enable eager loading.
 	///
 	/// # Examples
 	///
@@ -2984,7 +2984,7 @@ where
 	/// ```
 	pub fn select_related_query(&self) -> SelectStatement {
 		let table_name = T::table_name();
-		let mut stmt = SeaQuery::select();
+		let mut stmt = Query::select();
 
 		// Apply FROM clause with optional alias
 		if let Some(ref alias) = self.from_alias {
@@ -3030,7 +3030,7 @@ where
 					stmt.cross_join(Alias::new(&join.target_table));
 				}
 			} else {
-				// Convert reinhardt JoinType to SeaQuery JoinType
+				// Convert reinhardt JoinType to reinhardt-query JoinType
 				let sea_join_type = match join.join_type {
 					super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
 					super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
@@ -3309,7 +3309,7 @@ where
 		let related_table = Alias::new(format!("{}s", related_field));
 		let fk_field = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
 
-		let mut stmt = SeaQuery::select();
+		let mut stmt = Query::select();
 		stmt.from(related_table).column(ColumnRef::Asterisk);
 
 		// Add IN clause with pk_values
@@ -3336,7 +3336,7 @@ where
 		let junction_main_fk = Alias::new(format!("{}_id", table_name.trim_end_matches('s')));
 		let junction_related_fk = Alias::new(format!("{}_id", related_field));
 
-		let mut stmt = SeaQuery::select();
+		let mut stmt = Query::select();
 		stmt.from(related_table.clone())
 			.column(ColumnRef::table_asterisk(related_table.clone()))
 			.column((junction_table.clone(), junction_main_fk.clone()))
@@ -3412,7 +3412,7 @@ where
 
 		let stmt = if self.select_related_fields.is_empty() {
 			// Simple SELECT without JOINs
-			let mut stmt = SeaQuery::select();
+			let mut stmt = Query::select();
 			stmt.from(Alias::new(T::table_name()));
 
 			// Column selection considering selected_fields and deferred_fields
@@ -3650,7 +3650,7 @@ where
 		T: serde::de::DeserializeOwned,
 	{
 		let stmt = if self.select_related_fields.is_empty() {
-			let mut stmt = SeaQuery::select();
+			let mut stmt = Query::select();
 			stmt.from(Alias::new(T::table_name()));
 
 			// Column selection considering selected_fields and deferred_fields
@@ -3873,7 +3873,7 @@ where
 		let conn = super::manager::get_connection().await?;
 
 		// Build COUNT query using reinhardt-query
-		let mut stmt = SeaQuery::select();
+		let mut stmt = Query::select();
 		stmt.from(Alias::new(T::table_name()))
 			.expr(Func::count(Expr::asterisk().into_simple_expr()));
 
@@ -3997,12 +3997,12 @@ where
 		}
 	}
 
-	/// Generate UPDATE statement using SeaQuery
+	/// Generate UPDATE statement using reinhardt-query
 	pub fn update_query(
 		&self,
 		updates: &HashMap<String, UpdateValue>,
 	) -> reinhardt_query::prelude::UpdateStatement {
-		let mut stmt = SeaQuery::update();
+		let mut stmt = Query::update();
 		stmt.table(Alias::new(T::table_name()));
 
 		// Add SET clauses
@@ -4014,7 +4014,7 @@ where
 				UpdateValue::Boolean(b) => Expr::val(*b),
 				UpdateValue::Null => Expr::val(reinhardt_query::value::Value::Int(None)),
 				UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
-				UpdateValue::Expression(expr) => Self::expression_to_seaquery(expr),
+				UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
 			};
 			stmt.value(Alias::new(field), val_expr);
 		}
@@ -4075,7 +4075,7 @@ where
 		(sql, params)
 	}
 
-	/// Convert SeaQuery Value to String without SQL quoting
+	/// Convert reinhardt-query Value to String without SQL quoting
 	fn sea_value_to_string(value: &reinhardt_query::value::Value) -> String {
 		use reinhardt_query::value::Value;
 		match value {
@@ -4133,7 +4133,7 @@ where
 	/// // sql: "DELETE FROM users WHERE id = $1"
 	/// // params: ["1"]
 	/// ```
-	/// Generate DELETE statement using SeaQuery
+	/// Generate DELETE statement using reinhardt-query
 	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
 		if self.filters.is_empty() {
 			panic!(
@@ -4141,7 +4141,7 @@ where
 			);
 		}
 
-		let mut stmt = SeaQuery::delete();
+		let mut stmt = Query::delete();
 		stmt.from_table(Alias::new(T::table_name()));
 
 		// Add WHERE conditions
@@ -4238,7 +4238,7 @@ where
 
 		// Build SELECT query using reinhardt-query
 		let table_name = T::table_name();
-		let mut query = SeaQuery::select();
+		let mut query = Query::select();
 
 		// Use Alias::new for table name
 		let table_alias = Alias::new(table_name);
@@ -4518,7 +4518,7 @@ where
 	pub fn to_sql(&self) -> String {
 		let mut stmt = if self.select_related_fields.is_empty() {
 			// Simple SELECT without JOINs
-			let mut stmt = SeaQuery::select();
+			let mut stmt = Query::select();
 
 			// Apply FROM clause with optional alias
 			if let Some(ref alias) = self.from_alias {
@@ -4562,14 +4562,14 @@ where
 				if join.on_condition.is_empty() {
 					// CROSS JOIN (no ON condition)
 					if let Some(ref alias) = join.target_alias {
-						// CROSS JOIN with alias - SeaQuery doesn't support this directly
+						// CROSS JOIN with alias - reinhardt-query doesn't support this directly
 						// Use regular join syntax instead
 						stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
 					} else {
 						stmt.cross_join(Alias::new(&join.target_table));
 					}
 				} else {
-					// Convert reinhardt JoinType to SeaQuery JoinType
+					// Convert reinhardt JoinType to reinhardt-query JoinType
 					let sea_join_type = match join.join_type {
 						super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
 						super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
@@ -4702,9 +4702,9 @@ where
 			self.select_related_query()
 		};
 
-		// Add annotations to SELECT clause if any using SeaQuery API
+		// Add annotations to SELECT clause if any using reinhardt-query API
 		// Collect annotation SQL strings first to handle lifetime issues
-		// Note: Use to_sql_expr() to get expression without alias (SeaQuery adds alias via expr_as)
+		// Note: Use to_sql_expr() to get expression without alias (reinhardt-query adds alias via expr_as)
 		let annotation_exprs: Vec<_> = self
 			.annotations
 			.iter()
@@ -5456,7 +5456,7 @@ impl FilterValue {
 // Helper Functions for JOIN Support
 // ============================================================================
 
-/// Parse field reference into SeaQuery column expression
+/// Parse field reference into reinhardt-query column expression
 ///
 /// Handles both qualified (`table.column`) and unqualified (`column`) references.
 ///
@@ -5465,7 +5465,7 @@ impl FilterValue {
 /// - `"id"` → `ColumnRef::Column("id")`
 /// - `"users.id"` → `ColumnRef::Column("users.id")` (qualified name as-is)
 ///
-/// Note: For SeaQuery v1.0.0-rc.29+, we use the full qualified name as a column identifier.
+/// Note: For reinhardt-query v1.0.0-rc.29+, we use the full qualified name as a column identifier.
 /// This works for most databases that support qualified column references.
 ///
 /// This function also detects raw SQL expressions (containing parentheses, like `COUNT(*)`,

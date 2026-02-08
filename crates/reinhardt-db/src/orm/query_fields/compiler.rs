@@ -20,9 +20,9 @@ impl QueryFieldCompiler {
 		Self::compile_for_sqlite(lookup)
 	}
 
-	/// Compile a lookup into a SeaQuery SimpleExpr
+	/// Compile a lookup into a reinhardt-query `SimpleExpr`
 	///
-	/// This wraps the compiled SQL in `Expr::cust()` for integration with SeaQuery conditions.
+	/// This wraps the compiled SQL in `Expr::cust()` for integration with reinhardt-query conditions.
 	pub fn compile_to_expr<M: Model>(lookup: &Lookup<M>) -> SimpleExpr {
 		let sql = Self::compile(lookup);
 		reinhardt_query::prelude::Expr::cust(sql).into_simple_expr()
