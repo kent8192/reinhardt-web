@@ -382,4 +382,3 @@ impl MultiTermSearch {
 		}
 	}
 }
-

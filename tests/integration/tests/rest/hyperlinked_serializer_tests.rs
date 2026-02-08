@@ -35,8 +35,8 @@ fn test_hyperlinked_serializer_creation() {
 #[test]
 fn test_custom_url_field_name() {
 	// Verify custom url_field_name via serialization output
-	let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None)
-		.url_field_name("self_link");
+	let serializer =
+		HyperlinkedModelSerializer::<TestModel>::new("detail", None).url_field_name("self_link");
 	let model = TestModel {
 		id: Some(1),
 		name: String::from("test"),
@@ -71,11 +71,7 @@ fn test_serialize_with_url_reverser() {
 	struct TestUrlReverser;
 
 	impl UrlReverser for TestUrlReverser {
-		fn reverse(
-			&self,
-			_name: &str,
-			params: &HashMap<String, String>,
-		) -> Result<String, String> {
+		fn reverse(&self, _name: &str, params: &HashMap<String, String>) -> Result<String, String> {
 			let id = params
 				.get("id")
 				.ok_or_else(|| "Missing id parameter".to_string())?;

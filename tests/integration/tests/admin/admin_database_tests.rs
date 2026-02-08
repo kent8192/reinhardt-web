@@ -8,7 +8,7 @@ use reinhardt_admin::core::database::{
 	AdminDatabase,
 };
 use reinhardt_db::orm::annotation::Expression;
-use reinhardt_db::orm::expressions::{F, OuterRef};
+use reinhardt_db::orm::expressions::{OuterRef, F};
 use reinhardt_db::orm::{
 	DatabaseBackend, DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue,
 	Model,

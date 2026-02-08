@@ -560,4 +560,3 @@ impl TransactionHelper {
 		}
 	}
 }
-

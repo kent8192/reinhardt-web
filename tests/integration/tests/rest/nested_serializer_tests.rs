@@ -142,12 +142,10 @@ fn test_writable_nested_deserialize_rejects_create_when_not_allowed() {
 
 	let result = serializer.deserialize(&json.to_string());
 	assert!(result.is_err());
-	assert!(
-		result
-			.unwrap_err()
-			.message()
-			.contains("Creating nested instances is not allowed")
-	);
+	assert!(result
+		.unwrap_err()
+		.message()
+		.contains("Creating nested instances is not allowed"));
 }
 
 #[test]
@@ -166,12 +164,10 @@ fn test_writable_nested_deserialize_rejects_update_when_not_allowed() {
 
 	let result = serializer.deserialize(&json.to_string());
 	assert!(result.is_err());
-	assert!(
-		result
-			.unwrap_err()
-			.message()
-			.contains("Updating nested instances is not allowed")
-	);
+	assert!(result
+		.unwrap_err()
+		.message()
+		.contains("Updating nested instances is not allowed"));
 }
 
 #[test]
@@ -224,12 +220,10 @@ fn test_writable_nested_deserialize_array_rejects_create() {
 
 	let result = serializer.deserialize(&json.to_string());
 	assert!(result.is_err());
-	assert!(
-		result
-			.unwrap_err()
-			.message()
-			.contains("Creating nested instances is not allowed")
-	);
+	assert!(result
+		.unwrap_err()
+		.message()
+		.contains("Creating nested instances is not allowed"));
 }
 
 #[test]

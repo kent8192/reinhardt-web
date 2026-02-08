@@ -48,8 +48,7 @@ fn test_list_api_view_with_ordering() {
 #[test]
 fn test_list_api_view_with_pagination() {
 	// Arrange & Act
-	let view =
-		ListAPIView::<TestArticle, JsonSerializer<TestArticle>>::new().with_paginate_by(20);
+	let view = ListAPIView::<TestArticle, JsonSerializer<TestArticle>>::new().with_paginate_by(20);
 
 	// Assert
 	let methods = view.allowed_methods();
@@ -108,8 +107,7 @@ fn test_update_api_view_with_lookup_field() {
 #[test]
 fn test_update_api_view_with_partial() {
 	// Arrange & Act
-	let view =
-		UpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new().with_partial(true);
+	let view = UpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new().with_partial(true);
 
 	// Assert
 	let methods = view.allowed_methods();

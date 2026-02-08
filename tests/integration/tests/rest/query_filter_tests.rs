@@ -48,8 +48,7 @@ async fn test_multiple_lookups() {
 
 #[tokio::test]
 async fn test_ordering() {
-	let filter =
-		QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
+	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
 
 	let sql = "SELECT * FROM test_posts".to_string();
 	let result = filter.filter_queryset(&HashMap::new(), sql).await.unwrap();
@@ -74,8 +73,7 @@ async fn test_lookup_and_ordering() {
 
 #[tokio::test]
 async fn test_append_to_existing_order_by() {
-	let filter =
-		QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
+	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
 
 	let sql = "SELECT * FROM test_posts ORDER BY created_at DESC".to_string();
 	let result = filter.filter_queryset(&HashMap::new(), sql).await.unwrap();
@@ -88,8 +86,7 @@ async fn test_append_to_existing_order_by() {
 
 #[tokio::test]
 async fn test_append_order_with_limit() {
-	let filter =
-		QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
+	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
 
 	let sql = "SELECT * FROM test_posts ORDER BY created_at DESC LIMIT 10".to_string();
 	let result = filter.filter_queryset(&HashMap::new(), sql).await.unwrap();

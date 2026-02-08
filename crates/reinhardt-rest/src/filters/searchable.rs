@@ -84,4 +84,3 @@ pub trait SearchableModel: Model {
 			.collect()
 	}
 }
-

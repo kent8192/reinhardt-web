@@ -197,4 +197,3 @@ impl<M: Model> Clone for OrderingField<M> {
 		}
 	}
 }
-

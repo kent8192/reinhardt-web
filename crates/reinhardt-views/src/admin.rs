@@ -423,4 +423,3 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> Default for Model
 		Self::new()
 	}
 }
-

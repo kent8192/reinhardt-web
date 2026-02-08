@@ -749,4 +749,3 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 		})
 	}
 }
-
