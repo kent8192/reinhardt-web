@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.7...reinhardt-utils@v0.1.0-alpha.8) - 2026-02-08
+
+### Fixed
+
+- *(utils)* break circular publish dependency with reinhardt-test
+- *(utils)* use fully qualified Result type in poll_until helpers
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.1.0-alpha.6...reinhardt-utils@v0.1.0-alpha.7) - 2026-02-06
 
 ### Fixed
