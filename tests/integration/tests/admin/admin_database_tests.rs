@@ -11,7 +11,6 @@ use reinhardt_db::orm::annotation::Expression;
 use reinhardt_db::orm::expressions::{OuterRef, F};
 use reinhardt_db::orm::{
 	DatabaseBackend, DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue,
-	Model,
 };
 use reinhardt_test::fixtures::mock_connection;
 use rstest::*;
@@ -21,7 +20,7 @@ use std::collections::HashMap;
 // Mock User model for testing
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct User {
-	id: i64,
+	id: Option<i64>,
 	name: String,
 }
 
