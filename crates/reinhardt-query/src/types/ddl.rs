@@ -290,7 +290,7 @@ impl ColumnDef {
 
 	/// Set column type to BINARY(len)
 	///
-	/// Alias for [`binary`](Self::binary) for sea-query compatibility.
+	/// Alias for [`binary`](Self::binary) for reinhardt-query compatibility.
 	pub fn binary_len(self, len: u32) -> Self {
 		self.column_type(ColumnType::Binary(Some(len)))
 	}

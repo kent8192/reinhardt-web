@@ -9,7 +9,7 @@
 //! - [`CaseStatement`]: CASE WHEN expressions
 
 mod condition;
-// Module named `expr` inside the `expr` parent module follows sea-query convention
+// Module named `expr` inside the `expr` parent module follows reinhardt-query convention
 #[allow(clippy::module_inception)]
 mod expr;
 mod expr_trait;

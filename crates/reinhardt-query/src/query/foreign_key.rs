@@ -2,7 +2,7 @@
 //!
 //! This module provides [`ForeignKey`] as an entry point and
 //! [`ForeignKeyCreateStatement`] for building foreign key constraints
-//! compatible with the sea-query builder pattern.
+//! compatible with the reinhardt-query builder pattern.
 
 use crate::types::{DynIden, ForeignKeyAction, IntoIden, IntoTableRef, TableRef};
 

@@ -10,7 +10,7 @@ use crate::value::Values;
 ///
 /// Supports both numbered (`$1, $2, ...`) and positional (`?`) placeholders.
 /// This enables `to_string()` to produce complete SQL with values inlined,
-/// matching sea-query behavior for debugging and non-parameterized execution.
+/// matching reinhardt-query behavior for debugging and non-parameterized execution.
 pub fn inline_params(sql: &str, values: &Values) -> String {
 	if values.is_empty() {
 		return sql.to_string();
