@@ -288,7 +288,7 @@ async fn normal_current_user_shared_across_endpoints(
 /// **Integration Point**: CurrentUser → reinhardt-query → PostgreSQL
 #[rstest]
 #[tokio::test]
-async fn normal_current_user_db_query_seaquery(
+async fn normal_current_user_db_query(
 	#[future] db_with_test_user: (
 		ContainerAsync<GenericImage>,
 		Arc<PgPool>,

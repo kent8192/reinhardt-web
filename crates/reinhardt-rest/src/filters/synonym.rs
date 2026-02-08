@@ -710,7 +710,7 @@ mod tests {
 		let where_clause = &result[where_start..];
 
 		// Validate structure: WHERE clause starts correctly
-		// SeaQuery may or may not wrap conditions in parentheses depending on the number of conditions
+		// reinhardt-query may or may not wrap conditions in parentheses depending on the number of conditions
 		assert!(
 			where_clause.starts_with("WHERE "),
 			"Expected WHERE clause to start with 'WHERE ', got: {}",

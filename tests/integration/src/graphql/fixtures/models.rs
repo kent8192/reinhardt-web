@@ -115,7 +115,7 @@ async fn user_model_fixture(
 	let pool = get_pool_from_test_container().await;
 
 	// Create user using reinhardt-query (not raw SQL)
-	let user = create_test_user_with_seaquery(&pool).await;
+	let user = create_test_user_with_query(&pool).await;
 
 	(schema, user)
 }
@@ -129,7 +129,7 @@ async fn post_model_fixture(
 	let pool = get_pool_from_test_container().await;
 
 	// Create post using reinhardt-query
-	let post = create_test_post_with_seaquery(&pool, user.id).await;
+	let post = create_test_post_with_query(&pool, user.id).await;
 
 	(schema, user, post)
 }
@@ -152,7 +152,7 @@ async fn get_pool_from_test_container() -> Arc<PgPool> {
 }
 
 /// Create a test user in the database using reinhardt-query.
-async fn create_test_user_with_seaquery(pool: &PgPool) -> User {
+async fn create_test_user_with_query(pool: &PgPool) -> User {
 	// Use reinhardt-query to build SQL (not raw strings)
 	let mut insert_stmt = Query::insert();
 	let insert_query = insert_stmt
@@ -173,7 +173,7 @@ async fn create_test_user_with_seaquery(pool: &PgPool) -> User {
 }
 
 /// Create a test post in the database using reinhardt-query.
-async fn create_test_post_with_seaquery(pool: &PgPool, author_id: i32) -> Post {
+async fn create_test_post_with_query(pool: &PgPool, author_id: i32) -> Post {
 	let mut insert_stmt = Query::insert();
 	let insert_query = insert_stmt
 		.into_table(Tables::Posts.into_iden())
@@ -204,9 +204,9 @@ async fn multiple_users_fixture(
 	let pool = get_pool_from_test_container().await;
 
 	let users = vec![
-		create_test_user_with_seaquery(&pool).await,
-		create_test_user_with_seaquery(&pool).await,
-		create_test_user_with_seaquery(&pool).await,
+		create_test_user_with_query(&pool).await,
+		create_test_user_with_query(&pool).await,
+		create_test_user_with_query(&pool).await,
 	];
 
 	(schema, users)

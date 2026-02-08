@@ -501,7 +501,7 @@ impl<B: SessionBackend> AuthenticationBackend for SessionAuthentication<B> {
 		// Build SQL query using reinhardt-query for type-safe query construction
 		use reinhardt_db::orm::{
 			Alias, DatabaseBackend, Expr, ExprTrait, Model, MySqlQueryBuilder,
-			PostgresQueryBuilder, QueryStatementBuilder, SeaQuery as Query, SqliteQueryBuilder,
+			PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		let table_name = DefaultUser::table_name();

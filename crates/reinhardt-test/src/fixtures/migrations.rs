@@ -581,7 +581,7 @@ impl PostgresTableCreator {
 
 	/// Execute custom SQL (fallback for complex cases)
 	///
-	/// This method allows executing arbitrary SQL statements when SeaQuery
+	/// This method allows executing arbitrary SQL statements when reinhardt-query
 	/// is insufficient for complex schema operations or PostgreSQL-specific features.
 	///
 	/// # Examples

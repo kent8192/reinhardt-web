@@ -10,8 +10,8 @@ use reinhardt_db::orm::{
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder,
-	Query as SeaQuery, QueryStatementBuilder, SimpleExpr, Value,
+	Alias, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -361,7 +361,7 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
 			.to_owned();
@@ -421,7 +421,7 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
 			.to_owned();
@@ -502,7 +502,7 @@ impl AdminDatabase {
 		filter_condition: Option<&FilterCondition>,
 		additional_filters: Vec<Filter>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
@@ -585,7 +585,7 @@ impl AdminDatabase {
 			Value::String(Some(Box::new(id.to_string())))
 		};
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
@@ -647,7 +647,7 @@ impl AdminDatabase {
 		table_name: &str,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::insert()
+		let mut query = Query::insert()
 			.into_table(Alias::new(table_name))
 			.to_owned();
 
@@ -736,7 +736,7 @@ impl AdminDatabase {
 		id: &str,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::update().table(Alias::new(table_name)).to_owned();
+		let mut query = Query::update().table(Alias::new(table_name)).to_owned();
 
 		// Build SET clauses
 		for (key, value) in data {
@@ -815,7 +815,7 @@ impl AdminDatabase {
 			Value::String(Some(Box::new(id.to_string())))
 		};
 
-		let query = SeaQuery::delete()
+		let query = Query::delete()
 			.from_table(Alias::new(table_name))
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
@@ -909,7 +909,7 @@ impl AdminDatabase {
 			})
 			.collect();
 
-		let query = SeaQuery::delete()
+		let query = Query::delete()
 			.from_table(Alias::new(table_name))
 			.and_where(Expr::col(Alias::new(pk_field)).is_in(pk_values))
 			.to_owned();
@@ -959,7 +959,7 @@ impl AdminDatabase {
 		table_name: &str,
 		filters: Vec<Filter>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
@@ -1176,7 +1176,7 @@ mod tests {
 		assert!(result.is_some());
 		// The condition should produce valid SQL when used
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
@@ -1207,7 +1207,7 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
@@ -1240,7 +1240,7 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
@@ -1282,7 +1282,7 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
@@ -1489,7 +1489,7 @@ mod tests {
 		let result = build_single_filter_expr(&filter);
 		assert!(result.is_some());
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("products"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(Condition::all().add(result.unwrap()))
@@ -1545,7 +1545,7 @@ mod tests {
 		let result = build_single_filter_expr(&filter);
 		assert!(result.is_some());
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("books"))
 			.column(ColumnRef::Asterisk)
 			.cond_where(Condition::all().add(result.unwrap()))

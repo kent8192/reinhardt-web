@@ -36,7 +36,7 @@ async fn test_model_initialization() {
 /// Tests that reinhardt-query table names are correctly defined.
 #[rstest]
 #[tokio::test]
-async fn test_seaquery_table_names() {
+async fn test_query_table_names() {
 	// Verify table name identifiers
 	let users_table = Tables::Users;
 	let posts_table = Tables::Posts;
@@ -54,7 +54,7 @@ async fn test_seaquery_table_names() {
 /// Tests reinhardt-query SQL construction for model operations.
 #[rstest]
 #[tokio::test]
-async fn test_seaquery_sql_construction() {
+async fn test_query_sql_construction() {
 	// Test INSERT query construction for User model
 	let mut insert_stmt = Query::insert();
 	let insert_user_query = insert_stmt

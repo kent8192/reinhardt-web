@@ -18,7 +18,7 @@ use crate::test_utils::fixtures::users::TestTwitterUser;
 
 /// Factory for creating User records in the database.
 ///
-/// Uses SeaQuery for SQL construction and Argon2 for password hashing.
+/// Uses reinhardt-query for SQL construction and Argon2 for password hashing.
 #[derive(Clone)]
 pub struct UserFactory {
 	hasher: Argon2Hasher,

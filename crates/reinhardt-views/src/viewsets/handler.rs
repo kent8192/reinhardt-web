@@ -525,19 +525,19 @@ where
 					use reinhardt_db::orm::manager::get_connection;
 					match get_connection().await {
 						Ok(conn) => {
-							// Build SQL query using sea-query for type-safe query construction
+							// Build SQL query using reinhardt-query for type-safe query construction
 							use reinhardt_auth::DefaultUser;
 							use reinhardt_db::orm::{
 								Alias, ColumnRef, DatabaseBackend, Expr, ExprTrait, Model,
-								MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
-								SeaQuery, SqliteQueryBuilder,
+								MySqlQueryBuilder, PostgresQueryBuilder, Query,
+								QueryStatementBuilder, SqliteQueryBuilder,
 							};
 
 							let table_name = DefaultUser::table_name();
 							let pk_field = DefaultUser::primary_key_field();
 
-							// Build SELECT * query using sea-query
-							let stmt = SeaQuery::select()
+							// Build SELECT * query using reinhardt-query
+							let stmt = Query::select()
 								.column(ColumnRef::Asterisk)
 								.from(Alias::new(table_name))
 								.and_where(
