@@ -4016,7 +4016,7 @@ where
 				UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
 				UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
 			};
-			stmt.value(Alias::new(field), val_expr);
+			stmt.value_expr(Alias::new(field), val_expr);
 		}
 
 		// Add WHERE conditions

@@ -872,7 +872,7 @@ impl QueryBuilder for SqliteQueryBuilder {
 			writer.push_list(&stmt.values, ", ", |w, (col, value)| {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 				w.push(" = ");
-				w.push_value(value.clone(), |_i| self.placeholder(0));
+				self.write_simple_expr(w, value);
 			});
 		}
 
