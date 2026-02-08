@@ -148,4 +148,3 @@ async fn async_factory_creates_instance(singleton_scope: Arc<reinhardt_di::Singl
 	let service = any_arc.downcast::<TestService>().unwrap();
 	assert_eq!(service.name, "async_factory_test");
 }
-

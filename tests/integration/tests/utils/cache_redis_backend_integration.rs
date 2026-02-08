@@ -101,8 +101,7 @@ async fn test_redis_cache_batch_operations() {
 
 	// Get multiple values
 	let keys = vec!["batch_key1", "batch_key2", "batch_key3"];
-	let results: std::collections::HashMap<String, String> =
-		cache.get_many(&keys).await.unwrap();
+	let results: std::collections::HashMap<String, String> = cache.get_many(&keys).await.unwrap();
 
 	assert_eq!(results.get("batch_key1"), Some(&"value1".to_string()));
 	assert_eq!(results.get("batch_key2"), Some(&"value2".to_string()));
@@ -111,8 +110,7 @@ async fn test_redis_cache_batch_operations() {
 	// Delete multiple values
 	cache.delete_many(&keys).await.unwrap();
 
-	let results: std::collections::HashMap<String, String> =
-		cache.get_many(&keys).await.unwrap();
+	let results: std::collections::HashMap<String, String> = cache.get_many(&keys).await.unwrap();
 	assert!(results.get("batch_key1").is_none());
 	assert!(results.get("batch_key2").is_none());
 	assert!(results.get("batch_key3").is_none());
