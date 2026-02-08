@@ -75,32 +75,34 @@ async fn test_delete_fk_violation(#[future] users_with_data: (TestPool, Vec<i32>
 	let (pool, _ids) = users_with_data.await;
 
 	// Create orders table with FK restrict (no cascade)
-	use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, Table};
+	use reinhardt_query::prelude::{
+		ColumnDef, ForeignKeyAction, PostgresQueryBuilder as PgBuilder, Query as Q,
+		QueryStatementBuilder,
+	};
 
-	let create_table = Table::create()
+	let mut create_table = Q::create_table();
+	create_table
 		.table("orders_no_cascade")
 		.if_not_exists()
 		.col(
 			ColumnDef::new("id")
 				.integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_integer().not_null())
-		.col(ColumnDef::new("status").string_len(50).not_null())
+		.col(ColumnDef::new("user_id").integer().not_null(true))
+		.col(ColumnDef::new("total_amount").big_integer().not_null(true))
+		.col(ColumnDef::new("status").string_len(50).not_null(true))
 		.foreign_key(
-			ForeignKey::create()
-				.name("fk_orders_no_cascade_user_id")
-				.from("orders_no_cascade", "user_id")
-				.to("users", "id")
-				.on_delete(ForeignKeyAction::Restrict)
-				.on_update(ForeignKeyAction::Restrict),
-		)
-		.to_owned();
+			vec!["user_id"],
+			"users",
+			vec!["id"],
+			Some(ForeignKeyAction::Restrict),
+			Some(ForeignKeyAction::Restrict),
+		);
 
-	let create_sql = create_table.to_string(sea_query::PostgresQueryBuilder);
+	let create_sql = create_table.to_string(PgBuilder::new());
 	sqlx::query(&create_sql)
 		.execute(pool.as_ref())
 		.await
