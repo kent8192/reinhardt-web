@@ -11,6 +11,9 @@ use std::collections::HashMap;
 /// Block type identifier
 pub type BlockType = String;
 
+/// Factory function that creates a block from JSON data
+type BlockFactory = Box<dyn Fn(JsonValue) -> CmsResult<Box<dyn Block>>>;
+
 /// Block trait for all content blocks
 pub trait Block: Send + Sync {
 	/// Get the block type identifier
@@ -84,9 +87,7 @@ impl Default for StreamField {
 
 /// Registry of available block types
 pub struct BlockLibrary {
-	// Block factory closures require nested generics for dynamic dispatch
-	#[allow(clippy::type_complexity)]
-	blocks: HashMap<BlockType, Box<dyn Fn(JsonValue) -> CmsResult<Box<dyn Block>>>>,
+	blocks: HashMap<BlockType, BlockFactory>,
 }
 
 impl BlockLibrary {
