@@ -2,7 +2,10 @@
 //!
 //! This module provides utility functions for populating test data and making assertions.
 
+use axum::body::Body;
+use axum::response::Response;
 use chrono::Utc;
+use http::header;
 use reinhardt_debug_toolbar::{
 	context::{
 		CacheOperation, MarkerCategory, PerformanceMarker, SqlQuery, TemplateInfo, ToolbarContext,
@@ -237,6 +240,30 @@ pub fn assert_stats_has_field(stats: &reinhardt_debug_toolbar::panels::PanelStat
 	} else {
 		panic!("PanelStats data is not an object");
 	}
+}
+
+/// Create an HTML response with the given body
+pub fn html_response(body: &str) -> Response<Body> {
+	Response::builder()
+		.header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+		.body(Body::from(body.to_string()))
+		.unwrap()
+}
+
+/// Create a JSON response with the given body
+pub fn json_response(body: &str) -> Response<Body> {
+	Response::builder()
+		.header(header::CONTENT_TYPE, "application/json")
+		.body(Body::from(body.to_string()))
+		.unwrap()
+}
+
+/// Create a response with the given content type and body
+pub fn response_with_content_type(content_type: &str, body: &str) -> Response<Body> {
+	Response::builder()
+		.header(header::CONTENT_TYPE, content_type)
+		.body(Body::from(body.to_string()))
+		.unwrap()
 }
 
 /// Verify HTML is properly escaped
