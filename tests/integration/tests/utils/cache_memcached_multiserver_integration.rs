@@ -1,5 +1,5 @@
 use reinhardt_utils::cache::memcached::{MemcachedCache, MemcachedConfig};
-use reinhardt_utils::cache::CacheBackend;
+use reinhardt_utils::cache::Cache;
 use std::time::Duration;
 
 #[tokio::test]

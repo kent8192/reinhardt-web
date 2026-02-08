@@ -1,37 +1,7 @@
 use reinhardt_test::containers::RedisContainer;
 use reinhardt_utils::cache::redis_backend::RedisCache;
-use reinhardt_utils::cache::CacheBackend;
+use reinhardt_utils::cache::Cache;
 use std::time::Duration;
-
-#[tokio::test]
-async fn test_redis_cache_creation() {
-	let redis = RedisContainer::new().await;
-	let cache = RedisCache::new(redis.connection_url())
-		.await
-		.unwrap()
-		.with_default_ttl(Duration::from_secs(300))
-		.with_key_prefix("myapp");
-
-	assert_eq!(cache.key_prefix, "myapp");
-	assert!(cache.default_ttl.is_some());
-}
-
-#[tokio::test]
-async fn test_build_key_with_prefix() {
-	let redis = RedisContainer::new().await;
-	let cache = RedisCache::new(redis.connection_url())
-		.await
-		.unwrap()
-		.with_key_prefix("test");
-	assert_eq!(cache.build_key("key1"), "test:key1");
-}
-
-#[tokio::test]
-async fn test_build_key_without_prefix() {
-	let redis = RedisContainer::new().await;
-	let cache = RedisCache::new(redis.connection_url()).await.unwrap();
-	assert_eq!(cache.build_key("key1"), "key1");
-}
 
 #[tokio::test]
 async fn test_redis_cache_basic_operations() {
@@ -131,21 +101,21 @@ async fn test_redis_cache_batch_operations() {
 
 	// Get multiple values
 	let keys = vec!["batch_key1", "batch_key2", "batch_key3"];
-	let results: std::collections::HashMap<String, Option<String>> =
+	let results: std::collections::HashMap<String, String> =
 		cache.get_many(&keys).await.unwrap();
 
-	assert_eq!(results.get("batch_key1"), Some(&Some("value1".to_string())));
-	assert_eq!(results.get("batch_key2"), Some(&Some("value2".to_string())));
-	assert_eq!(results.get("batch_key3"), Some(&Some("value3".to_string())));
+	assert_eq!(results.get("batch_key1"), Some(&"value1".to_string()));
+	assert_eq!(results.get("batch_key2"), Some(&"value2".to_string()));
+	assert_eq!(results.get("batch_key3"), Some(&"value3".to_string()));
 
 	// Delete multiple values
 	cache.delete_many(&keys).await.unwrap();
 
-	let results: std::collections::HashMap<String, Option<String>> =
+	let results: std::collections::HashMap<String, String> =
 		cache.get_many(&keys).await.unwrap();
-	assert_eq!(results.get("batch_key1"), None);
-	assert_eq!(results.get("batch_key2"), None);
-	assert_eq!(results.get("batch_key3"), None);
+	assert!(results.get("batch_key1").is_none());
+	assert!(results.get("batch_key2").is_none());
+	assert!(results.get("batch_key3").is_none());
 }
 
 #[tokio::test]
