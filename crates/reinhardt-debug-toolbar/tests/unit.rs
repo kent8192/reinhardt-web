@@ -805,6 +805,7 @@ fn lib_quick_start_toolbar_config_construction() {
 	));
 }
 
+#[cfg(feature = "sql-panel")]
 #[rstest]
 fn sql_normalization_doc_example_equivalence() {
 	// Arrange

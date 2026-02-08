@@ -3,10 +3,12 @@
 //! This module provides reusable test fixtures using rstest framework.
 
 use chrono::Utc;
+#[cfg(feature = "sql-panel")]
+use reinhardt_debug_toolbar::panels::sql::SqlPanel;
 use reinhardt_debug_toolbar::{
 	context::{RequestInfo, ToolbarContext},
 	middleware::ToolbarConfig,
-	panels::{registry::PanelRegistry, request::RequestPanel, sql::SqlPanel},
+	panels::{registry::PanelRegistry, request::RequestPanel},
 };
 use rstest::*;
 
@@ -68,11 +70,12 @@ pub fn test_context() -> ToolbarContext {
 ///
 /// Creates a PanelRegistry with common panels registered:
 /// - RequestPanel (priority: 100)
-/// - SqlPanel (priority: 90, threshold: 100ms)
+/// - SqlPanel (priority: 90, threshold: 100ms) (when sql-panel feature is enabled)
 #[fixture]
 pub fn default_registry() -> PanelRegistry {
 	let mut registry = PanelRegistry::new();
 	registry.register(Box::new(RequestPanel::new()));
+	#[cfg(feature = "sql-panel")]
 	registry.register(Box::new(SqlPanel::new()));
 	registry
 }

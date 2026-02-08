@@ -6,12 +6,11 @@ use axum::body::Body;
 use axum::response::Response;
 use chrono::Utc;
 use http::header;
-use reinhardt_debug_toolbar::{
-	context::{
-		CacheOperation, MarkerCategory, PerformanceMarker, SqlQuery, TemplateInfo, ToolbarContext,
-	},
-	utils::sql_normalization::normalize_sql,
+use reinhardt_debug_toolbar::context::{
+	CacheOperation, MarkerCategory, PerformanceMarker, SqlQuery, TemplateInfo, ToolbarContext,
 };
+#[cfg(feature = "sql-panel")]
+use reinhardt_debug_toolbar::utils::sql_normalization::normalize_sql;
 use std::time::Duration;
 
 /// Populate context with SQL queries
@@ -191,6 +190,7 @@ pub fn populate_markers(ctx: &ToolbarContext, count: usize) {
 /// Assert SQL normalization equality
 ///
 /// Normalizes both SQL strings and asserts they are equal.
+#[cfg(feature = "sql-panel")]
 pub fn assert_sql_eq(sql1: &str, sql2: &str) {
 	let normalized1 = normalize_sql(sql1);
 	let normalized2 = normalize_sql(sql2);

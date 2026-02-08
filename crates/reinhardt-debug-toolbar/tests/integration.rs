@@ -4,29 +4,35 @@
 //! full pipeline, and use-case scenarios.
 
 use crate::common::{
-	fixtures::{localhost_config, test_context},
+	fixtures::localhost_config,
 	helpers::{
-		assert_html_contains, assert_html_not_contains, create_n_plus_one_pattern,
-		create_slow_queries, html_response, json_response, response_with_content_type,
+		assert_html_contains, assert_html_not_contains, html_response, json_response,
+		response_with_content_type,
 	},
+};
+#[cfg(feature = "sql-panel")]
+use crate::common::{
+	fixtures::test_context,
+	helpers::{create_n_plus_one_pattern, create_slow_queries},
 	mock_panel::MockPanel,
 };
 use axum::body::Body;
 use chrono::Utc;
 use http_body_util::BodyExt;
+#[cfg(feature = "sql-panel")]
+use reinhardt_debug_toolbar::panels::registry::PanelRegistry;
+#[cfg(feature = "sql-panel")]
+use reinhardt_debug_toolbar::panels::sql::SqlPanel;
 use reinhardt_debug_toolbar::{
 	DebugToolbarLayer,
 	context::{RequestInfo, ToolbarContext},
 	middleware::ToolbarConfig,
-	panels::{Panel, PanelStats, registry::PanelRegistry, request::RequestPanel},
+	panels::{Panel, PanelStats, request::RequestPanel},
 	ui::inject_toolbar,
 };
 use rstest::*;
 use std::net::IpAddr;
 use tower::Layer;
-
-#[cfg(feature = "sql-panel")]
-use reinhardt_debug_toolbar::panels::sql::SqlPanel;
 
 // ============================================================================
 // 1. Happy Path Tests
