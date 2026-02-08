@@ -33,7 +33,7 @@ use crate::orm::model::Model;
 /// # }
 /// # fn build_count_query<M: Model>() -> SelectStatement {
 /// #     Query::select()
-/// #         .expr(Func::count(Expr::asterisk()))
+/// #         .expr(Func::count(Expr::asterisk().into_simple_expr()))
 /// #         .from(Alias::new(M::table_name()))
 /// #         .to_owned()
 /// # }

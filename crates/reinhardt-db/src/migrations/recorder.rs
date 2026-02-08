@@ -445,7 +445,8 @@ impl DatabaseMigrationRecorder {
 	pub async fn record_applied(&self, app: &str, name: &str) -> super::Result<()> {
 		use crate::backends::types::DatabaseType;
 		use reinhardt_query::prelude::{
-			Alias, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SqliteQueryBuilder,
+			Alias, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
+			SqliteQueryBuilder,
 		};
 
 		// Build INSERT query using reinhardt-query
@@ -457,20 +458,21 @@ impl DatabaseMigrationRecorder {
 			.to_owned();
 
 		// Add conflict resolution for concurrent execution
+		// Use to_string() to inline values into SQL (no parameter binding needed)
 		let sql = match self.connection.database_type() {
 			DatabaseType::Postgres => {
 				// PostgreSQL: ON CONFLICT DO NOTHING
-				let (sql, _) = PostgresQueryBuilder::new().build_insert(&stmt);
-				format!("{} ON CONFLICT (app, name) DO NOTHING", sql)
+				let base_sql = stmt.to_string(PostgresQueryBuilder::new());
+				format!("{} ON CONFLICT (app, name) DO NOTHING", base_sql)
 			}
 			DatabaseType::Mysql => {
 				// MySQL: INSERT IGNORE
-				let (base_sql, _) = MySqlQueryBuilder::new().build_insert(&stmt);
+				let base_sql = stmt.to_string(MySqlQueryBuilder::new());
 				base_sql.replacen("INSERT", "INSERT IGNORE", 1)
 			}
 			DatabaseType::Sqlite => {
 				// SQLite: INSERT OR IGNORE
-				let (base_sql, _) = SqliteQueryBuilder::new().build_insert(&stmt);
+				let base_sql = stmt.to_string(SqliteQueryBuilder::new());
 				base_sql.replacen("INSERT", "INSERT OR IGNORE", 1)
 			}
 		};

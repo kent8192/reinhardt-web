@@ -989,7 +989,7 @@ impl<M: Model> Manager<M> {
 			if v.is_null() {
 				// Use untyped NULL to avoid PostgreSQL type mismatch errors
 				// (e.g., setting timestamp column to NULL would fail with Int(None))
-				stmt.value(Alias::new(k.as_str()), Expr::cust("NULL"));
+				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
 			} else {
 				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
 			}
