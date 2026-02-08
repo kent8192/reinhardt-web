@@ -1,7 +1,7 @@
 //! Unit tests for Provider and ProviderFn
 
 use reinhardt_di::provider::{Provider, ProviderFn};
-use reinhardt_di::{DiResult, InjectionContext};
+use reinhardt_di::InjectionContext;
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ async fn provider_fn_executes() {
 
 	// Act
 	let future = provider.provide();
-	let result = future.await;
+	let result = future.into_inner().await;
 
 	// Assert
 	assert!(result.is_ok());
@@ -53,7 +53,7 @@ async fn provider_with_context(injection_context: InjectionContext) {
 
 	// Act
 	let future = provider_fn.as_fn()();
-	let result = future.await;
+	let result = future.into_inner().await;
 
 	// Assert
 	assert!(result.is_ok());
@@ -74,7 +74,7 @@ async fn provider_returns_error() {
 
 	// Act
 	let future = provider.provide();
-	let result = future.await;
+	let result = future.into_inner().await;
 
 	// Assert
 	assert!(result.is_err());
@@ -97,7 +97,7 @@ async fn provider_cached(injection_context: InjectionContext) {
 
 	// Act - First call
 	let future1 = provider.provide();
-	let result1 = future1.await.unwrap();
+	let result1 = future1.into_inner().await.unwrap();
 	let value1 = result1.downcast::<TestValue>().unwrap();
 
 	injection_context.set_request((*value1).clone());

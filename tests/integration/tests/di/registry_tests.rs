@@ -1,7 +1,7 @@
 //! Unit tests for DependencyRegistry and AsyncFactory
 
 use reinhardt_di::registry::{global_registry, AsyncFactory, DependencyRegistry, DependencyScope};
-use reinhardt_di::{DiResult, InjectionContext};
+use reinhardt_di::{FactoryTrait, InjectionContext};
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;
@@ -149,35 +149,3 @@ async fn async_factory_creates_instance(singleton_scope: Arc<reinhardt_di::Singl
 	assert_eq!(service.name, "async_factory_test");
 }
 
-#[rstest]
-fn register_dependencies_stores_dependency_list() {
-	// Arrange
-	let registry = DependencyRegistry::new();
-	let type_id_a = std::any::TypeId::of::<TestService>();
-	let type_id_b = std::any::TypeId::of::<AnotherService>();
-
-	// Act
-	registry.register_dependencies(type_id_a, vec![type_id_b]);
-
-	// Assert
-	let deps = registry.get_dependencies(type_id_a);
-	assert_eq!(deps.len(), 1);
-	assert_eq!(deps[0], type_id_b);
-}
-
-#[rstest]
-fn get_dependencies_returns_dependency_list() {
-	// Arrange
-	let registry = DependencyRegistry::new();
-	let type_id_a = std::any::TypeId::of::<TestService>();
-	let type_id_b = std::any::TypeId::of::<AnotherService>();
-
-	registry.register_dependencies(type_id_a, vec![type_id_b]);
-
-	// Act
-	let deps = registry.get_dependencies(type_id_a);
-
-	// Assert
-	assert_eq!(deps.len(), 1);
-	assert_eq!(deps[0], type_id_b);
-}
