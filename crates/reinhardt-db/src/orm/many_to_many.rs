@@ -9,7 +9,7 @@
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, ColumnRef, ColumnType, DeleteStatement, Expr, ExprTrait, InsertStatement,
-	Query, SelectStatement,
+	Query, QueryStatementBuilder, SelectStatement,
 };
 use std::marker::PhantomData;
 
@@ -380,8 +380,8 @@ impl<L: Model, R: Model> ManyToMany<L, R> {
 
 	/// Generate SQL for joining (convenience method)
 	///
-	pub fn join_sql<T: reinhardt_query::prelude::QueryBuilder>(&self, builder: T) -> String {
-		builder.build_select(&self.join_query()).0
+	pub fn join_sql<T: reinhardt_query::prelude::QueryBuilderTrait>(&self, builder: T) -> String {
+		self.join_query().to_string(builder)
 	}
 
 	/// Generate SeaQuery INSERT statement for adding a relationship

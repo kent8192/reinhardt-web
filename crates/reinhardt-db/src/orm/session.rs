@@ -9,7 +9,7 @@ use crate::orm::query::Query;
 use crate::orm::query_types::DbBackend;
 use reinhardt_query::prelude::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query as SeaQuery,
-	QueryBuilder, SqliteQueryBuilder,
+	QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde_json::Value;
 use sqlx::{AnyPool, Row};
@@ -302,11 +302,11 @@ impl Session {
 		// Add WHERE clause for primary key
 		select_query.and_where(Expr::col(Alias::new(pk_field)).eq(id.to_string()));
 
-		// Build SQL query based on backend
+		// Build SQL query with inline values based on backend
 		let sql = match self.db_backend {
-			DbBackend::Postgres => PostgresQueryBuilder::new().build_select(&select_query).0,
-			DbBackend::Mysql => MySqlQueryBuilder::new().build_select(&select_query).0,
-			DbBackend::Sqlite => SqliteQueryBuilder::new().build_select(&select_query).0,
+			DbBackend::Postgres => select_query.to_string(PostgresQueryBuilder::new()),
+			DbBackend::Mysql => select_query.to_string(MySqlQueryBuilder::new()),
+			DbBackend::Sqlite => select_query.to_string(SqliteQueryBuilder::new()),
 		};
 
 		// Execute query

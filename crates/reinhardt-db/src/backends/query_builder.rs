@@ -757,7 +757,7 @@ impl InsertFromSelectBuilder {
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		// Build INSERT ... SELECT manually since InsertStatement doesn't support select_from
@@ -774,9 +774,9 @@ impl InsertFromSelectBuilder {
 			.join(", ");
 
 		let select_sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&self.select_stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&self.select_stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&self.select_stmt).0,
+			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
+			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
 		};
 
 		let mut sql = format!(
@@ -1021,7 +1021,7 @@ impl SelectBuilder {
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
@@ -1049,11 +1049,11 @@ impl SelectBuilder {
 			stmt.limit(limit as u64);
 		}
 
-		// Build SQL
+		// Build SQL with inline values
 		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
+			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MySqlQueryBuilder),
+			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 		};
 
 		// Collect parameters
@@ -2257,10 +2257,10 @@ mod tests {
 			InsertFromSelectBuilder::new(backend, "archived_users", vec!["id", "name"], select);
 		let (sql, params) = builder.build();
 
-		// Assert (reinhardt-query uses parameterized queries)
+		// Assert (inline values in SQL, no parameters)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"archived_users\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"users\" WHERE \"status\" = $1"
+			"INSERT INTO \"archived_users\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"users\" WHERE \"status\" = 'inactive'"
 		);
 		assert!(params.is_empty());
 	}

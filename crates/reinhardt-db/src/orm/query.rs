@@ -10,7 +10,7 @@ use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType, Order,
-	PostgresQueryBuilder, Query as SeaQuery, QueryBuilder, SelectStatement,
+	PostgresQueryBuilder, Query as SeaQuery, QueryStatementBuilder, SelectStatement,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -2878,9 +2878,9 @@ where
 			stmt.cond_where(cond);
 		}
 
-		// Convert to SQL string
+		// Convert to SQL string with inline values
 		use reinhardt_query::prelude::PostgresQueryBuilder;
-		let sql = PostgresQueryBuilder.build_select(&stmt).0;
+		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Extract WHERE clause portion by finding the WHERE keyword
 		let where_clause = if let Some(idx) = sql.find(" WHERE ") {
@@ -3475,10 +3475,8 @@ where
 			self.select_related_query()
 		};
 
-		// Convert SeaQuery statement to SQL with inline parameters
-		// Note: Using to_string() embeds parameters directly in SQL (safe with SeaQuery's escaping)
-		// This is necessary because DatabaseConnection::query() doesn't support parameter binding
-		let sql = PostgresQueryBuilder.build_select(&stmt).0;
+		// Convert statement to SQL with inline values (no placeholders)
+		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Execute query and deserialize results
 		let rows = conn.query(&sql, vec![]).await?;
@@ -3714,7 +3712,7 @@ where
 			self.select_related_query()
 		};
 
-		let sql = PostgresQueryBuilder.build_select(&stmt).0;
+		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		let rows = conn.query(&sql, vec![]).await?;
 		rows.into_iter()
@@ -4220,7 +4218,7 @@ where
 		T: super::Model + Clone,
 	{
 		use reinhardt_query::prelude::{
-			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, QueryBuilder, Value,
+			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, Value,
 		};
 
 		// Get composite primary key definition from the model
@@ -4277,8 +4275,8 @@ where
 			}
 		}
 
-		// Build SQL with parameter binding
-		let sql = PostgresQueryBuilder.build_select(&query).0;
+		// Build SQL with inline values (no placeholders)
+		let sql = query.to_string(PostgresQueryBuilder);
 
 		// Execute query using database connection
 		let conn = super::manager::get_connection().await?;
@@ -4718,7 +4716,7 @@ where
 		}
 
 		use reinhardt_query::prelude::PostgresQueryBuilder;
-		let mut select_sql = PostgresQueryBuilder.build_select(&stmt).0;
+		let mut select_sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Insert LATERAL JOIN clauses after FROM clause
 		if !self.lateral_joins.is_empty() {
