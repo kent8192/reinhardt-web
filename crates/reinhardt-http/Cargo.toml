@@ -25,7 +25,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 reqwest = { workspace = true, features = ["json"] }
 rstest = { workspace = true }
 futures-util = { workspace = true }
-reinhardt-test = { workspace = true }
 
 [features]
 default = ["parsers"]
