@@ -6,6 +6,11 @@ license.workspace = true
 description = "Debug toolbar for Reinhardt web framework (inspired by Django Debug Toolbar)"
 repository.workspace = true
 authors.workspace = true
+autotests = false
+
+[[test]]
+name = "reinhardt_debug_toolbar_tests"
+path = "tests/lib.rs"
 
 [features]
 default = []
