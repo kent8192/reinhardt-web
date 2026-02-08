@@ -63,3 +63,5 @@ sqlx = { workspace = true, features = ["postgres", "runtime-tokio-native-tls"] }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 tempfile = { workspace = true }
+proptest = { workspace = true }
+arbitrary = { workspace = true }
