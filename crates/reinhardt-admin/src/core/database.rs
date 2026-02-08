@@ -9,8 +9,9 @@ use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
-use sea_query::{
-	Alias, Asterisk, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query as SeaQuery,
+use reinhardt_query::prelude::{
+	Alias, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -73,38 +74,38 @@ impl Model for AdminRecord {
 	}
 }
 
-/// Convert FilterValue to sea_query::Value
-fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
+/// Convert FilterValue to Value
+fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 	match v {
 		FilterValue::String(s) => s.clone().into(),
 		FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 		FilterValue::Float(f) => (*f).into(),
 		FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
-		FilterValue::Null => sea_query::Value::Int(None),
-		FilterValue::Array(_) => sea_query::Value::String(None),
+		FilterValue::Null => Value::Int(None),
+		FilterValue::Array(_) => Value::String(None),
 		FilterValue::FieldRef(f) => {
 			// FieldRef generates column reference, not scalar value.
-			// For sea_query::Value context, return field name as string.
+			// For Value context, return field name as string.
 			// Proper handling is in build_single_filter_expr().
-			sea_query::Value::String(Some(f.field.clone()))
+			Value::String(Some(Box::new(f.field.clone())))
 		}
 		FilterValue::Expression(expr) => {
 			// Expression generates SQL expression, not scalar value.
-			// For sea_query::Value context, return SQL string representation.
+			// For Value context, return SQL string representation.
 			// Proper handling is in build_single_filter_expr().
-			sea_query::Value::String(Some(expr.to_sql()))
+			Value::String(Some(Box::new(expr.to_sql())))
 		}
 		FilterValue::OuterRef(outer) => {
 			// OuterRef generates outer query reference, not scalar value.
-			// For sea_query::Value context, return field name as string.
+			// For Value context, return field name as string.
 			// Proper handling is in build_single_filter_expr().
-			sea_query::Value::String(Some(outer.field.clone()))
+			Value::String(Some(Box::new(outer.field.clone())))
 		}
 	}
 }
 
 /// Build a SimpleExpr from a single Filter
-fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
+fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 	let col = Expr::col(Alias::new(&filter.field));
 
 	let expr = match (&filter.operator, &filter.value) {
@@ -122,22 +123,22 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 
 		// OuterRef: Correlated subquery references (use custom SQL)
 		(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" = {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" = {}", filter.field, outer.to_sql())).into()
 		}
 		(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" <> {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" <> {}", filter.field, outer.to_sql())).into()
 		}
 		(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" > {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" > {}", filter.field, outer.to_sql())).into()
 		}
 		(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" >= {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" >= {}", filter.field, outer.to_sql())).into()
 		}
 		(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" < {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" < {}", filter.field, outer.to_sql())).into()
 		}
 		(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" <= {}", filter.field, outer.to_sql()))
+			Expr::cust(format!("\"{}\" <= {}", filter.field, outer.to_sql())).into()
 		}
 
 		// Expression: Arithmetic expressions (use custom SQL for simplicity)
@@ -161,13 +162,11 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 		(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
 		(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
 		(FilterOperator::In, FilterValue::String(s)) => {
-			let values: Vec<sea_query::Value> =
-				s.split(',').map(|v| v.trim().to_string().into()).collect();
+			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_in(values)
 		}
 		(FilterOperator::NotIn, FilterValue::String(s)) => {
-			let values: Vec<sea_query::Value> =
-				s.split(',').map(|v| v.trim().to_string().into()).collect();
+			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_not_in(values)
 		}
 
@@ -178,7 +177,7 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 	Some(expr)
 }
 
-/// Build sea-query Condition from filters (AND logic only)
+/// Build Condition from filters (AND logic only)
 fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 	if filters.is_empty() {
 		return None;
@@ -198,7 +197,7 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 /// Maximum recursion depth for filter conditions to prevent stack overflow
 const MAX_FILTER_DEPTH: usize = 100;
 
-/// Build sea-query Condition from FilterCondition (supports AND/OR logic)
+/// Build Condition from FilterCondition (supports AND/OR logic)
 ///
 /// This function recursively processes FilterCondition to build complex
 /// query conditions with nested AND/OR logic.
@@ -362,9 +361,9 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.to_owned();
 
 		// Apply filters using build_filter_condition helper
@@ -422,9 +421,9 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.to_owned();
 
 		// Build combined condition
@@ -503,7 +502,7 @@ impl AdminDatabase {
 		filter_condition: Option<&FilterCondition>,
 		additional_filters: Vec<Filter>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
@@ -580,15 +579,15 @@ impl AdminDatabase {
 		id: &str,
 	) -> AdminResult<Option<HashMap<String, serde_json::Value>>> {
 		// Convert id to appropriate type for WHERE clause
-		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
-			sea_query::Value::BigInt(Some(num_id))
+		let pk_value: Value = if let Ok(num_id) = id.parse::<i64>() {
+			Value::BigInt(Some(num_id))
 		} else {
-			sea_query::Value::String(Some(id.to_string()))
+			Value::String(Some(Box::new(id.to_string())))
 		};
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new(table_name))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
@@ -648,7 +647,7 @@ impl AdminDatabase {
 		table_name: &str,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::insert()
+		let mut query = Query::insert()
 			.into_table(Alias::new(table_name))
 			.to_owned();
 
@@ -660,30 +659,28 @@ impl AdminDatabase {
 			columns.push(Alias::new(&key));
 
 			let sea_value = match value {
-				serde_json::Value::String(s) => sea_query::Value::String(Some(s)),
+				serde_json::Value::String(s) => Value::String(Some(Box::new(s))),
 				serde_json::Value::Number(n) => {
 					if let Some(i) = n.as_i64() {
-						sea_query::Value::BigInt(Some(i))
+						Value::BigInt(Some(i))
 					} else if let Some(f) = n.as_f64() {
-						sea_query::Value::Double(Some(f))
+						Value::Double(Some(f))
 					} else {
-						sea_query::Value::String(Some(n.to_string()))
+						Value::String(Some(Box::new(n.to_string())))
 					}
 				}
-				serde_json::Value::Bool(b) => sea_query::Value::Bool(Some(b)),
-				serde_json::Value::Null => sea_query::Value::Int(None),
-				_ => sea_query::Value::String(Some(value.to_string())),
+				serde_json::Value::Bool(b) => Value::Bool(Some(b)),
+				serde_json::Value::Null => Value::Int(None),
+				_ => Value::String(Some(Box::new(value.to_string()))),
 			};
 			values.push(sea_value);
 		}
 
-		// Convert Values to Exprs for sea-query v1.0
-		let expr_values: Vec<sea_query::SimpleExpr> =
-			values.into_iter().map(|v| v.into()).collect();
-		query.columns(columns).values(expr_values).unwrap();
+		// Pass values directly for reinhardt-query
+		query.columns(columns).values(values).unwrap();
 
 		// Add RETURNING clause to get the inserted ID
-		query.returning_col(Alias::new("id"));
+		query.returning([Alias::new("id")]);
 
 		let sql = query.to_string(PostgresQueryBuilder);
 		let row = self
@@ -739,33 +736,33 @@ impl AdminDatabase {
 		id: &str,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::update().table(Alias::new(table_name)).to_owned();
+		let mut query = Query::update().table(Alias::new(table_name)).to_owned();
 
 		// Build SET clauses
 		for (key, value) in data {
 			let sea_value = match value {
-				serde_json::Value::String(s) => sea_query::Value::String(Some(s)),
+				serde_json::Value::String(s) => Value::String(Some(Box::new(s))),
 				serde_json::Value::Number(n) => {
 					if let Some(i) = n.as_i64() {
-						sea_query::Value::BigInt(Some(i))
+						Value::BigInt(Some(i))
 					} else if let Some(f) = n.as_f64() {
-						sea_query::Value::Double(Some(f))
+						Value::Double(Some(f))
 					} else {
-						sea_query::Value::String(Some(n.to_string()))
+						Value::String(Some(Box::new(n.to_string())))
 					}
 				}
-				serde_json::Value::Bool(b) => sea_query::Value::Bool(Some(b)),
-				serde_json::Value::Null => sea_query::Value::Int(None),
-				_ => sea_query::Value::String(Some(value.to_string())),
+				serde_json::Value::Bool(b) => Value::Bool(Some(b)),
+				serde_json::Value::Null => Value::Int(None),
+				_ => Value::String(Some(Box::new(value.to_string()))),
 			};
 			query.value(Alias::new(&key), sea_value);
 		}
 
 		// Convert id to appropriate type for WHERE clause
-		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
-			sea_query::Value::BigInt(Some(num_id))
+		let pk_value: Value = if let Ok(num_id) = id.parse::<i64>() {
+			Value::BigInt(Some(num_id))
 		} else {
-			sea_query::Value::String(Some(id.to_string()))
+			Value::String(Some(Box::new(id.to_string())))
 		};
 		query.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value));
 
@@ -812,13 +809,13 @@ impl AdminDatabase {
 		id: &str,
 	) -> AdminResult<u64> {
 		// Convert id to appropriate type for WHERE clause
-		let pk_value: sea_query::Value = if let Ok(num_id) = id.parse::<i64>() {
-			sea_query::Value::BigInt(Some(num_id))
+		let pk_value: Value = if let Ok(num_id) = id.parse::<i64>() {
+			Value::BigInt(Some(num_id))
 		} else {
-			sea_query::Value::String(Some(id.to_string()))
+			Value::String(Some(Box::new(id.to_string())))
 		};
 
-		let query = SeaQuery::delete()
+		let query = Query::delete()
 			.from_table(Alias::new(table_name))
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
@@ -901,18 +898,18 @@ impl AdminDatabase {
 		}
 
 		// Convert each id to appropriate type for WHERE clause
-		let pk_values: Vec<sea_query::Value> = ids
+		let pk_values: Vec<Value> = ids
 			.iter()
 			.map(|id| {
 				if let Ok(num_id) = id.parse::<i64>() {
-					sea_query::Value::BigInt(Some(num_id))
+					Value::BigInt(Some(num_id))
 				} else {
-					sea_query::Value::String(Some(id.to_string()))
+					Value::String(Some(Box::new(id.to_string())))
 				}
 			})
 			.collect();
 
-		let query = SeaQuery::delete()
+		let query = Query::delete()
 			.from_table(Alias::new(table_name))
 			.and_where(Expr::col(Alias::new(pk_field)).is_in(pk_values))
 			.to_owned();
@@ -962,7 +959,7 @@ impl AdminDatabase {
 		table_name: &str,
 		filters: Vec<Filter>,
 	) -> AdminResult<u64> {
-		let mut query = SeaQuery::select()
+		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.expr(Expr::cust("COUNT(*) AS count"))
 			.to_owned();
@@ -1179,9 +1176,9 @@ mod tests {
 		assert!(result.is_some());
 		// The condition should produce valid SQL when used
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
 			.to_string(PostgresQueryBuilder);
 		assert!(query.contains("\"name\""));
@@ -1210,9 +1207,9 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
 			.to_string(PostgresQueryBuilder);
 		// OR condition should produce SQL with OR keyword
@@ -1243,9 +1240,9 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
 			.to_string(PostgresQueryBuilder);
 		// AND condition should produce SQL with AND keyword
@@ -1285,9 +1282,9 @@ mod tests {
 
 		assert!(result.is_some());
 		let cond = result.unwrap();
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("users"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(cond)
 			.to_string(PostgresQueryBuilder);
 		// Nested condition should contain both OR and AND
@@ -1492,9 +1489,9 @@ mod tests {
 		let result = build_single_filter_expr(&filter);
 		assert!(result.is_some());
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("products"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(Condition::all().add(result.unwrap()))
 			.to_string(PostgresQueryBuilder);
 		assert!(query.contains("\"price\""));
@@ -1548,9 +1545,9 @@ mod tests {
 		let result = build_single_filter_expr(&filter);
 		assert!(result.is_some());
 
-		let query = SeaQuery::select()
+		let query = Query::select()
 			.from(Alias::new("books"))
-			.column(Asterisk)
+			.column(ColumnRef::Asterisk)
 			.cond_where(Condition::all().add(result.unwrap()))
 			.to_string(PostgresQueryBuilder);
 		assert!(query.contains("author_id"));
@@ -1603,7 +1600,7 @@ mod tests {
 
 	#[test]
 	fn test_build_single_filter_expr_expression_all_operators() {
-		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
 
 		let operators = [
 			FilterOperator::Eq,
@@ -1617,7 +1614,7 @@ mod tests {
 		for op in operators {
 			let expr = Expression::Add(
 				Box::new(AnnotationValue::Field(F::new("base"))),
-				Box::new(AnnotationValue::Value(Value::Int(10))),
+				Box::new(AnnotationValue::Value(OrmValue::Int(10))),
 			);
 			let filter = Filter::new(
 				"total".to_string(),
@@ -1640,7 +1637,7 @@ mod tests {
 
 		// Should return string representation, not panic
 		match sea_value {
-			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
+			Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
 			_ => panic!("Expected String value"),
 		}
 	}
@@ -1652,25 +1649,25 @@ mod tests {
 
 		// Should return string representation, not panic
 		match sea_value {
-			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
+			Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
 			_ => panic!("Expected String value"),
 		}
 	}
 
 	#[test]
 	fn test_filter_value_to_sea_value_expression_fallback() {
-		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
 
 		let expr = Expression::Add(
 			Box::new(AnnotationValue::Field(F::new("a"))),
-			Box::new(AnnotationValue::Value(Value::Int(1))),
+			Box::new(AnnotationValue::Value(OrmValue::Int(1))),
 		);
 		let value = FilterValue::Expression(expr);
 		let sea_value = filter_value_to_sea_value(&value);
 
 		// Should return SQL string representation, not panic
 		match sea_value {
-			sea_query::Value::String(Some(s)) => {
+			Value::String(Some(s)) => {
 				assert!(s.contains("a"), "SQL should contain field name 'a'");
 				assert!(s.contains("1"), "SQL should contain value '1'");
 			}

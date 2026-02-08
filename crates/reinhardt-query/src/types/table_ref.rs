@@ -23,7 +23,8 @@ pub enum TableRef {
 	TableAlias(DynIden, DynIden),
 	/// Schema-qualified table with alias (e.g., `public.users AS u`)
 	SchemaTableAlias(DynIden, DynIden, DynIden),
-	// TODO: Add SubQuery variant when query module is implemented
+	/// Subquery with alias (e.g., `(SELECT ...) AS alias`)
+	SubQuery(Box<crate::query::SelectStatement>, DynIden),
 	// TODO: Add ValuesList variant when Value module is integrated
 }
 

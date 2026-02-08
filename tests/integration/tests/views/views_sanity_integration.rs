@@ -25,13 +25,15 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::get_test_pool_with_orm;
 use reinhardt_views::{
 	CreateAPIView, DestroyAPIView, ListAPIView, RetrieveAPIView, UpdateAPIView, View,
 };
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, PgPool, Row};
 use std::collections::HashMap;
@@ -54,10 +56,10 @@ struct Item {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum Items {
 	Table,
 	Id,
@@ -71,19 +73,19 @@ enum Items {
 
 /// Create items table SQL
 fn create_items_table_sql() -> String {
-	Table::create()
-		.table(Items::Table)
+	let mut stmt = Query::create_table();
+	stmt.table(Items::Table.into_iden())
 		.if_not_exists()
 		.col(
 			ColumnDef::new(Items::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new(Items::Name).string_len(100).not_null())
-		.col(ColumnDef::new(Items::Value).integer().not_null())
-		.to_string(PostgresQueryBuilder)
+		.col(ColumnDef::new(Items::Name).string_len(100).not_null(true))
+		.col(ColumnDef::new(Items::Value).integer().not_null(true))
+		.to_string(PostgresQueryBuilder::new())
 }
 
 /// Fixture: Initialize database connection with items table

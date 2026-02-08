@@ -292,7 +292,7 @@ async fn get_count_with_cache(key: &str) -> usize {
 ### Efficient Queries
 
 ```rust
-use sea_query::{Query, Postgres};
+use reinhardt_query::prelude::{Query, Postgres};
 
 // Efficient pagination query (PostgreSQL)
 let (limit, offset) = (page_size, (page - 1) * page_size);

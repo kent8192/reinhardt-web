@@ -24,12 +24,14 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::viewsets::FilterConfig;
 use reinhardt_views::{ListAPIView, View};
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -56,10 +58,10 @@ struct Product {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum Products {
 	Table,
 	Id,
@@ -87,28 +89,32 @@ async fn products_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
 	// Create products table
-	let create_table_stmt = Table::create()
-		.table(Products::Table)
+	let mut create_table_stmt = Query::create_table();
+	create_table_stmt
+		.table(Products::Table.into_iden())
 		.if_not_exists()
 		.col(
 			ColumnDef::new(Products::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new(Products::Name).string_len(200).not_null())
+		.col(
+			ColumnDef::new(Products::Name)
+				.string_len(200)
+				.not_null(true),
+		)
 		.col(
 			ColumnDef::new(Products::Category)
 				.string_len(100)
-				.not_null(),
+				.not_null(true),
 		)
-		.col(ColumnDef::new(Products::Price).integer().not_null())
-		.col(ColumnDef::new(Products::Stock).integer().not_null())
-		.col(ColumnDef::new(Products::CreatedAt).timestamp())
-		.to_owned();
+		.col(ColumnDef::new(Products::Price).integer().not_null(true))
+		.col(ColumnDef::new(Products::Stock).integer().not_null(true))
+		.col(ColumnDef::new(Products::CreatedAt).timestamp());
 
-	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
+	let sql = create_table_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await

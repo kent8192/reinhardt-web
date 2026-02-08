@@ -6,8 +6,9 @@
 use super::ordering_field::OrderingField;
 use super::{FilterBackend, FilterResult};
 use async_trait::async_trait;
-use reinhardt_db::orm::{Lookup, Model, QueryFieldCompiler};
-use sea_query::{Cond, Expr, MysqlQueryBuilder, Query};
+use reinhardt_db::orm::{
+	Cond, Expr, Lookup, Model, MySqlQueryBuilder, Query, QueryFieldCompiler, QueryStatementBuilder,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -258,13 +259,13 @@ impl<M: Model> QueryFilter<M> {
 		&self.ordering
 	}
 
-	/// Compile lookups to SQL WHERE clause using SeaQuery
+	/// Compile lookups to SQL WHERE clause using reinhardt-query
 	fn compile_where_clause(&self) -> Option<String> {
 		if self.lookups.is_empty() && self.or_groups.is_empty() {
 			return None;
 		}
 
-		// Build the main AND condition using SeaQuery
+		// Build the main AND condition using reinhardt-query
 		let mut main_cond = Cond::all();
 
 		// Add regular AND conditions
@@ -295,7 +296,7 @@ impl<M: Model> QueryFilter<M> {
 		let query = Query::select()
 			.expr(Expr::val(1))
 			.cond_where(main_cond)
-			.to_string(MysqlQueryBuilder);
+			.to_string(MySqlQueryBuilder);
 
 		// Extract just the WHERE portion (after "WHERE ")
 		query.find("WHERE ").map(|idx| query[idx + 6..].to_string())

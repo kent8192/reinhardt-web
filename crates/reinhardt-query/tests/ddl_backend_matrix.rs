@@ -410,7 +410,7 @@ async fn test_postgres_fk_on_delete_matrix(
 		.constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".to_string().into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: Some(action.clone()),
 			on_update: None,
@@ -489,7 +489,7 @@ async fn test_postgres_fk_on_update_matrix(
 		.constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".to_string().into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".to_string().into_iden()],
 			on_delete: None,
 			on_update: Some(action.clone()),

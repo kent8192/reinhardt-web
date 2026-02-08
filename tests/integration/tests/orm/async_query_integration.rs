@@ -19,6 +19,7 @@ use reinhardt_db::orm::{
 use reinhardt_db::{orm::Model, DatabaseConnection};
 use reinhardt_integration_tests::migrations::apply_async_query_test_migrations;
 use reinhardt_macros::model;
+use reinhardt_query::QueryStatementBuilder;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -101,7 +102,7 @@ mod postgres_tests {
 			None,
 		);
 
-		let sql = stmt.to_string(sea_query::PostgresQueryBuilder);
+		let sql = stmt.to_string(reinhardt_query::prelude::PostgresQueryBuilder::new());
 		assert!(sql.contains("test_model"));
 		assert!(sql.contains("ORDER BY"));
 	}
@@ -256,7 +257,7 @@ mod mysql_tests {
 			None,
 		);
 
-		let sql = stmt.to_string(sea_query::MysqlQueryBuilder);
+		let sql = stmt.to_string(reinhardt_query::prelude::MySqlQueryBuilder::new());
 		assert!(sql.contains("test_model"));
 		assert!(sql.contains("ORDER BY"));
 

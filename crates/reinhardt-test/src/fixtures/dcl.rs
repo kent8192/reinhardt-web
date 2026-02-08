@@ -32,7 +32,9 @@
 //! }
 //! ```
 
-use sea_query::{Alias, ColumnDef, ForeignKey, ForeignKeyAction, Table, TableCreateStatement};
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, CreateTableStatement, ForeignKey, ForeignKeyAction, Query,
+};
 use std::sync::Mutex;
 
 // Store for tracking created DCL objects for cleanup
@@ -307,7 +309,7 @@ pub fn test_schema() -> String {
 	schema_name
 }
 
-/// Generate SeaQuery TableCreateStatement for DCL test table
+/// Generate reinhardt-query `CreateTableStatement` for DCL test table
 ///
 /// Returns a table creation statement that can be built into SQL for any backend.
 ///
@@ -326,43 +328,41 @@ pub fn test_schema() -> String {
 ///
 /// ```rust,no_run
 /// use reinhardt_test::fixtures::dcl::dcl_test_table_stmt;
-/// use sea_query::{PostgresQueryBuilder, MysqlQueryBuilder};
+/// use reinhardt_query::prelude::{PostgresQueryBuilder, MySqlQueryBuilder, QueryStatementBuilder};
 ///
 /// #[test]
 /// fn test_table_sql_generation() {
 ///     let stmt = dcl_test_table_stmt();
 ///
-///     let postgres = PostgresQueryBuilder::new();
-///     let (sql, _) = postgres.build_table_create_statement(&stmt);
+///     let sql = stmt.to_string(PostgresQueryBuilder::new());
 ///     assert!(sql.contains("CREATE TABLE"));
 ///
-///     let mysql = MysqlQueryBuilder::new();
-///     let (sql, _) = mysql.build_table_create_statement(&stmt);
+///     let sql = stmt.to_string(MySqlQueryBuilder::new());
 ///     assert!(sql.contains("CREATE TABLE"));
 /// }
 /// ```
-pub fn dcl_test_table_stmt() -> TableCreateStatement {
+pub fn dcl_test_table_stmt() -> CreateTableStatement {
 	let table_name = dcl_test_table();
 
-	Table::create()
-		.table(Alias::new(&table_name))
+	let mut stmt = Query::create_table();
+	stmt.table(Alias::new(&table_name))
 		.col(
 			ColumnDef::new(Alias::new("id"))
 				.big_integer()
-				.not_null()
-				.primary_key(),
+				.not_null(true)
+				.primary_key(true),
 		)
 		.col(
 			ColumnDef::new(Alias::new("name"))
 				.string_len(100)
-				.not_null(),
+				.not_null(true),
 		)
 		.col(ColumnDef::new(Alias::new("value")).text())
-		.col(ColumnDef::new(Alias::new("created_at")).timestamp())
-		.to_owned()
+		.col(ColumnDef::new(Alias::new("created_at")).timestamp());
+	stmt.take()
 }
 
-/// Generate SeaQuery TableCreateStatement for DCL test table with foreign key
+/// Generate reinhardt-query `CreateTableStatement` for DCL test table with foreign key
 ///
 /// Returns a table creation statement with a foreign key constraint for testing
 /// privilege management on related tables.
@@ -391,18 +391,17 @@ pub fn dcl_test_table_stmt() -> TableCreateStatement {
 ///
 /// ```rust,no_run
 /// use reinhardt_test::fixtures::dcl::dcl_test_table_with_fk;
-/// use sea_query::PostgresQueryBuilder;
+/// use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
 ///
 /// #[test]
 /// fn test_foreign_key_table() {
 ///     let (parent_stmt, child_stmt, parent_name, child_name) = dcl_test_table_with_fk();
 ///
-///     let postgres = PostgresQueryBuilder::new();
-///     let (sql, _) = postgres.build_table_create_statement(&child_stmt);
+///     let sql = child_stmt.to_string(PostgresQueryBuilder::new());
 ///     assert!(sql.contains("FOREIGN KEY"));
 /// }
 /// ```
-pub fn dcl_test_table_with_fk() -> (TableCreateStatement, TableCreateStatement, String, String) {
+pub fn dcl_test_table_with_fk() -> (CreateTableStatement, CreateTableStatement, String, String) {
 	let parent_name = format!(
 		"dcl_test_parent_{}",
 		std::time::SystemTime::now()
@@ -421,54 +420,61 @@ pub fn dcl_test_table_with_fk() -> (TableCreateStatement, TableCreateStatement, 
 	track_object(format!("TABLE:{}", parent_name));
 	track_object(format!("TABLE:{}", child_name));
 
-	let parent_stmt = Table::create()
+	let mut parent_stmt = Query::create_table();
+	parent_stmt
 		.table(Alias::new(&parent_name))
 		.col(
 			ColumnDef::new(Alias::new("id"))
 				.big_integer()
-				.not_null()
-				.primary_key(),
+				.not_null(true)
+				.primary_key(true),
 		)
 		.col(
 			ColumnDef::new(Alias::new("name"))
 				.string_len(100)
-				.not_null(),
-		)
-		.to_owned();
+				.not_null(true),
+		);
 
-	let child_stmt = Table::create()
+	let mut fk = ForeignKey::create();
+	fk.name(Alias::new(format!("fk_{}_parent", child_name)))
+		.from_tbl(Alias::new(&child_name))
+		.from_col(Alias::new("parent_id"))
+		.to_tbl(Alias::new(&parent_name))
+		.to_col(Alias::new("id"))
+		.on_delete(ForeignKeyAction::Cascade)
+		.on_update(ForeignKeyAction::Cascade);
+
+	let mut child_stmt = Query::create_table();
+	child_stmt
 		.table(Alias::new(&child_name))
 		.col(
 			ColumnDef::new(Alias::new("id"))
 				.big_integer()
-				.not_null()
-				.primary_key(),
+				.not_null(true)
+				.primary_key(true),
 		)
 		.col(
 			ColumnDef::new(Alias::new("parent_id"))
 				.big_integer()
-				.not_null(),
+				.not_null(true),
 		)
 		.col(ColumnDef::new(Alias::new("value")).text())
-		.foreign_key(
-			ForeignKey::create()
-				.name(format!("fk_{}_parent", child_name))
-				.from_tbl(Alias::new(&child_name))
-				.from_col(Alias::new("parent_id"))
-				.to_tbl(Alias::new(&parent_name))
-				.to_col(Alias::new("id"))
-				.on_delete(ForeignKeyAction::Cascade)
-				.on_update(ForeignKeyAction::Cascade),
-		)
-		.to_owned();
+		.foreign_key_from_builder(&mut fk);
 
-	(parent_stmt, child_stmt, parent_name, child_name)
+	(
+		parent_stmt.take(),
+		child_stmt.take(),
+		parent_name,
+		child_name,
+	)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder};
+	use reinhardt_query::prelude::{
+		MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
+	};
 	use serial_test::serial;
 
 	#[test]
@@ -572,11 +578,11 @@ mod tests {
 	fn test_dcl_test_table_stmt_generates_valid_sql() {
 		let stmt = dcl_test_table_stmt();
 		assert!(
-			stmt.to_string(PostgresQueryBuilder {})
+			stmt.to_string(PostgresQueryBuilder::new())
 				.contains("CREATE TABLE")
 		);
 		assert!(
-			stmt.to_string(MysqlQueryBuilder {})
+			stmt.to_string(MySqlQueryBuilder::new())
 				.contains("CREATE TABLE")
 		);
 	}
@@ -589,11 +595,11 @@ mod tests {
 		assert!(parent_name.starts_with("dcl_test_parent_"));
 		assert!(child_name.starts_with("dcl_test_child_"));
 
-		let parent_sql = parent_stmt.to_string(PostgresQueryBuilder {});
+		let parent_sql = parent_stmt.to_string(PostgresQueryBuilder::new());
 		assert!(parent_sql.contains("CREATE TABLE"));
 		assert!(parent_sql.contains(&parent_name));
 
-		let child_sql = child_stmt.to_string(PostgresQueryBuilder {});
+		let child_sql = child_stmt.to_string(PostgresQueryBuilder::new());
 		assert!(child_sql.contains("CREATE TABLE"));
 		assert!(child_sql.contains(&child_name));
 		assert!(child_sql.contains("FOREIGN KEY"));

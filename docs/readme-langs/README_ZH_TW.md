@@ -49,7 +49,7 @@ Reinhardt匯集了三個世界的精華:
 
 ## ✨ 主要功能
 
-- **型別安全的ORM** 帶編譯時驗證（SeaQuery v1.0.0-rc）
+- **型別安全的ORM** 帶編譯時驗證（reinhardt-query）
 - **強大的序列化器** 帶自動驗證（serde + validator）
 - **FastAPI風格的DI** 帶型別安全的依賴注入和快取
 - **ViewSets** 用於快速CRUD API開發
@@ -537,7 +537,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**注意**: Reinhardt使用[SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query)進行SQL操作。`#[derive(Model)]`巨集自動生成Model trait實作、型別安全的欄位存取器和全域模型註冊表註冊。
+**注意**: Reinhardt使用reinhardt-query進行SQL操作。`#[derive(Model)]`巨集自動生成Model trait實作、型別安全的欄位存取器和全域模型註冊表註冊。
 
 在`src/config/apps.rs`中註冊:
 
@@ -983,7 +983,7 @@ Reinhardt提供可混合搭配的模組化元件:
 | 命令                | `reinhardt-commands`      | 管理CLI工具（startproject等）               |
 | 捷徑                | `reinhardt-shortcuts`     | 常用工具函數                                |
 | **資料庫**          |                           |                                             |
-| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc整合                      |
+| ORM                 | `reinhardt-db`            | reinhardt-query整合                         |
 | **認證**            |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT、Token、Session、Basic認證、使用者模型 |
 | **REST API**        |                           |                                             |

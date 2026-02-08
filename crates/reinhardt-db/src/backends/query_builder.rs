@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use sea_query::{Alias, Asterisk, Expr, ExprTrait, Query, SelectStatement, Value};
+use reinhardt_query::prelude::{
+	Alias, ColumnRef, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder, SelectStatement,
+	Value,
+};
 
 use super::{
 	backend::DatabaseBackend,
@@ -10,7 +13,7 @@ use super::{
 	types::{QueryResult, QueryValue, Row},
 };
 
-/// Convert QueryValue to SeaQuery Value
+/// Convert QueryValue to reinhardt-query Value
 fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 	match qv {
 		// BigInt(None) is used for generic NULL values across all dialects
@@ -19,10 +22,10 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
-		QueryValue::String(s) => Value::String(Some(s.clone())),
-		QueryValue::Bytes(b) => Value::Bytes(Some(b.clone())),
-		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(*dt)),
-		QueryValue::Uuid(u) => Value::Uuid(Some(*u)),
+		QueryValue::String(s) => Value::String(Some(Box::new(s.clone()))),
+		QueryValue::Bytes(b) => Value::Bytes(Some(Box::new(b.clone()))),
+		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(Box::new(*dt))),
+		QueryValue::Uuid(u) => Value::Uuid(Some(Box::new(*u))),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")
@@ -352,7 +355,9 @@ impl InsertBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::insert()
 			.into_table(Alias::new(&self.table))
@@ -364,26 +369,21 @@ impl InsertBuilder {
 
 		// Add values
 		if !self.values.is_empty() {
-			let sea_values: Vec<Expr> = self
-				.values
-				.iter()
-				.map(|v| Expr::val(query_value_to_sea_value(v)))
-				.collect();
+			let sea_values: Vec<Value> = self.values.iter().map(query_value_to_sea_value).collect();
 			stmt.values(sea_values).unwrap();
 		}
 
 		// Add RETURNING clause if supported
 		if let Some(ref cols) = self.returning {
-			for col in cols {
-				stmt.returning(Query::returning().column(Alias::new(col)));
-			}
+			let col_refs: Vec<Alias> = cols.iter().map(Alias::new).collect();
+			stmt.returning(col_refs);
 		}
 
 		// Build SQL based on database type
 		let mut sql = match self.backend.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Postgres => PostgresQueryBuilder.build_insert(&stmt).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_insert(&stmt).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_insert(&stmt).0,
 		};
 
 		// Add ON CONFLICT clause if specified
@@ -677,7 +677,7 @@ impl InsertBuilder {
 /// # Example
 ///
 /// ```rust,ignore
-/// use sea_query::{Alias, Query};
+/// use reinhardt_query::prelude::{QueryStatementBuilder, Alias, Query};
 ///
 /// let select = Query::select()
 ///     .columns([Alias::new("id"), Alias::new("name")])
@@ -756,29 +756,43 @@ impl InsertFromSelectBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
-
-		let mut stmt = Query::insert()
-			.into_table(Alias::new(&self.table))
-			.to_owned();
-
-		let column_refs: Vec<Alias> = self.columns.iter().map(Alias::new).collect();
-		stmt.columns(column_refs);
-
-		stmt.select_from(self.select_stmt.clone())
-			.expect("Failed to set SELECT statement for INSERT");
-
-		if let Some(ref cols) = self.returning {
-			for col in cols {
-				stmt.returning(Query::returning().column(Alias::new(col)));
-			}
-		}
-
-		let mut sql = match self.backend.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 		};
+
+		// Build INSERT ... SELECT manually since InsertStatement doesn't support select_from
+		let quote = match self.backend.database_type() {
+			DatabaseType::Postgres | DatabaseType::Sqlite => '"',
+			DatabaseType::Mysql => '`',
+		};
+
+		let cols_str = self
+			.columns
+			.iter()
+			.map(|c| format!("{}{}{}", quote, c, quote))
+			.collect::<Vec<_>>()
+			.join(", ");
+
+		let select_sql = match self.backend.database_type() {
+			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
+			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
+			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
+		};
+
+		let mut sql = format!(
+			"INSERT INTO {}{}{} ({}) {}",
+			quote, self.table, quote, cols_str, select_sql
+		);
+
+		// Add RETURNING clause if supported
+		if let Some(ref cols) = self.returning {
+			let returning_str = cols
+				.iter()
+				.map(|c| format!("{}{}{}", quote, c, quote))
+				.collect::<Vec<_>>()
+				.join(", ");
+			sql.push_str(&format!(" RETURNING {}", returning_str));
+		}
 
 		if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict);
@@ -905,14 +919,20 @@ impl UpdateBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+
+		// Sentinel placeholder for NOW() values (replaced in final SQL)
+		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
 
 		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
 
 		// Add SET clauses
 		for (col, val) in &self.sets {
 			if matches!(val, QueryValue::Now) {
-				stmt.value(Alias::new(col), Expr::cust("NOW()"));
+				// Use a sentinel string that will be replaced with NOW() in the output
+				stmt.value(Alias::new(col), NOW_PLACEHOLDER);
 				continue;
 			}
 			stmt.value(Alias::new(col), query_value_to_sea_value(val));
@@ -929,10 +949,13 @@ impl UpdateBuilder {
 
 		// Build SQL based on database type
 		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt).0,
 		};
+
+		// Replace NOW() placeholder sentinel with actual function call
+		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
 
 		// Preserve parameter order: first SET values, then WHERE values
 		let mut params = Vec::new();
@@ -997,13 +1020,15 @@ impl SelectBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
 
 		// Add columns
 		if self.columns == vec!["*".to_string()] {
-			stmt.column(Asterisk);
+			stmt.column(ColumnRef::asterisk());
 		} else {
 			for col in &self.columns {
 				stmt.column(Alias::new(col));
@@ -1024,10 +1049,10 @@ impl SelectBuilder {
 			stmt.limit(limit as u64);
 		}
 
-		// Build SQL
+		// Build SQL with inline values
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
+			DatabaseType::Mysql => stmt.to_string(MySqlQueryBuilder),
 			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
 		};
 
@@ -1080,7 +1105,9 @@ impl DeleteBuilder {
 
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
-		use sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
 
 		let mut stmt = Query::delete()
 			.from_table(Alias::new(&self.table))
@@ -1106,9 +1133,9 @@ impl DeleteBuilder {
 
 		// Build SQL
 		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => stmt.to_string(PostgresQueryBuilder),
-			DatabaseType::Mysql => stmt.to_string(MysqlQueryBuilder),
-			DatabaseType::Sqlite => stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Postgres => PostgresQueryBuilder.build_delete(&stmt).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_delete(&stmt).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_delete(&stmt).0,
 		};
 
 		// Collect parameters
@@ -1369,7 +1396,7 @@ mod tests {
 		let builder = DeleteBuilder::new(backend, "users");
 		let (sql, params) = builder.build();
 
-		// SeaQuery uses quotes for identifiers
+		// reinhardt-query uses quotes for identifiers
 		assert_eq!(sql, "DELETE FROM \"users\"");
 		assert!(params.is_empty());
 	}
@@ -1380,8 +1407,8 @@ mod tests {
 		let builder = DeleteBuilder::new(backend, "users").where_eq("id", QueryValue::Int(1));
 		let (sql, params) = builder.build();
 
-		// SeaQuery embeds values directly in SQL when using to_string()
-		assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" = 1");
+		// reinhardt-query uses parameterized queries with placeholders
+		assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" = $1");
 		assert_eq!(params.len(), 1);
 		assert!(matches!(params[0], QueryValue::Int(1)));
 	}
@@ -1393,10 +1420,10 @@ mod tests {
 			.where_in("id", vec![QueryValue::Int(1), QueryValue::Int(2)]);
 		let (sql, params) = builder.build();
 
-		// SeaQuery embeds values directly in SQL when using to_string()
+		// reinhardt-query uses parameterized queries with placeholders
 		assert_eq!(
 			sql,
-			"DELETE FROM \"users\" WHERE \"id\" IN (1) AND \"id\" IN (2)"
+			"DELETE FROM \"users\" WHERE \"id\" IN ($1) AND \"id\" IN ($2)"
 		);
 		assert_eq!(params.len(), 2);
 		assert!(matches!(params[0], QueryValue::Int(1)));
@@ -1411,10 +1438,10 @@ mod tests {
 			.where_eq("age", QueryValue::Int(18));
 		let (sql, params) = builder.build();
 
-		// SeaQuery embeds values directly in SQL when using to_string()
+		// reinhardt-query uses parameterized queries with placeholders
 		assert_eq!(
 			sql,
-			"DELETE FROM \"users\" WHERE \"status\" = 'inactive' AND \"age\" = 18"
+			"DELETE FROM \"users\" WHERE \"status\" = $1 AND \"age\" = $2"
 		);
 		assert_eq!(params.len(), 2);
 	}
@@ -1517,10 +1544,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, params) = builder.build();
 
-		// Assert - verify exact SQL structure
+		// Assert - verify exact SQL structure (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO NOTHING"
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (email) DO NOTHING"
 		);
 		assert_eq!(params.len(), 1);
 		assert!(matches!(&params[0], QueryValue::String(s) if s == "test@example.com"));
@@ -1540,10 +1567,10 @@ mod tests {
 			);
 		let (sql, params) = builder.build();
 
-		// Assert - verify exact SQL structure with EXCLUDED references
+		// Assert - verify exact SQL structure with EXCLUDED references (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ('test@example.com', 'Test User') ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
 		);
 		assert_eq!(params.len(), 2);
 	}
@@ -1564,10 +1591,10 @@ mod tests {
 			);
 		let (sql, params) = builder.build();
 
-		// Assert - verify WHERE clause is appended correctly
+		// Assert - verify WHERE clause is appended correctly (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\", \"version\") VALUES ('test@example.com', 2) ON CONFLICT (email) DO UPDATE SET version = EXCLUDED.version WHERE users.version < EXCLUDED.version"
+			"INSERT INTO \"users\" (\"email\", \"version\") VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET version = EXCLUDED.version WHERE users.version < EXCLUDED.version"
 		);
 		assert_eq!(params.len(), 2);
 	}
@@ -1583,10 +1610,10 @@ mod tests {
 			.on_conflict(OnConflictClause::constraint("users_email_key").do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert - verify ON CONSTRAINT syntax
+		// Assert - verify ON CONSTRAINT syntax (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET name = EXCLUDED.name"
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET name = EXCLUDED.name"
 		);
 	}
 
@@ -1601,10 +1628,10 @@ mod tests {
 			.on_conflict(OnConflictClause::any().do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert - verify no conflict target specified
+		// Assert - verify no conflict target specified (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT DO NOTHING"
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT DO NOTHING"
 		);
 	}
 
@@ -1622,10 +1649,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - verify multiple conflict columns
+		// Assert - verify multiple conflict columns (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (1, 'test@example.com') ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name"
+			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES ($1, $2) ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name"
 		);
 	}
 
@@ -1645,10 +1672,10 @@ mod tests {
 			]));
 		let (sql, _) = builder.build();
 
-		// Assert - verify all update columns are included
+		// Assert - verify all update columns are included (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = EXCLUDED.updated_at, version = EXCLUDED.version"
+			"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = EXCLUDED.updated_at, version = EXCLUDED.version"
 		);
 	}
 
@@ -1667,11 +1694,8 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert - MySQL uses INSERT IGNORE syntax
-		assert_eq!(
-			sql,
-			"INSERT IGNORE INTO `users` (`email`) VALUES ('test@example.com')"
-		);
+		// Assert - MySQL uses INSERT IGNORE syntax (reinhardt-query uses parameterized queries)
+		assert_eq!(sql, "INSERT IGNORE INTO `users` (`email`) VALUES (?)");
 	}
 
 	#[test]
@@ -1685,10 +1709,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert - MySQL uses ON DUPLICATE KEY UPDATE with VALUES() function
+		// Assert - MySQL uses ON DUPLICATE KEY UPDATE with VALUES() function (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO `users` (`email`) VALUES ('test@example.com') ON DUPLICATE KEY UPDATE name = VALUES(name)"
+			"INSERT INTO `users` (`email`) VALUES (?) ON DUPLICATE KEY UPDATE name = VALUES(name)"
 		);
 	}
 
@@ -1707,10 +1731,10 @@ mod tests {
 			]));
 		let (sql, _) = builder.build();
 
-		// Assert - verify multiple update columns with VALUES() syntax
+		// Assert - verify multiple update columns with VALUES() syntax (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO `users` (`id`) VALUES (1) ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), updated_at = VALUES(updated_at)"
+			"INSERT INTO `users` (`id`) VALUES (?) ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), updated_at = VALUES(updated_at)"
 		);
 	}
 
@@ -1729,10 +1753,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - WHERE clause is ignored for MySQL
+		// Assert - WHERE clause is ignored for MySQL (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO `users` (`email`) VALUES ('test@example.com') ON DUPLICATE KEY UPDATE name = VALUES(name)"
+			"INSERT INTO `users` (`email`) VALUES (?) ON DUPLICATE KEY UPDATE name = VALUES(name)"
 		);
 		assert!(!sql.contains("WHERE"));
 	}
@@ -1752,10 +1776,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert - SQLite uses INSERT OR IGNORE syntax
+		// Assert - SQLite uses INSERT OR IGNORE syntax (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES ('test@example.com')"
+			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
 		);
 	}
 
@@ -1770,10 +1794,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert - SQLite uses lowercase 'excluded' pseudo-table
+		// Assert - SQLite uses lowercase 'excluded' pseudo-table (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET name = excluded.name"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (email) DO UPDATE SET name = excluded.name"
 		);
 	}
 
@@ -1792,10 +1816,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - SQLite supports WHERE clause
+		// Assert - SQLite supports WHERE clause (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET version = excluded.version WHERE users.version < excluded.version"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (email) DO UPDATE SET version = excluded.version WHERE users.version < excluded.version"
 		);
 	}
 
@@ -1813,10 +1837,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - verify multiple conflict columns
+		// Assert - verify multiple conflict columns (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (1, 'test@example.com') ON CONFLICT (tenant_id, email) DO UPDATE SET name = excluded.name"
+			"INSERT INTO \"users\" (\"tenant_id\", \"email\") VALUES (?, ?) ON CONFLICT (tenant_id, email) DO UPDATE SET name = excluded.name"
 		);
 	}
 
@@ -1831,10 +1855,10 @@ mod tests {
 			.on_conflict(OnConflictClause::any().do_nothing());
 		let (sql, _) = builder.build();
 
-		// Assert - SQLite uses INSERT OR IGNORE even with any() target
+		// Assert - SQLite uses INSERT OR IGNORE even with any() target (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES ('test@example.com')"
+			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
 		);
 	}
 
@@ -1853,10 +1877,10 @@ mod tests {
 			.on_conflict_do_nothing(Some(vec!["email".to_string()]));
 		let (sql, _) = builder.build();
 
-		// Assert - legacy API should still work
+		// Assert - legacy API should still work (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO NOTHING"
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (email) DO NOTHING"
 		);
 	}
 
@@ -1874,10 +1898,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - legacy API should still work
+		// Assert - legacy API should still work (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"email\") VALUES ('test@example.com') ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at"
 		);
 	}
 
@@ -1913,10 +1937,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert
+		// Assert (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"users\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name"
+			"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name"
 		);
 	}
 
@@ -1932,7 +1956,7 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build();
 
-		// Assert - RETURNING should come before ON CONFLICT in SeaQuery output
+		// Assert - RETURNING should come before ON CONFLICT in reinhardt-query output
 		assert!(sql.contains("RETURNING"));
 		assert!(sql.contains("ON CONFLICT"));
 	}
@@ -1967,10 +1991,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["key"]).do_update(vec!["count"]));
 		let (sql, params) = builder.build();
 
-		// Assert
+		// Assert (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"counters\" (\"key\", \"count\") VALUES ('visits', 1) ON CONFLICT (key) DO UPDATE SET count = EXCLUDED.count"
+			"INSERT INTO \"counters\" (\"key\", \"count\") VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET count = EXCLUDED.count"
 		);
 		assert_eq!(params.len(), 2);
 		assert!(matches!(params[1], QueryValue::Int(1)));
@@ -1993,10 +2017,10 @@ mod tests {
 			);
 		let (sql, _) = builder.build();
 
-		// Assert - complex WHERE with AND condition
+		// Assert - complex WHERE with AND condition (reinhardt-query uses parameterized queries)
 		assert_eq!(
 			sql,
-			"INSERT INTO \"documents\" (\"id\") VALUES (1) ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, version = EXCLUDED.version WHERE documents.version < EXCLUDED.version AND documents.locked = false"
+			"INSERT INTO \"documents\" (\"id\") VALUES ($1) ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, version = EXCLUDED.version WHERE documents.version < EXCLUDED.version AND documents.locked = false"
 		);
 	}
 
@@ -2233,7 +2257,7 @@ mod tests {
 			InsertFromSelectBuilder::new(backend, "archived_users", vec!["id", "name"], select);
 		let (sql, params) = builder.build();
 
-		// Assert
+		// Assert (inline values in SQL, no parameters)
 		assert_eq!(
 			sql,
 			"INSERT INTO \"archived_users\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"users\" WHERE \"status\" = 'inactive'"

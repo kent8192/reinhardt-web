@@ -106,7 +106,7 @@ Low-level database connectivity and connection management:
 - **`backends` module**: Low-level database drivers
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
-  - SeaQuery integration for query building
+  - reinhardt-query integration for query building
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation

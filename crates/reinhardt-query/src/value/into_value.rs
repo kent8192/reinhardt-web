@@ -197,6 +197,12 @@ impl IntoValue for Option<&str> {
 	}
 }
 
+impl IntoValue for &String {
+	fn into_value(self) -> Value {
+		Value::String(Some(Box::new(self.clone())))
+	}
+}
+
 impl IntoValue for Box<String> {
 	fn into_value(self) -> Value {
 		Value::String(Some(self))

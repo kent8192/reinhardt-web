@@ -61,10 +61,10 @@ router.register_all_routes();
 
 ## Database Query Optimization
 
-### Efficient Queries with SeaQuery
+### Efficient Queries with reinhardt-query
 
 ```rust
-use sea_query::{Query, Postgres, Expr, Func, Order};
+use reinhardt_query::prelude::{Query, Postgres, Expr, Func, Order};
 
 // ✅ Query using indexes
 let (limit, offset) = (page_size, (page - 1) * page_size);

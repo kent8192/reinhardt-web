@@ -525,20 +525,20 @@ where
 					use reinhardt_db::orm::manager::get_connection;
 					match get_connection().await {
 						Ok(conn) => {
-							// Build SQL query using sea-query for type-safe query construction
+							// Build SQL query using reinhardt-query for type-safe query construction
 							use reinhardt_auth::DefaultUser;
 							use reinhardt_db::orm::{
-								Alias, Asterisk, DatabaseBackend, Expr, ExprTrait, Model,
-								MysqlQueryBuilder, PostgresQueryBuilder, SeaQuery,
-								SqliteQueryBuilder,
+								Alias, ColumnRef, DatabaseBackend, Expr, ExprTrait, Model,
+								MySqlQueryBuilder, PostgresQueryBuilder, Query,
+								QueryStatementBuilder, SqliteQueryBuilder,
 							};
 
 							let table_name = DefaultUser::table_name();
 							let pk_field = DefaultUser::primary_key_field();
 
-							// Build SELECT * query using sea-query
-							let stmt = SeaQuery::select()
-								.column(Asterisk)
+							// Build SELECT * query using reinhardt-query
+							let stmt = Query::select()
+								.column(ColumnRef::Asterisk)
 								.from(Alias::new(table_name))
 								.and_where(
 									Expr::col(Alias::new(pk_field))
@@ -548,7 +548,7 @@ where
 
 							let sql = match conn.backend() {
 								DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-								DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+								DatabaseBackend::MySql => stmt.to_string(MySqlQueryBuilder),
 								DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
 							};
 

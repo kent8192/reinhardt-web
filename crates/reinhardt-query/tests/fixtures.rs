@@ -124,35 +124,37 @@ pub async fn empty_db(#[future] pg_pool: TestPool) -> TestPool {
 // Table Fixtures
 // ============================================================================
 
-use sea_query::{ColumnDef, ForeignKey, ForeignKeyAction, PostgresQueryBuilder, Table};
+use reinhardt_query::prelude::{
+	ColumnDef, ForeignKeyAction, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 
 /// Users table fixture
 #[fixture]
 pub async fn users_table(#[future] pg_pool: TestPool) -> TestPool {
 	let pool = pg_pool.await;
 
-	let create_table = Table::create()
+	let mut create_table = Query::create_table();
+	create_table
 		.table("users")
 		.if_not_exists()
 		.col(
 			ColumnDef::new("id")
 				.integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new("name").string_len(255).not_null())
+		.col(ColumnDef::new("name").string_len(255).not_null(true))
 		.col(
 			ColumnDef::new("email")
 				.string_len(255)
-				.not_null()
-				.unique_key(),
+				.not_null(true)
+				.unique(true),
 		)
 		.col(ColumnDef::new("age").integer())
-		.col(ColumnDef::new("active").boolean().default(true))
-		.to_owned();
+		.col(ColumnDef::new("active").boolean().default(true.into()));
 
-	let sql = create_table.build(PostgresQueryBuilder);
+	let sql = create_table.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await
@@ -166,29 +168,29 @@ pub async fn users_table(#[future] pg_pool: TestPool) -> TestPool {
 pub async fn products_table(#[future] pg_pool: TestPool) -> TestPool {
 	let pool = pg_pool.await;
 
-	let create_table = Table::create()
+	let mut create_table = Query::create_table();
+	create_table
 		.table("products")
 		.if_not_exists()
 		.col(
 			ColumnDef::new("id")
 				.integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new("name").string_len(255).not_null())
+		.col(ColumnDef::new("name").string_len(255).not_null(true))
 		.col(
 			ColumnDef::new("sku")
 				.string_len(100)
-				.not_null()
-				.unique_key(),
+				.not_null(true)
+				.unique(true),
 		)
-		.col(ColumnDef::new("price").big_integer().not_null())
-		.col(ColumnDef::new("stock").integer().not_null())
-		.col(ColumnDef::new("available").boolean().default(true))
-		.to_owned();
+		.col(ColumnDef::new("price").big_integer().not_null(true))
+		.col(ColumnDef::new("stock").integer().not_null(true))
+		.col(ColumnDef::new("available").boolean().default(true.into()));
 
-	let sql = create_table.build(PostgresQueryBuilder);
+	let sql = create_table.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await
@@ -202,30 +204,29 @@ pub async fn products_table(#[future] pg_pool: TestPool) -> TestPool {
 pub async fn orders_table(#[future] users_table: TestPool) -> TestPool {
 	let pool = users_table.await;
 
-	let create_table = Table::create()
+	let mut create_table = Query::create_table();
+	create_table
 		.table("orders")
 		.if_not_exists()
 		.col(
 			ColumnDef::new("id")
 				.integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new("user_id").integer().not_null())
-		.col(ColumnDef::new("total_amount").big_integer().not_null())
-		.col(ColumnDef::new("status").string_len(50).not_null())
+		.col(ColumnDef::new("user_id").integer().not_null(true))
+		.col(ColumnDef::new("total_amount").big_integer().not_null(true))
+		.col(ColumnDef::new("status").string_len(50).not_null(true))
 		.foreign_key(
-			ForeignKey::create()
-				.name("fk_orders_user_id")
-				.from("orders", "user_id")
-				.to("users", "id")
-				.on_delete(ForeignKeyAction::Cascade)
-				.on_update(ForeignKeyAction::Cascade),
-		)
-		.to_owned();
+			vec!["user_id"],
+			"users",
+			vec!["id"],
+			Some(ForeignKeyAction::Cascade),
+			Some(ForeignKeyAction::Cascade),
+		);
 
-	let sql = create_table.build(PostgresQueryBuilder);
+	let sql = create_table.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await

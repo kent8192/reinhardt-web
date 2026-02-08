@@ -42,12 +42,21 @@ impl Iden for Alias {
 	}
 }
 
-impl<S> From<S> for Alias
-where
-	S: Into<String>,
-{
-	fn from(s: S) -> Self {
+impl From<&str> for Alias {
+	fn from(s: &str) -> Self {
 		Self::new(s)
+	}
+}
+
+impl From<String> for Alias {
+	fn from(s: String) -> Self {
+		Self::new(s)
+	}
+}
+
+impl From<Alias> for String {
+	fn from(alias: Alias) -> Self {
+		alias.0
 	}
 }
 

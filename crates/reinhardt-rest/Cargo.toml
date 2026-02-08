@@ -98,7 +98,7 @@ regex = "1.10"
 geo-types = "0.7"
 sha2 = "0.10"
 hex = "0.4"
-sea-query = { workspace = true, features = ["backend-postgres"]}
+reinhardt-query = { workspace = true }
 log = "0.4"
 reinhardt-openapi-macros = { workspace = true }
 indexmap = { version = "2.0", features = ["serde"] }

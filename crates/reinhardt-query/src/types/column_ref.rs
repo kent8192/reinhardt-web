@@ -111,22 +111,9 @@ impl IntoColumnRef for ColumnRef {
 	}
 }
 
-// Implementation for DynIden (simple column reference)
-impl IntoColumnRef for DynIden {
-	fn into_column_ref(self) -> ColumnRef {
-		ColumnRef::Column(self)
-	}
-}
-
-// Implementation for &'static str (simple column reference)
-impl IntoColumnRef for &'static str {
-	fn into_column_ref(self) -> ColumnRef {
-		ColumnRef::Column(self.into_iden())
-	}
-}
-
-// Implementation for String (simple column reference)
-impl IntoColumnRef for String {
+// Blanket implementation for all types that can be converted to an identifier.
+// This covers DynIden, &'static str, String, Alias, and any #[derive(Iden)] enum.
+impl<T: IntoIden> IntoColumnRef for T {
 	fn into_column_ref(self) -> ColumnRef {
 		ColumnRef::Column(self.into_iden())
 	}
@@ -152,13 +139,6 @@ where
 {
 	fn into_column_ref(self) -> ColumnRef {
 		ColumnRef::SchemaTableColumn(self.0.into_iden(), self.1.into_iden(), self.2.into_iden())
-	}
-}
-
-// Implementation for Alias
-impl IntoColumnRef for super::alias::Alias {
-	fn into_column_ref(self) -> ColumnRef {
-		ColumnRef::Column(self.into_iden())
 	}
 }
 

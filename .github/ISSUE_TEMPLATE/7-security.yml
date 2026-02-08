@@ -105,7 +105,7 @@ body:
 			placeholder: |
 				Suggested fix:
 				- Validate and sanitize `order_by` parameter against whitelist
-				- Use parameterized queries (SeaQuery) instead of string concatenation
+				- Use parameterized queries (reinhardt-query) instead of string concatenation
 				- Add input validation middleware
 
 				Workaround:

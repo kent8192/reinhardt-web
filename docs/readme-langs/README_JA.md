@@ -49,7 +49,7 @@ Reinhardtは3つの世界のベストを統合しています:
 
 ## ✨ 主な機能
 
-- **型安全なORM** コンパイル時検証付き（SeaQuery v1.0.0-rc）
+- **型安全なORM** コンパイル時検証付き（reinhardt-query）
 - **強力なシリアライザー** 自動検証付き（serde + validator）
 - **FastAPIスタイルのDI** 型安全な依存性注入とキャッシング
 - **ViewSets** 迅速なCRUD API開発用
@@ -537,7 +537,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**注意**: ReinhardtはSQL操作に[SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query)を使用しています。`#[derive(Model)]`マクロはModelトレイト実装、型安全なフィールドアクセサー、グローバルモデルレジストリ登録を自動生成します。
+**注意**: ReinhardtはSQL操作にreinhardt-queryを使用しています。`#[derive(Model)]`マクロはModelトレイト実装、型安全なフィールドアクセサー、グローバルモデルレジストリ登録を自動生成します。
 
 `src/config/apps.rs`で登録:
 
@@ -983,7 +983,7 @@ Reinhardtは組み合わせ可能なモジュラーコンポーネントを提�
 | コマンド            | `reinhardt-commands`      | 管理CLIツール（startprojectなど）           |
 | ショートカット      | `reinhardt-shortcuts`     | 一般的なユーティリティ関数                  |
 | **データベース**    |                           |                                             |
-| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc統合                      |
+| ORM                 | `reinhardt-db`            | reinhardt-query統合                         |
 | **認証**            |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT、Token、Session、Basic認証、Userモデル |
 | **REST API**        |                           |                                             |

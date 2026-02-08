@@ -20,7 +20,7 @@ token = []
 argon2-hasher = []
 
 # Database and session storage (ORM model support)
-database = ["ctor", "reinhardt-apps", "sea-query", "sqlx"]
+database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx"]
 redis-sessions = ["redis"]
 
 # Rate limiting permission
@@ -85,12 +85,7 @@ reqwest = { version = "0.12", features = ["json"] }
 totp-lite = "2.0"
 data-encoding = "2.6"
 sqlx = { workspace = true, optional = true, features = ["any", "runtime-tokio", "sqlite"]}
-sea-query = { version = "1.0.0-rc.29", features = [
-  "backend-postgres",
-  "backend-mysql",
-  "backend-sqlite",
-  "sqlx-utils",
-], optional = true }
+reinhardt-query = { workspace = true, optional = true }
 reinhardt-apps = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
@@ -124,9 +119,5 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 tempfile = { workspace = true }
 filetime = "0.2"
-sea-query = { version = "1.0.0-rc.29", features = [
-	"backend-postgres",
-	"backend-mysql",
-	"backend-sqlite",
-] }
+reinhardt-query = { workspace = true }
 reinhardt-db = {workspace = true, features = ["orm"]}

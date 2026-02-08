@@ -3,7 +3,7 @@
 //! This module provides the `DeleteStatement` type for building SQL DELETE queries.
 
 use crate::{
-	expr::{ConditionHolder, IntoCondition},
+	expr::{Condition, ConditionHolder, IntoCondition},
 	types::{IntoTableRef, TableRef},
 	value::Values,
 };
@@ -90,6 +90,14 @@ impl DeleteStatement {
 		self
 	}
 
+	/// Add a conditional WHERE clause.
+	///
+	/// This is an alias for [`and_where`](Self::and_where) that accepts a [`Condition`].
+	pub fn cond_where(&mut self, condition: Condition) -> &mut Self {
+		self.r#where.add_and(condition);
+		self
+	}
+
 	/// Add a RETURNING clause
 	///
 	/// # Examples
@@ -159,11 +167,6 @@ impl QueryStatementBuilder for DeleteStatement {
 		panic!(
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
-	}
-
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _values) = self.build(query_builder);
-		sql
 	}
 }
 

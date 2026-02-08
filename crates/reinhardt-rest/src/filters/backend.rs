@@ -36,7 +36,9 @@
 
 use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
-use sea_query::{Cond, Expr, MysqlQueryBuilder, Order, Query};
+use reinhardt_query::prelude::{
+	Cond, Expr, MySqlQueryBuilder, Order, Query, QueryStatementBuilder,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -265,7 +267,7 @@ impl SimpleSearchBackend {
 			.replace('_', "\\_")
 	}
 
-	/// Build the search condition using SeaQuery
+	/// Build the search condition using reinhardt-query
 	///
 	/// Returns the WHERE clause string (without the "WHERE" keyword) for the search condition.
 	/// Uses `Expr::cust()` to generate database-agnostic SQL without identifier quoting.
@@ -284,7 +286,7 @@ impl SimpleSearchBackend {
 		let query = Query::select()
 			.expr(Expr::val(1))
 			.cond_where(condition)
-			.to_string(MysqlQueryBuilder);
+			.to_string(MySqlQueryBuilder);
 
 		// Extract just the WHERE condition portion (after "WHERE ")
 		if let Some(idx) = query.find("WHERE ") {
@@ -309,7 +311,7 @@ impl FilterBackend for SimpleSearchBackend {
 				));
 			}
 
-			// Use SeaQuery to build type-safe LIKE conditions
+			// Use reinhardt-query to build type-safe LIKE conditions
 			let condition = self.build_search_condition(search_query);
 			let where_clause = format!("WHERE ({})", condition);
 
@@ -400,8 +402,6 @@ impl SimpleOrderingBackend {
 		let order_str = match order {
 			Order::Asc => "ASC",
 			Order::Desc => "DESC",
-			// Handle any other Order variants (e.g., Order::Field for custom ordering)
-			_ => "ASC", // Default to ASC for unhandled cases
 		};
 		format!("{} {}", field, order_str)
 	}
@@ -429,7 +429,7 @@ impl FilterBackend for SimpleOrderingBackend {
 				)));
 			}
 
-			// Use SeaQuery to build type-safe ORDER BY clause
+			// Use reinhardt-query to build type-safe ORDER BY clause
 			let order_expr = self.build_order_clause(field, order);
 			let order_clause = format!("ORDER BY {}", order_expr);
 
@@ -474,7 +474,7 @@ mod tests {
 		let sql = "SELECT * FROM users".to_string();
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 		assert!(result.contains("WHERE"));
-		// SeaQuery generates backtick-quoted column names for MySQL
+		// reinhardt-query generates backtick-quoted column names for MySQL
 		assert!(result.contains("name LIKE '%john%'"));
 	}
 
@@ -491,7 +491,7 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
 		assert!(result.contains("WHERE"));
-		// SeaQuery generates backtick-quoted column names for MySQL
+		// reinhardt-query generates backtick-quoted column names for MySQL
 		assert!(result.contains("title LIKE '%rust%'"));
 		assert!(result.contains("content LIKE '%rust%'"));
 		assert!(result.contains("OR"));
@@ -533,7 +533,7 @@ mod tests {
 		let sql = "SELECT * FROM articles".to_string();
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
-		// SeaQuery generates backtick-quoted column names for MySQL
+		// reinhardt-query generates backtick-quoted column names for MySQL
 		assert!(result.contains("ORDER BY created_at ASC"));
 	}
 
@@ -549,7 +549,7 @@ mod tests {
 		let sql = "SELECT * FROM articles".to_string();
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
-		// SeaQuery generates backtick-quoted column names for MySQL
+		// reinhardt-query generates backtick-quoted column names for MySQL
 		assert!(result.contains("ORDER BY created_at DESC"));
 	}
 
@@ -595,7 +595,7 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
 		assert!(result.contains("WHERE"));
-		// SeaQuery generates backtick-quoted column names for MySQL
+		// reinhardt-query generates backtick-quoted column names for MySQL
 		assert!(result.contains("title LIKE '%rust%'"));
 		assert!(result.contains("ORDER BY created_at DESC"));
 	}

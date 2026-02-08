@@ -65,7 +65,7 @@ sqlx = { workspace = true, features = [
   "tls-rustls",
   "chrono",
 ] }
-sea-query = { workspace = true }
+reinhardt-query = { workspace = true, features = ["derive"] }
 
 # HTTP client for testing
 reqwest = { version = "0.12", features = ["cookies", "http2", "multipart"] }

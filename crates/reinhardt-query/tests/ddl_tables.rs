@@ -382,7 +382,7 @@ async fn test_postgres_create_table_with_foreign_key(
 		.constraint(TableConstraint::ForeignKey {
 			name: Some(fk_name.clone().into_iden()),
 			columns: vec!["parent_id".into_iden()],
-			ref_table: parent_table.clone().into_table_ref(),
+			ref_table: Box::new(parent_table.clone().into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: Some(ForeignKeyAction::Restrict),

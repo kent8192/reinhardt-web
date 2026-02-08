@@ -20,12 +20,14 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::viewsets::PaginationConfig;
 use reinhardt_views::{ListAPIView, View};
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -53,10 +55,10 @@ struct Post {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum Posts {
 	Table,
 	Id,
@@ -86,29 +88,29 @@ async fn posts_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
 	// Create posts table
-	let create_table_stmt = Table::create()
-		.table(Posts::Table)
+	let mut create_table_stmt = Query::create_table();
+	create_table_stmt
+		.table(Posts::Table.into_iden())
 		.if_not_exists()
 		.col(
 			ColumnDef::new(Posts::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new(Posts::Title).string_len(200).not_null())
-		.col(ColumnDef::new(Posts::Content).text().not_null())
-		.col(ColumnDef::new(Posts::Author).string_len(100).not_null())
+		.col(ColumnDef::new(Posts::Title).string_len(200).not_null(true))
+		.col(ColumnDef::new(Posts::Content).text().not_null(true))
+		.col(ColumnDef::new(Posts::Author).string_len(100).not_null(true))
 		.col(
 			ColumnDef::new(Posts::Published)
 				.boolean()
-				.not_null()
-				.default(false),
+				.not_null(true)
+				.default(false.into()),
 		)
-		.col(ColumnDef::new(Posts::CreatedAt).timestamp())
-		.to_owned();
+		.col(ColumnDef::new(Posts::CreatedAt).timestamp());
 
-	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
+	let sql = create_table_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await

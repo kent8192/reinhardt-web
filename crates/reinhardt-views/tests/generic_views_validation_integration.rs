@@ -23,13 +23,15 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{
 	CreateAPIView, DestroyAPIView, ListAPIView, RetrieveAPIView, UpdateAPIView, View,
 };
 use rstest::*;
-use sea_query::{ColumnDef, Iden, Index, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
@@ -56,10 +58,10 @@ struct Article {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum Articles {
 	Table,
 	Id,
@@ -87,48 +89,52 @@ async fn articles_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
 	// Create articles table with UNIQUE constraint on title
-	let create_table_stmt = Table::create()
-		.table(Articles::Table)
+	let mut create_table_stmt = Query::create_table();
+	create_table_stmt
+		.table(Articles::Table.into_iden())
 		.if_not_exists()
 		.col(
 			ColumnDef::new(Articles::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new(Articles::Title).string_len(200).not_null())
-		.col(ColumnDef::new(Articles::Content).text().not_null())
+		.col(
+			ColumnDef::new(Articles::Title)
+				.string_len(200)
+				.not_null(true),
+		)
+		.col(ColumnDef::new(Articles::Content).text().not_null(true))
 		.col(
 			ColumnDef::new(Articles::Published)
 				.boolean()
-				.not_null()
-				.default(false),
+				.not_null(true)
+				.default(false.into()),
 		)
 		.col(
 			ColumnDef::new(Articles::ViewCount)
 				.integer()
-				.not_null()
-				.default(0),
+				.not_null(true)
+				.default(0i32.into()),
 		)
-		.col(ColumnDef::new(Articles::CreatedAt).timestamp())
-		.to_owned();
+		.col(ColumnDef::new(Articles::CreatedAt).timestamp());
 
-	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
+	let sql = create_table_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to create articles table");
 
 	// Add UNIQUE constraint on title
-	let create_index_stmt = Index::create()
+	let mut create_index_stmt = Query::create_index();
+	create_index_stmt
 		.name("articles_title_unique")
-		.table(Articles::Table)
+		.table(Articles::Table.into_iden())
 		.col(Articles::Title)
-		.unique()
-		.to_owned();
+		.unique();
 
-	let index_sql = create_index_stmt.to_string(PostgresQueryBuilder);
+	let index_sql = create_index_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&index_sql)
 		.execute(pool.as_ref())
 		.await

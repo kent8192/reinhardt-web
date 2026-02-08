@@ -114,8 +114,8 @@ proptest = "1.6"
 trybuild = "1.0"
 serial_test = "3.2"
 testcontainers = { workspace = true }
-# SQL query builder for test factories (external crate, not reinhardt sub-crate)
-sea-query = { version = "1.0.0-rc.29", features = ["derive", "backend-postgres"] }
+# SQL query builder for test factories
+reinhardt-query = { workspace = true }
 # Database driver for test fixtures (external crate, not reinhardt sub-crate)
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls", "uuid", "chrono"] }
 
