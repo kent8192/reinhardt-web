@@ -36,6 +36,9 @@ reinhardt-di = { workspace = true, optional = true }
 # Pages integration (optional)
 reinhardt-pages = { workspace = true, optional = true }
 
+# Auth integration (optional, for pages-integration)
+reinhardt-auth = { workspace = true, optional = true, features = ["sessions"] }
+
 # Compression
 flate2 = { version = "1.0", optional = true }
 brotli = { version = "8.0.2", optional = true }
@@ -61,5 +64,5 @@ di = ["reinhardt-di"]
 compression = ["flate2", "brotli"]
 redis-channel = ["redis"]
 metrics = ["dep:metrics"]
-pages-integration = ["reinhardt-pages"]
+pages-integration = ["reinhardt-pages", "reinhardt-auth"]
 full = ["compression", "redis-channel", "metrics", "di", "pages-integration"]
