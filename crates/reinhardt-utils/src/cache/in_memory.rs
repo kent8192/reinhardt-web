@@ -629,7 +629,7 @@ mod tests {
 		timeout: std::time::Duration,
 		interval: std::time::Duration,
 		mut condition: F,
-	) -> Result<(), String>
+	) -> std::result::Result<(), String>
 	where
 		F: FnMut() -> Fut,
 		Fut: std::future::Future<Output = bool>,
