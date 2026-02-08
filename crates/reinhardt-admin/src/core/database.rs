@@ -74,7 +74,8 @@ impl Model for AdminRecord {
 }
 
 /// Convert FilterValue to sea_query::Value
-fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
+#[doc(hidden)]
+pub fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 	match v {
 		FilterValue::String(s) => s.clone().into(),
 		FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
@@ -104,7 +105,8 @@ fn filter_value_to_sea_value(v: &FilterValue) -> sea_query::Value {
 }
 
 /// Build a SimpleExpr from a single Filter
-fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
+#[doc(hidden)]
+pub fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 	let col = Expr::col(Alias::new(&filter.field));
 
 	let expr = match (&filter.operator, &filter.value) {
@@ -179,7 +181,8 @@ fn build_single_filter_expr(filter: &Filter) -> Option<sea_query::SimpleExpr> {
 }
 
 /// Build sea-query Condition from filters (AND logic only)
-fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
+#[doc(hidden)]
+pub fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 	if filters.is_empty() {
 		return None;
 	}
@@ -196,7 +199,8 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 }
 
 /// Maximum recursion depth for filter conditions to prevent stack overflow
-const MAX_FILTER_DEPTH: usize = 100;
+#[doc(hidden)]
+pub const MAX_FILTER_DEPTH: usize = 100;
 
 /// Build sea-query Condition from FilterCondition (supports AND/OR logic)
 ///
@@ -208,12 +212,14 @@ const MAX_FILTER_DEPTH: usize = 100;
 /// To prevent stack overflow with deeply nested filter conditions, this function
 /// limits recursion depth to `MAX_FILTER_DEPTH` (100 levels). If the depth limit
 /// is exceeded, the function returns `None`.
-fn build_composite_filter_condition(filter_condition: &FilterCondition) -> Option<Condition> {
+#[doc(hidden)]
+pub fn build_composite_filter_condition(filter_condition: &FilterCondition) -> Option<Condition> {
 	build_composite_filter_condition_with_depth(filter_condition, 0)
 }
 
 /// Internal helper for building composite filter conditions with depth tracking
-fn build_composite_filter_condition_with_depth(
+#[doc(hidden)]
+pub fn build_composite_filter_condition_with_depth(
 	filter_condition: &FilterCondition,
 	depth: usize,
 ) -> Option<Condition> {
@@ -266,28 +272,17 @@ fn build_composite_filter_condition_with_depth(
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::core::AdminDatabase;
-/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-/// use std::sync::Arc;
-/// use serde::{Serialize, Deserialize};
+/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+/// use reinhardt_db::orm::DatabaseConnection;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 /// let db = AdminDatabase::new(conn);
 ///
 /// // List items with filters
-/// let items = db.list::<User>("users", vec![], 0, 50).await?;
+/// let items = db.list::<AdminRecord>("admin_records", vec![], 0, 50).await?;
 /// # Ok(())
 /// # }
-///
-/// // Placeholder User type for example
-/// #[derive(Clone, Debug, Serialize, Deserialize)]
-/// struct User {
-///     id: Option<i64>,
-///     name: String,
-/// }
-///
-/// reinhardt_test::impl_test_model!(User, i64, "users");
 /// ```
 #[derive(Clone)]
 pub struct AdminDatabase {
@@ -330,10 +325,8 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -343,17 +336,9 @@ impl AdminDatabase {
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
 	/// ];
 	///
-	/// let items = db.list::<User>("users", filters, 0, 50).await?;
+	/// let items = db.list::<AdminRecord>("admin_records", filters, 0, 50).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn list<M: Model>(
 		&self,
@@ -552,26 +537,16 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
-	/// let item = db.get::<User>("users", "id", "1").await?;
+	/// let item = db.get::<AdminRecord>("admin_records", "id", "1").await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn get<M: Model>(
 		&self,
@@ -617,11 +592,9 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	/// use std::collections::HashMap;
-	/// use serde::{Serialize, Deserialize};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -631,17 +604,9 @@ impl AdminDatabase {
 	/// data.insert("name".to_string(), serde_json::json!("Alice"));
 	/// data.insert("email".to_string(), serde_json::json!("alice@example.com"));
 	///
-	/// db.create::<User>("users", data).await?;
+	/// db.create::<AdminRecord>("admin_records", data).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn create<M: Model>(
 		&self,
@@ -707,11 +672,9 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	/// use std::collections::HashMap;
-	/// use serde::{Serialize, Deserialize};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -720,17 +683,9 @@ impl AdminDatabase {
 	/// let mut data = HashMap::new();
 	/// data.insert("name".to_string(), serde_json::json!("Alice Updated"));
 	///
-	/// db.update::<User>("users", "id", "1", data).await?;
+	/// db.update::<AdminRecord>("admin_records", "id", "1", data).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn update<M: Model>(
 		&self,
@@ -784,26 +739,16 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
-	/// db.delete::<User>("users", "id", "1").await?;
+	/// db.delete::<AdminRecord>("admin_records", "id", "1").await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn delete<M: Model>(
 		&self,
@@ -838,27 +783,17 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
-	/// db.bulk_delete::<User>("users", "id", ids).await?;
+	/// db.bulk_delete::<AdminRecord>("admin_records", "id", ids).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn bulk_delete<M: Model>(
 		&self,
@@ -932,10 +867,8 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -945,17 +878,9 @@ impl AdminDatabase {
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
 	/// ];
 	///
-	/// let count = db.count::<User>("users", filters).await?;
+	/// let count = db.count::<AdminRecord>("admin_records", filters).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn count<M: Model>(
 		&self,
@@ -1003,678 +928,5 @@ impl Injectable for AdminDatabase {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
 		// Resolve Arc<AdminDatabase> from the container and clone it
 		ctx.resolve::<Self>().await.map(|arc| (*arc).clone())
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use reinhardt_db::orm::DatabaseBackend;
-	use reinhardt_db::orm::annotation::Expression;
-	use reinhardt_db::orm::expressions::{F, OuterRef};
-	use reinhardt_test::fixtures::mock_connection;
-	use rstest::*;
-
-	// Mock User model for testing
-	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-	struct User {
-		id: i64,
-		name: String,
-	}
-
-	#[derive(Debug, Clone)]
-	struct UserFields {
-		pub id: reinhardt_db::orm::query_fields::Field<User, i64>,
-		pub name: reinhardt_db::orm::query_fields::Field<User, String>,
-	}
-
-	impl UserFields {
-		pub(crate) fn new() -> Self {
-			Self {
-				id: reinhardt_db::orm::query_fields::Field::new(vec!["id".to_string()]),
-				name: reinhardt_db::orm::query_fields::Field::new(vec!["name".to_string()]),
-			}
-		}
-	}
-
-	impl reinhardt_db::orm::FieldSelector for UserFields {
-		fn with_alias(mut self, alias: &str) -> Self {
-			self.id = self.id.with_alias(alias);
-			self.name = self.name.with_alias(alias);
-			self
-		}
-	}
-
-	impl Model for User {
-		type PrimaryKey = i64;
-		type Fields = UserFields;
-
-		fn table_name() -> &'static str {
-			"users"
-		}
-
-		fn new_fields() -> Self::Fields {
-			UserFields::new()
-		}
-
-		fn primary_key(&self) -> Option<Self::PrimaryKey> {
-			Some(self.id)
-		}
-
-		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-			self.id = value;
-		}
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_admin_database_new(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		assert_eq!(db.connection().backend(), DatabaseBackend::Postgres);
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let result = db.bulk_delete::<User>("users", "id", vec![]).await;
-
-		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), 0);
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_list_with_filters(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let filters = vec![Filter::new(
-			"is_active".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		)];
-
-		let result = db.list::<User>("users", filters, 0, 50).await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_get_by_id(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let result = db.get::<User>("users", "id", "1").await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_create(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let mut data = HashMap::new();
-		data.insert("name".to_string(), serde_json::json!("Alice"));
-		data.insert("email".to_string(), serde_json::json!("alice@example.com"));
-
-		let result = db.create::<User>("users", data).await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_update(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let mut data = HashMap::new();
-		data.insert("name".to_string(), serde_json::json!("Alice Updated"));
-
-		let result = db.update::<User>("users", "id", "1", data).await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_delete(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let result = db.delete::<User>("users", "id", "1").await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_count(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let filters = vec![];
-		let result = db.count::<User>("users", filters).await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_bulk_delete_multiple_ids(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
-		let result = db.bulk_delete::<User>("users", "id", ids).await;
-		assert!(result.is_ok());
-	}
-
-	// ==================== build_composite_filter_condition tests ====================
-
-	#[test]
-	fn test_build_composite_single_condition() {
-		let filter = Filter::new(
-			"name".to_string(),
-			FilterOperator::Eq,
-			FilterValue::String("Alice".to_string()),
-		);
-		let condition = FilterCondition::Single(filter);
-
-		let result = build_composite_filter_condition(&condition);
-
-		assert!(result.is_some());
-		// The condition should produce valid SQL when used
-		let cond = result.unwrap();
-		let query = SeaQuery::select()
-			.from(Alias::new("users"))
-			.column(Asterisk)
-			.cond_where(cond)
-			.to_string(PostgresQueryBuilder);
-		assert!(query.contains("\"name\""));
-		assert!(query.contains("'Alice'"));
-	}
-
-	#[test]
-	fn test_build_composite_or_condition() {
-		let filter1 = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let filter2 = Filter::new(
-			"email".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("alice".to_string()),
-		);
-
-		let condition = FilterCondition::Or(vec![
-			FilterCondition::Single(filter1),
-			FilterCondition::Single(filter2),
-		]);
-
-		let result = build_composite_filter_condition(&condition);
-
-		assert!(result.is_some());
-		let cond = result.unwrap();
-		let query = SeaQuery::select()
-			.from(Alias::new("users"))
-			.column(Asterisk)
-			.cond_where(cond)
-			.to_string(PostgresQueryBuilder);
-		// OR condition should produce SQL with OR keyword
-		assert!(query.contains("\"name\""));
-		assert!(query.contains("\"email\""));
-		assert!(query.contains("OR"));
-	}
-
-	#[test]
-	fn test_build_composite_and_condition() {
-		let filter1 = Filter::new(
-			"is_active".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		);
-		let filter2 = Filter::new(
-			"is_staff".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		);
-
-		let condition = FilterCondition::And(vec![
-			FilterCondition::Single(filter1),
-			FilterCondition::Single(filter2),
-		]);
-
-		let result = build_composite_filter_condition(&condition);
-
-		assert!(result.is_some());
-		let cond = result.unwrap();
-		let query = SeaQuery::select()
-			.from(Alias::new("users"))
-			.column(Asterisk)
-			.cond_where(cond)
-			.to_string(PostgresQueryBuilder);
-		// AND condition should produce SQL with AND keyword
-		assert!(query.contains("\"is_active\""));
-		assert!(query.contains("\"is_staff\""));
-		assert!(query.contains("AND"));
-	}
-
-	#[test]
-	fn test_build_composite_nested_condition() {
-		// Build: (name LIKE '%Alice%' OR email LIKE '%alice%') AND is_active = true
-		let filter_name = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let filter_email = Filter::new(
-			"email".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("alice".to_string()),
-		);
-		let filter_active = Filter::new(
-			"is_active".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		);
-
-		let or_condition = FilterCondition::Or(vec![
-			FilterCondition::Single(filter_name),
-			FilterCondition::Single(filter_email),
-		]);
-
-		let and_condition =
-			FilterCondition::And(vec![or_condition, FilterCondition::Single(filter_active)]);
-
-		let result = build_composite_filter_condition(&and_condition);
-
-		assert!(result.is_some());
-		let cond = result.unwrap();
-		let query = SeaQuery::select()
-			.from(Alias::new("users"))
-			.column(Asterisk)
-			.cond_where(cond)
-			.to_string(PostgresQueryBuilder);
-		// Nested condition should contain both OR and AND
-		assert!(query.contains("\"name\""));
-		assert!(query.contains("\"email\""));
-		assert!(query.contains("\"is_active\""));
-		assert!(query.contains("OR"));
-		assert!(query.contains("AND"));
-	}
-
-	#[test]
-	fn test_build_composite_empty_or() {
-		let condition = FilterCondition::Or(vec![]);
-
-		let result = build_composite_filter_condition(&condition);
-
-		// Empty OR should return None
-		assert!(result.is_none());
-	}
-
-	#[test]
-	fn test_build_composite_empty_and() {
-		let condition = FilterCondition::And(vec![]);
-
-		let result = build_composite_filter_condition(&condition);
-
-		// Empty AND should return None
-		assert!(result.is_none());
-	}
-
-	// ==================== list_with_condition / count_with_condition tests ====================
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_list_with_condition_or_search(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// Build OR search condition: name LIKE '%Alice%' OR email LIKE '%alice%'
-		let filter1 = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let filter2 = Filter::new(
-			"email".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("alice".to_string()),
-		);
-		let search_condition = FilterCondition::Or(vec![
-			FilterCondition::Single(filter1),
-			FilterCondition::Single(filter2),
-		]);
-
-		let result = db
-			.list_with_condition::<User>("users", Some(&search_condition), vec![], None, 0, 50)
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_list_with_condition_and_additional(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// Build combined condition: (name LIKE '%Alice%' OR email LIKE '%alice%') AND is_active = true
-		let filter1 = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let filter2 = Filter::new(
-			"email".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("alice".to_string()),
-		);
-		let search_condition = FilterCondition::Or(vec![
-			FilterCondition::Single(filter1),
-			FilterCondition::Single(filter2),
-		]);
-
-		let additional = vec![Filter::new(
-			"is_active".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		)];
-
-		let result = db
-			.list_with_condition::<User>("users", Some(&search_condition), additional, None, 0, 50)
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_count_with_condition_or_search(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// Build OR search condition
-		let filter1 = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let filter2 = Filter::new(
-			"email".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("alice".to_string()),
-		);
-		let search_condition = FilterCondition::Or(vec![
-			FilterCondition::Single(filter1),
-			FilterCondition::Single(filter2),
-		]);
-
-		let result = db
-			.count_with_condition::<User>("users", Some(&search_condition), vec![])
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_list_with_condition_none(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// No filter condition - should return all items
-		let result = db
-			.list_with_condition::<User>("users", None, vec![], None, 0, 50)
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_list_with_condition_empty_additional(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		let filter = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let search_condition = FilterCondition::Single(filter);
-
-		// Empty additional filters
-		let result = db
-			.list_with_condition::<User>("users", Some(&search_condition), vec![], None, 0, 50)
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_count_with_condition_none(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// No filter condition
-		let result = db.count_with_condition::<User>("users", None, vec![]).await;
-
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_count_with_condition_combined(mock_connection: DatabaseConnection) {
-		let db = AdminDatabase::new(mock_connection);
-
-		// Combined filter condition and additional filters
-		let filter1 = Filter::new(
-			"name".to_string(),
-			FilterOperator::Contains,
-			FilterValue::String("Alice".to_string()),
-		);
-		let search_condition = FilterCondition::Single(filter1);
-
-		let additional = vec![Filter::new(
-			"is_active".to_string(),
-			FilterOperator::Eq,
-			FilterValue::Boolean(true),
-		)];
-
-		let result = db
-			.count_with_condition::<User>("users", Some(&search_condition), additional)
-			.await;
-
-		assert!(result.is_ok());
-	}
-
-	// ==================== FieldRef/OuterRef/Expression filter tests ====================
-
-	#[test]
-	fn test_build_single_filter_expr_field_ref_eq() {
-		let filter = Filter::new(
-			"price".to_string(),
-			FilterOperator::Eq,
-			FilterValue::FieldRef(F::new("discount_price")),
-		);
-		let result = build_single_filter_expr(&filter);
-		assert!(result.is_some());
-
-		let query = SeaQuery::select()
-			.from(Alias::new("products"))
-			.column(Asterisk)
-			.cond_where(Condition::all().add(result.unwrap()))
-			.to_string(PostgresQueryBuilder);
-		assert!(query.contains("\"price\""));
-		assert!(query.contains("\"discount_price\""));
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_field_ref_gt() {
-		let filter = Filter::new(
-			"price".to_string(),
-			FilterOperator::Gt,
-			FilterValue::FieldRef(F::new("cost")),
-		);
-		let result = build_single_filter_expr(&filter);
-		assert!(result.is_some());
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_field_ref_all_operators() {
-		let operators = [
-			FilterOperator::Eq,
-			FilterOperator::Ne,
-			FilterOperator::Gt,
-			FilterOperator::Gte,
-			FilterOperator::Lt,
-			FilterOperator::Lte,
-		];
-
-		for op in operators {
-			let filter = Filter::new(
-				"field_a".to_string(),
-				op.clone(),
-				FilterValue::FieldRef(F::new("field_b")),
-			);
-			let result = build_single_filter_expr(&filter);
-			assert!(
-				result.is_some(),
-				"FieldRef with {:?} should produce Some",
-				op
-			);
-		}
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_outer_ref() {
-		let filter = Filter::new(
-			"author_id".to_string(),
-			FilterOperator::Eq,
-			FilterValue::OuterRef(OuterRef::new("authors.id")),
-		);
-		let result = build_single_filter_expr(&filter);
-		assert!(result.is_some());
-
-		let query = SeaQuery::select()
-			.from(Alias::new("books"))
-			.column(Asterisk)
-			.cond_where(Condition::all().add(result.unwrap()))
-			.to_string(PostgresQueryBuilder);
-		assert!(query.contains("author_id"));
-		assert!(query.contains("authors.id"));
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_outer_ref_all_operators() {
-		let operators = [
-			FilterOperator::Eq,
-			FilterOperator::Ne,
-			FilterOperator::Gt,
-			FilterOperator::Gte,
-			FilterOperator::Lt,
-			FilterOperator::Lte,
-		];
-
-		for op in operators {
-			let filter = Filter::new(
-				"child_id".to_string(),
-				op.clone(),
-				FilterValue::OuterRef(OuterRef::new("parent.id")),
-			);
-			let result = build_single_filter_expr(&filter);
-			assert!(
-				result.is_some(),
-				"OuterRef with {:?} should produce Some",
-				op
-			);
-		}
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_expression() {
-		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
-
-		// Test: price > (cost * 2)
-		let expr = Expression::Multiply(
-			Box::new(AnnotationValue::Field(F::new("cost"))),
-			Box::new(AnnotationValue::Value(Value::Int(2))),
-		);
-		let filter = Filter::new(
-			"price".to_string(),
-			FilterOperator::Gt,
-			FilterValue::Expression(expr),
-		);
-		let result = build_single_filter_expr(&filter);
-		assert!(result.is_some());
-	}
-
-	#[test]
-	fn test_build_single_filter_expr_expression_all_operators() {
-		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
-
-		let operators = [
-			FilterOperator::Eq,
-			FilterOperator::Ne,
-			FilterOperator::Gt,
-			FilterOperator::Gte,
-			FilterOperator::Lt,
-			FilterOperator::Lte,
-		];
-
-		for op in operators {
-			let expr = Expression::Add(
-				Box::new(AnnotationValue::Field(F::new("base"))),
-				Box::new(AnnotationValue::Value(Value::Int(10))),
-			);
-			let filter = Filter::new(
-				"total".to_string(),
-				op.clone(),
-				FilterValue::Expression(expr),
-			);
-			let result = build_single_filter_expr(&filter);
-			assert!(
-				result.is_some(),
-				"Expression with {:?} should produce Some",
-				op
-			);
-		}
-	}
-
-	#[test]
-	fn test_filter_value_to_sea_value_field_ref_fallback() {
-		let value = FilterValue::FieldRef(F::new("test_field"));
-		let sea_value = filter_value_to_sea_value(&value);
-
-		// Should return string representation, not panic
-		match sea_value {
-			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
-			_ => panic!("Expected String value"),
-		}
-	}
-
-	#[test]
-	fn test_filter_value_to_sea_value_outer_ref_fallback() {
-		let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
-		let sea_value = filter_value_to_sea_value(&value);
-
-		// Should return string representation, not panic
-		match sea_value {
-			sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
-			_ => panic!("Expected String value"),
-		}
-	}
-
-	#[test]
-	fn test_filter_value_to_sea_value_expression_fallback() {
-		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
-
-		let expr = Expression::Add(
-			Box::new(AnnotationValue::Field(F::new("a"))),
-			Box::new(AnnotationValue::Value(Value::Int(1))),
-		);
-		let value = FilterValue::Expression(expr);
-		let sea_value = filter_value_to_sea_value(&value);
-
-		// Should return SQL string representation, not panic
-		match sea_value {
-			sea_query::Value::String(Some(s)) => {
-				assert!(s.contains("a"), "SQL should contain field name 'a'");
-				assert!(s.contains("1"), "SQL should contain value '1'");
-			}
-			_ => panic!("Expected String value"),
-		}
 	}
 }
