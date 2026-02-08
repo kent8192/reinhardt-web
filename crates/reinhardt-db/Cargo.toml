@@ -178,7 +178,6 @@ integration-tests = []
 
 [dev-dependencies]
 tokio-test = "0.4"
-reinhardt-test = { workspace = true, features = ["testcontainers"] }
 rstest = { workspace = true }
 serial_test = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
