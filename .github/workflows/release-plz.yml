@@ -128,8 +128,10 @@ jobs:
             if grep -q "already uploaded" publish_output.txt || grep -q "already exists" publish_output.txt; then
               echo "$CRATE_NAME $CRATE_VERSION already exists on crates.io, continuing..."
             else
-              echo "Failed to publish $CRATE_NAME, but continuing anyway..."
+              echo "Failed to publish $CRATE_NAME with unexpected error:"
               cat publish_output.txt
+              rm -f publish_output.txt
+              exit 1
             fi
           fi
           rm -f publish_output.txt
