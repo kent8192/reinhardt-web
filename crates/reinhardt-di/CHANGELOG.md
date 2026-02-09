@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.4...reinhardt-di@v0.1.0-alpha.5) - 2026-02-08
+
+### Fixed
+
+- *(di)* move unit tests to integration crate to break circular publish chain
+- *(di)* implement deep clone for InjectionContext request scope
+
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.3...reinhardt-di@v0.1.0-alpha.4) - 2026-02-06
 
 ### Fixed
