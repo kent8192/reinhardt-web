@@ -1215,8 +1215,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.push_keyword("INDEX");
 		writer.push_space();
 
-		// MySQL does NOT support IF NOT EXISTS for CREATE INDEX.
-		// Callers should check index existence before creating.
+		// MySQL does NOT support IF NOT EXISTS for CREATE INDEX
+		// (not supported in MySQL 8.0 or earlier).
+		// See recorder.rs ensure_schema_table_internal() for check-then-create workaround.
 
 		// Index name
 		if let Some(name) = &stmt.name {
