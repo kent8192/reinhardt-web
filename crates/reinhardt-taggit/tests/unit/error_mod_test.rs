@@ -142,11 +142,16 @@ fn test_error_config_error() {
 	assert!(msg.contains("invalid option"));
 }
 
-/// Test Result<T> type alias with Ok value
+/// Test `Result<T>` type alias with Ok value
 #[test]
 fn test_result_ok() {
-	// Arrange & Act
-	let result: Result<String> = Ok("success".to_string());
+	// Arrange
+	fn ok_result() -> Result<String> {
+		Ok("success".to_string())
+	}
+
+	// Act
+	let result = ok_result();
 
 	// Assert
 	assert!(result.is_ok());

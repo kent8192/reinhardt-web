@@ -181,25 +181,25 @@ impl SchemaGenerator {
 		self
 	}
 
-	/// Add a single server function endpoint to the OpenAPI schema
-	///
-	/// This method adds a server function that implements `ServerFnRegistration` trait.
-	/// The endpoint is added as a POST operation at the registered path.
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
-	/// use reinhardt_rest::server_fn::auth::login;  // Import marker constant
-	///
-	/// let generator = SchemaGenerator::new()
-	///     .title("My API")
-	///     .version("1.0.0")
-	///     .add_server_fn(login)
-	///     .add_server_fn(logout);
-	///
-	/// let schema = generator.generate().unwrap();
-	/// ```
+	// 	/// Add a single server function endpoint to the OpenAPI schema
+	// 	///
+	// 	/// This method adds a server function that implements `ServerFnRegistration` trait.
+	// 	/// The endpoint is added as a POST operation at the registered path.
+	// 	///
+	// 	/// # Example
+	// 	///
+	// 	/// ```rust,ignore
+	// 	/// use reinhardt_rest::openapi::generator::SchemaGenerator;
+	// 	/// use reinhardt_rest::server_fn::auth::login;  // Import marker constant
+	// 	///
+	// 	/// let generator = SchemaGenerator::new()
+	// 	///     .title("My API")
+	// 	///     .version("1.0.0")
+	// 	///     .add_server_fn(login)
+	// 	///     .add_server_fn(logout);
+	// 	///
+	// 	/// let schema = generator.generate().unwrap();
+	// 	/// ```
 	// 	#[cfg(feature = "pages")]
 	// 	pub fn add_server_fn<S: reinhardt_pages::prelude::ServerFnRegistration>(
 	// 		mut self,
