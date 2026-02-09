@@ -5,7 +5,9 @@ use std::time::Duration;
 
 /// OAuth2 HTTP client
 ///
-/// Wrapper around reqwest::Client with OAuth2-specific configuration.
+/// Wrapper around `reqwest::Client` with OAuth2-specific configuration.
+/// Cloning is cheap since `reqwest::Client` uses an `Arc` internally.
+#[derive(Clone)]
 pub struct OAuth2Client {
 	client: Client,
 }

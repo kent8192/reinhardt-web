@@ -5,10 +5,14 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use jsonwebtoken::{Validation, decode, decode_header};
+use jsonwebtoken::{Algorithm, Validation, decode, decode_header};
 
 use super::jwks::JwksCache;
 use crate::social::core::{IdToken, SocialAuthError};
+
+/// Default allowed algorithms for ID token validation
+const DEFAULT_ALLOWED_ALGORITHMS: &[Algorithm] =
+	&[Algorithm::RS256, Algorithm::RS384, Algorithm::RS512];
 
 /// Configuration for ID token validation
 #[derive(Debug, Clone)]
@@ -19,6 +23,8 @@ pub struct ValidationConfig {
 	pub audience: String,
 	/// Clock skew tolerance in seconds (default: 60)
 	pub clock_skew: i64,
+	/// Allowed algorithms for JWT validation
+	pub allowed_algorithms: Vec<Algorithm>,
 }
 
 impl ValidationConfig {
@@ -28,12 +34,19 @@ impl ValidationConfig {
 			issuer,
 			audience,
 			clock_skew: 60,
+			allowed_algorithms: DEFAULT_ALLOWED_ALGORITHMS.to_vec(),
 		}
 	}
 
 	/// Sets clock skew tolerance
 	pub fn with_clock_skew(mut self, clock_skew: i64) -> Self {
 		self.clock_skew = clock_skew;
+		self
+	}
+
+	/// Sets allowed algorithms
+	pub fn with_allowed_algorithms(mut self, algorithms: Vec<Algorithm>) -> Self {
+		self.allowed_algorithms = algorithms;
 		self
 	}
 }
@@ -67,9 +80,17 @@ impl IdTokenValidator {
 		jwks_uri: &str,
 		nonce: Option<&str>,
 	) -> Result<IdToken, SocialAuthError> {
-		// Decode header to get kid
+		// Decode header to get kid and algorithm
 		let header = decode_header(id_token)
 			.map_err(|e| SocialAuthError::InvalidIdToken(format!("Invalid JWT header: {}", e)))?;
+
+		// Validate algorithm against whitelist
+		if !self.config.allowed_algorithms.contains(&header.alg) {
+			return Err(SocialAuthError::InvalidIdToken(format!(
+				"Algorithm {:?} is not in the allowed list: {:?}",
+				header.alg, self.config.allowed_algorithms
+			)));
+		}
 
 		let kid = header.kid.ok_or_else(|| {
 			SocialAuthError::InvalidIdToken("Missing kid in JWT header".to_string())

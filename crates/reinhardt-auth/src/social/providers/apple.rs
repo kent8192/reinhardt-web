@@ -29,14 +29,14 @@ pub struct AppleProvider {
 impl AppleProvider {
 	/// Create a new Apple provider
 	///
-	/// Validates that the configuration contains OIDC settings
-	/// and constructs all sub-components. No network calls are made.
+	/// Validates that the configuration contains OIDC settings and a non-empty
+	/// client_secret, then constructs all sub-components. No network calls are made.
 	///
 	/// # Note
 	///
 	/// Apple Sign In requires a dynamically generated JWT as the client_secret.
-	/// TODO: Implement JWT client_secret generation using team_id and key_id.
-	/// Currently, the client_secret from `ProviderConfig::apple()` is empty.
+	/// The caller is responsible for generating this JWT using the team_id, key_id,
+	/// and private key, then passing it as client_secret in the `ProviderConfig`.
 	pub async fn new(config: ProviderConfig) -> Result<Self, SocialAuthError> {
 		if config.oidc.is_none() {
 			return Err(SocialAuthError::InvalidConfiguration(
@@ -44,12 +44,19 @@ impl AppleProvider {
 			));
 		}
 
-		let auth_flow = AuthorizationFlow::new(config.clone());
-		let token_exchange = TokenExchangeFlow::new(OAuth2Client::new(), config.clone());
-		let refresh_flow = RefreshFlow::new(OAuth2Client::new(), config.clone());
-		let discovery_client = DiscoveryClient::new(OAuth2Client::new());
+		if config.client_secret.is_empty() {
+			return Err(SocialAuthError::InvalidConfiguration(
+				"Apple provider requires a client_secret (JWT). Generate it using team_id, key_id, and private key before creating the provider".into(),
+			));
+		}
 
-		let jwks_cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+		let client = OAuth2Client::new();
+		let auth_flow = AuthorizationFlow::new(config.clone());
+		let token_exchange = TokenExchangeFlow::new(client.clone(), config.clone());
+		let refresh_flow = RefreshFlow::new(client.clone(), config.clone());
+		let discovery_client = DiscoveryClient::new(client.clone());
+
+		let jwks_cache = Arc::new(JwksCache::new(client));
 		let validation_config = ValidationConfig::new(
 			"https://appleid.apple.com".to_string(),
 			config.client_id.clone(),

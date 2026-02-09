@@ -40,13 +40,14 @@ impl GoogleProvider {
 			));
 		}
 
+		let client = OAuth2Client::new();
 		let auth_flow = AuthorizationFlow::new(config.clone());
-		let token_exchange = TokenExchangeFlow::new(OAuth2Client::new(), config.clone());
-		let refresh_flow = RefreshFlow::new(OAuth2Client::new(), config.clone());
-		let userinfo_client = UserInfoClient::new(OAuth2Client::new());
-		let discovery_client = DiscoveryClient::new(OAuth2Client::new());
+		let token_exchange = TokenExchangeFlow::new(client.clone(), config.clone());
+		let refresh_flow = RefreshFlow::new(client.clone(), config.clone());
+		let userinfo_client = UserInfoClient::new(client.clone());
+		let discovery_client = DiscoveryClient::new(client.clone());
 
-		let jwks_cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+		let jwks_cache = Arc::new(JwksCache::new(client));
 		// Issuer will be validated at token validation time via discovery
 		let validation_config = ValidationConfig::new(
 			"https://accounts.google.com".to_string(),
