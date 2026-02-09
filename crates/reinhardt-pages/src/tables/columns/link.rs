@@ -100,11 +100,26 @@ impl ColumnTrait for LinkColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// For now, render a placeholder
-		// TODO: Implement URL pattern replacement and proper link rendering
-		let text = self.text_override.as_deref().unwrap_or("Link");
-		let link = a().attr("href", &self.url_pattern).text(text).build();
+	fn render(&self, value: &dyn Any) -> Element {
+		let value_str = if let Some(s) = value.downcast_ref::<String>() {
+			s.as_str().to_string()
+		} else if let Some(s) = value.downcast_ref::<&str>() {
+			(*s).to_string()
+		} else if let Some(n) = value.downcast_ref::<i32>() {
+			n.to_string()
+		} else if let Some(n) = value.downcast_ref::<i64>() {
+			n.to_string()
+		} else {
+			String::new()
+		};
+
+		// Replace {field_name} placeholders in URL pattern
+		let url = self
+			.url_pattern
+			.replace(&format!("{{{}}}", self.name), &value_str);
+
+		let text = self.text_override.as_deref().unwrap_or(&value_str);
+		let link = a().attr("href", &url).text(text).build();
 		td().child(link).build()
 	}
 

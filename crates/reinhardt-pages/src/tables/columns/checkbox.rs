@@ -48,10 +48,18 @@ impl ColumnTrait for CheckBoxColumn {
 		&self.label
 	}
 
-	fn render(&self, _value: &dyn Any) -> Element {
-		// TODO: Implement checkbox rendering
-		let checkbox = input().attr("type", "checkbox").build();
-		td().child(checkbox).build()
+	fn render(&self, value: &dyn Any) -> Element {
+		let checkbox = input().attr("type", "checkbox");
+		let checkbox = if let Some(&val) = value.downcast_ref::<bool>() {
+			if val {
+				checkbox.attr("checked", "checked")
+			} else {
+				checkbox
+			}
+		} else {
+			checkbox
+		};
+		td().child(checkbox.build()).build()
 	}
 
 	fn is_orderable(&self) -> bool {
