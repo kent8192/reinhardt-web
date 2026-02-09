@@ -385,8 +385,12 @@ reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.6" }
 # (https://github.com/rust-lang/cargo/issues/15151). When used as a dev-dependency, the version
 # constraint causes packaging failures because the version isn't yet published to crates.io.
 # Dev-dependencies without versions are pruned during publish.
+# 
 # Note: reinhardt-commands also uses reinhardt-test as an optional regular dependency for its
-# testcontainers feature - this may require reinhardt-test to be published first.
+# testcontainers feature. Since reinhardt-test has publish=false, the testcontainers feature
+# should only be used in dev/test scenarios. The explicit path+version in reinhardt-commands
+# allows it to build/package (though the feature won't work in published artifacts).
+# 
 # IMPORTANT: DO NOT ADD VERSION HERE - release-plz must NOT add version to this line.
 # If release-plz adds a version, manually remove it and add this comment back.
 reinhardt-test = { path = "crates/reinhardt-test" }
