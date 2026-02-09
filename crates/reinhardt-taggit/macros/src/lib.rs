@@ -1,6 +1,6 @@
 //! Proc macros for reinhardt-taggit
 //!
-//! This crate provides the `` `#[taggable]` `` attribute macro for zero-boilerplate tagging.
+//! This crate provides the `#[taggable]` attribute macro for zero-boilerplate tagging.
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -8,7 +8,7 @@ use syn::{Data, DeriveInput, parse_macro_input};
 
 /// Attribute macro to make a model taggable
 ///
-/// This macro automatically implements the `` `Taggable` `` trait and adds a `` `tags()` `` method
+/// This macro automatically implements the `Taggable` trait and adds a `tags()` method
 /// to the model, enabling tag management functionality.
 ///
 /// # Usage
@@ -34,13 +34,13 @@ use syn::{Data, DeriveInput, parse_macro_input};
 /// # Requirements
 ///
 /// - The struct must have a field named `id` of type `i64` or `Option<i64>`
-/// - The struct must be annotated with `` `#[model(...)]` ``
+/// - The struct must be annotated with `#[model(...)]`
 ///
 /// # Generated Code
 ///
 /// The macro generates:
-/// 1. `` `Taggable` `` trait implementation with `` `content_type_name()` `` and `` `object_id()` ``
-/// 2. `` `tags()` `` method that returns a `` `TagManager<Self>` ``
+/// 1. `Taggable` trait implementation with `content_type_name()` and `object_id()`
+/// 2. `tags()` method that returns a `TagManager<Self>`
 #[proc_macro_attribute]
 pub fn taggable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(item as DeriveInput);

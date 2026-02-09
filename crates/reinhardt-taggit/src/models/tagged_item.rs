@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Junction table for many-to-many relationship between tags and arbitrary models
 ///
 /// Implements a polymorphic relationship pattern using content_type and object_id fields.
-/// This allows any model implementing the `` `Taggable` `` trait to be tagged.
+/// This allows any model implementing the `Taggable` trait to be tagged.
 ///
 /// # Database Schema
 ///

@@ -1,9 +1,9 @@
 //! Model definitions for the taggit system
 //!
 //! This module contains the core data models:
-//! - `` `Tag` ``: Core tag entity with name and slug
-//! - `` `TaggedItem` ``: Junction table for polymorphic many-to-many relationships
-//! - `` `Taggable` ``: Trait for models that can be tagged
+//! - `Tag`: Core tag entity with name and slug
+//! - `TaggedItem`: Junction table for polymorphic many-to-many relationships
+//! - `Taggable`: Trait for models that can be tagged
 
 pub mod tag;
 pub mod tagged_item;
