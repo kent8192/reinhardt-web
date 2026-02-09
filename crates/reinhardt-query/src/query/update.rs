@@ -3,9 +3,9 @@
 //! This module provides the `UpdateStatement` type for building SQL UPDATE queries.
 
 use crate::{
-	expr::{ConditionHolder, IntoCondition},
+	expr::{Condition, ConditionHolder, IntoCondition, SimpleExpr},
 	types::{DynIden, IntoIden, IntoTableRef, TableRef},
-	value::{IntoValue, Value, Values},
+	value::{IntoValue, Values},
 };
 
 use super::{
@@ -30,7 +30,7 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct UpdateStatement {
 	pub(crate) table: Option<TableRef>,
-	pub(crate) values: Vec<(DynIden, Value)>,
+	pub(crate) values: Vec<(DynIden, SimpleExpr)>,
 	pub(crate) r#where: ConditionHolder,
 	pub(crate) returning: Option<ReturningClause>,
 }
@@ -84,14 +84,39 @@ impl UpdateStatement {
 	/// let query = Query::update()
 	///     .table("users")
 	///     .value("active", false)
-	///     .value("updated_at", Expr::current_timestamp());
+	///     .value("name", "Alice");
 	/// ```
 	pub fn value<C, V>(&mut self, col: C, val: V) -> &mut Self
 	where
 		C: IntoIden,
 		V: IntoValue,
 	{
-		self.values.push((col.into_iden(), val.into_value()));
+		self.values
+			.push((col.into_iden(), SimpleExpr::Value(val.into_value())));
+		self
+	}
+
+	/// Set a column to an expression value
+	///
+	/// Use this method when the value is an expression (e.g., `Expr::current_timestamp()`,
+	/// `Expr::col("other_column")`, `Expr::cust("NULL")`) rather than a plain value.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::update()
+	///     .table("users")
+	///     .value_expr("updated_at", Expr::current_timestamp())
+	///     .value_expr("status", Expr::cust("NULL"));
+	/// ```
+	pub fn value_expr<C, E>(&mut self, col: C, expr: E) -> &mut Self
+	where
+		C: IntoIden,
+		E: Into<SimpleExpr>,
+	{
+		self.values.push((col.into_iden(), expr.into()));
 		self
 	}
 
@@ -137,6 +162,14 @@ impl UpdateStatement {
 	where
 		C: IntoCondition,
 	{
+		self.r#where.add_and(condition);
+		self
+	}
+
+	/// Add a conditional WHERE clause.
+	///
+	/// This is an alias for [`and_where`](Self::and_where) that accepts a [`Condition`].
+	pub fn cond_where(&mut self, condition: Condition) -> &mut Self {
 		self.r#where.add_and(condition);
 		self
 	}
@@ -212,11 +245,6 @@ impl QueryStatementBuilder for UpdateStatement {
 		panic!(
 			"Unsupported query builder type. Use PostgresQueryBuilder, MySqlQueryBuilder, or SqliteQueryBuilder."
 		);
-	}
-
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _values) = self.build(query_builder);
-		sql
 	}
 }
 

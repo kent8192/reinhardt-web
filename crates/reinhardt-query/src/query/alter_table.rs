@@ -391,7 +391,7 @@ impl AlterTableStatement {
 			crate::types::TableConstraint::ForeignKey {
 				name: None,
 				columns: columns.into_iter().map(|c| c.into_iden()).collect(),
-				ref_table: ref_table.into_table_ref(),
+				ref_table: Box::new(ref_table.into_table_ref()),
 				ref_columns: ref_columns.into_iter().map(|c| c.into_iden()).collect(),
 				on_delete,
 				on_update,
@@ -427,11 +427,6 @@ impl QueryStatementBuilder for AlterTableStatement {
 			return builder.build_alter_table(self);
 		}
 		panic!("Unsupported query builder type");
-	}
-
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _) = self.build_any(&query_builder);
-		sql
 	}
 }
 

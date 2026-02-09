@@ -150,10 +150,6 @@ impl QueryStatementBuilder for RefreshMaterializedViewStatement {
 		panic!("Unsupported query builder type");
 	}
 
-	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, _) = self.build_any(&query_builder);
-		sql
-	}
 }
 
 impl QueryStatementWriter for RefreshMaterializedViewStatement {}

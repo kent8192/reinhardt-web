@@ -109,6 +109,15 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			TableRef::SubQuery(query, alias) => {
+				let (sql, _) = self.build_select(query);
+				writer.push("(");
+				writer.push(&sql);
+				writer.push(")");
+				writer.push_keyword("AS");
+				writer.push_space();
+				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+			}
 		}
 	}
 
@@ -297,8 +306,42 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_keyword("END");
 			}
-			_ => {
-				writer.push("(EXPR)");
+			SimpleExpr::Custom(sql) => {
+				writer.push(sql);
+			}
+			SimpleExpr::CustomWithExpr(template, exprs) => {
+				// Replace `?` placeholders with the rendered expressions
+				let mut parts = template.split('?');
+				if let Some(first) = parts.next() {
+					writer.push(first);
+				}
+				let mut expr_iter = exprs.iter();
+				for part in parts {
+					if let Some(expr) = expr_iter.next() {
+						self.write_simple_expr(writer, expr);
+					}
+					writer.push(part);
+				}
+			}
+			SimpleExpr::Asterisk => {
+				writer.push("*");
+			}
+			SimpleExpr::TableColumn(table, col) => {
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			}
+			SimpleExpr::AsEnum(name, expr) => {
+				self.write_simple_expr(writer, expr);
+				writer.push("::");
+				writer.push(&name.to_string());
+			}
+			SimpleExpr::Cast(expr, type_name) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&type_name.to_string());
+				writer.push(")");
 			}
 		}
 	}
@@ -443,8 +486,41 @@ impl PostgresQueryBuilder {
 			SimpleExpr::Window { .. } | SimpleExpr::WindowNamed { .. } => {
 				writer.push("(TRUE)");
 			}
-			_ => {
-				writer.push("(TRUE)");
+			SimpleExpr::Custom(sql) => {
+				writer.push(sql);
+			}
+			SimpleExpr::CustomWithExpr(template, exprs) => {
+				let mut parts = template.split('?');
+				if let Some(first) = parts.next() {
+					writer.push(first);
+				}
+				let mut expr_iter = exprs.iter();
+				for part in parts {
+					if let Some(expr) = expr_iter.next() {
+						self.write_simple_expr_unquoted(writer, expr);
+					}
+					writer.push(part);
+				}
+			}
+			SimpleExpr::Asterisk => {
+				writer.push("*");
+			}
+			SimpleExpr::TableColumn(table, col) => {
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			}
+			SimpleExpr::AsEnum(name, expr) => {
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push("::");
+				writer.push(&name.to_string());
+			}
+			SimpleExpr::Cast(expr, type_name) => {
+				writer.push("CAST(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" AS ");
+				writer.push(&type_name.to_string());
+				writer.push(")");
 			}
 		}
 	}
@@ -1016,7 +1092,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_list(&stmt.values, ", ", |w, (col, value)| {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 				w.push(" = ");
-				w.push_value(value.clone(), |i| self.placeholder(i));
+				self.write_simple_expr(w, value);
 			});
 		}
 
@@ -5083,7 +5159,9 @@ mod tests {
 		assert!(sql.contains("\"name\""));
 		assert!(sql.contains("\"email\""));
 		assert!(sql.contains("\"phone\""));
-		assert_eq!(values.len(), 3);
+		// NULL values are inlined directly, not parameterized
+		assert!(sql.contains("NULL"));
+		assert_eq!(values.len(), 2);
 	}
 
 	#[test]
@@ -6804,7 +6882,7 @@ mod tests {
 		stmt.constraints.push(TableConstraint::ForeignKey {
 			name: Some("fk_user".into_iden()),
 			columns: vec!["user_id".into_iden()],
-			ref_table: "users".into_table_ref(),
+			ref_table: Box::new("users".into_table_ref()),
 			ref_columns: vec!["id".into_iden()],
 			on_delete: Some(ForeignKeyAction::Cascade),
 			on_update: Some(ForeignKeyAction::Restrict),
@@ -8922,5 +9000,15 @@ mod tests {
 			.user("app_user");
 
 		builder.build_set_default_role(&stmt);
+	}
+}
+
+impl crate::query::QueryBuilderTrait for PostgresQueryBuilder {
+	fn placeholder(&self) -> (&str, bool) {
+		("$", true)
+	}
+
+	fn quote_char(&self) -> char {
+		'"'
 	}
 }

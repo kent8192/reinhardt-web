@@ -402,6 +402,7 @@ reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.2" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.6" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.5" }
+reinhardt-query = { path = "crates/reinhardt-query" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.4" }
@@ -536,17 +537,6 @@ redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
 
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
-sea-query = { version = "1.0.0-rc.29", features = [
-  "with-json",
-  "with-chrono",
-  "with-rust_decimal",
-  "with-uuid",
-  "postgres-array",
-  "sqlx-utils",
-  "backend-postgres",
-  "backend-mysql",
-  "backend-sqlite",
-] }
 rust_decimal = "1.37"
 sea-orm = { version = "1.1.3", features = [
   "sqlx-postgres",

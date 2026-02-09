@@ -211,6 +211,13 @@ impl CaseStatement {
 	}
 }
 
+impl SimpleExpr {
+	/// Create a binary operation expression.
+	pub fn binary(self, op: crate::types::BinOper, right: SimpleExpr) -> Self {
+		Self::Binary(Box::new(self), op, Box::new(right))
+	}
+}
+
 // Conversion implementations
 
 impl From<Value> for SimpleExpr {

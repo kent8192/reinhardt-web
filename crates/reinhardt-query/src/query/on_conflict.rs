@@ -82,7 +82,7 @@ impl OnConflict {
 		self
 	}
 
-	/// Consume and return self (for compatibility with sea-query API pattern).
+	/// Consume and return self (for compatibility with reinhardt-query API pattern).
 	#[must_use]
 	pub fn to_owned(self) -> Self {
 		self

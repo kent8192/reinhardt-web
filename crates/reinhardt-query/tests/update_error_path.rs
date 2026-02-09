@@ -92,8 +92,9 @@ async fn test_update_null_not_null_violation(#[future] users_with_data: (TestPoo
 	let builder = PostgresQueryBuilder;
 	let (sql, _values) = builder.build_update(&stmt);
 
+	// NULL values are inlined directly in SQL (not parameterized),
+	// so only the WHERE clause value needs to be bound.
 	let result = sqlx::query(&sql)
-		.bind::<Option<String>>(None)
 		.bind("alice@example.com")
 		.execute(pool.as_ref())
 		.await;

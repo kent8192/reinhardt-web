@@ -626,6 +626,44 @@ impl Expr {
 		&self.0
 	}
 
+	/// Create a binary operation expression.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let expr = Expr::col("age").binary(BinOper::GreaterThan, Expr::val(18).into_simple_expr());
+	/// ```
+	pub fn binary<R>(self, op: crate::types::BinOper, right: R) -> SimpleExpr
+	where
+		R: Into<SimpleExpr>,
+	{
+		SimpleExpr::Binary(Box::new(self.0), op, Box::new(right.into()))
+	}
+
+	/// Create an equality expression between two columns.
+	///
+	/// This is equivalent to `self.eq(Expr::col(col))`.
+	///
+	/// # Example
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let expr = Expr::col(("orders", "user_id")).equals(("users", "id"));
+	/// ```
+	pub fn equals<C>(self, col: C) -> SimpleExpr
+	where
+		C: IntoColumnRef,
+	{
+		SimpleExpr::Binary(
+			Box::new(self.0),
+			crate::types::BinOper::Equal,
+			Box::new(SimpleExpr::Column(col.into_column_ref())),
+		)
+	}
+
 	/// Create an aliased expression (AS).
 	///
 	/// # Example
@@ -652,6 +690,21 @@ impl From<Expr> for SimpleExpr {
 impl From<SimpleExpr> for Expr {
 	fn from(e: SimpleExpr) -> Self {
 		Self(e)
+	}
+}
+
+impl From<&str> for Expr {
+	fn from(s: &str) -> Self {
+		Expr::val(s)
+	}
+}
+
+impl crate::value::IntoValue for Expr {
+	fn into_value(self) -> crate::value::Value {
+		match self.0 {
+			SimpleExpr::Value(v) => v,
+			_ => panic!("Cannot convert non-value Expr to Value"),
+		}
 	}
 }
 
