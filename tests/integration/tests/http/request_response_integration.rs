@@ -9,7 +9,7 @@
 use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Request, Response};
-use reinhardt_test::{ServerRouter as Router, api_client_from_url, test_server_guard};
+use reinhardt_test::{api_client_from_url, test_server_guard, ServerRouter as Router};
 
 /// Test content negotiation: Accept header processing
 #[tokio::test]

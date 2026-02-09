@@ -7,9 +7,12 @@
 //! - Schema validation constraints (min/max, length, pattern)
 //! - Schema references and $ref resolution
 //! - Documentation extraction and schema metadata
+//!
+//! Moved from `reinhardt-openapi-macros/tests/` to avoid circular dev-dependencies.
 
 use reinhardt_openapi_macros::Schema as DeriveSchema;
 use reinhardt_rest::openapi::{RefOr, Schema, ToSchema};
+use rstest::rstest;
 use utoipa::openapi::schema::{SchemaType, Type};
 
 // Helper functions for assertions
@@ -188,11 +191,12 @@ struct ComplexValidation {
 // Test Cases
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_basic_struct_schema_generation() {
+	// Arrange & Act
 	let schema = BasicStruct::schema();
 
-	// Verify schema is an object
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check schema type (schema_type is SchemaType, not Option<SchemaType>)
 		assert!(matches!(obj.schema_type, SchemaType::Type(Type::Object)));
@@ -215,17 +219,21 @@ fn test_basic_struct_schema_generation() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_schema_name_generation() {
+	// Act
 	let schema_name = BasicStruct::schema_name();
 
+	// Assert
 	assert_eq!(schema_name, Some("BasicStruct".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_constrained_struct_min_max_length() {
+	// Act
 	let schema = ConstrainedStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check username constraints
 		if let Some(username_schema) = get_object_property(&obj, "username") {
@@ -239,10 +247,12 @@ fn test_constrained_struct_min_max_length() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_constrained_struct_format() {
+	// Act
 	let schema = ConstrainedStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check email format
 		if let Some(email_schema) = get_object_property(&obj, "email") {
@@ -256,10 +266,12 @@ fn test_constrained_struct_format() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_constrained_struct_numeric_constraints() {
+	// Act
 	let schema = ConstrainedStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check age minimum and maximum
 		if let Some(age_schema) = get_object_property(&obj, "age") {
@@ -279,10 +291,12 @@ fn test_constrained_struct_numeric_constraints() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_constrained_struct_pattern() {
+	// Act
 	let schema = ConstrainedStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check password pattern
 		if let Some(password_schema) = get_object_property(&obj, "password") {
@@ -298,10 +312,12 @@ fn test_constrained_struct_pattern() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_metadata_struct_read_only() {
+	// Act
 	let schema = MetadataStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check read_only field
 		if let Some(id_schema) = get_object_property(&obj, "id") {
@@ -314,10 +330,12 @@ fn test_metadata_struct_read_only() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_metadata_struct_write_only() {
+	// Act
 	let schema = MetadataStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check write_only field
 		if let Some(password_schema) = get_object_property(&obj, "password") {
@@ -330,10 +348,12 @@ fn test_metadata_struct_write_only() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_metadata_struct_deprecated() {
+	// Act
 	let schema = MetadataStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check deprecated field
 		if let Some(legacy_schema) = get_object_property(&obj, "legacy_field") {
@@ -350,10 +370,12 @@ fn test_metadata_struct_deprecated() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_metadata_struct_example() {
+	// Act
 	let schema = MetadataStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check example field
 		if let Some(email_schema) = get_object_property(&obj, "email") {
@@ -371,10 +393,12 @@ fn test_metadata_struct_example() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_metadata_struct_explicit_description() {
+	// Act
 	let schema = MetadataStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check explicit description (should override doc comment)
 		if let Some(display_name_schema) = get_object_property(&obj, "display_name") {
@@ -390,10 +414,12 @@ fn test_metadata_struct_explicit_description() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_nested_struct_composition() {
+	// Act
 	let schema = UserWithAddress::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify nested Address field exists
 		assert!(obj.properties.contains_key("address"));
@@ -411,10 +437,12 @@ fn test_nested_struct_composition() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_address_schema_standalone() {
+	// Act
 	let schema = Address::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify Address has its own properties
 		assert!(obj.properties.contains_key("street"));
@@ -430,10 +458,12 @@ fn test_address_schema_standalone() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_collection_struct_vec_field() {
+	// Act
 	let schema = CollectionStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify tags field exists
 		assert!(obj.properties.contains_key("tags"));
@@ -445,10 +475,12 @@ fn test_collection_struct_vec_field() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_collection_struct_hashmap_field() {
+	// Act
 	let schema = CollectionStruct::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify metadata field exists
 		assert!(obj.properties.contains_key("metadata"));
@@ -458,10 +490,12 @@ fn test_collection_struct_hashmap_field() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_optional_fields_required_detection() {
+	// Act
 	let schema = OptionalFields::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Only id should be required
 		assert_eq!(obj.required.len(), 1);
@@ -476,10 +510,12 @@ fn test_optional_fields_required_detection() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_optional_fields_all_present() {
+	// Act
 	let schema = OptionalFields::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify all fields exist in properties (even if optional)
 		assert_eq!(obj.properties.len(), 4);
@@ -492,10 +528,12 @@ fn test_optional_fields_all_present() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_all_primitives_field_count() {
+	// Act
 	let schema = AllPrimitives::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Verify all primitive fields are present
 		assert_eq!(obj.properties.len(), 12);
@@ -507,10 +545,12 @@ fn test_all_primitives_field_count() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_all_primitives_integer_fields() {
+	// Act
 	let schema = AllPrimitives::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check integer fields exist
 		assert!(obj.properties.contains_key("i8_field"));
@@ -526,10 +566,12 @@ fn test_all_primitives_integer_fields() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_all_primitives_float_fields() {
+	// Act
 	let schema = AllPrimitives::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check float fields exist
 		assert!(obj.properties.contains_key("f32_field"));
@@ -539,10 +581,12 @@ fn test_all_primitives_float_fields() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_all_primitives_bool_and_string_fields() {
+	// Act
 	let schema = AllPrimitives::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check bool and string fields exist
 		assert!(obj.properties.contains_key("bool_field"));
@@ -552,10 +596,12 @@ fn test_all_primitives_bool_and_string_fields() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_complex_validation_combined_attributes() {
+	// Act
 	let schema = ComplexValidation::schema();
 
+	// Assert
 	if let Schema::Object(obj) = schema {
 		// Check email with both format and example
 		if let Some(email_schema) = get_object_property(&obj, "email") {
@@ -597,14 +643,15 @@ fn test_complex_validation_combined_attributes() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_schema_serialization_to_json() {
+	// Arrange
 	let schema = BasicStruct::schema();
 
-	// Serialize schema to JSON
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
-	// Verify JSON structure
+	// Assert
 	assert!(json.is_object());
 
 	let obj = json.as_object().expect("Expected JSON object");
@@ -613,11 +660,15 @@ fn test_schema_serialization_to_json() {
 	assert!(obj.contains_key("required"));
 }
 
-#[test]
+#[rstest]
 fn test_schema_json_properties_structure() {
+	// Arrange
 	let schema = BasicStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")
@@ -631,11 +682,15 @@ fn test_schema_json_properties_structure() {
 	assert!(properties.contains_key("is_active"));
 }
 
-#[test]
+#[rstest]
 fn test_schema_json_required_array() {
+	// Arrange
 	let schema = BasicStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let required = obj
 		.get("required")
@@ -651,11 +706,15 @@ fn test_schema_json_required_array() {
 	assert!(!required_strs.contains(&"age")); // age is optional
 }
 
-#[test]
+#[rstest]
 fn test_nested_schema_json_structure() {
+	// Arrange
 	let schema = UserWithAddress::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")
@@ -672,11 +731,15 @@ fn test_nested_schema_json_structure() {
 	assert!(address_prop.is_object());
 }
 
-#[test]
+#[rstest]
 fn test_validation_constraints_in_json() {
+	// Arrange
 	let schema = ConstrainedStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")
@@ -702,11 +765,15 @@ fn test_validation_constraints_in_json() {
 	assert_eq!(age.get("maximum").and_then(|v| v.as_f64()), Some(150.0));
 }
 
-#[test]
+#[rstest]
 fn test_metadata_attributes_in_json() {
+	// Arrange
 	let schema = MetadataStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")
@@ -741,11 +808,15 @@ fn test_metadata_attributes_in_json() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_format_attribute_in_json() {
+	// Arrange
 	let schema = ConstrainedStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")
@@ -760,11 +831,15 @@ fn test_format_attribute_in_json() {
 	assert_eq!(email.get("format").and_then(|v| v.as_str()), Some("email"));
 }
 
-#[test]
+#[rstest]
 fn test_pattern_attribute_in_json() {
+	// Arrange
 	let schema = ConstrainedStruct::schema();
+
+	// Act
 	let json = serde_json::to_value(schema).expect("Failed to serialize schema to JSON");
 
+	// Assert
 	let obj = json.as_object().expect("Expected JSON object");
 	let properties = obj
 		.get("properties")

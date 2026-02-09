@@ -624,6 +624,26 @@ impl Cache for InMemoryCache {
 mod tests {
 	use super::*;
 
+	/// Polls a condition until it returns true or timeout is reached.
+	async fn poll_until<F, Fut>(
+		timeout: std::time::Duration,
+		interval: std::time::Duration,
+		mut condition: F,
+	) -> std::result::Result<(), String>
+	where
+		F: FnMut() -> Fut,
+		Fut: std::future::Future<Output = bool>,
+	{
+		let start = std::time::Instant::now();
+		while start.elapsed() < timeout {
+			if condition().await {
+				return Ok(());
+			}
+			tokio::time::sleep(interval).await;
+		}
+		Err(format!("Timeout after {:?} waiting for condition", timeout))
+	}
+
 	#[tokio::test]
 	async fn test_in_memory_cache_basic() {
 		let cache = InMemoryCache::new();
@@ -658,7 +678,7 @@ mod tests {
 		assert_eq!(value, Some("value1".to_string()));
 
 		// Poll until key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -735,7 +755,7 @@ mod tests {
 		cache.set("key2", &"value2", None).await.unwrap();
 
 		// Poll until first key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -901,7 +921,7 @@ mod tests {
 		cache.set("valid_key", &"value", None).await.unwrap();
 
 		// Poll until first key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(50),
 			Duration::from_millis(5),
 			|| async {
@@ -996,7 +1016,7 @@ mod tests {
 		assert!(info.is_some());
 
 		// Poll until key expires
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(50),
 			Duration::from_millis(5),
 			|| async {
@@ -1042,7 +1062,7 @@ mod tests {
 		assert!(cache.has_key("key2").await.unwrap());
 
 		// Poll until auto-cleanup removes expired keys
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -1076,7 +1096,7 @@ mod tests {
 		assert!(cache.has_key("key2").await.unwrap());
 
 		// Poll until auto-cleanup removes expired keys
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -1106,7 +1126,7 @@ mod tests {
 		assert!(cache.has_key("long_lived").await.unwrap());
 
 		// Poll until auto-cleanup removes short_lived key
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
@@ -1154,7 +1174,7 @@ mod tests {
 		assert_eq!(value, Some("value1".to_string()));
 
 		// Poll until key expires (passive expiration on get)
-		reinhardt_test::poll_until(
+		poll_until(
 			Duration::from_millis(200),
 			Duration::from_millis(10),
 			|| async {
