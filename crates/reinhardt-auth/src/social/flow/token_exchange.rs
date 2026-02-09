@@ -52,6 +52,7 @@ impl TokenExchangeFlow {
 			.client
 			.client()
 			.post(token_endpoint)
+			.header("Accept", "application/json")
 			.form(&params)
 			.send()
 			.await

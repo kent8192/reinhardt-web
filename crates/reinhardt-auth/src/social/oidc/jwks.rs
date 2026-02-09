@@ -2,6 +2,8 @@
 //!
 //! Fetches and caches public keys for JWT verification.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::DecodingKey;
 use serde::{Deserialize, Serialize};
@@ -111,10 +113,10 @@ impl CachedJwks {
 	}
 }
 
-/// JWKS cache with automatic fetching and caching
+/// JWKS cache with automatic fetching and caching, keyed by jwks_uri
 pub struct JwksCache {
 	client: OAuth2Client,
-	cache: RwLock<Option<CachedJwks>>,
+	cache: RwLock<HashMap<String, CachedJwks>>,
 	cache_ttl: Duration,
 }
 
@@ -123,7 +125,7 @@ impl JwksCache {
 	pub fn new(client: OAuth2Client) -> Self {
 		Self {
 			client,
-			cache: RwLock::new(None),
+			cache: RwLock::new(HashMap::new()),
 			cache_ttl: Duration::hours(1),
 		}
 	}
@@ -132,7 +134,7 @@ impl JwksCache {
 	pub fn with_ttl(client: OAuth2Client, cache_ttl: Duration) -> Self {
 		Self {
 			client,
-			cache: RwLock::new(None),
+			cache: RwLock::new(HashMap::new()),
 			cache_ttl,
 		}
 	}
@@ -148,7 +150,7 @@ impl JwksCache {
 			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
 
 		if !response.status().is_success() {
-			return Err(SocialAuthError::Network(format!(
+			return Err(SocialAuthError::Jwks(format!(
 				"JWKS fetch failed: {}",
 				response.status()
 			)));
@@ -157,7 +159,7 @@ impl JwksCache {
 		let jwks: JwkSet = response
 			.json()
 			.await
-			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
+			.map_err(|e| SocialAuthError::InvalidJwk(e.to_string()))?;
 
 		Ok(jwks)
 	}
@@ -176,7 +178,7 @@ impl JwksCache {
 		// Check cache first
 		{
 			let cache = self.cache.read().await;
-			if let Some(cached) = cache.as_ref()
+			if let Some(cached) = cache.get(jwks_uri)
 				&& !cached.is_expired()
 				&& let Some(jwk) = cached.jwks.find_key(kid)
 			{
@@ -187,10 +189,13 @@ impl JwksCache {
 		// Fetch from network
 		let jwks = self.fetch_jwks(jwks_uri).await?;
 
-		// Update cache
+		// Update cache keyed by jwks_uri
 		{
 			let mut cache = self.cache.write().await;
-			*cache = Some(CachedJwks::new(jwks.clone(), self.cache_ttl));
+			cache.insert(
+				jwks_uri.to_string(),
+				CachedJwks::new(jwks.clone(), self.cache_ttl),
+			);
 		}
 
 		// Find the key
@@ -204,7 +209,7 @@ impl JwksCache {
 	/// Clears the cache
 	pub async fn clear_cache(&self) {
 		let mut cache = self.cache.write().await;
-		*cache = None;
+		cache.clear();
 	}
 }
 
@@ -261,7 +266,7 @@ mod tests {
 	async fn test_cache_creation() {
 		let client = OAuth2Client::new();
 		let cache = JwksCache::new(client);
-		assert!(cache.cache.read().await.is_none());
+		assert!(cache.cache.read().await.is_empty());
 	}
 
 	#[tokio::test]
@@ -276,16 +281,19 @@ mod tests {
 		let client = OAuth2Client::new();
 		let cache = JwksCache::new(client);
 
-		// Manually set cache
+		// Manually set cache with a key
 		{
 			let jwks = JwkSet { keys: vec![] };
 			let mut cache_lock = cache.cache.write().await;
-			*cache_lock = Some(CachedJwks::new(jwks, Duration::hours(1)));
+			cache_lock.insert(
+				"https://example.com/jwks".to_string(),
+				CachedJwks::new(jwks, Duration::hours(1)),
+			);
 		}
 
-		assert!(cache.cache.read().await.is_some());
+		assert!(!cache.cache.read().await.is_empty());
 
 		cache.clear_cache().await;
-		assert!(cache.cache.read().await.is_none());
+		assert!(cache.cache.read().await.is_empty());
 	}
 }

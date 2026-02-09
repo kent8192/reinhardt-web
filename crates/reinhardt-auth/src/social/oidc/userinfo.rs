@@ -34,6 +34,7 @@ impl UserInfoClient {
 			.client
 			.client()
 			.get(userinfo_endpoint)
+			.header("User-Agent", "reinhardt-auth")
 			.bearer_auth(access_token)
 			.send()
 			.await

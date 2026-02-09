@@ -2,6 +2,8 @@
 //!
 //! Implements fetching and caching of .well-known/openid-configuration
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -64,10 +66,10 @@ impl CachedDiscovery {
 	}
 }
 
-/// Discovery document client with caching
+/// Discovery document client with caching, keyed by issuer URL
 pub struct DiscoveryClient {
 	client: OAuth2Client,
-	cache: RwLock<Option<CachedDiscovery>>,
+	cache: RwLock<HashMap<String, CachedDiscovery>>,
 	cache_ttl: Duration,
 }
 
@@ -76,7 +78,7 @@ impl DiscoveryClient {
 	pub fn new(client: OAuth2Client) -> Self {
 		Self {
 			client,
-			cache: RwLock::new(None),
+			cache: RwLock::new(HashMap::new()),
 			cache_ttl: Duration::hours(24),
 		}
 	}
@@ -85,7 +87,7 @@ impl DiscoveryClient {
 	pub fn with_ttl(client: OAuth2Client, cache_ttl: Duration) -> Self {
 		Self {
 			client,
-			cache: RwLock::new(None),
+			cache: RwLock::new(HashMap::new()),
 			cache_ttl,
 		}
 	}
@@ -103,7 +105,7 @@ impl DiscoveryClient {
 		// Check cache first
 		{
 			let cache = self.cache.read().await;
-			if let Some(cached) = cache.as_ref()
+			if let Some(cached) = cache.get(issuer_url)
 				&& !cached.is_expired()
 			{
 				return Ok(cached.document.clone());
@@ -121,7 +123,7 @@ impl DiscoveryClient {
 			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
 
 		if !response.status().is_success() {
-			return Err(SocialAuthError::Network(format!(
+			return Err(SocialAuthError::Discovery(format!(
 				"Discovery request failed: {}",
 				response.status()
 			)));
@@ -130,12 +132,15 @@ impl DiscoveryClient {
 		let document: OIDCDiscovery = response
 			.json()
 			.await
-			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
+			.map_err(|e| SocialAuthError::Discovery(e.to_string()))?;
 
-		// Update cache
+		// Update cache keyed by issuer_url
 		{
 			let mut cache = self.cache.write().await;
-			*cache = Some(CachedDiscovery::new(document.clone(), self.cache_ttl));
+			cache.insert(
+				issuer_url.to_string(),
+				CachedDiscovery::new(document.clone(), self.cache_ttl),
+			);
 		}
 
 		Ok(document)
@@ -144,7 +149,7 @@ impl DiscoveryClient {
 	/// Clears the cache
 	pub async fn clear_cache(&self) {
 		let mut cache = self.cache.write().await;
-		*cache = None;
+		cache.clear();
 	}
 }
 
@@ -179,7 +184,7 @@ mod tests {
 	async fn test_client_creation() {
 		let client = OAuth2Client::new();
 		let discovery_client = DiscoveryClient::new(client);
-		assert!(discovery_client.cache.read().await.is_none());
+		assert!(discovery_client.cache.read().await.is_empty());
 	}
 
 	#[tokio::test]
@@ -194,7 +199,7 @@ mod tests {
 		let client = OAuth2Client::new();
 		let discovery_client = DiscoveryClient::new(client);
 
-		// Manually set cache
+		// Manually set cache with a key
 		{
 			let document = OIDCDiscovery {
 				issuer: "https://example.com".to_string(),
@@ -210,12 +215,15 @@ mod tests {
 				claims_supported: None,
 			};
 			let mut cache = discovery_client.cache.write().await;
-			*cache = Some(CachedDiscovery::new(document, Duration::hours(1)));
+			cache.insert(
+				"https://example.com".to_string(),
+				CachedDiscovery::new(document, Duration::hours(1)),
+			);
 		}
 
-		assert!(discovery_client.cache.read().await.is_some());
+		assert!(!discovery_client.cache.read().await.is_empty());
 
 		discovery_client.clear_cache().await;
-		assert!(discovery_client.cache.read().await.is_none());
+		assert!(discovery_client.cache.read().await.is_empty());
 	}
 }
