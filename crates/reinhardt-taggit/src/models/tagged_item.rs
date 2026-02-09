@@ -6,6 +6,10 @@ use chrono::{DateTime, Utc};
 use reinhardt_core::macros::model;
 use serde::{Deserialize, Serialize};
 
+// Allows unused: Tag import is referenced by #[field(foreign_key = Tag)] attribute
+#[allow(unused_imports)]
+use crate::models::tag::Tag;
+
 /// Junction table for many-to-many relationship between tags and arbitrary models
 ///
 /// Implements a polymorphic relationship pattern using content_type and object_id fields.
@@ -46,6 +50,9 @@ pub struct TaggedItem {
 	pub id: Option<i64>,
 
 	/// Foreign key to tags table
+	// TODO: #[field(foreign_key = Tag)] resolves table name as "tag" (snake_case of type name)
+	// but actual table is "tags". Migration generation may produce incorrect FK references.
+	// Fix when macro supports custom table name resolution for FK attributes.
 	#[field(foreign_key = Tag)]
 	pub tag_id: i64,
 
