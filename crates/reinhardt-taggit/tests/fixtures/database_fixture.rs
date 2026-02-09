@@ -2,38 +2,62 @@
 //!
 //! Provides a clean database with taggit schema for each test.
 
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::backends::DatabaseConnection;
+use reinhardt_taggit::{Tag, TaggedItem};
+use reinhardt_test::fixtures::{
+	ModelSchemaInfo, create_tables_for_models,
+	testcontainers::{ContainerAsync, GenericImage, postgres_container},
+};
+use rstest::fixture;
+use std::sync::Arc;
 
-/// Clean database fixture with taggit schema
+/// PostgreSQL container with taggit schema (tags + tagged_items tables)
 ///
-/// This fixture provides a fresh database connection with the taggit
-/// tables (tags and tagged_items) created. Each test gets an isolated
-/// database connection.
+/// This fixture provides a fresh PostgreSQL database with the taggit
+/// schema created. Each test gets an isolated database instance.
+///
+/// # Returns
+///
+/// Tuple of (container, pool, database_connection)
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use reinhardt_taggit_tests::taggit_db;
+/// use reinhardt_taggit_tests::fixtures::taggit_db;
 ///
 /// #[rstest]
-/// async fn test_tag_creation(#[future] taggit_db: DatabaseConnection) {
-///     let db = taggit_db;
-///     // Use database for testing
+/// #[tokio::test]
+/// async fn test_tag_creation(
+///     #[future] taggit_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, DatabaseConnection),
+/// ) {
+///     let (_container, pool, db) = taggit_db.await;
+///     // Use pool for raw SQL or db for ORM operations
 /// }
 /// ```
-pub async fn taggit_db() -> DatabaseConnection {
-	// TODO: Implement database fixture with TestContainers
-	// This will be implemented in Phase 1.2 (migrations)
-	todo!("Implement database fixture")
-}
+#[fixture]
+pub async fn taggit_db(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+) -> (
+	ContainerAsync<GenericImage>,
+	Arc<sqlx::PgPool>,
+	DatabaseConnection,
+) {
+	let (container, pool, _port, url) = postgres_container.await;
 
-/// Setup taggit schema (tags and tagged_items tables)
-///
-/// This function creates the necessary tables for taggit tests.
-// Allows dead_code: Will be called by `taggit_db` when Phase 1.2 (migrations) is implemented
-#[allow(dead_code)]
-async fn setup_schema(_db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
-	// TODO: Implement schema setup
-	// This will be implemented in Phase 1.2 (migrations)
-	Ok(())
+	// Connect via reinhardt-db
+	let connection = DatabaseConnection::connect_postgres(&url)
+		.await
+		.expect("Failed to connect to PostgreSQL");
+
+	// Create taggit schema from model metadata
+	let model_infos = vec![
+		ModelSchemaInfo::from_model::<Tag>(),
+		ModelSchemaInfo::from_model::<TaggedItem>(),
+	];
+
+	create_tables_for_models(&connection, model_infos)
+		.await
+		.expect("Failed to create taggit schema");
+
+	(container, pool, connection)
 }

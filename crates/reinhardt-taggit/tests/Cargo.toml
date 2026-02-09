@@ -23,19 +23,16 @@ reinhardt-taggit = { path = "../" }
 # Reinhardt ecosystem
 reinhardt-core = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-test = { workspace = true }
+reinhardt-test = { workspace = true, features = ["testcontainers"] }
 
 # Testing
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
-tokio-test = "0.4"
 testcontainers = { workspace = true }
+
+# Database
+sea-query = { workspace = true, features = ["backend-postgres"] }
+sqlx = { workspace = true }
 
 # Utilities
 chrono = { workspace = true }
-serde = { workspace = true }
-
-[dev-dependencies]
-# Testing dependencies for [[test]] targets
-rstest = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }

@@ -1,8 +1,11 @@
 //! Tag model fixtures for reinhardt-taggit tests
 //!
-//! Provides reusable fixtures for generating Tag test data.
+//! Provides reusable fixtures for generating Tag test data,
+//! including database helper functions using SeaQuery.
 
 use reinhardt_taggit::Tag;
+use sea_query::{Alias, PostgresQueryBuilder, Query};
+use sqlx::Row;
 
 /// Default tag: name="rust", slug="rust"
 ///
@@ -60,25 +63,24 @@ pub fn tag_list() -> Vec<Tag> {
 	]
 }
 
-/// Tag persisted to database
+/// Insert a tag into the database and return its generated id
 ///
-/// This fixture creates a tag and saves it to the database,
-/// returning the persisted instance with an ID.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use reinhardt_taggit_tests::persisted_tag;
-///
-/// #[rstest]
-/// async fn test_persisted_tag(#[future] persisted_tag: Tag) {
-///     assert!(persisted_tag.id.is_some());
-/// }
-/// ```
-pub async fn persisted_tag() -> Tag {
-	// TODO: Implement persisted tag fixture
-	// This requires database setup from Phase 1.2
-	todo!("Implement persisted tag fixture")
+/// Uses SeaQuery to construct the INSERT statement.
+/// The `created_at` field is set by the database DEFAULT.
+pub async fn insert_tag_to_db(pool: &sqlx::PgPool, name: &str, slug: &str) -> i64 {
+	let sql = Query::insert()
+		.into_table(Alias::new("tags"))
+		.columns([Alias::new("name"), Alias::new("slug")])
+		.values_panic([name.into(), slug.into()])
+		.returning_col(Alias::new("id"))
+		.to_string(PostgresQueryBuilder);
+
+	let row = sqlx::query(&sql)
+		.fetch_one(pool)
+		.await
+		.expect("Failed to insert tag");
+
+	row.get("id")
 }
 
 /// Builder for creating custom Tag instances

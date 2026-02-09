@@ -1,8 +1,11 @@
 //! TaggedItem model fixtures for reinhardt-taggit tests
 //!
-//! Provides reusable fixtures for generating TaggedItem test data.
+//! Provides reusable fixtures for generating TaggedItem test data,
+//! including database helper functions using SeaQuery.
 
 use reinhardt_taggit::TaggedItem;
+use sea_query::{Alias, PostgresQueryBuilder, Query};
+use sqlx::Row;
 
 /// Default TaggedItem: tag_id=1, content_type="Food", object_id=42
 ///
@@ -94,6 +97,36 @@ pub fn tag_and_tagged_item() -> (i64, TaggedItem) {
 	let tag_id = 1;
 	let item = TaggedItem::new(tag_id, "Food", 42);
 	(tag_id, item)
+}
+
+/// Insert a tagged item into the database and return its generated id
+///
+/// Uses SeaQuery to construct the INSERT statement.
+/// The `created_at` field is set by the database DEFAULT.
+/// Requires an existing tag with the given `tag_id` (FK constraint).
+pub async fn insert_tagged_item_to_db(
+	pool: &sqlx::PgPool,
+	tag_id: i64,
+	content_type: &str,
+	object_id: i64,
+) -> i64 {
+	let sql = Query::insert()
+		.into_table(Alias::new("tagged_items"))
+		.columns([
+			Alias::new("tag_id"),
+			Alias::new("content_type"),
+			Alias::new("object_id"),
+		])
+		.values_panic([tag_id.into(), content_type.into(), object_id.into()])
+		.returning_col(Alias::new("id"))
+		.to_string(PostgresQueryBuilder);
+
+	let row = sqlx::query(&sql)
+		.fetch_one(pool)
+		.await
+		.expect("Failed to insert tagged item");
+
+	row.get("id")
 }
 
 /// Builder for creating custom TaggedItem instances
