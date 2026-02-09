@@ -98,17 +98,15 @@ impl ProviderConfig {
 	}
 
 	/// Create an Apple OIDC provider configuration
-	pub fn apple(
-		client_id: String,
-		redirect_uri: String,
-		_team_id: String,
-		_key_id: String,
-	) -> Self {
-		// TODO: Use team_id and key_id to generate client_secret JWT for Apple Sign In
+	///
+	/// The `client_secret` must be a pre-generated JWT signed with ES256.
+	/// Apple requires this JWT to be generated using your team_id, key_id,
+	/// and private key. See Apple's documentation for details.
+	pub fn apple(client_id: String, client_secret: String, redirect_uri: String) -> Self {
 		Self {
 			name: "apple".to_string(),
 			client_id,
-			client_secret: String::new(), // Will be generated dynamically using team_id and key_id
+			client_secret,
 			redirect_uri,
 			scopes: vec![
 				"openid".to_string(),
@@ -201,14 +199,14 @@ mod tests {
 	fn test_apple_config() {
 		let config = ProviderConfig::apple(
 			"client_id".to_string(),
+			"test_client_secret_jwt".to_string(),
 			"https://example.com/callback".to_string(),
-			"team_id".to_string(),
-			"key_id".to_string(),
 		);
 
 		assert_eq!(config.name, "apple");
 		assert!(config.is_oidc());
 		assert!(!config.is_oauth2_only());
+		assert_eq!(config.client_secret, "test_client_secret_jwt");
 	}
 
 	#[test]
