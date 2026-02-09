@@ -273,6 +273,13 @@ The following packages are excluded from release:
 - Review crates.io for existing version conflicts
 - **Already Published**: release-plz automatically skips already-published versions, so retry is safe
 
+**Packaging Failed (reinhardt-test dependency):**
+- **Symptom**: Error like `failed to select a version for the requirement 'reinhardt-test = "^0.1.0-alpha.X"'`
+- **Cause**: cargo 1.84+ regression when packaging crates with dev-dependencies on unpublished workspace members
+- **Solution**: The `reinhardt-test` workspace dependency in root `Cargo.toml` must NOT have a version
+- **Prevention**: If release-plz re-adds the version, manually remove it (check the warning comment)
+- **Reference**: https://github.com/rust-lang/cargo/issues/15151, PR #185
+
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
 - Verify commit messages are properly formatted
