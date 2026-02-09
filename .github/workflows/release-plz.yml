@@ -102,6 +102,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
+      # Pre-publish reinhardt-test to ensure it's available when other crates package
+      # Context: Cargo 1.84+ regression (rust-lang/cargo#15151) causes cargo publish/package
+      # to resolve ALL dependencies (including dev-dependencies) from crates.io during packaging.
+      # Since many crates have reinhardt-test as dev-dependency, we must publish it first
+      # before release-plz's main publish step runs. Otherwise, packaging fails with
+      # "failed to select a version" error when the new version isn't on crates.io yet.
+      - name: Pre-publish reinhardt-test
+        run: |
+          # Check if reinhardt-test needs publishing
+          CRATE_NAME="reinhardt-test"
+          CRATE_VERSION=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "reinhardt-test") | .version')
+          
+          echo "Current $CRATE_NAME version: $CRATE_VERSION"
+          
+          # Try to publish (will succeed if version doesn't exist, fail gracefully if it does)
+          cd crates/reinhardt-test
+          if cargo publish --no-verify 2>&1 | tee publish_output.txt; then
+            echo "$CRATE_NAME $CRATE_VERSION published successfully"
+            # Wait for crates.io to index the new version
+            echo "Waiting 30s for crates.io indexing..."
+            sleep 30
+          else
+            # Check if error is "already uploaded"
+            if grep -q "already uploaded" publish_output.txt || grep -q "already exists" publish_output.txt; then
+              echo "$CRATE_NAME $CRATE_VERSION already exists on crates.io, continuing..."
+            else
+              echo "Failed to publish $CRATE_NAME, but continuing anyway..."
+              cat publish_output.txt
+            fi
+          fi
+          rm -f publish_output.txt
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: Publish to crates.io and create releases
         uses: release-plz/action@v0.5
         with:

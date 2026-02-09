@@ -38,6 +38,14 @@ release_always = false
 # Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
 publish_no_verify = true
 
+# CRITICAL: reinhardt-test publish ordering
+# Many crates have reinhardt-test as dev-dependency. Due to Cargo 1.84+ regression
+# (rust-lang/cargo#15151), cargo publish/package resolves ALL dependencies (including
+# dev-dependencies) from crates.io during packaging, even with --no-verify.
+# release-plz's topological sort doesn't account for dev-dependency edges, so we must
+# pre-publish reinhardt-test in .github/workflows/release-plz.yml before the main
+# release step runs. See the "Pre-publish reinhardt-test" step in the workflow.
+
 # Main crate: only reinhardt-web gets GitHub Releases
 [[package]]
 name = "reinhardt-web"
