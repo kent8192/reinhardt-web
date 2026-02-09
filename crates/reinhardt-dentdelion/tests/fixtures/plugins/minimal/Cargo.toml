@@ -1,0 +1,19 @@
+[package]
+name = "minimal-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.44", default-features = false, features = ["realloc"] }
+wit-bindgen-rt = { version = "0.44", features = ["bitflags"] }
+
+[package.metadata.component]
+package = "reinhardt:dentdelion"
+
+[package.metadata.component.dependencies]
+
+# Exclude from parent workspace
+[workspace]
