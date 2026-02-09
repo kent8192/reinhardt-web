@@ -21,6 +21,10 @@ pub enum TableError {
 	#[error("Invalid page number: {0}")]
 	InvalidPageNumber(usize),
 
+	/// Invalid per-page value specified
+	#[error("Invalid per-page value: {0}")]
+	InvalidPerPage(usize),
+
 	/// Export operation failed
 	#[error("Export failed: {0}")]
 	ExportError(#[from] ExportError),

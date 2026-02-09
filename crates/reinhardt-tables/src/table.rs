@@ -183,6 +183,9 @@ impl<R> Table for SimpleTable<R> {
 		if page == 0 {
 			return Err(crate::error::TableError::InvalidPageNumber(page));
 		}
+		if per_page == 0 {
+			return Err(crate::error::TableError::InvalidPerPage(per_page));
+		}
 		self.pagination_config = Some(PaginationConfig { page, per_page });
 		Ok(())
 	}
