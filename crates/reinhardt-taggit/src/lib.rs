@@ -41,7 +41,7 @@ pub mod models;
 
 // Re-exports for convenient access
 pub use error::{Result, TaggitError};
-pub use models::{Tag, TaggedItem};
+pub use models::{Tag, Taggable, TaggedItem};
 // TODO: Uncomment when implementations are ready
 // pub use manager::TagManager;
 // pub use normalizer::{DefaultNormalizer, Normalizer};
@@ -53,7 +53,7 @@ pub use models::{Tag, TaggedItem};
 /// Prelude module for convenient imports
 pub mod prelude {
 	pub use crate::error::{Result, TaggitError};
-	pub use crate::models::{Tag, TaggedItem};
+	pub use crate::models::{Tag, Taggable, TaggedItem};
 	// TODO: Uncomment when implementations are ready
 	// pub use crate::manager::TagManager;
 	// pub use crate::config::TagConfig;

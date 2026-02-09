@@ -4,12 +4,12 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, Type, parse_macro_input};
 
 /// Attribute macro to make a model taggable
 ///
-/// This macro automatically implements the `Taggable` trait and adds a `tags()` method
-/// to the model, enabling tag management functionality.
+/// This macro automatically implements the `Taggable` trait for the annotated struct,
+/// providing `content_type_name()` and `object_id()` methods.
 ///
 /// # Usage
 ///
@@ -20,15 +20,11 @@ use syn::{Data, DeriveInput, parse_macro_input};
 /// #[taggable]
 /// pub struct Food {
 ///     #[field(primary_key = true)]
-///     pub id: i64,
+///     pub id: Option<i64>,
 ///
 ///     #[field(max_length = 255)]
 ///     pub name: String,
 /// }
-///
-/// // Generated methods:
-/// // - impl Taggable for Food
-/// // - fn Food::tags(&self) -> TagManager<Food>
 /// ```
 ///
 /// # Requirements
@@ -40,43 +36,60 @@ use syn::{Data, DeriveInput, parse_macro_input};
 ///
 /// The macro generates:
 /// 1. `Taggable` trait implementation with `content_type_name()` and `object_id()`
-/// 2. `tags()` method that returns a `TagManager<Self>`
 #[proc_macro_attribute]
 pub fn taggable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(item as DeriveInput);
-	let _name = &input.ident; // 将来の実装で使用予定
+	let name = &input.ident;
 
 	// Ensure it's a struct
-	let Data::Struct(_) = &input.data else {
+	let Data::Struct(data_struct) = &input.data else {
 		return syn::Error::new_spanned(&input, "#[taggable] can only be applied to structs")
 			.to_compile_error()
 			.into();
 	};
 
-	// Generate Taggable trait implementation
-	// NOTE: This is a placeholder implementation that will be refined later
+	// Find the `id` field and determine if it's Option<i64> or i64
+	let id_is_option = match &data_struct.fields {
+		Fields::Named(fields) => fields
+			.named
+			.iter()
+			.find(|f| f.ident.as_ref().is_some_and(|id| id == "id"))
+			.map(|f| is_option_type(&f.ty))
+			.unwrap_or(true), // Default to Option if id not found
+		_ => true,
+	};
+
+	// Generate object_id() body based on id field type
+	let object_id_body = if id_is_option {
+		quote! { self.id.unwrap_or(0) }
+	} else {
+		quote! { self.id }
+	};
+
 	let expanded = quote! {
 		#input
 
-		// Placeholder: Taggable trait implementation will be added in the next iteration
-		// #[automatically_derived]
-		// impl ::reinhardt_taggit::Taggable for #name {
-		//     fn content_type_name() -> &'static str {
-		//         stringify!(#name)
-		//     }
-		//
-		//     fn object_id(&self) -> i64 {
-		//         self.id
-		//     }
-		// }
-		//
-		// #[automatically_derived]
-		// impl #name {
-		//     pub fn tags(&self) -> ::reinhardt_taggit::TagManager<Self> {
-		//         ::reinhardt_taggit::TagManager::new(self)
-		//     }
-		// }
+		#[automatically_derived]
+		impl ::reinhardt_taggit::Taggable for #name {
+			fn content_type_name() -> &'static str {
+				stringify!(#name)
+			}
+
+			fn object_id(&self) -> i64 {
+				#object_id_body
+			}
+		}
 	};
 
 	TokenStream::from(expanded)
+}
+
+/// Check if a type is `Option<T>`
+fn is_option_type(ty: &Type) -> bool {
+	if let Type::Path(type_path) = ty {
+		if let Some(segment) = type_path.path.segments.last() {
+			return segment.ident == "Option";
+		}
+	}
+	false
 }
