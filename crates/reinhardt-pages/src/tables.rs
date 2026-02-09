@@ -1,34 +1,26 @@
 //! Table utilities for reinhardt-pages (django-tables2 equivalent)
 //!
-//! This module provides declarative table definition with various column types,
+//! This module provides table rendering with various column types,
 //! sorting, pagination, filtering, and export functionality.
 //!
 //! # Features
 //!
-//! - Declarative table definition with `#[derive(Table)]`
-//! - Multiple column types: `Column`, `LinkColumn`, `BooleanColumn`, `DateTimeColumn`, etc.
-//! - Sorting support with URL parameters (`?sort=field`, `?sort=-field`)
-//! - Pagination with configurable page size
-//! - Export to CSV, JSON, Excel, YAML
-//! - Filtering with URL parameters
-//! - Integration with `page!` macro
+//! - Multiple column types: `Column<T>`, `LinkColumn`, `BooleanColumn`,
+//!   `CheckBoxColumn`, `DateTimeColumn`, `EmailColumn`, `ChoiceColumn`,
+//!   `TemplateColumn`, `JSONColumn`, `URLColumn`
+//! - Sorting with `SortDirection` and `Sortable` trait
+//! - Pagination with `Pagination` struct
+//! - Filtering with `Filterable` trait
+//! - Export to CSV and JSON
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use reinhardt_pages::tables::*;
+//! use reinhardt_pages::tables::columns::{Column, LinkColumn, BooleanColumn};
 //!
-//! #[derive(Table)]
-//! struct UserTable {
-//!     #[column(name = "ID")]
-//!     id: Column<i32>,
-//!     #[column(name = "Name")]
-//!     name: Column<String>,
-//!     #[column(name = "Email", link = "/users/{id}")]
-//!     email: LinkColumn<String>,
-//!     #[column(name = "Active")]
-//!     is_active: BooleanColumn,
-//! }
+//! let name_col = Column::<String>::new("name", "Name");
+//! let link_col = LinkColumn::new("id", "Profile", "/users/{id}");
+//! let active_col = BooleanColumn::new("is_active", "Active");
 //! ```
 
 pub mod column;

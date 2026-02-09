@@ -1,18 +1,16 @@
 //! Data table rendering utilities for Reinhardt
 //!
 //! This crate provides Django-tables2 equivalent functionality for Reinhardt,
-//! enabling declarative table definitions with sorting, pagination, filtering,
-//! and export capabilities.
+//! enabling table definitions with sorting, pagination, and filtering.
 //!
 //! # Features
 //!
-//! - **Table Definition**: Declarative table definition using traits and builders
-//! - **Column Types**: Multiple column types (Link, Boolean, DateTime, etc.)
-//! - **Sorting**: URL parameter-based sorting (`?sort=field`)
-//! - **Pagination**: Page navigation with `?page=N`
-//! - **Filtering**: Column filtering with URL parameters
-//! - **Export**: CSV and JSON export (requires `export` feature)
-//! - **Integration**: Seamless integration with `reinhardt-pages` (requires `pages-integration` feature)
+//! - **Table Definition**: Table definition using the `Table` trait and `SimpleTable`
+//! - **Column Types**: `BaseColumn` with customizable render functions
+//! - **Sorting**: Programmatic sorting by column with ascending/descending order
+//! - **Pagination**: Configurable page size and page navigation
+//! - **Filtering**: Column-level filtering with string matching
+//! - **Integration**: Integration with `reinhardt-pages` (requires `pages-integration` feature)
 //!
 //! # Architecture
 //!
@@ -23,13 +21,7 @@
 //!     A --> D[Sort Config]
 //!     A --> E[Pagination]
 //!     A --> F[Filters]
-//!     B --> G[Column Types]
-//!     G --> H[LinkColumn]
-//!     G --> I[BooleanColumn]
-//!     G --> J[DateTimeColumn]
-//!     A --> K[Export]
-//!     K --> L[CSV]
-//!     K --> M[JSON]
+//!     B --> G[BaseColumn]
 //! ```
 //!
 //! # Example
