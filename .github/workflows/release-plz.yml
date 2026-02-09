@@ -110,6 +110,15 @@ jobs:
       # "failed to select a version" error when the new version isn't on crates.io yet.
       - name: Pre-publish reinhardt-test
         run: |
+          # Ensure we're in the repository root
+          cd "$GITHUB_WORKSPACE"
+          
+          # Verify CARGO_REGISTRY_TOKEN is available
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "Error: CARGO_REGISTRY_TOKEN is not set"
+            exit 1
+          fi
+          
           # Check if reinhardt-test needs publishing
           CRATE_NAME="reinhardt-test"
           CRATE_VERSION=$(cargo metadata --no-deps --format-version=1 | jq -r ".packages[] | select(.name == \"$CRATE_NAME\") | .version")
