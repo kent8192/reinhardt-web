@@ -14,12 +14,7 @@ reinhardt-conf = { workspace = true }
 reinhardt-dentdelion = { workspace = true, features = ["cli"], optional = true }
 reinhardt-urls = { workspace = true, features = ["routers", "database"], optional = true }
 reinhardt-db = { workspace = true, features = ["migrations", "backends-settings", "orm", "settings"], optional = true }
-# Note: Using explicit path+version because reinhardt-test's workspace entry lacks a version
-# (workaround for cargo 1.84+ regression). Regular dependencies require versions for publishing.
-# IMPORTANT: This version must be manually updated when reinhardt-test version changes.
-# Since reinhardt-test has publish=false, the testcontainers feature should only be used in
-# dev/test scenarios, never in published artifacts.
-reinhardt-test = { path = "../reinhardt-test", version = "0.1.0-alpha.8", optional = true }
+reinhardt-test = { workspace = true, optional = true }
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-http = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }

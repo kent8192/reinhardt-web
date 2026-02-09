@@ -43,6 +43,15 @@ publish_no_verify = true
 name = "reinhardt-web"
 git_release_enable = true
 
+# Test utilities crate: must be published before crates that depend on it
+# Many crates use reinhardt-test in dev-dependencies, and cargo 1.84+ tries to
+# resolve dev-dependency versions during packaging, even with --no-verify.
+# Publishing reinhardt-test first ensures the version is available on crates.io
+# when other crates are packaged.
+[[package]]
+name = "reinhardt-test"
+# No special settings needed - just document the dependency ordering requirement
+
 # Non-published packages (tests, examples, internal tools)
 [[package]]
 name = "reinhardt-test-support"
