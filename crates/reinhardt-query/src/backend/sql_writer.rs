@@ -94,6 +94,12 @@ impl SqlWriter {
 	where
 		F: FnOnce(usize) -> String,
 	{
+		// Write NULL directly to avoid type mismatch with parameterized queries
+		// (e.g., PostgreSQL rejects `$1::int4` for TEXT columns)
+		if value.is_null() {
+			self.sql.push_str("NULL");
+			return self.param_index;
+		}
 		let index = self.param_index;
 		self.sql.push_str(&format_fn(index));
 		self.values.push(value);

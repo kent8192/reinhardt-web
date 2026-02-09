@@ -858,7 +858,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push_list(&stmt.values, ", ", |w, (col, value)| {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 				w.push(" = ");
-				w.push_value(value.clone(), |_i| self.placeholder(0));
+				self.write_simple_expr(w, value);
 			});
 		}
 
@@ -1205,7 +1205,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
 		let mut writer = SqlWriter::new();
 
-		// CREATE UNIQUE INDEX IF NOT EXISTS
+		// CREATE [UNIQUE] INDEX
 		writer.push("CREATE");
 		writer.push_space();
 		if stmt.unique {
@@ -1215,11 +1215,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 		writer.push_keyword("INDEX");
 		writer.push_space();
 
-		// IF NOT EXISTS (MySQL 5.7.4+)
-		if stmt.if_not_exists {
-			writer.push_keyword("IF NOT EXISTS");
-			writer.push_space();
-		}
+		// MySQL does NOT support IF NOT EXISTS for CREATE INDEX
+		// (not supported in MySQL 8.0 or earlier).
+		// See recorder.rs ensure_schema_table_internal() for check-then-create workaround.
 
 		// Index name
 		if let Some(name) = &stmt.name {
@@ -4164,7 +4162,9 @@ mod tests {
 		assert!(sql.contains("`name`"));
 		assert!(sql.contains("`email`"));
 		assert!(sql.contains("`phone`"));
-		assert_eq!(values.len(), 3);
+		// NULL values are inlined directly, not parameterized
+		assert!(sql.contains("NULL"));
+		assert_eq!(values.len(), 2);
 	}
 
 	#[test]
@@ -5671,10 +5671,8 @@ mod tests {
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
-		assert_eq!(
-			sql,
-			"CREATE INDEX IF NOT EXISTS `idx_users_email` ON `users` (`email`)"
-		);
+		// MySQL does NOT support IF NOT EXISTS for CREATE INDEX, so it's omitted
+		assert_eq!(sql, "CREATE INDEX `idx_users_email` ON `users` (`email`)");
 		assert_eq!(values.len(), 0);
 	}
 

@@ -872,7 +872,7 @@ impl QueryBuilder for SqliteQueryBuilder {
 			writer.push_list(&stmt.values, ", ", |w, (col, value)| {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 				w.push(" = ");
-				w.push_value(value.clone(), |_i| self.placeholder(0));
+				self.write_simple_expr(w, value);
 			});
 		}
 
@@ -2800,7 +2800,9 @@ mod tests {
 		assert!(sql.contains(r#""name""#));
 		assert!(sql.contains(r#""email""#));
 		assert!(sql.contains(r#""phone""#));
-		assert_eq!(values.len(), 3);
+		// NULL values are inlined directly, not parameterized
+		assert!(sql.contains("NULL"));
+		assert_eq!(values.len(), 2);
 	}
 
 	#[test]
