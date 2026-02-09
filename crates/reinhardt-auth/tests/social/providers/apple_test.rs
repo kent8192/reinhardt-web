@@ -1,5 +1,6 @@
 //! Apple OIDC provider tests
 
+use reinhardt_auth::social::core::OAuthProvider;
 use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::AppleProvider;
 use rstest::*;
@@ -9,9 +10,8 @@ async fn test_apple_provider_config() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
 	// Assert
@@ -25,9 +25,8 @@ async fn test_apple_provider_scopes() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
 	// Assert
@@ -41,9 +40,8 @@ async fn test_apple_oidc_discovery_url() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 	let oidc = config.oidc.unwrap();
 
@@ -56,23 +54,51 @@ async fn test_apple_oidc_discovery_url() {
 }
 
 #[tokio::test]
-async fn test_apple_provider_create() {
+async fn test_apple_provider_create_succeeds() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
 	// Act
 	let result = AppleProvider::new(config).await;
 
 	// Assert
-	match result {
-		Ok(_) => assert!(true, "Apple provider created successfully"),
-		Err(_) => assert!(true, "Provider creation may fail in test environment"),
-	}
+	assert!(
+		result.is_ok(),
+		"Apple provider should be created successfully"
+	);
+	let provider = result.unwrap();
+	assert_eq!(provider.name(), "apple");
+	assert!(provider.is_oidc());
+}
+
+#[tokio::test]
+async fn test_apple_provider_rejects_empty_client_secret() {
+	// Arrange - Create config with empty client_secret
+	let config = ProviderConfig {
+		name: "apple".to_string(),
+		client_id: "test_client_id".to_string(),
+		client_secret: String::new(),
+		redirect_uri: "http://localhost:8080/callback".to_string(),
+		scopes: vec!["openid".to_string()],
+		oidc: Some(reinhardt_auth::social::core::config::OIDCConfig {
+			discovery_url: "https://appleid.apple.com/.well-known/openid-configuration".to_string(),
+			use_nonce: true,
+		}),
+		oauth2: None,
+	};
+
+	// Act
+	let result = AppleProvider::new(config).await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"Apple provider should reject empty client_secret"
+	);
 }
 
 #[tokio::test]
@@ -80,14 +106,16 @@ async fn test_apple_no_userinfo_endpoint() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
-	// Assert - Apple does not have a UserInfo endpoint
-	// All user information is returned in the ID token
-	assert!(config.oidc.is_some());
+	// Act
+	let provider = AppleProvider::new(config).await.unwrap();
+	let result = provider.get_user_info("test_token").await;
+
+	// Assert - Apple does not support UserInfo endpoint
+	assert!(result.is_err());
 }
 
 #[tokio::test]
@@ -95,9 +123,8 @@ async fn test_apple_is_oidc() {
 	// Arrange
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
 	// Assert

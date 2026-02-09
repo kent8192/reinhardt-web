@@ -180,9 +180,8 @@ impl TestFixtures {
 	pub fn apple_config() -> ProviderConfig {
 		ProviderConfig::apple(
 			"test_apple_client_id".into(),
+			"test_apple_client_secret_jwt".into(),
 			"http://localhost:8080/callback".into(),
-			"test_team_id".into(),
-			"test_key_id".into(),
 		)
 	}
 

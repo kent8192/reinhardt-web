@@ -1,5 +1,6 @@
 //! Google OIDC provider tests
 
+use reinhardt_auth::social::core::OAuthProvider;
 use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::GoogleProvider;
 use rstest::*;
@@ -53,7 +54,7 @@ async fn test_google_oidc_discovery_url() {
 }
 
 #[tokio::test]
-async fn test_google_provider_create() {
+async fn test_google_provider_create_succeeds() {
 	// Arrange
 	let config = ProviderConfig::google(
 		"test_client_id".into(),
@@ -65,10 +66,32 @@ async fn test_google_provider_create() {
 	let result = GoogleProvider::new(config).await;
 
 	// Assert
-	match result {
-		Ok(_) => assert!(true, "Google provider created successfully"),
-		Err(_) => assert!(true, "Provider creation may fail in test environment"),
-	}
+	assert!(
+		result.is_ok(),
+		"Google provider should be created successfully"
+	);
+	let provider = result.unwrap();
+	assert_eq!(provider.name(), "google");
+	assert!(provider.is_oidc());
+}
+
+#[tokio::test]
+async fn test_google_provider_requires_oidc_config() {
+	// Arrange - Create config without OIDC
+	let config = ProviderConfig::github(
+		"test_client_id".into(),
+		"test_client_secret".into(),
+		"http://localhost:8080/callback".into(),
+	);
+
+	// Act
+	let result = GoogleProvider::new(config).await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"Google provider should fail without OIDC config"
+	);
 }
 
 #[tokio::test]

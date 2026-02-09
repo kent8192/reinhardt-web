@@ -1,5 +1,6 @@
 //! Microsoft OIDC provider tests
 
+use reinhardt_auth::social::core::OAuthProvider;
 use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::MicrosoftProvider;
 use rstest::*;
@@ -53,7 +54,7 @@ async fn test_microsoft_tenant_specific_discovery() {
 }
 
 #[tokio::test]
-async fn test_microsoft_provider_create() {
+async fn test_microsoft_provider_create_succeeds() {
 	// Arrange
 	let config = ProviderConfig::microsoft(
 		"test_client_id".into(),
@@ -66,10 +67,32 @@ async fn test_microsoft_provider_create() {
 	let result = MicrosoftProvider::new(config).await;
 
 	// Assert
-	match result {
-		Ok(_) => assert!(true, "Microsoft provider created successfully"),
-		Err(_) => assert!(true, "Provider creation may fail in test environment"),
-	}
+	assert!(
+		result.is_ok(),
+		"Microsoft provider should be created successfully"
+	);
+	let provider = result.unwrap();
+	assert_eq!(provider.name(), "microsoft");
+	assert!(provider.is_oidc());
+}
+
+#[tokio::test]
+async fn test_microsoft_provider_requires_oidc_config() {
+	// Arrange - Create config without OIDC
+	let config = ProviderConfig::github(
+		"test_client_id".into(),
+		"test_client_secret".into(),
+		"http://localhost:8080/callback".into(),
+	);
+
+	// Act
+	let result = MicrosoftProvider::new(config).await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"Microsoft provider should fail without OIDC config"
+	);
 }
 
 #[tokio::test]

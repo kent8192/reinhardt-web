@@ -29,9 +29,8 @@ fn test_provider_config_create(#[case] provider: &str) {
 		),
 		"apple" => ProviderConfig::apple(
 			"test_client_id".into(),
+			"test_client_secret_jwt".into(),
 			"http://localhost:8080/callback".into(),
-			"test_team_id".into(),
-			"test_key_id".into(),
 		),
 		_ => panic!("Unknown provider"),
 	};
@@ -98,9 +97,8 @@ fn test_apple_config_is_oidc() {
 	// Act
 	let config = ProviderConfig::apple(
 		"test_client_id".into(),
+		"test_client_secret_jwt".into(),
 		"http://localhost:8080/callback".into(),
-		"test_team_id".into(),
-		"test_key_id".into(),
 	);
 
 	// Assert

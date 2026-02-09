@@ -1,33 +1,114 @@
 //! UserInfo endpoint tests
 
+use helpers::mock_server::MockOAuth2Server;
 use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::core::claims::StandardClaims;
 use reinhardt_auth::social::oidc::UserInfoClient;
 use rstest::*;
 use std::collections::HashMap;
 
+#[path = "../../helpers.rs"]
+mod helpers;
+
 #[tokio::test]
 async fn test_userinfo_retrieve_claims() {
-	// This test documents the expected UserInfo retrieval behavior
-
 	// Arrange
-	let access_token = "test_access_token";
-	let userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo";
+	let server = MockOAuth2Server::new().await;
 	let oauth2_client = OAuth2Client::new();
 	let client = UserInfoClient::new(oauth2_client);
+	let userinfo_url = server.userinfo_url().unwrap();
 
-	// Act - In real scenario, this would fetch from UserInfo endpoint
-	let result = client.get_user_info(userinfo_url, access_token).await;
+	// Act
+	let result = client
+		.get_user_info(&userinfo_url, "test_access_token")
+		.await;
 
 	// Assert
-	match result {
-		Ok(claims) => {
-			assert!(!claims.sub.is_empty());
-		}
-		Err(_) => {
-			assert!(true, "UserInfo fetch may fail in test environment");
-		}
-	}
+	assert!(result.is_ok(), "UserInfo should succeed with mock server");
+	let claims = result.unwrap();
+	assert_eq!(claims.sub, "test_user");
+	assert_eq!(claims.email, Some("test@example.com".to_string()));
+	assert_eq!(claims.email_verified, Some(true));
+	assert_eq!(claims.name, Some("Test User".to_string()));
+	assert_eq!(claims.given_name, Some("Test".to_string()));
+	assert_eq!(claims.family_name, Some("User".to_string()));
+}
+
+#[tokio::test]
+async fn test_userinfo_with_custom_claims() {
+	// Arrange
+	let mut server = MockOAuth2Server::new().await;
+	let custom_claims = StandardClaims {
+		sub: "custom_user_42".to_string(),
+		email: Some("custom@example.com".to_string()),
+		email_verified: Some(false),
+		name: Some("Custom User".to_string()),
+		given_name: None,
+		family_name: None,
+		picture: Some("https://example.com/photo.jpg".to_string()),
+		locale: Some("ja".to_string()),
+		additional_claims: HashMap::new(),
+	};
+	server.set_userinfo_response(custom_claims);
+
+	let oauth2_client = OAuth2Client::new();
+	let client = UserInfoClient::new(oauth2_client);
+	let userinfo_url = server.userinfo_url().unwrap();
+
+	// Act
+	let result = client
+		.get_user_info(&userinfo_url, "test_access_token")
+		.await;
+
+	// Assert
+	assert!(result.is_ok(), "UserInfo should succeed with custom claims");
+	let claims = result.unwrap();
+	assert_eq!(claims.sub, "custom_user_42");
+	assert_eq!(claims.email, Some("custom@example.com".to_string()));
+	assert_eq!(claims.email_verified, Some(false));
+	assert_eq!(
+		claims.picture,
+		Some("https://example.com/photo.jpg".to_string())
+	);
+	assert_eq!(claims.locale, Some("ja".to_string()));
+}
+
+#[tokio::test]
+async fn test_userinfo_handle_endpoint_errors() {
+	// Arrange
+	let mut server = MockOAuth2Server::new().await;
+	server.set_error_mode(helpers::mock_server::ErrorMode::ServerError);
+	let oauth2_client = OAuth2Client::new();
+	let client = UserInfoClient::new(oauth2_client);
+	let userinfo_url = server.userinfo_url().unwrap();
+
+	// Act
+	let result = client
+		.get_user_info(&userinfo_url, "test_access_token")
+		.await;
+
+	// Assert
+	assert!(result.is_err(), "UserInfo should fail on server error");
+}
+
+#[tokio::test]
+async fn test_userinfo_handle_not_found() {
+	// Arrange
+	let server = MockOAuth2Server::new().await.without_userinfo();
+	let oauth2_client = OAuth2Client::new();
+	let client = UserInfoClient::new(oauth2_client);
+	let userinfo_url = server.userinfo_url().unwrap();
+
+	// Act
+	let result = client
+		.get_user_info(&userinfo_url, "test_access_token")
+		.await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"UserInfo should fail when endpoint returns 404"
+	);
 }
 
 #[test]
@@ -75,56 +156,13 @@ fn test_userinfo_extract_email_and_profile() {
 	};
 
 	// Assert
-	assert!(claims.email.is_some());
-	assert_eq!(claims.email.unwrap(), "user@example.com");
-	assert!(claims.email_verified.unwrap());
-	assert!(claims.name.is_some());
-	assert!(claims.picture.is_some());
-}
-
-#[test]
-fn test_userinfo_handle_provider_specific_claims() {
-	// Arrange
-	let mut additional = HashMap::new();
-	additional.insert(
-		"custom_field".to_string(),
-		serde_json::json!("custom_value"),
+	assert_eq!(claims.email.as_deref(), Some("user@example.com"));
+	assert_eq!(claims.email_verified, Some(true));
+	assert_eq!(claims.name.as_deref(), Some("Test User"));
+	assert_eq!(
+		claims.picture.as_deref(),
+		Some("https://example.com/photo.jpg")
 	);
-
-	let json = r#"{
-		"sub": "user123",
-		"email": "user@example.com",
-		"custom_field": "custom_value"
-	}"#;
-
-	// Act
-	let claims: StandardClaims = serde_json::from_str(json).unwrap();
-
-	// Assert
-	assert_eq!(claims.sub, "user123");
-	// Provider-specific claims are stored in additional_claims
-}
-
-#[tokio::test]
-async fn test_userinfo_handle_endpoint_errors() {
-	// Arrange
-	let access_token = "invalid_token";
-	let userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo";
-	let oauth2_client = OAuth2Client::new();
-	let client = UserInfoClient::new(oauth2_client);
-
-	// Act
-	let result = client.get_user_info(userinfo_url, access_token).await;
-
-	// Assert
-	match result {
-		Ok(_) => {
-			assert!(true, "UserInfo fetch succeeded");
-		}
-		Err(_) => {
-			assert!(true, "UserInfo fetch failed as expected with invalid token");
-		}
-	}
 }
 
 #[test]
@@ -139,6 +177,10 @@ fn test_userinfo_minimal_claims() {
 	assert_eq!(claims.sub, "user123");
 	assert!(claims.email.is_none());
 	assert!(claims.name.is_none());
+	assert!(claims.given_name.is_none());
+	assert!(claims.family_name.is_none());
+	assert!(claims.picture.is_none());
+	assert!(claims.locale.is_none());
 }
 
 #[test]

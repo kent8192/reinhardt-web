@@ -1,35 +1,79 @@
 //! OIDC discovery integration tests
 
+use helpers::mock_server::MockOAuth2Server;
 use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::oidc::{DiscoveryClient, OIDCDiscovery};
 use rstest::*;
 
-#[tokio::test]
-async fn test_discovery_fetch_from_url() {
-	// This test documents the expected behavior
-	// In a real scenario, you would mock the HTTP response
+#[path = "../helpers.rs"]
+mod helpers;
 
+#[tokio::test]
+async fn test_discovery_fetch_from_mock_server() {
 	// Arrange
-	let issuer_url = "https://accounts.google.com";
+	let server = MockOAuth2Server::new().await;
 	let oauth2_client = OAuth2Client::new();
 	let client = DiscoveryClient::new(oauth2_client);
 
-	// Act - This would make a real HTTP request
-	// For now, we document the expected behavior
-	let result = client.discover(issuer_url).await;
+	// Act
+	let result = client.discover(&server.base_url()).await;
 
-	// Assert - In mocked environment, this would return a discovery document
-	// In test environment without mocks, we expect an error
-	match result {
-		Ok(discovery) => {
-			assert_eq!(discovery.issuer, "https://accounts.google.com");
-			assert!(!discovery.authorization_endpoint.is_empty());
-		}
-		Err(_) => {
-			// Expected in test environment without network/mocks
-			assert!(true, "Network error expected in test environment");
-		}
-	}
+	// Assert
+	assert!(result.is_ok(), "Discovery should succeed with mock server");
+	let discovery = result.unwrap();
+	assert!(!discovery.issuer.is_empty());
+	assert!(!discovery.authorization_endpoint.is_empty());
+	assert!(!discovery.token_endpoint.is_empty());
+	assert!(!discovery.jwks_uri.is_empty());
+}
+
+#[tokio::test]
+async fn test_discovery_caching() {
+	// Arrange
+	let server = MockOAuth2Server::new().await;
+	let oauth2_client = OAuth2Client::new();
+	let client = DiscoveryClient::new(oauth2_client);
+
+	// Act - Fetch twice (second should be cached)
+	let result1 = client.discover(&server.base_url()).await;
+	let result2 = client.discover(&server.base_url()).await;
+
+	// Assert
+	assert!(result1.is_ok());
+	assert!(result2.is_ok());
+	assert_eq!(result1.unwrap().issuer, result2.unwrap().issuer);
+}
+
+#[tokio::test]
+async fn test_discovery_server_error() {
+	// Arrange
+	let mut server = MockOAuth2Server::new().await;
+	server.set_error_mode(helpers::mock_server::ErrorMode::ServerError);
+	let oauth2_client = OAuth2Client::new();
+	let client = DiscoveryClient::new(oauth2_client);
+
+	// Act
+	let result = client.discover(&server.base_url()).await;
+
+	// Assert
+	assert!(result.is_err(), "Discovery should fail on server error");
+}
+
+#[tokio::test]
+async fn test_discovery_oidc_disabled() {
+	// Arrange
+	let server = MockOAuth2Server::new().await.without_oidc();
+	let oauth2_client = OAuth2Client::new();
+	let client = DiscoveryClient::new(oauth2_client);
+
+	// Act
+	let result = client.discover(&server.base_url()).await;
+
+	// Assert
+	assert!(
+		result.is_err(),
+		"Discovery should fail when OIDC is disabled"
+	);
 }
 
 #[tokio::test]
@@ -59,30 +103,6 @@ async fn test_discovery_document_structure() {
 	assert!(!discovery.token_endpoint.is_empty());
 	assert!(!discovery.jwks_uri.is_empty());
 	assert!(discovery.scopes_supported.is_some());
-}
-
-#[tokio::test]
-async fn test_discovery_required_fields() {
-	// Arrange
-	let discovery = OIDCDiscovery {
-		issuer: "https://example.com".to_string(),
-		authorization_endpoint: "https://example.com/auth".to_string(),
-		token_endpoint: "https://example.com/token".to_string(),
-		jwks_uri: "https://example.com/jwks".to_string(),
-		userinfo_endpoint: None,
-		scopes_supported: None,
-		response_types_supported: None,
-		grant_types_supported: None,
-		subject_types_supported: None,
-		id_token_signing_alg_values_supported: None,
-		claims_supported: None,
-	};
-
-	// Assert - Required fields must be present
-	assert!(!discovery.issuer.is_empty());
-	assert!(!discovery.authorization_endpoint.is_empty());
-	assert!(!discovery.token_endpoint.is_empty());
-	assert!(!discovery.jwks_uri.is_empty());
 }
 
 #[test]

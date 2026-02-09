@@ -1,145 +1,107 @@
 //! Token exchange flow tests
 
-use reinhardt_auth::social::core::OAuthProvider;
+use helpers::mock_server::MockOAuth2Server;
+use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::core::config::ProviderConfig;
-use reinhardt_auth::social::core::token::TokenResponse;
-use reinhardt_auth::social::providers::{GitHubProvider, GoogleProvider};
+use reinhardt_auth::social::flow::TokenExchangeFlow;
 use rstest::*;
 
+#[path = "../../helpers.rs"]
+mod helpers;
+
 #[tokio::test]
-async fn test_token_exchange_github() {
+async fn test_token_exchange_with_mock_server() {
 	// Arrange
+	let server = MockOAuth2Server::new().await;
 	let config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
-	let result = GitHubProvider::new(config).await;
+	let result = flow
+		.exchange(&server.token_url(), "test_authorization_code", None)
+		.await;
 
 	// Assert
-	match result {
-		Ok(provider) => {
-			let exchange_result = provider
-				.exchange_code("test_authorization_code", None)
-				.await;
-
-			match exchange_result {
-				Ok(_response) => {
-					assert!(true, "Token exchange succeeded");
-				}
-				Err(_) => {
-					assert!(true, "Token exchange may fail in test environment");
-				}
-			}
-		}
-		Err(_) => {
-			assert!(true, "Provider creation may fail in test environment");
-		}
-	}
+	assert!(
+		result.is_ok(),
+		"Token exchange should succeed with mock server"
+	);
+	let response = result.unwrap();
+	assert_eq!(response.access_token, "test_access_token");
+	assert_eq!(response.token_type, "Bearer");
 }
 
 #[tokio::test]
 async fn test_token_exchange_with_pkce() {
 	// Arrange
+	let server = MockOAuth2Server::new().await;
 	let config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
+	let (verifier, _challenge) = reinhardt_auth::social::flow::PkceFlow::generate();
 
 	// Act
-	let result = GitHubProvider::new(config).await;
+	let result = flow
+		.exchange(
+			&server.token_url(),
+			"test_authorization_code",
+			Some(&verifier),
+		)
+		.await;
 
 	// Assert
-	match result {
-		Ok(provider) => {
-			let (verifier, _challenge) = reinhardt_auth::social::flow::PkceFlow::generate();
-			let exchange_result = provider
-				.exchange_code("test_authorization_code", Some(verifier.as_str()))
-				.await;
-
-			match exchange_result {
-				Ok(_response) => {
-					assert!(true, "Token exchange with PKCE succeeded");
-				}
-				Err(_) => {
-					assert!(true, "Token exchange may fail in test environment");
-				}
-			}
-		}
-		Err(_) => {
-			assert!(true, "Provider creation may fail in test environment");
-		}
-	}
+	assert!(result.is_ok(), "Token exchange with PKCE should succeed");
+	let response = result.unwrap();
+	assert!(!response.access_token.is_empty());
 }
 
 #[tokio::test]
-async fn test_token_exchange_google_oidc() {
+async fn test_token_exchange_server_error() {
 	// Arrange
-	let config = ProviderConfig::google(
+	let mut server = MockOAuth2Server::new().await;
+	server.set_error_mode(helpers::mock_server::ErrorMode::ServerError);
+	let config = ProviderConfig::github(
 		"test_client_id".into(),
 		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
-	let result = GoogleProvider::new(config).await;
+	let result = flow.exchange(&server.token_url(), "test_code", None).await;
 
 	// Assert
-	match result {
-		Ok(provider) => {
-			let exchange_result = provider
-				.exchange_code("test_authorization_code", None)
-				.await;
-
-			match exchange_result {
-				Ok(response) => {
-					// OIDC should include ID token
-					assert!(!response.access_token.is_empty());
-					assert_eq!(response.token_type, "Bearer");
-				}
-				Err(_) => {
-					assert!(true, "Token exchange may fail in test environment");
-				}
-			}
-		}
-		Err(_) => {
-			assert!(true, "Provider creation may fail in test environment");
-		}
-	}
+	assert!(
+		result.is_err(),
+		"Token exchange should fail on server error"
+	);
 }
 
 #[tokio::test]
-async fn test_token_exchange_error_handling() {
+async fn test_token_exchange_invalid_response() {
 	// Arrange
+	let mut server = MockOAuth2Server::new().await;
+	server.set_error_mode(helpers::mock_server::ErrorMode::InvalidResponse);
 	let config = ProviderConfig::github(
-		"invalid_client_id".into(),
-		"invalid_client_secret".into(),
+		"test_client_id".into(),
+		"test_client_secret".into(),
 		"http://localhost:8080/callback".into(),
 	);
+	let flow = TokenExchangeFlow::new(OAuth2Client::new(), config);
 
 	// Act
-	let result = GitHubProvider::new(config).await;
+	let result = flow.exchange(&server.token_url(), "test_code", None).await;
 
 	// Assert
-	match result {
-		Ok(provider) => {
-			let exchange_result = provider.exchange_code("invalid_code", None).await;
-
-			// Should handle error gracefully
-			match exchange_result {
-				Ok(_) => {
-					assert!(true, "Token exchange succeeded (unexpected)");
-				}
-				Err(_) => {
-					assert!(true, "Token exchange failed as expected");
-				}
-			}
-		}
-		Err(_) => {
-			assert!(true, "Provider creation may fail in test environment");
-		}
-	}
+	assert!(
+		result.is_err(),
+		"Token exchange should fail on invalid JSON response"
+	);
 }
