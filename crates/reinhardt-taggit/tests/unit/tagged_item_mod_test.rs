@@ -100,7 +100,7 @@ fn test_tagged_item_equality() {
 	assert_ne!(item1.tag_id, item3.tag_id);
 }
 
-/// Test TaggedItem clone
+/// Test TaggedItem clone produces identical copy
 #[test]
 fn test_tagged_item_clone() {
 	// Arrange
@@ -109,8 +109,12 @@ fn test_tagged_item_clone() {
 	// Act
 	let cloned = item.clone();
 
-	// Assert
-	assert_eq!(item, cloned);
+	// Assert - field-by-field comparison (clone is instant, so created_at matches)
+	assert_eq!(item.id, cloned.id);
+	assert_eq!(item.tag_id, cloned.tag_id);
+	assert_eq!(item.content_type, cloned.content_type);
+	assert_eq!(item.object_id, cloned.object_id);
+	assert_eq!(item.created_at, cloned.created_at);
 }
 
 /// Test TaggedItem debug format

@@ -105,7 +105,7 @@ fn test_tag_equality() {
 	assert_ne!(tag1.slug, tag3.slug);
 }
 
-/// Test Tag clone
+/// Test Tag clone produces identical copy
 #[test]
 fn test_tag_clone() {
 	// Arrange
@@ -114,8 +114,11 @@ fn test_tag_clone() {
 	// Act
 	let cloned = tag.clone();
 
-	// Assert
-	assert_eq!(tag, cloned);
+	// Assert - field-by-field comparison (clone is instant, so created_at matches)
+	assert_eq!(tag.id, cloned.id);
+	assert_eq!(tag.name, cloned.name);
+	assert_eq!(tag.slug, cloned.slug);
+	assert_eq!(tag.created_at, cloned.created_at);
 }
 
 /// Test Tag debug format
