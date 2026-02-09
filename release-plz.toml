@@ -23,7 +23,7 @@ git_release_type = "auto"
 # Publish settings
 semver_check = false
 publish_timeout = "10m"
-dependencies_update = false
+dependencies_update = true
 
 # Two-stage release workflow (native release-plz control):
 # - Stage 1: Push to main → `release-plz release-pr` creates Release PR (branch: release-plz-*)

@@ -253,7 +253,7 @@ reinhardt-db = { workspace = true, optional = true }
 
 # External crates re-exported for macros
 inventory = { workspace = true, optional = true }
-reinhardt-test = { workspace = true, optional = true }
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.7", optional = true }
 reinhardt-rest = { workspace = true, optional = true }
 reinhardt-auth = { workspace = true, optional = true }
 
@@ -381,7 +381,7 @@ reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.3" }
 reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.5" }
-reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0-alpha.7" }
+reinhardt-test = { path = "crates/reinhardt-test" }
 reinhardt-tasks = { path = "crates/reinhardt-tasks", version = "0.1.0-alpha.3" }
 reinhardt-utils = { path = "crates/reinhardt-utils", version = "0.1.0-alpha.8" }
 reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.7" }
