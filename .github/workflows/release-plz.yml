@@ -112,12 +112,12 @@ jobs:
         run: |
           # Check if reinhardt-test needs publishing
           CRATE_NAME="reinhardt-test"
-          CRATE_VERSION=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "reinhardt-test") | .version')
+          CRATE_VERSION=$(cargo metadata --no-deps --format-version=1 | jq -r ".packages[] | select(.name == \"$CRATE_NAME\") | .version")
           
           echo "Current $CRATE_NAME version: $CRATE_VERSION"
           
           # Try to publish (will succeed if version doesn't exist, fail gracefully if it does)
-          cd crates/reinhardt-test
+          cd crates/$CRATE_NAME
           if cargo publish --no-verify 2>&1 | tee publish_output.txt; then
             echo "$CRATE_NAME $CRATE_VERSION published successfully"
             # Wait for crates.io to index the new version
