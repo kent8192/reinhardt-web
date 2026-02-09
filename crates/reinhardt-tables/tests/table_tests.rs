@@ -1,7 +1,7 @@
 //! Unit tests for Table trait and SimpleTable implementation
 
 use reinhardt_tables::column::BaseColumn;
-use reinhardt_tables::table::{PaginationConfig, SimpleTable, SortConfig, SortOrder};
+use reinhardt_tables::table::{SimpleTable, SortOrder};
 use reinhardt_tables::{Column, Table};
 use rstest::*;
 

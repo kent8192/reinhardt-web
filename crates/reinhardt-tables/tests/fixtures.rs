@@ -1,7 +1,7 @@
 //! Common test fixtures for reinhardt-tables tests
 
 use reinhardt_tables::column::BaseColumn;
-use reinhardt_tables::table::{SimpleTable, SortOrder};
+use reinhardt_tables::table::SimpleTable;
 use rstest::*;
 
 /// Test user data structure for table tests

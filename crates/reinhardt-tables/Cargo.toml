@@ -22,8 +22,6 @@ aquamarine = "0.5"
 
 # Core Reinhardt crates (optional for non-pages usage)
 reinhardt-pages = { workspace = true, optional = true }
-reinhardt-http = { workspace = true }
-reinhardt-urls = { workspace = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
