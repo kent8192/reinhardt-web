@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-alpha.4...reinhardt-websockets@v0.1.0-alpha.5) - 2026-02-08
-
-### Maintenance
-
-- *(websockets)* remove manual CHANGELOG entries for release-plz
-
-### Reverted
-
-- undo release PR [[#215](https://github.com/kent8192/reinhardt-web/issues/215)](https://github.com/kent8192/reinhardt-web/issues/215) version bumps
-
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-alpha.3...reinhardt-websockets@v0.1.0-alpha.4) - 2026-02-06
 
 ### Other
