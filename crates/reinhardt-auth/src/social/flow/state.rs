@@ -126,36 +126,45 @@ impl StateStore for InMemoryStateStore {
 
 /// Session-based state store for production use
 ///
-/// This will integrate with Reinhardt's session management system.
+/// TODO: Integrate with Reinhardt's session management system.
+/// This is currently a placeholder that returns errors.
+/// Use `InMemoryStateStore` for development and testing.
 pub struct SessionStateStore {
-	// TODO: Integrate with session backend
-}
-
-impl Default for SessionStateStore {
-	fn default() -> Self {
-		Self::new()
-	}
+	_private: (),
 }
 
 impl SessionStateStore {
 	/// Creates a new session-based state store
-	pub fn new() -> Self {
-		todo!("Implement session-based state store")
+	///
+	/// # Errors
+	///
+	/// Returns `SocialAuthError::NotSupported` because session-based storage
+	/// is not yet implemented.
+	pub fn new() -> Result<Self, SocialAuthError> {
+		Err(SocialAuthError::NotSupported(
+			"Session-based state store is not yet implemented. Use InMemoryStateStore for development".into(),
+		))
 	}
 }
 
 #[async_trait]
 impl StateStore for SessionStateStore {
 	async fn store(&self, _data: StateData) -> Result<(), SocialAuthError> {
-		todo!("Implement session-based store")
+		Err(SocialAuthError::NotSupported(
+			"Session-based state store is not yet implemented".into(),
+		))
 	}
 
 	async fn retrieve(&self, _state: &str) -> Result<StateData, SocialAuthError> {
-		todo!("Implement session-based retrieve")
+		Err(SocialAuthError::NotSupported(
+			"Session-based state store is not yet implemented".into(),
+		))
 	}
 
 	async fn remove(&self, _state: &str) -> Result<(), SocialAuthError> {
-		todo!("Implement session-based remove")
+		Err(SocialAuthError::NotSupported(
+			"Session-based state store is not yet implemented".into(),
+		))
 	}
 }
 

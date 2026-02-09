@@ -19,21 +19,33 @@
 //! # Example
 //!
 //! ```ignore
-//! use reinhardt_auth::social::{SocialAuthBackend, providers::GoogleProvider};
+//! use reinhardt_auth::social::{
+//!     SocialAuthBackend, ProviderConfig,
+//!     providers::GoogleProvider,
+//! };
+//! use std::sync::Arc;
 //!
 //! #[tokio::main]
 //! async fn main() {
+//!     let config = ProviderConfig::google(
+//!         "client_id".into(),
+//!         "client_secret".into(),
+//!         "https://example.com/callback".into(),
+//!     );
+//!
 //!     let mut backend = SocialAuthBackend::new();
 //!
 //!     // Register Google provider
 //!     let google = GoogleProvider::new(config).await.unwrap();
 //!     backend.register_provider(Arc::new(google));
 //!
-//!     // Start authorization flow
-//!     let auth_url = backend.start_authorization("google").await.unwrap();
+//!     // Begin authorization flow
+//!     let auth = backend.begin_auth("google", None, None).await.unwrap();
+//!     // Redirect user to auth.authorization_url
 //!
-//!     // Handle callback
-//!     let user = backend.handle_callback("google", &code, &state).await.unwrap();
+//!     // Handle callback (after user is redirected back)
+//!     let result = backend.handle_callback("google", &code, &state).await.unwrap();
+//!     let claims = result.claims; // User's profile information
 //! }
 //! ```
 
@@ -65,10 +77,10 @@ pub use oidc::{
 pub use providers::{AppleProvider, GitHubProvider, GoogleProvider, MicrosoftProvider};
 
 // Re-export backend
-pub use backend::SocialAuthBackend;
+pub use backend::{AuthorizationResult, CallbackResult, SocialAuthBackend};
 
 // Re-export user mapping
-pub use user_mapping::{DefaultUserMapper, UserMapper};
+pub use user_mapping::{DefaultUserMapper, MappedUser, UserMapper};
 
 // Re-export storage
-pub use storage::{SocialAccount, SocialAccountStorage};
+pub use storage::{InMemorySocialAccountStorage, SocialAccount, SocialAccountStorage};
