@@ -5159,7 +5159,9 @@ mod tests {
 		assert!(sql.contains("\"name\""));
 		assert!(sql.contains("\"email\""));
 		assert!(sql.contains("\"phone\""));
-		assert_eq!(values.len(), 3);
+		// NULL values are inlined directly, not parameterized
+		assert!(sql.contains("NULL"));
+		assert_eq!(values.len(), 2);
 	}
 
 	#[test]
