@@ -57,6 +57,13 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - **KEEP** `unimplemented!()` for permanently excluded features
 - **NEVER** use alternative notations (`FIXME:`, `Implementation Note:`, etc.)
 
+**CI Enforcement (TODO Check):**
+- New `todo!()`, `// TODO`, and `// FIXME` added in PRs are detected and blocked by TODO Check CI
+- `unimplemented!()` is exempt (reserved for permanently excluded features)
+- Existing TODOs are not flagged due to diff-aware scanning
+- `cargo make clippy-todo-check` enforces `clippy::todo`, `clippy::unimplemented`, and `clippy::dbg_macro` as deny lints
+- Local pre-check: `semgrep scan --config .semgrep/ --error --metrics off`
+
 See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 ### Testing
@@ -131,6 +138,7 @@ See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
+- CHANGELOG generation guidelines (CG-1 ~ CG-6)
 
 ### Release & Publishing Policy
 
@@ -151,6 +159,22 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 | `fix:` | PATCH |
 | `feat!:` or `BREAKING CHANGE:` | MAJOR |
 | Other types | PATCH |
+
+**Commit-to-CHANGELOG Mapping:**
+
+| Commit Type | CHANGELOG Section |
+|-------------|-------------------|
+| `feat` | Added |
+| `fix` | Fixed |
+| `perf` | Performance |
+| `refactor` | Changed |
+| `docs` | Documentation |
+| `revert` | Reverted |
+| `deprecated` | Deprecated |
+| `security` | Security |
+| `chore`, `ci`, `build` | Maintenance |
+| `test` | Testing |
+| `style` | Styling |
 
 **Tagging Strategy (Per-Crate Tagging):**
 - Format: `[crate-name]@v[version]`
@@ -174,6 +198,13 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 - **MUST** review Release PRs before merging
 - **NEVER** manually bump versions in feature branches
 - **NEVER** create release tags manually
+
+**Key Warnings (Lessons Learned):**
+- **NEVER** create circular publish dependency chains (functional crates must not dev-depend on other Reinhardt crates)
+- **NEVER** add `version` field to `reinhardt-test` workspace dependency (causes publish failure; see cargo#15151)
+- **MUST** follow RP-1 recovery procedure for partial release failures (see docs/RELEASE_PROCESS.md)
+- **NEVER** change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
+- `publish_no_verify = true` is required because dev-dependencies reference unpublished workspace crates
 
 See docs/RELEASE_PROCESS.md for detailed release procedures.
 
@@ -205,6 +236,18 @@ cargo make fmt-check   # Cheeck format rules of the code
 cargo make clippy-check  # Check lint rules of the code
 cargo make fmt-fix   # Automatically fix code based on formatting rules
 cargo make clippy-fix  # Automatically fix code based on lint rules
+```
+
+**TODO Comment Check:**
+```bash
+# Clippy: detect todo!(), unimplemented!(), dbg!() macros
+cargo make clippy-todo-check
+
+# Semgrep: full scan for TODO/FIXME comments (all files, not diff-aware)
+docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --error --metrics off
+
+# Semgrep: diff-aware scan (compare against main branch)
+docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --baseline-commit origin/main --error --metrics off
 ```
 
 **Database Tests:**
@@ -303,6 +346,7 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
+   - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
 
@@ -331,7 +375,13 @@ Before submitting code:
 - Start commit description with lowercase letter (e.g., `feat: add feature`)
 - Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
 - Use conventional commit format for proper version detection by release-plz
+- Write commit descriptions as standalone CHANGELOG entries (meaningful without additional context)
+- Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
+- Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
 - Review Release PRs created by release-plz before merging
+- Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
+- Keep `reinhardt-test` workspace dependency without `version` field (unpublished crate; cargo#15151)
+- Follow RP-1 procedure in docs/RELEASE_PROCESS.md for partial release failures
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
@@ -351,6 +401,7 @@ Before submitting code:
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
+- Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -371,6 +422,11 @@ Before submitting code:
 - Manually bump versions in feature branches (let release-plz handle it)
 - Create release tags manually (release-plz creates them automatically)
 - Skip reviewing Release PRs before merging
+- Add `reinhardt-test` to functional crate `[dev-dependencies]` (creates circular publish dependency)
+- Add `version` field to `reinhardt-test` workspace dependency (breaks cargo publish; cargo#15151)
+- Change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
+- Merge Release PR without rolling back unpublished crate versions after partial release failure
+- Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
 - Start commit description with uppercase letter
 - End commit description with a period
 - Omit `!` or `BREAKING CHANGE:` for API-breaking changes
@@ -390,6 +446,7 @@ Before submitting code:
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
+- Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
 
 ### 📚 Detailed Standards
 
@@ -398,7 +455,7 @@ For comprehensive guidelines, see:
 - **Testing**: docs/TESTING_STANDARDS.md
 - **Anti-Patterns**: docs/ANTI_PATTERNS.md
 - **Documentation**: docs/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: docs/COMMIT_GUIDELINE.md
+- **Git Commits**: docs/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: docs/RELEASE_PROCESS.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
 - **Security Policy**: SECURITY.md

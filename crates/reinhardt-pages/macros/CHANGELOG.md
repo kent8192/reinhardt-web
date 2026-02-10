@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.4...reinhardt-pages-macros@v0.1.0-alpha.5) - 2026-02-05
+
+### Fixed
+
+- add reinhardt-manouche to workspace deps and address review comments
+
+### Other
+
+- Merge branch 'main' into refactor/extract-manouche-dsl
+
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.1.0-alpha.3...reinhardt-pages-macros@v0.1.0-alpha.4) - 2026-02-03
 
 ### Other

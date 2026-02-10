@@ -9,8 +9,7 @@
 use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Extensions, Request, Response};
-use reinhardt_test::fixtures::{api_client_from_url, test_server_guard};
-use reinhardt_urls::routers::ServerRouter as Router;
+use reinhardt_test::{api_client_from_url, test_server_guard, ServerRouter as Router};
 
 #[derive(Debug, Clone, PartialEq)]
 struct UserId(u64);
