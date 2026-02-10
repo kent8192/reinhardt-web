@@ -6,7 +6,7 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use reinhardt::dentdelion::{Plugin, PluginRegistry};
+//! use reinhardt::dentdelion::prelude::{Plugin, PluginRegistry};
 //! ```
 
 #[cfg(feature = "dentdelion")]
