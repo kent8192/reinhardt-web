@@ -653,48 +653,6 @@ impl Query {
 		DropDatabaseStatement::new()
 	}
 
-	// TODO: Maintenance operations will be implemented in future commits
-	// /// Construct a new [`VacuumStatement`]
-	// ///
-	// /// # Examples
-	// ///
-	// /// ```rust,ignore
-	// /// use reinhardt_query::prelude::*;
-	// ///
-	// /// // VACUUM users
-	// /// let query = Query::vacuum()
-	// ///     .table("users");
-	// ///
-	// /// // VACUUM FULL ANALYZE users
-	// /// let query = Query::vacuum()
-	// ///     .table("users")
-	// ///     .full()
-	// ///     .analyze();
-	// /// ```
-	// pub fn vacuum() -> VacuumStatement {
-	// 	VacuumStatement::new()
-	// }
-
-	// /// Construct a new [`AnalyzeStatement`]
-	// ///
-	// /// # Examples
-	// ///
-	// /// ```rust,ignore
-	// /// use reinhardt_query::prelude::*;
-	// ///
-	// /// // ANALYZE users
-	// /// let query = Query::analyze()
-	// ///     .table("users");
-	// ///
-	// /// // ANALYZE VERBOSE users (email, name)
-	// /// let query = Query::analyze()
-	// ///     .table_columns("users", ["email", "name"])
-	// ///     .verbose();
-	// /// ```
-	// pub fn analyze() -> AnalyzeStatement {
-	// 	AnalyzeStatement::new()
-	// }
-
 	/// Construct a new [`OptimizeTableStatement`]
 	///
 	/// **MySQL-only feature**: This statement is specific to MySQL.

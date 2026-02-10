@@ -25,7 +25,6 @@ pub enum TableRef {
 	SchemaTableAlias(DynIden, DynIden, DynIden),
 	/// Subquery with alias (e.g., `(SELECT ...) AS alias`)
 	SubQuery(Box<crate::query::SelectStatement>, DynIden),
-	// TODO: Add ValuesList variant when Value module is integrated
 }
 
 impl TableRef {
