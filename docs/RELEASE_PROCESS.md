@@ -16,6 +16,8 @@ publishing.
 - [Manual Intervention](#manual-intervention)
 - [Configuration](#configuration)
 	- [Configuration Rationale](#configuration-rationale)
+- [Known Issues & Pitfalls](#known-issues--pitfalls)
+- [Recovery Procedures](#recovery-procedures)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -279,6 +281,59 @@ This gives maintainers explicit control over when releases happen — crates are
 **`reinhardt-test` workspace dependency without `version` field**
 
 The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency by publishable crates. Its workspace dependency entry in the root `Cargo.toml` intentionally omits the `version` field. Adding a `version` field would cause `cargo publish` to attempt resolving `reinhardt-test` from crates.io (where it does not exist), breaking the publish of any crate that depends on it via dev-dependencies. This is related to a Cargo regression tracked in [cargo#15151](https://github.com/rust-lang/cargo/issues/15151). (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+---
+
+## Known Issues & Pitfalls
+
+### KI-1: Circular Publish Dependencies
+
+**Problem**: `cargo publish` resolves all dependencies (including dev-dependencies) from crates.io. If crate A has a dev-dependency on crate B, and crate B has a dev-dependency on crate A, neither can be published first — creating a deadlock.
+
+**Impact on Reinhardt**: The `reinhardt-test` crate provides test fixtures used across the workspace. If a functional crate (e.g., `reinhardt-orm`) adds `reinhardt-test` to its `[dev-dependencies]`, and `reinhardt-test` already depends on that functional crate, a circular publish dependency is created.
+
+**Rule**: Functional crates **must not** include other Reinhardt crates in `[dev-dependencies]`. Tests requiring cross-crate fixtures belong in the `reinhardt-integration-tests` crate.
+
+**Detection**: Run `cargo publish --dry-run` for each publishable crate before merging changes that modify dev-dependencies.
+
+(Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181), [#199](https://github.com/kent8192/reinhardt-web/pull/199), [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
+
+### KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression
+
+**Problem**: Starting with Cargo 1.84, `cargo publish` attempts to resolve workspace dev-dependencies from crates.io even when they are marked `publish = false`. If the workspace dependency entry includes a `version` field, Cargo tries to find that version on crates.io and fails when the crate does not exist there.
+
+**Workaround**: Ensure that unpublished workspace crates (e.g., `reinhardt-test`) do **not** have a `version` field in their `[workspace.dependencies]` entry. The `publish_no_verify = true` setting provides additional protection by skipping the verification build.
+
+**Tracking**: [cargo#15151](https://github.com/rust-lang/cargo/issues/15151)
+
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#207](https://github.com/kent8192/reinhardt-web/pull/207), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+### KI-3: Partial Release Failure Deadlock
+
+**Problem**: When release-plz publishes multiple crates in dependency order, a failure partway through (e.g., network error, crates.io outage) leaves some crates published at their new versions while others remain at their old versions. The next `release-plz release-pr` run sees the already-published crates as released and generates a new Release PR only for the remaining crates — but with potentially incorrect dependency version requirements.
+
+**Symptoms**:
+- Release PR contains version bumps for only a subset of crates
+- Published crates reference dependency versions that do not exist on crates.io
+- Subsequent publish attempts fail with dependency resolution errors
+
+**Resolution**: Follow [RP-1: Partial Release Failure Recovery](#rp-1-partial-release-failure-recovery).
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### KI-4: gix/gitoxide Slotmap Overflow
+
+**Problem**: The `gix` library (used internally by release-plz for Git operations) has a known issue where its object cache slotmap can overflow under certain repository conditions, causing a panic during `release-plz release-pr` or `release-plz release`.
+
+**Symptoms**:
+- CI workflow fails with a panic in `gix` or `gitoxide` code paths
+- Error messages reference slotmap capacity or object cache
+
+**Workaround**: Re-run the workflow (the issue is intermittent). If persistent, clear the GitHub Actions cache for the release-plz workflow. A `workflow_dispatch` trigger has been added to allow manual re-runs.
+
+**Tracking**: [gitoxide#1788](https://github.com/GitoxideLabs/gitoxide/issues/1788)
+
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
 
 ---
 
