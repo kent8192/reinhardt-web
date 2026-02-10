@@ -133,32 +133,39 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 		self.postgres.build_reindex(stmt)
 	}
 
-	fn build_create_schema(&self, _stmt: &CreateSchemaStatement) -> (String, Values) {
-		todo!("CockroachDB: CREATE SCHEMA support")
+	fn build_create_schema(&self, stmt: &CreateSchemaStatement) -> (String, Values) {
+		// CockroachDB supports CREATE SCHEMA similar to PostgreSQL
+		self.postgres.build_create_schema(stmt)
 	}
 
-	fn build_alter_schema(&self, _stmt: &AlterSchemaStatement) -> (String, Values) {
-		todo!("CockroachDB: ALTER SCHEMA support")
+	fn build_alter_schema(&self, stmt: &AlterSchemaStatement) -> (String, Values) {
+		// CockroachDB supports ALTER SCHEMA similar to PostgreSQL
+		self.postgres.build_alter_schema(stmt)
 	}
 
-	fn build_drop_schema(&self, _stmt: &DropSchemaStatement) -> (String, Values) {
-		todo!("CockroachDB: DROP SCHEMA support")
+	fn build_drop_schema(&self, stmt: &DropSchemaStatement) -> (String, Values) {
+		// CockroachDB supports DROP SCHEMA similar to PostgreSQL
+		self.postgres.build_drop_schema(stmt)
 	}
 
-	fn build_create_sequence(&self, _stmt: &CreateSequenceStatement) -> (String, Values) {
-		todo!("CockroachDB: CREATE SEQUENCE support")
+	fn build_create_sequence(&self, stmt: &CreateSequenceStatement) -> (String, Values) {
+		// CockroachDB supports CREATE SEQUENCE similar to PostgreSQL
+		self.postgres.build_create_sequence(stmt)
 	}
 
-	fn build_alter_sequence(&self, _stmt: &AlterSequenceStatement) -> (String, Values) {
-		todo!("CockroachDB: ALTER SEQUENCE support")
+	fn build_alter_sequence(&self, stmt: &AlterSequenceStatement) -> (String, Values) {
+		// CockroachDB supports ALTER SEQUENCE similar to PostgreSQL
+		self.postgres.build_alter_sequence(stmt)
 	}
 
-	fn build_drop_sequence(&self, _stmt: &DropSequenceStatement) -> (String, Values) {
-		todo!("CockroachDB: DROP SEQUENCE support")
+	fn build_drop_sequence(&self, stmt: &DropSequenceStatement) -> (String, Values) {
+		// CockroachDB supports DROP SEQUENCE similar to PostgreSQL
+		self.postgres.build_drop_sequence(stmt)
 	}
 
-	fn build_comment(&self, _stmt: &CommentStatement) -> (String, Values) {
-		todo!("CockroachDB: COMMENT ON support")
+	fn build_comment(&self, stmt: &CommentStatement) -> (String, Values) {
+		// CockroachDB supports COMMENT ON similar to PostgreSQL
+		self.postgres.build_comment(stmt)
 	}
 
 	fn build_create_database(&self, stmt: &CreateDatabaseStatement) -> (String, Values) {
@@ -211,56 +218,6 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 		// CockroachDB delegates to PostgreSQL for functions
 		self.postgres.build_drop_function(stmt)
 	}
-
-	// 	fn escape_identifier(&self, ident: &str) -> String {
-	// 		self.postgres.escape_identifier(ident)
-	// 	}
-	//
-	// 	fn format_placeholder(&self, index: usize) -> String {
-	// 		self.postgres.format_placeholder(index)
-	// 	}
-	//
-	// 	fn build_analyze(&self, stmt: &AnalyzeStatement) -> (String, Values) {
-	// 		// CockroachDB supports ANALYZE similar to PostgreSQL
-	// 		self.postgres.build_analyze(stmt)
-	// 	}
-	//
-	// 	fn build_vacuum(&self, _stmt: &VacuumStatement) -> (String, Values) {
-	// 		// CockroachDB does not support VACUUM (automatic garbage collection)
-	// 		panic!("CockroachDB does not support VACUUM. Garbage collection is automatic.");
-	// 	}
-	//
-	// 	fn build_create_materialized_view(
-	// 		&self,
-	// 		stmt: &CreateMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		// CockroachDB supports materialized views similar to PostgreSQL
-	// 		self.postgres.build_create_materialized_view(stmt)
-	// 	}
-	//
-	// 	fn build_alter_materialized_view(
-	// 		&self,
-	// 		stmt: &AlterMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		// CockroachDB supports materialized views similar to PostgreSQL
-	// 		self.postgres.build_alter_materialized_view(stmt)
-	// 	}
-	//
-	// 	fn build_drop_materialized_view(
-	// 		&self,
-	// 		stmt: &DropMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		// CockroachDB supports materialized views similar to PostgreSQL
-	// 		self.postgres.build_drop_materialized_view(stmt)
-	// 	}
-	//
-	// 	fn build_refresh_materialized_view(
-	// 		&self,
-	// 		stmt: &RefreshMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		// CockroachDB supports materialized views similar to PostgreSQL
-	// 		self.postgres.build_refresh_materialized_view(stmt)
-	// 	}
 
 	fn build_create_procedure(&self, stmt: &CreateProcedureStatement) -> (String, Values) {
 		// CockroachDB delegates to PostgreSQL for procedures
