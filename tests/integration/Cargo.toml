@@ -47,6 +47,7 @@ reinhardt-shortcuts = { workspace = true, features = ["database"] }
 reinhardt-forms = { workspace = true }
 reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfiles", "storage", "memcached-backend", "redis-backend", "redis-sentinel"] }
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
+reinhardt-admin = { workspace = true, features = ["core"] }
 reinhardt-pages = { workspace = true }
 reinhardt-commands = { workspace = true, features = ["migrations"] }
 reinhardt-payment = { workspace = true }

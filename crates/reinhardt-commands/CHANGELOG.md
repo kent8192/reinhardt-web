@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.9...reinhardt-commands@v0.1.0-alpha.10) - 2026-02-10
+
+### Fixed
+
+- *(ci)* remove version from reinhardt-test workspace dep to avoid cargo 1.84+ resolution failure
+- *(release)* revert unpublished crate versions to pre-release state
+
 ## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.8...reinhardt-commands@v0.1.0-alpha.9) - 2026-02-07
 
 ### Other
