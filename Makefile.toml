@@ -70,8 +70,10 @@ args = [
   "--all",
   "--all-features",
   "--",
-  "-D",
-  "warnings",
+  "-D", "warnings",
+  "-D", "clippy::todo",
+  "-D", "clippy::unimplemented",
+  "-D", "clippy::dbg_macro",
 ]
 
 [tasks.clippy-fix]
@@ -85,8 +87,10 @@ args = [
   "--all-features",
   "--allow-dirty",
   "--",
-  "-D",
-  "warnings",
+  "-D", "warnings",
+  "-D", "clippy::todo",
+  "-D", "clippy::unimplemented",
+  "-D", "clippy::dbg_macro",
 ]
 
 [tasks.fmt-page-only]
