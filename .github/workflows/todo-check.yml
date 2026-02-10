@@ -19,4 +19,4 @@ jobs:
           fetch-depth: 0
 
       - name: Run Semgrep TODO/FIXME scan
-        run: semgrep scan --config .semgrep/ --baseline-commit ${{ github.event.pull_request.base.sha }} --error --metrics off
+        run: semgrep ci --config .semgrep/ --metrics off
