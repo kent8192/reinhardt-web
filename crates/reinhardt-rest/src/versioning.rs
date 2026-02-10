@@ -1095,41 +1095,6 @@ mod tests {
 		assert_eq!(version, "1.0"); // Falls back to default
 	}
 
-	#[tokio::test]
-	#[ignore = "Router integration disabled due to circular dependency"]
-	async fn test_namespace_versioning_router_integration() {
-		use reinhardt_http::{Handler, Response};
-		use reinhardt_urls::routers::{DefaultRouter, Router, path};
-		use std::sync::Arc;
-
-		struct DummyHandler;
-		#[async_trait]
-		impl Handler for DummyHandler {
-			async fn handle(&self, _req: Request) -> Result<Response> {
-				Ok(Response::ok())
-			}
-		}
-
-		let versioning = NamespaceVersioning::new()
-			.with_pattern("/v{version}/")
-			.with_allowed_versions(vec!["1", "2"]);
-
-		let mut router = DefaultRouter::new();
-		let handler = Arc::new(DummyHandler);
-		router.add_route(path("/v1/users/", handler.clone()).with_namespace("v1"));
-		router.add_route(path("/v2/users/", handler).with_namespace("v2"));
-
-		// Test version extraction from router (stub implementation, test ignored)
-		let version = versioning.extract_version_from_router_stub(&(), "/v1/users/");
-		assert_eq!(version, Some("1".to_string()));
-
-		let version = versioning.extract_version_from_router_stub(&(), "/v2/users/");
-		assert_eq!(version, Some("2".to_string()));
-
-		// Test getting available versions (stub implementation, test ignored)
-		let versions = versioning.get_available_versions_from_router_stub(&());
-		assert!(versions.contains(&"1".to_string()));
-		assert!(versions.contains(&"2".to_string()));
-		assert_eq!(versions.len(), 2);
-	}
+	// Note: Router integration test removed to avoid circular dependency with reinhardt-urls.
+	// Router integration tests should be placed in /tests/integration crate.
 }
