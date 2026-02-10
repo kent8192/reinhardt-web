@@ -1,0 +1,99 @@
+name: Publish Check
+
+on:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  publish-check:
+    name: Publish Dry-Run Check
+    runs-on: ubuntu-latest
+    # Skip for release-plz branches and release-fix branches - versions may not yet be on crates.io
+    if: >-
+      ${{
+        !startsWith(github.head_ref || github.ref_name, 'release-plz-') &&
+        !startsWith(github.head_ref || github.ref_name, 'fix/release-plz')
+      }}
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
+      - name: Install Rust toolchain
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Verify no circular dev-dependencies
+        run: |
+          echo "=== Checking for circular dev-dependencies ==="
+          echo "Running cargo publish --dry-run for publishable crates..."
+
+          # Create jq filter file (avoids shell escaping issues)
+          cat > /tmp/filter.jq << 'JQEOF'
+          .packages[] |
+          select(.publish == null or (.publish | type == "array" and length > 0 and .[0] != "never")) |
+          select(.name | startswith("examples-") | not) |
+          select(.name | startswith("example-") | not) |
+          select(.name | test("^reinhardt-(test-support|integration-tests|benchmarks|settings-cli)$") | not) |
+          select(.name != "reinhardt-web") |
+          .name
+          JQEOF
+
+          # Get list of publishable crates
+          CRATES=$(cargo metadata --format-version 1 --no-deps | jq -r -f /tmp/filter.jq)
+
+          echo "Crates to check:"
+          echo "$CRATES"
+          echo ""
+
+          FAILED=""
+          for crate in $CRATES; do
+            echo ""
+            echo "--- Checking $crate ---"
+            if ! cargo publish -p "$crate" --dry-run 2>&1; then
+              echo "::error::Publish dry-run failed for $crate"
+              FAILED="$FAILED $crate"
+            fi
+          done
+
+          if [ -n "$FAILED" ]; then
+            echo ""
+            echo "::error::The following crates failed publish dry-run:$FAILED"
+            echo "This usually indicates circular dev-dependencies."
+            echo "See: https://github.com/rust-lang/cargo/issues/4242"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== All crates passed publish dry-run check ==="
