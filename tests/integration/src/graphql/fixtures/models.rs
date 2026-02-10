@@ -141,6 +141,8 @@ async fn post_model_fixture(
 ///
 /// In a real implementation, this would extract the pool from the schema
 /// or use a shared test container fixture.
+// Allow: pool extraction is a placeholder for fixture pattern (permanently excluded)
+#[allow(clippy::unimplemented)]
 async fn get_pool_from_test_container() -> Arc<PgPool> {
 	use reinhardt_test::fixtures::postgres_container;
 	use rstest::*;
