@@ -120,6 +120,9 @@ browsable-api = ["reinhardt-browsable-api"]
 # Required for unified client/server routing in WASM applications
 client-router = ["reinhardt-urls/client-router"]
 
+# Plugin system
+dentdelion = ["reinhardt-dentdelion"]
+
 # Meta features
 full = [
   "standard",
@@ -161,6 +164,7 @@ full = [
   "reinhardt-websockets/full",
   "reinhardt-middleware/full",
   "reinhardt-graphql/full",
+  "dentdelion",
 ]
 
 # API-only preset - REST without templates/forms
@@ -271,6 +275,7 @@ reinhardt-mail = { workspace = true, optional = true }
 reinhardt-graphql = { workspace = true, optional = true }
 reinhardt-websockets = { workspace = true, optional = true }
 reinhardt-openapi = { workspace = true, optional = true }
+reinhardt-dentdelion = { workspace = true, optional = true }
 
 # Dependencies used directly in this crate
 thiserror = { workspace = true }

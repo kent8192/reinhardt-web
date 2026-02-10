@@ -180,6 +180,8 @@ pub mod commands;
 pub mod conf;
 #[cfg(all(feature = "core", not(target_arch = "wasm32")))]
 pub mod core;
+#[cfg(all(feature = "dentdelion", not(target_arch = "wasm32")))]
+pub mod dentdelion;
 #[cfg(all(feature = "di", not(target_arch = "wasm32")))]
 pub mod di;
 #[cfg(all(feature = "forms", not(target_arch = "wasm32")))]
