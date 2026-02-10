@@ -75,7 +75,8 @@ impl Model for AdminRecord {
 }
 
 /// Convert FilterValue to Value
-fn filter_value_to_sea_value(v: &FilterValue) -> Value {
+#[doc(hidden)]
+pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 	match v {
 		FilterValue::String(s) => s.clone().into(),
 		FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
@@ -105,7 +106,8 @@ fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 }
 
 /// Build a SimpleExpr from a single Filter
-fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
+#[doc(hidden)]
+pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 	let col = Expr::col(Alias::new(&filter.field));
 
 	let expr = match (&filter.operator, &filter.value) {
@@ -178,7 +180,8 @@ fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 }
 
 /// Build Condition from filters (AND logic only)
-fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
+#[doc(hidden)]
+pub fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 	if filters.is_empty() {
 		return None;
 	}
@@ -195,7 +198,8 @@ fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
 }
 
 /// Maximum recursion depth for filter conditions to prevent stack overflow
-const MAX_FILTER_DEPTH: usize = 100;
+#[doc(hidden)]
+pub const MAX_FILTER_DEPTH: usize = 100;
 
 /// Build Condition from FilterCondition (supports AND/OR logic)
 ///
@@ -207,12 +211,14 @@ const MAX_FILTER_DEPTH: usize = 100;
 /// To prevent stack overflow with deeply nested filter conditions, this function
 /// limits recursion depth to `MAX_FILTER_DEPTH` (100 levels). If the depth limit
 /// is exceeded, the function returns `None`.
-fn build_composite_filter_condition(filter_condition: &FilterCondition) -> Option<Condition> {
+#[doc(hidden)]
+pub fn build_composite_filter_condition(filter_condition: &FilterCondition) -> Option<Condition> {
 	build_composite_filter_condition_with_depth(filter_condition, 0)
 }
 
 /// Internal helper for building composite filter conditions with depth tracking
-fn build_composite_filter_condition_with_depth(
+#[doc(hidden)]
+pub fn build_composite_filter_condition_with_depth(
 	filter_condition: &FilterCondition,
 	depth: usize,
 ) -> Option<Condition> {
@@ -265,28 +271,17 @@ fn build_composite_filter_condition_with_depth(
 /// # Examples
 ///
 /// ```
-/// use reinhardt_admin::core::AdminDatabase;
-/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-/// use std::sync::Arc;
-/// use serde::{Serialize, Deserialize};
+/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+/// use reinhardt_db::orm::DatabaseConnection;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 /// let db = AdminDatabase::new(conn);
 ///
 /// // List items with filters
-/// let items = db.list::<User>("users", vec![], 0, 50).await?;
+/// let items = db.list::<AdminRecord>("admin_records", vec![], 0, 50).await?;
 /// # Ok(())
 /// # }
-///
-/// // Placeholder User type for example
-/// #[derive(Clone, Debug, Serialize, Deserialize)]
-/// struct User {
-///     id: Option<i64>,
-///     name: String,
-/// }
-///
-/// reinhardt_test::impl_test_model!(User, i64, "users");
 /// ```
 #[derive(Clone)]
 pub struct AdminDatabase {
@@ -329,10 +324,8 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -342,17 +335,9 @@ impl AdminDatabase {
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
 	/// ];
 	///
-	/// let items = db.list::<User>("users", filters, 0, 50).await?;
+	/// let items = db.list::<AdminRecord>("admin_records", filters, 0, 50).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn list<M: Model>(
 		&self,
@@ -551,26 +536,16 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
-	/// let item = db.get::<User>("users", "id", "1").await?;
+	/// let item = db.get::<AdminRecord>("admin_records", "id", "1").await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn get<M: Model>(
 		&self,
@@ -616,11 +591,9 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	/// use std::collections::HashMap;
-	/// use serde::{Serialize, Deserialize};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -630,17 +603,9 @@ impl AdminDatabase {
 	/// data.insert("name".to_string(), serde_json::json!("Alice"));
 	/// data.insert("email".to_string(), serde_json::json!("alice@example.com"));
 	///
-	/// db.create::<User>("users", data).await?;
+	/// db.create::<AdminRecord>("admin_records", data).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn create<M: Model>(
 		&self,
@@ -704,11 +669,9 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	/// use std::collections::HashMap;
-	/// use serde::{Serialize, Deserialize};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -717,17 +680,9 @@ impl AdminDatabase {
 	/// let mut data = HashMap::new();
 	/// data.insert("name".to_string(), serde_json::json!("Alice Updated"));
 	///
-	/// db.update::<User>("users", "id", "1", data).await?;
+	/// db.update::<AdminRecord>("admin_records", "id", "1", data).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn update<M: Model>(
 		&self,
@@ -781,26 +736,16 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
-	/// db.delete::<User>("users", "id", "1").await?;
+	/// db.delete::<AdminRecord>("admin_records", "id", "1").await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn delete<M: Model>(
 		&self,
@@ -835,27 +780,17 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::DatabaseConnection;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
-	/// db.bulk_delete::<User>("users", "id", ids).await?;
+	/// db.bulk_delete::<AdminRecord>("admin_records", "id", ids).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn bulk_delete<M: Model>(
 		&self,
@@ -929,10 +864,8 @@ impl AdminDatabase {
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::{DatabaseConnection, DatabaseBackend, Model, Filter, FilterOperator, FilterValue};
-	/// use std::sync::Arc;
-	/// use serde::{Serialize, Deserialize};
+	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
+	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
@@ -942,17 +875,9 @@ impl AdminDatabase {
 	///     Filter::new("is_active".to_string(), FilterOperator::Eq, FilterValue::Boolean(true))
 	/// ];
 	///
-	/// let count = db.count::<User>("users", filters).await?;
+	/// let count = db.count::<AdminRecord>("admin_records", filters).await?;
 	/// # Ok(())
 	/// # }
-	///
-	/// #[derive(Clone, Debug, Serialize, Deserialize)]
-	/// struct User {
-	///     id: Option<i64>,
-	///     name: String,
-	/// }
-	///
-	/// reinhardt_test::impl_test_model!(User, i64, "users");
 	/// ```
 	pub async fn count<M: Model>(
 		&self,

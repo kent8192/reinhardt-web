@@ -1,13 +1,25 @@
 //! Tests for `#[derive(Schema)]` macro
+//!
+//! These tests validate the OpenAPI schema derivation macro functionality
+//! including struct schemas, enum schemas, field attributes, and serde integration.
+//!
+//! Moved from `reinhardt-openapi-macros/tests/` to avoid circular dev-dependencies.
 
 use reinhardt_rest::openapi::{Schema, ToSchema};
+use rstest::rstest;
+use serde::{Deserialize, Serialize};
 use utoipa::openapi::{
-	Deprecated,
 	schema::{SchemaFormat, SchemaType, Type},
+	Deprecated,
 };
 
-#[test]
+// ============================================================================
+// Struct Schema Tests
+// ============================================================================
+
+#[rstest]
 fn test_simple_struct_schema_generation() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -15,8 +27,10 @@ fn test_simple_struct_schema_generation() {
 		name: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			assert!(matches!(obj.schema_type, SchemaType::Type(Type::Object)));
@@ -31,8 +45,9 @@ fn test_simple_struct_schema_generation() {
 	assert_eq!(User::schema_name(), Some("User".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_optional_fields_not_required() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -42,8 +57,10 @@ fn test_optional_fields_not_required() {
 		age: Option<i32>,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			// Only non-Option fields should be required
@@ -54,8 +71,9 @@ fn test_optional_fields_not_required() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_description() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -65,8 +83,10 @@ fn test_field_with_description() {
 		name: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(id_schema) = obj.properties.get("id") {
@@ -87,8 +107,9 @@ fn test_field_with_description() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_example() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -99,8 +120,10 @@ fn test_field_with_example() {
 		name: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(id_schema) = obj.properties.get("id") {
@@ -116,8 +139,9 @@ fn test_field_with_example() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_format() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -128,8 +152,10 @@ fn test_field_with_format() {
 		website: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(email_schema) = obj.properties.get("email") {
@@ -148,8 +174,9 @@ fn test_field_with_format() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_read_only() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -159,8 +186,10 @@ fn test_field_with_read_only() {
 		name: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(id_schema) = obj.properties.get("id") {
@@ -176,8 +205,9 @@ fn test_field_with_read_only() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_write_only() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct CreateUser {
@@ -187,8 +217,10 @@ fn test_field_with_write_only() {
 		password: String,
 	}
 
+	// Act
 	let schema = CreateUser::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(password_schema) = obj.properties.get("password") {
@@ -204,8 +236,9 @@ fn test_field_with_write_only() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_deprecated() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -216,8 +249,10 @@ fn test_field_with_deprecated() {
 		old_field: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(old_field_schema) = obj.properties.get("old_field") {
@@ -233,8 +268,9 @@ fn test_field_with_deprecated() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_numeric_constraints() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct Product {
@@ -245,8 +281,10 @@ fn test_field_with_numeric_constraints() {
 		price: f64,
 	}
 
+	// Act
 	let schema = Product::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(rating_schema) = obj.properties.get("rating") {
@@ -263,8 +301,9 @@ fn test_field_with_numeric_constraints() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_string_length_constraints() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -275,8 +314,10 @@ fn test_field_with_string_length_constraints() {
 		password: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(username_schema) = obj.properties.get("username") {
@@ -293,8 +334,9 @@ fn test_field_with_string_length_constraints() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_field_with_pattern() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -302,8 +344,10 @@ fn test_field_with_pattern() {
 		username: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(username_schema) = obj.properties.get("username") {
@@ -319,8 +363,9 @@ fn test_field_with_pattern() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_doc_comments_as_description() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -331,8 +376,10 @@ fn test_doc_comments_as_description() {
 		name: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(id_schema) = obj.properties.get("id") {
@@ -351,8 +398,9 @@ fn test_doc_comments_as_description() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_explicit_description_overrides_doc_comment() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -361,8 +409,10 @@ fn test_explicit_description_overrides_doc_comment() {
 		id: i64,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(id_schema) = obj.properties.get("id") {
@@ -378,8 +428,9 @@ fn test_explicit_description_overrides_doc_comment() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_combined_attributes() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -393,8 +444,10 @@ fn test_combined_attributes() {
 		email: String,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			if let Some(email_schema) = obj.properties.get("email") {
@@ -420,8 +473,9 @@ fn test_combined_attributes() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_complex_struct_with_all_features() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	struct User {
@@ -455,8 +509,10 @@ fn test_complex_struct_with_all_features() {
 		legacy_field: Option<String>,
 	}
 
+	// Act
 	let schema = User::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			// Verify structure
@@ -518,8 +574,9 @@ fn test_complex_struct_with_all_features() {
 // Enum Schema Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_simple_unit_enum_generates_string_schema() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Status {
@@ -528,8 +585,10 @@ fn test_simple_unit_enum_generates_string_schema() {
 		Pending,
 	}
 
+	// Act
 	let schema = Status::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			assert!(matches!(obj.schema_type, SchemaType::Type(Type::String)));
@@ -543,10 +602,9 @@ fn test_simple_unit_enum_generates_string_schema() {
 	assert_eq!(Status::schema_name(), Some("Status".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_internally_tagged_enum() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "type")]
@@ -555,8 +613,10 @@ fn test_internally_tagged_enum() {
 		Updated { id: i64, changes: Vec<String> },
 	}
 
+	// Act
 	let schema = Event::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 2);
@@ -567,10 +627,9 @@ fn test_internally_tagged_enum() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_adjacently_tagged_enum() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "t", content = "c")]
@@ -579,8 +638,10 @@ fn test_adjacently_tagged_enum() {
 		Image { url: String },
 	}
 
+	// Act
 	let schema = Message::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 2);
@@ -590,10 +651,9 @@ fn test_adjacently_tagged_enum() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_untagged_enum() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(untagged)]
@@ -602,8 +662,10 @@ fn test_untagged_enum() {
 		Num { value: i64 },
 	}
 
+	// Act
 	let schema = Value::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 2);
@@ -614,8 +676,9 @@ fn test_untagged_enum() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_externally_tagged_enum_with_struct_variants() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Shape {
@@ -623,8 +686,10 @@ fn test_externally_tagged_enum_with_struct_variants() {
 		Rectangle { width: f64, height: f64 },
 	}
 
+	// Act
 	let schema = Shape::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 2);
@@ -636,8 +701,9 @@ fn test_externally_tagged_enum_with_struct_variants() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_enum_with_newtype_variant() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Wrapper {
@@ -645,8 +711,10 @@ fn test_enum_with_newtype_variant() {
 		Str(String),
 	}
 
+	// Act
 	let schema = Wrapper::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 2);
@@ -655,10 +723,9 @@ fn test_enum_with_newtype_variant() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_enum_with_serde_rename() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Status {
@@ -668,8 +735,10 @@ fn test_enum_with_serde_rename() {
 		Inactive,
 	}
 
+	// Act
 	let schema = Status::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			assert!(obj.enum_values.is_some());
@@ -683,10 +752,9 @@ fn test_enum_with_serde_rename() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_enum_with_serde_rename_all() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(rename_all = "snake_case")]
@@ -696,8 +764,10 @@ fn test_enum_with_serde_rename_all() {
 		GuestUser,
 	}
 
+	// Act
 	let schema = UserRole::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			assert!(obj.enum_values.is_some());
@@ -711,10 +781,9 @@ fn test_enum_with_serde_rename_all() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_enum_with_skip_variant() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	enum Mode {
@@ -724,8 +793,10 @@ fn test_enum_with_skip_variant() {
 		Debug,
 	}
 
+	// Act
 	let schema = Mode::schema();
 
+	// Assert
 	match schema {
 		Schema::Object(obj) => {
 			assert!(obj.enum_values.is_some());
@@ -740,8 +811,9 @@ fn test_enum_with_skip_variant() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_mixed_variant_types() {
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema)]
 	enum Data {
@@ -751,8 +823,10 @@ fn test_mixed_variant_types() {
 		Named { x: i32, y: i32 },
 	}
 
+	// Act
 	let schema = Data::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			// All 4 variants should be present
@@ -763,10 +837,9 @@ fn test_mixed_variant_types() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_internally_tagged_with_unit_variant() {
-	use serde::{Deserialize, Serialize};
-
+	// Arrange
 	#[allow(dead_code)]
 	#[derive(Schema, Serialize, Deserialize)]
 	#[serde(tag = "kind")]
@@ -776,8 +849,10 @@ fn test_internally_tagged_with_unit_variant() {
 		Pause { duration: i32 },
 	}
 
+	// Act
 	let schema = Action::schema();
 
+	// Assert
 	match schema {
 		Schema::OneOf(one_of) => {
 			assert_eq!(one_of.items.len(), 3);

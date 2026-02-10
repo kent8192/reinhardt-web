@@ -38,7 +38,6 @@ pub use crate::params::{ParamContext, Request};
 /// // Set override for testing
 /// ctx.dependency(create_database).override_with(Database::mock());
 /// ```
-#[derive(Clone)]
 pub struct InjectionContext {
 	request_scope: RequestScope,
 	singleton_scope: Arc<SingletonScope>,
@@ -164,6 +163,20 @@ impl InjectionContextBuilder {
 			request: self.request.map(Arc::new),
 			#[cfg(feature = "params")]
 			param_context: self.param_context.map(Arc::new),
+		}
+	}
+}
+
+impl Clone for InjectionContext {
+	fn clone(&self) -> Self {
+		Self {
+			request_scope: self.request_scope.deep_clone(),
+			singleton_scope: Arc::clone(&self.singleton_scope),
+			override_registry: Arc::clone(&self.override_registry),
+			#[cfg(feature = "params")]
+			request: self.request.clone(),
+			#[cfg(feature = "params")]
+			param_context: self.param_context.clone(),
 		}
 	}
 }

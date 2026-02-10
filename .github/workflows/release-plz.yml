@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   # Native two-step release workflow:
@@ -20,6 +21,7 @@ jobs:
 
   release-plz-pr:
     name: Release PR
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     concurrency:
       group: release-plz-${{ github.ref }}
@@ -102,7 +104,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
+      # Workaround for gix slotmap overflow (GitoxideLabs/gitoxide#1788)
+      - name: Clear cargo registry git index cache
+        run: rm -rf ~/.cargo/registry/index/github.com-*
+
       - name: Publish to crates.io and create releases
+        id: release-attempt-1
+        continue-on-error: true
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Clear registry index for retry
+        if: steps.release-attempt-1.outcome == 'failure'
+        run: rm -rf ~/.cargo/registry/index/github.com-*
+
+      - name: Retry publish to crates.io and create releases
+        if: steps.release-attempt-1.outcome == 'failure'
         uses: release-plz/action@v0.5
         with:
           command: release
