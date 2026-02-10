@@ -75,25 +75,3 @@ mod field;
 pub fn document(attr: TokenStream, item: TokenStream) -> TokenStream {
 	document::document_impl(attr, item)
 }
-
-/// Model derive macro for ORM
-///
-/// Automatically derives the `Model` trait for SQL ORM models.
-///
-/// ## Example
-///
-/// ```rust,ignore
-/// use reinhardt_db_macros::Model;
-///
-/// #[derive(Model)]
-/// struct User {
-///     id: i32,
-///     email: String,
-/// }
-/// ```
-#[proc_macro_derive(Model)]
-pub fn derive_model(_input: TokenStream) -> TokenStream {
-	// TODO: Implement Model derive macro
-	// For now, return empty implementation
-	TokenStream::new()
-}
