@@ -7,20 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.7...reinhardt-rest@v0.1.0-alpha.8) - 2026-02-09
-
-### Fixed
-
-- *(rest)* move tests to integration crate to break circular publish chain
-
-### Reverted
-
-- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
-
-### Styling
-
-- apply formatting to migrated test files and modified source files
-
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.6...reinhardt-rest@v0.1.0-alpha.7) - 2026-02-06
 
 ### Fixed
