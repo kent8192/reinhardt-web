@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.7...reinhardt-web@v0.1.0-alpha.8) - 2026-02-10
+
+### Documentation
+
+- *(release)* add configuration rationale section to RELEASE_PROCESS.md
+- *(release)* add known issues and pitfalls section to RELEASE_PROCESS.md
+- *(release)* add recovery procedures section to RELEASE_PROCESS.md
+- *(release)* update troubleshooting with cross-references to known issues
+- add release-plz pitfall warnings to CLAUDE.md quick reference
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
 
 ### Fixed
