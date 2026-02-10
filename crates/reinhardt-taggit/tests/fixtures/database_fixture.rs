@@ -59,5 +59,31 @@ pub async fn taggit_db(
 		.await
 		.expect("Failed to create taggit schema");
 
+	// Workaround: create_tables_for_models generates TIMESTAMP columns for DateTime<Utc>
+	// fields, but sqlx requires TIMESTAMPTZ for chrono::DateTime<Utc> decoding.
+	// Also, #[field(foreign_key = Tag)] does not generate relationship_metadata(),
+	// so FK constraints with CASCADE DELETE are not auto-created.
+	// These are applied manually until the schema generator supports these features.
+	sqlx::query(
+		"ALTER TABLE \"tags\" ALTER COLUMN \"created_at\" TYPE TIMESTAMPTZ USING \"created_at\" AT TIME ZONE 'UTC'"
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to alter tags.created_at to TIMESTAMPTZ");
+
+	sqlx::query(
+		"ALTER TABLE \"tagged_items\" ALTER COLUMN \"created_at\" TYPE TIMESTAMPTZ USING \"created_at\" AT TIME ZONE 'UTC'"
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to alter tagged_items.created_at to TIMESTAMPTZ");
+
+	sqlx::query(
+		"ALTER TABLE \"tagged_items\" ADD CONSTRAINT \"fk_tagged_items_tag_id_tags\" FOREIGN KEY (\"tag_id\") REFERENCES \"tags\"(\"id\") ON DELETE CASCADE"
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Failed to add FK constraint on tagged_items.tag_id");
+
 	(container, pool, connection)
 }

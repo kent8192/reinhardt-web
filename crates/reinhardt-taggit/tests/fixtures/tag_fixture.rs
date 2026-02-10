@@ -3,6 +3,7 @@
 //! Provides reusable fixtures for generating Tag test data,
 //! including database helper functions using SeaQuery.
 
+use chrono::Utc;
 use reinhardt_taggit::Tag;
 use sea_query::{Alias, PostgresQueryBuilder, Query};
 use sqlx::Row;
@@ -66,12 +67,16 @@ pub fn tag_list() -> Vec<Tag> {
 /// Insert a tag into the database and return its generated id
 ///
 /// Uses SeaQuery to construct the INSERT statement.
-/// The `created_at` field is set by the database DEFAULT.
 pub async fn insert_tag_to_db(pool: &sqlx::PgPool, name: &str, slug: &str) -> i64 {
+	let now = Utc::now().to_rfc3339();
 	let sql = Query::insert()
 		.into_table(Alias::new("tags"))
-		.columns([Alias::new("name"), Alias::new("slug")])
-		.values_panic([name.into(), slug.into()])
+		.columns([
+			Alias::new("name"),
+			Alias::new("slug"),
+			Alias::new("created_at"),
+		])
+		.values_panic([name.into(), slug.into(), now.into()])
 		.returning_col(Alias::new("id"))
 		.to_string(PostgresQueryBuilder);
 

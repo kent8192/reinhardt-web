@@ -3,6 +3,7 @@
 //! Provides reusable fixtures for generating TaggedItem test data,
 //! including database helper functions using SeaQuery.
 
+use chrono::Utc;
 use reinhardt_taggit::TaggedItem;
 use sea_query::{Alias, PostgresQueryBuilder, Query};
 use sqlx::Row;
@@ -102,7 +103,6 @@ pub fn tag_and_tagged_item() -> (i64, TaggedItem) {
 /// Insert a tagged item into the database and return its generated id
 ///
 /// Uses SeaQuery to construct the INSERT statement.
-/// The `created_at` field is set by the database DEFAULT.
 /// Requires an existing tag with the given `tag_id` (FK constraint).
 pub async fn insert_tagged_item_to_db(
 	pool: &sqlx::PgPool,
@@ -110,14 +110,21 @@ pub async fn insert_tagged_item_to_db(
 	content_type: &str,
 	object_id: i64,
 ) -> i64 {
+	let now = Utc::now().to_rfc3339();
 	let sql = Query::insert()
 		.into_table(Alias::new("tagged_items"))
 		.columns([
 			Alias::new("tag_id"),
 			Alias::new("content_type"),
 			Alias::new("object_id"),
+			Alias::new("created_at"),
 		])
-		.values_panic([tag_id.into(), content_type.into(), object_id.into()])
+		.values_panic([
+			tag_id.into(),
+			content_type.into(),
+			object_id.into(),
+			now.into(),
+		])
 		.returning_col(Alias::new("id"))
 		.to_string(PostgresQueryBuilder);
 
