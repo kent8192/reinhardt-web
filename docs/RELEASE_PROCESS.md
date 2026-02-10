@@ -15,6 +15,9 @@ publishing.
 - [Automated Workflow](#automated-workflow)
 - [Manual Intervention](#manual-intervention)
 - [Configuration](#configuration)
+	- [Configuration Rationale](#configuration-rationale)
+- [Known Issues & Pitfalls](#known-issues--pitfalls)
+- [Recovery Procedures](#recovery-procedures)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -251,6 +254,235 @@ The following packages are excluded from release:
 - `examples-*` - Example projects
 - `reinhardt-settings-cli` - Internal CLI tool
 
+### Configuration Rationale
+
+Key configuration decisions and the reasons behind them:
+
+**`pr_branch_prefix = "release-plz-"`**
+
+The branch prefix **must** start with `"release-plz-"` for the native two-step release workflow to function correctly. When `release_always = false`, release-plz determines whether to publish by checking if the latest commit originates from a PR whose branch starts with this prefix. Using a different prefix (e.g., `"release/"`) causes `release-plz release` to skip publishing entirely because it cannot detect the merged Release PR. (Ref: [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`publish_no_verify = true`**
+
+During `cargo publish`, Cargo attempts to build the crate including dev-dependencies. If dev-dependencies reference other workspace crates that have not yet been published to crates.io, the build verification step fails. Setting `publish_no_verify = true` skips this verification, allowing crates to be published in dependency order without false failures. (Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181))
+
+**`dependencies_update = true`**
+
+Enables release-plz to automatically update explicit `version` fields in workspace dependency declarations when a dependent crate's version is bumped. Without this, workspace members that pin explicit versions would become out-of-sync after a release, causing the next Release PR to carry stale dependency versions. (Ref: [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+**`release_always = false`**
+
+Enables a two-stage release workflow:
+1. **Stage 1** (push to main): `release-plz release-pr` creates a Release PR with version bumps and CHANGELOG updates.
+2. **Stage 2** (merge Release PR): `release-plz release` detects the merged release-plz branch and publishes to crates.io.
+
+This gives maintainers explicit control over when releases happen — crates are only published when the Release PR is deliberately merged. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`reinhardt-test` workspace dependency without `version` field**
+
+The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency by publishable crates. Its workspace dependency entry in the root `Cargo.toml` intentionally omits the `version` field. Adding a `version` field would cause `cargo publish` to attempt resolving `reinhardt-test` from crates.io (where it does not exist), breaking the publish of any crate that depends on it via dev-dependencies. This is related to a Cargo regression tracked in [cargo#15151](https://github.com/rust-lang/cargo/issues/15151). (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+---
+
+## Known Issues & Pitfalls
+
+### KI-1: Circular Publish Dependencies
+
+**Problem**: `cargo publish` resolves all dependencies (including dev-dependencies) from crates.io. If crate A has a dev-dependency on crate B, and crate B has a dev-dependency on crate A, neither can be published first — creating a deadlock.
+
+**Impact on Reinhardt**: The `reinhardt-test` crate provides test fixtures used across the workspace. If a functional crate (e.g., `reinhardt-orm`) adds `reinhardt-test` to its `[dev-dependencies]`, and `reinhardt-test` already depends on that functional crate, a circular publish dependency is created.
+
+**Rule**: Functional crates **must not** include other Reinhardt crates in `[dev-dependencies]`. Tests requiring cross-crate fixtures belong in the `reinhardt-integration-tests` crate.
+
+**Detection**: Run `cargo publish --dry-run` for each publishable crate before merging changes that modify dev-dependencies.
+
+(Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181), [#199](https://github.com/kent8192/reinhardt-web/pull/199), [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
+
+### KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression
+
+**Problem**: Starting with Cargo 1.84, `cargo publish` attempts to resolve workspace dev-dependencies from crates.io even when they are marked `publish = false`. If the workspace dependency entry includes a `version` field, Cargo tries to find that version on crates.io and fails when the crate does not exist there.
+
+**Workaround**: Ensure that unpublished workspace crates (e.g., `reinhardt-test`) do **not** have a `version` field in their `[workspace.dependencies]` entry. The `publish_no_verify = true` setting provides additional protection by skipping the verification build.
+
+**Tracking**: [cargo#15151](https://github.com/rust-lang/cargo/issues/15151)
+
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#207](https://github.com/kent8192/reinhardt-web/pull/207), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+### KI-3: Partial Release Failure Deadlock
+
+**Problem**: When release-plz publishes multiple crates in dependency order, a failure partway through (e.g., network error, crates.io outage) leaves some crates published at their new versions while others remain at their old versions. The next `release-plz release-pr` run sees the already-published crates as released and generates a new Release PR only for the remaining crates — but with potentially incorrect dependency version requirements.
+
+**Symptoms**:
+- Release PR contains version bumps for only a subset of crates
+- Published crates reference dependency versions that do not exist on crates.io
+- Subsequent publish attempts fail with dependency resolution errors
+
+**Resolution**: Follow [RP-1: Partial Release Failure Recovery](#rp-1-partial-release-failure-recovery).
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### KI-4: gix/gitoxide Slotmap Overflow
+
+**Problem**: The `gix` library (used internally by release-plz for Git operations) has a known issue where its object cache slotmap can overflow under certain repository conditions, causing a panic during `release-plz release-pr` or `release-plz release`.
+
+**Symptoms**:
+- CI workflow fails with a panic in `gix` or `gitoxide` code paths
+- Error messages reference slotmap capacity or object cache
+
+**Workaround**: Re-run the workflow (the issue is intermittent). If persistent, clear the GitHub Actions cache for the release-plz workflow. A `workflow_dispatch` trigger has been added to allow manual re-runs.
+
+**Tracking**: [gitoxide#1788](https://github.com/GitoxideLabs/gitoxide/issues/1788)
+
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
+
+---
+
+## Recovery Procedures
+
+### RP-1: Partial Release Failure Recovery
+
+Use this procedure when some crates were published successfully but others failed during a release cycle.
+
+**Step 1: Identify published and unpublished crates**
+
+```bash
+# Check which crate versions exist on crates.io
+for crate in reinhardt-core reinhardt-database reinhardt-orm reinhardt-web reinhardt-macros reinhardt-test; do
+  version=$(curl -s "https://crates.io/api/v1/crates/$crate" | jq -r '.crate.max_version // "not found"')
+  echo "$crate: $version"
+done
+```
+
+Compare the crates.io versions with the versions in the failed Release PR to identify which crates were not published.
+
+**Step 2: Roll back unpublished crate versions**
+
+For each crate that was **not** published, revert its version and CHANGELOG changes to match the current crates.io version:
+
+```bash
+# Revert Cargo.toml version for unpublished crates
+git checkout main -- crates/<unpublished-crate>/Cargo.toml
+git checkout main -- crates/<unpublished-crate>/CHANGELOG.md
+```
+
+**Step 3: Push and wait for new Release PR**
+
+```bash
+git add -A
+git commit -m "fix(release): roll back unpublished crate versions after partial release failure"
+git push origin main
+```
+
+release-plz will detect the version discrepancies and create a new Release PR containing only the unpublished crates with correct dependency versions.
+
+**Step 4: Review and merge the new Release PR**
+
+Verify that:
+- Only unpublished crates have version bumps
+- Dependency versions reference published versions
+- CHANGELOG entries are correct
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### RP-2: Circular Dependency Deadlock Recovery
+
+Use this procedure when `cargo publish` fails due to circular dev-dependency chains.
+
+**Step 1: Identify the circular chain**
+
+```bash
+# Check dev-dependencies of each publishable crate
+for crate_dir in crates/*/; do
+  crate_name=$(basename "$crate_dir")
+  echo "=== $crate_name ==="
+  grep -A 20 '\[dev-dependencies\]' "$crate_dir/Cargo.toml" 2>/dev/null | head -20
+done
+```
+
+Look for cycles: if crate A dev-depends on crate B, and crate B dev-depends on crate A (directly or transitively).
+
+**Step 2: Break the cycle**
+
+Choose one of these strategies:
+1. **Remove the unnecessary dev-dependency**: If the dev-dependency is not actually needed, remove it.
+2. **Move tests to integration test crate**: Move tests that require the cross-crate dependency to `reinhardt-integration-tests`.
+3. **Create local test helpers**: Replace the imported test fixtures with crate-local equivalents.
+
+**Step 3: Verify and publish**
+
+```bash
+# Verify no circular dependencies remain
+cargo publish --dry-run -p <crate-name>
+```
+
+If the previous release was partially completed, also follow [RP-1](#rp-1-partial-release-failure-recovery).
+
+(Ref: [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
+
+### RP-3: gix Cache Failure Recovery
+
+Use this procedure when the release-plz CI workflow fails due to `gix`/`gitoxide` panics.
+
+**Step 1: Re-run the workflow**
+
+The gix slotmap overflow is intermittent. Navigate to the GitHub Actions page and re-run the failed workflow:
+
+```bash
+# List recent workflow runs
+gh run list --workflow=release-plz.yml --limit=5
+
+# Re-run a specific failed run
+gh run rerun <run-id>
+```
+
+**Step 2: Clear cache if persistent**
+
+If the failure persists across multiple re-runs:
+
+```bash
+# List GitHub Actions caches
+gh cache list
+
+# Delete release-plz related caches
+gh cache delete <cache-key>
+```
+
+**Step 3: Manual dispatch**
+
+The release-plz workflow supports `workflow_dispatch` for manual triggering:
+
+```bash
+gh workflow run release-plz.yml
+```
+
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
+
+### RP-4: reinhardt-test Version Reintroduced
+
+Use this procedure when a `version` field is accidentally added to the `reinhardt-test` workspace dependency.
+
+**Detection**: `cargo publish --dry-run` fails for crates that dev-depend on `reinhardt-test`, with errors indicating that `reinhardt-test` cannot be found on crates.io.
+
+**Step 1: Remove the version field**
+
+In the root `Cargo.toml`, locate the `[workspace.dependencies]` section and remove the `version` field from the `reinhardt-test` entry:
+
+```toml
+# Before (broken)
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0" }
+
+# After (correct)
+reinhardt-test = { path = "crates/reinhardt-test" }
+```
+
+**Step 2: Verify**
+
+```bash
+cargo publish --dry-run -p reinhardt-orm  # or any crate that dev-depends on reinhardt-test
+```
+
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
 ---
 
 ## Troubleshooting
@@ -272,6 +504,10 @@ The following packages are excluded from release:
 - Verify crate metadata is complete
 - Review crates.io for existing version conflicts
 - **Already Published**: release-plz automatically skips already-published versions, so retry is safe
+- **Circular Dependency**: See [KI-1: Circular Publish Dependencies](#ki-1-circular-publish-dependencies) and [RP-2](#rp-2-circular-dependency-deadlock-recovery)
+- **Dev-Dependency Resolution**: See [KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression](#ki-2-cargo-184-dev-dependency-resolution-regression) and [RP-4](#rp-4-reinhardt-test-version-reintroduced)
+- **Partial Failure**: See [KI-3: Partial Release Failure Deadlock](#ki-3-partial-release-failure-deadlock) and [RP-1](#rp-1-partial-release-failure-recovery)
+- **gix Panic**: See [KI-4: gix/gitoxide Slotmap Overflow](#ki-4-gixgitoxide-slotmap-overflow) and [RP-3](#rp-3-gix-cache-failure-recovery)
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
