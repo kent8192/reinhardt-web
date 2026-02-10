@@ -1,227 +1,206 @@
 // JOIN tests for SELECT statement
+//
+// These tests verify that the query builder correctly generates SQL
+// for various JOIN types: INNER, LEFT, RIGHT, FULL OUTER, CROSS, SELF, and multiple JOINs.
 
-#[path = "fixtures.rs"]
-mod fixtures;
-use fixtures::{TestPool, users_with_data};
 use reinhardt_query::prelude::*;
 use rstest::*;
 
-/// Macro to bind values and execute query
-macro_rules! bind_and_execute_query {
-	($pool:expr, $sql:expr, $values:expr) => {{
-		let mut query: sqlx::query::Query<'_, sqlx::Postgres, _> = sqlx::query(&$sql);
-		for value in &$values.0 {
-			query = match value {
-				Value::BigInt(Some(v)) => query.bind(*v),
-				Value::BigInt(None) => query.bind::<Option<i64>>(None),
-				Value::SmallInt(Some(v)) => query.bind(*v),
-				Value::SmallInt(None) => query.bind::<Option<i16>>(None),
-				Value::Int(Some(v)) => query.bind(*v),
-				Value::Int(None) => query.bind::<Option<i32>>(None),
-				Value::String(Some(v)) => query.bind(v.as_str()),
-				Value::String(None) => query.bind::<Option<&str>>(None),
-				Value::Bool(Some(v)) => query.bind(*v),
-				Value::Bool(None) => query.bind::<Option<bool>>(None),
-				Value::TinyUnsigned(Some(v)) => query.bind(*v as i16),
-				Value::TinyUnsigned(None) => query.bind::<Option<i16>>(None),
-				Value::SmallUnsigned(Some(v)) => query.bind(*v as i32),
-				Value::SmallUnsigned(None) => query.bind::<Option<i32>>(None),
-				Value::Unsigned(None) => query.bind::<Option<i64>>(None),
-				_ => query,
-			};
-		}
-		query
-			.fetch_all($pool.as_ref())
-			.await
-			.expect("Query execution failed")
-	}};
-}
-
 /// Test INNER JOIN
 ///
-/// Verifies that Query::select() can perform inner joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/54
+/// Verifies that `inner_join` generates correct INNER JOIN SQL.
 #[rstest]
-#[tokio::test]
-#[ignore = "INNER JOIN not yet implemented (Issue #54)"]
-async fn test_select_inner_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
-
-	// Create orders table
-	use reinhardt_query::prelude::{
-		ColumnDef, ForeignKeyAction, PostgresQueryBuilder as PgBuilder, Query as Q,
-		QueryStatementBuilder,
-	};
-
-	let mut create_table = Q::create_table();
-	create_table
-		.table("orders")
-		.if_not_exists()
-		.col(
-			ColumnDef::new("id")
-				.integer()
-				.not_null(true)
-				.auto_increment(true)
-				.primary_key(true),
+fn test_select_inner_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("orders", "total_amount"))
+		.from("users")
+		.inner_join(
+			"orders",
+			Expr::col(("users", "id")).equals(("orders", "user_id")),
 		)
-		.col(ColumnDef::new("user_id").integer().not_null(true))
-		.col(ColumnDef::new("total_amount").big_integer().not_null(true))
-		.col(ColumnDef::new("status").string_len(50).not_null(true))
-		.foreign_key(
-			vec!["user_id"],
-			"users",
-			vec!["id"],
-			Some(ForeignKeyAction::Cascade),
-			Some(ForeignKeyAction::Cascade),
-		);
+		.to_owned();
 
-	let create_sql = create_table.to_string(PgBuilder::new());
-	sqlx::query(&create_sql)
-		.execute(pool.as_ref())
-		.await
-		.expect("Failed to create orders table");
-
-	// TODO: Implement INNER JOIN when supported
-	// For now, verify basic SELECT works
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "orders"."total_amount" FROM "users" INNER JOIN "orders" ON "users"."id" = "orders"."user_id""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test LEFT JOIN
 ///
-/// Verifies that Query::select() can perform left outer joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/55
+/// Verifies that `left_join` generates correct LEFT JOIN SQL.
 #[rstest]
-#[tokio::test]
-#[ignore = "LEFT JOIN not yet implemented (Issue #55)"]
-async fn test_select_left_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_left_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("orders", "total_amount"))
+		.from("users")
+		.left_join(
+			"orders",
+			Expr::col(("users", "id")).equals(("orders", "user_id")),
+		)
+		.to_owned();
 
-	// TODO: Implement LEFT JOIN when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "orders"."total_amount" FROM "users" LEFT JOIN "orders" ON "users"."id" = "orders"."user_id""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test RIGHT JOIN
 ///
-/// Verifies that Query::select() can perform right outer joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/56
+/// Verifies that `right_join` generates correct RIGHT JOIN SQL.
 #[rstest]
-#[tokio::test]
-#[ignore = "RIGHT JOIN not yet implemented (Issue #56)"]
-async fn test_select_right_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_right_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("orders", "total_amount"))
+		.from("users")
+		.right_join(
+			"orders",
+			Expr::col(("users", "id")).equals(("orders", "user_id")),
+		)
+		.to_owned();
 
-	// TODO: Implement RIGHT JOIN when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "orders"."total_amount" FROM "users" RIGHT JOIN "orders" ON "users"."id" = "orders"."user_id""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test FULL OUTER JOIN
 ///
-/// Verifies that Query::select() can perform full outer joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/57
+/// Verifies that `full_outer_join` generates correct FULL OUTER JOIN SQL.
 #[rstest]
-#[tokio::test]
-#[ignore = "FULL OUTER JOIN not yet implemented (Issue #57)"]
-async fn test_select_full_outer_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_full_outer_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("orders", "total_amount"))
+		.from("users")
+		.full_outer_join(
+			"orders",
+			Expr::col(("users", "id")).equals(("orders", "user_id")),
+		)
+		.to_owned();
 
-	// TODO: Implement FULL OUTER JOIN when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "orders"."total_amount" FROM "users" FULL OUTER JOIN "orders" ON "users"."id" = "orders"."user_id""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test CROSS JOIN
 ///
-/// Verifies that Query::select() can perform cross joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/58
+/// Verifies that `cross_join` generates correct CROSS JOIN SQL.
 #[rstest]
-#[tokio::test]
-#[ignore = "CROSS JOIN not yet implemented (Issue #58)"]
-async fn test_select_cross_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_cross_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("products", "name"))
+		.from("users")
+		.cross_join("products")
+		.to_owned();
 
-	// TODO: Implement CROSS JOIN when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "products"."name" FROM "users" CROSS JOIN "products""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test SELF JOIN
 ///
-/// Verifies that Query::select() can perform self joins correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/59
+/// Verifies that a table can be joined with itself using an alias.
 #[rstest]
-#[tokio::test]
-#[ignore = "SELF JOIN not yet implemented (Issue #59)"]
-async fn test_select_self_join(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_self_join() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("u1", "name"))
+		.column(("u2", "name"))
+		.from_as("users", "u1")
+		.inner_join(
+			TableRef::TableAlias("users".into_iden(), "u2".into_iden()),
+			Expr::col(("u1", "age")).equals(("u2", "age")),
+		)
+		.and_where(Expr::col(("u1", "id")).ne(Expr::col(("u2", "id"))))
+		.to_owned();
 
-	// TODO: Implement SELF JOIN when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "u1"."name", "u2"."name" FROM "users" AS "u1" INNER JOIN "users" AS "u2" ON "u1"."age" = "u2"."age" WHERE "u1"."id" <> "u2"."id""#
+	);
+	assert_eq!(values.len(), 0);
 }
 
 /// Test multiple JOINs
 ///
-/// Verifies that Query::select() can join multiple tables correctly.
-///
-/// **IGNORED**: This feature is not yet implemented in reinhardt-query.
-/// See: https://github.com/kent8192/reinhardt-web/issues/60
+/// Verifies that multiple JOIN clauses can be chained in a single query.
 #[rstest]
-#[tokio::test]
-#[ignore = "Multiple JOINs not yet implemented (Issue #60)"]
-async fn test_select_multiple_joins(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (pool, _ids) = users_with_data.await;
+fn test_select_multiple_joins() {
+	// Arrange
+	let stmt = Query::select()
+		.column(("users", "name"))
+		.column(("orders", "total_amount"))
+		.column(("products", "name"))
+		.from("users")
+		.inner_join(
+			"orders",
+			Expr::col(("users", "id")).equals(("orders", "user_id")),
+		)
+		.left_join(
+			"products",
+			Expr::col(("orders", "product_id")).equals(("products", "id")),
+		)
+		.to_owned();
 
-	// TODO: Implement multiple JOINs when supported
-	let stmt = Query::select().from("users").to_owned();
-
+	// Act
 	let builder = PostgresQueryBuilder;
 	let (sql, values) = builder.build_select(&stmt);
 
-	let rows = bind_and_execute_query!(pool, sql, values);
-	assert!(rows.len() >= 3, "Should have at least 3 users");
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "users"."name", "orders"."total_amount", "products"."name" FROM "users" INNER JOIN "orders" ON "users"."id" = "orders"."user_id" LEFT JOIN "products" ON "orders"."product_id" = "products"."id""#
+	);
+	assert_eq!(values.len(), 0);
 }
