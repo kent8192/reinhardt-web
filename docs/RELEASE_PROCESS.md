@@ -337,6 +337,154 @@ The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency
 
 ---
 
+## Recovery Procedures
+
+### RP-1: Partial Release Failure Recovery
+
+Use this procedure when some crates were published successfully but others failed during a release cycle.
+
+**Step 1: Identify published and unpublished crates**
+
+```bash
+# Check which crate versions exist on crates.io
+for crate in reinhardt-core reinhardt-database reinhardt-orm reinhardt-web reinhardt-macros reinhardt-test; do
+  version=$(curl -s "https://crates.io/api/v1/crates/$crate" | jq -r '.crate.max_version // "not found"')
+  echo "$crate: $version"
+done
+```
+
+Compare the crates.io versions with the versions in the failed Release PR to identify which crates were not published.
+
+**Step 2: Roll back unpublished crate versions**
+
+For each crate that was **not** published, revert its version and CHANGELOG changes to match the current crates.io version:
+
+```bash
+# Revert Cargo.toml version for unpublished crates
+git checkout main -- crates/<unpublished-crate>/Cargo.toml
+git checkout main -- crates/<unpublished-crate>/CHANGELOG.md
+```
+
+**Step 3: Push and wait for new Release PR**
+
+```bash
+git add -A
+git commit -m "fix(release): roll back unpublished crate versions after partial release failure"
+git push origin main
+```
+
+release-plz will detect the version discrepancies and create a new Release PR containing only the unpublished crates with correct dependency versions.
+
+**Step 4: Review and merge the new Release PR**
+
+Verify that:
+- Only unpublished crates have version bumps
+- Dependency versions reference published versions
+- CHANGELOG entries are correct
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### RP-2: Circular Dependency Deadlock Recovery
+
+Use this procedure when `cargo publish` fails due to circular dev-dependency chains.
+
+**Step 1: Identify the circular chain**
+
+```bash
+# Check dev-dependencies of each publishable crate
+for crate_dir in crates/*/; do
+  crate_name=$(basename "$crate_dir")
+  echo "=== $crate_name ==="
+  grep -A 20 '\[dev-dependencies\]' "$crate_dir/Cargo.toml" 2>/dev/null | head -20
+done
+```
+
+Look for cycles: if crate A dev-depends on crate B, and crate B dev-depends on crate A (directly or transitively).
+
+**Step 2: Break the cycle**
+
+Choose one of these strategies:
+1. **Remove the unnecessary dev-dependency**: If the dev-dependency is not actually needed, remove it.
+2. **Move tests to integration test crate**: Move tests that require the cross-crate dependency to `reinhardt-integration-tests`.
+3. **Create local test helpers**: Replace the imported test fixtures with crate-local equivalents.
+
+**Step 3: Verify and publish**
+
+```bash
+# Verify no circular dependencies remain
+cargo publish --dry-run -p <crate-name>
+```
+
+If the previous release was partially completed, also follow [RP-1](#rp-1-partial-release-failure-recovery).
+
+(Ref: [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
+
+### RP-3: gix Cache Failure Recovery
+
+Use this procedure when the release-plz CI workflow fails due to `gix`/`gitoxide` panics.
+
+**Step 1: Re-run the workflow**
+
+The gix slotmap overflow is intermittent. Navigate to the GitHub Actions page and re-run the failed workflow:
+
+```bash
+# List recent workflow runs
+gh run list --workflow=release-plz.yml --limit=5
+
+# Re-run a specific failed run
+gh run rerun <run-id>
+```
+
+**Step 2: Clear cache if persistent**
+
+If the failure persists across multiple re-runs:
+
+```bash
+# List GitHub Actions caches
+gh cache list
+
+# Delete release-plz related caches
+gh cache delete <cache-key>
+```
+
+**Step 3: Manual dispatch**
+
+The release-plz workflow supports `workflow_dispatch` for manual triggering:
+
+```bash
+gh workflow run release-plz.yml
+```
+
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
+
+### RP-4: reinhardt-test Version Reintroduced
+
+Use this procedure when a `version` field is accidentally added to the `reinhardt-test` workspace dependency.
+
+**Detection**: `cargo publish --dry-run` fails for crates that dev-depend on `reinhardt-test`, with errors indicating that `reinhardt-test` cannot be found on crates.io.
+
+**Step 1: Remove the version field**
+
+In the root `Cargo.toml`, locate the `[workspace.dependencies]` section and remove the `version` field from the `reinhardt-test` entry:
+
+```toml
+# Before (broken)
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0" }
+
+# After (correct)
+reinhardt-test = { path = "crates/reinhardt-test" }
+```
+
+**Step 2: Verify**
+
+```bash
+cargo publish --dry-run -p reinhardt-orm  # or any crate that dev-depends on reinhardt-test
+```
+
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
