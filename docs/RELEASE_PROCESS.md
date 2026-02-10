@@ -504,6 +504,10 @@ cargo publish --dry-run -p reinhardt-orm  # or any crate that dev-depends on rei
 - Verify crate metadata is complete
 - Review crates.io for existing version conflicts
 - **Already Published**: release-plz automatically skips already-published versions, so retry is safe
+- **Circular Dependency**: See [KI-1: Circular Publish Dependencies](#ki-1-circular-publish-dependencies) and [RP-2](#rp-2-circular-dependency-deadlock-recovery)
+- **Dev-Dependency Resolution**: See [KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression](#ki-2-cargo-184-dev-dependency-resolution-regression) and [RP-4](#rp-4-reinhardt-test-version-reintroduced)
+- **Partial Failure**: See [KI-3: Partial Release Failure Deadlock](#ki-3-partial-release-failure-deadlock) and [RP-1](#rp-1-partial-release-failure-recovery)
+- **gix Panic**: See [KI-4: gix/gitoxide Slotmap Overflow](#ki-4-gixgitoxide-slotmap-overflow) and [RP-3](#rp-3-gix-cache-failure-recovery)
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
