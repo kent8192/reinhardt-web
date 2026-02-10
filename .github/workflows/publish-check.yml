@@ -73,19 +73,38 @@ jobs:
           # Get list of publishable crates
           CRATES=$(cargo metadata --format-version 1 --no-deps | jq -r -f /tmp/filter.jq)
 
+          # Get all workspace member names (for detecting unpublished deps)
+          WORKSPACE_MEMBERS=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name')
+
           echo "Crates to check:"
           echo "$CRATES"
           echo ""
 
           FAILED=""
+          WARNED=""
           for crate in $CRATES; do
             echo ""
             echo "--- Checking $crate ---"
-            if ! cargo publish -p "$crate" --dry-run 2>&1; then
-              echo "::error::Publish dry-run failed for $crate"
-              FAILED="$FAILED $crate"
+            if OUTPUT=$(cargo publish -p "$crate" --dry-run 2>&1); then
+              echo "$OUTPUT"
+            else
+              echo "$OUTPUT"
+              # Check if the failure is due to an unpublished workspace dependency
+              MISSING_PKG=$(echo "$OUTPUT" | sed -n "s/.*no matching package named \`\([^\`]*\)\`.*/\1/p" | head -1)
+              if [ -n "$MISSING_PKG" ] && echo "$WORKSPACE_MEMBERS" | grep -qx "$MISSING_PKG"; then
+                echo "::warning::Publish dry-run failed for $crate: depends on unpublished workspace member '$MISSING_PKG' (will resolve after first publish)"
+                WARNED="$WARNED $crate"
+              else
+                echo "::error::Publish dry-run failed for $crate"
+                FAILED="$FAILED $crate"
+              fi
             fi
           done
+
+          if [ -n "$WARNED" ]; then
+            echo ""
+            echo "::notice::Crates skipped due to unpublished workspace dependencies:$WARNED"
+          fi
 
           if [ -n "$FAILED" ]; then
             echo ""
