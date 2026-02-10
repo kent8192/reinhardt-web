@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.4...reinhardt-views@v0.1.0-alpha.5) - 2026-02-10
+
+### Fixed
+
+- *(views)* move tests to integration crate to break circular publish chain
+- *(release)* revert unpublished crate versions to pre-release state
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Styling
+
+- apply formatting to migrated test files and modified source files
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.3...reinhardt-views@v0.1.0-alpha.4) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-rest, reinhardt-db, reinhardt-db, reinhardt-auth
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.1.0-alpha.2...reinhardt-views@v0.1.0-alpha.3) - 2026-02-03
 
 ### Other

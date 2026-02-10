@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-db"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.7"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -178,7 +178,6 @@ integration-tests = []
 
 [dev-dependencies]
 tokio-test = "0.4"
-reinhardt-test = { workspace = true, features = ["testcontainers"] }
 rstest = { workspace = true }
 serial_test = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }
