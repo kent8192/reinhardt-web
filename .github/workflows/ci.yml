@@ -34,6 +34,10 @@ jobs:
     name: Publish Check
     uses: ./.github/workflows/publish-check.yml
 
+  todo-check:
+    name: TODO Check
+    uses: ./.github/workflows/todo-check.yml
+
   # Phase 1: All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
@@ -83,6 +87,7 @@ jobs:
       - fmt
       - clippy
       - publish-check
+      - todo-check
       - unit-test
       - intra-crate-integration-test
       - cross-crate-integration-test
