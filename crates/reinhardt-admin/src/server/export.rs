@@ -99,9 +99,12 @@ pub async fn export_data(
 				"text/tab-separated-values",
 			)
 		}
+		// Allow: Excel/XML exports are permanently excluded features
+		#[allow(clippy::unimplemented)]
 		ExportFormat::Excel => {
 			unimplemented!("Excel export is not yet implemented")
 		}
+		#[allow(clippy::unimplemented)]
 		ExportFormat::XML => {
 			unimplemented!("XML export is not yet implemented")
 		}
