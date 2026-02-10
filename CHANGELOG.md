@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.7...reinhardt-web@v0.1.0-alpha.8) - 2026-02-10
+
+### Documentation
+
+- update TODO policy with CI enforcement
+- rewrite CLAUDE.md TODO check sections in English
+
+### Maintenance
+
+- *(todo-check)* add semgrep rules for TODO/FIXME comment detection
+- *(todo-check)* add reusable workflow for unresolved TODO scanning
+- integrate TODO check into CI pipeline
+- *(todo-check)* switch from semgrep scan to semgrep ci
+- *(clippy)* add deny lints for todo/unimplemented/dbg_macro
+- *(todo-check)* remove redundant todo macro rule and fix block comment pattern
+- *(todo-check)* separate clippy todo lints into dedicated task
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
 
 ### Fixed
