@@ -176,9 +176,12 @@ fn clone_shares_singleton_scope(singleton_scope: Arc<SingletonScope>) {
 
 	assert!(retrieved1.is_some());
 	assert!(retrieved2.is_some());
-	assert_eq!(retrieved1.unwrap().value, "shared_singleton");
-	assert_eq!(retrieved2.unwrap().value, "shared_singleton");
+	assert_eq!(retrieved1.as_ref().unwrap().value, "shared_singleton");
+	assert_eq!(retrieved2.as_ref().unwrap().value, "shared_singleton");
 
 	// Verify they point to the same Arc
-	assert!(Arc::ptr_eq(&retrieved1.unwrap(), &retrieved2.unwrap()));
+	assert!(Arc::ptr_eq(
+		retrieved1.as_ref().unwrap(),
+		retrieved2.as_ref().unwrap()
+	));
 }

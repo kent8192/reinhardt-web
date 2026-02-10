@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.4...reinhardt-auth@v0.1.0-alpha.5) - 2026-02-10
+
+### Fixed
+
+- *(auth)* remove unused reinhardt-test dev-dependency
+- *(release)* revert unpublished crate versions to pre-release state
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.3...reinhardt-auth@v0.1.0-alpha.4) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-utils, reinhardt-di, reinhardt-apps, reinhardt-db, reinhardt-db
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.2...reinhardt-auth@v0.1.0-alpha.3) - 2026-02-03
 
 ### Other

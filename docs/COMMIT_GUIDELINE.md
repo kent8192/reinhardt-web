@@ -208,24 +208,33 @@ feat(api)!: change response format to JSON:API specification
 
 **Required Types (correlate with SemVer):**
 
-| Type | Description | SemVer |
-|------|-------------|--------|
-| `feat` | A new feature | MINOR |
-| `fix` | A bug fix | PATCH |
+| Type | Description | SemVer | CHANGELOG Section |
+|------|-------------|--------|-------------------|
+| `feat` | A new feature | MINOR | Added |
+| `fix` | A bug fix | PATCH | Fixed |
 
 **Recommended Types:**
 
-| Type | Description |
-|------|-------------|
-| `build` | Changes affecting build system or external dependencies |
-| `chore` | Maintenance tasks (no production code change) |
-| `ci` | CI configuration changes |
-| `docs` | Documentation only changes |
-| `perf` | Performance improvements |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `revert` | Reverts a previous commit |
-| `style` | Code style changes (formatting, whitespace) |
-| `test` | Adding or modifying tests |
+| Type | Description | CHANGELOG Section |
+|------|-------------|-------------------|
+| `perf` | Performance improvements | Performance |
+| `refactor` | Code change that neither fixes a bug nor adds a feature | Changed |
+| `docs` | Documentation only changes | Documentation |
+| `revert` | Reverts a previous commit | Reverted |
+| `deprecated` | Marks features/APIs as deprecated | Deprecated |
+| `security` | Security vulnerability fixes | Security |
+| `chore` | Maintenance tasks (no production code change) | Maintenance |
+| `ci` | CI configuration changes | Maintenance |
+| `build` | Changes affecting build system or external dependencies | Maintenance |
+| `test` | Adding or modifying tests | Testing |
+| `style` | Code style changes (formatting, whitespace) | Styling |
+
+**Choosing Between Similar Types:**
+
+- **`security` vs `fix`**: Use `security` for fixes addressing security vulnerabilities (CVEs, injection flaws, auth bypasses). This ensures they appear in a dedicated "Security" CHANGELOG section for visibility. Use `fix` for general bug fixes without security implications.
+- **`docs` vs `chore(docs)`**: Use `docs` for user-facing documentation changes (README, API docs, guides) — mapped to "Documentation" section. Use `chore(docs)` for internal documentation (CI comments, code comments) — mapped to "Maintenance" section.
+- **`refactor` vs `feat`/`fix`**: Use `refactor` when behavior does not change (mapped to "Changed"). If the refactoring introduces a new API or changes existing behavior, use `feat!:` or `fix!:` instead.
+- **`deprecated` vs `feat`**: Use `deprecated` when the primary purpose is marking features/APIs as deprecated (mapped to "Deprecated"). If deprecation is part of a larger feature replacement, use `feat` with deprecation noted in the body.
 
 ### BREAKING CHANGE
 
@@ -396,7 +405,92 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
+## CG: CHANGELOG Generation Guidelines
+
+This section describes how commit messages are transformed into CHANGELOG entries by release-plz. The configuration is defined in `release-plz.toml`.
+
+### CG-1: Commit Type to CHANGELOG Section Mapping
+
+Every commit type maps to a specific CHANGELOG section:
+
+| Commit Type | CHANGELOG Section | Keep a Changelog Category |
+|-------------|-------------------|---------------------------|
+| `feat` | Added | Added |
+| `fix` | Fixed | Fixed |
+| `perf` | Performance | — (custom) |
+| `refactor` | Changed | Changed |
+| `docs` | Documentation | — (custom) |
+| `revert` | Reverted | — (custom) |
+| `deprecated` | Deprecated | Deprecated |
+| `security` | Security | Security |
+| `chore` | Maintenance | — (custom) |
+| `ci` | Maintenance | — (custom) |
+| `build` | Maintenance | — (custom) |
+| `test` | Testing | — (custom) |
+| `style` | Styling | — (custom) |
+
+All commit types are included in the CHANGELOG. No commit type is silently dropped.
+
+### CG-2: Writing CHANGELOG-Friendly Descriptions
+
+Commit descriptions appear directly in the CHANGELOG. Write them so they make sense as standalone release note entries:
+
+- ❌ Bad: `fix: resolve issue` (unclear without context)
+- ❌ Bad: `refactor: clean up code` (too vague for release notes)
+- ✅ Good: `fix(orm): resolve connection pool exhaustion under high concurrency`
+- ✅ Good: `refactor(core): extract query builder into dedicated module`
+
+**Guidelines:**
+
+- Write descriptions that are meaningful to users reading release notes
+- Include the affected component in the scope when applicable
+- Be specific about what changed, not just that something changed
+
+### CG-3: Scope and Breaking Change Rendering
+
+**Scope**: The `(scope)` portion of the commit type is preserved in the CHANGELOG entry. Use scopes consistently to help users filter relevant changes.
+
+**Breaking changes**: When `protect_breaking_commits = true` is set in `release-plz.toml`, commits with `!` or `BREAKING CHANGE:` footer are always included in the CHANGELOG, even if the commit type would otherwise be skipped. Breaking changes are rendered with a `[**breaking**]` prefix in the CHANGELOG.
+
+### CG-4: GitHub Issue/PR Reference Auto-Linking
+
+References to GitHub issues and PRs in commit messages are automatically converted to clickable links:
+
+- `#123` → `[#123](https://github.com/kent8192/reinhardt-web/issues/123)`
+
+This is handled by `commit_preprocessors` in `release-plz.toml`. Use `#NNN` format in commit descriptions or bodies to reference issues.
+
+### CG-5: Automatically Skipped Commits
+
+The following commit patterns are excluded from CHANGELOG generation:
+
+| Pattern | Reason |
+|---------|--------|
+| `chore: release` | release-plz automation commits |
+| `Merge ...` | Git merge commits |
+| `Revert "..."` | GitHub-generated revert commits (manual `revert:` type commits are included) |
+| `Initial plan ...` | Plan mode initialization commits |
+
+**Note**: Even skipped commits with breaking changes are included due to `protect_breaking_commits = true`.
+
+### CG-6: CHANGELOG Verification
+
+After pushing commits, verify CHANGELOG generation in the Release PR:
+
+1. Check that each commit appears in the expected section
+2. Verify breaking changes are highlighted
+3. Confirm issue references are properly linked
+4. Review the Release PR diff for `CHANGELOG.md` files
+
+```bash
+# Preview what release-plz will generate (requires release-plz CLI)
+release-plz generate-changelog
+```
+
+---
+
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
 - **Main Standards**: @CLAUDE.md
+- **Release Process**: @RELEASE_PROCESS.md
