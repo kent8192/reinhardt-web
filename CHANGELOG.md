@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-09
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
 
 ### Fixed
 
@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(admin)* fix User model id type to Option<i64> for impl_test_model macro
 - *(di)* implement deep clone for InjectionContext request scope
 - *(ci)* remove version from reinhardt-test workspace dep to avoid cargo 1.84+ resolution failure
+- *(ci)* add gix workaround and manual dispatch support for release-plz
+- *(ci)* broaden publish-check skip condition for release-plz fix branches
+- *(ci)* use startsWith instead of contains for publish-check skip condition
+- *(release)* revert unpublished crate versions to pre-release state
 
 ### Maintenance
 
