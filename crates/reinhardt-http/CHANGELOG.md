@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.5...reinhardt-http@v0.1.0-alpha.6) - 2026-02-08
+
+### Fixed
+
+- *(http)* move integration tests to tests crate to break circular publish chain
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.4...reinhardt-http@v0.1.0-alpha.5) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-alpha.3...reinhardt-http@v0.1.0-alpha.4) - 2026-02-03
+
+### Other
+
+- merge main into chore/release-plz-migration
+- add release-plz migration markers to CHANGELOGs
 - N/A
 
 ### Added

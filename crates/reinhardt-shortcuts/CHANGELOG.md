@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.5...reinhardt-shortcuts@v0.1.0-alpha.6) - 2026-02-10
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-urls
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.4...reinhardt-shortcuts@v0.1.0-alpha.5) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-urls
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.3...reinhardt-shortcuts@v0.1.0-alpha.4) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-db, reinhardt-views, reinhardt-urls, reinhardt-test
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.2...reinhardt-shortcuts@v0.1.0-alpha.3) - 2026-02-03
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
