@@ -15,6 +15,7 @@ publishing.
 - [Automated Workflow](#automated-workflow)
 - [Manual Intervention](#manual-intervention)
 - [Configuration](#configuration)
+	- [Configuration Rationale](#configuration-rationale)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -250,6 +251,34 @@ The following packages are excluded from release:
 - `reinhardt-benchmarks` - Benchmark tests
 - `examples-*` - Example projects
 - `reinhardt-settings-cli` - Internal CLI tool
+
+### Configuration Rationale
+
+Key configuration decisions and the reasons behind them:
+
+**`pr_branch_prefix = "release-plz-"`**
+
+The branch prefix **must** start with `"release-plz-"` for the native two-step release workflow to function correctly. When `release_always = false`, release-plz determines whether to publish by checking if the latest commit originates from a PR whose branch starts with this prefix. Using a different prefix (e.g., `"release/"`) causes `release-plz release` to skip publishing entirely because it cannot detect the merged Release PR. (Ref: [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`publish_no_verify = true`**
+
+During `cargo publish`, Cargo attempts to build the crate including dev-dependencies. If dev-dependencies reference other workspace crates that have not yet been published to crates.io, the build verification step fails. Setting `publish_no_verify = true` skips this verification, allowing crates to be published in dependency order without false failures. (Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181))
+
+**`dependencies_update = true`**
+
+Enables release-plz to automatically update explicit `version` fields in workspace dependency declarations when a dependent crate's version is bumped. Without this, workspace members that pin explicit versions would become out-of-sync after a release, causing the next Release PR to carry stale dependency versions. (Ref: [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+**`release_always = false`**
+
+Enables a two-stage release workflow:
+1. **Stage 1** (push to main): `release-plz release-pr` creates a Release PR with version bumps and CHANGELOG updates.
+2. **Stage 2** (merge Release PR): `release-plz release` detects the merged release-plz branch and publishes to crates.io.
+
+This gives maintainers explicit control over when releases happen — crates are only published when the Release PR is deliberately merged. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`reinhardt-test` workspace dependency without `version` field**
+
+The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency by publishable crates. Its workspace dependency entry in the root `Cargo.toml` intentionally omits the `version` field. Adding a `version` field would cause `cargo publish` to attempt resolving `reinhardt-test` from crates.io (where it does not exist), breaking the publish of any crate that depends on it via dev-dependencies. This is related to a Cargo regression tracked in [cargo#15151](https://github.com/rust-lang/cargo/issues/15151). (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
 
 ---
 
