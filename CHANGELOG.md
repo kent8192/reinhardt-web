@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
+
+### Fixed
+
+- *(db)* remove unused reinhardt-test dev-dependency
+- *(auth)* remove unused reinhardt-test dev-dependency
+- *(core)* replace reinhardt-test with local poll_until helper
+- *(server)* replace reinhardt-test with local poll_until helper
+- *(utils)* break circular publish dependency with reinhardt-test
+- *(rest)* move tests to integration crate to break circular publish chain
+- *(views)* move tests to integration crate to break circular publish chain
+- *(di)* move unit tests to integration crate to break circular publish chain
+- *(http)* move integration tests to tests crate to break circular publish chain
+- *(admin)* move database tests to integration crate to break circular publish chain
+- *(utils)* use fully qualified Result type in poll_until helpers
+- *(utils)* fix integration test imports and remove private field access
+- *(di)* fix compilation errors in migrated unit tests
+- *(admin)* fix User model id type to Option<i64> for impl_test_model macro
+- *(di)* implement deep clone for InjectionContext request scope
+- *(ci)* remove version from reinhardt-test workspace dep to avoid cargo 1.84+ resolution failure
+- *(ci)* add gix workaround and manual dispatch support for release-plz
+- *(ci)* broaden publish-check skip condition for release-plz fix branches
+- *(ci)* use startsWith instead of contains for publish-check skip condition
+- *(release)* revert unpublished crate versions to pre-release state
+
+### Maintenance
+
+- *(websockets)* remove manual CHANGELOG entries for release-plz
+
+### Reverted
+
+- undo release PR [[#215](https://github.com/kent8192/reinhardt-web/issues/215)](https://github.com/kent8192/reinhardt-web/issues/215) version bumps
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+### Styling
+
+- apply formatting to migrated test files and modified source files
+- apply formatting to di and utils integration tests
+
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.5...reinhardt-web@v0.1.0-alpha.6) - 2026-02-07
+
+### Other
+
+- Merge pull request #129 from kent8192/fix/issue-128-bug-runserver-uses-settingsdefault-instead-of-loading-from-settings-directory
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.4...reinhardt-web@v0.1.0-alpha.5) - 2026-02-07
+
+### Fixed
+
+- add version to reinhardt-test workspace dependency for crates.io publishing
+- *(utils)* remove unused dev-dependencies to break circular publish chain
+- *(ci)* improve publish-check filter for non-publishable crates
+- remove reinhardt-urls from doc example to avoid circular dependency
+- break circular dependency between reinhardt-openapi-macros and reinhardt-rest
+- remove unused dev-dependencies from reinhardt-rest
+- remove reinhardt-di self-reference dev-dependency
+
+### Other
+
+- undo unpublished reinhardt-web v0.1.0-alpha.5 version bump and CHANGELOG entry
+- release
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+- skip publish-check for release-plz branches
+- add secrets inherit to reusable workflows
+- install protoc for reinhardt-grpc build
+- add publish dry-run check to detect circular dev-dependencies
+
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.3...reinhardt-web@v0.1.0-alpha.4) - 2026-02-03
 
 ### Other

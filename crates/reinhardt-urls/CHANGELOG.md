@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.4...reinhardt-urls@v0.1.0-alpha.5) - 2026-02-10
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-views, reinhardt-middleware
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.3...reinhardt-urls@v0.1.0-alpha.4) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-middleware, reinhardt-views
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.2...reinhardt-urls@v0.1.0-alpha.3) - 2026-02-03
 
 ### Other

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-utils"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.8"
 description = "Utility functions aggregator for Reinhardt"
 edition.workspace = true
 license.workspace = true
@@ -113,9 +113,6 @@ rstest = { workspace = true }
 serial_test = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
-reinhardt-test = { workspace = true, features = ["static", "testcontainers"] }
-reinhardt-db = { workspace = true, features = ["backends"] }
 uuid = { workspace = true }
 tokio-test = "0.4"
-sqlx = { workspace = true }
 tempfile = "3.8"

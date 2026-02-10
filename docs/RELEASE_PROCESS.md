@@ -55,17 +55,50 @@ release-plz uses [Conventional Commits](https://www.conventionalcommits.org/) to
 
 ### Automated CHANGELOG Generation
 
-CHANGELOGs are generated from commit messages:
+CHANGELOGs are generated from commit messages and categorized into sections based on custom `commit_parsers` in `release-plz.toml`. Each commit type maps to a specific CHANGELOG section:
+
+| Commit Type | CHANGELOG Section |
+|-------------|-------------------|
+| `feat` | Added |
+| `fix` | Fixed |
+| `perf` | Performance |
+| `refactor` | Changed |
+| `docs` | Documentation |
+| `revert` | Reverted |
+| `deprecated` | Deprecated |
+| `security` | Security |
+| `chore`, `ci`, `build` | Maintenance |
+| `test` | Testing |
+| `style` | Styling |
+
+**Example CHANGELOG output:**
 
 ```markdown
 ## [0.2.0] - 2026-01-30
 
 ### Added
-- Add OAuth support (#123)
+- feat(auth): add OAuth support ([#123](https://github.com/kent8192/reinhardt-web/issues/123))
 
 ### Fixed
-- Resolve connection leak in pool (#124)
+- fix(orm): resolve connection pool exhaustion under high concurrency ([#124](https://github.com/kent8192/reinhardt-web/issues/124))
+
+### Performance
+- perf(query): optimize batch insert with prepared statements
+
+### Changed
+- refactor(core): extract query builder into dedicated module
+
+### Security
+- security(auth): patch session fixation vulnerability
 ```
+
+**Key features:**
+- All commit types are categorized (no entries fall into "Other" unless unrecognized)
+- GitHub issue/PR references (`#123`) are automatically converted to clickable links
+- Breaking changes are always included, even from otherwise-skipped commits
+- Commits are sorted in chronological order (oldest first)
+
+For detailed guidelines on writing CHANGELOG-friendly commit messages, see [docs/COMMIT_GUIDELINE.md](COMMIT_GUIDELINE.md) § CG: CHANGELOG Generation Guidelines.
 
 ---
 
@@ -156,13 +189,14 @@ release = false
 
 ### release-plz.toml
 
-Configuration file at repository root:
+Configuration file at repository root. Key CHANGELOG-related settings:
 
 ```toml
 [workspace]
 changelog_update = true
-pr_branch_prefix = "release-plz/"
+pr_branch_prefix = "release-plz-"
 pr_labels = ["release", "automated"]
+pr_name = "chore: release"
 git_release_enable = true
 git_tag_enable = true
 git_tag_name = "{{ package }}@v{{ version }}"
@@ -170,6 +204,8 @@ git_release_type = "auto"
 semver_check = false
 publish_timeout = "10m"
 dependencies_update = false
+release_always = false
+publish_no_verify = true
 
 # Exclude packages from release
 [[package]]
@@ -179,7 +215,31 @@ publish = false
 
 [changelog]
 protect_breaking_commits = true
+sort_commits = "oldest"
+commit_parsers = [
+  # Skip automated commits, then map types to sections
+  { message = "^chore: release", skip = true },
+  { message = "^Merge", skip = true },
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  # ... (see release-plz.toml for full list)
+]
+commit_preprocessors = [
+  # Convert #123 to clickable GitHub links
+  { pattern = '#(\d+)', replace = "[#${1}](https://github.com/kent8192/reinhardt-web/issues/${1})" },
+]
 ```
+
+**CHANGELOG Customization Settings:**
+
+| Setting | Purpose |
+|---------|---------|
+| `protect_breaking_commits` | Always include breaking change commits, even if their type would be skipped |
+| `sort_commits` | Sort commits chronologically (`"oldest"` = oldest first) |
+| `commit_parsers` | Map commit types to CHANGELOG sections; skip automated commits |
+| `commit_preprocessors` | Transform commit messages (e.g., auto-link GitHub references) |
+
+See `release-plz.toml` at repository root for the complete configuration.
 
 ### Non-Published Packages
 
