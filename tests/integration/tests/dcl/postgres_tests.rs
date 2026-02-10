@@ -21,10 +21,6 @@ use reinhardt_query::dcl::*;
 use reinhardt_test::fixtures::dcl::*;
 use rstest::rstest;
 
-// TODO: These tests would use testcontainers for real database testing
-// For now, we're creating the structure. Actual implementation would require
-// testcontainers setup and database connections.
-
 // ============================================================================
 // Role Management Integration Tests (10 tests)
 // ============================================================================

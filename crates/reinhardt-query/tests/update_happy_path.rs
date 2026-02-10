@@ -142,29 +142,6 @@ async fn test_update_with_returning(#[future] users_with_data: (TestPool, Vec<i3
 	assert_eq!(users[0].get::<String, _>("name"), "Charlie Updated");
 }
 
-/// Test update with expression
-///
-/// Verifies that Query::update() can use expressions in value assignments.
-///
-/// **IGNORED**: Expression support in .values() not yet implemented.
-/// SimpleExpr does not implement IntoValue trait.
-#[rstest]
-#[tokio::test]
-#[ignore = "Expression in .values() not yet supported (SimpleExpr: IntoValue not implemented)"]
-async fn test_update_with_expression(#[future] users_with_data: (TestPool, Vec<i32>)) {
-	let (_pool, _ids) = users_with_data.await;
-
-	// TODO: Implement expression support in .values()
-	// The following should work once SimpleExpr implements IntoValue:
-	// let stmt = Query::update()
-	// 	.table("users")
-	// 	.values([("age", Expr::col("age").add(1))])
-	// 	.and_where(Expr::col("email").eq("alice@example.com"))
-	// 	.to_owned();
-
-	todo!("Expression support in .values() not yet implemented");
-}
-
 /// Test update multiple rows with condition
 ///
 /// Verifies that Query::update() can update multiple rows matching a condition.
