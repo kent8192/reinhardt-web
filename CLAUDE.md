@@ -57,6 +57,12 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - **KEEP** `unimplemented!()` for permanently excluded features
 - **NEVER** use alternative notations (`FIXME:`, `Implementation Note:`, etc.)
 
+**CI Enforcement (TODO Check):**
+- PR で新規追加された `todo!()`, `// TODO`, `// FIXME` は CI の TODO Check で検出されブロックされる
+- `unimplemented!()` はブロック対象外（永続的除外機能のため）
+- 既存の TODO は diff-aware スキャンにより検出されない
+- ローカルでの事前チェック: `semgrep scan --config .semgrep/ --error --metrics off`
+
 See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 ### Testing
@@ -224,6 +230,15 @@ cargo make fmt-fix   # Automatically fix code based on formatting rules
 cargo make clippy-fix  # Automatically fix code based on lint rules
 ```
 
+**TODO Comment Check:**
+```bash
+# Full scan (all files, not diff-aware)
+docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --error --metrics off
+
+# Diff-aware scan (compare against main branch)
+docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --baseline-commit origin/main --error --metrics off
+```
+
 **Database Tests:**
 ```bash
 # Database tests use TestContainers automatically (no external database needed)
@@ -320,6 +335,7 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
+   - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
 
@@ -371,6 +387,7 @@ Before submitting code:
 - Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
+- Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -411,6 +428,7 @@ Before submitting code:
 - Use intra-doc links for feature-gated items (causes unresolved link warnings)
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
+- Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
 
 ### 📚 Detailed Standards
 
