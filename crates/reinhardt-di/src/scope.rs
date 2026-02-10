@@ -75,6 +75,19 @@ impl RequestScope {
 	}
 }
 
+impl RequestScope {
+	/// Creates a deep clone of this scope with an independent cache.
+	///
+	/// The cloned scope contains the same cached entries as the original,
+	/// but modifications to either scope will not affect the other.
+	pub fn deep_clone(&self) -> Self {
+		let cache = self.cache.read().unwrap();
+		Self {
+			cache: Arc::new(RwLock::new(cache.clone())),
+		}
+	}
+}
+
 impl Default for RequestScope {
 	fn default() -> Self {
 		Self::new()

@@ -2,6 +2,7 @@
 name = "examples-twitter"
 version = "0.1.0-alpha.1"
 edition = "2024"
+publish = false
 default-run = "examples-twitter"
 
 [lib]
@@ -66,6 +67,7 @@ reinhardt = { workspace = true, features = [
 	"client-router",           # Unified client/server routing with UnifiedRouter<V>
 ] }
 reinhardt-websockets = { workspace = true, features = ["pages-integration"] }
+reinhardt-auth = { workspace = true, features = ["sessions"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 clap = { version = "4", features = ["derive"] }

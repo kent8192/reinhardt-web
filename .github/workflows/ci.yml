@@ -30,6 +30,14 @@ jobs:
     name: Clippy
     uses: ./.github/workflows/clippy.yml
 
+  publish-check:
+    name: Publish Check
+    uses: ./.github/workflows/publish-check.yml
+
+  todo-check:
+    name: TODO Check
+    uses: ./.github/workflows/todo-check.yml
+
   # Phase 1: All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
@@ -37,32 +45,38 @@ jobs:
     name: Unit Tests
     uses: ./.github/workflows/unit-test.yml
     needs: [check, fmt, clippy]
+    secrets: inherit
 
   intra-crate-integration-test:
     name: Intra-Crate Integration Tests
     uses: ./.github/workflows/intra-crate-integration-test.yml
     needs: [check, fmt, clippy]
+    secrets: inherit
 
   cross-crate-integration-test:
     name: Cross-Crate Integration Tests
     uses: ./.github/workflows/cross-crate-integration-test.yml
     needs: [check, fmt, clippy]
+    secrets: inherit
 
   doc-test:
     name: Documentation Tests
     uses: ./.github/workflows/doc-test.yml
     needs: [check, fmt, clippy]
+    secrets: inherit
 
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
     needs: [check, fmt, clippy]
+    secrets: inherit
 
   # Phase 2: Examples tests run last (requires 70-90GB, must run alone)
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
     needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, doc-test, ui-test]
+    secrets: inherit
 
   # All jobs must pass
   ci-success:
@@ -72,6 +86,8 @@ jobs:
       - check
       - fmt
       - clippy
+      - publish-check
+      - todo-check
       - unit-test
       - intra-crate-integration-test
       - cross-crate-integration-test

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-auth"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.5"
 description = "Authentication and authorization system"
 edition.workspace = true
 license.workspace = true
@@ -116,7 +116,6 @@ hyper = { workspace = true }
 bytes = { workspace = true }
 rstest = "0.26.1"
 proptest = { workspace = true }
-reinhardt-test = { workspace = true, features = ["testcontainers", "property-based"] }
 trybuild = { workspace = true }
 serial_test = "3.2"
 sqlx = { workspace = true, features = ["any", "sqlite", "runtime-tokio"] }
