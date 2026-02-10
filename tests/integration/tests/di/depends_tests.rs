@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext};
 use reinhardt_test::fixtures::*;
 use rstest::*;
+use std::sync::Arc;
 
 // Test type definitions
 #[derive(Clone, Debug, PartialEq)]
@@ -84,10 +85,11 @@ async fn depends_resolve_calls_injectable(injection_context: InjectionContext) {
 }
 
 #[serial_test::serial(uncached_counter)]
-#[rstest]
 #[tokio::test]
-async fn depends_with_use_cache_true(injection_context: InjectionContext) {
+async fn depends_with_use_cache_true() {
 	// Arrange
+	let singleton_scope = Arc::new(reinhardt_di::SingletonScope::new());
+	let injection_context = InjectionContext::builder(singleton_scope).build();
 	unsafe {
 		UNCACHED_COUNTER = 0;
 	}
@@ -112,10 +114,11 @@ async fn depends_with_use_cache_true(injection_context: InjectionContext) {
 }
 
 #[serial_test::serial(uncached_counter)]
-#[rstest]
 #[tokio::test]
-async fn depends_with_use_cache_false(injection_context: InjectionContext) {
+async fn depends_with_use_cache_false() {
 	// Arrange
+	let singleton_scope = Arc::new(reinhardt_di::SingletonScope::new());
+	let injection_context = InjectionContext::builder(singleton_scope).build();
 	unsafe {
 		UNCACHED_COUNTER = 0;
 	}

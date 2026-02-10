@@ -50,6 +50,7 @@ reinhardt-utils = { workspace = true, features = ["cache", "logging", "staticfil
 reinhardt-test = { workspace = true, features = ["testcontainers"] }
 reinhardt-urls = { workspace = true }
 reinhardt-conf = { workspace = true }
+reinhardt-admin = { workspace = true, features = ["core"] }
 reinhardt-pages = { workspace = true }
 reinhardt-commands = { workspace = true }
 
