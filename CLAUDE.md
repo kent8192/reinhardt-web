@@ -58,10 +58,10 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - **NEVER** use alternative notations (`FIXME:`, `Implementation Note:`, etc.)
 
 **CI Enforcement (TODO Check):**
-- PR で新規追加された `todo!()`, `// TODO`, `// FIXME` は CI の TODO Check で検出されブロックされる
-- `unimplemented!()` はブロック対象外（永続的除外機能のため）
-- 既存の TODO は diff-aware スキャンにより検出されない
-- ローカルでの事前チェック: `semgrep scan --config .semgrep/ --error --metrics off`
+- New `todo!()`, `// TODO`, and `// FIXME` added in PRs are detected and blocked by TODO Check CI
+- `unimplemented!()` is exempt (reserved for permanently excluded features)
+- Existing TODOs are not flagged due to diff-aware scanning
+- Local pre-check: `semgrep scan --config .semgrep/ --error --metrics off`
 
 See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
