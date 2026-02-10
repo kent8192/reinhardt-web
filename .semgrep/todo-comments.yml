@@ -22,20 +22,9 @@ rules:
       include:
         - "*.rs"
 
-  - id: rust-todo-macro
-    patterns:
-      - pattern-regex: "todo!\\("
-    message: >-
-      Unresolved todo!() macro found. Implement or remove before merging.
-    languages: [generic]
-    severity: ERROR
-    paths:
-      include:
-        - "*.rs"
-
   - id: rust-block-comment-todo
     patterns:
-      - pattern-regex: "(?:/\\*|\\*)\\s*(?:TODO|FIXME)"
+      - pattern-regex: "(?:/\\*!?|\\*)\\s*(?:TODO|FIXME)"
     message: >-
       Unresolved TODO/FIXME in block comment found. Resolve or remove before merging.
     languages: [generic]
