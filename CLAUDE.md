@@ -61,7 +61,7 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - New `todo!()`, `// TODO`, and `// FIXME` added in PRs are detected and blocked by TODO Check CI
 - `unimplemented!()` is exempt (reserved for permanently excluded features)
 - Existing TODOs are not flagged due to diff-aware scanning
-- Clippy also enforces `clippy::todo`, `clippy::unimplemented`, and `clippy::dbg_macro` as deny lints
+- `cargo make clippy-todo-check` enforces `clippy::todo`, `clippy::unimplemented`, and `clippy::dbg_macro` as deny lints
 - Local pre-check: `semgrep scan --config .semgrep/ --error --metrics off`
 
 See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
@@ -240,10 +240,13 @@ cargo make clippy-fix  # Automatically fix code based on lint rules
 
 **TODO Comment Check:**
 ```bash
-# Full scan (all files, not diff-aware)
+# Clippy: detect todo!(), unimplemented!(), dbg!() macros
+cargo make clippy-todo-check
+
+# Semgrep: full scan for TODO/FIXME comments (all files, not diff-aware)
 docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --error --metrics off
 
-# Diff-aware scan (compare against main branch)
+# Semgrep: diff-aware scan (compare against main branch)
 docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --baseline-commit origin/main --error --metrics off
 ```
 

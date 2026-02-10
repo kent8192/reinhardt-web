@@ -70,10 +70,8 @@ args = [
   "--all",
   "--all-features",
   "--",
-  "-D", "warnings",
-  "-D", "clippy::todo",
-  "-D", "clippy::unimplemented",
-  "-D", "clippy::dbg_macro",
+  "-D",
+  "warnings",
 ]
 
 [tasks.clippy-fix]
@@ -87,7 +85,19 @@ args = [
   "--all-features",
   "--allow-dirty",
   "--",
-  "-D", "warnings",
+  "-D",
+  "warnings",
+]
+
+[tasks.clippy-todo-check]
+description = "Check for development-only code (todo!, unimplemented!, dbg!)"
+command = "cargo"
+args = [
+  "clippy",
+  "--workspace",
+  "--all",
+  "--all-features",
+  "--",
   "-D", "clippy::todo",
   "-D", "clippy::unimplemented",
   "-D", "clippy::dbg_macro",
