@@ -89,6 +89,20 @@ args = [
   "warnings",
 ]
 
+[tasks.clippy-todo-check]
+description = "Check for development-only code (todo!, unimplemented!, dbg!)"
+command = "cargo"
+args = [
+  "clippy",
+  "--workspace",
+  "--all",
+  "--all-features",
+  "--",
+  "-D", "clippy::todo",
+  "-D", "clippy::unimplemented",
+  "-D", "clippy::dbg_macro",
+]
+
 [tasks.fmt-page-only]
 description = "Format page! macro DSL only (without rustfmt)"
 command = "cargo"
