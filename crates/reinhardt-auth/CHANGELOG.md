@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.4...reinhardt-auth@v0.1.0-alpha.5) - 2026-02-09
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.1.0-alpha.4...reinhardt-auth@v0.1.0-alpha.5) - 2026-02-10
 
 ### Fixed
 
 - *(auth)* remove unused reinhardt-test dev-dependency
+- *(release)* revert unpublished crate versions to pre-release state
 
 ### Reverted
 
