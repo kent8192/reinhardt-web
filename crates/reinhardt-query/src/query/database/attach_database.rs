@@ -99,31 +99,46 @@ impl Default for AttachDatabaseStatement {
 
 impl QueryStatementBuilder for AttachDatabaseStatement {
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
-		// Downcast to concrete QueryBuilder type
 		use std::any::Any;
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::PostgresQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_attach_database in backend
-			todo!("Implement build_attach_database for PostgreSQL");
+			panic!("ATTACH DATABASE is SQLite-specific and not supported in PostgreSQL");
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::MySqlQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_attach_database in backend
-			todo!("Implement build_attach_database for MySQL");
+			panic!("ATTACH DATABASE is SQLite-specific and not supported in MySQL");
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::SqliteQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_attach_database in backend
-			todo!("Implement build_attach_database for SQLite");
+			let file_path = self
+				.file_path
+				.as_deref()
+				.expect("ATTACH DATABASE requires a file path");
+			let db_name = self
+				.database_name
+				.as_ref()
+				.expect("ATTACH DATABASE requires a schema name (AS clause)");
+			let quote = query_builder.quote_char();
+			let sql = format!(
+				"ATTACH DATABASE '{}' AS {}{}{}",
+				file_path,
+				quote,
+				db_name.to_string(),
+				quote,
+			);
+			return (sql, crate::value::Values::new());
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::CockroachDBQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::CockroachDBQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_attach_database in backend
-			todo!("Implement build_attach_database for CockroachDB");
+			panic!("ATTACH DATABASE is SQLite-specific and not supported in CockroachDB");
 		}
 		panic!("Unsupported query builder type");
 	}

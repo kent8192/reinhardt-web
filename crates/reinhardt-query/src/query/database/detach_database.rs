@@ -76,31 +76,36 @@ impl Default for DetachDatabaseStatement {
 
 impl QueryStatementBuilder for DetachDatabaseStatement {
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
-		// Downcast to concrete QueryBuilder type
 		use std::any::Any;
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::PostgresQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::PostgresQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_detach_database in backend
-			todo!("Implement build_detach_database for PostgreSQL");
+			panic!("DETACH DATABASE is SQLite-specific and not supported in PostgreSQL");
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::MySqlQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::MySqlQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_detach_database in backend
-			todo!("Implement build_detach_database for MySQL");
+			panic!("DETACH DATABASE is SQLite-specific and not supported in MySQL");
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::SqliteQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::SqliteQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_detach_database in backend
-			todo!("Implement build_detach_database for SQLite");
+			let db_name = self
+				.database_name
+				.as_ref()
+				.expect("DETACH DATABASE requires a database name");
+			let quote = query_builder.quote_char();
+			let sql = format!("DETACH DATABASE {}{}{}", quote, db_name.to_string(), quote,);
+			return (sql, crate::value::Values::new());
 		}
-		if let Some(_builder) =
-			(query_builder as &dyn Any).downcast_ref::<crate::backend::CockroachDBQueryBuilder>()
+		if (query_builder as &dyn Any)
+			.downcast_ref::<crate::backend::CockroachDBQueryBuilder>()
+			.is_some()
 		{
-			// TODO: Implement build_detach_database in backend
-			todo!("Implement build_detach_database for CockroachDB");
+			panic!("DETACH DATABASE is SQLite-specific and not supported in CockroachDB");
 		}
 		panic!("Unsupported query builder type");
 	}
