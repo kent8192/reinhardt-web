@@ -78,7 +78,7 @@ pub use types::{
 };
 
 // Re-export ODM types
-pub use document::{Document, IndexModel, IndexModelBuilder};
+pub use document::{Document, IndexKey, IndexModel, IndexModelBuilder, IndexOptions, IndexOrder};
 
 /// Prelude module for convenient imports
 ///
@@ -88,7 +88,9 @@ pub use document::{Document, IndexModel, IndexModelBuilder};
 /// use reinhardt_db::nosql::prelude::*;
 /// ```
 pub mod prelude {
-	pub use super::document::{Document, IndexModel, IndexModelBuilder};
+	pub use super::document::{
+		Document, IndexKey, IndexModel, IndexModelBuilder, IndexOptions, IndexOrder,
+	};
 	pub use super::error::{NoSQLError, OdmError, OdmResult, Result, ValidationError};
 	pub use super::traits::{DocumentBackend, NoSQLBackend};
 	pub use super::types::{
