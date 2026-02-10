@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-middleware"
-version.workspace = true
+version = "0.1.0-alpha.5"
 description = "Middleware system for request/response processing pipeline"
 edition.workspace = true
 license.workspace = true

@@ -47,7 +47,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 
 use crate::crate_paths::get_reinhardt_pages_crate_info;
-use reinhardt_pages_ast::{
+use reinhardt_manouche::core::{
 	FormMethod, TypedCustomAttr, TypedFieldType, TypedFormAction, TypedFormCallbacks,
 	TypedFormDerived, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro,
 	TypedFormSlots, TypedFormState, TypedFormWatch, TypedIcon, TypedIconChild, TypedIconPosition,
@@ -492,6 +492,7 @@ fn generate_watch_methods(
 /// let form = form.clone();
 /// let count_memo = Memo::new(move || form.char_count());
 /// ```
+// Parameter reserved for future crate path customization
 #[allow(unused_variables)]
 fn generate_derived_methods(
 	derived: &Option<TypedFormDerived>,
@@ -1291,7 +1292,7 @@ fn generate_icon_element(icon: &TypedIcon) -> TokenStream {
 }
 
 /// Generates attribute code for icon elements.
-fn generate_icon_attrs(attrs: &[reinhardt_pages_ast::TypedIconAttr]) -> TokenStream {
+fn generate_icon_attrs(attrs: &[reinhardt_manouche::core::TypedIconAttr]) -> TokenStream {
 	let mut result = TokenStream::new();
 	for attr in attrs {
 		let name = &attr.name;
@@ -1323,7 +1324,7 @@ fn generate_icon_children(children: &[TypedIconChild]) -> TokenStream {
 }
 
 /// Generates attribute code for icon child elements.
-fn generate_icon_child_attrs(attrs: &[reinhardt_pages_ast::TypedIconAttr]) -> TokenStream {
+fn generate_icon_child_attrs(attrs: &[reinhardt_manouche::core::TypedIconAttr]) -> TokenStream {
 	let mut result = TokenStream::new();
 	for attr in attrs {
 		let name = &attr.name;
@@ -2043,7 +2044,7 @@ mod tests {
 	use quote::quote;
 
 	fn parse_validate_generate(input: proc_macro2::TokenStream) -> TokenStream {
-		use reinhardt_pages_ast::FormMacro;
+		use reinhardt_manouche::core::FormMacro;
 
 		let untyped_ast: FormMacro = syn::parse2(input).unwrap();
 		let typed_ast = super::super::validator::validate(&untyped_ast).unwrap();

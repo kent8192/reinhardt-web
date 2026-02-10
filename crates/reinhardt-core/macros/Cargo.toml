@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-macros"
-version.workspace = true
+version = "0.1.0-alpha.2"
 edition.workspace = true
 license.workspace = true
 description = "Procedural macros for Reinhardt framework"
@@ -30,14 +30,10 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 trybuild = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reinhardt-db = { workspace = true, features = ["associations", "migrations", "orm"] }
 serial_test = { workspace = true }
-reinhardt-di = { workspace = true }
-reinhardt-http = { workspace = true }
 async-trait = { workspace = true }
-reinhardt-apps = { workspace = true }
-reinhardt = { workspace = true, features = ["database"] }
 chrono = { workspace = true }
 linkme = { workspace = true }
-reinhardt-core = {workspace = true, features = ["signals"]}
-reinhardt-admin = {workspace = true, features = ["core"]}
+# Note: Internal workspace crates (reinhardt-db, reinhardt-di, reinhardt-core, etc.)
+# are excluded from dev-dependencies to avoid circular dependency issues during publishing.
+# Tests that require these crates have been moved to reinhardt-integration-tests.

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-test"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.8"
 edition = "2024"
 description = "Testing utilities and helpers for Reinhardt framework"
 license.workspace = true
@@ -17,7 +17,7 @@ testcontainers = [
   "dep:redis",
   "dep:fs2",
 ]
-static = ["reinhardt-utils/static"]
+static = ["reinhardt-utils/staticfiles"]
 websockets = ["dep:reinhardt-websockets", "reinhardt-server/websocket"]
 graphql = ["reinhardt-server/graphql", "dep:async-graphql"]
 property-based = ["dep:proptest"]
@@ -111,7 +111,7 @@ reinhardt-core = { workspace = true, features = [
   "exception",
   "messages",
 ] }
-reinhardt-utils = { workspace = true, features = ["cache", "static"] }
+reinhardt-utils = { workspace = true, features = ["cache", "staticfiles"] }
 reinhardt-pages = { workspace = true }
 
 # Token pasting for macros

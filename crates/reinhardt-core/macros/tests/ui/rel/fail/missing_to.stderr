@@ -1,5 +1,0 @@
-error: #[rel(foreign_key, ...)] does not accept 'to' parameter. Use ForeignKeyField<Target> type instead.
-  --> tests/ui/rel/fail/missing_to.rs:25:2
-   |
-25 |     #[rel(foreign_key, to = User)]
-   |     ^

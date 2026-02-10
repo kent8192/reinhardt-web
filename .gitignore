@@ -115,3 +115,10 @@ file::memory:
 Plans.md
 
 .aida
+repos/
+
+# Git worktrees
+.worktrees/
+
+# WASM build artifacts (examples)
+examples/local/examples-twitter/static/admin/

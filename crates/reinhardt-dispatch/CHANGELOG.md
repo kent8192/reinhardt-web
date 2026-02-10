@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.4...reinhardt-dispatch@v0.1.0-alpha.5) - 2026-02-10
+
+### Maintenance
+
+- updated the following local packages: reinhardt-views, reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.3...reinhardt-dispatch@v0.1.0-alpha.4) - 2026-02-06
+
+### Other
+
+- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.2...reinhardt-dispatch@v0.1.0-alpha.3) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-http, reinhardt-middleware, reinhardt-views, reinhardt-urls
+
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.1...reinhardt-dispatch@v0.1.0-alpha.2) - 2026-02-03
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
 - N/A
 
 ### Added
@@ -27,7 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
-## [0.1.0] - 2025-11-16
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
-- Initial release with event dispatching system for decoupled component communication
+
+- Initial crates.io release
+

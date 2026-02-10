@@ -3,22 +3,22 @@
 ## Purpose
 
 This document provides step-by-step procedures for releasing Reinhardt crates to
-crates.io, covering version selection, CHANGELOG management, automated
-publishing, and troubleshooting.
+crates.io using release-plz for automated versioning, CHANGELOG generation, and
+publishing.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Version Selection Guidelines](#version-selection-guidelines)
-- [Pre-Release Checklist](#pre-release-checklist)
-- [Automated Publishing with CI/CD](#automated-publishing-with-cicd)
-- [CHANGELOG Management](#changelog-management)
-- [Multi-Crate Releases](#multi-crate-releases)
-- [Rollback Procedures](#rollback-procedures)
+- [How release-plz Works](#how-release-plz-works)
+- [Automated Workflow](#automated-workflow)
+- [Manual Intervention](#manual-intervention)
+- [Configuration](#configuration)
+	- [Configuration Rationale](#configuration-rationale)
+- [Known Issues & Pitfalls](#known-issues--pitfalls)
+- [Recovery Procedures](#recovery-procedures)
 - [Troubleshooting](#troubleshooting)
-- [Quick Reference](#quick-reference)
 
 ---
 
@@ -26,433 +26,462 @@ publishing, and troubleshooting.
 
 ### Release Strategy
 
-Reinhardt follows a **per-crate versioning and tagging strategy**:
+Reinhardt uses **release-plz** for fully automated release management:
 
-- **Independent Versioning**: Each crate maintains its own version
-- **Selective Releases**: Only release changed crates
-- **Semantic Versioning**: Strict adherence to SemVer 2.0.0
+- **Automated Versioning**: Versions are determined from conventional commits
+- **Automated CHANGELOGs**: Generated from commit messages
+- **Release PRs**: Automatically created when changes are detected
 - **Git Tags**: Format `[crate-name]@v[version]`
+- **GitHub Releases**: Created automatically upon merge
 
 ### Key Principles
 
-1. **Explicit Authorization**: Every release requires user approval
-2. **Dry-Run First**: Always verify before publication
-3. **Commit Before Tag**: Version bumps committed before tagging
-4. **Comprehensive Testing**: All tests must pass
-
-### Tools
-
-**cargo-workspaces** handles change detection and publishing:
-
-```bash
-cargo install cargo-workspaces --version 0.4.1
-```
-
-**Key commands**:
-
-- `cargo ws changed` - Detect changed crates
-- `cargo ws publish --dry-run` - Validate
-- `cargo ws publish` - Publish
+1. **Conventional Commits**: Use proper commit message format for version bumps
+2. **Automated Process**: release-plz handles version bumps and CHANGELOGs
+3. **Review Before Release**: Release PRs allow review before publishing
+4. **Per-Crate Releases**: Only changed crates are released
 
 ---
 
-## Version Selection Guidelines
+## How release-plz Works
 
-### Semantic Versioning 2.0.0
+### Commit-to-Version Mapping
 
-**Format:** `MAJOR.MINOR.PATCH`
+release-plz uses [Conventional Commits](https://www.conventionalcommits.org/) to determine version bumps:
 
-#### MAJOR (X.0.0) - Breaking Changes
+| Commit Type | Version Bump | Example |
+|-------------|--------------|---------|
+| `feat:` | MINOR | `feat(auth): add OAuth support` |
+| `fix:` | PATCH | `fix(orm): resolve connection leak` |
+| `feat!:` or `BREAKING CHANGE:` | MAJOR | `feat!: change API response format` |
+| Other types | PATCH | `docs:`, `chore:`, `refactor:`, etc. |
 
-- Breaking API changes
-- Removed/renamed public items
-- Changed trait bounds
+### Automated CHANGELOG Generation
 
-```rust
-// MAJOR bump required
-// Before: pub fn connect(url: &str) -> Connection
-// After:  pub fn connect(url: &str) -> Result<Connection>
+CHANGELOGs are generated from commit messages and categorized into sections based on custom `commit_parsers` in `release-plz.toml`. Each commit type maps to a specific CHANGELOG section:
+
+| Commit Type | CHANGELOG Section |
+|-------------|-------------------|
+| `feat` | Added |
+| `fix` | Fixed |
+| `perf` | Performance |
+| `refactor` | Changed |
+| `docs` | Documentation |
+| `revert` | Reverted |
+| `deprecated` | Deprecated |
+| `security` | Security |
+| `chore`, `ci`, `build` | Maintenance |
+| `test` | Testing |
+| `style` | Styling |
+
+**Example CHANGELOG output:**
+
+```markdown
+## [0.2.0] - 2026-01-30
+
+### Added
+- feat(auth): add OAuth support ([#123](https://github.com/kent8192/reinhardt-web/issues/123))
+
+### Fixed
+- fix(orm): resolve connection pool exhaustion under high concurrency ([#124](https://github.com/kent8192/reinhardt-web/issues/124))
+
+### Performance
+- perf(query): optimize batch insert with prepared statements
+
+### Changed
+- refactor(core): extract query builder into dedicated module
+
+### Security
+- security(auth): patch session fixation vulnerability
 ```
 
-#### MINOR (0.X.0) - New Features
+**Key features:**
+- All commit types are categorized (no entries fall into "Other" unless unrecognized)
+- GitHub issue/PR references (`#123`) are automatically converted to clickable links
+- Breaking changes are always included, even from otherwise-skipped commits
+- Commits are sorted in chronological order (oldest first)
 
-- New public APIs
-- New optional features
-- Backward-compatible enhancements
-- Deprecations
-
-```rust
-// MINOR bump
-impl Pool {
-	pub fn with_timeout(self, duration: Duration) -> Self { }  // New method
-}
-```
-
-#### PATCH (0.0.X) - Bug Fixes
-
-- Bug fixes (no API changes)
-- Performance improvements
-- Documentation corrections
-
-### Pre-1.0.0 Rules
-
-- **MINOR (0.X.0)**: MAY include breaking changes
-- **PATCH (0.0.X)**: MUST be backward compatible
-
-**After 1.0.0**: Breaking changes REQUIRE MAJOR version bump
+For detailed guidelines on writing CHANGELOG-friendly commit messages, see [docs/COMMIT_GUIDELINE.md](COMMIT_GUIDELINE.md) § CG: CHANGELOG Generation Guidelines.
 
 ---
 
-## Pre-Release Checklist
+## Automated Workflow
 
-### Code Quality
+### Step 1: Develop with Conventional Commits
 
-- [ ] Tests pass: `cargo test --workspace --all --all-features`
-- [ ] Build succeeds: `cargo build --workspace --all --all-features`
-- [ ] Linting passes: `cargo make clippy-fix`
-- [ ] Formatting applied: `cargo make fmt-fix`
-
-### Documentation
-
-- [ ] README.md updated (if API changed)
-- [ ] `src/lib.rs` documentation updated
-- [ ] CHANGELOG.md prepared
-- [ ] Code examples tested: `cargo test --doc`
-
-### Metadata
-
-- [ ] `description`, `license`, `repository` fields present
-- [ ] Dependencies up-to-date
-- [ ] No dev-dependencies on other Reinhardt crates (functional crates)
-
-**Verify with**:
+Write commits following [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```bash
+git commit -m "feat(auth): add JWT token validation"
+git commit -m "fix(orm): resolve race condition in connection pool"
+git commit -m "feat!: change Model trait signature"
+```
+
+### Step 2: Push to Main Branch
+
+```bash
+git push origin main
+```
+
+### Step 3: release-plz Creates Release PR
+
+When changes are pushed to main, release-plz automatically:
+
+1. Analyzes commits since last release
+2. Determines version bumps for affected crates
+3. Updates `Cargo.toml` versions
+4. Generates/updates CHANGELOG.md files
+5. Creates a Release PR
+
+**Release PR includes:**
+- Version bumps in `Cargo.toml`
+- Updated CHANGELOG.md files
+- List of changes for each crate
+
+### Step 4: Review and Merge Release PR
+
+1. Review the Release PR
+2. Verify version bumps are correct
+3. Check CHANGELOG entries
+4. Merge when ready
+
+### Step 5: Automatic Publishing
+
+Upon merge, release-plz:
+
+1. Publishes crates to crates.io (in dependency order)
+   - Automatically skips already-published versions
+   - Handles workspace dependency ordering correctly
+2. Creates Git tags (`[crate-name]@v[version]`)
+3. Creates GitHub Releases
+
+**Note**: The `release-plz release` command handles publishing gracefully:
+- Already-published crate versions are skipped automatically (no errors on retry)
+- Only publishable crates are processed (respects `publish = false` in Cargo.toml)
+- Workspace dependencies are published in the correct order
+
+---
+
+## Manual Intervention
+
+### Editing Release PR
+
+You can modify the Release PR before merging:
+
+- **Adjust CHANGELOG entries**: Edit for clarity or add details
+- **Modify version bumps**: Change version in `Cargo.toml` if needed
+- **Add migration notes**: Include breaking change documentation
+
+### Force Version Bump
+
+To force a specific version, manually edit `Cargo.toml` in the Release PR.
+
+### Skip Release
+
+To skip releasing a crate, add to `release-plz.toml`:
+
+```toml
+[[package]]
+name = "crate-name"
+release = false
+```
+
+---
+
+## Configuration
+
+### release-plz.toml
+
+Configuration file at repository root. Key CHANGELOG-related settings:
+
+```toml
+[workspace]
+changelog_update = true
+pr_branch_prefix = "release-plz-"
+pr_labels = ["release", "automated"]
+pr_name = "chore: release"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "{{ package }}@v{{ version }}"
+git_release_type = "auto"
+semver_check = false
+publish_timeout = "10m"
+dependencies_update = false
+release_always = false
+publish_no_verify = true
+
+# Exclude packages from release
+[[package]]
+name = "reinhardt-test-support"
+release = false
+publish = false
+
+[changelog]
+protect_breaking_commits = true
+sort_commits = "oldest"
+commit_parsers = [
+  # Skip automated commits, then map types to sections
+  { message = "^chore: release", skip = true },
+  { message = "^Merge", skip = true },
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  # ... (see release-plz.toml for full list)
+]
+commit_preprocessors = [
+  # Convert #123 to clickable GitHub links
+  { pattern = '#(\d+)', replace = "[#${1}](https://github.com/kent8192/reinhardt-web/issues/${1})" },
+]
+```
+
+**CHANGELOG Customization Settings:**
+
+| Setting | Purpose |
+|---------|---------|
+| `protect_breaking_commits` | Always include breaking change commits, even if their type would be skipped |
+| `sort_commits` | Sort commits chronologically (`"oldest"` = oldest first) |
+| `commit_parsers` | Map commit types to CHANGELOG sections; skip automated commits |
+| `commit_preprocessors` | Transform commit messages (e.g., auto-link GitHub references) |
+
+See `release-plz.toml` at repository root for the complete configuration.
+
+### Non-Published Packages
+
+The following packages are excluded from release:
+
+- `reinhardt-test-support` - Test utilities
+- `reinhardt-integration-tests` - Integration tests
+- `reinhardt-benchmarks` - Benchmark tests
+- `examples-*` - Example projects
+- `reinhardt-settings-cli` - Internal CLI tool
+
+### Configuration Rationale
+
+Key configuration decisions and the reasons behind them:
+
+**`pr_branch_prefix = "release-plz-"`**
+
+The branch prefix **must** start with `"release-plz-"` for the native two-step release workflow to function correctly. When `release_always = false`, release-plz determines whether to publish by checking if the latest commit originates from a PR whose branch starts with this prefix. Using a different prefix (e.g., `"release/"`) causes `release-plz release` to skip publishing entirely because it cannot detect the merged Release PR. (Ref: [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`publish_no_verify = true`**
+
+During `cargo publish`, Cargo attempts to build the crate including dev-dependencies. If dev-dependencies reference other workspace crates that have not yet been published to crates.io, the build verification step fails. Setting `publish_no_verify = true` skips this verification, allowing crates to be published in dependency order without false failures. (Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181))
+
+**`dependencies_update = true`**
+
+Enables release-plz to automatically update explicit `version` fields in workspace dependency declarations when a dependent crate's version is bumped. Without this, workspace members that pin explicit versions would become out-of-sync after a release, causing the next Release PR to carry stale dependency versions. (Ref: [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+**`release_always = false`**
+
+Enables a two-stage release workflow:
+1. **Stage 1** (push to main): `release-plz release-pr` creates a Release PR with version bumps and CHANGELOG updates.
+2. **Stage 2** (merge Release PR): `release-plz release` detects the merged release-plz branch and publishes to crates.io.
+
+This gives maintainers explicit control over when releases happen — crates are only published when the Release PR is deliberately merged. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+
+**`reinhardt-test` workspace dependency without `version` field**
+
+The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency by publishable crates. Its workspace dependency entry in the root `Cargo.toml` intentionally omits the `version` field. Adding a `version` field would cause `cargo publish` to attempt resolving `reinhardt-test` from crates.io (where it does not exist), breaking the publish of any crate that depends on it via dev-dependencies. This is related to a Cargo regression tracked in [cargo#15151](https://github.com/rust-lang/cargo/issues/15151). (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+---
+
+## Known Issues & Pitfalls
+
+### KI-1: Circular Publish Dependencies
+
+**Problem**: `cargo publish` resolves all dependencies (including dev-dependencies) from crates.io. If crate A has a dev-dependency on crate B, and crate B has a dev-dependency on crate A, neither can be published first — creating a deadlock.
+
+**Impact on Reinhardt**: The `reinhardt-test` crate provides test fixtures used across the workspace. If a functional crate (e.g., `reinhardt-orm`) adds `reinhardt-test` to its `[dev-dependencies]`, and `reinhardt-test` already depends on that functional crate, a circular publish dependency is created.
+
+**Rule**: Functional crates **must not** include other Reinhardt crates in `[dev-dependencies]`. Tests requiring cross-crate fixtures belong in the `reinhardt-integration-tests` crate.
+
+**Detection**: Run `cargo publish --dry-run` for each publishable crate before merging changes that modify dev-dependencies.
+
+(Ref: [#181](https://github.com/kent8192/reinhardt-web/pull/181), [#199](https://github.com/kent8192/reinhardt-web/pull/199), [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
+
+### KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression
+
+**Problem**: Starting with Cargo 1.84, `cargo publish` attempts to resolve workspace dev-dependencies from crates.io even when they are marked `publish = false`. If the workspace dependency entry includes a `version` field, Cargo tries to find that version on crates.io and fails when the crate does not exist there.
+
+**Workaround**: Ensure that unpublished workspace crates (e.g., `reinhardt-test`) do **not** have a `version` field in their `[workspace.dependencies]` entry. The `publish_no_verify = true` setting provides additional protection by skipping the verification build.
+
+**Tracking**: [cargo#15151](https://github.com/rust-lang/cargo/issues/15151)
+
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#207](https://github.com/kent8192/reinhardt-web/pull/207), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
+
+### KI-3: Partial Release Failure Deadlock
+
+**Problem**: When release-plz publishes multiple crates in dependency order, a failure partway through (e.g., network error, crates.io outage) leaves some crates published at their new versions while others remain at their old versions. The next `release-plz release-pr` run sees the already-published crates as released and generates a new Release PR only for the remaining crates — but with potentially incorrect dependency version requirements.
+
+**Symptoms**:
+- Release PR contains version bumps for only a subset of crates
+- Published crates reference dependency versions that do not exist on crates.io
+- Subsequent publish attempts fail with dependency resolution errors
+
+**Resolution**: Follow [RP-1: Partial Release Failure Recovery](#rp-1-partial-release-failure-recovery).
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### KI-4: gix/gitoxide Slotmap Overflow
+
+**Problem**: The `gix` library (used internally by release-plz for Git operations) has a known issue where its object cache slotmap can overflow under certain repository conditions, causing a panic during `release-plz release-pr` or `release-plz release`.
+
+**Symptoms**:
+- CI workflow fails with a panic in `gix` or `gitoxide` code paths
+- Error messages reference slotmap capacity or object cache
+
+**Workaround**: Re-run the workflow (the issue is intermittent). If persistent, clear the GitHub Actions cache for the release-plz workflow. A `workflow_dispatch` trigger has been added to allow manual re-runs.
+
+**Tracking**: [gitoxide#1788](https://github.com/GitoxideLabs/gitoxide/issues/1788)
+
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
+
+---
+
+## Recovery Procedures
+
+### RP-1: Partial Release Failure Recovery
+
+Use this procedure when some crates were published successfully but others failed during a release cycle.
+
+**Step 1: Identify published and unpublished crates**
+
+```bash
+# Check which crate versions exist on crates.io
+for crate in reinhardt-core reinhardt-database reinhardt-orm reinhardt-web reinhardt-macros reinhardt-test; do
+  version=$(curl -s "https://crates.io/api/v1/crates/$crate" | jq -r '.crate.max_version // "not found"')
+  echo "$crate: $version"
+done
+```
+
+Compare the crates.io versions with the versions in the failed Release PR to identify which crates were not published.
+
+**Step 2: Roll back unpublished crate versions**
+
+For each crate that was **not** published, revert its version and CHANGELOG changes to match the current crates.io version:
+
+```bash
+# Revert Cargo.toml version for unpublished crates
+git checkout main -- crates/<unpublished-crate>/Cargo.toml
+git checkout main -- crates/<unpublished-crate>/CHANGELOG.md
+```
+
+**Step 3: Push and wait for new Release PR**
+
+```bash
+git add -A
+git commit -m "fix(release): roll back unpublished crate versions after partial release failure"
+git push origin main
+```
+
+release-plz will detect the version discrepancies and create a new Release PR containing only the unpublished crates with correct dependency versions.
+
+**Step 4: Review and merge the new Release PR**
+
+Verify that:
+- Only unpublished crates have version bumps
+- Dependency versions reference published versions
+- CHANGELOG entries are correct
+
+(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+
+### RP-2: Circular Dependency Deadlock Recovery
+
+Use this procedure when `cargo publish` fails due to circular dev-dependency chains.
+
+**Step 1: Identify the circular chain**
+
+```bash
+# Check dev-dependencies of each publishable crate
+for crate_dir in crates/*/; do
+  crate_name=$(basename "$crate_dir")
+  echo "=== $crate_name ==="
+  grep -A 20 '\[dev-dependencies\]' "$crate_dir/Cargo.toml" 2>/dev/null | head -20
+done
+```
+
+Look for cycles: if crate A dev-depends on crate B, and crate B dev-depends on crate A (directly or transitively).
+
+**Step 2: Break the cycle**
+
+Choose one of these strategies:
+1. **Remove the unnecessary dev-dependency**: If the dev-dependency is not actually needed, remove it.
+2. **Move tests to integration test crate**: Move tests that require the cross-crate dependency to `reinhardt-integration-tests`.
+3. **Create local test helpers**: Replace the imported test fixtures with crate-local equivalents.
+
+**Step 3: Verify and publish**
+
+```bash
+# Verify no circular dependencies remain
 cargo publish --dry-run -p <crate-name>
 ```
 
----
+If the previous release was partially completed, also follow [RP-1](#rp-1-partial-release-failure-recovery).
 
-## Automated Publishing with CI/CD
+(Ref: [#203](https://github.com/kent8192/reinhardt-web/pull/203), [#216](https://github.com/kent8192/reinhardt-web/pull/216))
 
-### Prerequisites
+### RP-3: gix Cache Failure Recovery
 
-#### GitHub Repository Setup
+Use this procedure when the release-plz CI workflow fails due to `gix`/`gitoxide` panics.
 
-**1. GitHub Secrets**
+**Step 1: Re-run the workflow**
 
-Add `CARGO_REGISTRY_TOKEN`:
-
-- Settings → Secrets and variables → Actions
-- Name: `CARGO_REGISTRY_TOKEN`
-- Value: crates.io API token (from https://crates.io/settings/tokens)
-
-**2. GitHub Labels**
-
-Create `release` label:
-
-- Issues → Labels → New label
-- Name: `release`, Color: `#0e8a16`
-
-**3. Branch Protection (Recommended)**
-
-- Require PR reviews
-- Require `Publish Dry-Run` status check
-- Require branches to be up-to-date
-
-### Publishing Workflow
-
-#### Step 1: Create PR with Version Changes
+The gix slotmap overflow is intermittent. Navigate to the GitHub Actions page and re-run the failed workflow:
 
 ```bash
-# 1. Create feature branch
-git checkout -b feature/update-reinhardt-orm
+# List recent workflow runs
+gh run list --workflow=release-plz.yml --limit=5
 
-# 2. Update version
-vim crates/reinhardt-orm/Cargo.toml  # version = "0.2.0"
-
-# 3. Update CHANGELOG
-vim crates/reinhardt-orm/CHANGELOG.md
-
-# 4. Commit
-git add crates/reinhardt-orm/Cargo.toml crates/reinhardt-orm/CHANGELOG.md
-git commit -m "chore(release): Bump reinhardt-orm to v0.2.0
-
-Prepare reinhardt-orm for publication to crates.io.
-
-Version Changes:
-- crates/reinhardt-orm/Cargo.toml: version 0.1.0 -> 0.2.0
-- crates/reinhardt-orm/CHANGELOG.md: Add release notes for v0.2.0
-
-New Features:
-- Add async connection pooling
-- Implement QueryBuilder::with_timeout()
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-
-# 5. Push and create PR
-git push origin feature/update-reinhardt-orm
+# Re-run a specific failed run
+gh run rerun <run-id>
 ```
 
-#### Step 2: Add `release` Label
+**Step 2: Clear cache if persistent**
 
-1. Open PR on GitHub
-2. Add `release` label
-3. `publish-dry-run.yml` workflow starts automatically
-
-**Workflow actions**:
-
-- Detects changed crates (`cargo ws changed`)
-- Runs `cargo ws publish --dry-run`
-- Reports results in PR checks
-
-#### Step 3: Review Dry-Run Results
-
-**Success indicators**:
-
-- ✅ Green check on "Publish Dry-Run"
-- No errors/warnings in logs
-
-**Common issues**:
-
-- Missing metadata fields
-- Unpublished dependencies
-- Version already published
-
-**Fix and push** - dry-run re-runs automatically.
-
-#### Step 4: Merge PR
-
-Merge after:
-
-- Dry-run passes
-- PR approved
-
-#### Step 5: Automatic Publishing
-
-`publish-on-merge.yml` executes:
-
-1. **Detect changes** (`cargo ws changed`)
-2. **Publish sequentially**:
-   - Dry-run verification
-   - Publish to crates.io
-   - Create Git tag
-   - 30s wait between crates
-3. **Create GitHub Releases** (with CHANGELOG notes)
-4. **Push tags**
-
-**Example output**:
-
-```
-[1/2] Publishing reinhardt-types v0.2.0...
-  ✅ Dry-run passed
-  ✅ Published to crates.io
-  🏷️ Created tag: reinhardt-types@v0.2.0
-
-[2/2] Publishing reinhardt-orm v0.3.0...
-  ✅ Dry-run passed
-  ✅ Published to crates.io
-  🏷️ Created tag: reinhardt-orm@v0.3.0
-
-🎉 All crates published successfully!
-```
-
-#### Step 6: Verify Publication
-
-**crates.io**:
-
-- Visit https://crates.io/crates/[crate-name]
-- Verify new version
-
-**GitHub Releases**:
-
-- Check tag `[crate-name]@v[version]`
-- Verify release notes
-
-**docs.rs**:
-
-- Documentation builds in ~5-10 minutes
-
-### Multi-Crate Releases
-
-Update multiple crates in one PR:
+If the failure persists across multiple re-runs:
 
 ```bash
-vim crates/reinhardt-types/Cargo.toml     # version = "0.2.0"
-vim crates/reinhardt-types/CHANGELOG.md
+# List GitHub Actions caches
+gh cache list
 
-vim crates/reinhardt-orm/Cargo.toml       # version = "0.3.0"
-vim crates/reinhardt-orm/CHANGELOG.md
-
-git add crates/reinhardt-types crates/reinhardt-orm
-git commit -m "chore(release): Bump reinhardt-types v0.2.0 and reinhardt-orm v0.3.0"
+# Delete release-plz related caches
+gh cache delete <cache-key>
 ```
 
-**Automatic dependency ordering**: Publishes leaf crates first.
+**Step 3: Manual dispatch**
 
-### Emergency Manual Publishing
-
-**Via GitHub Actions**:
-
-1. Actions → "Publish on Tag (Manual Only)"
-2. Enter tag: `reinhardt-orm@v0.2.0`
-3. Run workflow
-
-**Via Command Line** (if CI/CD unavailable):
-
-1. Update `Cargo.toml` and `CHANGELOG.md`
-2. Commit changes
-3. `cargo publish --dry-run -p <crate-name>`
-4. `cargo publish -p <crate-name>`
-5. `git tag [crate-name]@v[version] -m "Release [crate-name] v[version]"`
-6. `git push origin main && git push origin --tags`
-
----
-
-## CHANGELOG Management
-
-### Format (Keep a Changelog)
-
-**Structure**:
-
-```markdown
-# Changelog
-
-## [Unreleased]
-
-### Added
-
-- Work in progress features
-
-### Changed
-
-- N/A
-
-## [0.2.0] - 2025-01-15
-
-### Breaking Changes
-
-- List breaking changes first
-
-### Added
-
-- New features
-
-### Fixed
-
-- Bug fixes
-
-## [0.1.0] - 2024-12-01
-
-### Added
-
-- Initial release
-```
-
-### Critical Requirements
-
-1. **Always include `[Unreleased]` section** (for AWK extraction)
-2. **Exact header format**: `## [version] - YYYY-MM-DD`
-   - ✅ Correct: `## [0.2.0] - 2025-01-15`
-   - ❌ Wrong: `## 0.2.0 - 2025-01-15` (no brackets)
-   - ❌ Wrong: `## [v0.2.0] - 2025-01-15` (extra 'v')
-3. **Use `###` for subsections**: `### Added`, `### Fixed`
-
-**Extraction logic**:
+The release-plz workflow supports `workflow_dispatch` for manual triggering:
 
 ```bash
-awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | head -n -1
+gh workflow run release-plz.yml
 ```
 
-### Section Guidelines
+(Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
 
-- **Breaking Changes**: List first, include migration guides
-- **Added**: New public APIs and features
-- **Changed**: Non-breaking changes
-- **Deprecated**: Mark with `#[deprecated]`, include removal timeline
-- **Removed**: Deleted features (MAJOR version)
-- **Fixed**: Bug fixes (include issue numbers)
-- **Security**: Vulnerabilities (highlight prominently)
+### RP-4: reinhardt-test Version Reintroduced
 
-**"N/A" usage**: Only in `[Unreleased]` for empty categories. Released versions
-should omit empty sections.
+Use this procedure when a `version` field is accidentally added to the `reinhardt-test` workspace dependency.
 
----
+**Detection**: `cargo publish --dry-run` fails for crates that dev-depend on `reinhardt-test`, with errors indicating that `reinhardt-test` cannot be found on crates.io.
 
-## Multi-Crate Releases
+**Step 1: Remove the version field**
 
-### When to Release Multiple Crates
+In the root `Cargo.toml`, locate the `[workspace.dependencies]` section and remove the `version` field from the `reinhardt-test` entry:
 
-- Dependency updates cascade
-- Coordinated feature releases
-- Breaking changes affect multiple crates
+```toml
+# Before (broken)
+reinhardt-test = { path = "crates/reinhardt-test", version = "0.1.0" }
 
-### Dependency Order
-
-**Automatic with cargo-workspaces**: Publishes in correct order.
-
-**Manual order** (if needed):
-
-1. Leaf crates (no internal deps)
-2. Mid-level crates
-3. Top-level crates (facades)
-
-**Example**:
-
-```
-reinhardt-types → reinhardt-orm → reinhardt (facade)
+# After (correct)
+reinhardt-test = { path = "crates/reinhardt-test" }
 ```
 
-### Sub-Crate Structures
-
-**Nested crates** (e.g., `reinhardt-db/crates/orm/`):
-
-- Sub-crates published before parent
-- `cargo ws publish` handles automatically
-
----
-
-## Rollback Procedures
-
-### Version Yanking (Preferred)
+**Step 2: Verify**
 
 ```bash
-cargo yank <crate-name> --version <version>
+cargo publish --dry-run -p reinhardt-orm  # or any crate that dev-depends on reinhardt-test
 ```
 
-**What it does**:
-
-- Prevents new projects from using version
-- Existing `Cargo.lock` still works
-- Cannot delete (remains on crates.io)
-
-**After yanking**:
-
-1. Fix issue
-2. Increment PATCH version
-3. Release fixed version
-
-### Un-yanking
-
-```bash
-cargo yank <crate-name> --version <version> --undo
-```
-
-### Git Tag Rollback
-
-```bash
-git tag -d [crate-name]@v[version]
-git push origin :refs/tags/[crate-name]@v[version]
-```
-
-### Commit Rollback
-
-```bash
-git revert HEAD  # If pushed
-git reset --hard HEAD~1  # If not pushed
-```
+(Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#223](https://github.com/kent8192/reinhardt-web/pull/223))
 
 ---
 
@@ -460,29 +489,47 @@ git reset --hard HEAD~1  # If not pushed
 
 ### Common Issues
 
-**Dry-run Failed**: Add missing metadata fields (`description`, `license`,
-`repository`) to `Cargo.toml`
+**No Release PR Created:**
+- Verify commits use conventional commit format
+- Check that changes affect publishable crates
+- Review release-plz workflow logs
 
-**Version Already Published**: Increment version and retry
+**Wrong Version Bump:**
+- Ensure commit messages follow conventions
+- Use `feat!:` or `BREAKING CHANGE:` for major bumps
+- Edit the Release PR to correct version
 
-**No Crates Detected**: Verify version changes in `Cargo.toml` files
+**Publish Failed:**
+- Check `CARGO_REGISTRY_TOKEN` secret is set
+- Verify crate metadata is complete
+- Review crates.io for existing version conflicts
+- **Already Published**: release-plz automatically skips already-published versions, so retry is safe
+- **Circular Dependency**: See [KI-1: Circular Publish Dependencies](#ki-1-circular-publish-dependencies) and [RP-2](#rp-2-circular-dependency-deadlock-recovery)
+- **Dev-Dependency Resolution**: See [KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression](#ki-2-cargo-184-dev-dependency-resolution-regression) and [RP-4](#rp-4-reinhardt-test-version-reintroduced)
+- **Partial Failure**: See [KI-3: Partial Release Failure Deadlock](#ki-3-partial-release-failure-deadlock) and [RP-1](#rp-1-partial-release-failure-recovery)
+- **gix Panic**: See [KI-4: gix/gitoxide Slotmap Overflow](#ki-4-gixgitoxide-slotmap-overflow) and [RP-3](#rp-3-gix-cache-failure-recovery)
 
-**cargo-workspaces Issues**: Run `cargo ws changed` to check detection; use
-`--force` if needed
+**CHANGELOG Not Updated:**
+- Ensure `changelog_update = true` in config
+- Verify commit messages are properly formatted
 
-### Verification Checklist
+### Verification Commands
 
-- [ ] Version follows SemVer
-- [ ] CHANGELOG updated
-- [ ] Tests pass
-- [ ] Dry-run succeeds
-- [ ] Dependencies published
+```bash
+# Check release-plz config
+cat release-plz.toml
+
+# Verify conventional commits
+git log --oneline -10
+
+# Check crates.io version
+curl -s "https://crates.io/api/v1/crates/<crate-name>" | jq '.crate.max_version'
+```
 
 ---
 
 ## Related Documentation
 
-- **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
-- **Main Standards**: @CLAUDE.md
+- **Main Quick Reference**: @CLAUDE.md
 - **Commit Guidelines**: @COMMIT_GUIDELINE.md
-- **Version Policy**: See "Release & Publishing Policy" in CLAUDE.md
+- **release-plz Documentation**: https://release-plz.ieni.dev/docs

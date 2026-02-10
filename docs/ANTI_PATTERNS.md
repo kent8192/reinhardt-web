@@ -249,6 +249,17 @@ fn legacy_feature() {
 **Why?** Standardized notation (`TODO`, `todo!()`, `unimplemented!()`) is
 searchable and clear.
 
+**CI Enforcement:**
+
+The TODO Check CI workflow automatically detects TODO/FIXME comments and `todo!()` macros
+in pull requests. PRs introducing new unresolved TODOs will fail the CI check.
+Only `unimplemented!()` (for permanently excluded features) is permitted.
+
+Additionally, Clippy enforces the following deny lints:
+- `clippy::todo` - prevents `todo!()` macros
+- `clippy::unimplemented` - prevents `unimplemented!()` macros (use `#[allow(clippy::unimplemented)]` with comment for intentional exclusions)
+- `clippy::dbg_macro` - prevents `dbg!()` macros
+
 ### ❌ Unmarked Placeholder Implementations
 
 **DON'T:**
@@ -373,6 +384,15 @@ value assertions.
 **Why?** Loose assertions can pass with incorrect values. See
 @docs/TESTING_STANDARDS.md TI-5 for assertion strictness guidelines and
 acceptable exceptions.
+
+### ❌ Tests Without Clear AAA Structure
+
+Tests that mix setup, execution, and verification without clear phase separation,
+or use non-standard phase labels (`// Setup`, `// Execute`, `// Verify`).
+
+**Why?** Clear Arrange-Act-Assert structure improves test readability and
+maintainability. See @docs/TESTING_STANDARDS.md TI-6 for AAA pattern guidelines
+and examples.
 
 ---
 

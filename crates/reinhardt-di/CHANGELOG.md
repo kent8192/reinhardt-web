@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.4...reinhardt-di@v0.1.0-alpha.5) - 2026-02-09
+
+### Fixed
+
+- *(di)* move unit tests to integration crate to break circular publish chain
+- *(di)* implement deep clone for InjectionContext request scope
+
+### Reverted
+
+- undo PR [[#219](https://github.com/kent8192/reinhardt-web/issues/219)](https://github.com/kent8192/reinhardt-web/issues/219) version bumps for unpublished crates
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.3...reinhardt-di@v0.1.0-alpha.4) - 2026-02-06
+
+### Fixed
+
+- remove reinhardt-di self-reference dev-dependency
+
+### Other
+
+- Revert "Merge pull request #202 from kent8192/release-plz-2026-02-06T13-32-57Z"
+- release
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.2...reinhardt-di@v0.1.0-alpha.3) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-core, reinhardt-core, reinhardt-http
+
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.1.0-alpha.1...reinhardt-di@v0.1.0-alpha.2) - 2026-02-03
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+- *(changelog)* add missing 0.1.0-alpha.1 release entries
+- *(package)* replace version.workspace with explicit versions
 - N/A
 
 ### Added
@@ -27,7 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 
 
-## [0.1.0] - 2025-11-16
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.1] - 2026-01-23
 
 ### Added
-- Initial release with dependency injection system for managing application dependencies and lifecycle
+
+- Initial crates.io release
+

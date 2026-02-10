@@ -7,28 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking Changes
-- N/A
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.4...reinhardt-i18n@v0.1.0-alpha.5) - 2026-02-06
 
-### Added
-- Work in progress features (not yet released)
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-di
+
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.3...reinhardt-i18n@v0.1.0-alpha.4) - 2026-02-03
+
+### Other
+
+- updated the following local packages: reinhardt-di, reinhardt-di, reinhardt-test
+
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-i18n@v0.1.0-alpha.2...reinhardt-i18n@v0.1.0-alpha.3) - 2026-02-03
+
+### Other
+
+- add release-plz migration markers to CHANGELOGs
+- *(changelog)* remove obsolete [0.1.0] sections
+
+<!-- release-plz-separator -->
+<!-- Entries below this line were created before release-plz adoption -->
+
+## [0.1.0-alpha.2] - 2026-01-23
 
 ### Changed
-- N/A
 
-### Deprecated
-- N/A
+- Re-publish with correct repository URL (reinhardt-web)
 
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
-## [0.1.0] - 2025-11-16
+## [0.1.0-alpha.1] - 2026-01-23 [YANKED]
 
 ### Added
-- Initial release with internationalization support with translation catalogs and locale management
+
+- Initial crates.io release
+

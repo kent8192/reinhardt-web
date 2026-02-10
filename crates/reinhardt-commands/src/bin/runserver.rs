@@ -4,21 +4,31 @@
 
 use clap::Parser;
 use colored::Colorize;
+use http_body_util::Full;
+use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
+use reinhardt_commands::WelcomePage;
+use reinhardt_pages::component::Component;
+use reinhardt_pages::ssr::SsrRenderer;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};
 use std::convert::Infallible;
+use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tera::{Context, Tera};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
+
+use reinhardt_conf::Settings;
+use reinhardt_conf::settings::builder::SettingsBuilder;
+use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 
 #[derive(Parser, Debug)]
 #[command(name = "runserver")]
@@ -57,30 +67,261 @@ struct Args {
 	self_signed: bool,
 }
 
-async fn handle_request(_req: Request<Incoming>) -> Result<Response<String>, Infallible> {
-	// Render the welcome page template using Tera
-	let template_str = include_str!("../../templates/welcome.tpl");
+/// Check if a path is safe (prevents directory traversal attacks)
+fn is_safe_path(path: &Path) -> bool {
+	// Convert to string and check for path traversal attempts
+	// Return true if path is safe (does NOT contain "..")
+	!path.to_string_lossy().contains("..")
+}
 
-	let mut tera = Tera::default();
-	tera.add_raw_template("welcome.tpl", template_str)
-		.unwrap_or_else(|e| {
-			eprintln!("Error adding template: {}", e);
-		});
+/// Get MIME type based on file extension
+fn get_mime_type(path: &Path) -> &'static str {
+	match path.extension().and_then(|e| e.to_str()) {
+		Some("js") => "application/javascript",
+		Some("mjs") => "application/javascript",
+		Some("css") => "text/css; charset=utf-8",
+		Some("html") => "text/html; charset=utf-8",
+		Some("htm") => "text/html; charset=utf-8",
+		Some("json") => "application/json",
+		Some("xml") => "application/xml",
+		Some("png") => "image/png",
+		Some("jpg") => "image/jpeg",
+		Some("jpeg") => "image/jpeg",
+		Some("gif") => "image/gif",
+		Some("svg") => "image/svg+xml",
+		Some("ico") => "image/x-icon",
+		Some("woff") => "font/woff",
+		Some("woff2") => "font/woff2",
+		Some("ttf") => "font/ttf",
+		Some("eot") => "application/vnd.ms-fontobject",
+		Some("wasm") => "application/wasm",
+		Some("mp4") => "video/mp4",
+		Some("webm") => "video/webm",
+		Some("mp3") => "audio/mpeg",
+		Some("wav") => "audio/wav",
+		Some("ogg") => "audio/ogg",
+		Some("pdf") => "application/pdf",
+		Some("zip") => "application/zip",
+		Some("txt") => "text/plain; charset=utf-8",
+		Some("md") => "text/markdown; charset=utf-8",
+		_ => "application/octet-stream",
+	}
+}
 
-	let mut context = Context::new();
-	context.insert("version", env!("CARGO_PKG_VERSION"));
+/// Serve a static file
+async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, Infallible> {
+	// Read file content
+	match tokio::fs::read(file_path).await {
+		Ok(content) => {
+			let mime_type = get_mime_type(file_path);
 
-	let html = tera.render("welcome.tpl", &context).unwrap_or_else(|e| {
-		format!(
-			"<html><body><h1>Error rendering template: {}</h1></body></html>",
-			e
+			Ok(Response::builder()
+				.status(StatusCode::OK)
+				.header("Content-Type", mime_type)
+				.header("Cache-Control", "no-cache")
+				.body(Full::new(Bytes::from(content)))
+				.unwrap())
+		}
+		Err(_) => Ok(Response::builder()
+			.status(StatusCode::NOT_FOUND)
+			.header("Content-Type", "text/plain")
+			.body(Full::new(Bytes::from("File not found")))
+			.unwrap()),
+	}
+}
+
+/// Load settings from the settings directory
+///
+/// Settings are loaded from TOML files in the `settings/` directory:
+/// - `base.toml` - Common settings across all environments
+/// - `local.toml` / `production.toml` / `staging.toml` - Environment-specific settings
+///
+/// The environment is determined by the `REINHARDT_ENV` environment variable.
+/// If no settings files exist, falls back to default settings.
+fn load_settings() -> Settings {
+	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
+	let profile = Profile::parse(&profile_str);
+
+	let base_dir = env::current_dir().expect("Failed to get current directory");
+	let settings_dir = base_dir.join("settings");
+
+	// Check if settings directory exists
+	if !settings_dir.exists() {
+		eprintln!(
+			"{}",
+			"Warning: settings/ directory not found, using default settings".yellow()
+		);
+		return Settings::default();
+	}
+
+	// Build settings with priority: Default < LowPriorityEnv < base.toml < {profile}.toml
+	let merged = SettingsBuilder::new()
+		.profile(profile)
+		.add_source(
+			DefaultSource::new()
+				// Core settings
+				.with_value(
+					"base_dir",
+					serde_json::json!(base_dir.to_string_lossy().to_string()),
+				)
+				.with_value("debug", serde_json::json!(true))
+				.with_value(
+					"secret_key",
+					serde_json::json!("insecure-dev-key-change-in-production"),
+				)
+				.with_value("allowed_hosts", serde_json::json!([]))
+				.with_value("installed_apps", serde_json::json!([]))
+				.with_value("middleware", serde_json::json!([]))
+				.with_value("root_urlconf", serde_json::json!("config.urls"))
+				.with_value("databases", serde_json::json!({}))
+				.with_value("templates", serde_json::json!([]))
+				// Static/Media files
+				.with_value("static_url", serde_json::json!("/static/"))
+				.with_value("static_root", serde_json::json!(null))
+				.with_value("staticfiles_dirs", serde_json::json!([]))
+				.with_value("media_url", serde_json::json!("/media/"))
+				.with_value("media_root", serde_json::json!(null))
+				// Internationalization
+				.with_value("language_code", serde_json::json!("en-us"))
+				.with_value("time_zone", serde_json::json!("UTC"))
+				.with_value("use_i18n", serde_json::json!(false))
+				.with_value("use_tz", serde_json::json!(false))
+				// Model settings
+				.with_value(
+					"default_auto_field",
+					serde_json::json!("reinhardt.db.models.BigAutoField"),
+				)
+				// Security settings
+				.with_value("secure_proxy_ssl_header", serde_json::json!(null))
+				.with_value("secure_ssl_redirect", serde_json::json!(false))
+				.with_value("secure_hsts_seconds", serde_json::json!(null))
+				.with_value("secure_hsts_include_subdomains", serde_json::json!(false))
+				.with_value("secure_hsts_preload", serde_json::json!(false))
+				.with_value("session_cookie_secure", serde_json::json!(false))
+				.with_value("csrf_cookie_secure", serde_json::json!(false))
+				.with_value("append_slash", serde_json::json!(true))
+				// Admin/Manager contacts
+				.with_value("admins", serde_json::json!([]))
+				.with_value("managers", serde_json::json!([])),
 		)
-	});
+		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
+		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
+		.add_source(TomlFileSource::new(
+			settings_dir.join(format!("{}.toml", profile_str)),
+		))
+		.build();
+
+	match merged {
+		Ok(merged_settings) => match merged_settings.into_typed::<Settings>() {
+			Ok(settings) => {
+				println!(
+					"{}",
+					format!(
+						"Loaded settings from settings/ directory (profile: {})",
+						profile_str
+					)
+					.green()
+				);
+				settings
+			}
+			Err(e) => {
+				eprintln!(
+					"{}",
+					format!("Warning: Failed to parse settings: {}. Using defaults.", e).yellow()
+				);
+				Settings::default()
+			}
+		},
+		Err(e) => {
+			eprintln!(
+				"{}",
+				format!("Warning: Failed to build settings: {}. Using defaults.", e).yellow()
+			);
+			Settings::default()
+		}
+	}
+}
+
+async fn handle_request(
+	req: Request<Incoming>,
+	settings: Arc<Settings>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+	let path = req.uri().path();
+
+	// Serve static files in debug mode from staticfiles_dirs
+	if settings.debug && path.starts_with(&settings.static_url) {
+		// Strip static_url prefix to get relative path
+		let relative_path = match path.strip_prefix(&settings.static_url) {
+			Some(p) => p,
+			None => path,
+		};
+		let relative_path = relative_path.trim_start_matches('/');
+
+		// If relative path is empty, serve the welcome page
+		if relative_path.is_empty() {
+			return serve_welcome_page();
+		}
+
+		// Find file in all staticfiles_dirs (in reverse order for override behavior)
+		let mut found_files: Vec<PathBuf> = Vec::new();
+
+		for dir in settings.staticfiles_dirs.iter().rev() {
+			let file_path = dir.join(relative_path);
+			if file_path.exists() && file_path.is_file() && is_safe_path(&file_path) {
+				found_files.push(file_path);
+			}
+		}
+
+		// Check for conflicts (same file in multiple directories) - ERROR
+		if found_files.len() > 1 {
+			eprintln!(
+				"❌ Error: Static file '{}' found in multiple directories:",
+				relative_path
+			);
+			for path in &found_files {
+				eprintln!("   - {}", path.display());
+			}
+			eprintln!("Please resolve the conflict by removing duplicate files.");
+			return Ok(Response::builder()
+				.status(StatusCode::INTERNAL_SERVER_ERROR)
+				.header("Content-Type", "text/plain")
+				.body(Full::new(Bytes::from(format!(
+					"Internal Server Error: Static file conflict for '{}'. Check server logs.",
+					relative_path
+				))))
+				.unwrap());
+		}
+
+		// Serve the found file
+		if let Some(file_path) = found_files.first() {
+			return serve_static_file(file_path).await;
+		}
+
+		// File not found, return 404
+		return Ok(Response::builder()
+			.status(StatusCode::NOT_FOUND)
+			.header("Content-Type", "text/plain")
+			.body(Full::new(Bytes::from(format!(
+				"Static file not found: {}",
+				relative_path
+			))))
+			.unwrap());
+	}
+
+	// Fall through to welcome page
+	serve_welcome_page()
+}
+
+/// Serve the welcome page
+fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
+	let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head(component.render());
 
 	Ok(Response::builder()
 		.status(StatusCode::OK)
 		.header("Content-Type", "text/html; charset=utf-8")
-		.body(html)
+		.body(Full::new(Bytes::from(html)))
 		.unwrap())
 }
 
@@ -146,6 +387,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 	if args.cert.is_some() && args.self_signed {
 		return Err("Cannot use both --cert/--key and --self-signed".into());
+	}
+
+	// Load settings at startup
+	let settings = Arc::new(load_settings());
+
+	// Display loaded settings info (debug mode only)
+	if settings.debug {
+		println!(
+			"{}",
+			format!(
+				"Static files: URL={}, Directories={:?}",
+				settings.static_url, settings.staticfiles_dirs
+			)
+			.dimmed()
+		);
 	}
 
 	// Parse the address
@@ -222,12 +478,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		if let Some(ref acceptor) = tls_acceptor {
 			// HTTPS connection
 			let acceptor = acceptor.clone();
+			let settings_clone = Arc::clone(&settings);
 			tokio::task::spawn(async move {
 				match acceptor.accept(stream).await {
 					Ok(tls_stream) => {
 						let io = TokioIo::new(tls_stream);
 						if let Err(err) = http1::Builder::new()
-							.serve_connection(io, service_fn(handle_request))
+							.serve_connection(
+								io,
+								service_fn(move |req| {
+									let settings = Arc::clone(&settings_clone);
+									async move { handle_request(req, settings).await }
+								}),
+							)
 							.await
 						{
 							eprintln!("Error serving HTTPS connection: {:?}", err);
@@ -240,10 +503,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			});
 		} else {
 			// HTTP connection
+			let settings_clone = Arc::clone(&settings);
 			let io = TokioIo::new(stream);
 			tokio::task::spawn(async move {
 				if let Err(err) = http1::Builder::new()
-					.serve_connection(io, service_fn(handle_request))
+					.serve_connection(
+						io,
+						service_fn(move |req| {
+							let settings = Arc::clone(&settings_clone);
+							async move { handle_request(req, settings).await }
+						}),
+					)
 					.await
 				{
 					eprintln!("Error serving HTTP connection: {:?}", err);
