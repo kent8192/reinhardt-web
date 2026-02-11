@@ -128,7 +128,7 @@ reinhardt-urls = {workspace = true, features = ["proxy"]}
 reinhardt-conf = {workspace = true, features = ["settings"]}
 
 [features]
-default = ["postgres", "sqlite", "caching", "hot-reload"]
+default = ["postgres", "sqlite", "caching", "hot-reload", "dynamic-redis"]
 testcontainers = []
 postgres = ["reinhardt-db/postgres"]
 sqlite = ["reinhardt-db/sqlite"]
@@ -136,6 +136,7 @@ caching = ["reinhardt-conf/caching"]
 jwt = []
 argon2-hasher = []
 hot-reload = ["reinhardt-conf/hot-reload"]
+dynamic-redis = ["reinhardt-conf/dynamic-redis"]
 redis-backend = ["reinhardt-tasks/redis-backend"]
 rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
 websocket = ["reinhardt-server/websocket"]
