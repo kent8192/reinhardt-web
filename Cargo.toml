@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-web"
-version = "0.1.0-alpha.8"
+version = "0.1.0-alpha.9"
 edition.workspace = true
 license.workspace = true
 description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
@@ -120,6 +120,9 @@ browsable-api = ["reinhardt-browsable-api"]
 # Required for unified client/server routing in WASM applications
 client-router = ["reinhardt-urls/client-router"]
 
+# Plugin system
+dentdelion = ["reinhardt-dentdelion"]
+
 # Meta features
 full = [
   "standard",
@@ -161,6 +164,7 @@ full = [
   "reinhardt-websockets/full",
   "reinhardt-middleware/full",
   "reinhardt-graphql/full",
+  "dentdelion",
 ]
 
 # API-only preset - REST without templates/forms
@@ -271,6 +275,7 @@ reinhardt-mail = { workspace = true, optional = true }
 reinhardt-graphql = { workspace = true, optional = true }
 reinhardt-websockets = { workspace = true, optional = true }
 reinhardt-openapi = { workspace = true, optional = true }
+reinhardt-dentdelion = { workspace = true, optional = true }
 
 # Dependencies used directly in this crate
 thiserror = { workspace = true }
@@ -363,7 +368,7 @@ authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
 
 [workspace.dependencies]
 # Main facade crate (for workspace members that need to reference the root crate)
-reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.8" }
+reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.9" }
 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.4" }
