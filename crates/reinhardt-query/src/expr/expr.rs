@@ -99,10 +99,10 @@ impl Expr {
 	/// let expr = Expr::cust("NOW()");
 	///
 	/// // ❌ UNSAFE: User input
-	/// let expr = Expr::cust(&user_input);
+	/// // let expr = Expr::cust(&user_input);
 	///
 	/// // ✅ SAFE: Parameterized custom expression
-	/// let expr = Expr::cust_with_values("? + ?", [user_input, other_value]);
+	/// // let expr = Expr::cust_with_values("? + ?", [user_input, other_value]);
 	/// ```
 	pub fn cust<S>(sql: S) -> Self
 	where

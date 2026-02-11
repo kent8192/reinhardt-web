@@ -218,9 +218,9 @@ impl CreateFunctionStatement {
 	///     .body("SELECT 1");
 	///
 	/// // ❌ UNSAFE: User input
-	/// let query = Query::create_function()
-	///     .name("user_func")
-	///     .body(&user_code);
+	/// // let query = Query::create_function()
+	/// //     .name("user_func")
+	/// //     .body(&user_code);
 	/// ```
 	pub fn body<B: Into<String>>(&mut self, body: B) -> &mut Self {
 		self.function_def.body = Some(body.into());
