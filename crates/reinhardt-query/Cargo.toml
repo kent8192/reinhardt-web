@@ -12,7 +12,7 @@ description = "SQL query builder for Reinhardt framework"
 thiserror = { workspace = true }
 
 # Derive macros
-reinhardt-query-macros = { path = "macros", optional = true }
+reinhardt-query-macros = { workspace = true, optional = true }
 
 # Feature-gated dependencies
 chrono = { workspace = true, optional = true }
