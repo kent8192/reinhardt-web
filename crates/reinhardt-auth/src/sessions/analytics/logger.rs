@@ -19,7 +19,7 @@
 //! # }
 //! ```
 
-use super::{SessionAnalytics, SessionEvent};
+use crate::sessions::analytics::{SessionAnalytics, SessionEvent};
 use async_trait::async_trait;
 
 /// Logger analytics backend
@@ -156,7 +156,7 @@ mod tests {
 
 		let event = SessionEvent::Deleted {
 			session_key: "test_key".to_string(),
-			reason: super::super::DeletionReason::Explicit,
+			reason: crate::sessions::DeletionReason::Explicit,
 			timestamp: Utc::now(),
 		};
 

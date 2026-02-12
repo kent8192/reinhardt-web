@@ -2,7 +2,9 @@
 //!
 //! This module provides integration with AWS Secrets Manager for retrieving secrets.
 
-use super::super::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
+use crate::settings::secrets::{
+	SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
@@ -402,7 +404,7 @@ impl SecretProvider for AwsSecretsProvider {
 
 #[cfg(all(test, feature = "aws-secrets"))]
 mod tests {
-	use super::*;
+	use crate::settings::secrets::providers::aws::*;
 
 	/// Test helper struct that tests pure logic (prefix handling, JSON parsing)
 	/// without requiring actual AWS SDK client initialization (which needs TLS certs)
@@ -619,7 +621,7 @@ mod tests {
 
 #[cfg(all(test, not(feature = "aws-secrets")))]
 mod tests_no_feature {
-	use super::*;
+	use crate::settings::secrets::providers::aws::*;
 
 	#[tokio::test]
 	async fn test_aws_provider_disabled() {

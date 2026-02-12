@@ -2040,14 +2040,14 @@ fn widget_to_input_type(widget: &TypedWidget) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::form::codegen::*;
 	use quote::quote;
 
 	fn parse_validate_generate(input: proc_macro2::TokenStream) -> TokenStream {
 		use reinhardt_manouche::core::FormMacro;
 
 		let untyped_ast: FormMacro = syn::parse2(input).unwrap();
-		let typed_ast = super::super::validator::validate(&untyped_ast).unwrap();
+		let typed_ast = crate::form::validator::validate(&untyped_ast).unwrap();
 		generate(&typed_ast)
 	}
 

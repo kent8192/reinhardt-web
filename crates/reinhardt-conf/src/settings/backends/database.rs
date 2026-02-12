@@ -57,7 +57,7 @@ use sqlx::{AnyPool, Row};
 use std::sync::Arc;
 
 #[cfg(feature = "dynamic-database")]
-use super::super::dynamic::{DynamicBackend, DynamicError, DynamicResult};
+use crate::settings::dynamic::{DynamicBackend, DynamicError, DynamicResult};
 #[cfg(feature = "dynamic-database")]
 use async_trait::async_trait;
 
@@ -685,7 +685,7 @@ impl DynamicBackend for DatabaseBackend {
 
 #[cfg(all(test, not(feature = "dynamic-database")))]
 mod tests_no_feature {
-	use super::*;
+	use crate::settings::backends::database::*;
 
 	#[tokio::test]
 	async fn test_database_backend_disabled() {
@@ -697,7 +697,7 @@ mod tests_no_feature {
 
 #[cfg(all(test, feature = "dynamic-database"))]
 mod tests {
-	use super::*;
+	use crate::settings::backends::database::*;
 	use serde_json::json;
 	use std::sync::Once;
 

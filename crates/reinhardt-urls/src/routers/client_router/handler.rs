@@ -4,8 +4,8 @@
 //! for different handler signatures, enabling type-safe path parameter
 //! extraction in route definitions.
 
-use super::error::RouterError;
-use super::params::{FromPath, ParamContext, Path, SingleFromPath};
+use crate::routers::client_router::error::RouterError;
+use crate::routers::client_router::params::{FromPath, ParamContext, Path, SingleFromPath};
 use reinhardt_core::types::page::Page;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -286,8 +286,8 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::super::error::PathError;
-	use super::*;
+	use crate::routers::client_router::handler::*;
+	use crate::routers::error::PathError;
 	use std::collections::HashMap;
 
 	fn test_page() -> Page {

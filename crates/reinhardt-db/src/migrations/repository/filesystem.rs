@@ -2,8 +2,8 @@
 //!
 //! Persists migrations as `.rs` files on disk.
 
-use super::super::ast_parser;
 use super::{Migration, MigrationError, MigrationRepository, Result};
+use crate::migrations::ast_parser;
 use async_trait::async_trait;
 use quote::quote;
 use std::path::{Path, PathBuf};

@@ -39,7 +39,7 @@
 //! # }
 //! ```
 
-use super::super::dynamic::{DynamicBackend, DynamicResult};
+use crate::settings::dynamic::{DynamicBackend, DynamicResult};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -314,7 +314,7 @@ impl DynamicBackend for MemoryBackend {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::settings::backends::memory::*;
 
 	#[tokio::test]
 	async fn test_basic_operations() {

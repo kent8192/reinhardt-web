@@ -1,8 +1,8 @@
 //! Aggregation operations on collections
 
-use super::CollectionProxy;
 use crate::proxy::ProxyResult;
 use crate::proxy::ScalarValue;
+use crate::proxy::collection::CollectionProxy;
 
 /// Aggregation operations on collections
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl CollectionAggregations {
 	/// ```
 	pub async fn sum<T>(&self, source: &T) -> ProxyResult<f64>
 	where
-		T: super::super::reflection::Reflectable,
+		T: crate::proxy::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
 		let mut sum = 0.0;
@@ -73,7 +73,7 @@ impl CollectionAggregations {
 	/// ```
 	pub async fn avg<T>(&self, source: &T) -> ProxyResult<f64>
 	where
-		T: super::super::reflection::Reflectable,
+		T: crate::proxy::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
 		let mut sum = 0.0;
@@ -114,7 +114,7 @@ impl CollectionAggregations {
 	/// ```
 	pub async fn min<T>(&self, source: &T) -> ProxyResult<Option<ScalarValue>>
 	where
-		T: super::super::reflection::Reflectable,
+		T: crate::proxy::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
 		Ok(values.into_iter().min_by(|a, b| {
@@ -151,7 +151,7 @@ impl CollectionAggregations {
 	/// ```
 	pub async fn max<T>(&self, source: &T) -> ProxyResult<Option<ScalarValue>>
 	where
-		T: super::super::reflection::Reflectable,
+		T: crate::proxy::reflection::Reflectable,
 	{
 		let values = self.proxy.get_values(source).await?;
 		Ok(values.into_iter().max_by(|a, b| {

@@ -34,7 +34,7 @@
 //! # }
 //! ```
 
-use super::super::{AuditBackend, AuditEvent, EventFilter};
+use crate::settings::audit::{AuditBackend, AuditEvent, EventFilter};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -210,7 +210,7 @@ impl AuditBackend for MemoryAuditBackend {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::settings::audit::backends::memory::*;
 	use crate::settings::audit::{ChangeRecord, EventType};
 	use serde_json::json;
 	use std::collections::HashMap;

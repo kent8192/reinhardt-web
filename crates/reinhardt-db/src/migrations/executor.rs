@@ -1516,7 +1516,7 @@ mod optimizer_tests {
 
 	#[cfg(test)]
 	mod split_sql_tests {
-		use super::super::*;
+		use crate::migrations::*;
 
 		#[test]
 		fn test_split_simple_statements() {

@@ -140,7 +140,7 @@ impl Component for Link {
 #[derive(Debug, Clone)]
 pub struct RouterOutlet {
 	/// Reference to the router.
-	router: std::sync::Arc<super::Router>,
+	router: std::sync::Arc<crate::router::Router>,
 	/// The ID attribute for the outlet element.
 	id: Option<String>,
 	/// CSS class for the outlet element.
@@ -153,7 +153,7 @@ impl RouterOutlet {
 	/// ## Arguments
 	///
 	/// * `router` - An Arc reference to the Router instance
-	pub fn new(router: std::sync::Arc<super::Router>) -> Self {
+	pub fn new(router: std::sync::Arc<crate::router::Router>) -> Self {
 		Self {
 			router,
 			id: None,
@@ -276,7 +276,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::router::components::*;
 
 	#[test]
 	fn test_link_new() {
@@ -313,7 +313,7 @@ mod tests {
 
 	#[test]
 	fn test_router_outlet() {
-		use super::super::Router;
+		use crate::router::Router;
 		use std::sync::Arc;
 
 		fn test_view() -> Page {

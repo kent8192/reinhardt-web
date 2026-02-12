@@ -6,8 +6,8 @@
 //! - Database-specific types (PostgreSQL, MySQL, SQLite)
 //! - Custom type overrides
 
-use super::super::fields::FieldType;
-use super::super::introspection::ColumnInfo;
+use crate::migrations::fields::FieldType;
+use crate::migrations::introspection::ColumnInfo;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::HashMap;
@@ -310,7 +310,7 @@ pub(super) fn parse_decimal_precision(type_def: &str) -> Result<(u32, u32), Type
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::migrations::*;
 
 	#[test]
 	fn test_integer_type_mapping() {

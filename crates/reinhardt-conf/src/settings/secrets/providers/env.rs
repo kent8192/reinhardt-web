@@ -1,6 +1,8 @@
 //! Environment variable secret provider
 
-use super::super::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
+use crate::settings::secrets::{
+	SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString,
+};
 use async_trait::async_trait;
 use std::env;
 
@@ -106,7 +108,7 @@ impl SecretProvider for EnvSecretProvider {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::settings::secrets::providers::env::*;
 
 	#[tokio::test]
 	async fn test_env_provider_with_prefix() {
