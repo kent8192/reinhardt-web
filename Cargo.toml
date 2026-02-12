@@ -328,6 +328,8 @@ members = [
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
+  "crates/reinhardt-payment",                          # Payment integration (Stripe/BasisTheory)
+  "crates/reinhardt-payment-mocks",                    # Mock implementations for payment testing
   # Integration tests
   "tests",
   "tests/integration",
@@ -409,6 +411,8 @@ reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.5" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.5" }
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.6" }
+reinhardt-payment = { path = "crates/reinhardt-payment", version = "0.1.0" }
+reinhardt-payment-mocks = { path = "crates/reinhardt-payment-mocks", version = "0.1.0" }
 
 # Core subcrates
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.2" }
