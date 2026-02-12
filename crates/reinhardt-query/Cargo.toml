@@ -53,30 +53,13 @@ rstest = { workspace = true }
 pretty_assertions = "1.4"
 proptest = "1.4"
 
-# Reinhardt dependencies
-reinhardt-db = { workspace = true, features = ["orm"] }
-reinhardt-macros = { workspace = true }
-reinhardt-core = { workspace = true }
-
 # Async runtime
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-async-trait = { workspace = true }
 
-# Database testing
+# Database testing (for DDL tests)
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "mysql", "chrono", "uuid", "json"] }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true, features = ["postgres"] }
 
-# Additional dependencies
-rust_decimal = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-chrono = { workspace = true }
+# Additional dependencies (for DDL test fixtures)
 uuid = { workspace = true }
-
-# Macro dependencies
-ctor = "0.2"
-
-# Integration tests
-[[test]]
-name = "dml"
-path = "tests/dml.rs"

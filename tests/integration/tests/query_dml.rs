@@ -1,6 +1,8 @@
 //! DML Integration Tests for reinhardt-query
 //!
 //! This is the entry point for all DML operation tests.
+//! These tests were moved from reinhardt-query crate to avoid
+//! circular dev-dependency (reinhardt-query <-> reinhardt-db).
 
 mod fixtures;
 

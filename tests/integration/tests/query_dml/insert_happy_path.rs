@@ -1,8 +1,6 @@
 // Happy path tests for INSERT statement
 
-#[path = "fixtures.rs"]
-mod fixtures;
-use fixtures::{TestPool, users_table};
+use super::fixtures::{users_table, TestPool};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::Row;

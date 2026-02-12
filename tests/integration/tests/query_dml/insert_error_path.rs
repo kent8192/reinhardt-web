@@ -1,8 +1,6 @@
 // Error path tests for INSERT statement
 
-#[path = "fixtures.rs"]
-mod fixtures;
-use fixtures::{TestPool, users_table, users_with_data};
+use super::fixtures::{users_table, users_with_data, TestPool};
 use reinhardt_query::prelude::*;
 use rstest::*;
 

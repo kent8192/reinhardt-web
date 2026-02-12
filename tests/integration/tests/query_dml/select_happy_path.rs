@@ -1,8 +1,6 @@
 // Happy path tests for SELECT statement
 
-#[path = "fixtures.rs"]
-mod fixtures;
-use fixtures::{TestPool, users_with_data};
+use super::fixtures::{users_with_data, TestPool};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use sqlx::Row;
