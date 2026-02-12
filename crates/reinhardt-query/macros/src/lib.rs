@@ -196,7 +196,14 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 				.map(|variant| {
 					let variant_ident = &variant.ident;
 					let iden_name = extract_custom_name(&variant.attrs)
-						.unwrap_or_else(|| variant_ident.to_string().to_snake_case());
+						.unwrap_or_else(|| {
+							if variant_ident == "Table" {
+								// Convention: Table variant uses enum name as table identifier
+								name.to_string().to_snake_case()
+							} else {
+								variant_ident.to_string().to_snake_case()
+							}
+						});
 					(variant_ident.clone(), iden_name)
 				})
 				.collect();
