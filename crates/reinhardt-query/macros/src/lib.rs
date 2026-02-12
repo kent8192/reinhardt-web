@@ -89,6 +89,27 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, parse_macro_input};
 
+/// Extract custom identifier name from `#[iden = "..."]` attribute.
+fn extract_custom_name(attrs: &[syn::Attribute]) -> Option<String> {
+	attrs.iter().find_map(|attr| {
+		if !attr.path().is_ident("iden") {
+			return None;
+		}
+		match &attr.meta {
+			syn::Meta::NameValue(name_value) => {
+				if name_value.path.is_ident("iden")
+					&& let syn::Expr::Lit(lit) = &name_value.value
+					&& let syn::Lit::Str(lit_str) = &lit.lit
+				{
+					return Some(lit_str.value());
+				}
+				None
+			}
+			_ => None,
+		}
+	})
+}
+
 /// Derive `Iden` trait for enums and structs.
 ///
 /// ## Features
@@ -168,127 +189,69 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 
 	let expanded = match &input.data {
 		Data::Enum(data_enum) => {
-			let match_arms = data_enum.variants.iter().map(|variant| {
-				let variant_ident = &variant.ident;
+			// Collect variant names and their identifier strings
+			let variant_data: Vec<_> = data_enum
+				.variants
+				.iter()
+				.map(|variant| {
+					let variant_ident = &variant.ident;
+					let iden_name = extract_custom_name(&variant.attrs)
+						.unwrap_or_else(|| variant_ident.to_string().to_snake_case());
+					(variant_ident.clone(), iden_name)
+				})
+				.collect();
 
-				// Check for #[iden = "custom_name"] or #[iden("custom_name")] attribute
-				let custom_name = variant.attrs.iter().find_map(|attr| {
-					if !attr.path().is_ident("iden") {
-						return None;
-					}
-
-					// Parse #[iden = "..."] or #[iden("...")]
-					match &attr.meta {
-						syn::Meta::NameValue(name_value) => {
-							// Handle #[iden = "..."] syntax
-							if name_value.path.is_ident("iden") {
-								// Extract string literal from Expr
-								if let syn::Expr::Lit(lit) = &name_value.value {
-									match lit {
-										syn::Lit::Str(lit_str) => Some(lit_str.clone()),
-										_ => None,
-									}
-								} else {
-									None
-								}
-							} else {
-								None
-							}
-						}
-						syn::Meta::List(list) => {
-							// Handle #[iden("...")] syntax - skip as it's not standard
-							None
-						}
-						_ => None,
-					}
-				});
-
-				// Use custom name if provided, otherwise use variant name in snake_case
-				let default_name = variant_ident.to_string().to_snake_case();
-				let iden_name = match &custom_name {
-					Some(lit) => lit.value(),
-					None => default_name.as_str(),
-				};
-
+			// Generate Display match arms
+			let display_arms = variant_data.iter().map(|(variant_ident, iden_name)| {
 				quote! {
-					#name::#variant_ident => write!(s, "{}", #iden_name).unwrap(),
+					#name::#variant_ident => f.write_str(#iden_name),
+				}
+			});
+
+			// Generate Iden::unquoted match arms
+			let iden_arms = variant_data.iter().map(|(variant_ident, iden_name)| {
+				quote! {
+					#name::#variant_ident => s.write_str(#iden_name).unwrap(),
 				}
 			});
 
 			quote! {
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-						let mut s = String::new();
 						match self {
-							#(#match_arms)*
+							#(#display_arms)*
 						}
-						write!(f, "{}", s)
+					}
+				}
+
+				impl reinhardt_query::types::Iden for #name {
+					fn unquoted(&self, s: &mut dyn ::std::fmt::Write) {
+						match self {
+							#(#iden_arms)*
+						}
 					}
 				}
 			}
 		}
 
 		Data::Struct(data_struct) => {
-			let struct_name_snake = name.to_string().to_snake_case();
-
-			// Generate match pattern based on struct type
-			let match_pattern = match &data_struct.fields {
-				syn::Fields::Unit => quote! { #name },
-				syn::Fields::Unnamed(unnamed) => {
-					let fields = unnamed.unnamed.iter().map(|_| quote! { _ });
-					quote! { #name ( #(#fields),* ) }
-				}
-				syn::Fields::Named(named) => {
-					let fields = named.named.iter().map(|field| {
-						let field_ident = &field.ident;
-						quote! { #field_ident: _ }
-					});
-					quote! { #name { #(#fields),* } }
-				}
-			};
-
-			// Check for custom #[iden = "..."] or #[iden("...")] on first field
-			let custom_name = data_struct.fields.iter().next().and_then(|field| {
-				field.attrs.iter().find_map(|attr| {
-					if !attr.path().is_ident("iden") {
-						return None;
-					}
-					match &attr.meta {
-						syn::Meta::NameValue(name_value) => {
-							// Handle #[iden = "..."] syntax
-							if name_value.path.is_ident("iden") {
-								// Extract string literal from Expr
-								if let syn::Expr::Lit(lit) = &name_value.value {
-									if let syn::Lit::Str(lit_str) = lit {
-										Some(lit_str.clone())
-									} else {
-										None
-									}
-								} else {
-									None
-								}
-							} else {
-								None
-							}
-						}
-						syn::Meta::List(list) => {
-							// Handle #[iden("...")] syntax - skip as it's not standard
-							None
-						}
-						_ => None,
-					}
-				})
-			});
-
-			let iden_name = match &custom_name {
-				Some(lit) => lit.value(),
-				None => struct_name_snake.as_str(),
-			};
+			let iden_name = data_struct
+				.fields
+				.iter()
+				.next()
+				.and_then(|field| extract_custom_name(&field.attrs))
+				.unwrap_or_else(|| name.to_string().to_snake_case());
 
 			quote! {
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-						write!(f, "{}", #iden_name)
+						f.write_str(#iden_name)
+					}
+				}
+
+				impl reinhardt_query::types::Iden for #name {
+					fn unquoted(&self, s: &mut dyn ::std::fmt::Write) {
+						s.write_str(#iden_name).unwrap();
 					}
 				}
 			}
