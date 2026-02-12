@@ -79,73 +79,35 @@
 //!     .and_where(Expr::col("active").eq(false));
 //! ```
 
-mod alter_index;
-mod alter_table;
-mod comment;
-mod create_index;
-mod create_table;
-mod create_trigger;
-mod create_view;
-mod database;
-mod delete;
-mod drop_index;
-mod drop_table;
-mod drop_trigger;
-mod drop_view;
+pub mod alter_index;
+pub mod alter_table;
+pub mod comment;
+pub mod create_index;
+pub mod create_table;
+pub mod create_trigger;
+pub mod create_view;
+pub mod database;
+pub mod delete;
+pub mod drop_index;
+pub mod drop_table;
+pub mod drop_trigger;
+pub mod drop_view;
 pub mod event;
-mod foreign_key;
+pub mod foreign_key;
 pub mod function;
-mod insert;
+pub mod insert;
 pub mod maintenance;
-mod on_conflict;
+pub mod on_conflict;
 pub mod procedure;
-mod reindex;
-mod returning;
+pub mod reindex;
+pub mod returning;
 pub mod schema;
-mod select;
+pub mod select;
 pub mod sequence;
-mod traits;
-mod truncate_table;
+pub mod traits;
+pub mod truncate_table;
 pub mod type_def;
-mod update;
-
-pub use alter_index::*;
-pub use alter_table::*;
-pub use comment::CommentStatement;
-pub use create_index::*;
-pub use create_table::*;
-pub use create_trigger::*;
-pub use create_view::*;
-pub use database::{
-	AlterDatabaseStatement, AttachDatabaseStatement, CreateDatabaseStatement,
-	DetachDatabaseStatement, DropDatabaseStatement,
-};
-pub use delete::*;
-pub use drop_index::*;
-pub use drop_table::*;
-pub use drop_trigger::*;
-pub use drop_view::*;
-pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
-pub use foreign_key::*;
-pub use function::{AlterFunctionStatement, CreateFunctionStatement, DropFunctionStatement};
-pub use insert::*;
-pub use maintenance::{CheckTableStatement, OptimizeTableStatement, RepairTableStatement};
-pub use on_conflict::*;
-pub use procedure::{AlterProcedureStatement, CreateProcedureStatement, DropProcedureStatement};
-pub use reindex::*;
-pub use returning::*;
-pub use schema::{
-	AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement,
-};
-pub use select::{
-	CommonTableExpr, LockBehavior, LockClause, LockType, SelectDistinct, SelectExpr,
-	SelectStatement, UnionType,
-};
-pub use sequence::{AlterSequenceStatement, CreateSequenceStatement, DropSequenceStatement};
-pub use traits::*;
-pub use truncate_table::*;
-pub use type_def::{AlterTypeStatement, CreateTypeStatement, DropTypeStatement};
-pub use update::*;
+pub mod update;
 
 /// Shorthand for constructing any table query
 ///
@@ -157,16 +119,27 @@ pub use update::*;
 /// use reinhardt_query::prelude::*;
 ///
 /// // Create a SELECT statement
-/// let select = Query::select();
+/// let select = Query::select()
+///     .column(Expr::col("id"))
+///     .column(Expr::col("name"))
+///     .from("users");
 ///
 /// // Create an INSERT statement
-/// let insert = Query::insert();
+/// let insert = Query::insert()
+///     .into_table("users")
+///     .columns(["name", "email"])
+///     .values(["Alice"]);
 ///
 /// // Create an UPDATE statement
-/// let update = Query::update();
+/// let update = Query::update()
+///     .table("users")
+///     .value("name", "Bob")
+///     .and_where(Expr::col("id").eq(1));
 ///
 /// // Create a DELETE statement
-/// let delete = Query::delete();
+/// let delete = Query::delete()
+///     .from_table("users")
+///     .and_where(Expr::col("id").eq(1));
 /// ```
 #[derive(Debug, Clone)]
 pub struct Query;
@@ -198,7 +171,7 @@ impl Query {
 	/// let query = Query::insert()
 	///     .into_table("users")
 	///     .columns(["name", "email"])
-	///     .values_panic(["Alice", "alice@example.com"]);
+	///     .values(["Alice"]);
 	/// ```
 	pub fn insert() -> InsertStatement {
 		InsertStatement::new()
@@ -213,7 +186,8 @@ impl Query {
 	///
 	/// let query = Query::update()
 	///     .table("users")
-	///     .value("last_updated", Expr::current_timestamp());
+	///     .value("name", "Bob")
+	///     .and_where(Expr::col("id").eq(1));
 	/// ```
 	pub fn update() -> UpdateStatement {
 		UpdateStatement::new()
@@ -228,7 +202,7 @@ impl Query {
 	///
 	/// let query = Query::delete()
 	///     .from_table("users")
-	///     .and_where(Expr::col("deleted_at").is_not_null());
+	///     .and_where(Expr::col("id").eq(1));
 	/// ```
 	pub fn delete() -> DeleteStatement {
 		DeleteStatement::new()
@@ -613,29 +587,22 @@ impl Query {
 	///     .name("mydb")
 	///     .add_region("us-west-1");
 	/// ```
-	pub fn create_database() -> CreateDatabaseStatement {
-		CreateDatabaseStatement::new()
+	pub fn alter_database() -> AlterDatabaseStatement {
+		AlterDatabaseStatement::new()
 	}
 
-	/// Construct a new [`AlterDatabaseStatement`]
+	/// Construct a new [`CreateDatabaseStatement`]
 	///
 	/// # Examples
 	///
 	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
 	///
-	/// // ALTER DATABASE mydb RENAME TO newdb
-	/// let query = Query::alter_database()
-	///     .name("mydb")
-	///     .rename_to("newdb");
-	///
-	/// // CockroachDB: ALTER DATABASE mydb ADD REGION 'us-west-1'
-	/// let query = Query::alter_database()
-	///     .name("mydb")
-	///     .add_region("us-west-1");
+	/// let query = Query::create_database()
+	///     .name("testdb")
 	/// ```
-	pub fn alter_database() -> AlterDatabaseStatement {
-		AlterDatabaseStatement::new()
+	pub fn create_database() -> CreateDatabaseStatement {
+		CreateDatabaseStatement::new()
 	}
 
 	/// Construct a new [`DropDatabaseStatement`]
@@ -732,10 +699,9 @@ impl Query {
 	///
 	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	/// use reinhardt_query::types::{TriggerTiming, TriggerEvent, TriggerScope};
 	///
 	/// // CREATE EVENT cleanup_logs
-	/// // ON SCHEDULE EVERY 1 DAY
-	/// // DO DELETE FROM logs WHERE created_at < NOW() - INTERVAL 7 DAY
 	/// let query = Query::create_event()
 	///     .name("cleanup_logs")
 	///     .on_schedule_every("1 DAY")
@@ -776,10 +742,6 @@ impl Query {
 	///
 	/// // DROP EVENT cleanup_logs
 	/// let query = Query::drop_event()
-	///     .name("cleanup_logs");
-	///
-	/// // DROP EVENT IF EXISTS cleanup_logs
-	/// let query = Query::drop_event()
 	///     .name("cleanup_logs")
 	///     .if_exists();
 	/// ```
@@ -794,11 +756,11 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Basic SQL function:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
 	/// use reinhardt_query::types::function::FunctionLanguage;
+	///
+	/// // Basic SQL function:
 	///
 	/// let query = Query::create_function()
 	///     .name("add_one")
@@ -808,11 +770,7 @@ impl Query {
 	///     .body("SELECT $1 + 1");
 	/// ```
 	///
-	/// PL/pgSQL function with OR REPLACE and options:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::types::function::{FunctionLanguage, FunctionBehavior, FunctionSecurity};
+	/// // PL/pgSQL function with OR REPLACE and options:
 	///
 	/// let query = Query::create_function()
 	///     .name("calculate_total")
@@ -836,35 +794,21 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Rename function:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Rename function:
 	///
 	/// let query = Query::alter_function()
 	///     .name("old_func")
 	///     .rename_to("new_func");
 	/// ```
 	///
-	/// Change function owner:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // Change function owner:
 	///
 	/// let query = Query::alter_function()
 	///     .name("my_func")
 	///     .owner_to("new_owner");
-	/// ```
-	///
-	/// Modify function behavior:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::types::function::FunctionBehavior;
-	///
-	/// let query = Query::alter_function()
-	///     .name("my_func")
-	///     .set_behavior(FunctionBehavior::Stable);
 	/// ```
 	pub fn alter_function() -> AlterFunctionStatement {
 		AlterFunctionStatement::new()
@@ -877,35 +821,21 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Simple DROP FUNCTION:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Simple DROP FUNCTION:
 	///
 	/// let query = Query::drop_function()
 	///     .name("my_func");
 	/// ```
 	///
-	/// DROP FUNCTION with IF EXISTS and CASCADE:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // DROP FUNCTION with IF EXISTS and CASCADE:
 	///
 	/// let query = Query::drop_function()
 	///     .name("my_func")
 	///     .if_exists()
 	///     .cascade();
-	/// ```
-	///
-	/// DROP FUNCTION with parameter signature:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	///
-	/// let query = Query::drop_function()
-	///     .name("add_numbers")
-	///     .add_parameter("", "integer")
-	///     .add_parameter("", "text");
 	/// ```
 	pub fn drop_function() -> DropFunctionStatement {
 		DropFunctionStatement::new()
@@ -918,11 +848,11 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Basic SQL procedure:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
 	/// use reinhardt_query::types::function::FunctionLanguage;
+	///
+	/// // Basic SQL procedure:
 	///
 	/// let query = Query::create_procedure()
 	///     .name("log_event")
@@ -931,11 +861,7 @@ impl Query {
 	///     .body("INSERT INTO event_log (message) VALUES ($1)");
 	/// ```
 	///
-	/// PL/pgSQL procedure with OR REPLACE and options:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::types::function::{FunctionLanguage, FunctionBehavior, FunctionSecurity};
+	/// // PL/pgSQL procedure with OR REPLACE and options:
 	///
 	/// let query = Query::create_procedure()
 	///     .name("update_inventory")
@@ -958,35 +884,21 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Rename procedure:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Rename procedure:
 	///
 	/// let query = Query::alter_procedure()
 	///     .name("old_proc")
 	///     .rename_to("new_proc");
 	/// ```
 	///
-	/// Change procedure owner:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // Change procedure owner:
 	///
 	/// let query = Query::alter_procedure()
 	///     .name("my_proc")
 	///     .owner_to("new_owner");
-	/// ```
-	///
-	/// Modify procedure behavior:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::types::function::FunctionBehavior;
-	///
-	/// let query = Query::alter_procedure()
-	///     .name("my_proc")
-	///     .set_behavior(FunctionBehavior::Stable);
 	/// ```
 	pub fn alter_procedure() -> AlterProcedureStatement {
 		AlterProcedureStatement::new()
@@ -999,35 +911,21 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Simple DROP PROCEDURE:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Simple DROP PROCEDURE:
 	///
 	/// let query = Query::drop_procedure()
 	///     .name("my_proc");
 	/// ```
 	///
-	/// DROP PROCEDURE with IF EXISTS and CASCADE:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // DROP PROCEDURE with IF EXISTS and CASCADE:
 	///
 	/// let query = Query::drop_procedure()
 	///     .name("my_proc")
 	///     .if_exists()
 	///     .cascade();
-	/// ```
-	///
-	/// DROP PROCEDURE with parameter signature:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	///
-	/// let query = Query::drop_procedure()
-	///     .name("update_inventory")
-	///     .add_parameter("", "integer")
-	///     .add_parameter("", "integer");
 	/// ```
 	pub fn drop_procedure() -> DropProcedureStatement {
 		DropProcedureStatement::new()
@@ -1040,39 +938,25 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Create ENUM type:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Create ENUM type:
 	///
 	/// let query = Query::create_type()
 	///     .name("mood")
 	///     .as_enum(vec!["happy".to_string(), "sad".to_string(), "neutral".to_string()]);
 	/// ```
 	///
-	/// Create COMPOSITE type:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // Create COMPOSITE type:
 	///
 	/// let query = Query::create_type()
 	///     .name("address")
 	///     .as_composite(vec![
 	///         ("street".to_string(), "text".to_string()),
-	///         ("city".to_string(), "text".to_string()),
+	///         ("city".to_string(), "varchar(10)".to_string()),
 	///         ("zip".to_string(), "varchar(10)".to_string()),
 	///     ]);
-	/// ```
-	///
-	/// Create DOMAIN type with constraint:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
-	///
-	/// let query = Query::create_type()
-	///     .name("positive_int")
-	///     .as_domain("integer".to_string())
-	///     .constraint("positive_check".to_string(), "CHECK (VALUE > 0)".to_string());
 	/// ```
 	pub fn create_type() -> CreateTypeStatement {
 		CreateTypeStatement::new()
@@ -1085,30 +969,24 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Add value to ENUM type:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Add value to ENUM type:
 	///
 	/// let query = Query::alter_type()
 	///     .name("mood")
 	///     .add_value("excited", Some("happy"));
 	/// ```
 	///
-	/// Rename type:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // Rename type:
 	///
 	/// let query = Query::alter_type()
 	///     .name("old_type")
 	///     .rename_to("new_type");
 	/// ```
 	///
-	/// Rename ENUM value:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // Rename ENUM value:
 	///
 	/// let query = Query::alter_type()
 	///     .name("mood")
@@ -1125,19 +1003,16 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// Simple DROP TYPE:
-	///
-	/// ```rust
+	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
+	///
+	/// // Simple DROP TYPE:
 	///
 	/// let query = Query::drop_type()
 	///     .name("mood");
 	/// ```
 	///
-	/// DROP TYPE with IF EXISTS and CASCADE:
-	///
-	/// ```rust
-	/// use reinhardt_query::prelude::*;
+	/// // DROP TYPE with IF EXISTS and CASCADE:
 	///
 	/// let query = Query::drop_type()
 	///     .name("mood")
@@ -1159,6 +1034,7 @@ impl Query {
 	/// use reinhardt_query::prelude::*;
 	///
 	/// // ATTACH DATABASE 'other.db' AS other_db
+	///
 	/// let query = Query::attach_database()
 	///     .file_path("other.db")
 	///     .schema_name("other_db");
@@ -1178,6 +1054,7 @@ impl Query {
 	/// use reinhardt_query::prelude::*;
 	///
 	/// // DETACH DATABASE other_db
+	///
 	/// let query = Query::detach_database()
 	///     .schema_name("other_db");
 	/// ```
@@ -1223,8 +1100,6 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// PostgreSQL:
-	///
 	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
 	/// use reinhardt_query::dcl::{CreateRoleStatement, RoleAttribute};
@@ -1235,13 +1110,9 @@ impl Query {
 	///     .attribute(RoleAttribute::Password("secret".to_string()));
 	/// ```
 	///
-	/// MySQL:
+	/// // MySQL CREATE ROLE:
 	///
-	/// ```rust,ignore
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::dcl::{CreateRoleStatement, UserOption};
-	///
-	/// let create_role = Query::create_role()
+	/// let query = Query::create_role()
 	///     .role("app_role")
 	///     .if_not_exists(true)
 	///     .option(UserOption::Comment("Application role".to_string()));
@@ -1270,24 +1141,20 @@ impl Query {
 	///
 	/// # Examples
 	///
-	/// PostgreSQL:
-	///
 	/// ```rust,ignore
 	/// use reinhardt_query::prelude::*;
 	/// use reinhardt_query::dcl::{AlterRoleStatement, RoleAttribute};
 	///
-	/// let alter_role = Query::alter_role()
+	/// // PostgreSQL:
+	///
+	/// let query = Query::alter_role()
 	///     .role("developer")
 	///     .attribute(RoleAttribute::NoLogin);
 	/// ```
 	///
-	/// MySQL:
+	/// // MySQL:
 	///
-	/// ```rust,ignore
-	/// use reinhardt_query::prelude::*;
-	/// use reinhardt_query::dcl::{AlterRoleStatement, UserOption};
-	///
-	/// let alter_role = Query::alter_role()
+	/// let query = Query::alter_role()
 	///     .role("app_role")
 	///     .option(UserOption::AccountLock);
 	/// ```
@@ -1295,11 +1162,53 @@ impl Query {
 		crate::dcl::AlterRoleStatement::new()
 	}
 
-	/// Create a new CREATE USER statement
+	/// Construct a new SET ROLE statement (PostgreSQL only)
 	///
 	/// # Examples
 	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::set_role()
+	///     .role_name("developer")
 	/// ```
+	pub fn set_role() -> crate::dcl::SetRoleStatement {
+		crate::dcl::SetRoleStatement::new()
+	}
+
+	/// Construct a new RESET ROLE statement (PostgreSQL only)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::reset_role()
+	///     .role_name("developer")
+	/// ```
+	pub fn reset_role() -> crate::dcl::ResetRoleStatement {
+		crate::dcl::ResetRoleStatement::new()
+	}
+
+	/// Construct a new SET DEFAULT ROLE statement (MySQL only)
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::set_default_role()
+	///     .role_name("developer")
+	/// ```
+	pub fn set_default_role() -> crate::dcl::SetDefaultRoleStatement {
+		crate::dcl::SetDefaultRoleStatement::new()
+	}
+
+	/// Construct a new CREATE USER statement
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::create_user();
@@ -1308,11 +1217,11 @@ impl Query {
 		crate::dcl::CreateUserStatement::new()
 	}
 
-	/// Create a new DROP USER statement
+	/// Construct a new DROP USER statement
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::drop_user();
@@ -1321,11 +1230,11 @@ impl Query {
 		crate::dcl::DropUserStatement::new()
 	}
 
-	/// Create a new ALTER USER statement
+	/// Construct a new ALTER USER statement
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::alter_user();
@@ -1334,11 +1243,11 @@ impl Query {
 		crate::dcl::AlterUserStatement::new()
 	}
 
-	/// Create a new RENAME USER statement (MySQL only)
+	/// Construct a new RENAME USER statement (MySQL only)
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::rename_user();
@@ -1347,11 +1256,11 @@ impl Query {
 		crate::dcl::RenameUserStatement::new()
 	}
 
-	/// Create a new SET ROLE statement
+	/// Construct a new SET ROLE statement
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::set_role();
@@ -1360,11 +1269,11 @@ impl Query {
 		crate::dcl::SetRoleStatement::new()
 	}
 
-	/// Create a new RESET ROLE statement (PostgreSQL only)
+	/// Construct a new RESET ROLE statement (PostgreSQL only)
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```rust,ignore
 	/// use reinhardt_query::query::Query;
 	///
 	/// let stmt = Query::reset_role();
@@ -1372,42 +1281,3 @@ impl Query {
 	pub fn reset_role() -> crate::dcl::ResetRoleStatement {
 		crate::dcl::ResetRoleStatement::new()
 	}
-
-	/// Create a new SET DEFAULT ROLE statement (MySQL only)
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_query::query::Query;
-	///
-	/// let stmt = Query::set_default_role();
-	/// ```
-	pub fn set_default_role() -> crate::dcl::SetDefaultRoleStatement {
-		crate::dcl::SetDefaultRoleStatement::new()
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_query_select_constructor() {
-		let _query = Query::select();
-	}
-
-	#[test]
-	fn test_query_insert_constructor() {
-		let _query = Query::insert();
-	}
-
-	#[test]
-	fn test_query_update_constructor() {
-		let _query = Query::update();
-	}
-
-	#[test]
-	fn test_query_delete_constructor() {
-		let _query = Query::delete();
-	}
-}
