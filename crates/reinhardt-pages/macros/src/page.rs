@@ -27,7 +27,7 @@
 
 mod codegen;
 pub(crate) mod html_spec;
-pub(crate) mod validator;
+mod validator;
 
 use proc_macro::TokenStream;
 
