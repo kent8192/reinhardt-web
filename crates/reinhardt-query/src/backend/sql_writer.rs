@@ -243,7 +243,7 @@ mod tests {
 		writer.push_value(Value::Int(Some(42)), |i| format!("${}", i));
 		writer.push_space();
 		writer.push_value(Value::String(Some(Box::new("test".to_string()))), |i| {
-			format!("${}", i.unwrap())
+			format!("${}", i)
 		});
 
 		assert_eq!(writer.sql(), "$1 $2");

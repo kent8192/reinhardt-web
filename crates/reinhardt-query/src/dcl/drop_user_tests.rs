@@ -36,9 +36,7 @@ fn test_drop_single_user(#[case] user_name: &str) {
 
 #[rstest]
 fn test_drop_multiple_users() {
-	let stmt = DropUserStatement::new()
-		.user("user1")
-		.user("user2");
+	let stmt = DropUserStatement::new().user("user1").user("user2");
 	assert_eq!(stmt.user_names.len(), 2);
 	assert!(stmt.user_names.contains(&String::from("user1")));
 	assert!(stmt.user_names.contains(&String::from("user2")));

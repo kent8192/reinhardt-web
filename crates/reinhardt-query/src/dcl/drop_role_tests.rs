@@ -35,12 +35,8 @@ fn test_drop_single_role(#[case] role_name: &str) {
 }
 
 #[rstest]
-#[case("role_with_underscores")]
-#[case("RoleWithCamelCase")]
 fn test_drop_multiple_roles() {
-	let stmt = DropRoleStatement::new()
-		.role("role_1")
-		.role("role_2");
+	let stmt = DropRoleStatement::new().role("role_1").role("role_2");
 	assert_eq!(stmt.role_names.len(), 2);
 	assert!(stmt.role_names.contains(&String::from("role_1")));
 	assert!(stmt.role_names.contains(&String::from("role_2")));
