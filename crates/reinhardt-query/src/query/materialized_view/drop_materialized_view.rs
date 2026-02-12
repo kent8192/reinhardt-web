@@ -6,7 +6,7 @@
 use crate::backend::QueryBuilder;
 use crate::types::{DynIden, IntoIden};
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// DROP MATERIALIZED VIEW statement builder
 ///

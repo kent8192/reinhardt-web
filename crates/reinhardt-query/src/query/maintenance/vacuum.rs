@@ -7,7 +7,7 @@ use crate::{
 	types::{DynIden, IntoIden, VacuumOption},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// VACUUM statement builder
 ///

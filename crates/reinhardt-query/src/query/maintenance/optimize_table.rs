@@ -8,7 +8,7 @@ use crate::{
 	types::{DynIden, IntoIden, OptimizeTableOption},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// OPTIMIZE TABLE statement builder
 ///

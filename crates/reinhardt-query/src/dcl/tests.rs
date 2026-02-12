@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod privilege_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_privilege_as_sql() {
@@ -231,7 +231,7 @@ mod privilege_tests {
 
 #[cfg(test)]
 mod object_type_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_object_type_as_sql() {
@@ -280,7 +280,7 @@ mod object_type_tests {
 
 #[cfg(test)]
 mod grantee_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_grantee_role_constructor() {
@@ -331,7 +331,7 @@ mod grantee_tests {
 
 #[cfg(test)]
 mod grant_statement_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_grant_statement_new() {
@@ -465,7 +465,7 @@ mod grant_statement_tests {
 
 #[cfg(test)]
 mod revoke_statement_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_revoke_statement_new() {
@@ -1402,7 +1402,7 @@ mod revoke_statement_tests {
 
 #[cfg(test)]
 mod role_attribute_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_role_attribute_variants() {
@@ -1456,7 +1456,7 @@ mod role_attribute_tests {
 
 #[cfg(test)]
 mod user_option_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_user_option_password() {
@@ -1530,7 +1530,7 @@ mod user_option_tests {
 
 #[cfg(test)]
 mod create_role_statement_tests {
-	use super::super::*;
+	use crate::*;
 
 	#[test]
 	fn test_create_role_new() {

@@ -7,7 +7,7 @@ use crate::{
 	types::{IntoIden, type_def::TypeKind},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// CREATE TYPE statement builder
 ///

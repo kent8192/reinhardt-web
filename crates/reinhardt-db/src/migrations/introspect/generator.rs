@@ -350,7 +350,7 @@ impl SchemaCodeGenerator {
 		}
 
 		// Max length for varchar
-		if let super::super::fields::FieldType::VarChar(len) = &column.column_type {
+		if let crate::migrations::fields::FieldType::VarChar(len) = &column.column_type {
 			let len = *len;
 			attrs.push(quote! { #[field(max_length = #len)] });
 		}

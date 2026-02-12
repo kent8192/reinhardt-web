@@ -11,7 +11,7 @@ use crate::{
 	types::{IntoIden, MaterializedViewDef},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// CREATE MATERIALIZED VIEW statement builder
 ///
