@@ -1,8 +1,8 @@
 //! SQL Writer helper for constructing SQL strings
 //!
-//! This module provides the `SqlWriter` type which helps build SQL strings
+//! This module provides `SqlWriter` type which helps build SQL strings
 //! with proper formatting, spacing, and placeholder management.
-
+//!
 use crate::value::{Value, Values};
 
 /// SQL Writer for constructing SQL strings
@@ -46,7 +46,7 @@ impl SqlWriter {
 		}
 	}
 
-	/// Push a string to the SQL
+	/// Push a string to SQL
 	///
 	/// # Arguments
 	///
@@ -55,7 +55,7 @@ impl SqlWriter {
 		self.sql.push_str(s);
 	}
 
-	/// Push a space to the SQL
+	/// Push a space to SQL
 	pub fn push_space(&mut self) {
 		if !self.sql.is_empty() && !self.sql.ends_with(' ') {
 			self.sql.push(' ');
@@ -67,7 +67,7 @@ impl SqlWriter {
 	/// # Arguments
 	///
 	/// * `ident` - The identifier to push
-	/// * `escape_fn` - Function to escape the identifier
+	/// * `escape_fn` - Function to escape identifier
 	pub fn push_identifier<F>(&mut self, ident: &str, escape_fn: F)
 	where
 		F: FnOnce(&str) -> String,
@@ -80,17 +80,25 @@ impl SqlWriter {
 		self.sql.push_str(", ");
 	}
 
-	/// Push a value placeholder and collect the value
+	/// Push a value placeholder and collect value
 	///
 	/// # Arguments
 	///
 	/// * `value` - The value to add
-	/// * `format_fn` - Function to format the placeholder
+	/// * `format_fn` - Function to format placeholder
 	///
 	/// # Returns
 	///
-	/// The parameter index used
-	pub fn push_value<F>(&mut self, value: Value, format_fn: F) -> usize
+	/// * `Some(index)` - The parameter index used for a non-NULL value
+	/// * `None` - NULL value (no parameter consumed)
+	///
+	/// # Note on NULL Handling
+	///
+	/// NULL values are inlined directly as string "NULL" without consuming a parameter
+	/// index. Returns `None` for NULL values to clearly indicate that no
+	/// placeholder was used. This behavior is intentional to avoid type
+	/// mismatches (e.g., PostgreSQL rejects `$1::int4` for TEXT columns).
+	pub fn push_value<F>(&mut self, value: Value, format_fn: F) -> Option<usize>
 	where
 		F: FnOnce(usize) -> String,
 	{
@@ -98,13 +106,14 @@ impl SqlWriter {
 		// (e.g., PostgreSQL rejects `$1::int4` for TEXT columns)
 		if value.is_null() {
 			self.sql.push_str("NULL");
-			return self.param_index;
+			return None;
 		}
+
 		let index = self.param_index;
 		self.sql.push_str(&format_fn(index));
 		self.values.push(value);
 		self.param_index += 1;
-		index
+		Some(index)
 	}
 
 	/// Push a keyword (with automatic spacing)
@@ -117,22 +126,22 @@ impl SqlWriter {
 		self.sql.push_str(keyword);
 	}
 
-	/// Get the current SQL string
+	/// Get current SQL string
 	pub fn sql(&self) -> &str {
 		&self.sql
 	}
 
-	/// Get the collected values
+	/// Get collected values
 	pub fn values(&self) -> &Values {
 		&self.values
 	}
 
-	/// Get the current parameter index
+	/// Get current parameter index
 	pub fn param_index(&self) -> usize {
 		self.param_index
 	}
 
-	/// Consume the writer and return (SQL, Values)
+	/// Consume writer and return (SQL, Values)
 	pub fn finish(self) -> (String, Values) {
 		(self.sql, self.values)
 	}
@@ -142,22 +151,22 @@ impl SqlWriter {
 		self.sql
 	}
 
-	/// Get mutable reference to the SQL string
+	/// Get mutable reference to SQL string
 	pub fn sql_mut(&mut self) -> &mut String {
 		&mut self.sql
 	}
 
-	/// Get mutable reference to the values
+	/// Get mutable reference to values
 	pub fn values_mut(&mut self) -> &mut Values {
 		&mut self.values
 	}
 
-	/// Check if the SQL is empty
+	/// Check if SQL is empty
 	pub fn is_empty(&self) -> bool {
 		self.sql.is_empty()
 	}
 
-	/// Get the length of the SQL string
+	/// Get length of SQL string
 	pub fn len(&self) -> usize {
 		self.sql.len()
 	}
@@ -187,7 +196,7 @@ impl SqlWriter {
 	/// Append values from another Values collection
 	///
 	/// This is useful when combining results from multiple queries (e.g., UNION).
-	/// The values are appended and the parameter index is updated accordingly.
+	/// The values are appended and parameter index is updated accordingly.
 	///
 	/// # Arguments
 	///
@@ -234,7 +243,7 @@ mod tests {
 		writer.push_value(Value::Int(Some(42)), |i| format!("${}", i));
 		writer.push_space();
 		writer.push_value(Value::String(Some(Box::new("test".to_string()))), |i| {
-			format!("${}", i)
+			format!("${}", i.unwrap())
 		});
 
 		assert_eq!(writer.sql(), "$1 $2");
