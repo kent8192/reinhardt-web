@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-web"
-version = "0.1.0-alpha.10"
+version = "0.1.0-alpha.9"
 edition.workspace = true
 license.workspace = true
 description = "A full-stack API framework for Rust, inspired by Django and Django REST Framework"
@@ -368,7 +368,7 @@ authors = ["kent8192 <51869472+kent8192@users.noreply.github.com>"]
 
 [workspace.dependencies]
 # Main facade crate (for workspace members that need to reference the root crate)
-reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.10" }
+reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.9" }
 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.5" }
@@ -393,19 +393,19 @@ reinhardt-rest = { path = "crates/reinhardt-rest", version = "0.1.0-alpha.9" }
 reinhardt-throttling = { path = "crates/reinhardt-throttling", version = "0.1.0-alpha.2" }
 reinhardt-auth = { path = "crates/reinhardt-auth", version = "0.1.0-alpha.6" }
 reinhardt-admin = { path = "crates/reinhardt-admin", version = "0.1.0-alpha.7" }
-reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.9" }
-reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.6" }
+reinhardt-admin-cli = { path = "crates/reinhardt-admin-cli", version = "0.1.0-alpha.8" }
+reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.1.0-alpha.5" }
 reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.0-alpha.1" }
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.2" }
-reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.12" }
+reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.11" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.8" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
-reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.7" }
-reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-alpha.6" }
-reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.6" }
+reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.6" }
+reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-alpha.5" }
+reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.5" }
 reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.5" }
-reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.6" }
+reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.5" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.6" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.6" }
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.7" }
