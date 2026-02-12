@@ -4984,8 +4984,8 @@ mod tests {
 			partition: None,
 			interleave_in_parent: None,
 		};
-		let mut col = ColumnDef::new(Alias::new("id"));
-		col = op.apply_column_type(col, &FieldType::Integer);
+		let col = ColumnDef::new(Alias::new("id"));
+		let _col = op.apply_column_type(col, &FieldType::Integer);
 		// This test verifies that INTEGER type application doesn't panic
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
@@ -5000,8 +5000,8 @@ mod tests {
 			partition: None,
 			interleave_in_parent: None,
 		};
-		let mut col = ColumnDef::new(Alias::new("name"));
-		col = op.apply_column_type(col, &FieldType::VarChar(100));
+		let col = ColumnDef::new(Alias::new("name"));
+		let _col = op.apply_column_type(col, &FieldType::VarChar(100));
 		// This test verifies that VARCHAR(100) type application doesn't panic
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
@@ -5016,8 +5016,8 @@ mod tests {
 			partition: None,
 			interleave_in_parent: None,
 		};
-		let mut col = ColumnDef::new(Alias::new("data"));
-		col = op.apply_column_type(col, &FieldType::Custom("CUSTOM_TYPE".to_string()));
+		let col = ColumnDef::new(Alias::new("data"));
+		let _col = op.apply_column_type(col, &FieldType::Custom("CUSTOM_TYPE".to_string()));
 		// This test verifies that custom type application doesn't panic
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
