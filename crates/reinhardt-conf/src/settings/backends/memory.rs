@@ -314,7 +314,7 @@ impl DynamicBackend for MemoryBackend {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings::backends::memory::*;
+	use super::*;
 
 	#[tokio::test]
 	async fn test_basic_operations() {

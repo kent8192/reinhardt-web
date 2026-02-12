@@ -404,7 +404,7 @@ impl SecretProvider for AwsSecretsProvider {
 
 #[cfg(all(test, feature = "aws-secrets"))]
 mod tests {
-	use crate::settings::secrets::providers::aws::*;
+	use super::*;
 
 	/// Test helper struct that tests pure logic (prefix handling, JSON parsing)
 	/// without requiring actual AWS SDK client initialization (which needs TLS certs)
@@ -621,7 +621,7 @@ mod tests {
 
 #[cfg(all(test, not(feature = "aws-secrets")))]
 mod tests_no_feature {
-	use crate::settings::secrets::providers::aws::*;
+	use super::*;
 
 	#[tokio::test]
 	async fn test_aws_provider_disabled() {

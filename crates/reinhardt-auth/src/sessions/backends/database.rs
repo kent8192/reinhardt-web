@@ -56,7 +56,7 @@ use std::sync::Arc;
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
-use crate::sessions::backends::cache::{SessionBackend, SessionError};
+use super::cache::{SessionBackend, SessionError};
 
 /// Database session model
 ///

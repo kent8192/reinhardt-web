@@ -685,7 +685,7 @@ impl DynamicBackend for DatabaseBackend {
 
 #[cfg(all(test, not(feature = "dynamic-database")))]
 mod tests_no_feature {
-	use crate::settings::backends::database::*;
+	use super::*;
 
 	#[tokio::test]
 	async fn test_database_backend_disabled() {
@@ -697,7 +697,7 @@ mod tests_no_feature {
 
 #[cfg(all(test, feature = "dynamic-database"))]
 mod tests {
-	use crate::settings::backends::database::*;
+	use super::*;
 	use serde_json::json;
 	use std::sync::Once;
 

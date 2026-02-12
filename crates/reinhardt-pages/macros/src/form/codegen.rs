@@ -2040,7 +2040,7 @@ fn widget_to_input_type(widget: &TypedWidget) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-	use crate::form::codegen::*;
+	use super::*;
 	use quote::quote;
 
 	fn parse_validate_generate(input: proc_macro2::TokenStream) -> TokenStream {

@@ -308,7 +308,7 @@ impl AuditBackend for DatabaseAuditBackend {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings::audit::backends::database::*;
+	use super::*;
 	use serde_json::json;
 	use std::sync::Once;
 

@@ -108,7 +108,7 @@ impl SecretProvider for EnvSecretProvider {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings::secrets::providers::env::*;
+	use super::*;
 
 	#[tokio::test]
 	async fn test_env_provider_with_prefix() {

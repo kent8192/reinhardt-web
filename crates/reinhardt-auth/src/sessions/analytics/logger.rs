@@ -19,7 +19,7 @@
 //! # }
 //! ```
 
-use crate::sessions::analytics::{SessionAnalytics, SessionEvent};
+use super::{SessionAnalytics, SessionEvent};
 use async_trait::async_trait;
 
 /// Logger analytics backend

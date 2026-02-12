@@ -3,8 +3,8 @@
 //! Combines multiple CSS or JavaScript files into single bundles,
 //! resolving dependencies and maintaining proper order.
 
+use super::ProcessingResult;
 use crate::staticfiles::DependencyGraph;
-use crate::staticfiles::processing::ProcessingResult;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -232,7 +232,7 @@ impl BundleConfig {
 
 #[cfg(test)]
 mod tests {
-	use crate::staticfiles::processing::bundle::*;
+	use super::*;
 
 	#[test]
 	fn test_bundler_creation() {

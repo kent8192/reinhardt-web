@@ -1,7 +1,7 @@
 //! In-memory message storage backend
 
+use super::MessageStorage;
 use crate::messages::message::Message;
-use crate::messages::storage::MessageStorage;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 

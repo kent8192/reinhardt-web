@@ -1,7 +1,7 @@
 //! Cookie-based message storage backend
 
+use super::MessageStorage;
 use crate::messages::message::Message;
-use crate::messages::storage::MessageStorage;
 use crate::messages::utils::bisect::bisect_keep_right;
 use std::collections::VecDeque;
 

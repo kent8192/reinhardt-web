@@ -210,7 +210,7 @@ impl AuditBackend for MemoryAuditBackend {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings::audit::backends::memory::*;
+	use super::*;
 	use crate::settings::audit::{ChangeRecord, EventType};
 	use serde_json::json;
 	use std::collections::HashMap;
