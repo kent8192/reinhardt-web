@@ -54,7 +54,7 @@ use reinhardt_query::prelude::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::super::cleanup::{CleanupableBackend, SessionMetadata};
+use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
 use super::cache::{SessionBackend, SessionError};
 

@@ -59,7 +59,7 @@ use sqlx::{AnyPool, Row};
 use std::sync::Arc;
 
 #[cfg(feature = "dynamic-database")]
-use super::super::dynamic::{DynamicBackend, DynamicError, DynamicResult};
+use crate::settings::dynamic::{DynamicBackend, DynamicError, DynamicResult};
 #[cfg(feature = "dynamic-database")]
 use async_trait::async_trait;
 

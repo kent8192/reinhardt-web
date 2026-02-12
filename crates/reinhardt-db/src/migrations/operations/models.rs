@@ -993,7 +993,7 @@ impl MoveModel {
 }
 
 // MigrationOperation trait implementation for Django-style naming
-use super::super::operation_trait::MigrationOperation;
+use crate::migrations::operation_trait::MigrationOperation;
 
 impl MigrationOperation for CreateModel {
 	fn migration_name_fragment(&self) -> Option<String> {

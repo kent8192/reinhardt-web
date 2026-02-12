@@ -4,7 +4,7 @@
 //!
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
-use super::super::backends::types::QueryValue;
+use crate::backends::types::QueryValue;
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,

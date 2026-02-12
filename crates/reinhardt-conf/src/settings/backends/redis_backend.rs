@@ -37,7 +37,7 @@ use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Client};
 
 #[cfg(feature = "dynamic-redis")]
-use super::super::dynamic::{DynamicBackend, DynamicError, DynamicResult};
+use crate::settings::dynamic::{DynamicBackend, DynamicError, DynamicResult};
 #[cfg(feature = "dynamic-redis")]
 use async_trait::async_trait;
 

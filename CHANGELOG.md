@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.9...reinhardt-web@v0.1.0-alpha.10) - 2026-02-12
+
+### Changed
+
+- convert relative paths to absolute paths
+- *(db)* convert relative paths to absolute paths in orm execution
+- restore single-level super:: paths preserved by convention
+
+### Fixed
+
+- correct incorrect path conversions in test imports
+
+### Maintenance
+
+- *(todo-check)* add clippy todo lint job to TODO Check workflow
+
+### Reverted
+
+- undo unintended visibility and formatting changes
+
 ## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.8...reinhardt-web@v0.1.0-alpha.9) - 2026-02-11
 
 ### Fixed
