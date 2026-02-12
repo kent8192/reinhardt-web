@@ -20,32 +20,24 @@
 //!
 //! ```ignore
 //! use reinhardt_auth::social::{
-//!     SocialAuthBackend, ProviderConfig,
+//!     ProviderConfig,
 //!     providers::GoogleProvider,
 //! };
-//! use std::sync::Arc;
 //!
 //! #[tokio::main]
 //! async fn main() {
+//!     // Create your provider configuration (client ID, secret, redirect URI, scopes, etc.)
 //!     let config = ProviderConfig::google(
 //!         "client_id".into(),
 //!         "client_secret".into(),
 //!         "https://example.com/callback".into(),
 //!     );
 //!
-//!     let mut backend = SocialAuthBackend::new();
-//!
-//!     // Register Google provider
+//!     // Initialize the Google provider using the configuration.
 //!     let google = GoogleProvider::new(config).await.unwrap();
-//!     backend.register_provider(Arc::new(google));
 //!
-//!     // Begin authorization flow
-//!     let auth = backend.begin_auth("google", None, None).await.unwrap();
-//!     // Redirect user to auth.authorization_url
-//!
-//!     // Handle callback (after user is redirected back)
-//!     let result = backend.handle_callback("google", &code, &state).await.unwrap();
-//!     let claims = result.claims; // User's profile information
+//!     // Integrate `google` with your own routing, session/state management,
+//!     // and storage to start authorization flows and handle callbacks.
 //! }
 //! ```
 
