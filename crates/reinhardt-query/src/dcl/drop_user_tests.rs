@@ -11,7 +11,6 @@
 //! - Code coverage target: 96%
 //! - Total tests: ~20
 
-use crate::backend::{MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder};
 use crate::dcl::DropUserStatement;
 use rstest::rstest;
 
