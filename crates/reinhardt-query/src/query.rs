@@ -1017,12 +1017,18 @@ impl Query {
 	///     .add_value("excited", Some("happy"));
 	/// ```
 	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
 	/// // Rename type:
 	///
 	/// let query = Query::alter_type()
 	///     .name("old_type")
 	///     .rename_to("new_type");
 	/// ```
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
 	///
 	/// // Rename ENUM value:
 	///
