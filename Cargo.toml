@@ -538,10 +538,6 @@ redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
 # Connection pooling & migrations
 refinery = { version = "0.9.0", features = ["tokio-postgres"] }
 rust_decimal = "1.37"
-sea-orm = { version = "1.1.3", features = [
-  "sqlx-postgres",
-  "runtime-tokio-rustls",
-] }
 
 # Testing
 testcontainers = { version = "0.26.3", features = ["blocking"] }
