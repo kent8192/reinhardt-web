@@ -97,6 +97,7 @@ pub use executor::{DatabaseMigrationExecutor, ExecutionResult, OperationOptimize
 pub use fields::FieldType;
 pub use graph::{MigrationGraph, MigrationKey, MigrationNode};
 pub use migration::Migration;
+pub use crate::contenttypes::migration::MigrationRecord;
 pub use migration_namer::MigrationNamer;
 pub use migration_numbering::MigrationNumbering;
 pub use model_registry::{
