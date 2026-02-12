@@ -4,7 +4,7 @@
 //!
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
-use super::super::backends::types::QueryValue;
+use crate::backends::types::QueryValue;
 use crate::orm::Model;
 use rust_decimal::prelude::ToPrimitive;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
@@ -159,7 +159,7 @@ where
 	/// Corresponds to SQLAlchemy's .get()
 	async fn get_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 		pk: &T::PrimaryKey,
 	) -> Result<T, ExecutionError>
 	where
@@ -173,7 +173,7 @@ where
 	/// Corresponds to SQLAlchemy's .all()
 	async fn all_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Vec<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>;
@@ -186,7 +186,7 @@ where
 	/// Corresponds to SQLAlchemy's .first()
 	async fn first_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>;
@@ -199,7 +199,7 @@ where
 	/// Corresponds to SQLAlchemy's .one()
 	async fn one_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<T, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>;
@@ -212,7 +212,7 @@ where
 	/// Corresponds to SQLAlchemy's .one_or_none()
 	async fn one_or_none_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>;
@@ -225,7 +225,7 @@ where
 	/// Corresponds to SQLAlchemy's .scalar()
 	async fn scalar_async<S>(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<S>, ExecutionError>
 	where
 		S: for<'de> serde::Deserialize<'de>;
@@ -238,7 +238,7 @@ where
 	/// Corresponds to SQLAlchemy's .count()
 	async fn count_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<i64, ExecutionError>;
 
 	/// Count results (statement builder)
@@ -249,7 +249,7 @@ where
 	/// Corresponds to SQLAlchemy's .exists()
 	async fn exists_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<bool, ExecutionError>;
 
 	/// Check if any results exist (statement builder)
@@ -420,7 +420,7 @@ where
 
 	async fn get_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 		pk: &T::PrimaryKey,
 	) -> Result<T, ExecutionError>
 	where
@@ -438,7 +438,7 @@ where
 
 	async fn all_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Vec<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
@@ -459,7 +459,7 @@ where
 
 	async fn first_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
@@ -481,7 +481,7 @@ where
 
 	async fn one_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<T, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
@@ -504,7 +504,7 @@ where
 
 	async fn one_or_none_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
@@ -527,7 +527,7 @@ where
 
 	async fn scalar_async<S>(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<Option<S>, ExecutionError>
 	where
 		S: for<'de> serde::Deserialize<'de>,
@@ -555,7 +555,7 @@ where
 
 	async fn count_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<i64, ExecutionError> {
 		let stmt = self.count();
 		let (sql, values) = stmt.build_any(&sea_query::PostgresQueryBuilder);
@@ -579,7 +579,7 @@ where
 
 	async fn exists_async(
 		&self,
-		db: &super::connection::DatabaseConnection,
+		db: &crate::orm::connection::DatabaseConnection,
 	) -> Result<bool, ExecutionError> {
 		let stmt = self.exists();
 		let (sql, values) = stmt.build_any(&sea_query::PostgresQueryBuilder);
