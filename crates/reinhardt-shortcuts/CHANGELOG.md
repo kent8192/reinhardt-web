@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.6...reinhardt-shortcuts@v0.1.0-alpha.7) - 2026-02-12
-
-### Maintenance
-
-- updated the following local packages: reinhardt-core, reinhardt-db, reinhardt-urls, reinhardt-http, reinhardt-views
-
 ## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-shortcuts@v0.1.0-alpha.5...reinhardt-shortcuts@v0.1.0-alpha.6) - 2026-02-10
 
 ### Maintenance
