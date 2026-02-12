@@ -465,6 +465,7 @@ mod grant_statement_tests {
 
 #[cfg(test)]
 mod revoke_statement_tests {
+	use crate::dcl::DropBehavior;
 	use crate::*;
 
 	#[test]
