@@ -8,7 +8,7 @@ use crate::{
 	types::{CheckTableOption, DynIden, IntoIden},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// CHECK TABLE statement builder
 ///

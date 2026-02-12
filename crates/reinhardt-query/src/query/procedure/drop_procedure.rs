@@ -7,7 +7,7 @@ use crate::{
 	types::{DynIden, IntoIden, procedure::ProcedureParameter},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// DROP PROCEDURE statement builder
 ///

@@ -7,7 +7,7 @@ use crate::{
 	types::{IntoIden, sequence::SequenceDef},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// CREATE SEQUENCE statement builder
 ///

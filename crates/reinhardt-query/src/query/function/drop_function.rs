@@ -7,7 +7,7 @@ use crate::{
 	types::{DynIden, IntoIden, function::FunctionParameter},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// DROP FUNCTION statement builder
 ///

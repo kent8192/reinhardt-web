@@ -10,7 +10,7 @@ use crate::{
 	},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// ALTER FUNCTION statement builder
 ///

@@ -7,7 +7,7 @@ use crate::{
 	types::{DynIden, IntoIden, type_def::TypeOperation},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// ALTER TYPE statement builder
 ///

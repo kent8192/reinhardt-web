@@ -7,7 +7,7 @@ use crate::{
 	types::{DynIden, IntoIden},
 };
 
-use super::super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 
 /// CREATE SCHEMA statement builder
 ///
