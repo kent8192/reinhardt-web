@@ -627,7 +627,7 @@ impl DocumentBackend for MongoDBBackend {
 
 #[cfg(test)]
 mod tests {
-	use crate::migrations::*;
+	use super::*;
 
 	#[test]
 	fn test_builder_default() {

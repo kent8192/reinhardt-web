@@ -310,7 +310,7 @@ pub(super) fn parse_decimal_precision(type_def: &str) -> Result<(u32, u32), Type
 
 #[cfg(test)]
 mod tests {
-	use crate::migrations::*;
+	use super::*;
 
 	#[test]
 	fn test_integer_type_mapping() {

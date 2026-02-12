@@ -287,7 +287,7 @@ where
 #[cfg(test)]
 mod tests {
 	use crate::routers::client_router::handler::*;
-	use crate::routers::error::PathError;
+	use crate::routers::client_router::error::PathError;
 	use std::collections::HashMap;
 
 	fn test_page() -> Page {
