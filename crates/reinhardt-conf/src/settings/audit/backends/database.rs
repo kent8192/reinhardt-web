@@ -2,7 +2,7 @@
 //!
 //! This backend stores audit logs in a SQL database.
 
-use super::super::{AuditBackend, AuditEvent, ChangeRecord, EventFilter, EventType};
+use crate::settings::audit::{AuditBackend, AuditEvent, ChangeRecord, EventFilter, EventType};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_query::{

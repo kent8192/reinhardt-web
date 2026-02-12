@@ -4,7 +4,7 @@
 //!
 //! This module provides execution methods similar to SQLAlchemy's Query class
 
-use super::super::backends::types::QueryValue;
+use crate::backends::types::QueryValue;
 use crate::orm::Model;
 use rust_decimal::prelude::ToPrimitive;
 use sea_query::{Alias, Expr, ExprTrait, Func, Query, SelectStatement};
