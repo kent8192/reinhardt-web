@@ -172,6 +172,16 @@ impl DropUserStatement {
 		if self.user_names.is_empty() {
 			return Err("At least one user must be specified".to_string());
 		}
+		// Validate each user name is non-empty after trimming whitespace
+		for (idx, user_name) in self.user_names.iter().enumerate() {
+			let trimmed = user_name.trim();
+			if trimmed.is_empty() {
+				return Err(format!(
+					"User name at index {} cannot be empty or whitespace only",
+					idx
+				));
+			}
+		}
 		Ok(())
 	}
 }

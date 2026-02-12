@@ -118,6 +118,16 @@ impl DropRoleStatement {
 		if self.role_names.is_empty() {
 			return Err("At least one role name is required".to_string());
 		}
+		// Validate each role name is non-empty after trimming whitespace
+		for (idx, role_name) in self.role_names.iter().enumerate() {
+			let trimmed = role_name.trim();
+			if trimmed.is_empty() {
+				return Err(format!(
+					"Role name at index {} cannot be empty or whitespace only",
+					idx
+				));
+			}
+		}
 		Ok(())
 	}
 }
