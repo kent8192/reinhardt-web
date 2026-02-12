@@ -109,6 +109,44 @@ pub mod truncate_table;
 pub mod type_def;
 pub mod update;
 
+// Re-export all public types from submodules
+pub use alter_index::AlterIndexStatement;
+pub use alter_table::{AlterTableOperation, AlterTableStatement};
+pub use comment::CommentStatement;
+pub use create_index::{CreateIndexStatement, IndexColumn, IndexMethod};
+pub use create_table::CreateTableStatement;
+pub use create_trigger::CreateTriggerStatement;
+pub use create_view::CreateViewStatement;
+pub use database::{
+	AlterDatabaseStatement, AttachDatabaseStatement, CreateDatabaseStatement,
+	DetachDatabaseStatement, DropDatabaseStatement,
+};
+pub use delete::DeleteStatement;
+pub use drop_index::DropIndexStatement;
+pub use drop_table::DropTableStatement;
+pub use drop_trigger::DropTriggerStatement;
+pub use drop_view::DropViewStatement;
+pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
+pub use foreign_key::{ForeignKey, ForeignKeyCreateStatement};
+pub use function::{AlterFunctionStatement, CreateFunctionStatement, DropFunctionStatement};
+pub use insert::InsertStatement;
+pub use maintenance::{CheckTableStatement, OptimizeTableStatement, RepairTableStatement};
+pub use on_conflict::{OnConflict, OnConflictAction, OnConflictTarget};
+pub use procedure::{AlterProcedureStatement, CreateProcedureStatement, DropProcedureStatement};
+pub use reindex::{ReindexStatement, ReindexTarget};
+pub use returning::ReturningClause;
+pub use schema::{
+	AlterSchemaOperation, AlterSchemaStatement, CreateSchemaStatement, DropSchemaStatement,
+};
+pub use select::{
+	CommonTableExpr, LockClause, SelectDistinct, SelectExpr, SelectStatement, UnionType,
+};
+pub use sequence::{AlterSequenceStatement, CreateSequenceStatement, DropSequenceStatement};
+pub use traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+pub use truncate_table::TruncateTableStatement;
+pub use type_def::{AlterTypeStatement, CreateTypeStatement, DropTypeStatement};
+pub use update::UpdateStatement;
+
 /// Shorthand for constructing any table query
 ///
 /// This struct provides static constructor methods for creating query statements.
@@ -1255,29 +1293,4 @@ impl Query {
 	pub fn rename_user() -> crate::dcl::RenameUserStatement {
 		crate::dcl::RenameUserStatement::new()
 	}
-
-	/// Construct a new SET ROLE statement
-	///
-	/// # Examples
-	///
-	/// ```rust,ignore
-	/// use reinhardt_query::query::Query;
-	///
-	/// let stmt = Query::set_role();
-	/// ```
-	pub fn set_role() -> crate::dcl::SetRoleStatement {
-		crate::dcl::SetRoleStatement::new()
-	}
-
-	/// Construct a new RESET ROLE statement (PostgreSQL only)
-	///
-	/// # Examples
-	///
-	/// ```rust,ignore
-	/// use reinhardt_query::query::Query;
-	///
-	/// let stmt = Query::reset_role();
-	/// ```
-	pub fn reset_role() -> crate::dcl::ResetRoleStatement {
-		crate::dcl::ResetRoleStatement::new()
-	}
+}
