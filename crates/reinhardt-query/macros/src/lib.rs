@@ -105,6 +105,13 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Option<String> {
 				}
 				None
 			}
+			syn::Meta::List(list) => {
+				if list.path.is_ident("iden") {
+					let lit: syn::LitStr = list.parse_args().ok()?;
+					return Some(lit.value());
+				}
+				None
+			}
 			_ => None,
 		}
 	})
