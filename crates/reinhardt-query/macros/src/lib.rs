@@ -247,12 +247,8 @@ pub fn derive_iden(input: TokenStream) -> TokenStream {
 			}
 		}
 
-		Data::Struct(data_struct) => {
-			let iden_name = data_struct
-				.fields
-				.iter()
-				.next()
-				.and_then(|field| extract_custom_name(&field.attrs))
+		Data::Struct(_data_struct) => {
+			let iden_name = extract_custom_name(&input.attrs)
 				.unwrap_or_else(|| name.to_string().to_snake_case());
 
 			quote! {
