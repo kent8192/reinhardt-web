@@ -132,10 +132,11 @@ where
 			);
 
 		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_insert(&stmt);
+		let (sql, values) = pg.build_insert(&stmt);
+		let params = crate::orm::execution::convert_values(values);
 
 		// Execute SQL
-		conn.execute(&sql, vec![]).await?;
+		conn.execute(&sql, params).await?;
 		Ok(())
 	}
 
