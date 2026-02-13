@@ -286,8 +286,8 @@ impl GrantRoleStatement {
 		}
 
 		for role in &self.roles {
-			if role.is_empty() {
-				return Err("Role name cannot be empty".to_string());
+			if role.trim().is_empty() {
+				return Err("Role name cannot be empty or whitespace only".to_string());
 			}
 		}
 

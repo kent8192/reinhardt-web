@@ -269,8 +269,8 @@ impl CreateUserStatement {
 	/// assert!(stmt.validate().is_err());
 	/// ```
 	pub fn validate(&self) -> Result<(), String> {
-		if self.user_name.is_empty() {
-			return Err("User name cannot be empty".to_string());
+		if self.user_name.trim().is_empty() {
+			return Err("User name cannot be empty or whitespace only".to_string());
 		}
 		Ok(())
 	}
