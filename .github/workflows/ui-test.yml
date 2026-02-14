@@ -15,13 +15,13 @@ env:
 
 jobs:
   ui-test:
-    name: UI Tests (${{ matrix.partition }}/4)
+    name: UI Tests (${{ matrix.partition }}/8)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        partition: [1, 2, 3, 4]
+        partition: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -85,7 +85,7 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
-      - name: Run UI tests (partition ${{ matrix.partition }}/4)
+      - name: Run UI tests (partition ${{ matrix.partition }}/8)
         env:
           RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
@@ -93,7 +93,7 @@ jobs:
             --profile ui-test \
             --workspace \
             -E "binary(/ui/)" \
-            --partition hash:${{ matrix.partition }}/4 \
+            --partition hash:${{ matrix.partition }}/8 \
             --no-fail-fast \
             --status-level=none \
             --final-status-level=none

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.6...reinhardt-mail@v0.1.0-alpha.7) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf
+
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.5...reinhardt-mail@v0.1.0-alpha.6) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf
+
+## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.4...reinhardt-mail@v0.1.0-alpha.5) - 2026-02-12
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf
+
 ## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.3...reinhardt-mail@v0.1.0-alpha.4) - 2026-02-06
 
 ### Other
