@@ -489,7 +489,6 @@ fn test_postgres_create_role_with_login() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support in CREATE ROLE backend"]
 fn test_postgres_create_role_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = CreateRoleStatement::new()
