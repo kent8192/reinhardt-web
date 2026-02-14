@@ -358,7 +358,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kent8192/reinhardt-web"
@@ -401,7 +401,7 @@ reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.2" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.13" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.10" }
-reinhardt-query = { path = "crates/reinhardt-query", version = "0.1.0-alpha.1" }
+reinhardt-query = { path = "crates/reinhardt-query", version = "0.1.0-alpha.2" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.7" }
