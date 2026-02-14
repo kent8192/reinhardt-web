@@ -39,13 +39,22 @@ pub trait Document: Serialize + DeserializeOwned + Send + Sync + 'static {
 	/// This is typically called after insertion.
 	fn set_id(&mut self, id: Self::Id);
 
-	// TODO: [PR#31] Add backend_type() -> NoSQLBackendType (required, no default)
-	// TODO: [PR#31] Add references() -> Vec<(&'static str, &'static str)> (with default)
+	/// Get the backend type for this document.
+	///
+	/// Generated from `#[document(backend = "...")]` attribute.
+	fn backend_type() -> crate::nosql::types::NoSQLBackendType;
+
+	/// Get foreign key references for this document.
+	///
+	/// Returns a list of (field_name, referenced_collection) pairs.
+	/// Generated from `#[field(references = "...")]` attributes.
+	fn references() -> Vec<(&'static str, &'static str)> {
+		Vec::new()
+	}
 
 	/// Get index definitions for this document.
 	///
 	/// Generated from `#[field(index)]` and `#[field(unique)]` attributes.
-	// TODO: [PR#31] Default stub — macro should generate real implementation
 	fn indexes() -> Vec<IndexModel> {
 		Vec::new()
 	}
@@ -53,7 +62,6 @@ pub trait Document: Serialize + DeserializeOwned + Send + Sync + 'static {
 	/// Get the MongoDB validation schema.
 	///
 	/// Generated from `#[field(...)]` attributes.
-	// TODO: [PR#31] Default stub — macro should generate real implementation
 	fn validation_schema() -> Option<BsonDocument> {
 		None
 	}
@@ -61,7 +69,6 @@ pub trait Document: Serialize + DeserializeOwned + Send + Sync + 'static {
 	/// Validate this document at the application layer.
 	///
 	/// Generated from `#[field(validate = "...")]` attributes.
-	// TODO: [PR#31] Default stub — macro should generate real implementation
 	fn validate(&self) -> OdmResult<()> {
 		Ok(())
 	}

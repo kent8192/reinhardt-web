@@ -124,15 +124,12 @@ pub enum OdmError {
 	Mongo(mongodb::error::Error),
 
 	/// Document not found.
-	// TODO: [PR#31] Currently unused — Repository will use this for find/update/delete miss
 	NotFound,
 
 	/// Duplicate key error.
-	// TODO: [PR#31] Currently unused — add MongoDB error code 11000 detection helper
 	DuplicateKey { field: String },
 
 	/// Serialization error.
-	// TODO: [PR#31] Currently unused — Repository serialization will use this
 	Serialization(String),
 
 	/// Deserialization error.
@@ -166,8 +163,47 @@ impl From<ValidationError> for OdmError {
 #[cfg(feature = "mongodb")]
 impl From<mongodb::error::Error> for OdmError {
 	fn from(err: mongodb::error::Error) -> Self {
-		OdmError::Mongo(err)
+		convert_mongo_error(err)
 	}
+}
+
+/// Convert a MongoDB error to an `OdmError`, detecting duplicate key violations (code 11000).
+#[cfg(feature = "mongodb")]
+pub(crate) fn convert_mongo_error(err: mongodb::error::Error) -> OdmError {
+	if let mongodb::error::ErrorKind::Write(mongodb::error::WriteFailure::WriteError(
+		ref write_error,
+	)) = *err.kind
+	{
+		if write_error.code == 11000 {
+			let field = extract_duplicate_field(&write_error.message);
+			return OdmError::DuplicateKey { field };
+		}
+	}
+	OdmError::Mongo(err)
+}
+
+/// Extract the field name from a MongoDB duplicate key error message.
+///
+/// MongoDB error messages typically contain patterns like:
+/// `dup key: { email: "test@example.com" }` or
+/// `index: collection.$email_1 dup key: ...`
+#[cfg(feature = "mongodb")]
+fn extract_duplicate_field(message: &str) -> String {
+	// Try to extract from "dup key: { field: value }" pattern
+	if let Some(start) = message.find("dup key: {") {
+		let after_brace = &message[start + 11..];
+		if let Some(colon_pos) = after_brace.find(':') {
+			return after_brace[..colon_pos].trim().to_string();
+		}
+	}
+	// Try to extract from index name pattern like "$field_1"
+	if let Some(start) = message.find(".$") {
+		let after_dollar = &message[start + 2..];
+		if let Some(underscore_pos) = after_dollar.find('_') {
+			return after_dollar[..underscore_pos].to_string();
+		}
+	}
+	"unknown".to_string()
 }
 
 #[cfg(feature = "mongodb")]
@@ -178,7 +214,6 @@ impl From<bson::error::Error> for OdmError {
 }
 
 /// Validation error type.
-// TODO: [PR#31] All variants currently unused — macro-generated validate() will use them
 #[derive(Debug)]
 pub enum ValidationError {
 	/// Required field is missing or empty.

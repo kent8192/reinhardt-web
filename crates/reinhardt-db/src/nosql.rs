@@ -66,7 +66,7 @@
 pub mod backends;
 pub mod document;
 pub mod error;
-// TODO: [PR#31] Add repository module for ODM CRUD layer (Repository<T>)
+pub mod repository;
 pub mod traits;
 pub mod types;
 
@@ -80,6 +80,10 @@ pub use types::{
 
 // Re-export ODM types
 pub use document::{Document, IndexKey, IndexModel, IndexModelBuilder, IndexOptions, IndexOrder};
+
+// Re-export Repository
+#[cfg(feature = "mongodb")]
+pub use repository::Repository;
 
 /// Prelude module for convenient imports
 ///
@@ -101,4 +105,6 @@ pub mod prelude {
 
 	#[cfg(feature = "mongodb")]
 	pub use super::backends::mongodb;
+	#[cfg(feature = "mongodb")]
+	pub use super::repository::Repository;
 }
