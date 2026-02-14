@@ -60,6 +60,9 @@ http = { workspace = true }
 hyper = { workspace = true }
 reqwest = { workspace = true, features = ["multipart"] }
 
+# WebSocket
+tokio-tungstenite = "0.28.0"
+
 # Database
 sqlx = { workspace = true, features = [
   "any",
