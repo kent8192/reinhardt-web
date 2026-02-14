@@ -7,12 +7,12 @@
 mod mongodb_impl {
 	use std::marker::PhantomData;
 
-	use bson::Document as BsonDocument;
 	use crate::nosql::backends::mongodb::MongoDBBackend;
 	use crate::nosql::document::{Document, IndexModel};
 	use crate::nosql::error::{OdmError, OdmResult};
 	use crate::nosql::traits::DocumentBackend;
 	use crate::nosql::types::FindOptions;
+	use bson::Document as BsonDocument;
 
 	/// Type-safe repository for ODM CRUD operations.
 	///

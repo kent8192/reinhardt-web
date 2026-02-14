@@ -173,11 +173,10 @@ pub(crate) fn convert_mongo_error(err: mongodb::error::Error) -> OdmError {
 	if let mongodb::error::ErrorKind::Write(mongodb::error::WriteFailure::WriteError(
 		ref write_error,
 	)) = *err.kind
+		&& write_error.code == 11000
 	{
-		if write_error.code == 11000 {
-			let field = extract_duplicate_field(&write_error.message);
-			return OdmError::DuplicateKey { field };
-		}
+		let field = extract_duplicate_field(&write_error.message);
+		return OdmError::DuplicateKey { field };
 	}
 	OdmError::Mongo(err)
 }

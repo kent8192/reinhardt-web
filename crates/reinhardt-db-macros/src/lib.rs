@@ -3,14 +3,7 @@
 //! Procedural macros for the Reinhardt database layer.
 //!
 //! This crate provides attribute macros for:
-//! - ORM models: `#[model(...)]`
 //! - NoSQL documents: `#[document(...)]`
-//!
-// TODO: [PR#31] Remove non-existent feature flags (orm, nosql) from documentation
-//! ## Feature Flags
-//!
-//! - `orm` - Enable ORM model macros (SQL)
-//! - `nosql` - Enable NoSQL document macros (MongoDB, etc.)
 //!
 //! ## NoSQL ODM Example
 //!

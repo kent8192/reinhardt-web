@@ -67,7 +67,11 @@ fn test_min_max_validation() {
 	assert!(result_below.is_err());
 	assert!(matches!(
 		result_below.unwrap_err(),
-		OdmError::Validation(ValidationError::OutOfRange { field: "score", min: 0, max: 100 })
+		OdmError::Validation(ValidationError::OutOfRange {
+			field: "score",
+			min: 0,
+			max: 100
+		})
 	));
 
 	// Arrange: value above maximum
@@ -84,7 +88,11 @@ fn test_min_max_validation() {
 	assert!(result_above.is_err());
 	assert!(matches!(
 		result_above.unwrap_err(),
-		OdmError::Validation(ValidationError::OutOfRange { field: "score", min: 0, max: 100 })
+		OdmError::Validation(ValidationError::OutOfRange {
+			field: "score",
+			min: 0,
+			max: 100
+		})
 	));
 }
 

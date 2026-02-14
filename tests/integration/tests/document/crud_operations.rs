@@ -7,8 +7,8 @@ use bson::{doc, oid::ObjectId};
 use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 use reinhardt_db::nosql::document::Document;
 use reinhardt_db::nosql::error::OdmError;
-use reinhardt_db::nosql::Repository;
 use reinhardt_db::nosql::types::FindOptions;
+use reinhardt_db::nosql::Repository;
 use reinhardt_db_macros::document;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -95,9 +95,7 @@ async fn test_repository_find_by_id(
 /// 2. Updated data is persisted correctly
 #[rstest]
 #[tokio::test]
-async fn test_repository_update(
-	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
-) {
+async fn test_repository_update(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
 	// Arrange
 	let (_container, db) = mongodb.await;
 	let repo = Repository::<TestUser>::new(db);
@@ -125,9 +123,7 @@ async fn test_repository_update(
 /// 2. Deleted documents cannot be found
 #[rstest]
 #[tokio::test]
-async fn test_repository_delete(
-	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
-) {
+async fn test_repository_delete(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
 	// Arrange
 	let (_container, db) = mongodb.await;
 	let repo = Repository::<TestUser>::new(db);
@@ -159,10 +155,7 @@ async fn test_repository_find_many(
 	let mut inserted_ids = Vec::new();
 
 	for i in 0..5 {
-		let mut user = TestUser::new(
-			&format!("many{}@example.com", i),
-			&format!("User {}", i),
-		);
+		let mut user = TestUser::new(&format!("many{}@example.com", i), &format!("User {}", i));
 		repo.insert(&mut user).await.unwrap();
 		inserted_ids.push(user.id().unwrap().clone());
 	}
@@ -198,7 +191,10 @@ async fn test_repository_find_one_by_filter(
 	let id = user.id().unwrap().clone();
 
 	// Act
-	let found = repo.find_one(doc! { "email": "filter@example.com" }).await.unwrap();
+	let found = repo
+		.find_one(doc! { "email": "filter@example.com" })
+		.await
+		.unwrap();
 
 	// Assert
 	assert!(found.is_some());

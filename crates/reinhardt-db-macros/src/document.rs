@@ -414,18 +414,8 @@ fn gen_validate(field_infos: &[FieldInfo]) -> TokenStream2 {
 
 		// Min/Max validation
 		if info.attrs.min.is_some() || info.attrs.max.is_some() {
-			let min_val: i64 = info
-				.attrs
-				.min
-				.as_ref()
-				.map(lit_to_i64)
-				.unwrap_or(i64::MIN);
-			let max_val: i64 = info
-				.attrs
-				.max
-				.as_ref()
-				.map(lit_to_i64)
-				.unwrap_or(i64::MAX);
+			let min_val: i64 = info.attrs.min.as_ref().map(lit_to_i64).unwrap_or(i64::MIN);
+			let max_val: i64 = info.attrs.max.as_ref().map(lit_to_i64).unwrap_or(i64::MAX);
 
 			checks.push(quote! {
 				if (self.#field_ident as i64) < #min_val || (self.#field_ident as i64) > #max_val {

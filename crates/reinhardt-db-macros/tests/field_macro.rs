@@ -122,10 +122,7 @@ fn test_validate_min_max() {
 			assert_eq!(min, 0);
 			assert_eq!(max, 100);
 		}
-		other => panic!(
-			"Expected OutOfRange error for score = 101, got {:?}",
-			other
-		),
+		other => panic!("Expected OutOfRange error for score = 101, got {:?}", other),
 	}
 }
 

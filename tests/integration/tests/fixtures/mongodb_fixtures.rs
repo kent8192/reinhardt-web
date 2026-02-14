@@ -27,15 +27,3 @@ pub async fn mongodb() -> (ContainerAsync<GenericImage>, MongoDBBackend) {
 	// Return container to keep it alive during the test
 	(container, backend)
 }
-
-// TODO: [PR#31] Delete unused mongodb_clean fixture (no actual cleanup logic)
-/// MongoDB backend with automatic cleanup
-///
-/// Extends `mongodb` fixture by cleaning up the test collection
-/// before and after each test.
-#[fixture]
-pub async fn mongodb_clean(
-	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
-) -> (ContainerAsync<GenericImage>, MongoDBBackend) {
-	mongodb.await
-}
