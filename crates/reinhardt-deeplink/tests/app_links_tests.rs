@@ -166,10 +166,11 @@ fn test_package_name_valid_patterns() {
 
 #[rstest]
 fn test_fingerprint_format_variants() {
+	// All test fingerprints must be valid 32-byte SHA256 fingerprints
 	let test_cases = vec![
-		"AA:BB:CC:DD".to_string(),
-		"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:09:00:28:35:DC:A1:E9:FE:0C".to_string(),
-		"AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB".to_string(),
+		"AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
+		"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:09:00:28:35:DC:A1:E9:FE".to_string(),
+		"00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF".to_string(),
 	];
 
 	for fingerprint in test_cases {

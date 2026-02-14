@@ -166,7 +166,7 @@ fn test_ios_config_with_app_clips() {
 	let config = IosConfig::builder()
 		.app_id("TEAM123456.com.example.app")
 		.paths(&["/products/*"])
-		.app_clip("TEAM123456.com.example.app.Clip", &["/clip/*"])
+		.app_clip("TEAM123456.com.example.app.Clip")
 		.build();
 
 	let json = serde_json::to_string(&config).unwrap();

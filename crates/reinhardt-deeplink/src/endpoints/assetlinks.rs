@@ -44,7 +44,6 @@ use crate::error::DeeplinkError;
 #[derive(Clone)]
 pub struct AssetLinksHandler {
 	/// The Android configuration (shared ownership for efficient cloning).
-	#[allow(dead_code)] // Kept for potential future introspection needs
 	config: Arc<AndroidConfig>,
 
 	/// Pre-computed JSON response body as bytes.
