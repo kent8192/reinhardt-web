@@ -2,7 +2,9 @@
 //!
 //! This module provides integration with Azure Key Vault for retrieving secrets.
 
-use super::super::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
+use crate::settings::secrets::{
+	SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString,
+};
 use async_trait::async_trait;
 
 #[cfg(feature = "azure-keyvault")]

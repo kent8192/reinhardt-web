@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.6...reinhardt-urls@v0.1.0-alpha.7) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-di, reinhardt-db, reinhardt-views, reinhardt-middleware
+
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.5...reinhardt-urls@v0.1.0-alpha.6) - 2026-02-12
+
+### Changed
+
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+
+### Fixed
+
+- correct incorrect path conversions in test imports
+
 ## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.4...reinhardt-urls@v0.1.0-alpha.5) - 2026-02-10
 
 ### Maintenance

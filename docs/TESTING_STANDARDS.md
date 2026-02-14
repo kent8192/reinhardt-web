@@ -1343,7 +1343,7 @@ Create **test-specific specialized fixtures** that wrap generic `reinhardt-test`
 ```rust
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
-use sea_query::{Iden, PostgresQueryBuilder, Query};
+use reinhardt_query::prelude::{Iden, PostgresQueryBuilder, Query};
 use sqlx::Row;
 
 /// Test-specific user data structure
@@ -1360,7 +1360,7 @@ async fn user_auth_fixture(
 ) -> (ContainerAsync<GenericImage>, TestUserData) {
     let (container, pool, _port, _url) = postgres_container.await;
 
-    // Create test schema using sea-query
+    // Create test schema using reinhardt-query
     #[derive(Iden)]
     enum Users {
         Table,
@@ -1370,18 +1370,18 @@ async fn user_auth_fixture(
         IsAdmin,
     }
 
-    let create_table = sea_query::Table::create()
+    let create_table = reinhardt_query::prelude::Table::create()
         .table(Users::Table)
         .if_not_exists()
-        .col(sea_query::ColumnDef::new(Users::Id).big_integer().not_null().auto_increment().primary_key())
-        .col(sea_query::ColumnDef::new(Users::Username).string().not_null())
-        .col(sea_query::ColumnDef::new(Users::Email).string().not_null())
-        .col(sea_query::ColumnDef::new(Users::IsAdmin).boolean().not_null().default(false))
+        .col(reinhardt_query::prelude::ColumnDef::new(Users::Id).big_integer().not_null().auto_increment().primary_key())
+        .col(reinhardt_query::prelude::ColumnDef::new(Users::Username).string().not_null())
+        .col(reinhardt_query::prelude::ColumnDef::new(Users::Email).string().not_null())
+        .col(reinhardt_query::prelude::ColumnDef::new(Users::IsAdmin).boolean().not_null().default(false))
         .build(PostgresQueryBuilder);
 
     sqlx::query(&create_table).execute(pool.as_ref()).await.unwrap();
 
-    // Insert test data using sea-query
+    // Insert test data using reinhardt-query
     let insert_admin = Query::insert()
         .into_table(Users::Table)
         .columns([Users::Username, Users::Email, Users::IsAdmin])
@@ -1436,7 +1436,7 @@ async fn test_admin_permissions(
     let query = Query::select()
         .column(Users::IsAdmin)
         .from(Users::Table)
-        .and_where(sea_query::Expr::col(Users::Id).eq(test_data.admin_user_id))
+        .and_where(reinhardt_query::prelude::Expr::col(Users::Id).eq(test_data.admin_user_id))
         .build(PostgresQueryBuilder);
 
     let row = sqlx::query(&query.0)
@@ -1449,9 +1449,9 @@ async fn test_admin_permissions(
 }
 ```
 
-### RF-3 (MUST): Use SeaQuery for SQL Construction
+### RF-3 (MUST): Use reinhardt-query for SQL Construction
 
-**NEVER** use raw SQL strings in tests. **ALWAYS** use SeaQuery (v1.0.0-rc) for building SQL queries.
+**NEVER** use raw SQL strings in tests. **ALWAYS** use reinhardt-query for building SQL queries.
 
 **Why?**
 - Type-safe SQL construction
@@ -1494,9 +1494,9 @@ async fn test_user_query(#[future] postgres_fixture: DbFixture) {
 }
 ```
 
-✅ **GOOD - Using SeaQuery:**
+✅ **GOOD - Using reinhardt-query:**
 ```rust
-use sea_query::{Iden, PostgresQueryBuilder, Query, Expr};
+use reinhardt_query::prelude::{Iden, PostgresQueryBuilder, Query, Expr};
 
 #[derive(Iden)]
 enum Users {
@@ -1511,7 +1511,7 @@ enum Users {
 async fn test_user_query(#[future] postgres_fixture: DbFixture) {
     let (_container, pool) = postgres_fixture.await;
 
-    // ✅ Type-safe query with SeaQuery
+    // ✅ Type-safe query with reinhardt-query
     let (sql, values) = Query::select()
         .columns([Users::Id, Users::Name, Users::Email])
         .from(Users::Table)
@@ -1523,7 +1523,7 @@ async fn test_user_query(#[future] postgres_fixture: DbFixture) {
         .await
         .unwrap();
 
-    // ✅ Type-safe insert with SeaQuery
+    // ✅ Type-safe insert with reinhardt-query
     let (sql, values) = Query::insert()
         .into_table(Users::Table)
         .columns([Users::Name, Users::Email])
@@ -1537,10 +1537,10 @@ async fn test_user_query(#[future] postgres_fixture: DbFixture) {
 }
 ```
 
-**SeaQuery Common Patterns:**
+**reinhardt-query Common Patterns:**
 
 ```rust
-use sea_query::{Iden, PostgresQueryBuilder, Query, Expr, Order};
+use reinhardt_query::prelude::{Iden, PostgresQueryBuilder, Query, Expr, Order};
 
 #[derive(Iden)]
 enum Posts {

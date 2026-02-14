@@ -2047,7 +2047,7 @@ mod tests {
 		use reinhardt_manouche::core::FormMacro;
 
 		let untyped_ast: FormMacro = syn::parse2(input).unwrap();
-		let typed_ast = super::super::validator::validate(&untyped_ast).unwrap();
+		let typed_ast = crate::form::validator::validate(&untyped_ast).unwrap();
 		generate(&typed_ast)
 	}
 
