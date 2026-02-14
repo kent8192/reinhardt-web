@@ -11,3 +11,6 @@ pub mod pipeline;
 pub mod providers;
 pub mod report;
 pub mod terraform;
+
+pub use config::DeployConfig;
+pub use error::{DeployError, DeployResult};
