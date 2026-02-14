@@ -241,14 +241,16 @@ impl AlterUserStatement {
 	/// # Validation Rules
 	///
 	/// 1. User name cannot be empty
+	/// 2. At least one attribute, default role, or option must be specified
 	///
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_query::dcl::AlterUserStatement;
+	/// use reinhardt_query::dcl::{AlterUserStatement, RoleAttribute};
 	///
 	/// let stmt = AlterUserStatement::new()
-	///     .user("app_user");
+	///     .user("app_user")
+	///     .attribute(RoleAttribute::Login);
 	///
 	/// assert!(stmt.validate().is_ok());
 	/// ```
