@@ -49,7 +49,7 @@ Reinhardt يجمع أفضل ما في ثلاثة عوالم:
 
 ## ✨ الميزات الرئيسية
 
-- **ORM آمن النوع** مع التحقق في وقت الترجمة (SeaQuery v1.0.0-rc)
+- **ORM آمن النوع** مع التحقق في وقت الترجمة (reinhardt-query)
 - **مسلسلات قوية** مع التحقق التلقائي (serde + validator)
 - **DI بأسلوب FastAPI** مع حقن التبعية الآمن النوع والتخزين المؤقت
 - **ViewSets** للتطوير السريع لـ CRUD API
@@ -537,7 +537,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**ملاحظة**: Reinhardt يستخدم [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) لعمليات SQL. ماكرو `#[derive(Model)]` يولد تلقائياً تنفيذات سمة Model، وموصلات حقول آمنة النوع، والتسجيل في سجل النماذج العام.
+**ملاحظة**: Reinhardt يستخدم reinhardt-query لعمليات SQL. ماكرو `#[derive(Model)]` يولد تلقائياً تنفيذات سمة Model، وموصلات حقول آمنة النوع، والتسجيل في سجل النماذج العام.
 
 سجّل في `src/config/apps.rs`:
 
@@ -983,7 +983,7 @@ Reinhardt يقدم مكونات معيارية قابلة للمزج:
 | الأوامر             | `reinhardt-commands`      | أدوات CLI للإدارة (startproject، إلخ)      |
 | الاختصارات          | `reinhardt-shortcuts`     | دوال مساعدة شائعة                          |
 | **قاعدة البيانات**   |                           |                                             |
-| ORM                 | `reinhardt-db`            | تكامل SeaQuery v1.0.0-rc                   |
+| ORM                 | `reinhardt-db`            | تكامل reinhardt-query                      |
 | **المصادقة**        |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT، Token، Session، Basic auth، نماذج User|
 | **REST API**        |                           |                                             |
