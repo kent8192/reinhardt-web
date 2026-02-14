@@ -45,7 +45,6 @@ use crate::error::DeeplinkError;
 #[derive(Clone)]
 pub struct AasaHandler {
 	/// The iOS configuration (shared ownership for efficient cloning).
-	#[allow(dead_code)] // Kept for potential future introspection needs
 	config: Arc<IosConfig>,
 
 	/// Pre-computed JSON response body as bytes.
