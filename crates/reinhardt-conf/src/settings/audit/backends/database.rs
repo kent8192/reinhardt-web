@@ -5,9 +5,9 @@
 use crate::settings::audit::{AuditBackend, AuditEvent, ChangeRecord, EventFilter, EventType};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_query::{
-	Alias, ColumnDef, Expr, ExprTrait, Index, MysqlQueryBuilder, Order, PostgresQueryBuilder,
-	Query, SqliteQueryBuilder, Table,
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, IntoValue, MySqlQueryBuilder, Order,
+	PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde_json;
 use sqlx::{AnyPool, Row};
@@ -71,11 +71,11 @@ impl DatabaseAuditBackend {
 	/// Selects the appropriate QueryBuilder based on the database backend type.
 	fn build_sql<T>(&self, statement: T) -> String
 	where
-		T: sea_query::QueryStatementWriter,
+		T: QueryStatementBuilder,
 	{
 		match self.detect_backend() {
 			"postgres" => statement.to_string(PostgresQueryBuilder),
-			"mysql" => statement.to_string(MysqlQueryBuilder),
+			"mysql" => statement.to_string(MySqlQueryBuilder),
 			_ => statement.to_string(SqliteQueryBuilder),
 		}
 	}
@@ -85,11 +85,11 @@ impl DatabaseAuditBackend {
 	/// Selects the appropriate QueryBuilder based on the database backend type.
 	fn build_table_sql<T>(&self, statement: T) -> String
 	where
-		T: sea_query::SchemaStatementBuilder,
+		T: QueryStatementBuilder,
 	{
 		match self.detect_backend() {
 			"postgres" => statement.to_string(PostgresQueryBuilder),
-			"mysql" => statement.to_string(MysqlQueryBuilder),
+			"mysql" => statement.to_string(MySqlQueryBuilder),
 			_ => statement.to_string(SqliteQueryBuilder),
 		}
 	}
@@ -97,10 +97,10 @@ impl DatabaseAuditBackend {
 	/// Build SQL string from an index statement
 	///
 	/// Selects the appropriate QueryBuilder based on the database backend type.
-	fn build_index_sql(&self, statement: &sea_query::IndexCreateStatement) -> String {
+	fn build_index_sql(&self, statement: &CreateIndexStatement) -> String {
 		match self.detect_backend() {
 			"postgres" => statement.to_string(PostgresQueryBuilder),
-			"mysql" => statement.to_string(MysqlQueryBuilder),
+			"mysql" => statement.to_string(MySqlQueryBuilder),
 			_ => statement.to_string(SqliteQueryBuilder),
 		}
 	}
@@ -108,20 +108,28 @@ impl DatabaseAuditBackend {
 	/// Initialize audit tables if they don't exist
 	async fn init_tables(&self) -> Result<(), String> {
 		// Create audit_events table
-		let stmt = Table::create()
+		let stmt = Query::create_table()
 			.table(Alias::new("audit_events"))
 			.if_not_exists()
 			.col(
 				ColumnDef::new(Alias::new("id"))
 					.integer()
-					.not_null()
-					.auto_increment()
-					.primary_key(),
+					.not_null(true)
+					.auto_increment(true)
+					.primary_key(true),
 			)
-			.col(ColumnDef::new(Alias::new("timestamp")).text().not_null())
-			.col(ColumnDef::new(Alias::new("event_type")).text().not_null())
+			.col(
+				ColumnDef::new(Alias::new("timestamp"))
+					.text()
+					.not_null(true),
+			)
+			.col(
+				ColumnDef::new(Alias::new("event_type"))
+					.text()
+					.not_null(true),
+			)
 			.col(ColumnDef::new(Alias::new("user")).text())
-			.col(ColumnDef::new(Alias::new("changes")).text().not_null())
+			.col(ColumnDef::new(Alias::new("changes")).text().not_null(true))
 			.to_owned();
 		let sql = self.build_table_sql(stmt);
 		sqlx::query(&sql)
@@ -130,7 +138,7 @@ impl DatabaseAuditBackend {
 			.map_err(|e| format!("Failed to create audit_events table: {}", e))?;
 
 		// Create indexes for common queries
-		let idx = Index::create()
+		let idx = Query::create_index()
 			.if_not_exists()
 			.name("idx_events_timestamp")
 			.table(Alias::new("audit_events"))
@@ -139,7 +147,7 @@ impl DatabaseAuditBackend {
 		let idx_sql = self.build_index_sql(&idx);
 		let _ = sqlx::query(&idx_sql).execute(self.pool.as_ref()).await;
 
-		let idx = Index::create()
+		let idx = Query::create_index()
 			.if_not_exists()
 			.name("idx_events_type")
 			.table(Alias::new("audit_events"))
@@ -148,7 +156,7 @@ impl DatabaseAuditBackend {
 		let idx_sql = self.build_index_sql(&idx);
 		let _ = sqlx::query(&idx_sql).execute(self.pool.as_ref()).await;
 
-		let idx = Index::create()
+		let idx = Query::create_index()
 			.if_not_exists()
 			.name("idx_events_user")
 			.table(Alias::new("audit_events"))
@@ -176,16 +184,12 @@ impl AuditBackend for DatabaseAuditBackend {
 				Alias::new("user"),
 				Alias::new("changes"),
 			])
-			.values(
-				[
-					Expr::val(event.timestamp.to_rfc3339()),
-					Expr::val(event.event_type.as_str()),
-					Expr::val(event.user.unwrap_or_default()),
-					Expr::val(changes_json),
-				]
-				.into_iter()
-				.collect::<Vec<Expr>>(),
-			)
+			.values(vec![
+				event.timestamp.to_rfc3339().into_value(),
+				event.event_type.as_str().into_value(),
+				event.user.unwrap_or_default().into_value(),
+				changes_json.into_value(),
+			])
 			.unwrap()
 			.to_owned();
 		let sql = self.build_sql(stmt);
@@ -309,6 +313,7 @@ impl AuditBackend for DatabaseAuditBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_query::Func;
 	use serde_json::json;
 	use std::sync::Once;
 
@@ -353,7 +358,10 @@ mod tests {
 
 		// Verify tables were created
 		let stmt = Query::select()
-			.expr_as(Expr::col(Alias::new("*")).count(), Alias::new("count"))
+			.expr_as(
+				Func::count(Expr::asterisk().into_simple_expr()),
+				Alias::new("count"),
+			)
 			.from(Alias::new("audit_events"))
 			.to_owned();
 		let sql = stmt.to_string(SqliteQueryBuilder);

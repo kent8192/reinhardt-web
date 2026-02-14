@@ -98,7 +98,7 @@ regex = "1.10"
 geo-types = "0.7"
 sha2 = "0.10"
 hex = "0.4"
-sea-query = { workspace = true, features = ["backend-postgres"]}
+reinhardt-query = { workspace = true }
 log = "0.4"
 reinhardt-openapi-macros = { workspace = true }
 indexmap = { version = "2.0", features = ["serde"] }
@@ -134,6 +134,5 @@ env_logger = "0.11"
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-core = { workspace = true, features = ["exception"] }
 reinhardt-auth = { workspace = true, features = ["argon2-hasher"] }
-sea-orm = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 serial_test = { workspace = true }

@@ -69,7 +69,6 @@ reinhardt-macros = { workspace = true }
 serde = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
-sea-query = { workspace = true }
 criterion = { workspace = true, features = ["async_tokio"] }
 [[bench]]
 name = "cache_performance"

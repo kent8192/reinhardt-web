@@ -49,7 +49,7 @@ Reinhardt объединяет лучшее из трёх миров:
 
 ## ✨ Ключевые функции
 
-- **Типобезопасная ORM** с проверкой во время компиляции (SeaQuery v1.0.0-rc)
+- **Типобезопасная ORM** с проверкой во время компиляции (reinhardt-query)
 - **Мощные сериализаторы** с автоматической валидацией (serde + validator)
 - **DI в стиле FastAPI** с типобезопасным внедрением зависимостей и кэшированием
 - **ViewSets** для быстрой разработки CRUD API
@@ -537,7 +537,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**Примечание**: Reinhardt использует [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) для SQL операций. Макрос `#[derive(Model)]` автоматически генерирует реализации трейта Model, типобезопасные аксессоры полей и регистрацию в глобальном реестре моделей.
+**Примечание**: Reinhardt использует reinhardt-query для SQL операций. Макрос `#[derive(Model)]` автоматически генерирует реализации трейта Model, типобезопасные аксессоры полей и регистрацию в глобальном реестре моделей.
 
 Зарегистрируйте в `src/config/apps.rs`:
 
@@ -983,7 +983,7 @@ Reinhardt предлагает модульные компоненты для к
 | Команды             | `reinhardt-commands`      | CLI инструменты управления (startproject и др.)|
 | Шорткаты            | `reinhardt-shortcuts`     | Общие утилитарные функции                   |
 | **База данных**     |                           |                                             |
-| ORM                 | `reinhardt-db`            | Интеграция SeaQuery v1.0.0-rc               |
+| ORM                 | `reinhardt-db`            | Интеграция reinhardt-query                  |
 | **Аутентификация**  |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth, модели User|
 | **REST API**        |                           |                                             |
