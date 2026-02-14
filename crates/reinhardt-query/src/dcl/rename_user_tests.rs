@@ -249,7 +249,6 @@ fn test_postgres_panic_message() {
 // ============================================================================
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_single_user() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new().rename("old_user@localhost", "new_user@localhost");
@@ -264,7 +263,6 @@ fn test_mysql_rename_single_user() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_multiple_users() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new()
@@ -282,7 +280,6 @@ fn test_mysql_rename_multiple_users() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_with_ip_host() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new().rename("user@'192.168.1.1'", "new_user@'192.168.1.1'");

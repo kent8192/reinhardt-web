@@ -45,6 +45,25 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct MySqlQueryBuilder;
 
+/// Parse a MySQL user identifier into (user, host) parts.
+///
+/// If no `@` is present, defaults host to `%`.
+fn parse_user_host(user_name: &str) -> (String, String) {
+	let parts: Vec<&str> = user_name.splitn(2, '@').collect();
+	if parts.len() == 2 {
+		let host = parts[1].trim_matches('\'');
+		(parts[0].to_string(), host.to_string())
+	} else {
+		(user_name.to_string(), "%".to_string())
+	}
+}
+
+/// Format a MySQL user identifier as `'user'@'host'`.
+fn format_mysql_user(user_name: &str) -> String {
+	let (user, host) = parse_user_host(user_name);
+	format!("'{}'@'{}'", user, host)
+}
+
 impl MySqlQueryBuilder {
 	/// Create a new MySQL query builder
 	pub fn new() -> Self {
@@ -2401,7 +2420,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// User name (with optional @host)
-		writer.push_identifier(&stmt.user_name, |s| self.escape_iden(s));
+		writer.push(&format_mysql_user(&stmt.user_name));
 
 		// User options (same as CREATE ROLE)
 		for option in &stmt.options {
@@ -2527,7 +2546,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 		// User names (comma-separated)
 		writer.push_list(&stmt.user_names, ", ", |w, user| {
-			w.push_identifier(user, |s| self.escape_iden(s));
+			w.push(&format_mysql_user(user));
 		});
 
 		writer.finish()
@@ -2549,7 +2568,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// User name (with optional @host)
-		writer.push_identifier(&stmt.user_name, |s| self.escape_iden(s));
+		writer.push(&format_mysql_user(&stmt.user_name));
 
 		// User options (same as ALTER ROLE)
 		for option in &stmt.options {
@@ -2669,11 +2688,11 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 		// Rename pairs (comma-separated)
 		writer.push_list(&stmt.renames, ", ", |w, (old, new)| {
-			w.push_identifier(old, |s| self.escape_iden(s));
+			w.push(&format_mysql_user(old));
 			w.push_space();
 			w.push("TO");
 			w.push_space();
-			w.push_identifier(new, |s| self.escape_iden(s));
+			w.push(&format_mysql_user(new));
 		});
 
 		writer.finish()
@@ -2753,7 +2772,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 		// User names (comma-separated)
 		writer.push_list(&stmt.user_names, ", ", |w, user| {
-			w.push_identifier(user, |s| self.escape_iden(s));
+			w.push(&format_mysql_user(user));
 		});
 
 		writer.finish()
@@ -7144,7 +7163,7 @@ mod tests {
 		let stmt = CreateUserStatement::new().user("app_user@localhost");
 
 		let (sql, values) = builder.build_create_user(&stmt);
-		assert_eq!(sql, "CREATE USER `app_user@localhost`");
+		assert_eq!(sql, "CREATE USER 'app_user'@'localhost'");
 		assert!(values.is_empty());
 	}
 
@@ -7158,7 +7177,7 @@ mod tests {
 			.if_not_exists(true);
 
 		let (sql, values) = builder.build_create_user(&stmt);
-		assert_eq!(sql, "CREATE USER IF NOT EXISTS `app_user`");
+		assert_eq!(sql, "CREATE USER IF NOT EXISTS 'app_user'@'%'");
 		assert!(values.is_empty());
 	}
 
@@ -7172,7 +7191,7 @@ mod tests {
 			.option(UserOption::Password("secret".to_string()));
 
 		let (sql, values) = builder.build_create_user(&stmt);
-		assert_eq!(sql, "CREATE USER `app_user` IDENTIFIED BY 'secret'");
+		assert_eq!(sql, "CREATE USER 'app_user'@'%' IDENTIFIED BY 'secret'");
 		assert!(values.is_empty());
 	}
 
@@ -7186,7 +7205,7 @@ mod tests {
 			.default_role(vec!["app_role".to_string()]);
 
 		let (sql, values) = builder.build_create_user(&stmt);
-		assert_eq!(sql, "CREATE USER `app_user` DEFAULT ROLE `app_role`");
+		assert_eq!(sql, "CREATE USER 'app_user'@'%' DEFAULT ROLE `app_role`");
 		assert!(values.is_empty());
 	}
 
@@ -7199,7 +7218,7 @@ mod tests {
 		let stmt = DropUserStatement::new().user("app_user@localhost");
 
 		let (sql, values) = builder.build_drop_user(&stmt);
-		assert_eq!(sql, "DROP USER `app_user@localhost`");
+		assert_eq!(sql, "DROP USER 'app_user'@'localhost'");
 		assert!(values.is_empty());
 	}
 
@@ -7211,7 +7230,7 @@ mod tests {
 		let stmt = DropUserStatement::new().user("app_user").if_exists(true);
 
 		let (sql, values) = builder.build_drop_user(&stmt);
-		assert_eq!(sql, "DROP USER IF EXISTS `app_user`");
+		assert_eq!(sql, "DROP USER IF EXISTS 'app_user'@'%'");
 		assert!(values.is_empty());
 	}
 
@@ -7226,7 +7245,7 @@ mod tests {
 			.option(UserOption::AccountUnlock);
 
 		let (sql, values) = builder.build_alter_user(&stmt);
-		assert_eq!(sql, "ALTER USER `app_user` ACCOUNT UNLOCK");
+		assert_eq!(sql, "ALTER USER 'app_user'@'%' ACCOUNT UNLOCK");
 		assert!(values.is_empty());
 	}
 
@@ -7240,7 +7259,7 @@ mod tests {
 			.default_role(vec!["app_role".to_string()]);
 
 		let (sql, values) = builder.build_alter_user(&stmt);
-		assert_eq!(sql, "ALTER USER `app_user` DEFAULT ROLE `app_role`");
+		assert_eq!(sql, "ALTER USER 'app_user'@'%' DEFAULT ROLE `app_role`");
 		assert!(values.is_empty());
 	}
 
@@ -7255,7 +7274,7 @@ mod tests {
 		let (sql, values) = builder.build_rename_user(&stmt);
 		assert_eq!(
 			sql,
-			"RENAME USER `old_user@localhost` TO `new_user@localhost`"
+			"RENAME USER 'old_user'@'localhost' TO 'new_user'@'localhost'"
 		);
 		assert!(values.is_empty());
 	}
@@ -7272,7 +7291,7 @@ mod tests {
 		let (sql, values) = builder.build_rename_user(&stmt);
 		assert_eq!(
 			sql,
-			"RENAME USER `user1` TO `renamed1`, `user2` TO `renamed2`"
+			"RENAME USER 'user1'@'%' TO 'renamed1'@'%', 'user2'@'%' TO 'renamed2'@'%'"
 		);
 		assert!(values.is_empty());
 	}
@@ -7350,7 +7369,7 @@ mod tests {
 			.user("app_user@localhost");
 
 		let (sql, values) = builder.build_set_default_role(&stmt);
-		assert_eq!(sql, "SET DEFAULT ROLE ALL TO `app_user@localhost`");
+		assert_eq!(sql, "SET DEFAULT ROLE ALL TO 'app_user'@'localhost'");
 		assert!(values.is_empty());
 	}
 
@@ -7364,7 +7383,7 @@ mod tests {
 			.user("app_user");
 
 		let (sql, values) = builder.build_set_default_role(&stmt);
-		assert_eq!(sql, "SET DEFAULT ROLE NONE TO `app_user`");
+		assert_eq!(sql, "SET DEFAULT ROLE NONE TO 'app_user'@'%'");
 		assert!(values.is_empty());
 	}
 
@@ -7381,7 +7400,7 @@ mod tests {
 			.user("app_user");
 
 		let (sql, values) = builder.build_set_default_role(&stmt);
-		assert_eq!(sql, "SET DEFAULT ROLE `role1`, `role2` TO `app_user`");
+		assert_eq!(sql, "SET DEFAULT ROLE `role1`, `role2` TO 'app_user'@'%'");
 		assert!(values.is_empty());
 	}
 }

@@ -271,7 +271,6 @@ fn test_sqlite_panic_message() {
 // ============================================================================
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL SET DEFAULT ROLE backend"]
 fn test_mysql_role_list() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = SetDefaultRoleStatement::new()
@@ -290,7 +289,6 @@ fn test_mysql_role_list() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL SET DEFAULT ROLE backend"]
 fn test_mysql_role_all() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = SetDefaultRoleStatement::new()
@@ -304,7 +302,6 @@ fn test_mysql_role_all() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL SET DEFAULT ROLE backend"]
 fn test_mysql_role_none() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = SetDefaultRoleStatement::new()
@@ -318,7 +315,6 @@ fn test_mysql_role_none() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL SET DEFAULT ROLE backend"]
 fn test_mysql_multiple_users() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = SetDefaultRoleStatement::new()
