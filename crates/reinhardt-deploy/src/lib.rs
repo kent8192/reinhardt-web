@@ -4,6 +4,7 @@
 //! Supports multiple cloud providers (Docker, fly.io, AWS, GCP) with
 //! Terraform-backed infrastructure provisioning.
 
+pub mod checks;
 pub mod config;
 pub mod detection;
 pub mod error;
