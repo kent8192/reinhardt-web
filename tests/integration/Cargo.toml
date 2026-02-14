@@ -91,6 +91,7 @@ rstest = { workspace = true }
 serial_test = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+proptest = { workspace = true, optional = true }
 
 # Required by #[model] macro
 ctor = { workspace = true }
@@ -137,4 +138,4 @@ rabbitmq-backend = ["reinhardt-tasks/rabbitmq-backend"]
 websocket = ["reinhardt-server/websocket"]
 graphql = ["reinhardt-server/graphql"]
 msgpack = ["reinhardt-pages/msgpack"]
-proptest = []
+proptest = ["dep:proptest"]
