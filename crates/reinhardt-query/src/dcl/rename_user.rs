@@ -33,6 +33,8 @@
 //!     .rename("user2@localhost", "renamed2@localhost");
 //! ```
 
+use super::validate_name;
+
 /// RENAME USER statement builder (MySQL only)
 ///
 /// This struct provides a fluent API for building RENAME USER statements.
@@ -145,12 +147,8 @@ impl RenameUserStatement {
 			return Err("At least one rename pair must be specified".to_string());
 		}
 		for (old, new) in &self.renames {
-			if old.is_empty() {
-				return Err("Old user name cannot be empty".to_string());
-			}
-			if new.is_empty() {
-				return Err("New user name cannot be empty".to_string());
-			}
+			validate_name(old, "Old user name")?;
+			validate_name(new, "New user name")?;
 		}
 		Ok(())
 	}

@@ -124,6 +124,17 @@ mod set_default_role;
 mod set_role;
 mod user_options;
 
+/// Validate that a name is not empty or whitespace only.
+pub(crate) fn validate_name(name: &str, field_description: &str) -> Result<(), String> {
+	if name.trim().is_empty() {
+		return Err(format!(
+			"{} cannot be empty or whitespace only",
+			field_description
+		));
+	}
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests;
 

@@ -1572,7 +1572,10 @@ mod create_role_statement_tests {
 	fn test_create_role_validate_empty_name() {
 		let stmt = CreateRoleStatement::new();
 		assert!(stmt.validate().is_err());
-		assert_eq!(stmt.validate().unwrap_err(), "Role name cannot be empty");
+		assert_eq!(
+			stmt.validate().unwrap_err(),
+			"Role name cannot be empty or whitespace only"
+		);
 	}
 
 	#[test]
