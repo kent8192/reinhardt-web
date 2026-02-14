@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(query)* read iden attribute from struct-level instead of first field
 - *(db)* bind insert values in many-to-many manager instead of discarding
 - *(query)* reject whitespace-only names in CreateUser and GrantRole validation
+- *(commands)* remove unused reinhardt-i18n dev-dependency
+- *(release)* roll back unpublished crate versions after partial release failure
 
 ### Maintenance
 
