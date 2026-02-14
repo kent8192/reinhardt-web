@@ -8,7 +8,7 @@
 //!
 //! The main goal is to bridge the gap between:
 //! - `#[model(...)]` macro definitions (which generate `Model` trait implementations)
-//! - Database table creation (previously done manually with SeaQuery)
+//! - Database table creation (previously done manually with reinhardt-query)
 //!
 //! ## Usage Example
 //!

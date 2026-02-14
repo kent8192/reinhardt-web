@@ -74,7 +74,7 @@
 //! ```rust,no_run
 //! # use sqlx::PgPool;
 //! use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
-//! use sea_query::PostgresQueryBuilder;
+//! use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
 //!
 //! # async fn example() -> Result<(), sqlx::Error> {
 //! # let pool = PgPool::connect("postgresql://localhost/mydb").await?;
