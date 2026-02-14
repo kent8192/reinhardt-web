@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-auth"
-version = "0.1.0-alpha.8"
+version = "0.1.0-alpha.9"
 description = "Authentication and authorization system"
 edition.workspace = true
 license.workspace = true
