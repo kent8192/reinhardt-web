@@ -241,11 +241,13 @@ impl IosConfigBuilder {
 
 	/// Adds an App Clip configuration.
 	///
+	/// App Clip paths are configured via App Store Connect, not in the AASA file.
+	/// This method only registers the App Clip bundle ID.
+	///
 	/// # Arguments
 	///
 	/// * `app_id` - The App Clip bundle ID (usually ends with `.Clip`)
-	/// * `paths` - URL paths that should invoke the App Clip
-	pub fn app_clip(mut self, app_id: impl Into<String>, _paths: &[&str]) -> Self {
+	pub fn app_clip(mut self, app_id: impl Into<String>) -> Self {
 		self.app_clips.push(app_id.into());
 		self
 	}
@@ -396,7 +398,7 @@ mod tests {
 		let config = IosConfig::builder()
 			.app_id("TEAM.bundle")
 			.paths(&["/"])
-			.app_clip("TEAM.bundle.Clip", &["/clip/*"])
+			.app_clip("TEAM.bundle.Clip")
 			.build();
 
 		let json = serde_json::to_string_pretty(&config).unwrap();
