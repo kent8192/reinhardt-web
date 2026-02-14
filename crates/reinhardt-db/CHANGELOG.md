@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.8...reinhardt-db@v0.1.0-alpha.9) - 2026-02-14
+
+### Changed
+
+- *(db)* replace super::super:: with crate:: absolute paths in migrations
+- *(db)* fix unused variable assignments in migration operation tests
+
+### Fixed
+
+- *(db)* bind insert values in many-to-many manager instead of discarding
+
 ## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.7...reinhardt-db@v0.1.0-alpha.8) - 2026-02-12
 
 ### Changed
