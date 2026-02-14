@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use crate::config::{DeployConfig, InstanceSize};
+use crate::error::DeployResult;
 
 /// Terraform provider requirement for HCL generation.
 #[derive(Debug, Clone)]
@@ -36,6 +39,10 @@ pub trait DeployProvider: Send + Sync {
 
 	/// Pre-flight checks specific to this provider.
 	fn preflight_checks(&self, config: &DeployConfig) -> Vec<PreflightCheck>;
+
+	/// Generate provider-specific HCL files from configuration.
+	/// Returns a map of filename -> rendered HCL content.
+	fn generate_hcl(&self, config: &DeployConfig) -> DeployResult<HashMap<String, String>>;
 }
 
 /// Docker-based deployment provider for local/single-server deployments.
@@ -77,6 +84,10 @@ impl DeployProvider for DockerProvider {
 	fn preflight_checks(&self, _config: &DeployConfig) -> Vec<PreflightCheck> {
 		Vec::new()
 	}
+
+	fn generate_hcl(&self, config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		super::docker::generate_docker_hcl(config)
+	}
 }
 
 /// Fly.io deployment provider.
@@ -116,6 +127,10 @@ impl DeployProvider for FlyIoProvider {
 
 	fn preflight_checks(&self, _config: &DeployConfig) -> Vec<PreflightCheck> {
 		Vec::new()
+	}
+
+	fn generate_hcl(&self, _config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		Ok(HashMap::new())
 	}
 }
 
@@ -174,6 +189,10 @@ impl DeployProvider for AwsProvider {
 	fn preflight_checks(&self, _config: &DeployConfig) -> Vec<PreflightCheck> {
 		Vec::new()
 	}
+
+	fn generate_hcl(&self, _config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		Ok(HashMap::new())
+	}
 }
 
 /// GCP deployment provider.
@@ -223,5 +242,9 @@ impl DeployProvider for GcpProvider {
 
 	fn preflight_checks(&self, _config: &DeployConfig) -> Vec<PreflightCheck> {
 		Vec::new()
+	}
+
+	fn generate_hcl(&self, _config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		Ok(HashMap::new())
 	}
 }

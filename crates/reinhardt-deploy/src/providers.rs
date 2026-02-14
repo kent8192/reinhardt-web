@@ -1,3 +1,4 @@
+pub mod docker;
 pub mod traits;
 
 pub use traits::{DeployProvider, PreflightCheck, TerraformProvider};
