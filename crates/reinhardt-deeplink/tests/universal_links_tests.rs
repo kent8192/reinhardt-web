@@ -19,10 +19,6 @@
 use reinhardt_deeplink::{AasaHandler, AppLinkComponent, IosConfig};
 use rstest::*;
 
-// Import fixtures
-mod fixtures;
-use fixtures::*;
-
 const VALID_APP_ID: &str = "TEAM123456.com.example.app";
 
 // ============================================================================
