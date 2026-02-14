@@ -125,18 +125,6 @@ fn test_fingerprint_all_zeros() {
 	assert!(json.contains(all_zeros));
 }
 
-#[rstest]
-fn test_subdomain_flag() {
-	let config = AndroidConfig::builder()
-		.package_name("com.example.app")
-		.sha256_fingerprint(VALID_FINGERPRINT)
-		.include_all_subdomains(true)
-		.build();
-
-	// Subdomain flag is stored but not serialized in current implementation
-	assert_eq!(config.statements.len(), 1);
-}
-
 // ============================================================================
 // Package Name Validation Tests
 // ============================================================================
@@ -167,9 +155,9 @@ fn test_package_name_valid_patterns() {
 #[rstest]
 fn test_fingerprint_format_variants() {
 	let test_cases = vec![
-		"AA:BB:CC:DD".to_string(),
-		"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:09:00:28:35:DC:A1:E9:FE:0C".to_string(),
-		"AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB".to_string(),
+		"AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
+		"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:09:00:28:35:DC:A1:E9:FE".to_string(),
+		"FF:EE:DD:CC:BB:AA:99:88:77:66:55:44:33:22:11:00:01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10".to_string(),
 	];
 
 	for fingerprint in test_cases {
@@ -252,7 +240,7 @@ fn test_android_config_multiple_targets_same_package() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.additional_package("com.example.app", &["11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22"])
+		.additional_package("com.example.app", &["11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00"])
 		.build();
 
 	assert_eq!(config.statements.len(), 2);

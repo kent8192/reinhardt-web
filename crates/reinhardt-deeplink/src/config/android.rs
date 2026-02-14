@@ -74,7 +74,6 @@ pub struct AndroidConfigBuilder {
 	package_name: Option<String>,
 	fingerprints: Vec<String>,
 	additional_packages: Vec<(String, Vec<String>)>,
-	include_all_subdomains: bool,
 }
 
 impl AndroidConfigBuilder {
@@ -116,15 +115,6 @@ impl AndroidConfigBuilder {
 	pub fn sha256_fingerprints(mut self, fingerprints: &[&str]) -> Self {
 		self.fingerprints
 			.extend(fingerprints.iter().map(|s| (*s).to_string()));
-		self
-	}
-
-	/// Enables handling of all subdomains.
-	///
-	/// When enabled, the app will handle links from all subdomains of the verified domain.
-	#[allow(dead_code)] // Intentionally kept for future subdomain support
-	pub fn include_all_subdomains(mut self, include: bool) -> Self {
-		self.include_all_subdomains = include;
 		self
 	}
 
