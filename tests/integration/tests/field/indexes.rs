@@ -1,111 +1,139 @@
-// TODO: [PR#31] Rewrite: verify indexes() metadata, ensure_indexes(), unique enforcement via Repository
 //! Index Tests
 //!
-//! Tests index creation and usage.
+//! Tests index metadata generation, ensure_indexes, and unique enforcement
+//! via the Repository API.
 
-use crate::mongodb_fixtures::mongodb;
-use bson::doc;
-use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
-use reinhardt_db::nosql::traits::DocumentBackend;
+use bson::{doc, oid::ObjectId};
+use reinhardt_db::nosql::document::Document;
 use reinhardt_db_macros::document;
 use rstest::*;
 use serde::{Deserialize, Serialize};
-use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test document with indexes
 #[document(collection = "test_indexes", backend = "mongodb")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct IndexTest {
 	#[field(primary_key)]
-	id: Option<bson::oid::ObjectId>,
-
+	id: Option<ObjectId>,
 	#[field(index)]
 	indexed_field: String,
-
-	#[field(unique, index)]
+	#[field(unique)]
 	unique_field: String,
 }
 
-/// Test single field index
+/// Test that index metadata is generated correctly by the macro
 ///
-/// This test verifies that:
-/// 1. Index metadata is generated correctly
-/// 2. Queries with indexed fields work
+/// Verifies that:
+/// 1. indexes() returns the correct number of index definitions
+/// 2. Field names and uniqueness flags are correct
 #[rstest]
-#[tokio::test]
-async fn test_single_field_index(
-	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
-) {
-	let (_container, db) = mongodb.await;
-	let collection = "test_indexes";
+fn test_document_indexes_metadata() {
+	// Arrange & Act
+	let indexes = IndexTest::indexes();
 
-	// Note: Indexes are created by macro-generated code
-	// or by migrations. For testing, we verify that
-	// the index metadata is generated correctly.
+	// Assert
+	assert_eq!(indexes.len(), 2);
 
-	// Insert test data
-	let doc = doc! {
-		"indexed_field": "test_value",
-		"unique_field": "unique_value"
-	};
-	db.insert_one(collection, doc).await.ok();
+	// First index: indexed_field (non-unique)
+	assert_eq!(indexes[0].keys.len(), 1);
+	assert_eq!(indexes[0].keys[0].field, "indexed_field");
+	assert!(!indexes[0].options.unique);
 
-	// Query with indexed field
-	let filter = doc! { "indexed_field": "test_value" };
-	let found = db.find_one(collection, filter).await.unwrap();
-	assert!(found.is_some());
-
-	// Cleanup: Drop the entire collection
-	db.database()
-		.collection::<bson::Document>(collection)
-		.drop()
-		.await
-		.ok();
+	// Second index: unique_field (unique)
+	assert_eq!(indexes[1].keys.len(), 1);
+	assert_eq!(indexes[1].keys[0].field, "unique_field");
+	assert!(indexes[1].options.unique);
 }
 
-/// Test unique index enforcement
+/// Test that ensure_indexes creates indexes in MongoDB
 ///
-/// This test verifies that:
-/// 1. Unique indexes prevent duplicate values
-/// 2. Appropriate error is returned on violation
+/// Verifies that:
+/// 1. ensure_indexes() succeeds without error
+/// 2. Indexes are actually created in MongoDB
 #[rstest]
 #[tokio::test]
-async fn test_unique_index_enforcement(
-	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+async fn test_ensure_indexes(
+	#[future] mongodb: (
+		testcontainers::ContainerAsync<testcontainers::GenericImage>,
+		reinhardt_db::nosql::backends::mongodb::MongoDBBackend,
+	),
 ) {
+	use futures::stream::TryStreamExt;
+
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let collection = "test_unique_index";
+	let repo = reinhardt_db::nosql::Repository::<IndexTest>::new(db);
 
-	// Create unique index via MongoDB driver
-	let index = ::mongodb::IndexModel::builder()
-		.keys(doc! { "email": 1 })
-		.options(
-			::mongodb::options::IndexOptions::builder()
-				.unique(true)
-				.build(),
-		)
-		.build();
-	db.database()
-		.collection::<bson::Document>(collection)
-		.create_index(index)
-		.await
-		.ok();
+	// Act
+	repo.ensure_indexes().await.unwrap();
 
-	// Insert first document
-	let doc1 = doc! { "email": "unique@example.com" };
-	db.insert_one(collection, doc1).await.unwrap();
+	// Assert: query MongoDB for actual index list
+	let collection = repo
+		.backend()
+		.database()
+		.collection::<bson::Document>("test_indexes");
+	let cursor = collection.list_indexes().await.unwrap();
+	let indexes: Vec<_> = cursor.try_collect().await.unwrap();
 
-	// Attempt duplicate
-	let doc2 = doc! { "email": "unique@example.com" };
-	let result = db.insert_one(collection, doc2).await;
+	// MongoDB always creates a default _id index, plus our 2 custom indexes
+	assert!(indexes.len() >= 3);
 
-	// Assert: Duplicate key error
+	// Verify our custom indexes exist
+	let index_names: Vec<String> = indexes
+		.iter()
+		.filter_map(|idx| idx.options.as_ref().and_then(|o| o.name.clone()))
+		.collect();
+	assert!(index_names.iter().any(|n| n.contains("indexed_field")));
+	assert!(index_names.iter().any(|n| n.contains("unique_field")));
+
+	// Cleanup: drop collection
+	collection.drop().await.ok();
+}
+
+/// Test that unique index enforcement works through the Repository
+///
+/// Verifies that:
+/// 1. After ensure_indexes, unique constraints are enforced
+/// 2. Inserting a duplicate unique_field returns a DuplicateKey error
+#[rstest]
+#[tokio::test]
+async fn test_unique_enforcement_via_repository(
+	#[future] mongodb: (
+		testcontainers::ContainerAsync<testcontainers::GenericImage>,
+		reinhardt_db::nosql::backends::mongodb::MongoDBBackend,
+	),
+) {
+	// Arrange
+	let (_container, db) = mongodb.await;
+	let repo = reinhardt_db::nosql::Repository::<IndexTest>::new(db);
+	repo.ensure_indexes().await.unwrap();
+
+	let mut doc1 = IndexTest {
+		id: None,
+		indexed_field: "value1".to_string(),
+		unique_field: "unique_value".to_string(),
+	};
+	repo.insert(&mut doc1).await.unwrap();
+
+	// Act: attempt to insert another document with the same unique_field
+	let mut doc2 = IndexTest {
+		id: None,
+		indexed_field: "value2".to_string(),
+		unique_field: "unique_value".to_string(),
+	};
+	let result = repo.insert(&mut doc2).await;
+
+	// Assert: should fail with a duplicate key / serialization error
 	assert!(result.is_err());
 
-	// Cleanup: Drop the entire collection
-	db.database()
-		.collection::<bson::Document>(collection)
+	// Cleanup: drop collection
+	repo.backend()
+		.database()
+		.collection::<bson::Document>("test_indexes")
 		.drop()
 		.await
 		.ok();
 }
+
+// Import mongodb fixture for tests that need it
+use crate::mongodb_fixtures::mongodb;

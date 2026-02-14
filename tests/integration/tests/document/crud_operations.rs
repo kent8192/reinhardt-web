@@ -1,12 +1,14 @@
-// TODO: [PR#31] Rewrite to use Repository<T> API instead of low-level DocumentBackend
 //! CRUD Operations Tests
 //!
-//! Tests Create, Read, Update, Delete operations.
+//! Tests Create, Read, Update, Delete operations using the Repository API.
 
 use crate::mongodb_fixtures::mongodb;
 use bson::{doc, oid::ObjectId};
 use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
-use reinhardt_db::nosql::traits::DocumentBackend;
+use reinhardt_db::nosql::document::Document;
+use reinhardt_db::nosql::error::OdmError;
+use reinhardt_db::nosql::Repository;
+use reinhardt_db::nosql::types::FindOptions;
 use reinhardt_db_macros::document;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -14,7 +16,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test document structure
 #[document(collection = "test_users", backend = "mongodb")]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct TestUser {
 	#[field(primary_key)]
 	id: Option<ObjectId>,
@@ -33,155 +35,223 @@ impl TestUser {
 	}
 }
 
-/// Test document insertion
+/// Test inserting a document via Repository
 ///
-/// This test verifies that:
-/// 1. Documents can be inserted into MongoDB
-/// 2. The returned ID is valid
+/// Verifies that:
+/// 1. Documents can be inserted via Repository
+/// 2. The document's ID is automatically set after insertion
 #[rstest]
 #[tokio::test]
-async fn test_insert_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
-	// Arrange: Get MongoDB backend
+async fn test_repository_insert(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let user = TestUser::new("test@example.com", "Test User");
-	let collection = "test_users";
-	let user_doc = bson::serialize_to_document(&user).unwrap();
+	let repo = Repository::<TestUser>::new(db);
+	let mut user = TestUser::new("test@example.com", "Test User");
 
-	// Act: Insert document
-	let id = db.insert_one(collection, user_doc).await.unwrap();
-	let oid = ObjectId::parse_str(&id).unwrap();
+	// Act
+	repo.insert(&mut user).await.unwrap();
 
-	// Assert: ID is valid
-	assert!(!id.is_empty());
+	// Assert
+	assert!(user.id().is_some());
 
-	// Cleanup: Remove test document
-	db.delete_one(collection, doc! { "_id": oid }).await.ok();
+	// Cleanup
+	repo.delete_by_id(user.id().unwrap()).await.ok();
 }
 
-/// Test document finding
+/// Test finding a document by ID via Repository
 ///
-/// This test verifies that:
-/// 1. Documents can be retrieved by ID
+/// Verifies that:
+/// 1. Inserted documents can be retrieved by ID
 /// 2. Retrieved data matches inserted data
 #[rstest]
 #[tokio::test]
-async fn test_find_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
-	// Arrange: Insert test document
+async fn test_repository_find_by_id(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let user = TestUser::new("find@example.com", "Find User");
-	let collection = "test_users";
-	let user_doc = bson::serialize_to_document(&user).unwrap();
-	let id = db.insert_one(collection, user_doc.clone()).await.unwrap();
-	let oid = ObjectId::parse_str(&id).unwrap();
+	let repo = Repository::<TestUser>::new(db);
+	let mut user = TestUser::new("find@example.com", "Find User");
+	repo.insert(&mut user).await.unwrap();
+	let id = user.id().unwrap().clone();
 
-	// Act: Find document by ID
-	let filter = doc! { "_id": &oid };
-	let found = db.find_one(collection, filter).await.unwrap();
+	// Act
+	let found = repo.find_by_id(&id).await.unwrap();
 
-	// Assert: Document found with correct data
+	// Assert
 	assert!(found.is_some());
-	let found_doc = found.unwrap();
-	assert_eq!(found_doc.get_str("email").unwrap(), "find@example.com");
+	let found_user = found.unwrap();
+	assert_eq!(found_user.email, "find@example.com");
+	assert_eq!(found_user.name, "Find User");
 
 	// Cleanup
-	db.delete_one(collection, doc! { "_id": oid }).await.ok();
+	repo.delete_by_id(&id).await.ok();
 }
 
-/// Test document update
+/// Test updating a document via Repository
 ///
-/// This test verifies that:
-/// 1. Documents can be updated
-/// 2. Update operation returns correct counts
-/// 3. Updated data is persisted
+/// Verifies that:
+/// 1. Documents can be updated via Repository
+/// 2. Updated data is persisted correctly
 #[rstest]
 #[tokio::test]
-async fn test_update_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
-	// Arrange: Insert test document
+async fn test_repository_update(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let user = TestUser::new("update@example.com", "Original Name");
-	let collection = "test_users";
-	let user_doc = bson::serialize_to_document(&user).unwrap();
-	let id = db.insert_one(collection, user_doc).await.unwrap();
-	let oid = ObjectId::parse_str(&id).unwrap();
+	let repo = Repository::<TestUser>::new(db);
+	let mut user = TestUser::new("update@example.com", "Original Name");
+	repo.insert(&mut user).await.unwrap();
+	let id = user.id().unwrap().clone();
 
-	// Act: Update document
-	let filter = doc! { "_id": &oid };
-	let update = doc! { "$set": { "name": "Updated Name" } };
-	let result = db.update_one(collection, filter, update).await.unwrap();
+	// Act
+	user.name = "Updated Name".to_string();
+	repo.update(&user).await.unwrap();
 
-	// Assert: Update successful
-	assert_eq!(result.matched_count, 1);
-	assert_eq!(result.modified_count, 1);
-
-	// Verify: Name was updated
-	let filter = doc! { "_id": &oid };
-	let found = db.find_one(collection, filter).await.unwrap().unwrap();
-	assert_eq!(found.get_str("name").unwrap(), "Updated Name");
+	// Assert
+	let found = repo.find_by_id(&id).await.unwrap().unwrap();
+	assert_eq!(found.name, "Updated Name");
+	assert_eq!(found.email, "update@example.com");
 
 	// Cleanup
-	db.delete_one(collection, doc! { "_id": oid }).await.ok();
+	repo.delete_by_id(&id).await.ok();
 }
 
-/// Test document deletion
+/// Test deleting a document via Repository
 ///
-/// This test verifies that:
-/// 1. Documents can be deleted
+/// Verifies that:
+/// 1. Documents can be deleted by ID
 /// 2. Deleted documents cannot be found
 #[rstest]
 #[tokio::test]
-async fn test_delete_one(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
-	// Arrange: Insert test document
+async fn test_repository_delete(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let user = TestUser::new("delete@example.com", "Delete User");
-	let collection = "test_users";
-	let user_doc = bson::serialize_to_document(&user).unwrap();
-	let id = db.insert_one(collection, user_doc).await.unwrap();
-	let oid = ObjectId::parse_str(&id).unwrap();
+	let repo = Repository::<TestUser>::new(db);
+	let mut user = TestUser::new("delete@example.com", "Delete User");
+	repo.insert(&mut user).await.unwrap();
+	let id = user.id().unwrap().clone();
 
-	// Act: Delete document
-	let filter = doc! { "_id": &oid };
-	let count = db.delete_one(collection, filter).await.unwrap();
+	// Act
+	repo.delete_by_id(&id).await.unwrap();
 
-	// Assert: One document deleted
-	assert_eq!(count, 1);
-
-	// Verify: Document no longer exists
-	let filter = doc! { "_id": &oid };
-	let found = db.find_one(collection, filter).await.unwrap();
+	// Assert
+	let found = repo.find_by_id(&id).await.unwrap();
 	assert!(found.is_none());
 }
 
-/// Test find_many with options
+/// Test finding multiple documents via Repository
 ///
-/// This test verifies that:
-/// 1. Multiple documents can be retrieved
-/// 2. Limit option works correctly
+/// Verifies that:
+/// 1. Multiple documents can be retrieved with find_many
+/// 2. Limit option restricts the number of results
 #[rstest]
 #[tokio::test]
-async fn test_find_many(#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend)) {
-	// Arrange: Insert multiple documents
+async fn test_repository_find_many(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
 	let (_container, db) = mongodb.await;
-	let collection = "test_users";
+	let repo = Repository::<TestUser>::new(db);
 	let mut inserted_ids = Vec::new();
 
 	for i in 0..5 {
-		let user = TestUser::new(&format!("many{}@example.com", i), &format!("User {}", i));
-		let user_doc = bson::serialize_to_document(&user).unwrap();
-		let id = db.insert_one(collection, user_doc).await.unwrap();
-		inserted_ids.push(id);
+		let mut user = TestUser::new(
+			&format!("many{}@example.com", i),
+			&format!("User {}", i),
+		);
+		repo.insert(&mut user).await.unwrap();
+		inserted_ids.push(user.id().unwrap().clone());
 	}
 
-	// Act: Find all documents with limit
-	let filter = doc! {};
-	let options = reinhardt_db::nosql::types::FindOptions::new().limit(3);
-	let results = db.find_many(collection, filter, options).await.unwrap();
+	// Act
+	let options = FindOptions::new().limit(3);
+	let results = repo.find_many(doc! {}, options).await.unwrap();
 
-	// Assert: Limited to 3 results
+	// Assert
 	assert_eq!(results.len(), 3);
 
 	// Cleanup
-	for id in inserted_ids {
-		let oid = ObjectId::parse_str(&id).unwrap();
-		db.delete_one(collection, doc! { "_id": oid }).await.ok();
+	for id in &inserted_ids {
+		repo.delete_by_id(id).await.ok();
 	}
+}
+
+/// Test finding a single document by filter via Repository
+///
+/// Verifies that:
+/// 1. Documents can be retrieved by arbitrary BSON filter
+/// 2. The correct document is returned
+#[rstest]
+#[tokio::test]
+async fn test_repository_find_one_by_filter(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
+	let (_container, db) = mongodb.await;
+	let repo = Repository::<TestUser>::new(db);
+	let mut user = TestUser::new("filter@example.com", "Filter User");
+	repo.insert(&mut user).await.unwrap();
+	let id = user.id().unwrap().clone();
+
+	// Act
+	let found = repo.find_one(doc! { "email": "filter@example.com" }).await.unwrap();
+
+	// Assert
+	assert!(found.is_some());
+	let found_user = found.unwrap();
+	assert_eq!(found_user.email, "filter@example.com");
+	assert_eq!(found_user.name, "Filter User");
+
+	// Cleanup
+	repo.delete_by_id(&id).await.ok();
+}
+
+/// Test updating a non-existent document returns NotFound
+///
+/// Verifies that:
+/// 1. Updating a document with a non-existent ID returns OdmError::NotFound
+#[rstest]
+#[tokio::test]
+async fn test_repository_update_not_found(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
+	let (_container, db) = mongodb.await;
+	let repo = Repository::<TestUser>::new(db);
+	let user = TestUser {
+		id: Some(ObjectId::new()),
+		email: "nonexistent@example.com".to_string(),
+		name: "Nonexistent".to_string(),
+	};
+
+	// Act
+	let result = repo.update(&user).await;
+
+	// Assert
+	assert!(matches!(result, Err(OdmError::NotFound)));
+}
+
+/// Test deleting a non-existent document returns NotFound
+///
+/// Verifies that:
+/// 1. Deleting by a non-existent ID returns OdmError::NotFound
+#[rstest]
+#[tokio::test]
+async fn test_repository_delete_not_found(
+	#[future] mongodb: (ContainerAsync<GenericImage>, MongoDBBackend),
+) {
+	// Arrange
+	let (_container, db) = mongodb.await;
+	let repo = Repository::<TestUser>::new(db);
+	let fake_id = ObjectId::new();
+
+	// Act
+	let result = repo.delete_by_id(&fake_id).await;
+
+	// Assert
+	assert!(matches!(result, Err(OdmError::NotFound)));
 }
