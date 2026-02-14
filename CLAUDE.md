@@ -134,6 +134,20 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Use `gh api` for accessing GitHub API
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
+**GitHub Comments & Interactions:**
+- **NEVER** post comments on PRs or Issues without authorization
+- Authorization = explicit user instruction OR Plan Mode approval
+- Self-initiated comments MUST be previewed and approved by user before posting
+- ALL comments MUST be in English and include Claude Code attribution footer
+- Comments MUST reference specific code locations with repository-relative paths
+- Comments MUST NOT contain user requests, AI interactions, or absolute local paths
+
+See docs/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
+- Posting authorization policy (PP-1 ~ PP-3)
+- PR review response format (RR-1 ~ RR-3)
+- Issue discussion guidelines (ID-1 ~ ID-2)
+- Agent context provision (AC-1 ~ AC-2)
+
 See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
@@ -346,6 +360,7 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
+   - [ ] GitHub interaction policy (@docs/GITHUB_INTERACTION.md)
    - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
@@ -402,6 +417,10 @@ Before submitting code:
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
 - Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
+- Preview and get user confirmation before posting self-initiated GitHub comments
+- Include Claude Code attribution footer on all GitHub comments
+- Use repository-relative paths (not absolute) in GitHub comments
+- Provide structured agent context using AC-2 template format
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -447,6 +466,10 @@ Before submitting code:
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
 - Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
+- Post GitHub comments without authorization (explicit instruction or Plan Mode approval)
+- Include absolute local paths in GitHub comments (`/Users/...`, `/home/...`)
+- Post vague or non-actionable GitHub comments
+- Skip Claude Code attribution footer on GitHub comments
 
 ### 📚 Detailed Standards
 
@@ -458,6 +481,7 @@ For comprehensive guidelines, see:
 - **Git Commits**: docs/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: docs/RELEASE_PROCESS.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
+- **GitHub Interactions**: docs/GITHUB_INTERACTION.md
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
 - **Label Definitions**: .github/labels.yml
