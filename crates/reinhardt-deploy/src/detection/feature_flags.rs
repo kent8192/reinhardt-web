@@ -1,7 +1,7 @@
 use crate::config::{DatabaseEngine, NoSqlEngine};
 
 /// Result of analyzing Cargo feature flags to detect infrastructure requirements.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FeatureDetectionResult {
 	pub database: bool,
 	pub database_engine: Option<DatabaseEngine>,

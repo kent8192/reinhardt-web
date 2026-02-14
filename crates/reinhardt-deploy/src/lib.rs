@@ -9,6 +9,7 @@ pub mod checks;
 pub mod config;
 pub mod detection;
 pub mod error;
+pub mod init;
 pub mod pipeline;
 pub mod providers;
 pub mod report;
