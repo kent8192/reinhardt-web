@@ -1,3 +1,4 @@
+// TODO: [PR#31] Rewrite: verify indexes() metadata, ensure_indexes(), unique enforcement via Repository
 //! Index Tests
 //!
 //! Tests index creation and usage.

@@ -84,6 +84,7 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 		.into();
 	};
 
+	// TODO: [PR#31] Inject serde attributes: primary_key→#[serde(rename="_id")], rename→#[serde(rename=...)], default→#[serde(default=...)]
 	// Strip #[field(...)] attributes from fields before output
 	// This is necessary because #[field] is not a real attribute macro that Rust can process
 	if let Data::Struct(ref mut data) = input.data
@@ -94,6 +95,7 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 		}
 	}
 
+	// TODO: [PR#31] Generate indexes(), validate(), validation_schema(), backend_type(), references() methods
 	// Generate Document trait implementation
 	let expanded = quote! {
 		#input

@@ -124,12 +124,15 @@ pub enum OdmError {
 	Mongo(mongodb::error::Error),
 
 	/// Document not found.
+	// TODO: [PR#31] Currently unused — Repository will use this for find/update/delete miss
 	NotFound,
 
 	/// Duplicate key error.
+	// TODO: [PR#31] Currently unused — add MongoDB error code 11000 detection helper
 	DuplicateKey { field: String },
 
 	/// Serialization error.
+	// TODO: [PR#31] Currently unused — Repository serialization will use this
 	Serialization(String),
 
 	/// Deserialization error.
@@ -175,6 +178,7 @@ impl From<bson::error::Error> for OdmError {
 }
 
 /// Validation error type.
+// TODO: [PR#31] All variants currently unused — macro-generated validate() will use them
 #[derive(Debug)]
 pub enum ValidationError {
 	/// Required field is missing or empty.

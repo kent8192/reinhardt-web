@@ -6,6 +6,7 @@
 //! - ORM models: `#[model(...)]`
 //! - NoSQL documents: `#[document(...)]`
 //!
+// TODO: [PR#31] Remove non-existent feature flags (orm, nosql) from documentation
 //! ## Feature Flags
 //!
 //! - `orm` - Enable ORM model macros (SQL)
