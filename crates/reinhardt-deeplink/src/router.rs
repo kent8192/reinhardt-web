@@ -42,7 +42,6 @@ use crate::error::DeeplinkError;
 /// ```
 pub struct DeeplinkRouter {
 	/// The deeplink configuration.
-	#[allow(dead_code)] // Kept for potential future configuration access
 	config: DeeplinkConfig,
 
 	/// The underlying server router.

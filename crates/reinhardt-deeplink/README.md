@@ -82,7 +82,7 @@ use reinhardt_deeplink::IosConfig;
 let config = IosConfig::builder()
     .app_id("TEAM123456.com.example.app")
     .paths(&["/"])
-    .app_clip("TEAM123456.com.example.app.Clip", &["/clip/*"])
+    .app_clip("TEAM123456.com.example.app.Clip")
     .build();
 ```
 

@@ -122,7 +122,9 @@ impl AndroidConfigBuilder {
 	/// Enables handling of all subdomains.
 	///
 	/// When enabled, the app will handle links from all subdomains of the verified domain.
-	#[allow(dead_code)] // Intentionally kept for future subdomain support
+	///
+	/// Note: This field is stored but not currently used in the configuration generation.
+	/// It is reserved for future subdomain support functionality.
 	pub fn include_all_subdomains(mut self, include: bool) -> Self {
 		self.include_all_subdomains = include;
 		self
