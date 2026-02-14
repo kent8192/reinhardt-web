@@ -7,38 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.10...reinhardt-web@v0.1.0-alpha.11) - 2026-02-14
-
-### Changed
-
-- *(query)* replace super::super:: with crate:: absolute paths in query submodules
-- *(query)* replace super::super:: with crate:: absolute paths in dcl tests
-- *(db)* replace super::super:: with crate:: absolute paths in migrations
-- *(rest)* remove unused sea-orm dependency
-- *(query)* remove unused backend imports in drop role and drop user tests
-- *(db)* fix unused variable assignments in migration operation tests
-- *(query)* move DML integration tests to integration test crate
-
-### Fixed
-
-- *(query)* add missing DropBehavior import in revoke statement tests
-- *(query)* add Table variant special handling in Iden derive macro
-- *(query)* add missing code fence markers in alter_type doc example
-- *(ci)* migrate publish check to cargo publish --workspace
-- *(query)* add explicit path attributes to DML test module declarations
-- *(query)* add Meta::List support to Iden derive macro attribute parsing
-- *(query)* read iden attribute from struct-level instead of first field
-- *(db)* bind insert values in many-to-many manager instead of discarding
-- *(query)* reject whitespace-only names in CreateUser and GrantRole validation
-
-### Maintenance
-
-- increase test partition counts for faster CI execution
-
-### Styling
-
-- *(query)* format Iden derive macro code
-
 ## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.9...reinhardt-web@v0.1.0-alpha.10) - 2026-02-12
 
 ### Changed
