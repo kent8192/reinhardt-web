@@ -18,6 +18,7 @@ sessions = []
 oauth = []
 token = []
 argon2-hasher = []
+social = ["p256"]
 
 # Database and session storage (ORM model support)
 database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx"]
@@ -67,6 +68,7 @@ argon2 = { workspace = true }
 password-hash = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }
+p256 = { version = "0.13", optional = true }
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"
 dialoguer = "0.12.0"
@@ -82,6 +84,7 @@ hmac = { workspace = true }
 hex = "0.4"
 unicode-normalization = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
+url = "2.5"
 totp-lite = "2.0"
 data-encoding = "2.6"
 sqlx = { workspace = true, optional = true, features = ["any", "runtime-tokio", "sqlite"]}
@@ -108,6 +111,8 @@ prometheus = { version = "0.14.0", optional = true }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 tokio-test = { workspace = true }
 hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
 bytes = { workspace = true }
 rstest = "0.26.1"
 proptest = { workspace = true }
