@@ -20,4 +20,4 @@ trybuild = { workspace = true }
 bson = { version = "3.0", features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 rstest = { workspace = true }
-reinhardt-db = { path = "../reinhardt-db", features = ["nosql"] }
+reinhardt-db = { path = "../reinhardt-db", features = ["nosql", "mongodb"] }

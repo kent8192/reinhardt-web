@@ -13,8 +13,6 @@ pub(crate) struct DocumentAttrs {
 	/// Collection name (required)
 	pub(crate) collection: String,
 	/// Backend type (required, must be "mongodb")
-	// TODO: [PR#31] Generate BACKEND_TYPE constant from this field; remove #[allow(dead_code)] after
-	#[allow(dead_code)] // Validated during parsing, stored for future use
 	pub(crate) backend: String,
 	/// Database name (optional)
 	pub(crate) database: Option<String>,
