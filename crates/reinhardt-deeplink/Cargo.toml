@@ -11,14 +11,7 @@ authors.workspace = true
 # Core framework
 reinhardt-core = { workspace = true }
 reinhardt-http = { workspace = true }
-reinhardt-server = { workspace = true }
 reinhardt-urls = { workspace = true }
-
-# Optional database
-reinhardt-db = { workspace = true, optional = true }
-
-# Macros
-reinhardt-macros = { workspace = true }
 
 # Async support
 async-trait = { workspace = true }
@@ -34,39 +27,9 @@ bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# URL handling
-url = { workspace = true }
-
 # Error handling
 thiserror = { workspace = true }
-
-# Time handling
-chrono = { workspace = true }
 
 [dev-dependencies]
 # Testing framework
 rstest = { workspace = true }
-serial_test = { workspace = true }
-tokio-test = { workspace = true }
-
-# UI testing
-trybuild = { workspace = true }
-
-# Database testing
-reinhardt-test = { workspace = true }
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
-
-# SQL construction
-sea-query = { workspace = true }
-
-# Database drivers
-sqlx = { workspace = true }
-
-# Utilities
-tempfile = { workspace = true }
-assert-json-diff = { workspace = true }
-
-[features]
-default = []
-database = ["reinhardt-db"]
