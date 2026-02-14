@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-commands"
-version = "0.1.0-alpha.13"
+version = "0.1.0-alpha.12"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -68,7 +68,6 @@ nix = { version = "0.29", features = ["signal"] }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 tempfile = "3.13"
 regex = { workspace = true }
-reinhardt-i18n = { workspace = true }
 serial_test = { workspace = true }
 rstest = { workspace = true }
 proptest = { workspace = true }
