@@ -23,7 +23,7 @@ Describe how you tested your changes:
 
 ```bash
 # Commands you ran
-cd local/examples-my-feature
+cd examples-my-feature
 cargo test --all-features
 ```
 

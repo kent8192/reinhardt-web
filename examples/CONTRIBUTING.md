@@ -30,15 +30,11 @@ This project follows the same Code of Conduct as the main Reinhardt Web Framewor
 
 ### Step 1: Choose Directory
 
-- **Local Examples** (`local/`): For development using latest framework code
-- **Remote Examples** (`remote/`): For published versions (after framework is on crates.io)
-
-Most new examples should start in `local/`.
+All examples are located at the root level of the repository as `examples-*` directories.
 
 ### Step 2: Create Example Structure
 
 ```bash
-cd local
 mkdir examples-my-feature
 cd examples-my-feature
 
@@ -59,10 +55,10 @@ publish = false
 
 [dependencies]
 reinhardt = { version = "0.1.0-alpha.1", features = ["core", "conf"] }
-example-common = { path = "../../remote/common" }
+example-common = { workspace = true }
 
 [dev-dependencies]
-example-test-macros = { path = "../../remote/test-macros" }
+example-test-macros = { workspace = true }
 reinhardt-test = { git = "https://github.com/kent8192/reinhardt-web" }
 rstest = "0.24"
 tokio = { version = "1", features = ["full"] }
@@ -71,7 +67,7 @@ reqwest = { version = "0.12", features = ["json"] }
 
 ### Step 4: Add to Workspace
 
-Edit `local/Cargo.toml` and add your example to the `members` array:
+Edit the root `Cargo.toml` and add your example to the `members` array:
 
 ```toml
 [workspace]

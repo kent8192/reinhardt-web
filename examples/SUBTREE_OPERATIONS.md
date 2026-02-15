@@ -97,7 +97,7 @@ git subtree pull --prefix=examples reinhardt-examples main --squash
 Subtree merge from 'https://github.com/kent8192/reinhardt-examples'
  * branch            main       -> FETCH_HEAD
 Merge made by the 'ort' strategy.
- examples/local/examples-new-feature/... | 10 ++++++++++
+ examples/examples-new-feature/... | 10 ++++++++++
  1 file changed, 10 insertions(+)
 ```
 
@@ -149,7 +149,7 @@ When pulling changes, you might encounter conflicts:
 
 ```bash
 git subtree pull --prefix=examples reinhardt-examples main --squash
-# CONFLICT (content): Merge conflict in examples/local/examples-rest-api/src/main.rs
+# CONFLICT (content): Merge conflict in examples/examples-rest-api/src/main.rs
 # Automatic merge failed; fix conflicts and then commit the result.
 ```
 
@@ -186,7 +186,7 @@ git subtree pull --prefix=examples reinhardt-examples main --squash
 
 4. **Mark as Resolved**:
    ```bash
-   git add examples/local/examples-rest-api/src/main.rs
+   git add examples/examples-rest-api/src/main.rs
    ```
 
 5. **Complete the Merge**:
@@ -320,8 +320,8 @@ git commit -m "feat(examples): add websocket example"
 Before pushing to the examples repository, ensure all tests pass:
 
 ```bash
-cd examples/local
-cargo test --workspace --all --all-features
+cd examples/examples-hello-world
+cargo test --all --all-features
 ```
 
 ### 4. Communicate Changes
