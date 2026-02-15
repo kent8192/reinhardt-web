@@ -58,10 +58,10 @@ mod mongodb_impl {
 				.await
 				.map_err(|e| match e {
 					crate::nosql::error::NoSQLError::ExecutionError(msg) => {
-						OdmError::Serialization(msg)
+						OdmError::Serialization(format!("Execution error: {}", msg))
 					}
 					crate::nosql::error::NoSQLError::DatabaseError(msg) => {
-						OdmError::Serialization(msg)
+						OdmError::Serialization(format!("Database error: {}", msg))
 					}
 					other => OdmError::Serialization(other.to_string()),
 				})?;

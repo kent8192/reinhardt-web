@@ -19,6 +19,23 @@ struct FieldInfo {
 	is_option: bool,
 }
 
+/// Helper function to check if an attribute marks a field as primary_key.
+fn is_primary_key_attr(attr: &syn::Attribute) -> bool {
+	if !attr.path().is_ident("field") {
+		return false;
+	}
+
+	if let Ok(field_attrs) = attr.parse_args::<crate::field::attr_parser::FieldAttrs>() {
+		return field_attrs.primary_key;
+	}
+
+	if let Ok(meta) = attr.parse_args::<syn::Ident>() {
+		return meta == "primary_key";
+	}
+
+	false
+}
+
 /// Implementation of the `#[document(...)]` attribute macro.
 pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Parse attributes
@@ -56,21 +73,9 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 	let mut primary_key_field = None;
 	for field in fields {
 		for attr in &field.attrs {
-			if attr.path().is_ident("field") {
-				// Parse field attributes to check for primary_key
-				if let Ok(field_attrs) = attr.parse_args::<crate::field::attr_parser::FieldAttrs>()
-				{
-					if field_attrs.primary_key {
-						primary_key_field = Some(field);
-						break;
-					}
-				} else if let Ok(meta) = attr.parse_args::<syn::Ident>() {
-					// Support simple #[field(primary_key)] syntax
-					if meta == "primary_key" {
-						primary_key_field = Some(field);
-						break;
-					}
-				}
+			if is_primary_key_attr(attr) {
+				primary_key_field = Some(field);
+				break;
 			}
 		}
 		if primary_key_field.is_some() {
@@ -93,9 +98,7 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 			if attr.path().is_ident("field") {
 				if let Ok(parsed) = attr.parse_args::<crate::field::attr_parser::FieldAttrs>() {
 					field_attrs = parsed;
-				} else if let Ok(meta) = attr.parse_args::<syn::Ident>()
-					&& meta == "primary_key"
-				{
+				} else if is_primary_key_attr(attr) {
 					field_attrs.primary_key = true;
 				}
 			}
@@ -256,9 +259,8 @@ fn inject_serde_attrs(
 		let ty = &info.ty;
 		let default_expr = parse_default_value(default_val, ty);
 
-		let fn_name_str = format!("{}::{}", struct_name, fn_name);
 		field.attrs.push(syn::parse_quote! {
-			#[serde(default = #fn_name_str)]
+			#[serde(default = #struct_name::#fn_name)]
 		});
 
 		default_fns.push(quote! {
@@ -282,30 +284,48 @@ fn parse_default_value(value: &str, ty: &Type) -> TokenStream2 {
 			quote! { false }
 		}
 	} else if type_str.contains("f32") || type_str.contains("f64") {
-		let val: f64 = value.parse().unwrap_or(0.0);
-		if type_str.contains("f32") {
-			let v = val as f32;
-			quote! { #v }
-		} else {
-			quote! { #val }
+		match value.parse::<f64>() {
+			Ok(val) => {
+				if type_str.contains("f32") {
+					let v = val as f32;
+					quote! { #v }
+				} else {
+					quote! { #val }
+				}
+			}
+			Err(_) => {
+				// Generate compile-time error for invalid float default value
+				quote! {
+					compile_error!(concat!("Invalid default value for float type: ", #value))
+				}
+			}
 		}
 	} else {
 		// Integer types
-		let val: i64 = value.parse().unwrap_or(0);
-		if type_str.contains("i32") {
-			let v = val as i32;
-			quote! { #v }
-		} else if type_str.contains("i64") {
-			quote! { #val }
-		} else if type_str.contains("u32") {
-			let v = val as u32;
-			quote! { #v }
-		} else if type_str.contains("u64") {
-			let v = val as u64;
-			quote! { #v }
-		} else {
-			// Fallback: try as string
-			quote! { String::from(#value) }
+		match value.parse::<i64>() {
+			Ok(val) => {
+				if type_str.contains("i32") {
+					let v = val as i32;
+					quote! { #v }
+				} else if type_str.contains("i64") {
+					quote! { #val }
+				} else if type_str.contains("u32") {
+					let v = val as u32;
+					quote! { #v }
+				} else if type_str.contains("u64") {
+					let v = val as u64;
+					quote! { #v }
+				} else {
+					// Fallback: try as string
+					quote! { String::from(#value) }
+				}
+			}
+			Err(_) => {
+				// Generate compile-time error for invalid integer default value
+				quote! {
+					compile_error!(concat!("Invalid default value for integer type: ", #value))
+				}
+			}
 		}
 	}
 }

@@ -9,6 +9,8 @@ use reinhardt_db_macros::document;
 use rstest::*;
 use serde::{Deserialize, Serialize};
 
+use crate::mongodb_fixtures::mongodb;
+
 /// Test document with indexes
 #[document(collection = "test_indexes", backend = "mongodb")]
 #[derive(Serialize, Deserialize, Debug)]
@@ -134,6 +136,3 @@ async fn test_unique_enforcement_via_repository(
 		.await
 		.ok();
 }
-
-// Import mongodb fixture for tests that need it
-use crate::mongodb_fixtures::mongodb;
