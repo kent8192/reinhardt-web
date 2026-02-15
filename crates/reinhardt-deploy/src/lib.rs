@@ -7,6 +7,7 @@
 pub mod build;
 pub mod checks;
 pub mod config;
+pub mod cost;
 pub mod detection;
 pub mod error;
 pub mod init;
