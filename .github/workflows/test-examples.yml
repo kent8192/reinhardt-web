@@ -3,7 +3,6 @@ name: Test Examples
 on:
   push:
     branches: [main]
-  pull_request:
   schedule:
     - cron: '0 9 * * *'  # 09:00 UTC daily
 
