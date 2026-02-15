@@ -122,3 +122,5 @@ repos/
 
 # WASM build artifacts (examples)
 examples/local/examples-twitter/static/admin/
+
+docs/plans/
