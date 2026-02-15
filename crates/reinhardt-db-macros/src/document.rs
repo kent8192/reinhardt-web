@@ -252,34 +252,60 @@ fn parse_default_value(value: &str, ty: &Type) -> TokenStream2 {
 	} else if type_str.contains("bool") {
 		if value == "true" {
 			quote! { true }
-		} else {
+		} else if value == "false" {
 			quote! { false }
+		} else {
+			let msg = format!(
+				"Invalid boolean default value: '{}'. Expected 'true' or 'false'.",
+				value
+			);
+			quote! { compile_error!(#msg) }
 		}
 	} else if type_str.contains("f32") || type_str.contains("f64") {
-		let val: f64 = value.parse().unwrap_or(0.0);
-		if type_str.contains("f32") {
-			let v = val as f32;
-			quote! { #v }
-		} else {
-			quote! { #val }
+		match value.parse::<f64>() {
+			Ok(val) => {
+				if type_str.contains("f32") {
+					let v = val as f32;
+					quote! { #v }
+				} else {
+					quote! { #val }
+				}
+			}
+			Err(_) => {
+				let msg = format!(
+					"Invalid float default value: '{}'. Expected a valid floating-point number.",
+					value
+				);
+				quote! { compile_error!(#msg) }
+			}
 		}
 	} else {
 		// Integer types
-		let val: i64 = value.parse().unwrap_or(0);
-		if type_str.contains("i32") {
-			let v = val as i32;
-			quote! { #v }
-		} else if type_str.contains("i64") {
-			quote! { #val }
-		} else if type_str.contains("u32") {
-			let v = val as u32;
-			quote! { #v }
-		} else if type_str.contains("u64") {
-			let v = val as u64;
-			quote! { #v }
-		} else {
-			// Fallback: try as string
-			quote! { String::from(#value) }
+		match value.parse::<i64>() {
+			Ok(val) => {
+				if type_str.contains("i32") {
+					let v = val as i32;
+					quote! { #v }
+				} else if type_str.contains("i64") {
+					quote! { #val }
+				} else if type_str.contains("u32") {
+					let v = val as u32;
+					quote! { #v }
+				} else if type_str.contains("u64") {
+					let v = val as u64;
+					quote! { #v }
+				} else {
+					// Fallback: try as string
+					quote! { String::from(#value) }
+				}
+			}
+			Err(_) => {
+				let msg = format!(
+					"Invalid integer default value: '{}'. Expected a valid integer.",
+					value
+				);
+				quote! { compile_error!(#msg) }
+			}
 		}
 	}
 }
