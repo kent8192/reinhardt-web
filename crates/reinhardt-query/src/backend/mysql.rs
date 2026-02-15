@@ -2128,6 +2128,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_create_role(&self, stmt: &crate::dcl::CreateRoleStatement) -> (String, Values) {
 		use crate::dcl::UserOption;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2151,9 +2152,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 				UserOption::Password(pwd) => {
 					writer.push("IDENTIFIED BY");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |_i| {
+						self.placeholder(0)
+					});
 				}
 				UserOption::AuthPlugin { plugin, by, as_ } => {
 					writer.push("IDENTIFIED WITH");
@@ -2163,16 +2164,16 @@ impl QueryBuilder for MySqlQueryBuilder {
 						writer.push_space();
 						writer.push("BY");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					} else if let Some(auth) = as_ {
 						writer.push_space();
 						writer.push("AS");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					}
 				}
 				UserOption::AccountLock => {
@@ -2280,6 +2281,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_alter_role(&self, stmt: &crate::dcl::AlterRoleStatement) -> (String, Values) {
 		use crate::dcl::UserOption;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2298,9 +2300,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 				UserOption::Password(pwd) => {
 					writer.push("IDENTIFIED BY");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |_i| {
+						self.placeholder(0)
+					});
 				}
 				UserOption::AuthPlugin { plugin, by, as_ } => {
 					writer.push("IDENTIFIED WITH");
@@ -2310,16 +2312,16 @@ impl QueryBuilder for MySqlQueryBuilder {
 						writer.push_space();
 						writer.push("BY");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					} else if let Some(auth) = as_ {
 						writer.push_space();
 						writer.push("AS");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					}
 				}
 				UserOption::AccountLock => {
@@ -2406,6 +2408,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_create_user(&self, stmt: &crate::dcl::CreateUserStatement) -> (String, Values) {
 		use crate::dcl::UserOption;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2429,9 +2432,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 				UserOption::Password(pwd) => {
 					writer.push("IDENTIFIED BY");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |_i| {
+						self.placeholder(0)
+					});
 				}
 				UserOption::AuthPlugin { plugin, by, as_ } => {
 					writer.push("IDENTIFIED WITH");
@@ -2441,16 +2444,16 @@ impl QueryBuilder for MySqlQueryBuilder {
 						writer.push_space();
 						writer.push("BY");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					} else if let Some(auth) = as_ {
 						writer.push_space();
 						writer.push("AS");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					}
 				}
 				UserOption::AccountLock => writer.push("ACCOUNT LOCK"),
@@ -2554,6 +2557,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_alter_user(&self, stmt: &crate::dcl::AlterUserStatement) -> (String, Values) {
 		use crate::dcl::UserOption;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2577,9 +2581,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 				UserOption::Password(pwd) => {
 					writer.push("IDENTIFIED BY");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |_i| {
+						self.placeholder(0)
+					});
 				}
 				UserOption::AuthPlugin { plugin, by, as_ } => {
 					writer.push("IDENTIFIED WITH");
@@ -2589,16 +2593,16 @@ impl QueryBuilder for MySqlQueryBuilder {
 						writer.push_space();
 						writer.push("BY");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					} else if let Some(auth) = as_ {
 						writer.push_space();
 						writer.push("AS");
 						writer.push_space();
-						writer.push("'");
-						writer.push(auth);
-						writer.push("'");
+						writer.push_value(Value::String(Some(Box::new(auth.clone()))), |_i| {
+							self.placeholder(0)
+						});
 					}
 				}
 				UserOption::AccountLock => writer.push("ACCOUNT LOCK"),
@@ -7081,6 +7085,7 @@ mod tests {
 	#[test]
 	fn test_create_role_with_options() {
 		use crate::dcl::{CreateRoleStatement, UserOption};
+		use crate::value::Value;
 
 		let builder = MySqlQueryBuilder::new();
 		let stmt = CreateRoleStatement::new()
@@ -7092,9 +7097,13 @@ mod tests {
 		let (sql, values) = builder.build_create_role(&stmt);
 		assert_eq!(
 			sql,
-			"CREATE ROLE `app_role` IDENTIFIED BY 'secret' ACCOUNT LOCK COMMENT 'Application role'"
+			"CREATE ROLE `app_role` IDENTIFIED BY ? ACCOUNT LOCK COMMENT 'Application role'"
 		);
-		assert!(values.is_empty());
+		assert_eq!(values.len(), 1);
+		assert_eq!(
+			values[0],
+			Value::String(Some(Box::new("secret".to_string())))
+		);
 	}
 
 	#[test]
@@ -7184,6 +7193,7 @@ mod tests {
 	#[test]
 	fn test_create_user_with_password() {
 		use crate::dcl::{CreateUserStatement, UserOption};
+		use crate::value::Value;
 
 		let builder = MySqlQueryBuilder::new();
 		let stmt = CreateUserStatement::new()
@@ -7191,8 +7201,12 @@ mod tests {
 			.option(UserOption::Password("secret".to_string()));
 
 		let (sql, values) = builder.build_create_user(&stmt);
-		assert_eq!(sql, "CREATE USER 'app_user'@'%' IDENTIFIED BY 'secret'");
-		assert!(values.is_empty());
+		assert_eq!(sql, "CREATE USER 'app_user'@'%' IDENTIFIED BY ?");
+		assert_eq!(values.len(), 1);
+		assert_eq!(
+			values[0],
+			Value::String(Some(Box::new("secret".to_string())))
+		);
 	}
 
 	#[test]

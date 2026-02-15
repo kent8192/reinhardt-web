@@ -377,7 +377,6 @@ fn test_postgres_alter_user_with_attribute() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support and ALTER ROLE syntax in PostgreSQL backend"]
 fn test_postgres_alter_user_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = AlterUserStatement::new()
