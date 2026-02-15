@@ -3,7 +3,7 @@
 services:
   app:
     build:
-      context: ../../..
+      context: ../..
       dockerfile: examples/examples-database-integration/Dockerfile
     environment:
       - DATABASE_URL=sqlite:///tmp/test.db

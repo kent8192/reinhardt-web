@@ -3,7 +3,7 @@
 services:
   app:
     build:
-      context: ../../..
+      context: ../..
       dockerfile: examples/examples-rest-api/Dockerfile
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]

@@ -1,5 +1,5 @@
 # Dockerfile for examples-rest-api API testing
-# Build context: workspace root (../../..)
+# Build context: workspace root (../..)
 
 FROM rust:1.91.1-slim AS builder
 
@@ -30,10 +30,10 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/examples-rest-api /usr/local/bin/manage
 
 # Copy database file if exists (for SQLite examples)
-COPY --from=builder /app/examples/local/examples-rest-api/db.sqlite3 /app/db.sqlite3
+COPY --from=builder /app/examples/examples-rest-api/db.sqlite3 /app/db.sqlite3
 
 # Copy settings files
-COPY --from=builder /app/examples/local/examples-rest-api/settings /app/settings
+COPY --from=builder /app/examples/examples-rest-api/settings /app/settings
 
 WORKDIR /app
 

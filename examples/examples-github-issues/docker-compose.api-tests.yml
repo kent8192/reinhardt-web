@@ -3,7 +3,7 @@
 services:
   app:
     build:
-      context: ../../..
+      context: ../..
       dockerfile: examples/examples-github-issues/Dockerfile
     healthcheck:
       test: [ "CMD", "curl", "-f", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{\"query\":\"{ __typename }\"}", "http://localhost:8000/graphql" ]
