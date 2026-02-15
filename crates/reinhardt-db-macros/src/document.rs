@@ -52,32 +52,6 @@ pub(crate) fn document_impl(attr: TokenStream, item: TokenStream) -> TokenStream
 		}
 	};
 
-	// Find primary key field
-	let mut primary_key_field = None;
-	for field in fields {
-		for attr in &field.attrs {
-			if attr.path().is_ident("field") {
-				// Parse field attributes to check for primary_key
-				if let Ok(field_attrs) = attr.parse_args::<crate::field::attr_parser::FieldAttrs>()
-				{
-					if field_attrs.primary_key {
-						primary_key_field = Some(field);
-						break;
-					}
-				} else if let Ok(meta) = attr.parse_args::<syn::Ident>() {
-					// Support simple #[field(primary_key)] syntax
-					if meta == "primary_key" {
-						primary_key_field = Some(field);
-						break;
-					}
-				}
-			}
-		}
-		if primary_key_field.is_some() {
-			break;
-		}
-	}
-
 	// Step 2.1: Collect all field information
 	let mut field_infos = Vec::new();
 	let mut id_type = None;
