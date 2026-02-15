@@ -27,7 +27,7 @@
 //!     .option(UserOption::Comment("Application role".to_string()));
 //! ```
 
-use super::{RoleAttribute, UserOption};
+use super::{RoleAttribute, UserOption, validate_name};
 
 /// CREATE ROLE statement builder
 ///
@@ -230,9 +230,7 @@ impl CreateRoleStatement {
 	/// assert!(stmt.validate().is_err());
 	/// ```
 	pub fn validate(&self) -> Result<(), String> {
-		if self.role_name.is_empty() {
-			return Err("Role name cannot be empty".to_string());
-		}
+		validate_name(&self.role_name, "Role name")?;
 		Ok(())
 	}
 }

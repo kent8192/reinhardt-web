@@ -11,7 +11,7 @@
 //!     .attribute(RoleAttribute::CreateDb);
 //! ```
 
-use super::{RoleAttribute, UserOption};
+use super::{RoleAttribute, UserOption, validate_name};
 
 /// ALTER ROLE statement builder
 ///
@@ -174,9 +174,7 @@ impl AlterRoleStatement {
 	/// assert!(stmt.validate().is_err());
 	/// ```
 	pub fn validate(&self) -> Result<(), String> {
-		if self.role_name.is_empty() {
-			return Err("Role name cannot be empty".to_string());
-		}
+		validate_name(&self.role_name, "Role name")?;
 		if self.attributes.is_empty() && self.options.is_empty() && self.rename_to.is_none() {
 			return Err("At least one attribute, option, or rename must be specified".to_string());
 		}

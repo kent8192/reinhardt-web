@@ -168,11 +168,13 @@ fn test_empty_role_name_validation() {
 
 	let result = stmt.validate();
 	assert!(result.is_err());
-	assert_eq!(result.unwrap_err(), "Role name cannot be empty");
+	assert_eq!(
+		result.unwrap_err(),
+		"Role name cannot be empty or whitespace only"
+	);
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in CreateRoleStatement::validate()"]
 fn test_whitespace_only_role_name() {
 	let stmt = CreateRoleStatement::new().role("   ");
 
@@ -186,7 +188,10 @@ fn test_empty_string_role_name() {
 
 	let result = stmt.validate();
 	assert!(result.is_err());
-	assert_eq!(result.unwrap_err(), "Role name cannot be empty");
+	assert_eq!(
+		result.unwrap_err(),
+		"Role name cannot be empty or whitespace only"
+	);
 }
 
 #[rstest]
