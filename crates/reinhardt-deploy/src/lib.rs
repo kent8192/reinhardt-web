@@ -6,6 +6,7 @@
 
 pub mod build;
 pub mod checks;
+pub mod ci;
 pub mod config;
 pub mod cost;
 pub mod detection;
