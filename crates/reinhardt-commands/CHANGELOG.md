@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.15...reinhardt-commands@v0.1.0-alpha.16) - 2026-02-15
+
+### Maintenance
+
+- updated the following local packages: reinhardt-rest, reinhardt-conf, reinhardt-apps, reinhardt-db, reinhardt-mail, reinhardt-middleware, reinhardt-urls, reinhardt-pages, reinhardt-test, reinhardt-dentdelion, reinhardt-openapi
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.14...reinhardt-commands@v0.1.0-alpha.15) - 2026-02-14
 
 ### Maintenance
