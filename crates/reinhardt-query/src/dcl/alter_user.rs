@@ -39,7 +39,7 @@
 //!     .option(UserOption::AccountUnlock);
 //! ```
 
-use super::{RoleAttribute, UserOption};
+use super::{RoleAttribute, UserOption, validate_name};
 
 /// ALTER USER statement builder
 ///
@@ -241,14 +241,16 @@ impl AlterUserStatement {
 	/// # Validation Rules
 	///
 	/// 1. User name cannot be empty
+	/// 2. At least one attribute, default role, or option must be specified
 	///
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_query::dcl::AlterUserStatement;
+	/// use reinhardt_query::dcl::{AlterUserStatement, RoleAttribute};
 	///
 	/// let stmt = AlterUserStatement::new()
-	///     .user("app_user");
+	///     .user("app_user")
+	///     .attribute(RoleAttribute::Login);
 	///
 	/// assert!(stmt.validate().is_ok());
 	/// ```
@@ -260,8 +262,11 @@ impl AlterUserStatement {
 	/// assert!(stmt.validate().is_err());
 	/// ```
 	pub fn validate(&self) -> Result<(), String> {
-		if self.user_name.is_empty() {
-			return Err("User name cannot be empty".to_string());
+		validate_name(&self.user_name, "User name")?;
+		if self.attributes.is_empty() && self.default_roles.is_empty() && self.options.is_empty() {
+			return Err(
+				"At least one attribute, default role, or option must be specified".to_string(),
+			);
 		}
 		Ok(())
 	}
@@ -283,7 +288,9 @@ mod tests {
 
 	#[test]
 	fn test_alter_user_basic() {
-		let stmt = AlterUserStatement::new().user("app_user");
+		let stmt = AlterUserStatement::new()
+			.user("app_user")
+			.attribute(RoleAttribute::Login);
 		assert_eq!(stmt.user_name, "app_user");
 		assert!(stmt.validate().is_ok());
 	}
