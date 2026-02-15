@@ -45,11 +45,11 @@ impl DeploymentHistory {
 		match target_version {
 			Some(version) => self.deployments.iter().find(|d| d.version == version),
 			None => {
-				// Find the most recent non-active deployment
+				// Find the most recent inactive deployment
 				self.deployments
 					.iter()
 					.rev()
-					.find(|d| d.status != DeploymentStatus::Active)
+					.find(|d| d.status == DeploymentStatus::Inactive)
 			}
 		}
 	}
