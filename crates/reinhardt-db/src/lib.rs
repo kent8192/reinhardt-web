@@ -121,6 +121,7 @@ pub mod backends_pool;
 pub mod contenttypes;
 pub mod hybrid;
 pub mod migrations;
+#[cfg(feature = "nosql")]
 pub mod nosql;
 pub mod orm;
 pub mod pool;
