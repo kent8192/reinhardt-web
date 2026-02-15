@@ -193,11 +193,22 @@ impl SetRoleStatement {
 	pub fn validate(&self) -> Result<(), String> {
 		match &self.target {
 			None => Err("Role target must be specified".to_string()),
-			Some(RoleTarget::Named(name)) if name.is_empty() => {
-				Err("Role name cannot be empty".to_string())
+			Some(RoleTarget::Named(name)) if name.trim().is_empty() => {
+				Err("Role name cannot be empty or whitespace only".to_string())
 			}
 			Some(RoleTarget::AllExcept(list)) if list.is_empty() => {
 				Err("AllExcept role list cannot be empty".to_string())
+			}
+			Some(RoleTarget::AllExcept(list)) => {
+				for role in list {
+					if role.trim().is_empty() {
+						return Err(
+							"Role name in AllExcept list cannot be empty or whitespace only"
+								.to_string(),
+						);
+					}
+				}
+				Ok(())
 			}
 			_ => Ok(()),
 		}
