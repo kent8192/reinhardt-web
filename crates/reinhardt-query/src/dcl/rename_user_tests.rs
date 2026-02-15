@@ -121,7 +121,6 @@ fn test_empty_new_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in RenameUserStatement::validate()"]
 fn test_whitespace_only_old_name() {
 	let stmt = RenameUserStatement::new().rename("   ", "new_user@localhost");
 
@@ -130,7 +129,6 @@ fn test_whitespace_only_old_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in RenameUserStatement::validate()"]
 fn test_whitespace_only_new_name() {
 	let stmt = RenameUserStatement::new().rename("old_user@localhost", "   ");
 

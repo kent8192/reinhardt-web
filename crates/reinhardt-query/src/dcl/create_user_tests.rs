@@ -168,7 +168,6 @@ fn test_empty_user_name_validation() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in CreateUserStatement::validate()"]
 fn test_whitespace_only_user_name() {
 	let stmt = CreateUserStatement::new().user("   ");
 

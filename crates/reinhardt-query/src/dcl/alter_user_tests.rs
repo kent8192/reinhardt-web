@@ -140,7 +140,6 @@ fn test_alter_user_empty_name_validation() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in AlterUserStatement::validate()"]
 fn test_alter_user_whitespace_only_name() {
 	let stmt = AlterUserStatement::new().user("   ");
 
@@ -149,7 +148,6 @@ fn test_alter_user_whitespace_only_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of 'no changes' validation in AlterUserStatement::validate()"]
 fn test_alter_user_no_changes() {
 	let stmt = AlterUserStatement::new().user("test_user");
 

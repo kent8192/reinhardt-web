@@ -37,7 +37,7 @@
 //!     .option(UserOption::Comment("Application user".to_string()));
 //! ```
 
-use super::{RoleAttribute, UserOption};
+use super::{RoleAttribute, UserOption, validate_name};
 
 /// CREATE USER statement builder
 ///
@@ -269,9 +269,7 @@ impl CreateUserStatement {
 	/// assert!(stmt.validate().is_err());
 	/// ```
 	pub fn validate(&self) -> Result<(), String> {
-		if self.user_name.trim().is_empty() {
-			return Err("User name cannot be empty or whitespace only".to_string());
-		}
+		validate_name(&self.user_name, "User name")?;
 		Ok(())
 	}
 }
