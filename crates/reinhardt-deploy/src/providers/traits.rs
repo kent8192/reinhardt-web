@@ -244,7 +244,7 @@ impl DeployProvider for GcpProvider {
 		Vec::new()
 	}
 
-	fn generate_hcl(&self, _config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
-		Ok(HashMap::new())
+	fn generate_hcl(&self, config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		super::gcp::generate_gcp_hcl(config)
 	}
 }

@@ -1,5 +1,6 @@
 pub mod aws;
 pub mod docker;
+pub mod gcp;
 pub mod traits;
 
 pub use traits::{DeployProvider, PreflightCheck, TerraformProvider};
