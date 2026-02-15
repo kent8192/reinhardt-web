@@ -132,6 +132,9 @@ pub enum OdmError {
 	/// Serialization error.
 	Serialization(String),
 
+	/// Backend operation error (database, connection, execution, etc.).
+	BackendError(String),
+
 	/// Deserialization error.
 	#[cfg(feature = "mongodb")]
 	Deserialization(bson::error::Error),
@@ -146,6 +149,7 @@ impl fmt::Display for OdmError {
 			OdmError::NotFound => write!(f, "Document not found"),
 			OdmError::DuplicateKey { field } => write!(f, "Duplicate key: {}", field),
 			OdmError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+			OdmError::BackendError(msg) => write!(f, "Backend error: {}", msg),
 			#[cfg(feature = "mongodb")]
 			OdmError::Deserialization(err) => write!(f, "Deserialization error: {}", err),
 		}
@@ -157,6 +161,16 @@ impl std::error::Error for OdmError {}
 impl From<ValidationError> for OdmError {
 	fn from(err: ValidationError) -> Self {
 		OdmError::Validation(err)
+	}
+}
+
+impl From<NoSQLError> for OdmError {
+	fn from(err: NoSQLError) -> Self {
+		match err {
+			NoSQLError::SerializationError(msg) => OdmError::Serialization(msg),
+			NoSQLError::NotFound(_) => OdmError::NotFound,
+			other => OdmError::BackendError(other.to_string()),
+		}
 	}
 }
 

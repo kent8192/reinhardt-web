@@ -56,15 +56,7 @@ mod mongodb_impl {
 				.backend
 				.insert_one(T::COLLECTION_NAME, bson_doc)
 				.await
-				.map_err(|e| match e {
-					crate::nosql::error::NoSQLError::ExecutionError(msg) => {
-						OdmError::Serialization(msg)
-					}
-					crate::nosql::error::NoSQLError::DatabaseError(msg) => {
-						OdmError::Serialization(msg)
-					}
-					other => OdmError::Serialization(other.to_string()),
-				})?;
+				.map_err(OdmError::from)?;
 
 			// Parse the returned ID string back to the document's Id type.
 			// Try ObjectId first, then fall back to string.
@@ -94,7 +86,7 @@ mod mongodb_impl {
 				.backend
 				.find_one(T::COLLECTION_NAME, filter)
 				.await
-				.map_err(|e| OdmError::Serialization(e.to_string()))?;
+				.map_err(OdmError::from)?;
 
 			match result {
 				Some(doc) => {
@@ -115,7 +107,7 @@ mod mongodb_impl {
 				.backend
 				.find_many(T::COLLECTION_NAME, filter, options)
 				.await
-				.map_err(|e| OdmError::Serialization(e.to_string()))?;
+				.map_err(OdmError::from)?;
 
 			results
 				.into_iter()
@@ -146,7 +138,7 @@ mod mongodb_impl {
 				.backend
 				.update_one(T::COLLECTION_NAME, filter, update)
 				.await
-				.map_err(|e| OdmError::Serialization(e.to_string()))?;
+				.map_err(OdmError::from)?;
 
 			if result.matched_count == 0 {
 				return Err(OdmError::NotFound);
@@ -165,7 +157,7 @@ mod mongodb_impl {
 				.backend
 				.delete_one(T::COLLECTION_NAME, filter)
 				.await
-				.map_err(|e| OdmError::Serialization(e.to_string()))?;
+				.map_err(OdmError::from)?;
 
 			if count == 0 {
 				return Err(OdmError::NotFound);
@@ -192,7 +184,7 @@ mod mongodb_impl {
 			collection
 				.create_indexes(mongo_indexes)
 				.await
-				.map_err(|e| OdmError::Serialization(e.to_string()))?;
+				.map_err(|e| OdmError::BackendError(e.to_string()))?;
 
 			Ok(())
 		}
