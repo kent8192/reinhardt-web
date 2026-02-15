@@ -5,9 +5,9 @@ Example applications demonstrating [Reinhardt](https://github.com/kent8192/reinh
 ## Quick Start
 
 ```bash
-# Clone this repository
-git clone https://github.com/kent8192/reinhardt-examples.git
-cd reinhardt-examples
+# Clone the main repository
+git clone https://github.com/kent8192/reinhardt-web.git
+cd reinhardt-web/examples
 
 # Run an example
 cd examples-hello-world
@@ -65,12 +65,6 @@ cargo make local-examples-test
 - `.cargo/config.local.toml`: Pre-configured template with `[patch.crates-io]` overrides
 - When copied to `.cargo/config.toml`, Cargo uses local workspace paths instead of crates.io
 - `.cargo/config.toml` is gitignored so it won't be committed
-
-## Subtree Integration
-
-This repository is integrated into the main [reinhardt-web](https://github.com/kent8192/reinhardt-web) repository as a git subtree at `examples/`.
-
-See [SUBTREE_OPERATIONS.md](SUBTREE_OPERATIONS.md) for subtree management instructions.
 
 ## Testing
 

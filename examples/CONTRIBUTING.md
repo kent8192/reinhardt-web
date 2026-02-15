@@ -259,8 +259,8 @@ test(database): add migration test coverage
 If you haven't already, fork the repository and clone your fork:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/reinhardt-examples.git
-cd reinhardt-examples
+git clone https://github.com/YOUR_USERNAME/reinhardt-web.git
+cd reinhardt-web
 ```
 
 ### 2. Create Branch

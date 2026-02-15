@@ -49,5 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - (None)
 
-[Unreleased]: https://github.com/kent8192/reinhardt-examples/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/kent8192/reinhardt-examples/releases/tag/v1.0.0
+[Unreleased]: https://github.com/kent8192/reinhardt-web/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/kent8192/reinhardt-web/releases/tag/v1.0.0
