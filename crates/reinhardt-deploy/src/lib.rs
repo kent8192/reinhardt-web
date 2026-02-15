@@ -11,6 +11,7 @@ pub mod detection;
 pub mod error;
 pub mod init;
 pub mod pipeline;
+pub mod preview;
 pub mod providers;
 pub mod report;
 pub mod rollback;
