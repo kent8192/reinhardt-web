@@ -408,7 +408,6 @@ fn test_postgres_create_user_with_login() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support and CREATE ROLE syntax in PostgreSQL CREATE USER backend"]
 fn test_postgres_create_user_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = CreateUserStatement::new()
