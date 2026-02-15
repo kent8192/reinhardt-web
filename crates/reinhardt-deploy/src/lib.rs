@@ -13,6 +13,7 @@ pub mod init;
 pub mod pipeline;
 pub mod providers;
 pub mod report;
+pub mod rollback;
 pub mod terraform;
 
 pub use config::DeployConfig;
