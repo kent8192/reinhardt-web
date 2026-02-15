@@ -271,12 +271,16 @@ impl IosConfigBuilder {
 			validate_app_id(app_id)?;
 		}
 
-		if self.paths.is_empty() && self.components.is_empty() && self.additional_details.is_empty()
-		{
+		if self.has_no_paths_or_components() {
 			return Err(DeeplinkError::NoPathsSpecified);
 		}
 
 		Ok(())
+	}
+
+	/// Checks if the builder has no paths, components, or additional details configured.
+	fn has_no_paths_or_components(&self) -> bool {
+		self.paths.is_empty() && self.components.is_empty() && self.additional_details.is_empty()
 	}
 
 	/// Builds the iOS configuration.

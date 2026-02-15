@@ -69,7 +69,7 @@ impl AssetLinksHandler {
 	/// Returns the cached JSON content as a string slice.
 	pub fn json(&self) -> &str {
 		// SAFETY: JSON serialization always produces valid UTF-8
-		std::str::from_utf8(&self.cached_json).expect("JSON is always valid UTF-8")
+		std::str::from_utf8(&self.cached_json).unwrap()
 	}
 }
 
