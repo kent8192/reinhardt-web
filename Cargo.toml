@@ -335,18 +335,10 @@ members = [
   "tests/integration",
   # Benchmark tests
   "tests/bench",
-  # Local examples (integrated into workspace)
-  "examples/local/examples-hello-world",
-  "examples/local/examples-rest-api",
-  "examples/local/examples-database-integration",
-  "examples/local/examples-tutorial-basis",
-  "examples/local/examples-tutorial-rest",
-  "examples/local/examples-twitter",
-  "examples/local/examples-github-issues",
 ]
 
-# Exclude remote examples (independent workspace for crates.io testing)
-exclude = ["examples/remote"]
+# Exclude examples (independent workspace with own dependency management)
+exclude = ["examples"]
 
 default-members = [
   "crates/reinhardt-views",
