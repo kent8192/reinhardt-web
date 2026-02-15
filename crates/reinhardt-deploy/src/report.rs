@@ -107,8 +107,12 @@ impl DeployReport {
 
 	/// Format the report as JSON.
 	pub fn format_json(&self) -> String {
-		serde_json::to_string_pretty(self)
-			.unwrap_or_else(|e| format!("{{\"error\": \"failed to serialize report: {}\"}}", e))
+		serde_json::to_string_pretty(self).unwrap_or_else(|e| {
+			serde_json::json!({
+				"error": format!("failed to serialize report: {}", e),
+			})
+			.to_string()
+		})
 	}
 
 	/// Format the report as Markdown for PR comments.
