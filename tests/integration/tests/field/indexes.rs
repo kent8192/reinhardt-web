@@ -3,6 +3,7 @@
 //! Tests index metadata generation, ensure_indexes, and unique enforcement
 //! via the Repository API.
 
+use crate::mongodb_fixtures::mongodb;
 use bson::{doc, oid::ObjectId};
 use reinhardt_db::nosql::document::Document;
 use reinhardt_db_macros::document;
@@ -134,6 +135,3 @@ async fn test_unique_enforcement_via_repository(
 		.await
 		.ok();
 }
-
-// Import mongodb fixture for tests that need it
-use crate::mongodb_fixtures::mongodb;
