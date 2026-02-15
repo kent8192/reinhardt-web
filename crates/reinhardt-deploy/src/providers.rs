@@ -1,5 +1,6 @@
 pub mod aws;
 pub mod docker;
+pub mod fly_io;
 pub mod gcp;
 pub mod traits;
 

@@ -129,8 +129,8 @@ impl DeployProvider for FlyIoProvider {
 		Vec::new()
 	}
 
-	fn generate_hcl(&self, _config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
-		Ok(HashMap::new())
+	fn generate_hcl(&self, config: &DeployConfig) -> DeployResult<HashMap<String, String>> {
+		super::fly_io::generate_fly_hcl(config)
 	}
 }
 
