@@ -67,24 +67,27 @@ jobs:
         with:
           tool: cargo-make
 
+      - name: Setup local development config
+        run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
+
       - name: Check Format
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo make fmt-check
 
       - name: Clippy
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo make clippy-check
 
       - name: Build
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo build --all-features
 
       - name: Test
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo nextest run --all-features
 
       - name: Doc Test
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo test --doc --all-features
 
   test-common-crates:
@@ -101,11 +104,11 @@ jobs:
         uses: ./.github/actions/setup-protoc
 
       - name: Test common
-        working-directory: examples/remote/common
+        working-directory: examples/common
         run: cargo test --all-features
 
       - name: Test test-macros
-        working-directory: examples/remote/test-macros
+        working-directory: examples/test-macros
         run: cargo test --all-features
 
   compatibility-report:

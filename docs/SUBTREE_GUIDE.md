@@ -18,14 +18,16 @@ The examples are maintained in a separate repository ([kent8192/reinhardt-exampl
 ```
 reinhardt-web/               # Main repository
 └── examples/                # ← Git subtree (points to reinhardt-examples)
-    ├── local/               # Development examples
-    ├── remote/              # Published version examples
+    ├── examples-*/          # Example projects
+    ├── common/              # Shared utilities
+    ├── test-macros/         # Test helper macros
     ├── scripts/             # Helper scripts
     └── ...
 
 reinhardt-examples/          # Independent repository
-├── local/                   # Development examples
-├── remote/                  # Published version examples
+├── examples-*/              # Example projects
+├── common/                  # Shared utilities
+├── test-macros/             # Test helper macros
 ├── scripts/                 # Helper scripts
 └── ...
 ```
