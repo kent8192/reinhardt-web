@@ -4,26 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Ident, ItemFn, LitStr, Token, parse::ParseStream, parse_macro_input};
-
-/// Arguments for the `example_test` attribute macro.
-///
-/// Parses `version = "..."` syntax.
-struct ExampleTestArgs {
-	version: LitStr,
-}
-
-impl syn::parse::Parse for ExampleTestArgs {
-	fn parse(input: ParseStream) -> syn::Result<Self> {
-		let ident: Ident = input.parse()?;
-		if ident != "version" {
-			return Err(syn::Error::new(ident.span(), "expected `version`"));
-		}
-		let _: Token![=] = input.parse()?;
-		let version: LitStr = input.parse()?;
-		Ok(Self { version })
-	}
-}
+use syn::{ItemFn, LitStr, parse_macro_input};
 
 /// Test macro using Cargo version specifiers
 ///
@@ -61,9 +42,8 @@ impl syn::parse::Parse for ExampleTestArgs {
 /// - `"*"` - Wildcard (latest)
 #[proc_macro_attribute]
 pub fn example_test(attr: TokenStream, item: TokenStream) -> TokenStream {
-	// Extract version specifier from named argument syntax: version = "..."
-	let args = parse_macro_input!(attr as ExampleTestArgs);
-	let version_spec = args.version.value();
+	// Extract version specifier
+	let version_spec = parse_macro_input!(attr as LitStr).value();
 	let test_fn = parse_macro_input!(item as ItemFn);
 
 	let fn_name = &test_fn.sig.ident;

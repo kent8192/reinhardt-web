@@ -9,6 +9,7 @@ publish = false
 # package="reinhardt-web" maps the crate name to the actual package name
 reinhardt = { workspace = true, features = [
     "full",
+    "client-router",
 ] }
 hyper = "1.8"
 serde = { version = "1.0.228", features = ["derive"] }
