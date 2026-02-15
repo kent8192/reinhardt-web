@@ -32,9 +32,14 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.100.0
+        uses: dtolnay/rust-toolchain@1.91.1
         with:
           components: rustfmt, clippy
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache Cargo Registry
         uses: actions/cache@v5
@@ -60,23 +65,23 @@ jobs:
           tool: cargo-nextest
 
       - name: Check Format
-        working-directory: local/${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
         run: cargo fmt --check
 
       - name: Clippy
-        working-directory: local/${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
         run: cargo clippy --all-features -- -D warnings
 
       - name: Build
-        working-directory: local/${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
         run: cargo build --all-features
 
       - name: Test
-        working-directory: local/${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
         run: cargo nextest run --all-features
 
       - name: Doc Test
-        working-directory: local/${{ matrix.example }}
+        working-directory: ${{ matrix.example }}
         run: cargo test --doc --all-features
 
   test-common-crates:
@@ -87,14 +92,14 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.100.0
+        uses: dtolnay/rust-toolchain@1.91.1
 
       - name: Test common
-        working-directory: remote/common
+        working-directory: common
         run: cargo test --all-features
 
       - name: Test test-macros
-        working-directory: remote/test-macros
+        working-directory: test-macros
         run: cargo test --all-features
 
   compatibility-report:

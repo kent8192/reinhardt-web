@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `examples-tutorial-rest`: REST API tutorial
   - `examples-github-issues`: GitHub issues integration example
   - `examples-twitter`: Twitter integration example
-- Shared common utilities (`remote/common`)
-- Shared test macros (`remote/test-macros`)
+- Shared common utilities (`common/`)
+- Shared test macros (`test-macros/`)
 - CI/CD workflows with matrix testing
 - Daily compatibility checks with main repository
 - Helper scripts for synchronization:
