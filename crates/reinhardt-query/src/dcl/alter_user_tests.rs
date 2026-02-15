@@ -140,7 +140,6 @@ fn test_alter_user_empty_name_validation() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in AlterUserStatement::validate()"]
 fn test_alter_user_whitespace_only_name() {
 	let stmt = AlterUserStatement::new().user("   ");
 
@@ -149,7 +148,6 @@ fn test_alter_user_whitespace_only_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of 'no changes' validation in AlterUserStatement::validate()"]
 fn test_alter_user_no_changes() {
 	let stmt = AlterUserStatement::new().user("test_user");
 
@@ -379,7 +377,6 @@ fn test_postgres_alter_user_with_attribute() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support and ALTER ROLE syntax in PostgreSQL backend"]
 fn test_postgres_alter_user_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = AlterUserStatement::new()
@@ -400,7 +397,6 @@ fn test_postgres_alter_user_with_password() {
 // ============================================================================
 
 #[rstest]
-#[ignore = "Requires implementation of user@host syntax in MySQL ALTER USER backend"]
 fn test_mysql_alter_user_with_option() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = AlterUserStatement::new()
@@ -409,13 +405,12 @@ fn test_mysql_alter_user_with_option() {
 
 	let (sql, values) = builder.build_alter_user(&stmt);
 
-	assert!(sql.contains(r#"ALTER USER 'test_user'@"#));
+	assert!(sql.contains("ALTER USER 'test_user'@'%'"));
 	assert!(sql.contains("ACCOUNT LOCK"));
 	assert!(values.is_empty());
 }
 
 #[rstest]
-#[ignore = "Requires implementation of DEFAULT ROLE clause in MySQL ALTER USER backend"]
 fn test_mysql_alter_user_with_default_role() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = AlterUserStatement::new()
@@ -424,13 +419,12 @@ fn test_mysql_alter_user_with_default_role() {
 
 	let (sql, values) = builder.build_alter_user(&stmt);
 
-	assert!(sql.contains(r#"ALTER USER 'test_user'@"#));
+	assert!(sql.contains("ALTER USER 'test_user'@'%'"));
 	assert!(sql.contains(r#"DEFAULT ROLE `app_role`"#));
 	assert!(values.is_empty());
 }
 
 #[rstest]
-#[ignore = "Requires implementation of proper user@host parsing and quoting in MySQL backend"]
 fn test_mysql_alter_user_at_host() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = AlterUserStatement::new()

@@ -168,7 +168,6 @@ fn test_empty_user_name_validation() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in CreateUserStatement::validate()"]
 fn test_whitespace_only_user_name() {
 	let stmt = CreateUserStatement::new().user("   ");
 
@@ -409,7 +408,6 @@ fn test_postgres_create_user_with_login() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support and CREATE ROLE syntax in PostgreSQL CREATE USER backend"]
 fn test_postgres_create_user_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = CreateUserStatement::new()
@@ -430,19 +428,17 @@ fn test_postgres_create_user_with_password() {
 // ============================================================================
 
 #[rstest]
-#[ignore = "Requires implementation of user@host syntax in MySQL CREATE USER backend"]
 fn test_mysql_create_user_basic() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = CreateUserStatement::new().user("test_user");
 
 	let (sql, values) = builder.build_create_user(&stmt);
 
-	assert_eq!(sql, r#"CREATE USER 'test_user'@"#);
+	assert_eq!(sql, "CREATE USER 'test_user'@'%'");
 	assert!(values.is_empty());
 }
 
 #[rstest]
-#[ignore = "Requires implementation of proper user@host parsing in MySQL CREATE USER backend"]
 fn test_mysql_create_user_at_host() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = CreateUserStatement::new().user("app_user@localhost");

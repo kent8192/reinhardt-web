@@ -121,7 +121,6 @@ fn test_empty_new_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in RenameUserStatement::validate()"]
 fn test_whitespace_only_old_name() {
 	let stmt = RenameUserStatement::new().rename("   ", "new_user@localhost");
 
@@ -130,7 +129,6 @@ fn test_whitespace_only_old_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in RenameUserStatement::validate()"]
 fn test_whitespace_only_new_name() {
 	let stmt = RenameUserStatement::new().rename("old_user@localhost", "   ");
 
@@ -249,7 +247,6 @@ fn test_postgres_panic_message() {
 // ============================================================================
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_single_user() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new().rename("old_user@localhost", "new_user@localhost");
@@ -264,7 +261,6 @@ fn test_mysql_rename_single_user() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_multiple_users() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new()
@@ -282,7 +278,6 @@ fn test_mysql_rename_multiple_users() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of user@host parsing in MySQL RENAME USER backend"]
 fn test_mysql_rename_with_ip_host() {
 	let builder = MySqlQueryBuilder::new();
 	let stmt = RenameUserStatement::new().rename("user@'192.168.1.1'", "new_user@'192.168.1.1'");
