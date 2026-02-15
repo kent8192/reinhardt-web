@@ -21,13 +21,6 @@ retries = 2
 filter = 'test(integration)'
 threads-required = 1
 
-# Database tests in examples must run serially due to global state
-# cargo-nextest runs tests in separate processes, so serial_test crate doesn't work
-# Instead, we force these tests to run one at a time via nextest configuration
-[[profile.default.overrides]]
-filter = 'binary(examples-database-integration) & test(test_)'
-threads-required = 1
-
 # Views tests must run serially to prevent connection pool exhaustion
 # Each test spawns independent PostgreSQL containers
 [[profile.default.overrides]]
