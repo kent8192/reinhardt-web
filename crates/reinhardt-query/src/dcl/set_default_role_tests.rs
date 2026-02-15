@@ -161,7 +161,6 @@ fn test_empty_users_list() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of empty user validation in SetDefaultRoleStatement::validate()"]
 fn test_empty_user_in_list() {
 	let stmt = SetDefaultRoleStatement::new()
 		.roles(DefaultRoleSpec::All)
@@ -172,7 +171,6 @@ fn test_empty_user_in_list() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in SetDefaultRoleStatement::validate()"]
 fn test_whitespace_only_user() {
 	let stmt = SetDefaultRoleStatement::new()
 		.roles(DefaultRoleSpec::All)

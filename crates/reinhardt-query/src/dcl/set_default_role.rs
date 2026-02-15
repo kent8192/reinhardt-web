@@ -34,6 +34,8 @@
 //!     .user("app_user@localhost");
 //! ```
 
+use super::validate_name;
+
 /// Default role specification for SET DEFAULT ROLE statement
 ///
 /// This enum specifies which roles should be set as default.
@@ -198,6 +200,9 @@ impl SetDefaultRoleStatement {
 		}
 		if self.user_names.is_empty() {
 			return Err("At least one user must be specified".to_string());
+		}
+		for user_name in &self.user_names {
+			validate_name(user_name, "User name")?;
 		}
 		if let Some(DefaultRoleSpec::RoleList(roles)) = &self.role_spec
 			&& roles.is_empty()

@@ -125,7 +125,6 @@ fn test_empty_role_name() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in SetRoleStatement::validate()"]
 fn test_whitespace_only_role_name() {
 	let stmt = SetRoleStatement::new().role(RoleTarget::Named("   ".to_string()));
 
@@ -142,7 +141,6 @@ fn test_empty_all_except_list() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of empty role validation in SetRoleStatement::validate()"]
 fn test_all_except_with_empty_role() {
 	let stmt = SetRoleStatement::new().role(RoleTarget::AllExcept(vec![
 		"role1".to_string(),
