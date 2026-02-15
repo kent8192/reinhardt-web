@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `examples-tutorial-rest`: REST API tutorial
   - `examples-github-issues`: GitHub issues integration example
   - `examples-twitter`: Twitter integration example
-- Shared common utilities (`remote/common`)
-- Shared test macros (`remote/test-macros`)
+- Shared common utilities (`common/`)
+- Shared test macros (`test-macros/`)
 - CI/CD workflows with matrix testing
 - Daily compatibility checks with main repository
 - Helper scripts for synchronization:
@@ -49,5 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - (None)
 
-[Unreleased]: https://github.com/kent8192/reinhardt-examples/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/kent8192/reinhardt-examples/releases/tag/v1.0.0
+[Unreleased]: https://github.com/kent8192/reinhardt-web/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/kent8192/reinhardt-web/releases/tag/v1.0.0

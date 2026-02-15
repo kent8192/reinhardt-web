@@ -215,35 +215,34 @@ description = "Run all integration tests (with Docker cleanup)"
 dependencies = ["docker-cleanup-force", "integration-test-only"]
 
 [tasks.local-examples-test]
-description = "Test local examples (now part of workspace)"
-command = "cargo"
-args = [
-  "nextest",
-  "run",
-  "-p", "examples-hello-world",
-  "-p", "examples-rest-api",
-  "-p", "examples-database-integration",
-  "-p", "examples-tutorial-basis",
-  "-p", "examples-tutorial-rest",
-  "-p", "examples-twitter",
-  "-p", "examples-github-issues",
-  "--verbose"
-]
-
-[tasks.local-examples-test-crate]
-description = "Test specific local example(s). Usage: cargo make local-examples-test-crate -- -p examples-hello-world -p examples-rest-api"
+description = "Test examples with local reinhardt"
 script = '''
 #!/bin/bash
+set -e
+cd examples
+cp .cargo/config.local.toml .cargo/config.toml
+cargo nextest run --workspace --verbose
+rm -f .cargo/config.toml
+'''
+
+[tasks.local-examples-test-crate]
+description = "Test specific local example(s). Usage: cargo make local-examples-test-crate -- -p examples-hello-world"
+script = '''
+#!/bin/bash
+set -e
 args="${CARGO_MAKE_TASK_ARGS#--}"
 args="${args//;/ }"
+cd examples
+cp .cargo/config.local.toml .cargo/config.toml
 cargo nextest run $args --verbose
+rm -f .cargo/config.toml
 '''
 
 [tasks.remote-examples-test]
-description = "Test remote examples (uses crates.io published versions)"
-cwd = "examples/remote"
+description = "Test example common crates (no reinhardt dependency)"
+cwd = "examples"
 command = "cargo"
-args = ["nextest", "run", "--workspace", "--verbose"]
+args = ["nextest", "run", "-p", "example-common", "-p", "example-test-macros", "--verbose"]
 
 [tasks.ui-test-only]
 description = "Run UI tests (trybuild) separately with serial execution without Docker cleanup"
@@ -419,27 +418,23 @@ fi
 # ============================================================================
 
 [tasks.local-examples-build]
-description = "Build local examples (now part of workspace)"
-command = "cargo"
-args = [
-  "build",
-  "-p", "examples-hello-world",
-  "-p", "examples-rest-api",
-  "-p", "examples-database-integration",
-  "-p", "examples-tutorial-basis",
-  "-p", "examples-tutorial-rest",
-  "-p", "examples-twitter",
-  "-p", "examples-github-issues",
-  "--release"
-]
+description = "Build examples with local reinhardt"
+script = '''
+#!/bin/bash
+set -e
+cd examples
+cp .cargo/config.local.toml .cargo/config.toml
+cargo build --workspace --release
+rm -f .cargo/config.toml
+'''
 
 [tasks.remote-examples-build]
 description = "Build remote examples individually (auto-detect examples-* directories)"
 script = '''
 #!/bin/bash
 
-# Change to examples/remote directory
-cd examples/remote
+# Change to examples directory
+cd examples
 
 EXIT_CODE=0
 
@@ -489,22 +484,19 @@ description = "Build all examples (local + remote)"
 dependencies = ["local-examples-build", "remote-examples-build"]
 
 [tasks.local-examples-clean]
-description = "Clean local examples build artifacts (now part of workspace clean)"
-command = "cargo"
-args = [
-  "clean",
-  "-p", "examples-hello-world",
-  "-p", "examples-rest-api",
-  "-p", "examples-database-integration",
-  "-p", "examples-tutorial-basis",
-  "-p", "examples-tutorial-rest",
-  "-p", "examples-twitter",
-  "-p", "examples-github-issues"
-]
+description = "Clean local examples build artifacts"
+script = '''
+#!/bin/bash
+set -e
+cd examples
+cp .cargo/config.local.toml .cargo/config.toml
+cargo clean
+rm -f .cargo/config.toml
+'''
 
 [tasks.remote-examples-clean]
 description = "Clean remote examples build artifacts"
-cwd = "examples/remote"
+cwd = "examples"
 command = "cargo"
 args = ["clean"]
 
