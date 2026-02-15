@@ -2342,6 +2342,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 	fn build_create_role(&self, stmt: &crate::dcl::CreateRoleStatement) -> (String, Values) {
 		use crate::dcl::RoleAttribute;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2383,23 +2384,23 @@ impl QueryBuilder for PostgresQueryBuilder {
 				RoleAttribute::Password(pwd) => {
 					writer.push("PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::EncryptedPassword(pwd) => {
 					writer.push("ENCRYPTED PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::UnencryptedPassword(pwd) => {
 					writer.push("UNENCRYPTED PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::ValidUntil(timestamp) => {
 					writer.push("VALID UNTIL");
@@ -2458,6 +2459,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 	fn build_alter_role(&self, stmt: &crate::dcl::AlterRoleStatement) -> (String, Values) {
 		use crate::dcl::RoleAttribute;
+		use crate::value::Value;
 
 		let mut writer = SqlWriter::new();
 
@@ -2510,23 +2512,23 @@ impl QueryBuilder for PostgresQueryBuilder {
 				RoleAttribute::Password(pwd) => {
 					writer.push("PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::EncryptedPassword(pwd) => {
 					writer.push("ENCRYPTED PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::UnencryptedPassword(pwd) => {
 					writer.push("UNENCRYPTED PASSWORD");
 					writer.push_space();
-					writer.push("'");
-					writer.push(pwd);
-					writer.push("'");
+					writer.push_value(Value::String(Some(Box::new(pwd.clone()))), |i| {
+						self.placeholder(i)
+					});
 				}
 				RoleAttribute::ValidUntil(timestamp) => {
 					writer.push("VALID UNTIL");
@@ -8751,6 +8753,7 @@ mod tests {
 	#[test]
 	fn test_create_role_with_login() {
 		use crate::dcl::{CreateRoleStatement, RoleAttribute};
+		use crate::value::Value;
 
 		let builder = PostgresQueryBuilder::new();
 		let stmt = CreateRoleStatement::new()
@@ -8759,11 +8762,12 @@ mod tests {
 			.attribute(RoleAttribute::Password("secret".to_string()));
 
 		let (sql, values) = builder.build_create_role(&stmt);
+		assert_eq!(sql, r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD $1"#);
+		assert_eq!(values.len(), 1);
 		assert_eq!(
-			sql,
-			r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD 'secret'"#
+			values[0],
+			Value::String(Some(Box::new("secret".to_string())))
 		);
-		assert!(values.is_empty());
 	}
 
 	#[test]
@@ -8873,6 +8877,7 @@ mod tests {
 	#[test]
 	fn test_create_user_with_password() {
 		use crate::dcl::{CreateUserStatement, RoleAttribute};
+		use crate::value::Value;
 
 		let builder = PostgresQueryBuilder::new();
 		let stmt = CreateUserStatement::new()
@@ -8880,11 +8885,12 @@ mod tests {
 			.attribute(RoleAttribute::Password("secret".to_string()));
 
 		let (sql, values) = builder.build_create_user(&stmt);
+		assert_eq!(sql, r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD $1"#);
+		assert_eq!(values.len(), 1);
 		assert_eq!(
-			sql,
-			r#"CREATE ROLE "app_user" WITH LOGIN PASSWORD 'secret'"#
+			values[0],
+			Value::String(Some(Box::new("secret".to_string())))
 		);
-		assert!(values.is_empty());
 	}
 
 	// DROP USER tests
@@ -8916,6 +8922,7 @@ mod tests {
 	#[test]
 	fn test_alter_user_basic() {
 		use crate::dcl::{AlterUserStatement, RoleAttribute};
+		use crate::value::Value;
 
 		let builder = PostgresQueryBuilder::new();
 		let stmt = AlterUserStatement::new()
@@ -8923,8 +8930,12 @@ mod tests {
 			.attribute(RoleAttribute::Password("new_secret".to_string()));
 
 		let (sql, values) = builder.build_alter_user(&stmt);
-		assert_eq!(sql, r#"ALTER ROLE "app_user" WITH PASSWORD 'new_secret'"#);
-		assert!(values.is_empty());
+		assert_eq!(sql, r#"ALTER ROLE "app_user" WITH PASSWORD $1"#);
+		assert_eq!(values.len(), 1);
+		assert_eq!(
+			values[0],
+			Value::String(Some(Box::new("new_secret".to_string())))
+		);
 	}
 
 	// RENAME USER panic test
