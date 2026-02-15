@@ -423,7 +423,6 @@ fn test_postgres_alter_role_with_attribute() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support in ALTER ROLE"]
 fn test_postgres_alter_role_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = AlterRoleStatement::new()

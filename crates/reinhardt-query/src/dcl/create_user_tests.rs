@@ -168,7 +168,6 @@ fn test_empty_user_name_validation() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of whitespace validation in CreateUserStatement::validate()"]
 fn test_whitespace_only_user_name() {
 	let stmt = CreateUserStatement::new().user("   ");
 
@@ -409,7 +408,6 @@ fn test_postgres_create_user_with_login() {
 }
 
 #[rstest]
-#[ignore = "Requires implementation of parameterized password support and CREATE ROLE syntax in PostgreSQL CREATE USER backend"]
 fn test_postgres_create_user_with_password() {
 	let builder = PostgresQueryBuilder::new();
 	let stmt = CreateUserStatement::new()

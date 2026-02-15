@@ -38,7 +38,7 @@ jobs:
     name: TODO Check
     uses: ./.github/workflows/todo-check.yml
 
-  # Phase 1: All tests run in parallel after lightweight checks
+  # All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
   unit-test:
@@ -71,11 +71,10 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
-  # Phase 2: Examples tests run last (requires 70-90GB, must run alone)
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
-    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, doc-test, ui-test]
+    needs: [check, fmt, clippy]
     secrets: inherit
 
   # All jobs must pass
