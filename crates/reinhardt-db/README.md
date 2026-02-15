@@ -392,7 +392,7 @@ async fn test_with_database(
 
 For comprehensive testing standards, see:
 - [Testing Standards](../../docs/TESTING_STANDARDS.md)
-- [Examples Database Integration](../../examples/local/examples-database-integration/README.md)
+- [Examples Database Integration](../../examples/examples-database-integration/README.md)
 
 ### Troubleshooting
 

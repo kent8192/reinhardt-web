@@ -16,16 +16,11 @@ else
 fi
 echo ""
 
-# Test local examples
-echo "=== Testing Local Examples ==="
-echo ""
-
-cd local || {
-	echo "❌ Error: local/ directory not found"
-	exit 1
-}
-
 FAILED_EXAMPLES=()
+
+# Test example projects
+echo "=== Testing Examples ==="
+echo ""
 
 for example in examples-*/; do
 	if [ ! -d "$example" ]; then
@@ -38,7 +33,6 @@ for example in examples-*/; do
 	cd "$example" || {
 		echo "❌ Error: Cannot enter ${example_name} directory"
 		FAILED_EXAMPLES+=("$example_name")
-		cd ..
 		continue
 	}
 
@@ -54,26 +48,17 @@ for example in examples-*/; do
 	echo ""
 done
 
-cd .. || exit 1
-
-# Test remote common crates
-echo "=== Testing Remote Common Crates ==="
+# Test common crates
+echo "=== Testing Common Crates ==="
 echo ""
 
-cd remote || {
-	echo "❌ Error: remote/ directory not found"
-	exit 1
-}
-
-echo "📦 Testing remote workspace..."
-if cargo test --workspace --all-features; then
-	echo "✅ Remote common crates tests passed"
+echo "📦 Testing common crates..."
+if cargo test -p example-common -p example-test-macros --all-features; then
+	echo "✅ Common crates tests passed"
 else
-	echo "❌ Remote common crates tests failed"
-	FAILED_EXAMPLES+=("remote/common")
+	echo "❌ Common crates tests failed"
+	FAILED_EXAMPLES+=("common-crates")
 fi
-
-cd .. || exit 1
 echo ""
 
 # Summary
