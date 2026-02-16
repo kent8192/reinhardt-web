@@ -14,6 +14,7 @@ skip_core_tasks = true
 
 [tasks.runserver]
 description = "Start the development server"
+dependencies = ["docker-up"]
 command = "cargo"
 args = ["run", "runserver"]
 

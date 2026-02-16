@@ -22,6 +22,7 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 
 [tasks.runserver]
 description = "Start the development server"
+dependencies = ["docker-up"]
 command = "cargo"
 args = ["run", "runserver"]
 
