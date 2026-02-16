@@ -21,9 +21,40 @@ pub fn get_settings() -> Settings {
 		.profile(profile)
 		.add_source(
 			DefaultSource::new()
+				.with_value(
+					"base_dir",
+					json::Value::String(base_dir.to_string_lossy().to_string()),
+				)
+				.with_value(
+					"secret_key",
+					json::Value::String("test-secret-key-for-development-only".to_string()),
+				)
 				.with_value("debug", json::Value::Bool(true))
+				.with_value("allowed_hosts", json::Value::Array(vec![]))
+				.with_value("installed_apps", json::Value::Array(vec![]))
+				.with_value("middleware", json::Value::Array(vec![]))
+				.with_value("root_urlconf", json::Value::String(String::new()))
+				.with_value("databases", json::Value::Object(json::Map::new()))
+				.with_value("templates", json::Value::Array(vec![]))
+				.with_value("static_url", json::Value::String("/static/".to_string()))
+				.with_value("staticfiles_dirs", json::Value::Array(vec![]))
+				.with_value("media_url", json::Value::String("/media/".to_string()))
 				.with_value("language_code", json::Value::String("en-us".to_string()))
-				.with_value("time_zone", json::Value::String("UTC".to_string())),
+				.with_value("time_zone", json::Value::String("UTC".to_string()))
+				.with_value("use_i18n", json::Value::Bool(true))
+				.with_value("use_tz", json::Value::Bool(true))
+				.with_value(
+					"default_auto_field",
+					json::Value::String("BigAutoField".to_string()),
+				)
+				.with_value("secure_ssl_redirect", json::Value::Bool(false))
+				.with_value("secure_hsts_include_subdomains", json::Value::Bool(false))
+				.with_value("secure_hsts_preload", json::Value::Bool(false))
+				.with_value("session_cookie_secure", json::Value::Bool(false))
+				.with_value("csrf_cookie_secure", json::Value::Bool(false))
+				.with_value("append_slash", json::Value::Bool(true))
+				.with_value("admins", json::Value::Array(vec![]))
+				.with_value("managers", json::Value::Array(vec![])),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
