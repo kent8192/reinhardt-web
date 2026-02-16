@@ -26,13 +26,6 @@ cargo run
 | `examples-github-issues` | GitHub Issues clone | GraphQL, JWT Auth |
 | `examples-twitter` | Full Twitter-like application | Full-stack, WebSockets, Auth, WASM |
 
-## Shared Crates
-
-| Crate | Description |
-|-------|-------------|
-| `common` | Shared test utilities and version checking |
-| `test-macros` | Procedural macros for conditional testing |
-
 ## Dependency Management
 
 By default, examples use **crates.io published versions** of Reinhardt.
@@ -69,20 +62,10 @@ cargo make local-examples-test
 ## Testing
 
 ```bash
-# Test all examples
-./scripts/test-all.sh
-
 # Test a specific example
 cd examples-hello-world && cargo nextest run --all-features
-
-# Test common crates only
-cargo test -p example-common -p example-test-macros
 ```
 
 ## License
 
-Licensed under either of:
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
+See the [main repository license](../LICENSE.md).
