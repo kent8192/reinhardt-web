@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.15...reinhardt-test@v0.1.0-alpha.16) - 2026-02-16
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.14...reinhardt-test@v0.1.0-alpha.15) - 2026-02-15
 
 ### Maintenance
