@@ -89,32 +89,11 @@ jobs:
         working-directory: examples/${{ matrix.example }}
         run: cargo test --doc --all-features
 
-  test-common-crates:
-    name: Test Common Crates
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.91.1
-
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
-
-      - name: Test common
-        working-directory: examples/common
-        run: cargo test --all-features
-
-      - name: Test test-macros
-        working-directory: examples/test-macros
-        run: cargo test --all-features
-
   compatibility-report:
     name: Compatibility Report
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
-    needs: [test-local-examples, test-common-crates]
+    needs: [test-local-examples]
     steps:
       - name: Report Success
         run: echo "✅ All examples compatible"

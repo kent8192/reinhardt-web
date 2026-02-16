@@ -4,13 +4,40 @@ Example applications demonstrating [Reinhardt](https://github.com/kent8192/reinh
 
 ## Quick Start
 
+### One Command Run
+
 ```bash
-# Clone the main repository
+git clone https://github.com/kent8192/reinhardt-web.git && cd reinhardt-web/examples/examples-hello-world && cargo run
+```
+
+### Step by Step
+
+```bash
+# 1. Clone the repository
 git clone https://github.com/kent8192/reinhardt-web.git
 cd reinhardt-web/examples
 
-# Run an example
+# 2. Choose an example
 cd examples-hello-world
+
+# 3. Run it
+cargo run
+```
+
+### Examples with PostgreSQL
+
+For examples that require PostgreSQL (database-integration, github-issues, twitter):
+
+```bash
+cd reinhardt-web/examples/examples-database-integration
+
+# Start PostgreSQL
+docker compose up -d
+
+# Copy local settings template
+cp settings/local.example.toml settings/local.toml
+
+# Run the example
 cargo run
 ```
 
@@ -25,13 +52,6 @@ cargo run
 | `examples-tutorial-rest` | REST API tutorial (snippets) | REST, Viewsets, Database |
 | `examples-github-issues` | GitHub Issues clone | GraphQL, JWT Auth |
 | `examples-twitter` | Full Twitter-like application | Full-stack, WebSockets, Auth, WASM |
-
-## Shared Crates
-
-| Crate | Description |
-|-------|-------------|
-| `common` | Shared test utilities and version checking |
-| `test-macros` | Procedural macros for conditional testing |
 
 ## Dependency Management
 
@@ -69,20 +89,10 @@ cargo make local-examples-test
 ## Testing
 
 ```bash
-# Test all examples
-./scripts/test-all.sh
-
 # Test a specific example
 cd examples-hello-world && cargo nextest run --all-features
-
-# Test common crates only
-cargo test -p example-common -p example-test-macros
 ```
 
 ## License
 
-Licensed under either of:
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
+See the [main repository license](../LICENSE.md).
