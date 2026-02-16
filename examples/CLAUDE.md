@@ -19,8 +19,6 @@ examples/
 ├── examples-tutorial-rest/
 ├── examples-github-issues/
 ├── examples-twitter/
-├── common/              # Shared test utilities
-├── test-macros/         # Procedural macros for conditional testing
 ├── .cargo/
 │   └── config.local.toml  # Template for local development
 ├── Cargo.toml           # Workspace configuration
@@ -30,21 +28,6 @@ examples/
 ### Example Projects
 
 Each `examples-*` directory is an independent Cargo project demonstrating specific Reinhardt features. By default, examples use published crates.io versions of Reinhardt.
-
-### Shared Utilities
-
-**Location**: `examples/common/` and `examples/test-macros/`
-
-**Shared Components**:
-- `example-common`: Common test utilities and helpers
-- `example-test-macros`: Test macros (`#[example_test]` for version-specific tests)
-
-**Usage in Examples**:
-```toml
-[dev-dependencies]
-example-test-macros = { workspace = true }
-example-common = { workspace = true }
-```
 
 ---
 
@@ -98,7 +81,6 @@ serde = { workspace = true }
 [dev-dependencies]
 # ✅ External test crates are fine
 rstest = "0.23"
-example-test-macros = { workspace = true }
 ```
 
 #### ❌ INCORRECT Pattern
@@ -297,14 +279,12 @@ use reinhardt_http::Response;  // ❌ Wrong crate!
 
 ### TS-1 (MUST): Test Dependencies
 
-**External test crates and shared utilities** can be used in `[dev-dependencies]`:
+**External test crates** can be used in `[dev-dependencies]`:
 
 ```toml
 [dev-dependencies]
 rstest = "0.23"
 tokio = { workspace = true, features = ["rt", "macros"] }
-example-test-macros = { workspace = true }
-example-common = { workspace = true }
 ```
 
 ### TS-2 (MUST): Test Imports

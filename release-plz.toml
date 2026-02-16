@@ -62,41 +62,6 @@ release = false
 publish = false
 
 [[package]]
-name = "examples-hello-world"
-release = false
-publish = false
-
-[[package]]
-name = "examples-rest-api"
-release = false
-publish = false
-
-[[package]]
-name = "examples-database-integration"
-release = false
-publish = false
-
-[[package]]
-name = "examples-tutorial-basis"
-release = false
-publish = false
-
-[[package]]
-name = "examples-tutorial-rest"
-release = false
-publish = false
-
-[[package]]
-name = "examples-twitter"
-release = false
-publish = false
-
-[[package]]
-name = "examples-github-issues"
-release = false
-publish = false
-
-[[package]]
 name = "reinhardt-settings-cli"
 release = false
 publish = false

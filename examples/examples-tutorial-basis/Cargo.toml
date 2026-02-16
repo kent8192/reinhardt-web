@@ -55,14 +55,11 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11.0", features = ["serde", "v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
 reinhardt-query = { workspace = true }
-example-common = { workspace = true }
 ctor = "0.6.1"
 inventory = "0.3"
 linkme = "0.3"
 
 [dev-dependencies]
-example-test-macros = { workspace = true }
-example-common = { workspace = true }
 reinhardt = { workspace = true, features = [
     "test",
 ] }
@@ -77,7 +74,6 @@ tempfile = "3.15"
 wasm-bindgen-test = "0.3.56"
 
 [build-dependencies]
-example-common = { workspace = true }
 cfg_aliases = "0.2"
 
 [features]

@@ -239,10 +239,20 @@ rm -f .cargo/config.toml
 '''
 
 [tasks.remote-examples-test]
-description = "Test example common crates (no reinhardt dependency)"
-cwd = "examples"
-command = "cargo"
-args = ["nextest", "run", "-p", "example-common", "-p", "example-test-macros", "--verbose"]
+description = "Test examples with published crates.io versions"
+script = '''
+#!/bin/bash
+set -e
+cd examples
+EXIT_CODE=0
+for example_dir in examples-*; do
+  if [ -d "$example_dir" ]; then
+    echo "Testing $example_dir..."
+    (cd "$example_dir" && cargo nextest run --all-features) || EXIT_CODE=1
+  fi
+done
+exit $EXIT_CODE
+'''
 
 [tasks.ui-test-only]
 description = "Run UI tests (trybuild) separately with serial execution without Docker cleanup"
