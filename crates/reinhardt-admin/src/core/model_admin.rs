@@ -14,7 +14,8 @@ pub trait ModelAdmin: Send + Sync {
 
 	/// Get the database table name
 	///
-	/// By default, returns the model name in lowercase.
+	/// By default, returns an empty string as a placeholder.
+	/// Implementors should override this to return the actual table name.
 	fn table_name(&self) -> &str {
 		// Default implementation returns empty string
 		// Override in implementations to return actual table name
