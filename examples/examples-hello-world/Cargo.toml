@@ -34,6 +34,3 @@ with-reinhardt = []
 name = "integration"
 required-features = ["with-reinhardt"]
 
-[[test]]
-name = "availability"
-required-features = ["with-reinhardt"]
