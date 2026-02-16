@@ -29,12 +29,12 @@ cargo run
 For examples that require PostgreSQL (database-integration, github-issues, twitter):
 
 ```bash
+cd reinhardt-web/examples/examples-database-integration
+
 # Start PostgreSQL
-cd reinhardt-web/examples
 docker compose up -d
 
 # Copy local settings template
-cd examples-database-integration
 cp settings/local.example.toml settings/local.toml
 
 # Run the example
