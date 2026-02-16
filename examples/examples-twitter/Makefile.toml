@@ -31,6 +31,20 @@ command = "bacon"
 args = ["runserver"]
 
 # ============================================================================
+# Docker Services
+# ============================================================================
+
+[tasks.docker-up]
+description = "Start development services (PostgreSQL)"
+command = "docker"
+args = ["compose", "-f", "../docker-compose.yml", "up", "-d"]
+
+[tasks.docker-down]
+description = "Stop development services"
+command = "docker"
+args = ["compose", "-f", "../docker-compose.yml", "down"]
+
+# ============================================================================
 # Database Migrations
 # ============================================================================
 
