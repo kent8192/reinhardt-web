@@ -1,8 +1,7 @@
-use reinhardt::Settings;
-use reinhardt::conf::settings::builder::SettingsBuilder;
-use reinhardt::conf::settings::profile::Profile;
-use reinhardt::conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use reinhardt::core::serde::json;
+use reinhardt::{
+	DefaultSource, LowPriorityEnvSource, Profile, Settings, SettingsBuilder, TomlFileSource,
+};
 use std::env;
 
 pub fn get_settings() -> Settings {
