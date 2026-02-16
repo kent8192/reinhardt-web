@@ -25,6 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup main branch for release-plz
+        run: |
+          git checkout -B main origin/main
+          git branch --set-upstream-to=origin/main main
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
