@@ -34,13 +34,6 @@ fn test_load_custom_settings() {
 	assert!(settings.debug); // Still defaults to true
 }
 
-#[test]
-fn test_settings_with_root_urlconf() {
-	let settings = Settings::default().with_root_urlconf("myproject.urls");
-
-	assert_eq!(settings.root_urlconf, "myproject.urls");
-}
-
 // ============================================================================
 // Settings Modification Tests
 // ============================================================================
@@ -174,7 +167,6 @@ fn test_settings_deserialization() {
         "allowed_hosts": ["example.com"],
         "installed_apps": ["app1", "app2"],
         "middleware": ["middleware1"],
-        "root_urlconf": "urls",
         "databases": {},
         "templates": [],
         "static_url": "/static/",

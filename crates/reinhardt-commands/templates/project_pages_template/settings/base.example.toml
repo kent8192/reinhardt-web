@@ -39,9 +39,6 @@ middleware = [
     "reinhardt.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# URL configuration
-root_urlconf = "config.urls"
-
 # Database configuration
 [database]
 engine = "postgresql"

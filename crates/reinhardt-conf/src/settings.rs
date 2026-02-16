@@ -110,9 +110,6 @@ pub struct Settings {
 	/// List of middleware classes
 	pub middleware: Vec<String>,
 
-	/// Root URL configuration module
-	pub root_urlconf: String,
-
 	/// Database configurations
 	pub databases: HashMap<String, DatabaseConfig>,
 
@@ -227,7 +224,6 @@ impl Settings {
 				"reinhardt.contrib.messages.middleware.MessageMiddleware".to_string(),
 				"reinhardt.middleware.clickjacking.XFrameOptionsMiddleware".to_string(),
 			],
-			root_urlconf: String::new(),
 			databases: {
 				let mut dbs = HashMap::new();
 				dbs.insert("default".to_string(), DatabaseConfig::default());
@@ -255,25 +251,6 @@ impl Settings {
 			admins: vec![],
 			managers: vec![],
 		}
-	}
-	/// Set the root URL configuration
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::settings::Settings;
-	/// use std::path::PathBuf;
-	///
-	/// let settings = Settings::new(
-	///     PathBuf::from("/app"),
-	///     "secret".to_string()
-	/// ).with_root_urlconf("myapp.urls");
-	///
-	/// assert_eq!(settings.root_urlconf, "myapp.urls");
-	/// ```
-	pub fn with_root_urlconf(mut self, root_urlconf: impl Into<String>) -> Self {
-		self.root_urlconf = root_urlconf.into();
-		self
 	}
 	/// Add an installed app
 	///
