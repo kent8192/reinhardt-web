@@ -4,13 +4,40 @@ Example applications demonstrating [Reinhardt](https://github.com/kent8192/reinh
 
 ## Quick Start
 
+### One Command Run
+
 ```bash
-# Clone the main repository
+git clone https://github.com/kent8192/reinhardt-web.git && cd reinhardt-web/examples/examples-hello-world && cargo run
+```
+
+### Step by Step
+
+```bash
+# 1. Clone the repository
 git clone https://github.com/kent8192/reinhardt-web.git
 cd reinhardt-web/examples
 
-# Run an example
+# 2. Choose an example
 cd examples-hello-world
+
+# 3. Run it
+cargo run
+```
+
+### Examples with PostgreSQL
+
+For examples that require PostgreSQL (database-integration, github-issues, twitter):
+
+```bash
+# Start PostgreSQL
+cd reinhardt-web/examples
+docker compose up -d
+
+# Copy local settings template
+cd examples-database-integration
+cp settings/local.example.toml settings/local.toml
+
+# Run the example
 cargo run
 ```
 
