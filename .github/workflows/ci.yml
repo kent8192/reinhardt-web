@@ -82,6 +82,12 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
+  coverage:
+    name: Coverage
+    uses: ./.github/workflows/coverage.yml
+    needs: [check, fmt, clippy]
+    secrets: inherit
+
   # All jobs must pass
   ci-success:
     name: CI Success
