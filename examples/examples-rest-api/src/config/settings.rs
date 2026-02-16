@@ -19,7 +19,13 @@ use std::env;
 /// 3. Environment variables with `REINHARDT_` prefix
 /// 4. Default values
 pub fn get_settings() -> Settings {
-	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
+	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| {
+		if env::var("CI").is_ok() {
+			"ci".to_string()
+		} else {
+			"local".to_string()
+		}
+	});
 	let profile = Profile::parse(&profile_str);
 
 	// Get the project root directory
