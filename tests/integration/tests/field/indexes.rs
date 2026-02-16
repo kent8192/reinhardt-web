@@ -8,7 +8,7 @@ use bson::{doc, oid::ObjectId};
 use futures::stream::TryStreamExt;
 use reinhardt_db::nosql::document::Document;
 use reinhardt_db_macros::document;
-use rstest::*;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 /// Test document with indexes

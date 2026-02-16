@@ -6,7 +6,7 @@ use crate::mongodb_fixtures::mongodb;
 use bson::doc;
 use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 use reinhardt_db::nosql::traits::{DocumentBackend, NoSQLBackend};
-use rstest::*;
+use rstest::rstest;
 use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test MongoDB connection

@@ -7,7 +7,7 @@ use bson::oid::ObjectId;
 use reinhardt_db::nosql::document::Document;
 use reinhardt_db::nosql::error::{OdmError, ValidationError};
 use reinhardt_db_macros::document;
-use rstest::*;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 /// Test document with validation constraints

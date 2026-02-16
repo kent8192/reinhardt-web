@@ -4,7 +4,7 @@
 
 use reinhardt_db::nosql::backends::mongodb::MongoDBBackend;
 use reinhardt_test::fixtures::mongodb_container;
-use rstest::*;
+use rstest::fixture;
 use testcontainers::{ContainerAsync, GenericImage};
 
 /// MongoDB backend fixture

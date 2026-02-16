@@ -10,7 +10,7 @@ use reinhardt_db::nosql::error::OdmError;
 use reinhardt_db::nosql::types::FindOptions;
 use reinhardt_db::nosql::Repository;
 use reinhardt_db_macros::document;
-use rstest::*;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use testcontainers::{ContainerAsync, GenericImage};
 
