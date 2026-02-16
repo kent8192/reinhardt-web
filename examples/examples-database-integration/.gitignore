@@ -1,6 +1,5 @@
-# Settings files (only *.example.toml should be committed)
-settings/*.toml
-!settings/*.example.toml
+# Settings files (local.toml contains user-specific settings)
+settings/local.toml
 
 # Environment files
 .env
