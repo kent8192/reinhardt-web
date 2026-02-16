@@ -453,7 +453,17 @@ fn gen_validate(field_infos: &[FieldInfo]) -> TokenStream2 {
 				}
 				custom_fn => {
 					// Custom validation function
-					let fn_path: syn::Path = syn::parse_str(custom_fn).unwrap();
+					let fn_path: syn::Path = match syn::parse_str(custom_fn) {
+						Ok(path) => path,
+						Err(_) => {
+							let msg = format!("invalid validation function path: '{}'", custom_fn);
+							return quote! {
+								fn validate(&self) -> reinhardt_db::nosql::error::OdmResult<()> {
+									compile_error!(#msg);
+								}
+							};
+						}
+					};
 					checks.push(quote! {
 						if let Err(e) = #fn_path(&self.#field_ident) {
 							return Err(reinhardt_db::nosql::error::OdmError::Validation(
@@ -479,11 +489,18 @@ fn gen_validate(field_infos: &[FieldInfo]) -> TokenStream2 {
 }
 
 /// Convert a `syn::Lit` to `i64`.
+///
+/// Panics with a descriptive message for non-numeric literals,
+/// which produces a compile-time error in proc macro context.
 fn lit_to_i64(lit: &Lit) -> i64 {
 	match lit {
-		Lit::Int(i) => i.base10_parse::<i64>().unwrap_or(0),
-		Lit::Float(f) => f.base10_parse::<f64>().unwrap_or(0.0) as i64,
-		_ => 0,
+		Lit::Int(i) => i
+			.base10_parse::<i64>()
+			.expect("min/max attribute: failed to parse integer literal"),
+		Lit::Float(f) => f
+			.base10_parse::<f64>()
+			.expect("min/max attribute: failed to parse float literal") as i64,
+		_ => panic!("min/max attributes require numeric literals (integer or float)"),
 	}
 }
 
