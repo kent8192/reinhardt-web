@@ -22,8 +22,23 @@ CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = ["CARGO_TARGE
 
 [tasks.runserver]
 description = "Start the development server"
+dependencies = ["docker-up"]
 command = "cargo"
 args = ["run", "--bin", "examples-database-integration", "runserver"]
+
+# ============================================================================
+# Docker Services
+# ============================================================================
+
+[tasks.docker-up]
+description = "Start development services (PostgreSQL)"
+command = "docker"
+args = ["compose", "up", "-d"]
+
+[tasks.docker-down]
+description = "Stop development services"
+command = "docker"
+args = ["compose", "down"]
 
 # ============================================================================
 # Database Migrations
@@ -141,43 +156,4 @@ description = "Clean API test reports"
 script = '''
 #!/bin/bash
 rm -f postman/reports/*.xml postman/reports/*.html
-'''
-
-# ============================================================================
-# Help
-# ============================================================================
-
-[tasks.help]
-description = "Show available tasks"
-script = '''
-echo "Available tasks:"
-echo "  Development:"
-echo "    runserver          - Start the development server"
-echo ""
-echo "  Database:"
-echo "    makemigrations     - Create new migrations"
-echo "    migrate            - Apply migrations"
-echo ""
-echo "  Testing:"
-echo "    test               - Run all tests"
-echo "    test-unit          - Run unit tests"
-echo "    test-integration   - Run integration tests"
-echo ""
-echo "  Code Quality:"
-echo "    fmt-check          - Check formatting (rustfmt + page! DSL)"
-echo "    fmt-fix            - Fix formatting (rustfmt + page! DSL)"
-echo "    clippy-check       - Check linting"
-echo "    clippy-fix         - Fix linting issues"
-echo "    quality            - Run all checks"
-echo "    quality-fix        - Fix all issues"
-echo ""
-echo "  Build:"
-echo "    build              - Build (debug)"
-echo "    build-release      - Build (release)"
-echo "    clean              - Clean artifacts"
-echo ""
-echo "  CI/CD:"
-echo "    ci                 - Run CI pipeline"
-echo ""
-echo "Usage: cargo make <task>"
 '''
