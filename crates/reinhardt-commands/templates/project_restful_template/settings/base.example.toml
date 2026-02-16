@@ -31,14 +31,6 @@ installed_apps = [
     "reinhardt.contrib.static",
 ]
 
-# Middleware
-middleware = [
-    "reinhardt.middleware.security.SecurityMiddleware",
-    "reinhardt.middleware.common.CommonMiddleware",
-    "reinhardt.middleware.csrf.CsrfViewMiddleware",
-    "reinhardt.middleware.clickjacking.XFrameOptionsMiddleware",
-]
-
 # Database configuration
 [database]
 engine = "postgresql"

@@ -50,19 +50,6 @@ fn test_add_installed_app() {
 }
 
 #[test]
-fn test_add_middleware() {
-	let mut settings = Settings::default();
-
-	let initial_count = settings.middleware.len();
-	settings.add_middleware("myapp.middleware.CustomMiddleware");
-
-	assert_eq!(settings.middleware.len(), initial_count + 1);
-	assert!(settings
-		.middleware
-		.contains(&"myapp.middleware.CustomMiddleware".to_string()));
-}
-
-#[test]
 fn test_modify_security_settings() {
 	let settings = Settings {
 		debug: false,
@@ -166,7 +153,6 @@ fn test_settings_deserialization() {
         "debug": false,
         "allowed_hosts": ["example.com"],
         "installed_apps": ["app1", "app2"],
-        "middleware": ["middleware1"],
         "databases": {},
         "templates": [],
         "static_url": "/static/",
@@ -227,7 +213,6 @@ fn test_required_settings_present() {
 	// Verify required fields are present
 	assert!(!settings.secret_key.is_empty());
 	assert!(!settings.installed_apps.is_empty());
-	assert!(!settings.middleware.is_empty());
 	assert!(!settings.databases.is_empty());
 }
 

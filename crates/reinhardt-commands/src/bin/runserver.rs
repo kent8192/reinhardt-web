@@ -171,7 +171,6 @@ fn load_settings() -> Settings {
 				)
 				.with_value("allowed_hosts", serde_json::json!([]))
 				.with_value("installed_apps", serde_json::json!([]))
-				.with_value("middleware", serde_json::json!([]))
 				.with_value("databases", serde_json::json!({}))
 				.with_value("templates", serde_json::json!([]))
 				// Static/Media files

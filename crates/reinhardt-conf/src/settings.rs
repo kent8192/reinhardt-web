@@ -107,9 +107,6 @@ pub struct Settings {
 	/// List of installed applications
 	pub installed_apps: Vec<String>,
 
-	/// List of middleware classes
-	pub middleware: Vec<String>,
-
 	/// Database configurations
 	pub databases: HashMap<String, DatabaseConfig>,
 
@@ -215,15 +212,6 @@ impl Settings {
 				"reinhardt.contrib.messages".to_string(),
 				"reinhardt.contrib.staticfiles".to_string(),
 			],
-			middleware: vec![
-				"reinhardt.middleware.security.SecurityMiddleware".to_string(),
-				"reinhardt.contrib.sessions.middleware.SessionMiddleware".to_string(),
-				"reinhardt.middleware.common.CommonMiddleware".to_string(),
-				"reinhardt.middleware.csrf.CsrfViewMiddleware".to_string(),
-				"reinhardt.contrib.auth.middleware.AuthenticationMiddleware".to_string(),
-				"reinhardt.contrib.messages.middleware.MessageMiddleware".to_string(),
-				"reinhardt.middleware.clickjacking.XFrameOptionsMiddleware".to_string(),
-			],
 			databases: {
 				let mut dbs = HashMap::new();
 				dbs.insert("default".to_string(), DatabaseConfig::default());
@@ -295,24 +283,6 @@ impl Settings {
 		self.installed_apps = app_provider();
 		self
 	}
-	/// Add middleware
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::settings::Settings;
-	///
-	/// let mut settings = Settings::default();
-	/// let initial_count = settings.middleware.len();
-	/// settings.add_middleware("myapp.middleware.CustomMiddleware");
-	///
-	/// assert_eq!(settings.middleware.len(), initial_count + 1);
-	/// assert!(settings.middleware.contains(&"myapp.middleware.CustomMiddleware".to_string()));
-	/// ```
-	pub fn add_middleware(&mut self, middleware: impl Into<String>) {
-		self.middleware.push(middleware.into());
-	}
-
 	/// Add an administrator
 	///
 	/// # Examples
