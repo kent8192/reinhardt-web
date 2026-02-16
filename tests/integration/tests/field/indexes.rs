@@ -5,6 +5,7 @@
 
 use crate::mongodb_fixtures::mongodb;
 use bson::{doc, oid::ObjectId};
+use futures::stream::TryStreamExt;
 use reinhardt_db::nosql::document::Document;
 use reinhardt_db_macros::document;
 use rstest::*;
@@ -59,8 +60,6 @@ async fn test_ensure_indexes(
 		reinhardt_db::nosql::backends::mongodb::MongoDBBackend,
 	),
 ) {
-	use futures::stream::TryStreamExt;
-
 	// Arrange
 	let (_container, db) = mongodb.await;
 	let repo = reinhardt_db::nosql::Repository::<IndexTest>::new(db);
