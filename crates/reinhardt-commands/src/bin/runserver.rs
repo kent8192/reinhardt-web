@@ -171,8 +171,6 @@ fn load_settings() -> Settings {
 				)
 				.with_value("allowed_hosts", serde_json::json!([]))
 				.with_value("installed_apps", serde_json::json!([]))
-				.with_value("middleware", serde_json::json!([]))
-				.with_value("root_urlconf", serde_json::json!("config.urls"))
 				.with_value("databases", serde_json::json!({}))
 				.with_value("templates", serde_json::json!([]))
 				// Static/Media files
@@ -180,7 +178,6 @@ fn load_settings() -> Settings {
 				.with_value("static_root", serde_json::json!(null))
 				.with_value("staticfiles_dirs", serde_json::json!([]))
 				.with_value("media_url", serde_json::json!("/media/"))
-				.with_value("media_root", serde_json::json!(null))
 				// Internationalization
 				.with_value("language_code", serde_json::json!("en-us"))
 				.with_value("time_zone", serde_json::json!("UTC"))
