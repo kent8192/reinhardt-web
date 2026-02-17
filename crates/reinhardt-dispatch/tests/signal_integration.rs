@@ -14,6 +14,7 @@ use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::prelude::Router;
 use reinhardt_urls::routers::{DefaultRouter, Route};
+use rstest::rstest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -27,6 +28,7 @@ impl Handler for TestHandler {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_request_started_signal_emitted() {
 	// Setup signal counter
@@ -66,6 +68,7 @@ async fn test_request_started_signal_emitted() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_request_finished_signal_emitted() {
 	// Setup signal counter
@@ -105,6 +108,7 @@ async fn test_request_finished_signal_emitted() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_both_signals_emitted_in_order() {
 	// Setup signal counters
@@ -159,6 +163,7 @@ async fn test_both_signals_emitted_in_order() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_signals_emitted_for_multiple_requests() {
 	// Setup signal counter
@@ -200,6 +205,7 @@ async fn test_signals_emitted_for_multiple_requests() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_signal_listener_can_access_event_data() {
 	// Setup flag to verify event data access
@@ -241,6 +247,7 @@ async fn test_signal_listener_can_access_event_data() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_signals_still_emit_on_404() {
 	// Setup signal counters

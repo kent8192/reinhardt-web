@@ -13,6 +13,7 @@ use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::prelude::Router;
 use reinhardt_urls::routers::{DefaultRouter, Route};
+use rstest::rstest;
 use std::sync::Arc;
 
 /// Simple test handler that returns OK
@@ -53,6 +54,7 @@ impl Handler for TestHandlerJson {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_routes_to_correct_view() {
 	// Setup router with test routes
@@ -81,6 +83,7 @@ async fn test_handler_routes_to_correct_view() {
 	assert_eq!(&response.body, &Bytes::from("OK"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_returns_404_for_unknown_route() {
 	// Setup router with no routes
@@ -106,6 +109,7 @@ async fn test_handler_returns_404_for_unknown_route() {
 	assert_eq!(response.status, StatusCode::NOT_FOUND);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_returns_500_for_view_error() {
 	// Setup router with error-producing handler
@@ -134,6 +138,7 @@ async fn test_handler_returns_500_for_view_error() {
 	assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_routes_multiple_paths() {
 	// Setup router with multiple routes

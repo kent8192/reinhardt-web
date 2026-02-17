@@ -14,6 +14,7 @@ use reinhardt_http::{Request, Response};
 use reinhardt_middleware::Middleware;
 use reinhardt_urls::prelude::Router;
 use reinhardt_urls::routers::{DefaultRouter, Route};
+use rstest::rstest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -106,6 +107,7 @@ impl Middleware for ErrorMiddleware {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_single_middleware_execution() {
 	// Setup router and handler
@@ -143,6 +145,7 @@ async fn test_single_middleware_execution() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_middleware_execution_order() {
 	// Setup router and handler
@@ -198,6 +201,7 @@ async fn test_multiple_middleware_execution_order() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_middleware_can_modify_request() {
 	// Setup router and view that checks for header
@@ -245,6 +249,7 @@ async fn test_middleware_can_modify_request() {
 	assert_eq!(&response.body, &Bytes::from("FOUND"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_middleware_can_modify_response() {
 	// Setup router and handler
@@ -283,6 +288,7 @@ async fn test_middleware_can_modify_response() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_middleware_error_propagates() {
 	// Setup router and handler
@@ -317,6 +323,7 @@ async fn test_middleware_error_propagates() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_middleware_chain_stops_on_error() {
 	// Setup router and handler
@@ -367,6 +374,7 @@ async fn test_middleware_chain_stops_on_error() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_empty_middleware_chain() {
 	// Setup router and handler

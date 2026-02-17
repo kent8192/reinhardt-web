@@ -169,6 +169,7 @@ mod tests {
 	use async_trait::async_trait;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
+	use rstest::rstest;
 
 	// Test handler for routing tests
 	struct TestHandler {
@@ -182,12 +183,14 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_handler_new() {
 		let handler = BaseHandler::new();
 		assert!(handler.is_async());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_handler_handle_request() {
 		let handler = BaseHandler::new();
@@ -205,6 +208,7 @@ mod tests {
 		assert_eq!(resp.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_handler_handle_exception() {
 		let handler = BaseHandler::new();
@@ -222,7 +226,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_base_handler_async_mode() {
 		let mut handler = BaseHandler::new();
 		assert!(handler.is_async());
@@ -231,6 +235,7 @@ mod tests {
 		assert!(!handler.is_async());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_handler_different_methods() {
 		let handler = BaseHandler::new();
@@ -250,6 +255,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_handler_different_uris() {
 		let handler = BaseHandler::new();
@@ -269,6 +275,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_handler_with_router() {
 		// Create a router with a test route
@@ -300,6 +307,7 @@ mod tests {
 		assert_eq!(body, "Test response");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_handler_404_not_found() {
 		// Create empty router
@@ -323,6 +331,7 @@ mod tests {
 		assert_eq!(resp.status, StatusCode::NOT_FOUND);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_handler_multiple_routes() {
 		// Create router with multiple routes
