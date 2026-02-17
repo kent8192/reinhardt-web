@@ -181,7 +181,6 @@ fn test_settings_deserialization() {
         "static_root": null,
         "staticfiles_dirs": [],
         "media_url": "/media/",
-        "media_root": null,
         "language_code": "en",
         "time_zone": "UTC",
         "use_i18n": true,
