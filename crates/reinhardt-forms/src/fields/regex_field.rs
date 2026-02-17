@@ -346,8 +346,9 @@ impl FormField for GenericIPAddressField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_regex_field() {
 		let field = RegexField::new("code".to_string(), r"^[A-Z]{3}\d{3}$").unwrap();
 
@@ -358,7 +359,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_forms_regex_field_slug() {
 		let field = SlugField::new("slug".to_string());
 
@@ -370,7 +371,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ip_field_ipv4() {
 		let mut field = GenericIPAddressField::new("ip".to_string());
 		field.protocol = IPProtocol::IPv4;
@@ -382,7 +383,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ip_field_ipv6() {
 		let mut field = GenericIPAddressField::new("ip".to_string());
 		field.protocol = IPProtocol::IPv6;

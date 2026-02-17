@@ -145,8 +145,9 @@ impl FormField for DateField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_date_field_required() {
 		let field = DateField::new("date".to_string());
 
@@ -157,7 +158,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(""))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_not_required() {
 		let mut field = DateField::new("date".to_string());
 		field.required = false;
@@ -172,7 +173,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_iso_format() {
 		let field = DateField::new("date".to_string());
 
@@ -181,7 +182,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_us_format() {
 		let field = DateField::new("date".to_string());
 
@@ -195,7 +196,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("0025-01-15"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_month_name_formats() {
 		let field = DateField::new("date".to_string());
 
@@ -224,7 +225,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_day_first_formats() {
 		let field = DateField::new("date".to_string());
 
@@ -241,7 +242,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_invalid_format() {
 		let field = DateField::new("date".to_string());
 
@@ -251,7 +252,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!("2025-00-01"))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_whitespace_trimming() {
 		let field = DateField::new("date".to_string());
 
@@ -262,7 +263,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_invalid_dates() {
 		let field = DateField::new("date".to_string());
 
@@ -276,7 +277,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!("2025-02-30"))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_leap_year() {
 		let field = DateField::new("date".to_string());
 
@@ -288,25 +289,25 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!("2025-02-29"))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_localize() {
 		let field = DateField::new("date".to_string()).with_localize(true);
 		assert!(field.localize);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_locale() {
 		let field = DateField::new("date".to_string()).with_locale("en_US".to_string());
 		assert_eq!(field.locale, Some("en_US".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_widget() {
 		let field = DateField::new("date".to_string());
 		assert!(matches!(field.widget(), &Widget::DateInput));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_name() {
 		let field = DateField::new("birth_date".to_string());
 		assert_eq!(field.name(), "birth_date");

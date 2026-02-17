@@ -315,8 +315,9 @@ impl FormWizard {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_wizard_basic() {
 		let mut wizard = FormWizard::new("registration".to_string());
 
@@ -335,7 +336,7 @@ mod tests {
 		assert!(!wizard.is_last_step());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wizard_navigation() {
 		let mut wizard = FormWizard::new("test".to_string());
 
@@ -358,7 +359,7 @@ mod tests {
 		assert_eq!(wizard.current_step(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wizard_conditional_step() {
 		let mut wizard = FormWizard::new("test".to_string());
 
@@ -388,7 +389,7 @@ mod tests {
 		assert!(wizard.steps[1].is_available(&wizard.session_data));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wizard_progress() {
 		let mut wizard = FormWizard::new("test".to_string());
 
@@ -410,7 +411,7 @@ mod tests {
 		assert_eq!(wizard.progress_percentage(), 100.0); // Step 4/4
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wizard_goto_step() {
 		let mut wizard = FormWizard::new("test".to_string());
 

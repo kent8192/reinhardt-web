@@ -1035,9 +1035,10 @@ impl FormField for PasswordField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_uuid_field_valid() {
 		let field = UUIDField::new("id");
 
@@ -1049,7 +1050,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_field_invalid() {
 		let field = UUIDField::new("id");
 
@@ -1066,7 +1067,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_duration_field_valid() {
 		let field = DurationField::new("duration");
 
@@ -1087,7 +1088,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_duration_field_invalid() {
 		let field = DurationField::new("duration");
 
@@ -1104,7 +1105,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_combo_field() {
 		use crate::EmailField;
 
@@ -1133,7 +1134,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_field_valid() {
 		let field = ColorField::new("color");
 
@@ -1150,7 +1151,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_field_invalid() {
 		let field = ColorField::new("color");
 
@@ -1167,7 +1168,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_password_field_basic() {
 		let field = PasswordField::new("password").min_length(6);
 
@@ -1180,7 +1181,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_password_field_requirements() {
 		let field = PasswordField::new("password")
 			.min_length(8)

@@ -267,9 +267,10 @@ impl FormField for JSONField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_json_field_valid_object() {
 		let field = JSONField::new("data");
 		let result = field.clean(Some(&json!(r#"{"name": "John", "age": 30}"#)));
@@ -277,7 +278,7 @@ mod tests {
 		assert!(value.is_object());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_valid_array() {
 		let field = JSONField::new("data");
 		let result = field.clean(Some(&json!(r#"[1, 2, 3, 4, 5]"#)));
@@ -285,21 +286,21 @@ mod tests {
 		assert!(value.is_array());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_invalid() {
 		let field = JSONField::new("data");
 		let result = field.clean(Some(&json!(r#"{invalid json}"#)));
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_required() {
 		let field = JSONField::new("data").required(true);
 		let result = field.clean(None);
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_not_required() {
 		let field = JSONField::new("data").required(false);
 		let result = field.clean(None);
@@ -307,7 +308,7 @@ mod tests {
 		assert_eq!(result.unwrap(), Value::Null);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_require_object() {
 		let field = JSONField::new("data").require_object();
 
@@ -320,7 +321,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_require_array() {
 		let field = JSONField::new("data").require_array();
 
@@ -333,7 +334,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_required_keys() {
 		let field = JSONField::new("data")
 			.require_object()
@@ -350,7 +351,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_field_has_changed() {
 		let field = JSONField::new("data");
 

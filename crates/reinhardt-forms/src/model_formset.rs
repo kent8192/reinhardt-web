@@ -427,6 +427,7 @@ impl<T: FormModel> Default for ModelFormSetBuilder<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::Value;
 
 	// Mock model for testing
@@ -486,7 +487,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_config() {
 		let config = ModelFormSetConfig::new()
 			.with_extra(3)
@@ -500,7 +501,7 @@ mod tests {
 		assert_eq!(config.min_num, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_empty() {
 		let config = ModelFormSetConfig::new().with_extra(2);
 		let formset = ModelFormSet::<Article>::empty("article".to_string(), config);
@@ -510,7 +511,7 @@ mod tests {
 		assert_eq!(formset.total_form_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_with_instances() {
 		let instances = vec![
 			Article {
@@ -532,7 +533,7 @@ mod tests {
 		assert_eq!(formset.form_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_builder() {
 		let formset = ModelFormSetBuilder::<Article>::new()
 			.extra(3)
@@ -543,7 +544,7 @@ mod tests {
 		assert_eq!(formset.total_form_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_management_data() {
 		let config = ModelFormSetConfig::new().with_extra(2).with_min_num(1);
 		let formset = ModelFormSet::<Article>::empty("article".to_string(), config);

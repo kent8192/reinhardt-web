@@ -497,6 +497,7 @@ impl<T: FormModel> FormField for ModelMultipleChoiceField<T> {
 mod tests {
 	use super::*;
 	use crate::FormField;
+	use rstest::rstest;
 	use serde_json::json;
 
 	// Mock model for testing
@@ -527,7 +528,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_choice_field_basic() {
 		let queryset = vec![
 			TestModel {
@@ -546,7 +547,7 @@ mod tests {
 		assert!(FormField::required(&field));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_choice_field_required() {
 		let field = ModelChoiceField::new("choice", Vec::<TestModel>::new());
 
@@ -554,7 +555,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_choice_field_not_required() {
 		let field = ModelChoiceField::new("choice", Vec::<TestModel>::new()).required(false);
 
@@ -563,7 +564,7 @@ mod tests {
 		assert_eq!(result.unwrap(), Value::Null);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_multiple_choice_field_basic() {
 		let queryset = vec![
 			TestModel {
@@ -582,7 +583,7 @@ mod tests {
 		assert!(FormField::required(&field));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_multiple_choice_field_array() {
 		let queryset = vec![
 			TestModel {
@@ -611,7 +612,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_multiple_choice_field_comma_separated() {
 		let queryset = vec![
 			TestModel {

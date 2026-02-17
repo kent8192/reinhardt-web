@@ -228,8 +228,9 @@ impl FormField for ImageField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_filefield_valid() {
 		let field = FileField::new("document".to_string());
 
@@ -241,7 +242,7 @@ mod tests {
 		assert!(field.clean(Some(&file)).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filefield_empty() {
 		let field = FileField::new("document".to_string());
 
@@ -256,7 +257,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_imagefield_valid() {
 		let field = ImageField::new("photo".to_string());
 
@@ -268,7 +269,7 @@ mod tests {
 		assert!(field.clean(Some(&file)).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_imagefield_invalid_extension() {
 		let field = ImageField::new("photo".to_string());
 

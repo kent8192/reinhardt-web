@@ -110,8 +110,9 @@ impl FormField for DateTimeField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_valid() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -135,7 +136,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_invalid() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -149,7 +150,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_optional() {
 		let mut field = DateTimeField::new("created_at".to_string());
 		field.required = false;
@@ -161,7 +162,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_required() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -172,7 +173,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(""))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_iso_format_with_seconds() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -189,7 +190,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_iso_format_without_seconds() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -206,7 +207,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_us_format_with_seconds() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -223,7 +224,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("0025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_us_format_without_seconds() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -240,7 +241,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("0025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_whitespace_trimming() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -250,7 +251,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_invalid_date() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -273,7 +274,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_invalid_time() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -296,7 +297,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_leap_year() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -313,7 +314,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_midnight() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -323,7 +324,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 00:00:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_end_of_day() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -333,7 +334,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 23:59:59"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_noon() {
 		let field = DateTimeField::new("created_at".to_string());
 
@@ -343,13 +344,13 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 12:00:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_widget_type() {
 		let field = DateTimeField::new("created_at".to_string());
 		assert!(matches!(field.widget(), &Widget::TextInput));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_custom_formats() {
 		let mut field = DateTimeField::new("created_at".to_string());
 		// Add custom format
@@ -362,7 +363,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!("2025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetimefield_format_precedence() {
 		let field = DateTimeField::new("created_at".to_string());
 

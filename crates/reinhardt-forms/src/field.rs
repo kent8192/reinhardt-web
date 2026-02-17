@@ -311,11 +311,12 @@ pub trait FormField: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Note: Field-specific tests have been moved to their respective field modules
 	// in the fields/ directory. Only FormField trait tests remain here.
 
-	#[test]
+	#[rstest]
 	fn test_field_has_changed() {
 		use crate::fields::CharField;
 
@@ -343,7 +344,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_error_messages() {
 		use crate::fields::CharField;
 

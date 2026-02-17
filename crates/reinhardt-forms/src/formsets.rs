@@ -440,6 +440,7 @@ mod tests {
 	use super::*;
 	use crate::ModelFormConfig;
 	use crate::model_form::FieldType;
+	use rstest::rstest;
 	use serde_json::Value;
 
 	// Test model implementation
@@ -570,7 +571,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inline_formset_creation() {
 		let parent = TestModel {
 			id: Some(1),
@@ -585,7 +586,7 @@ mod tests {
 		assert_eq!(formset.child_forms().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inline_formset_add_child() {
 		let parent = TestModel {
 			id: Some(1),
@@ -607,7 +608,7 @@ mod tests {
 		assert_eq!(formset.child_forms().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inline_formset_save() {
 		let parent = TestModel {
 			id: Some(1),
@@ -630,7 +631,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_creation() {
 		let formset = ModelFormSet::<TestModel>::new("test".to_string());
 
@@ -640,7 +641,7 @@ mod tests {
 		assert!(!formset.can_order);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_add_form() {
 		let mut formset = ModelFormSet::<TestModel>::new("test".to_string());
 
@@ -655,7 +656,7 @@ mod tests {
 		assert_eq!(formset.forms().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_formset_validation() {
 		let mut formset = ModelFormSet::<TestModel>::new("test".to_string())
 			.with_min_num(2)
@@ -673,7 +674,7 @@ mod tests {
 		assert!(!formset.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_factory_creation() {
 		let factory = FormSetFactory::new("form".to_string());
 
@@ -684,7 +685,7 @@ mod tests {
 		assert_eq!(factory.min_num(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_factory_builder() {
 		let factory = FormSetFactory::new("form".to_string())
 			.with_extra(3)
@@ -700,7 +701,7 @@ mod tests {
 		assert_eq!(factory.min_num(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_factory_create() {
 		let factory = FormSetFactory::new("form".to_string())
 			.with_extra(3)
@@ -712,7 +713,7 @@ mod tests {
 		assert!(formset.can_delete());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_factory_create_model_formset() {
 		let factory = FormSetFactory::new("user".to_string())
 			.with_extra(2)

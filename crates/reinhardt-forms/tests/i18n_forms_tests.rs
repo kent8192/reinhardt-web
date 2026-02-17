@@ -3,9 +3,10 @@
 //! Tests for form field localization
 
 use reinhardt_forms::{DateField, DecimalField, FormField};
+use rstest::rstest;
 use serde_json::json;
 
-#[test]
+#[rstest]
 fn test_date_field_basic() {
 	let field = DateField::new("birth_date".to_string());
 
@@ -13,7 +14,7 @@ fn test_date_field_basic() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_date_field_with_localize() {
 	let field = DateField::new("birth_date".to_string())
 		.with_localize(true)
@@ -23,7 +24,7 @@ fn test_date_field_with_localize() {
 	assert_eq!(field.locale, Some("en_us".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_date_field_multiple_formats() {
 	let field = DateField::new("birth_date".to_string());
 
@@ -34,7 +35,7 @@ fn test_date_field_multiple_formats() {
 	assert!(field.clean(Some(&json!("01/15/2025"))).is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_basic() {
 	let field = DecimalField::new("amount".to_string());
 
@@ -43,7 +44,7 @@ fn test_decimal_field_basic() {
 	assert_eq!(result.unwrap(), json!(1234.56));
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_with_localize() {
 	let field = DecimalField::new("amount".to_string())
 		.with_localize(true)
@@ -53,14 +54,14 @@ fn test_decimal_field_with_localize() {
 	assert_eq!(field.locale, Some("en_us".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_with_thousands_separator() {
 	let field = DecimalField::new("amount".to_string()).with_thousands_separator(true);
 
 	assert!(field.use_thousands_separator);
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_localized_input() {
 	let field = DecimalField::new("amount".to_string())
 		.with_localize(true)
@@ -71,7 +72,7 @@ fn test_decimal_field_localized_input() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_date_field_invalid_format() {
 	let field = DateField::new("birth_date".to_string());
 
@@ -79,7 +80,7 @@ fn test_date_field_invalid_format() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_max_digits() {
 	let mut field = DecimalField::new("amount".to_string());
 	field.max_digits = Some(5);
@@ -92,7 +93,7 @@ fn test_decimal_field_max_digits() {
 	assert!(field.clean(Some(&json!("1234.567"))).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_range_validation() {
 	let mut field = DecimalField::new("amount".to_string());
 	field.min_value = Some(0.0);
@@ -103,7 +104,7 @@ fn test_decimal_field_range_validation() {
 	assert!(field.clean(Some(&json!(101.0))).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_date_field_required() {
 	let field = DateField::new("birth_date".to_string());
 
@@ -111,7 +112,7 @@ fn test_date_field_required() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_date_field_optional() {
 	let mut field = DateField::new("birth_date".to_string());
 	field.required = false;
@@ -120,7 +121,7 @@ fn test_date_field_optional() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_required() {
 	let field = DecimalField::new("amount".to_string());
 
@@ -128,7 +129,7 @@ fn test_decimal_field_required() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_optional() {
 	let mut field = DecimalField::new("amount".to_string());
 	field.required = false;
@@ -137,7 +138,7 @@ fn test_decimal_field_optional() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_zero_value() {
 	let field = DecimalField::new("amount".to_string());
 
@@ -146,7 +147,7 @@ fn test_decimal_field_zero_value() {
 	assert_eq!(result.unwrap(), json!(0.0));
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_negative_value() {
 	let field = DecimalField::new("amount".to_string());
 
@@ -154,7 +155,7 @@ fn test_decimal_field_negative_value() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_date_field_builder_pattern() {
 	let field = DateField::new("date".to_string())
 		.with_localize(true)
@@ -164,7 +165,7 @@ fn test_date_field_builder_pattern() {
 	assert_eq!(field.locale.unwrap(), "ja_jp");
 }
 
-#[test]
+#[rstest]
 fn test_decimal_field_builder_pattern() {
 	let field = DecimalField::new("price".to_string())
 		.with_localize(true)

@@ -638,8 +638,9 @@ impl Index<&str> for Form {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_form_validation() {
 		let mut form = Form::new();
 
@@ -655,7 +656,7 @@ mod tests {
 		assert!(form.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_validation_error() {
 		let mut form = Form::new();
 
@@ -673,7 +674,7 @@ mod tests {
 
 	// Additional tests based on Django forms tests
 
-	#[test]
+	#[rstest]
 	fn test_form_basic() {
 		// Test based on Django FormsTestCase.test_form
 		use crate::fields::CharField;
@@ -704,7 +705,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_missing_required_fields() {
 		// Form with missing required fields should have errors
 		use crate::fields::CharField;
@@ -723,7 +724,7 @@ mod tests {
 		assert!(form.errors().contains_key("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_optional_fields() {
 		// Form with optional fields should validate even if they're missing
 		use crate::fields::CharField;
@@ -748,7 +749,7 @@ mod tests {
 		assert!(form.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_unbound() {
 		// Unbound form (no data provided)
 		use crate::fields::CharField;
@@ -760,7 +761,7 @@ mod tests {
 		assert!(!form.is_valid()); // Unbound forms are not valid
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_extra_data() {
 		// Form should ignore extra data not defined in fields
 		use crate::fields::CharField;
@@ -784,7 +785,7 @@ mod tests {
 		assert!(cleaned.contains_key("extra_field"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_forms_form_multiple_fields() {
 		// Test form with multiple field types
 		use crate::fields::{CharField, IntegerField};
@@ -807,7 +808,7 @@ mod tests {
 		assert!(form.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_multiple_fields_invalid() {
 		// Test form with multiple field types, some invalid
 		use crate::fields::{CharField, IntegerField};
@@ -834,7 +835,7 @@ mod tests {
 		assert!(form.errors().contains_key("age"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_multiple_instances() {
 		// Multiple form instances should be independent
 		use crate::fields::CharField;
@@ -866,7 +867,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_with_initial_data() {
 		let mut initial = HashMap::new();
 		initial.insert("name".to_string(), serde_json::json!("Initial Name"));
@@ -887,7 +888,7 @@ mod tests {
 		assert_eq!(form.initial().get("age").unwrap(), &serde_json::json!(25));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_has_changed() {
 		let mut initial = HashMap::new();
 		initial.insert("name".to_string(), serde_json::json!("John"));
@@ -910,7 +911,7 @@ mod tests {
 		assert!(form.has_changed());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_index_access() {
 		let mut form = Form::new();
 
@@ -921,14 +922,14 @@ mod tests {
 		assert_eq!(field.name(), "name");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Field 'nonexistent' not found")]
 	fn test_form_index_access_nonexistent() {
 		let form = Form::new();
 		let _ = &form["nonexistent"];
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_get_field() {
 		let mut form = Form::new();
 
@@ -939,7 +940,7 @@ mod tests {
 		assert!(form.get_field("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_remove_field() {
 		let mut form = Form::new();
 
@@ -956,7 +957,7 @@ mod tests {
 		assert!(not_removed.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_custom_validation() {
 		let mut form = Form::new();
 
@@ -996,7 +997,7 @@ mod tests {
 		assert!(form.errors().contains_key(ALL_FIELDS_KEY));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_prefix() {
 		let mut form = Form::with_prefix("profile".to_string());
 		assert_eq!(form.prefix(), "profile");
@@ -1007,7 +1008,7 @@ mod tests {
 		assert_eq!(form.add_prefix_to_field_name("email"), "user-email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_field_clean_function() {
 		let mut form = Form::new();
 

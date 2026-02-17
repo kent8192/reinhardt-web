@@ -112,8 +112,9 @@ impl FormField for URLField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_urlfield_valid() {
 		let field = URLField::new("website".to_string());
 
@@ -131,7 +132,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urlfield_invalid() {
 		let field = URLField::new("website".to_string());
 
@@ -145,7 +146,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urlfield_optional() {
 		let mut field = URLField::new("website".to_string());
 		field.required = false;

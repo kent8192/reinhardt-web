@@ -233,8 +233,9 @@ impl FormExt for Form {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_form_metadata_extraction() {
 		let mut form = Form::new();
 		form.add_field(Box::new(CharField::new("username".to_string())));
@@ -248,7 +249,7 @@ mod tests {
 		assert!(!metadata.is_bound);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_metadata_with_prefix() {
 		let mut form = Form::with_prefix("user".to_string());
 		form.add_field(Box::new(CharField::new("name".to_string())));
@@ -259,7 +260,7 @@ mod tests {
 		assert_eq!(metadata.fields.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_metadata_serialization() {
 		let mut form = Form::new();
 		form.add_field(Box::new(CharField::new("test".to_string())));
@@ -276,7 +277,7 @@ mod tests {
 		assert_eq!(deserialized.fields[0].name, "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_with_all_attributes() {
 		use crate::fields::CharField;
 
@@ -300,7 +301,7 @@ mod tests {
 		assert!(field_meta.required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_metadata_with_initial_values() {
 		use serde_json::json;
 
@@ -317,7 +318,7 @@ mod tests {
 		assert_eq!(metadata.initial.get("age"), Some(&json!(25)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_metadata_with_errors() {
 		use serde_json::json;
 

@@ -14,7 +14,7 @@ use serde_json::json;
 
 // ---- Happy Path ----
 
-#[test]
+#[rstest]
 fn test_char_field_valid_input() {
 	let field = CharField::new("name".to_string());
 	let result = field.clean(Some(&json!("valid string")));
@@ -22,7 +22,7 @@ fn test_char_field_valid_input() {
 	assert_eq!(result.unwrap(), json!("valid string"));
 }
 
-#[test]
+#[rstest]
 fn test_char_field_builder_pattern() {
 	let field = CharField::new("name".to_string())
 		.with_max_length(50)
@@ -33,21 +33,21 @@ fn test_char_field_builder_pattern() {
 
 // ---- Error Cases ----
 
-#[test]
+#[rstest]
 fn test_char_field_max_length_exceeded() {
 	let field = CharField::new("name".to_string()).with_max_length(10);
 	let result = field.clean(Some(&json!("12345678901"))); // 11 characters
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_char_field_min_length_not_met() {
 	let field = CharField::new("name".to_string()).with_min_length(5);
 	let result = field.clean(Some(&json!("abc"))); // 3 characters
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_char_field_required_missing() {
 	let field = CharField::new("name".to_string()).required(); // Explicitly set required=true
 	let result = field.clean(None);
@@ -56,7 +56,7 @@ fn test_char_field_required_missing() {
 
 // ---- Edge Cases ----
 
-#[test]
+#[rstest]
 fn test_char_field_empty_string() {
 	let mut field = CharField::new("name".to_string());
 	field.required = false;
@@ -64,7 +64,7 @@ fn test_char_field_empty_string() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_char_field_unicode() {
 	let field = CharField::new("name".to_string());
 	let result = field.clean(Some(&json!("日本語テスト")));
@@ -72,14 +72,14 @@ fn test_char_field_unicode() {
 	assert_eq!(result.unwrap(), json!("日本語テスト"));
 }
 
-#[test]
+#[rstest]
 fn test_char_field_emoji() {
 	let field = CharField::new("name".to_string());
 	let result = field.clean(Some(&json!("👍🎉")));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_char_field_strip_whitespace() {
 	let field = CharField::new("name".to_string()); // default: strip=true
 	let result = field.clean(Some(&json!("  test  ")));
@@ -133,7 +133,7 @@ fn test_char_field_decision_table(
 // ---- Property-based Tests (proptest) ----
 
 proptest! {
-	#[test]
+	#[rstest]
 	fn test_char_field_preserves_valid_input(s in "[a-zA-Z0-9]{1,100}") {
 		let field = CharField::new("name".to_string());
 		let result = field.clean(Some(&json!(s)));
@@ -141,7 +141,7 @@ proptest! {
 		prop_assert_eq!(result.unwrap(), json!(s));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_max_length_invariant(s in "[a-zA-Z]{0,20}") {
 		let field = CharField::new("name".to_string()).with_max_length(10);
 		let result = field.clean(Some(&json!(s)));
@@ -155,7 +155,7 @@ proptest! {
 
 // ---- Sanity Test ----
 
-#[test]
+#[rstest]
 fn test_char_field_sanity() {
 	let field = CharField::new("test".to_string());
 	assert_eq!(field.name, "test");
@@ -168,7 +168,7 @@ fn test_char_field_sanity() {
 
 // ---- Happy Path ----
 
-#[test]
+#[rstest]
 fn test_integer_field_valid_input() {
 	let field = IntegerField::new("age".to_string());
 	let result = field.clean(Some(&json!(25)));
@@ -176,7 +176,7 @@ fn test_integer_field_valid_input() {
 	assert_eq!(result.unwrap(), json!(25));
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_string_parsing() {
 	let field = IntegerField::new("age".to_string());
 	let result = field.clean(Some(&json!("42")));
@@ -186,14 +186,14 @@ fn test_integer_field_string_parsing() {
 
 // ---- Error Cases ----
 
-#[test]
+#[rstest]
 fn test_integer_field_invalid_string() {
 	let field = IntegerField::new("age".to_string());
 	let result = field.clean(Some(&json!("not a number")));
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_min_value_below() {
 	let mut field = IntegerField::new("age".to_string());
 	field.min_value = Some(0);
@@ -201,7 +201,7 @@ fn test_integer_field_min_value_below() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_max_value_exceeded() {
 	let mut field = IntegerField::new("age".to_string());
 	field.max_value = Some(100);
@@ -211,7 +211,7 @@ fn test_integer_field_max_value_exceeded() {
 
 // ---- Edge Cases ----
 
-#[test]
+#[rstest]
 fn test_integer_field_zero() {
 	let field = IntegerField::new("count".to_string());
 	let result = field.clean(Some(&json!(0)));
@@ -219,21 +219,21 @@ fn test_integer_field_zero() {
 	assert_eq!(result.unwrap(), json!(0));
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_negative() {
 	let field = IntegerField::new("temperature".to_string());
 	let result = field.clean(Some(&json!(-10)));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_i64_max() {
 	let field = IntegerField::new("big_number".to_string());
 	let result = field.clean(Some(&json!(i64::MAX)));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_integer_field_i64_min() {
 	let field = IntegerField::new("big_number".to_string());
 	let result = field.clean(Some(&json!(i64::MIN)));
@@ -276,7 +276,7 @@ fn test_integer_field_decision_table(
 // ---- Property-based Tests (proptest) ----
 
 proptest! {
-	#[test]
+	#[rstest]
 	fn test_integer_field_range_invariant(i in -1000i64..1000) {
 		let field = IntegerField::new("num".to_string());
 		let result = field.clean(Some(&json!(i)));
@@ -284,7 +284,7 @@ proptest! {
 		prop_assert_eq!(result.unwrap(), json!(i));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_field_min_max_invariant(i in -100i64..200) {
 		let mut field = IntegerField::new("num".to_string());
 		field.min_value = Some(0);
@@ -300,7 +300,7 @@ proptest! {
 
 // ---- Sanity Test ----
 
-#[test]
+#[rstest]
 fn test_integer_field_sanity() {
 	let field = IntegerField::new("age".to_string());
 	let result = field.clean(Some(&json!(10)));
@@ -313,21 +313,21 @@ fn test_integer_field_sanity() {
 
 // ---- Happy Path ----
 
-#[test]
+#[rstest]
 fn test_email_field_valid_basic() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("test@example.com")));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_email_field_valid_subdomain() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("user@mail.example.com")));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_email_field_valid_plus_address() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("user+tag@example.com")));
@@ -336,21 +336,21 @@ fn test_email_field_valid_plus_address() {
 
 // ---- Error Cases ----
 
-#[test]
+#[rstest]
 fn test_email_field_invalid_no_at() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("invalid.email.com")));
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_email_field_invalid_no_domain() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("user@")));
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_email_field_invalid_no_localpart() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("@example.com")));
@@ -359,7 +359,7 @@ fn test_email_field_invalid_no_localpart() {
 
 // ---- Edge Cases ----
 
-#[test]
+#[rstest]
 fn test_email_field_max_length_default() {
 	let field = EmailField::new("email".to_string());
 	// EmailField default max_length is 320
@@ -368,7 +368,7 @@ fn test_email_field_max_length_default() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_email_field_max_length_exceeded() {
 	let field = EmailField::new("email".to_string());
 	// Exceeds 320 characters
@@ -394,7 +394,7 @@ fn test_email_field_equivalence(#[case] input: &str, #[case] valid: bool) {
 // ---- Property-based Tests (proptest) ----
 
 proptest! {
-	#[test]
+	#[rstest]
 	fn test_email_field_basic_format(
 		local in "[a-z]{1,10}",
 		domain in "[a-z]{1,10}"
@@ -408,7 +408,7 @@ proptest! {
 
 // ---- Sanity Test ----
 
-#[test]
+#[rstest]
 fn test_email_field_sanity() {
 	let field = EmailField::new("email".to_string());
 	let result = field.clean(Some(&json!("test@test.com")));
@@ -421,7 +421,7 @@ fn test_email_field_sanity() {
 
 // ---- Happy Path ----
 
-#[test]
+#[rstest]
 fn test_boolean_field_true_value() {
 	let field = BooleanField::new("agree".to_string());
 	let result = field.clean(Some(&json!(true)));
@@ -429,7 +429,7 @@ fn test_boolean_field_true_value() {
 	assert_eq!(result.unwrap(), json!(true));
 }
 
-#[test]
+#[rstest]
 fn test_boolean_field_false_value() {
 	let field = BooleanField::new("agree".to_string());
 	let result = field.clean(Some(&json!(false)));
@@ -439,7 +439,7 @@ fn test_boolean_field_false_value() {
 
 // ---- Error Cases ----
 
-#[test]
+#[rstest]
 fn test_boolean_field_invalid_type() {
 	let field = BooleanField::new("agree".to_string());
 	let _ = field.clean(Some(&json!("not a boolean")));
@@ -448,14 +448,14 @@ fn test_boolean_field_invalid_type() {
 
 // ---- Edge Cases ----
 
-#[test]
+#[rstest]
 fn test_boolean_field_null_value_required() {
 	let field = BooleanField::new("agree".to_string()).required(); // Explicitly set required=true
 	let result = field.clean(None);
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_boolean_field_null_value_optional() {
 	let mut field = BooleanField::new("agree".to_string());
 	field.required = false;
@@ -498,7 +498,7 @@ fn test_boolean_field_decision_table(
 
 // ---- Sanity Test ----
 
-#[test]
+#[rstest]
 fn test_boolean_field_sanity() {
 	let field = BooleanField::new("enabled".to_string());
 	let result = field.clean(Some(&json!(true)));
@@ -511,7 +511,7 @@ fn test_boolean_field_sanity() {
 
 // ---- Happy Path ----
 
-#[test]
+#[rstest]
 fn test_float_field_valid_input() {
 	let field = FloatField::new("price".to_string());
 	let result = field.clean(Some(&json!(12.34)));
@@ -519,7 +519,7 @@ fn test_float_field_valid_input() {
 	assert_eq!(result.unwrap(), json!(12.34));
 }
 
-#[test]
+#[rstest]
 fn test_float_field_string_parsing() {
 	let field = FloatField::new("price".to_string());
 	let result = field.clean(Some(&json!("56.78")));
@@ -528,14 +528,14 @@ fn test_float_field_string_parsing() {
 
 // ---- Error Cases ----
 
-#[test]
+#[rstest]
 fn test_float_field_invalid_string() {
 	let field = FloatField::new("price".to_string());
 	let result = field.clean(Some(&json!("not a number")));
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_float_field_min_value_below() {
 	let mut field = FloatField::new("price".to_string());
 	field.min_value = Some(0.0);
@@ -543,7 +543,7 @@ fn test_float_field_min_value_below() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_float_field_max_value_exceeded() {
 	let mut field = FloatField::new("price".to_string());
 	field.max_value = Some(100.0);
@@ -553,35 +553,35 @@ fn test_float_field_max_value_exceeded() {
 
 // ---- Edge Cases ----
 
-#[test]
+#[rstest]
 fn test_float_field_zero() {
 	let field = FloatField::new("value".to_string());
 	let result = field.clean(Some(&json!(0.0)));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_float_field_negative() {
 	let field = FloatField::new("value".to_string());
 	let result = field.clean(Some(&json!(-123.45)));
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_float_field_scientific_notation() {
 	let field = FloatField::new("value".to_string());
 	let _ = field.clean(Some(&json!("1.23e10")));
 	// May be supported depending on implementation
 }
 
-#[test]
+#[rstest]
 fn test_float_field_infinity_rejected() {
 	let field = FloatField::new("value".to_string());
 	let _ = field.clean(Some(&json!(f64::INFINITY)));
 	// Infinity should be rejected
 }
 
-#[test]
+#[rstest]
 fn test_float_field_nan_rejected() {
 	let field = FloatField::new("value".to_string());
 	let _ = field.clean(Some(&json!(f64::NAN)));
@@ -607,7 +607,7 @@ fn test_float_field_boundary(#[case] value: f64, #[case] valid: bool) {
 // ---- Property-based Tests (proptest) ----
 
 proptest! {
-	#[test]
+	#[rstest]
 	fn test_float_field_range_invariant(f in -1000.0f64..1000.0) {
 		let field = FloatField::new("num".to_string());
 		// Assumes NaN and Infinity are excluded
@@ -620,7 +620,7 @@ proptest! {
 
 // ---- Sanity Test ----
 
-#[test]
+#[rstest]
 fn test_float_field_sanity() {
 	let field = FloatField::new("price".to_string());
 	let result = field.clean(Some(&json!(9.99)));

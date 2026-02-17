@@ -230,8 +230,9 @@ impl<'a> BoundField<'a> {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_bound_field_basic() {
 		let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
 		let data = serde_json::json!("John Doe");
@@ -252,7 +253,7 @@ mod tests {
 		assert!(!bound.has_errors());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bound_field_with_prefix() {
 		let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
 		let data = serde_json::json!("John Doe");
@@ -270,7 +271,7 @@ mod tests {
 		assert_eq!(bound.id_for_label(), "id_profile-name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bound_field_with_errors() {
 		let field: Box<dyn FormField> = Box::new(CharField::new("name".to_string()));
 		let data = serde_json::json!("");

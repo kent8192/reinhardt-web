@@ -253,8 +253,9 @@ impl FormField for SplitDateTimeField {
 mod tests {
 	use super::*;
 	use crate::fields::{CharField, IntegerField};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_multi_value_field() {
 		let fields: Vec<Box<dyn FormField>> = vec![
 			Box::new(CharField::new("first".to_string())),
@@ -275,7 +276,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_split_datetime_field() {
 		let field = SplitDateTimeField::new("when".to_string());
 
@@ -289,7 +290,7 @@ mod tests {
 		assert_eq!(result2, serde_json::json!("2025-01-15 14:30:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_split_datetime_field_invalid() {
 		let field = SplitDateTimeField::new("when".to_string());
 

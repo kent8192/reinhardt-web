@@ -187,8 +187,9 @@ impl FormField for MultipleChoiceField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_valid() {
 		let choices = vec![
 			("1".to_string(), "One".to_string()),
@@ -202,7 +203,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_invalid() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = ChoiceField::new("number".to_string(), choices);
@@ -213,7 +214,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield() {
 		let choices = vec![
 			("a".to_string(), "A".to_string()),
@@ -232,7 +233,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_required() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = ChoiceField::new("number".to_string(), choices);
@@ -244,7 +245,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(""))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_not_required() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let mut field = ChoiceField::new("number".to_string(), choices);
@@ -260,7 +261,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_whitespace_trimming() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = ChoiceField::new("number".to_string(), choices);
@@ -272,7 +273,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_multiple_choices() {
 		let choices = vec![
 			("a".to_string(), "Alpha".to_string()),
@@ -290,7 +291,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!("d"))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_widget_type() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = ChoiceField::new("number".to_string(), choices.clone());
@@ -306,7 +307,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_empty_choices() {
 		let choices: Vec<(String, String)> = vec![];
 		let field = ChoiceField::new("empty".to_string(), choices);
@@ -318,7 +319,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choicefield_case_sensitive() {
 		let choices = vec![("abc".to_string(), "ABC".to_string())];
 		let field = ChoiceField::new("text".to_string(), choices);
@@ -333,7 +334,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_required() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = MultipleChoiceField::new("numbers".to_string(), choices);
@@ -345,7 +346,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!([]))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_not_required() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let mut field = MultipleChoiceField::new("numbers".to_string(), choices);
@@ -361,7 +362,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_single_value() {
 		let choices = vec![
 			("a".to_string(), "A".to_string()),
@@ -382,7 +383,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_multiple_values() {
 		let choices = vec![
 			("1".to_string(), "One".to_string()),
@@ -411,7 +412,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_duplicate_values() {
 		let choices = vec![
 			("a".to_string(), "A".to_string()),
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(result, serde_json::json!(["a", "a", "b"]));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiplechoicefield_widget_type() {
 		let choices = vec![("1".to_string(), "One".to_string())];
 		let field = MultipleChoiceField::new("numbers".to_string(), choices.clone());

@@ -126,8 +126,9 @@ impl FormField for FloatField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_basic() {
 		let field = FloatField::new("price".to_string());
 
@@ -141,7 +142,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_string_parsing() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -160,7 +161,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_range() {
 		let mut field = FloatField::new("score".to_string());
 		field.min_value = Some(0.0);
@@ -180,7 +181,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_invalid() {
 		let field = FloatField::new("value".to_string());
 
@@ -190,7 +191,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_required() {
 		let field = FloatField::new("value".to_string());
 
@@ -201,7 +202,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(""))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_not_required() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -216,7 +217,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_negative_numbers() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -231,7 +232,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_scientific_notation() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -247,7 +248,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_infinity() {
 		let field = FloatField::new("value".to_string());
 
@@ -264,7 +265,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_nan() {
 		let field = FloatField::new("value".to_string());
 
@@ -272,7 +273,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(f64::NAN))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_very_small_numbers() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -288,7 +289,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_very_large_numbers() {
 		let mut field = FloatField::new("value".to_string());
 		field.required = false;
@@ -300,7 +301,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_max_value_boundary() {
 		let mut field = FloatField::new("value".to_string());
 		field.max_value = Some(100.0);
@@ -312,7 +313,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(100.001))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_min_value_boundary() {
 		let mut field = FloatField::new("value".to_string());
 		field.min_value = Some(-100.0);
@@ -324,7 +325,7 @@ mod tests {
 		assert!(field.clean(Some(&serde_json::json!(-100.001))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_zero() {
 		let field = FloatField::new("value".to_string());
 
@@ -338,7 +339,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatfield_widget() {
 		let field = FloatField::new("value".to_string());
 		assert!(matches!(field.widget(), &Widget::NumberInput));

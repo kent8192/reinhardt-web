@@ -253,9 +253,10 @@ impl FormField for CharField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_char_field_required() {
 		let field = CharField::new("test".to_string()).required();
 		assert!(field.clean(None).is_err());
@@ -263,14 +264,14 @@ mod tests {
 		assert!(field.clean(Some(&json!("  "))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_max_length() {
 		let field = CharField::new("test".to_string()).with_max_length(5);
 		assert!(field.clean(Some(&json!("12345"))).is_ok());
 		assert!(field.clean(Some(&json!("123456"))).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_min_length() {
 		let field = CharField::new("test".to_string()).with_min_length(3);
 		assert!(field.clean(Some(&json!("123"))).is_ok());

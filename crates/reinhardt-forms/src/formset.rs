@@ -211,8 +211,9 @@ impl Default for FormSet {
 mod tests {
 	use super::*;
 	use crate::fields::CharField;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_formset_basic() {
 		let mut formset = FormSet::new("person".to_string());
 
@@ -228,7 +229,7 @@ mod tests {
 		assert_eq!(formset.form_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_min_num_validation() {
 		let mut formset = FormSet::new("person".to_string()).with_min_num(2);
 
@@ -240,7 +241,7 @@ mod tests {
 		assert!(!formset.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_formset_max_num_validation() {
 		let mut formset = FormSet::new("person".to_string()).with_max_num(Some(2));
 
@@ -254,7 +255,7 @@ mod tests {
 		assert!(!formset.errors().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_forms_formset_management_data() {
 		let formset = FormSet::new("person".to_string())
 			.with_extra(3)

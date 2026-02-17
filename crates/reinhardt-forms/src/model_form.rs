@@ -484,6 +484,7 @@ impl<T: FormModel> Default for ModelFormBuilder<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Mock model for testing
 	struct TestModel {
@@ -553,7 +554,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_form_config() {
 		let config = ModelFormConfig::new()
 			.fields(vec!["name".to_string(), "email".to_string()])
@@ -566,7 +567,7 @@ mod tests {
 		assert_eq!(config.exclude, vec!["id".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_form_builder() {
 		let instance = TestModel {
 			id: 1,
@@ -581,7 +582,7 @@ mod tests {
 		assert!(form.instance().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_field_names() {
 		let fields = TestModel::field_names();
 		assert_eq!(
