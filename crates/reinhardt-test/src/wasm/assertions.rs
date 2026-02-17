@@ -827,11 +827,12 @@ pub mod assert {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Note: WASM tests should use wasm_bindgen_test
 	// These tests are for compile-time verification only
 
-	#[test]
+	#[rstest]
 	fn test_assertion_error_display() {
 		let error = AssertionError {
 			assertion: "should_be_visible".to_string(),

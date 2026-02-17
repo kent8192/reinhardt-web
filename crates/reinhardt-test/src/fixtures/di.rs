@@ -449,6 +449,7 @@ pub async fn injection_context_with_database(database_url: &str) -> InjectionCon
 mod tests {
 	use super::*;
 	use reinhardt_di::{Depends, DiResult, Injectable};
+	use rstest::rstest;
 
 	// Test structures
 	#[derive(Clone, Debug, PartialEq)]

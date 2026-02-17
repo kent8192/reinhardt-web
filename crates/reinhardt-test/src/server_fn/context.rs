@@ -485,8 +485,9 @@ impl<T> ExpectedResult<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_context_builder() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)
@@ -496,7 +497,7 @@ mod tests {
 		assert!(ctx.mock_session.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_authenticated_user() {
 		let singleton = Arc::new(SingletonScope::new());
 		let user = TestUser::admin();
@@ -508,7 +509,7 @@ mod tests {
 		assert!(ctx.test_user.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permissions() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)
@@ -521,7 +522,7 @@ mod tests {
 		assert!(!ctx.has_permission("admin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csrf_token() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)
@@ -533,7 +534,7 @@ mod tests {
 		assert_eq!(ctx.get_header("x-csrf-token"), Some("test-token"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_mode() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton)

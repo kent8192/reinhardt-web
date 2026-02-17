@@ -328,6 +328,7 @@ pub fn temp_dir() -> tempfile::TempDir {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::Serialize;
 
 	#[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -336,6 +337,7 @@ mod tests {
 		name: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fixture_loader() {
 		let loader = FixtureLoader::new();
@@ -351,6 +353,7 @@ mod tests {
 		assert_eq!(data.name, "Test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fixture_not_found() {
 		let loader = FixtureLoader::new();
@@ -358,7 +361,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_factory_builder() {
 		let factory = FactoryBuilder::new(|| TestData {
 			id: 1,

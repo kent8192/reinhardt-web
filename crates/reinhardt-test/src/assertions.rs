@@ -596,40 +596,41 @@ pub fn assert_internal_error<T>(result: reinhardt_http::Result<T>) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_field_eq() {
 		let data = json!({"name": "Alice", "age": 30});
 		assert_json_field_eq(&data, "name", &json!("Alice"));
 		assert_json_field_eq(&data, "age", &json!(30));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_has_field() {
 		let data = json!({"name": "Alice"});
 		assert_json_has_field(&data, "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_missing_field() {
 		let data = json!({"name": "Alice"});
 		assert_json_missing_field(&data, "age");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_array_len() {
 		let data = json!([1, 2, 3]);
 		assert_json_array_len(&data, 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_array_contains() {
 		let data = json!([1, 2, 3]);
 		assert_json_array_contains(&data, &json!(2));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_matches() {
 		let actual = json!({
 			"name": "Alice",
@@ -643,38 +644,38 @@ mod tests {
 		assert_json_matches(&actual, &pattern);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_contains() {
 		let text = "Hello, world!";
 		assert_contains(text, "world");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_not_contains() {
 		let text = "Hello, world!";
 		assert_not_contains(text, "foo");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_status() {
 		let response = reinhardt_http::Response::ok();
 		assert_status(&response, StatusCode::OK);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_response_body_contains() {
 		let response = reinhardt_http::Response::ok().with_body(b"Hello, World!".to_vec());
 		assert_response_body_contains(&response, "World");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_response_body_equals() {
 		let expected = b"exact content";
 		let response = reinhardt_http::Response::ok().with_body(expected.to_vec());
 		assert_response_body_equals(&response, expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_response() {
 		use serde::{Deserialize, Serialize};
 
@@ -700,7 +701,7 @@ mod tests {
 		assert_json_response(response, expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_json_response_contains() {
 		let json = json!({"name": "Alice", "age": 30});
 		let response = reinhardt_http::Response::ok()
@@ -711,14 +712,14 @@ mod tests {
 		assert_json_response_contains(&response, "age", &json!(30));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_error() {
 		let result: reinhardt_http::Result<()> =
 			Err(reinhardt_http::Error::NotFound("Not found".to_string()));
 		assert_error(result);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_not_found_error() {
 		let result: reinhardt_http::Result<()> = Err(reinhardt_http::Error::NotFound(
 			"User not found".to_string(),
@@ -726,7 +727,7 @@ mod tests {
 		assert_not_found_error(result);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_validation_error() {
 		let result: reinhardt_http::Result<()> = Err(reinhardt_http::Error::Validation(
 			"Invalid input".to_string(),
@@ -734,7 +735,7 @@ mod tests {
 		assert_validation_error(result);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_internal_error() {
 		let result: reinhardt_http::Result<()> = Err(reinhardt_http::Error::Internal(
 			"Database error".to_string(),
@@ -900,7 +901,9 @@ pub mod tasks {
 	#[cfg(test)]
 	mod tests {
 		use super::*;
+		use rstest::rstest;
 
+		#[rstest]
 		#[tokio::test]
 		async fn test_assert_task_completed_success() {
 			let task_id = "test-task-1";
@@ -910,6 +913,7 @@ pub mod tasks {
 			assert!(result.is_ok());
 		}
 
+		#[rstest]
 		#[tokio::test]
 		async fn test_assert_task_failed_success() {
 			let task_id = "test-task-2";
@@ -919,7 +923,7 @@ pub mod tasks {
 			assert!(result.is_ok());
 		}
 
-		#[test]
+		#[rstest]
 		fn test_assert_task_status() {
 			let status = TaskStatus::Completed;
 			assert_task_status(&status, &TaskStatus::Completed, "test-task");

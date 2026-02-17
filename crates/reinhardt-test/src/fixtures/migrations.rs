@@ -933,6 +933,7 @@ mod tests {
 	use super::*;
 	use reinhardt_db::migrations::Migration;
 	use reinhardt_db::migrations::registry::MigrationRegistry;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_migration_registry_fixture(migration_registry: LocalRegistry) {
@@ -962,6 +963,7 @@ mod tests {
 	mod testcontainer_fixtures {
 		use super::*;
 		use reinhardt_db::migrations::{ColumnDefinition, DatabaseType, FieldType, Operation};
+		use rstest::rstest;
 
 		#[rstest]
 		#[tokio::test]

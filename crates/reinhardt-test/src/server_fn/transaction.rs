@@ -327,8 +327,9 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_truncate_tables_sql() {
 		let sql = utils::truncate_tables_sql(&["users", "posts"]);
 		assert!(sql.contains("TRUNCATE TABLE"));
@@ -337,13 +338,13 @@ mod tests {
 		assert!(sql.contains("CASCADE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_tables_sql_empty() {
 		let sql = utils::truncate_tables_sql(&[]);
 		assert!(sql.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_from_sql() {
 		let sql = utils::delete_from_sql("users", None);
 		assert_eq!(sql, "DELETE FROM users");
@@ -352,7 +353,7 @@ mod tests {
 		assert_eq!(sql_with_where, "DELETE FROM users WHERE id = 1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_test_data_sql() {
 		let sql = utils::insert_test_data_sql(
 			"users",
@@ -364,7 +365,7 @@ mod tests {
 		assert!(sql.contains("'Alice'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_config() {
 		let config = TestDatabaseConfig::new()
 			.truncate("users")
@@ -377,7 +378,7 @@ mod tests {
 		assert_eq!(config.connection_timeout_secs, 60);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_data_seeder() {
 		let seeder = TestDataSeeder::new()
 			.insert("users", &["name"], &["'Alice'"])
@@ -386,7 +387,7 @@ mod tests {
 		assert_eq!(seeder.statements().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_savepoint() {
 		let sp = TestSavepoint::generate();
 		assert!(sp.name.starts_with("sp_"));
@@ -397,7 +398,7 @@ mod tests {
 		assert!(sp2.is_released());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_guard() {
 		use std::cell::RefCell;
 		use std::rc::Rc;
@@ -414,7 +415,7 @@ mod tests {
 		assert!(*cleaned.borrow());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_guard_disarm() {
 		use std::cell::RefCell;
 		use std::rc::Rc;

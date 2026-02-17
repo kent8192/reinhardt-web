@@ -748,34 +748,35 @@ pub fn scoped_screen(root: Element) -> Screen {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_query_result_empty() {
 		let result = QueryResult::empty("test");
 		assert!(!result.exists());
 		assert_eq!(result.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_result_description() {
 		let result = QueryResult::empty("role=\"button\"");
 		assert_eq!(result.description(), "role=\"button\"");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "No element found")]
 	fn test_query_result_get_panics_when_empty() {
 		let result = QueryResult::empty("test");
 		result.get();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_result_query_returns_none_when_empty() {
 		let result = QueryResult::empty("test");
 		assert!(result.query().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_screen_default() {
 		let screen = Screen::default();
 		assert!(screen.root.is_none());

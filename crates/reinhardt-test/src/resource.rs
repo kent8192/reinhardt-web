@@ -446,6 +446,7 @@ impl<F: AsyncTestResource + 'static> DerefMut for AsyncTeardownGuard<F> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct Counter {
 		setup_count: usize,
@@ -465,7 +466,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_teardown_guard() {
 		let mut guard = TeardownGuard::<Counter>::new();
 		assert_eq!(guard.setup_count, 1);
@@ -486,7 +487,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_suite_guard() {
 		static SUITE: OnceLock<Mutex<Weak<SuiteCounter>>> = OnceLock::new();
 
@@ -515,6 +516,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_async_teardown_guard_auto_cleanup() {
 		// Test automatic cleanup when guard is dropped in tokio runtime

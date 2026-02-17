@@ -319,44 +319,45 @@ impl MessagesTestMixin {
 mod tests {
 	use super::*;
 	use reinhardt_core::messages::{Level, Message};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_count_success() {
 		let messages = vec![Message::new(Level::Info, "Test message".to_string())];
 		assert!(assert_message_count(&messages, 1).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_count_failure() {
 		let messages = vec![Message::new(Level::Info, "Test message".to_string())];
 		assert!(assert_message_count(&messages, 2).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_exists_success() {
 		let messages = vec![Message::new(Level::Info, "Test message".to_string())];
 		assert!(assert_message_exists(&messages, Level::Info, "Test message").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_exists_failure() {
 		let messages = vec![Message::new(Level::Info, "Test message".to_string())];
 		assert!(assert_message_exists(&messages, Level::Warning, "Test message").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_level_success() {
 		let message = Message::new(Level::Info, "Test message".to_string());
 		assert!(assert_message_level(&message, Level::Info).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_level_failure() {
 		let message = Message::new(Level::Info, "Test message".to_string());
 		assert!(assert_message_level(&message, Level::Warning).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_tags_success() {
 		let mut message = Message::new(Level::Info, "Test message".to_string());
 		message.extra_tags = vec!["tag1".to_string(), "tag2".to_string()];
@@ -365,14 +366,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_message_tags_failure() {
 		let mut message = Message::new(Level::Info, "Test message".to_string());
 		message.extra_tags = vec!["tag1".to_string()];
 		assert!(assert_message_tags(&message, vec!["tag2".to_string()]).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_messages_ordered_success() {
 		let messages = vec![
 			Message::new(Level::Info, "First message".to_string()),
@@ -385,7 +386,7 @@ mod tests {
 		assert!(assert_messages(&messages, &expected, true).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_messages_unordered_success() {
 		let messages = vec![
 			Message::new(Level::Warning, "Second message".to_string()),
@@ -398,14 +399,14 @@ mod tests {
 		assert!(assert_messages(&messages, &expected, false).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_test_mixin() {
 		let mixin = MessagesTestMixin::new();
 		let messages = vec![Message::new(Level::Info, "Test message".to_string())];
 		assert!(mixin.assert_message_count(&messages, 1).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_stack_trace() {
 		let mixin = MessagesTestMixin::with_settings(true);
 		let stack_trace = "at testing::assert_message_count\nat unittest::test_case\nat main";

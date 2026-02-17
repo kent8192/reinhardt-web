@@ -475,23 +475,24 @@ mod tests {
 	use reinhardt_query::prelude::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
 	};
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_dcl_test_table_format() {
 		let table = dcl_test_table();
 		assert!(table.starts_with("dcl_test_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_role_format() {
 		let role = test_role();
 		assert!(role.starts_with("test_role_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_role_with_attrs_format() {
 		let (role, attrs) = test_role_with_attrs();
@@ -499,14 +500,14 @@ mod tests {
 		assert_eq!(attrs, "LOGIN,CREATEDB");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_user_format() {
 		let user = test_user();
 		assert!(user.starts_with("test_user_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_user_with_password_format() {
 		let (user, pass) = test_user_with_password();
@@ -514,21 +515,21 @@ mod tests {
 		assert!(pass.starts_with("test_password_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_database_format() {
 		let db = test_database();
 		assert!(db.starts_with("test_db_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_test_schema_format() {
 		let schema = test_schema();
 		assert!(schema.starts_with("test_schema_"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_cleanup_dcl_objects_returns_objects() {
 		// Clear any existing objects
@@ -551,7 +552,7 @@ mod tests {
 		assert!(cleanup.iter().any(|o| o.starts_with("TABLE:")));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_cleanup_clears_objects() {
 		// Clear any existing objects
@@ -573,7 +574,7 @@ mod tests {
 		assert_eq!(cleanup2.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_dcl_test_table_stmt_generates_valid_sql() {
 		let stmt = dcl_test_table_stmt();
@@ -587,7 +588,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_dcl_test_table_with_fk_format() {
 		let (parent_stmt, child_stmt, parent_name, child_name) = dcl_test_table_with_fk();

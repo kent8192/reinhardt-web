@@ -171,8 +171,9 @@ pub fn generate_test_audit_entries(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_test_audit_entry() {
 		let entry = generate_test_audit_entry(0, 100, 10);
 		assert_eq!(entry.user_id, "user_0");
@@ -189,7 +190,7 @@ mod tests {
 		assert_eq!(entry.model_name, "Model_0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_test_audit_entries() {
 		let entries = generate_test_audit_entries(10000, 100, 10);
 		assert_eq!(entries.len(), 10000);

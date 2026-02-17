@@ -603,8 +603,9 @@ pub mod fire_event {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_key_modifiers_default() {
 		let mods = KeyModifiers::default();
 		assert!(!mods.ctrl);
@@ -613,14 +614,14 @@ mod tests {
 		assert!(!mods.meta);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_key_modifiers_ctrl() {
 		let mods = KeyModifiers::ctrl();
 		assert!(mods.ctrl);
 		assert!(!mods.shift);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_key_modifiers_ctrl_shift() {
 		let mods = KeyModifiers::ctrl_shift();
 		assert!(mods.ctrl);
@@ -629,7 +630,7 @@ mod tests {
 		assert!(!mods.meta);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_option_variants() {
 		let by_value = SelectOption::ByValue("test");
 		let by_text = SelectOption::ByText("Test Option");

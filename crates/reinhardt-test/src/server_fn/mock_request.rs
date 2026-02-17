@@ -594,15 +594,16 @@ impl CookieOptions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_get() {
 		let request = MockHttpRequest::get("/api/users");
 		assert_eq!(request.method, Method::GET);
 		assert_eq!(request.path(), "/api/users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_post_json() {
 		#[derive(Serialize)]
 		struct Input {
@@ -618,7 +619,7 @@ mod tests {
 		assert!(request.text().unwrap().contains("Alice"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_with_headers() {
 		let request = MockHttpRequest::get("/api")
 			.with_header("X-Custom", "value")
@@ -628,7 +629,7 @@ mod tests {
 		assert_eq!(request.get_header("authorization"), Some("Bearer token123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_with_cookies() {
 		let request = MockHttpRequest::get("/api")
 			.with_cookie("session", "abc")
@@ -638,7 +639,7 @@ mod tests {
 		assert_eq!(request.get_cookie("user"), Some("123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_with_query() {
 		let request = MockHttpRequest::get("/api/search")
 			.with_query("q", "test")
@@ -648,7 +649,7 @@ mod tests {
 		assert_eq!(request.get_query("page"), Some("1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_json() {
 		#[derive(Serialize, Deserialize, PartialEq, Debug)]
 		struct Output {
@@ -667,7 +668,7 @@ mod tests {
 		assert_eq!(body.id, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_with_cookie() {
 		let response = MockHttpResponse::ok().with_cookie(
 			"session",

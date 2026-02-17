@@ -500,8 +500,9 @@ pub mod assert_permissions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_user_anonymous() {
 		let user = TestUser::anonymous();
 		assert!(!user.is_authenticated);
@@ -509,7 +510,7 @@ mod tests {
 		assert!(user.roles.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_authenticated() {
 		let user = TestUser::authenticated("alice");
 		assert!(user.is_authenticated);
@@ -517,7 +518,7 @@ mod tests {
 		assert!(user.email.contains("alice"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_admin() {
 		let admin = TestUser::admin();
 		assert!(admin.is_authenticated);
@@ -526,7 +527,7 @@ mod tests {
 		assert!(admin.has_role("admin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_permissions() {
 		let user = TestUser::authenticated("bob")
 			.with_permission("read")
@@ -537,14 +538,14 @@ mod tests {
 		assert!(!user.has_permission("admin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_anonymous() {
 		let session = MockSession::anonymous();
 		assert!(!session.is_authenticated());
 		assert!(session.is_valid());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_authenticated() {
 		let user = TestUser::authenticated("alice");
 		let session = MockSession::authenticated(user);
@@ -553,7 +554,7 @@ mod tests {
 		assert!(session.user_id().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_data() {
 		let mut session = MockSession::anonymous();
 		session.set("key", serde_json::json!("value"));
@@ -562,7 +563,7 @@ mod tests {
 		assert_eq!(value, Some("value".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_csrf() {
 		let session = MockSession::anonymous().with_csrf_token("test-token");
 
@@ -571,7 +572,7 @@ mod tests {
 		assert!(!session.verify_csrf(""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_expiration() {
 		let expired = MockSession::anonymous().expires_in(-100);
 		assert!(expired.is_expired());
@@ -582,7 +583,7 @@ mod tests {
 		assert!(valid.is_valid());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_claims() {
 		let user = TestUser::authenticated("alice");
 		let claims = TestTokenClaims::for_user(&user)

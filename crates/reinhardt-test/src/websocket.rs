@@ -351,8 +351,9 @@ pub mod assertions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_url_with_query_token() {
 		let url = "ws://localhost:8080/ws";
 		let token = "my-token";
@@ -362,9 +363,10 @@ mod tests {
 		assert_eq!(url_with_token, expected);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_assertions() {
 		use assertions::*;
+		use rstest::rstest;
 
 		let text_msg = Message::Text("Hello".to_string());
 		assert_message_text(&text_msg, "Hello");

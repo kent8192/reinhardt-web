@@ -84,14 +84,15 @@ pub fn api_client_from_url(url: &str) -> APIClient {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_api_client_from_url() {
 		let client = api_client_from_url("http://localhost:8080");
 		assert_eq!(client.base_url(), "http://localhost:8080");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_client_from_url_with_path() {
 		let client = api_client_from_url("http://example.com:3000");
 		assert_eq!(client.base_url(), "http://example.com:3000");

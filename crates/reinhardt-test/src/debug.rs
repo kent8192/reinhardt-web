@@ -363,7 +363,9 @@ impl Default for DebugToolbar {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debug_toolbar() {
 		let toolbar = DebugToolbar::new();
@@ -382,6 +384,7 @@ mod tests {
 		assert_eq!(queries.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debug_panel() {
 		let toolbar = DebugToolbar::new();
@@ -401,6 +404,7 @@ mod tests {
 		assert!(panels.contains_key("test"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_toolbar() {
 		let mut toolbar = DebugToolbar::new();

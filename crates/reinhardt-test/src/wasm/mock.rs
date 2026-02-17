@@ -630,8 +630,9 @@ impl MutationTracker {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mock_storage_operations() {
 		let storage = MockStorage::new();
 
@@ -653,7 +654,7 @@ mod tests {
 		assert_eq!(storage.length(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_cookies_operations() {
 		let cookies = MockCookies::new();
 
@@ -683,7 +684,7 @@ mod tests {
 		assert!(cookies.has("auth"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_fetch_response_builders() {
 		let json_response = MockFetchResponse::json(serde_json::json!({"status": "ok"}));
 		assert_eq!(json_response.status, 200);
@@ -700,7 +701,7 @@ mod tests {
 		assert!(network_error.network_error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_fetch_recording() {
 		let fetch = MockFetch::new();
 

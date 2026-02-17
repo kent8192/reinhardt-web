@@ -735,11 +735,12 @@ impl Future for WaitForHiddenFuture {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Note: WASM tests should use wasm_bindgen_test
 	// These tests are for compile-time verification only
 
-	#[test]
+	#[rstest]
 	fn test_wait_options_builder() {
 		let opts = WaitOptions::new()
 			.with_timeout(Duration::from_secs(10))
@@ -751,7 +752,7 @@ mod tests {
 		assert_eq!(opts.description, Some("test wait".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wait_error_display() {
 		let timeout_error = WaitError::Timeout {
 			timeout: Duration::from_secs(5),

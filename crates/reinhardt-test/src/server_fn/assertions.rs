@@ -429,64 +429,65 @@ pub mod assert_status {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_should_be_ok() {
 		let result: Result<i32, &str> = Ok(42);
 		assert_eq!(*result.should_be_ok(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Expected Ok result")]
 	fn test_should_be_ok_panics_on_err() {
 		let result: Result<i32, &str> = Err("error");
 		result.should_be_ok();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_be_err() {
 		let result: Result<i32, &str> = Err("error");
 		assert_eq!(*result.should_be_err(), "error");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Expected Err result")]
 	fn test_should_be_err_panics_on_ok() {
 		let result: Result<i32, &str> = Ok(42);
 		result.should_be_err();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_have_value() {
 		let result: Result<i32, &str> = Ok(42);
 		result.should_have_value(&42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_satisfy() {
 		let result: Result<i32, &str> = Ok(42);
 		result.should_satisfy(|v| *v > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_server_fn_returns() {
 		let result: Result<i32, &str> = Ok(42);
 		assert_server_fn_returns(&result, &42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_server_fn_error_contains() {
 		let result: Result<i32, String> = Err("Validation failed: email is required".to_string());
 		assert_server_fn_error_contains(&result, "email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_validation_error() {
 		let result: Result<i32, String> = Err("Field 'username' is required".to_string());
 		assert_validation_error(&result, "username");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_validation_errors() {
 		let result: Result<i32, String> =
 			Err("Validation errors: username is required, email is invalid".to_string());

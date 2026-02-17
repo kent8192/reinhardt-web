@@ -169,8 +169,9 @@ pub fn mock_connection() -> DatabaseConnection {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mock_database_default_expectations() {
 		let mock = mock_database();
 
@@ -180,7 +181,7 @@ mod tests {
 		assert!(mock.supports_on_conflict());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_database_custom_expectations() {
 		let mut mock = MockDatabaseBackend::new();
 
@@ -193,6 +194,7 @@ mod tests {
 		assert_eq!(mock.placeholder(1), "?");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mock_execute_with_verification() {
 		let mut mock = MockDatabaseBackend::new();

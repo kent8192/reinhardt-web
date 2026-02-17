@@ -872,7 +872,9 @@ pub mod sqlite {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_postgres_container() {
 		with_postgres(|db| async move {
@@ -885,6 +887,7 @@ mod tests {
 		.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_container() {
 		with_mysql(|db| async move {
@@ -897,6 +900,7 @@ mod tests {
 		.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redis_container() {
 		with_redis(|redis| async move {

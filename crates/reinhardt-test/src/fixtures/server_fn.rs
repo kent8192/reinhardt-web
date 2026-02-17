@@ -264,6 +264,7 @@ pub fn expired_token_claims(test_user: TestUser) -> TestTokenClaims {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_anonymous_fixture(test_anonymous: TestUser) {

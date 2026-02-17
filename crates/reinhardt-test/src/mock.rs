@@ -489,7 +489,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mock_function() {
 		let mock = MockFunction::<i32>::new();
@@ -507,6 +509,7 @@ mod tests {
 		assert!(mock.was_called().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mock_default() {
 		let mock = MockFunction::with_default(99);
@@ -515,6 +518,7 @@ mod tests {
 		assert_eq!(result, Some(99));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_spy() {
 		use serde_json::json;
@@ -529,6 +533,7 @@ mod tests {
 		assert!(spy.was_called_with(vec![json!("arg1")]).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mock_reset() {
 		let mock = MockFunction::<i32>::new();

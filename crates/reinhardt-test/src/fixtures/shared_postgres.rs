@@ -506,13 +506,16 @@ pub async fn shared_db_pool() -> (PgPool, String) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shared_postgres_initialization() {
 		let pg = get_shared_postgres().await;
 		assert!(!pg.base_url.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_isolated_databases() {
 		let pool1 = get_test_pool().await;
