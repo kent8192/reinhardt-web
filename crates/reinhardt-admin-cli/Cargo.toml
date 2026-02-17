@@ -31,3 +31,6 @@ full = []
 [[bin]]
 name = "reinhardt-admin"
 path = "src/main.rs"
+
+[dev-dependencies]
+rstest = { workspace = true }

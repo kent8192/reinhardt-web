@@ -26,6 +26,7 @@ db-mysql = []
 db-sqlite = []
 
 [dev-dependencies]
+rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 trybuild = "1.0"
 serde = { version = "1.0", features = ["derive"] }

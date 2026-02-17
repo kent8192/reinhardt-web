@@ -33,6 +33,7 @@ tracing = { workspace = true }
 full = []
 
 [dev-dependencies]
+rstest = { workspace = true }
 tokio = { workspace = true }
 hyper = { workspace = true }
 bytes = { workspace = true }

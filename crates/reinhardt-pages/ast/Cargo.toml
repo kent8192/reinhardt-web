@@ -25,3 +25,6 @@ darling = "0.20"
 
 # Case conversion for identifiers
 convert_case = "0.6"
+
+[dev-dependencies]
+rstest = { workspace = true }
