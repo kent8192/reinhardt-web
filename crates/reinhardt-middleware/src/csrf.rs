@@ -9,6 +9,7 @@
 
 use async_trait::async_trait;
 use hyper::Method;
+use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -73,6 +74,30 @@ impl CsrfMiddlewareConfig {
 	pub fn add_exempt_path(mut self, path: String) -> Self {
 		self.exempt_paths.insert(path);
 		self
+	}
+
+	/// Create from application `Settings`
+	///
+	/// Maps `Settings.csrf_cookie_secure` to `CsrfConfig.cookie_secure`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::csrf::CsrfMiddlewareConfig;
+	///
+	/// let settings = Settings::default();
+	/// let config = CsrfMiddlewareConfig::from_settings(&settings);
+	/// assert!(!config.csrf_config.cookie_secure);
+	/// ```
+	pub fn from_settings(settings: &Settings) -> Self {
+		Self {
+			csrf_config: CsrfConfig {
+				cookie_secure: settings.csrf_cookie_secure,
+				..CsrfConfig::default()
+			},
+			..Self::default()
+		}
 	}
 }
 
@@ -181,6 +206,21 @@ impl CsrfMiddleware {
 			config: CsrfMiddlewareConfig::default(),
 			test_secret: Some(secret),
 		}
+	}
+
+	/// Create from application `Settings`
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::Settings;
+	/// use reinhardt_middleware::csrf::CsrfMiddleware;
+	///
+	/// let settings = Settings::default();
+	/// let middleware = CsrfMiddleware::from_settings(&settings);
+	/// ```
+	pub fn from_settings(settings: &Settings) -> Self {
+		Self::with_config(CsrfMiddlewareConfig::from_settings(settings))
 	}
 
 	/// Extract CSRF token from request
@@ -802,5 +842,68 @@ mod tests {
 
 		assert!(config.exempt_paths.contains("/api/webhook"));
 		assert!(config.exempt_paths.contains("/health"));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_csrf_config_from_settings_secure() {
+		// Arrange
+		let mut settings =
+			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
+		settings.csrf_cookie_secure = true;
+
+		// Act
+		let config = CsrfMiddlewareConfig::from_settings(&settings);
+
+		// Assert
+		assert_eq!(config.csrf_config.cookie_secure, true);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_csrf_config_from_settings_defaults() {
+		// Arrange
+		let settings = Settings::default();
+
+		// Act
+		let config = CsrfMiddlewareConfig::from_settings(&settings);
+
+		// Assert
+		assert_eq!(config.csrf_config.cookie_secure, false);
+		assert_eq!(config.csrf_config.cookie_name, "csrftoken");
+		assert_eq!(config.check_referer_header, true);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_csrf_middleware_from_settings() {
+		// Arrange
+		let mut settings =
+			Settings::new(std::path::PathBuf::from("/app"), "test-secret".to_string());
+		settings.csrf_cookie_secure = true;
+		let middleware = CsrfMiddleware::from_settings(&settings);
+		let handler = Arc::new(TestHandler);
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		let cookie = response
+			.headers
+			.get("Set-Cookie")
+			.unwrap()
+			.to_str()
+			.unwrap();
+		assert!(cookie.contains("Secure"));
 	}
 }
