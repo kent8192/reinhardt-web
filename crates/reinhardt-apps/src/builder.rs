@@ -653,8 +653,9 @@ impl Application {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_route_config_creation() {
 		let route = RouteConfig::new("/users/", "UserListHandler")
 			.with_name("user-list")
@@ -666,7 +667,7 @@ mod tests {
 		assert_eq!(route.namespace, Some("api".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_config_full_name() {
 		let route = RouteConfig::new("/users/", "UserListHandler")
 			.with_namespace("api")
@@ -680,7 +681,7 @@ mod tests {
 		assert_eq!(route.full_name(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_config_creation() {
 		let db_config = ApplicationDatabaseConfig::new("postgresql://localhost/mydb")
 			.with_pool_size(10)
@@ -693,7 +694,7 @@ mod tests {
 		assert_eq!(db_config.timeout, Some(30));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_basic() {
 		let app = ApplicationBuilder::new().build().unwrap();
 
@@ -703,7 +704,7 @@ mod tests {
 		assert!(app.database_config().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_apps() {
 		let app_config = AppConfig::new("myapp", "myapp");
 		let app = ApplicationBuilder::new()
@@ -716,7 +717,7 @@ mod tests {
 		assert!(app.apps_registry().is_installed("myapp"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_multiple_apps() {
 		let apps = vec![
 			AppConfig::new("app1", "app1"),
@@ -729,7 +730,7 @@ mod tests {
 		assert!(app.apps_registry().is_installed("app2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_middleware() {
 		let app = ApplicationBuilder::new()
 			.add_middleware("CorsMiddleware")
@@ -742,7 +743,7 @@ mod tests {
 		assert_eq!(app.middleware()[1], "AuthMiddleware");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_middlewares() {
 		let middleware = vec!["CorsMiddleware", "AuthMiddleware"];
 		let app = ApplicationBuilder::new()
@@ -753,7 +754,7 @@ mod tests {
 		assert_eq!(app.middleware().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_url_patterns() {
 		let route = RouteConfig::new("/users/", "UserListHandler");
 		let app = ApplicationBuilder::new()
@@ -765,7 +766,7 @@ mod tests {
 		assert_eq!(app.url_patterns()[0].path, "/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_database() {
 		let db_config = ApplicationDatabaseConfig::new("postgresql://localhost/mydb");
 		let app = ApplicationBuilder::new()
@@ -780,7 +781,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_with_settings() {
 		let app = ApplicationBuilder::new()
 			.add_setting("DEBUG", "true")
@@ -795,7 +796,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_validation_duplicate_apps() {
 		let result = ApplicationBuilder::new()
 			.add_app(AppConfig::new("myapp", "myapp"))
@@ -811,7 +812,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_validation_duplicate_routes() {
 		let result = ApplicationBuilder::new()
 			.add_url_pattern(RouteConfig::new("/users/", "Handler1").with_name("users"))
@@ -827,7 +828,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_method_chaining() {
 		let app = ApplicationBuilder::new()
 			.add_app(AppConfig::new("app1", "app1"))
@@ -845,7 +846,7 @@ mod tests {
 		assert_eq!(app.settings().get("DEBUG"), Some(&"true".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_apps_registry_ready() {
 		let app = ApplicationBuilder::new()
 			.add_app(AppConfig::new("myapp", "myapp"))
@@ -857,7 +858,7 @@ mod tests {
 		assert!(app.apps_registry().is_models_ready());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_invalid_app_label() {
 		let result = ApplicationBuilder::new()
 			.add_app(AppConfig::new("myapp", "my-app"))
@@ -870,13 +871,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_config_without_name() {
 		let route = RouteConfig::new("/api/v1/users/", "UserHandler");
 		assert_eq!(route.full_name(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_config_minimal() {
 		let db_config = ApplicationDatabaseConfig::new("sqlite::memory:");
 		assert_eq!(db_config.url, "sqlite::memory:");
@@ -885,7 +886,7 @@ mod tests {
 		assert_eq!(db_config.timeout, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_application_builder_empty_settings() {
 		let app = ApplicationBuilder::new().build().unwrap();
 		assert!(app.settings().is_empty());

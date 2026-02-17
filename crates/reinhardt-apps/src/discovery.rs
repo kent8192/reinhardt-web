@@ -535,6 +535,7 @@ mod tests {
 	use super::*;
 	use crate::registry::{MODELS, ModelMetadata};
 	use linkme::distributed_slice;
+	use rstest::rstest;
 
 	// Test models for discovery
 	#[distributed_slice(MODELS)]
@@ -551,7 +552,7 @@ mod tests {
 		table_name: "discovery_test_posts",
 	};
 
-	#[test]
+	#[rstest]
 	fn test_relation_metadata_new() {
 		let relation = RelationMetadata::new(
 			"Post",
@@ -568,7 +569,7 @@ mod tests {
 		assert_eq!(relation.relation_type, RelationType::OneToMany);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_metadata_reverse_name() {
 		// With explicit related_name
 		let relation = RelationMetadata::new(
@@ -586,14 +587,14 @@ mod tests {
 		assert_eq!(relation.reverse_name(), "post_set");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_types() {
 		assert_eq!(RelationType::OneToMany, RelationType::OneToMany);
 		assert_ne!(RelationType::OneToMany, RelationType::ManyToMany);
 		assert_ne!(RelationType::OneToMany, RelationType::OneToOne);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_metadata_new() {
 		use std::path::PathBuf;
 
@@ -611,7 +612,7 @@ mod tests {
 		assert_eq!(migration.dependencies.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_metadata_qualified_name() {
 		use std::path::PathBuf;
 
@@ -625,7 +626,7 @@ mod tests {
 		assert_eq!(migration.qualified_name(), "myapp.0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_metadata_with_dependencies() {
 		use std::path::PathBuf;
 
@@ -645,7 +646,7 @@ mod tests {
 		assert_eq!(migration.dependencies[1], "auth.0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_migration_file() {
 		use std::path::PathBuf;
 
@@ -658,7 +659,7 @@ mod tests {
 		assert_eq!(migration.number, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_migration_file_with_underscores() {
 		use std::path::PathBuf;
 
@@ -671,7 +672,7 @@ mod tests {
 		assert_eq!(migration.number, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_migration_file_invalid_format() {
 		use std::path::PathBuf;
 

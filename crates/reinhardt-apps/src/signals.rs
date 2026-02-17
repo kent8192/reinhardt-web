@@ -206,22 +206,23 @@ pub fn clear_all_signals() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
-	#[test]
+	#[rstest]
 	fn test_signal_creation() {
 		let signal = Signal::new();
 		assert_eq!(signal.receiver_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_connect() {
 		let signal = Signal::new();
 		signal.connect(Box::new(|_| {}));
 		assert_eq!(signal.receiver_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_send() {
 		let signal = Signal::new();
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -237,7 +238,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_multiple_receivers() {
 		let signal = Signal::new();
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -258,7 +259,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 3); // 1 + 2
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_disconnect_all() {
 		let signal = Signal::new();
 		signal.connect(Box::new(|_| {}));
@@ -269,7 +270,7 @@ mod tests {
 		assert_eq!(signal.receiver_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_receiver_with_config() {
 		let signal = Signal::new();
 		let received_label = Arc::new(Mutex::new(String::new()));
@@ -285,7 +286,7 @@ mod tests {
 		assert_eq!(*received_label.lock().unwrap(), "testapp");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_app_ready_signal() {
 		clear_all_signals(); // Clear previous test state
 
@@ -302,7 +303,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_app_shutdown_signal() {
 		clear_all_signals(); // Clear previous test state
 
@@ -319,7 +320,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_clone() {
 		let signal1 = Signal::new();
 		signal1.connect(Box::new(|_| {}));
@@ -334,7 +335,7 @@ mod tests {
 		assert_eq!(signal2.receiver_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_all_signals() {
 		clear_all_signals(); // Clear previous test state
 
@@ -350,7 +351,7 @@ mod tests {
 		assert_eq!(app_shutdown().receiver_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_send_multiple_times() {
 		let signal = Signal::new();
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -369,7 +370,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_receiver_error_handling() {
 		let signal = Signal::new();
 		let success_counter = Arc::new(AtomicUsize::new(0));

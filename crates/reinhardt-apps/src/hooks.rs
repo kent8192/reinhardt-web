@@ -209,6 +209,7 @@ impl HookRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestHook {
 		executed: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -230,7 +231,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ready_context_creation() {
 		let config = AppConfig::new("myapp", "myapp");
 		let ctx = ReadyContext::new(config);
@@ -239,14 +240,14 @@ mod tests {
 		assert_eq!(ctx.app_name(), "myapp");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_new() {
 		let registry = HookRegistry::new();
 		assert_eq!(registry.len(), 0);
 		assert!(registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_register() {
 		let mut registry = HookRegistry::new();
 		let executed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -260,7 +261,7 @@ mod tests {
 		assert!(!registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_execute() {
 		let mut registry = HookRegistry::new();
 		let executed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -278,7 +279,7 @@ mod tests {
 		assert!(executed.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_execute_failure() {
 		let mut registry = HookRegistry::new();
 		registry.register(Box::new(FailingHook));
@@ -290,7 +291,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_multiple_hooks() {
 		let mut registry = HookRegistry::new();
 
@@ -319,7 +320,7 @@ mod tests {
 		assert!(executed2.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_clear() {
 		let mut registry = HookRegistry::new();
 		let executed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -337,7 +338,7 @@ mod tests {
 		assert!(registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hook_registry_stop_on_first_failure() {
 		let mut registry = HookRegistry::new();
 
@@ -362,7 +363,7 @@ mod tests {
 		assert!(!executed.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ready_context_with_verbose_name() {
 		let config = AppConfig::new("myapp", "myapp").with_verbose_name("My Application");
 		let ctx = ReadyContext::new(config);

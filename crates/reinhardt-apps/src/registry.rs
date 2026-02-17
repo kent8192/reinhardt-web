@@ -554,7 +554,7 @@ mod tests {
 		table_name: "blog_comments",
 	};
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_new() {
 		let metadata = ModelMetadata::new("myapp", "MyModel", "my_table");
 		assert_eq!(metadata.app_label, "myapp");
@@ -562,13 +562,13 @@ mod tests {
 		assert_eq!(metadata.table_name, "my_table");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_qualified_name() {
 		let metadata = ModelMetadata::new("auth", "User", "users");
 		assert_eq!(metadata.qualified_name(), "auth.User");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_model_invalid_format() {
 		let model = find_model("InvalidFormat");
 		assert!(model.is_none());
@@ -577,7 +577,7 @@ mod tests {
 		assert!(model.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_equality() {
 		let meta1 = ModelMetadata::new("app", "Model", "table");
 		let meta2 = ModelMetadata::new("app", "Model", "table");
@@ -587,7 +587,7 @@ mod tests {
 		assert_ne!(meta1, meta3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_relation_metadata_new() {
 		let relation = ReverseRelationMetadata::new(
 			"User",
@@ -614,7 +614,7 @@ mod tests {
 		assert!(relations.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_relation_types() {
 		assert_eq!(
 			ReverseRelationType::ReverseOneToMany,
@@ -653,7 +653,7 @@ mod tests {
 		through_table: Some("blog_post_tags"),
 	};
 
-	#[test]
+	#[rstest]
 	fn test_relationship_metadata_new() {
 		let relationship = RelationshipMetadata::new(
 			"blog.Post",
@@ -674,7 +674,7 @@ mod tests {
 		assert_eq!(relationship.through_table, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relationship_metadata_model_names() {
 		let relationship = RelationshipMetadata::new(
 			"blog.Post",
@@ -690,14 +690,14 @@ mod tests {
 		assert_eq!(relationship.to_model_name(), "User");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relationship_types() {
 		assert_eq!(RelationshipType::ForeignKey, RelationshipType::ForeignKey);
 		assert_ne!(RelationshipType::ForeignKey, RelationshipType::ManyToMany);
 		assert_ne!(RelationshipType::ForeignKey, RelationshipType::OneToOne);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relationship_metadata_equality() {
 		let rel1 = RelationshipMetadata::new(
 			"app.Model",

@@ -242,8 +242,9 @@ pub fn validate_registry() -> Vec<ValidationError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_display() {
 		let error = ValidationError::DuplicateModelName {
 			app_label: "myapp".to_string(),
@@ -273,7 +274,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_equality() {
 		let error1 = ValidationError::DuplicateModelName {
 			app_label: "app".to_string(),

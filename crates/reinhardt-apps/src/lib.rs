@@ -144,8 +144,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_request_query_params() {
 		let uri = Uri::from_static("/test?foo=bar&baz=qux");
 		let request = Request::builder()
@@ -161,7 +162,7 @@ mod tests {
 		assert_eq!(request.query_params.get("baz"), Some(&"qux".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_response_creation() {
 		let response = Response::ok();
 		assert_eq!(response.status, hyper::StatusCode::OK);
@@ -173,7 +174,7 @@ mod tests {
 		assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_response_with_json_unit() {
 		use serde_json::json;
 
@@ -192,7 +193,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_status_codes() {
 		assert_eq!(Error::NotFound("test".into()).status_code(), 404);
 		assert_eq!(Error::Authentication("test".into()).status_code(), 401);

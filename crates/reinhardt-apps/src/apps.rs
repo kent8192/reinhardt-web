@@ -451,8 +451,9 @@ mod di_integration {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_app_config_creation() {
 		let config = AppConfig::new("myapp", "myapp")
 			.with_verbose_name("My Application")
@@ -464,7 +465,7 @@ mod tests {
 		assert_eq!(config.default_auto_field, Some("BigAutoField".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_app_config_validation() {
 		let valid = AppConfig::new("myapp", "myapp");
 		assert!(valid.validate_label().is_ok());
@@ -476,7 +477,7 @@ mod tests {
 		assert!(empty.validate_label().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apps_registry() {
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 
@@ -485,7 +486,7 @@ mod tests {
 		assert!(!apps.is_installed("notinstalled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_app() {
 		let apps = Apps::new(vec![]);
 		let config = AppConfig::new("myapp", "myapp");
@@ -494,7 +495,7 @@ mod tests {
 		assert!(apps.get_app_config("myapp").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_duplicate_registration() {
 		let apps = Apps::new(vec![]);
 		let config1 = AppConfig::new("myapp", "myapp");
@@ -506,7 +507,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_app_configs() {
 		let apps = Apps::new(vec![]);
 
@@ -517,7 +518,7 @@ mod tests {
 		assert_eq!(configs.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate() {
 		let apps = Apps::new(vec![]);
 		assert!(!apps.is_ready());
@@ -529,7 +530,7 @@ mod tests {
 		assert!(apps.is_models_ready());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate_with_installed_apps() {
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 		assert!(!apps.is_ready());
@@ -624,6 +625,7 @@ impl Apps {
 #[cfg(test)]
 mod typed_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test application types
 	struct AuthApp;
@@ -641,7 +643,7 @@ mod typed_tests {
 		const LABEL: &'static str = "sessions";
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_is_installed() {
 		let apps = Apps::new(vec!["auth".to_string(), "contenttypes".to_string()]);
 
@@ -650,7 +652,7 @@ mod typed_tests {
 		assert!(!apps.is_installed_typed::<SessionsApp>());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_get_app_config() {
 		let apps = Apps::new(vec![]);
 		let config = AppConfig::new("auth", "auth");
@@ -661,7 +663,7 @@ mod typed_tests {
 		assert_eq!(retrieved.unwrap().label, "auth");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_get_app_config_not_found() {
 		let apps = Apps::new(vec![]);
 
@@ -673,7 +675,7 @@ mod typed_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apps_typed_and_regular_mixed() {
 		let apps = Apps::new(vec!["auth".to_string()]);
 		let config = AppConfig::new("auth", "auth");
