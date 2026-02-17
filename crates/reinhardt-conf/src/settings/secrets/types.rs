@@ -74,8 +74,17 @@ impl SecretString {
 	}
 	/// Convert to owned String (consumes self)
 	///
+	/// # Safety
+	/// This method moves the inner value out without cloning, bypassing
+	/// the `ZeroizeOnDrop` protection. The caller is responsible for
+	/// ensuring the returned String is properly handled.
 	pub fn into_inner(self) -> String {
-		self.inner.clone()
+		// Use ManuallyDrop to prevent the Drop handler from zeroizing
+		// the inner value after we've moved it out.
+		let this = std::mem::ManuallyDrop::new(self);
+		// SAFETY: We're reading the inner field before ManuallyDrop drops,
+		// and ManuallyDrop prevents the Drop impl from running.
+		unsafe { std::ptr::read(&this.inner) }
 	}
 	/// Get the length of the secret
 	///
@@ -142,11 +151,17 @@ impl<T: Zeroize> SecretValue<T> {
 	}
 	/// Convert to owned value (consumes self)
 	///
-	pub fn into_inner(self) -> T
-	where
-		T: Clone,
-	{
-		self.inner.clone()
+	/// # Safety
+	/// This method moves the inner value out without cloning, bypassing
+	/// the `ZeroizeOnDrop` protection. The caller is responsible for
+	/// ensuring the returned value is properly handled.
+	pub fn into_inner(self) -> T {
+		// Use ManuallyDrop to prevent the Drop handler from zeroizing
+		// the inner value after we've moved it out.
+		let this = std::mem::ManuallyDrop::new(self);
+		// SAFETY: We're reading the inner field before ManuallyDrop drops,
+		// and ManuallyDrop prevents the Drop impl from running.
+		unsafe { std::ptr::read(&this.inner) }
 	}
 }
 
@@ -251,5 +266,38 @@ mod tests {
 		let json = serde_json::to_string(&secret).unwrap();
 		let deserialized: SecretValue<i32> = serde_json::from_str(&json).unwrap();
 		assert_eq!(*deserialized.expose_secret(), 42);
+	}
+
+	#[test]
+	fn test_secret_string_into_inner() {
+		let secret = SecretString::new("my-secret-value");
+		let inner = secret.into_inner();
+		assert_eq!(inner, "my-secret-value");
+	}
+
+	#[test]
+	fn test_secret_value_into_inner() {
+		let secret = SecretValue::new(vec![1, 2, 3, 4, 5]);
+		let inner = secret.into_inner();
+		assert_eq!(inner, vec![1, 2, 3, 4, 5]);
+	}
+
+	#[test]
+	fn test_secret_value_into_inner_non_clone() {
+		// Test with a type that does NOT implement Clone
+		// This verifies the fix: T: Clone bound was removed
+		struct NonClone {
+			inner: String,
+		}
+		impl Zeroize for NonClone {
+			fn zeroize(&mut self) {
+				self.inner.zeroize();
+			}
+		}
+		let secret = SecretValue::new(NonClone {
+			inner: "secret".to_string(),
+		});
+		let inner = secret.into_inner();
+		assert_eq!(inner.inner, "secret");
 	}
 }
