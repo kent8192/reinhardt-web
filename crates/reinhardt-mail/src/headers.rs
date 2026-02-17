@@ -188,46 +188,47 @@ pub fn is_supported_header(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_x_mailer() {
 		let header = XMailer::new("Test Mailer 1.0");
 		assert_eq!(header.value(), "Test Mailer 1.0");
 		assert_eq!(format!("{}", XMailer::name()), "X-Mailer");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_x_priority() {
 		let header = XPriority::new("1");
 		assert_eq!(header.value(), "1");
 		assert_eq!(format!("{}", XPriority::name()), "X-Priority");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_unsubscribe() {
 		let header = ListUnsubscribe::new("<https://example.com/unsubscribe>");
 		assert_eq!(header.value(), "<https://example.com/unsubscribe>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_unsubscribe_post() {
 		let header = ListUnsubscribePost::new("List-Unsubscribe=One-Click");
 		assert_eq!(header.value(), "List-Unsubscribe=One-Click");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_x_entity_ref_id() {
 		let header = XEntityRefId::new("ref-123");
 		assert_eq!(header.value(), "ref-123");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_precedence() {
 		let header = Precedence::new("bulk");
 		assert_eq!(header.value(), "bulk");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_supported_header() {
 		assert!(is_supported_header("X-Mailer"));
 		assert!(is_supported_header("x-mailer"));
@@ -237,7 +238,7 @@ mod tests {
 		assert!(!is_supported_header("Unknown-Header"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_string() {
 		let header: XMailer = "Test".into();
 		assert_eq!(header.value(), "Test");
@@ -246,7 +247,7 @@ mod tests {
 		assert_eq!(header.value(), "Test2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_parse() {
 		let header = XMailer::parse("Parsed Value").unwrap();
 		assert_eq!(header.value(), "Parsed Value");

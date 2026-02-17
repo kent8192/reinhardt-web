@@ -240,8 +240,9 @@ impl BatchSender {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_pool_config() {
 		let config = PoolConfig::new()
 			.with_max_connections(20)
@@ -253,7 +254,7 @@ mod tests {
 		assert_eq!(config.max_messages_per_connection, 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pool_config_default() {
 		let config = PoolConfig::default();
 		assert_eq!(config.max_connections, 10);

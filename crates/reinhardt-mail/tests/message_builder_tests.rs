@@ -4,9 +4,10 @@
 //! headers, attachments, alternatives, encoding, and message construction.
 
 use reinhardt_mail::{Alternative, Attachment, EmailMessage};
+use rstest::rstest;
 
 /// Test: Builder pattern basic construction
-#[test]
+#[rstest]
 fn test_builder_basic_construction() {
 	let message = EmailMessage::builder()
 		.from("sender@example.com")
@@ -22,7 +23,7 @@ fn test_builder_basic_construction() {
 }
 
 /// Test: Builder method chaining
-#[test]
+#[rstest]
 fn test_builder_method_chaining() {
 	let message = EmailMessage::builder()
 		.from("chain@example.com")
@@ -44,7 +45,7 @@ fn test_builder_method_chaining() {
 }
 
 /// Test: Builder with HTML body
-#[test]
+#[rstest]
 fn test_builder_html_body() {
 	let message = EmailMessage::builder()
 		.from("html@example.com")
@@ -62,7 +63,7 @@ fn test_builder_html_body() {
 }
 
 /// Test: Builder with multiple recipients
-#[test]
+#[rstest]
 fn test_builder_multiple_recipients() {
 	let message = EmailMessage::builder()
 		.from("sender@example.com")
@@ -87,7 +88,7 @@ fn test_builder_multiple_recipients() {
 }
 
 /// Test: Builder with custom headers
-#[test]
+#[rstest]
 fn test_builder_custom_headers() {
 	let message = EmailMessage::builder()
 		.from("headers@example.com")
@@ -118,7 +119,7 @@ fn test_builder_custom_headers() {
 }
 
 /// Test: Builder with single attachment
-#[test]
+#[rstest]
 fn test_builder_single_attachment() {
 	let attachment = Attachment::new("document.txt", b"File content".to_vec());
 
@@ -135,7 +136,7 @@ fn test_builder_single_attachment() {
 }
 
 /// Test: Builder with multiple attachments
-#[test]
+#[rstest]
 fn test_builder_multiple_attachments() {
 	let attachment1 = Attachment::new("file1.txt", b"Content 1".to_vec());
 	let attachment2 = Attachment::new("file2.pdf", b"Content 2".to_vec());
@@ -158,7 +159,7 @@ fn test_builder_multiple_attachments() {
 }
 
 /// Test: Builder with alternative content
-#[test]
+#[rstest]
 fn test_builder_alternative_content() {
 	let alt = Alternative::new("text/plain", "Alternative plain text".as_bytes().to_vec());
 
@@ -175,7 +176,7 @@ fn test_builder_alternative_content() {
 }
 
 /// Test: Builder default values
-#[test]
+#[rstest]
 fn test_builder_default_values() {
 	let message = EmailMessage::builder().build();
 
@@ -193,7 +194,7 @@ fn test_builder_default_values() {
 }
 
 /// Test: Builder UTF-8 content
-#[test]
+#[rstest]
 fn test_builder_utf8_content() {
 	let message = EmailMessage::builder()
 		.from("utf8@example.com")
@@ -208,7 +209,7 @@ fn test_builder_utf8_content() {
 }
 
 /// Test: Builder from_email alias method
-#[test]
+#[rstest]
 fn test_builder_from_email_alias() {
 	let message1 = EmailMessage::builder()
 		.from("sender1@example.com")
@@ -229,7 +230,7 @@ fn test_builder_from_email_alias() {
 }
 
 /// Test: Builder Into<String> conversion
-#[test]
+#[rstest]
 fn test_builder_into_string_conversion() {
 	let subject_owned = String::from("Owned String");
 	let body_str = "String slice";
@@ -246,7 +247,7 @@ fn test_builder_into_string_conversion() {
 }
 
 /// Test: Builder large email construction
-#[test]
+#[rstest]
 fn test_builder_large_email() {
 	let large_body = "Lorem ipsum dolor sit amet. ".repeat(1000);
 	let large_html =
@@ -265,7 +266,7 @@ fn test_builder_large_email() {
 }
 
 /// Test: Builder with empty collections
-#[test]
+#[rstest]
 fn test_builder_empty_collections() {
 	let message = EmailMessage::builder()
 		.from("empty@example.com")
@@ -284,7 +285,7 @@ fn test_builder_empty_collections() {
 }
 
 /// Test: Builder header ordering
-#[test]
+#[rstest]
 fn test_builder_header_ordering() {
 	let message = EmailMessage::builder()
 		.from("order@example.com")
@@ -306,7 +307,7 @@ fn test_builder_header_ordering() {
 }
 
 /// Test: Builder with long recipient list
-#[test]
+#[rstest]
 fn test_builder_long_recipient_list() {
 	let recipients: Vec<String> = (1..=100)
 		.map(|i| format!("user{}@example.com", i))

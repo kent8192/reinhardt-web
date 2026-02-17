@@ -219,8 +219,9 @@ pub fn render_template(template: &str, context: &TemplateContext) -> EmailResult
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_render_template() {
 		let mut context = TemplateContext::new();
 		context.insert("name".to_string(), "Alice".into());
@@ -231,7 +232,7 @@ mod tests {
 		assert_eq!(result, "Hello Alice, you are 30 years old.");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_template_with_boolean() {
 		let mut context = TemplateContext::new();
 		context.insert("active".to_string(), true.into());
@@ -240,7 +241,7 @@ mod tests {
 		assert_eq!(result, "Account active: true");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_email_builder() {
 		let mut context = TemplateContext::new();
 		context.insert("name".to_string(), "Bob".into());
@@ -259,7 +260,7 @@ mod tests {
 		assert_eq!(email.body, "Hello Bob, your order 12345 is confirmed.");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_email_builder_with_html() {
 		let mut context = TemplateContext::new();
 		context.insert("name".to_string(), "Charlie".into());
@@ -281,7 +282,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_context() {
 		let email = TemplateEmailBuilder::new()
 			.from("test@example.com")

@@ -193,8 +193,9 @@ pub fn check_header_injection(value: &str) -> EmailResult<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validate_email_valid() {
 		assert!(validate_email("user@example.com").is_ok());
 		assert!(validate_email("user+tag@example.com").is_ok());
@@ -203,7 +204,7 @@ mod tests {
 		assert!(validate_email("user123@example.co.uk").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_email_invalid() {
 		assert!(validate_email("").is_err());
 		assert!(validate_email("invalid").is_err());
@@ -213,13 +214,13 @@ mod tests {
 		assert!(validate_email("user@example@com").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_email_header_injection() {
 		assert!(validate_email("user@example.com\nBcc: attacker@evil.com").is_err());
 		assert!(validate_email("user@example.com\rCc: attacker@evil.com").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_local_part() {
 		assert!(validate_local_part("user").is_ok());
 		assert!(validate_local_part("user.name").is_ok());
@@ -231,7 +232,7 @@ mod tests {
 		assert!(validate_local_part("user..name").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_domain() {
 		assert!(validate_domain("example.com").is_ok());
 		assert!(validate_domain("mail.example.com").is_ok());
@@ -244,7 +245,7 @@ mod tests {
 		assert!(validate_domain("example.com-").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sanitize_email() {
 		assert_eq!(
 			sanitize_email("  User@Example.COM  ").unwrap(),
@@ -256,14 +257,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sanitize_email_list() {
 		let emails = vec!["  User1@Example.COM  ", "User2@EXAMPLE.com"];
 		let sanitized = sanitize_email_list(&emails).unwrap();
 		assert_eq!(sanitized, vec!["user1@example.com", "user2@example.com"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_header_injection() {
 		assert!(check_header_injection("Normal subject").is_ok());
 		assert!(check_header_injection("Subject with spaces").is_ok());
@@ -273,7 +274,7 @@ mod tests {
 		assert!(check_header_injection("Subject\r\nTo: attacker@evil.com").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_email_list() {
 		let valid_emails = vec!["user1@example.com", "user2@example.com"];
 		assert!(validate_email_list(&valid_emails).is_ok());

@@ -323,7 +323,9 @@ pub async fn mail_managers(
 mod tests {
 	use super::*;
 	use crate::backends::MemoryBackend;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_send_mail() {
 		let backend = MemoryBackend::new();
@@ -342,6 +344,7 @@ mod tests {
 		assert_eq!(backend.count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_send_mail_with_html() {
 		let backend = MemoryBackend::new();
@@ -362,6 +365,7 @@ mod tests {
 		assert!(messages[0].html_body.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_send_mass_mail() {
 		let backend = MemoryBackend::new();

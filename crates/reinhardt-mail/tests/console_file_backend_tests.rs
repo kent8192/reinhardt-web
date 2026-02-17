@@ -5,10 +5,12 @@
 //! and cleanup.
 
 use reinhardt_mail::{ConsoleBackend, EmailBackend, EmailMessage, FileBackend};
+use rstest::rstest;
 use std::fs;
 use tempfile::TempDir;
 
 /// Test: Console backend outputs to stdout (can't easily test, so we verify it doesn't panic)
+#[rstest]
 #[tokio::test]
 async fn test_console_backend_basic() {
 	let backend = ConsoleBackend;
@@ -26,6 +28,7 @@ async fn test_console_backend_basic() {
 }
 
 /// Test: Console backend with multiple messages
+#[rstest]
 #[tokio::test]
 async fn test_console_backend_multiple() {
 	let backend = ConsoleBackend;
@@ -46,6 +49,7 @@ async fn test_console_backend_multiple() {
 }
 
 /// Test: File backend basic file write
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_basic() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -86,6 +90,7 @@ async fn test_file_backend_basic() {
 }
 
 /// Test: File backend with non-existent directory (should create it)
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_directory_creation() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -119,6 +124,7 @@ async fn test_file_backend_directory_creation() {
 }
 
 /// Test: File backend with multiple messages
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_multiple_messages() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -152,6 +158,7 @@ async fn test_file_backend_multiple_messages() {
 }
 
 /// Test: File backend concurrent writes
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_concurrent_writes() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -196,6 +203,7 @@ async fn test_file_backend_concurrent_writes() {
 }
 
 /// Test: File backend filename uniqueness (timestamp + random component)
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_filename_uniqueness() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -233,6 +241,7 @@ async fn test_file_backend_filename_uniqueness() {
 }
 
 /// Test: File backend empty message list
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_empty_list() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -255,6 +264,7 @@ async fn test_file_backend_empty_list() {
 }
 
 /// Test: File backend with HTML content
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_html_content() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");
@@ -291,6 +301,7 @@ async fn test_file_backend_html_content() {
 }
 
 /// Test: File backend with UTF-8 content
+#[rstest]
 #[tokio::test]
 async fn test_file_backend_utf8_content() {
 	let temp_dir = TempDir::with_prefix("mail_test_").expect("Failed to create temp dir");

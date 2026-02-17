@@ -4,10 +4,11 @@
 //! context injection, variable substitution, HTML templates, and error handling.
 
 use reinhardt_mail::templates::{TemplateContext, TemplateEmailBuilder, render_template};
+use rstest::rstest;
 use serde_json::json;
 
 /// Test: Basic template rendering with string replacement
-#[test]
+#[rstest]
 fn test_render_template_basic() {
 	let mut context = TemplateContext::new();
 	context.insert("name".to_string(), json!("Alice"));
@@ -20,7 +21,7 @@ fn test_render_template_basic() {
 }
 
 /// Test: Template rendering with numbers
-#[test]
+#[rstest]
 fn test_render_template_numbers() {
 	let mut context = TemplateContext::new();
 	context.insert("age".to_string(), json!(30));
@@ -33,7 +34,7 @@ fn test_render_template_numbers() {
 }
 
 /// Test: Template rendering with boolean values
-#[test]
+#[rstest]
 fn test_render_template_boolean() {
 	let mut context = TemplateContext::new();
 	context.insert("active".to_string(), json!(true));
@@ -46,7 +47,7 @@ fn test_render_template_boolean() {
 }
 
 /// Test: Template rendering with null values
-#[test]
+#[rstest]
 fn test_render_template_null() {
 	let mut context = TemplateContext::new();
 	context.insert("missing".to_string(), json!(null));
@@ -58,7 +59,7 @@ fn test_render_template_null() {
 }
 
 /// Test: Template rendering with missing variables (no replacement)
-#[test]
+#[rstest]
 fn test_render_template_missing_variables() {
 	let context = TemplateContext::new();
 
@@ -70,7 +71,7 @@ fn test_render_template_missing_variables() {
 }
 
 /// Test: TemplateEmailBuilder basic construction
-#[test]
+#[rstest]
 fn test_template_email_builder_basic() {
 	let mut context = TemplateContext::new();
 	context.insert("name".to_string(), json!("Bob"));
@@ -92,7 +93,7 @@ fn test_template_email_builder_basic() {
 }
 
 /// Test: TemplateEmailBuilder with HTML template
-#[test]
+#[rstest]
 fn test_template_email_builder_html() {
 	let mut context = TemplateContext::new();
 	context.insert("username".to_string(), json!("Charlie"));
@@ -123,7 +124,7 @@ fn test_template_email_builder_html() {
 }
 
 /// Test: TemplateEmailBuilder with add_context method
-#[test]
+#[rstest]
 fn test_template_email_builder_add_context() {
 	let message = TemplateEmailBuilder::new()
 		.from("app@example.com")
@@ -140,7 +141,7 @@ fn test_template_email_builder_add_context() {
 }
 
 /// Test: TemplateEmailBuilder with CC and BCC
-#[test]
+#[rstest]
 fn test_template_email_builder_cc_bcc() {
 	let mut context = TemplateContext::new();
 	context.insert("subject".to_string(), json!("Newsletter"));
@@ -163,7 +164,7 @@ fn test_template_email_builder_cc_bcc() {
 }
 
 /// Test: Template rendering with complex nested content
-#[test]
+#[rstest]
 fn test_template_complex_content() {
 	let mut context = TemplateContext::new();
 	context.insert("first_name".to_string(), json!("Eve"));
@@ -179,7 +180,7 @@ fn test_template_complex_content() {
 }
 
 /// Test: Template rendering with UTF-8 content
-#[test]
+#[rstest]
 fn test_template_utf8_content() {
 	let mut context = TemplateContext::new();
 	context.insert("name".to_string(), json!("太郎"));
@@ -195,7 +196,7 @@ fn test_template_utf8_content() {
 }
 
 /// Test: TemplateEmailBuilder with empty templates
-#[test]
+#[rstest]
 fn test_template_email_builder_empty_templates() {
 	let message = TemplateEmailBuilder::new()
 		.from("sender@example.com")
@@ -210,7 +211,7 @@ fn test_template_email_builder_empty_templates() {
 }
 
 /// Test: TemplateEmailBuilder with multiple variables in one field
-#[test]
+#[rstest]
 fn test_template_multiple_variables() {
 	let mut context = TemplateContext::new();
 	context.insert("first".to_string(), json!("Hello"));
@@ -231,7 +232,7 @@ fn test_template_multiple_variables() {
 }
 
 /// Test: Template rendering with special characters
-#[test]
+#[rstest]
 fn test_template_special_characters() {
 	let mut context = TemplateContext::new();
 	context.insert("email".to_string(), json!("user@example.com"));
@@ -248,7 +249,7 @@ fn test_template_special_characters() {
 }
 
 /// Test: TemplateEmailBuilder default instance
-#[test]
+#[rstest]
 fn test_template_email_builder_default() {
 	let builder = TemplateEmailBuilder::default();
 	let message = builder.build().expect("Failed to build default");
