@@ -5,6 +5,7 @@
 use reinhardt_db::orm::Field;
 use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 use reinhardt_rest::filters::{FilterBackend, QueryFilter};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -19,6 +20,7 @@ struct TestPost {
 
 reinhardt_test::impl_test_model!(TestPost, i64, "test_posts");
 
+#[rstest]
 #[tokio::test]
 async fn test_single_lookup() {
 	let lookup = Field::<TestPost, String>::new(vec!["title"]).eq("Test".to_string());
@@ -31,6 +33,7 @@ async fn test_single_lookup() {
 	assert!(result.contains("title = 'Test'"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_lookups() {
 	let filter = QueryFilter::new()
@@ -46,6 +49,7 @@ async fn test_multiple_lookups() {
 	assert!(result.contains(" AND "));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_ordering() {
 	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
@@ -57,6 +61,7 @@ async fn test_ordering() {
 	assert!(result.contains("title ASC"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_lookup_and_ordering() {
 	let filter = QueryFilter::new()
@@ -71,6 +76,7 @@ async fn test_lookup_and_ordering() {
 	assert!(result.contains("created_at DESC"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_append_to_existing_order_by() {
 	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());
@@ -84,6 +90,7 @@ async fn test_append_to_existing_order_by() {
 	assert!(result.contains("created_at DESC, title ASC"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_append_order_with_limit() {
 	let filter = QueryFilter::new().order_by(Field::<TestPost, String>::new(vec!["title"]).asc());

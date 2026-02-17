@@ -5,6 +5,7 @@
 
 use async_graphql::{Schema, ID};
 use reinhardt_graphql::{EventBroadcaster, SubscriptionRoot, User, UserEvent, UserStorage};
+use rstest::rstest;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -24,6 +25,7 @@ fn create_subscription_schema(
 }
 
 /// Test: Basic subscription creation and event reception
+#[rstest]
 #[tokio::test]
 async fn test_basic_subscription() {
 	let broadcaster = EventBroadcaster::new();
@@ -61,6 +63,7 @@ async fn test_basic_subscription() {
 }
 
 /// Test: Multiple clients subscribing simultaneously
+#[rstest]
 #[tokio::test]
 async fn test_multiple_client_subscriptions() {
 	let broadcaster = EventBroadcaster::new();
@@ -101,6 +104,7 @@ async fn test_multiple_client_subscriptions() {
 }
 
 /// Test: Event filtering (only receive subscribed event types)
+#[rstest]
 #[tokio::test]
 async fn test_event_filtering_by_type() {
 	let broadcaster = EventBroadcaster::new();
@@ -156,6 +160,7 @@ async fn test_event_filtering_by_type() {
 }
 
 /// Test: Subscription with rapid event broadcast
+#[rstest]
 #[tokio::test]
 async fn test_rapid_event_broadcast() {
 	let broadcaster = EventBroadcaster::new();
@@ -191,6 +196,7 @@ async fn test_rapid_event_broadcast() {
 }
 
 /// Test: Late subscriber (should not receive old events)
+#[rstest]
 #[tokio::test]
 async fn test_late_subscriber() {
 	let broadcaster = EventBroadcaster::new();
@@ -235,6 +241,7 @@ async fn test_late_subscriber() {
 }
 
 /// Test: Subscription lifecycle (subscribe → unsubscribe → resubscribe)
+#[rstest]
 #[tokio::test]
 async fn test_subscription_lifecycle() {
 	let broadcaster = EventBroadcaster::new();
@@ -283,6 +290,7 @@ async fn test_subscription_lifecycle() {
 }
 
 /// Test: Concurrent subscriptions with different event types
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_subscriptions_mixed_events() {
 	let broadcaster = EventBroadcaster::new();
@@ -331,6 +339,7 @@ async fn test_concurrent_subscriptions_mixed_events() {
 }
 
 /// Test: No events timeout (verify no spurious events)
+#[rstest]
 #[tokio::test]
 async fn test_no_events_timeout() {
 	let broadcaster = EventBroadcaster::new();

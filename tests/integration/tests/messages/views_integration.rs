@@ -4,9 +4,10 @@
 mod tests {
 	use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage, SessionStorage};
 	use reinhardt_integration_tests::message_middleware_mock::MockSuccessMessageMixin;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
-	#[test]
+	#[rstest]
 	fn test_set_messages_success() {
 		// Test SuccessMessageMixin adds success message after form submission
 		let mixin = MockSuccessMessageMixin::new("Successfully saved {name}");
@@ -30,7 +31,7 @@ mod tests {
 		assert_eq!(messages[0].level, Level::Success);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_messages_success_on_delete() {
 		// Test SuccessMessageMixin works with DeleteView
 		let mixin = MockSuccessMessageMixin::new("Successfully deleted {name}");
@@ -60,7 +61,7 @@ mod tests {
 		assert_eq!(messages[0].level, Level::Success);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_template_response() {
 		// Test that messages work with TemplateResponse
 		let mut storage = SessionStorage::new();
@@ -89,7 +90,7 @@ mod tests {
 		assert_eq!(messages_second_request.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_processor_message_levels() {
 		// Test that message level constants are available in template context
 		use reinhardt_core::messages::Level;

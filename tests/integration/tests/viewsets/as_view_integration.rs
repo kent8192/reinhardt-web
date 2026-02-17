@@ -6,6 +6,7 @@
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_http::Request;
 use reinhardt_views::viewsets::viewset::ModelViewSet;
+use rstest::rstest;
 use std::collections::HashMap;
 
 // Helper function to create a test request
@@ -24,6 +25,7 @@ fn create_test_request(method: Method, path: &str) -> Request {
 		.unwrap()
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_handler_attribute_tracking() {
 	let viewset = ModelViewSet::<(), ()>::new("test");
@@ -41,6 +43,7 @@ async fn test_viewset_handler_attribute_tracking() {
 	assert!(response.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_handler_action_mapping() {
 	let viewset = ModelViewSet::<(), ()>::new("test");

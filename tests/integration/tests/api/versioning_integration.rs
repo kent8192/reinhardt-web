@@ -11,6 +11,7 @@ use reinhardt_rest::versioning::{
 	AcceptHeaderVersioning, HostNameVersioning, NamespaceVersioning, QueryParameterVersioning,
 	RequestVersionExt, URLPathVersioning, VersioningMiddleware,
 };
+use rstest::rstest;
 use std::sync::Arc;
 
 // Test handler that returns version information
@@ -44,6 +45,7 @@ fn create_request(uri: &str, headers: Vec<(&str, &str)>) -> Request {
 		.unwrap()
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_url_path_versioning_with_middleware_chain() {
 	// Setup versioning strategy
@@ -90,6 +92,7 @@ async fn test_url_path_versioning_with_middleware_chain() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_accept_header_versioning_with_middleware_chain() {
 	// Setup versioning strategy
@@ -125,6 +128,7 @@ async fn test_accept_header_versioning_with_middleware_chain() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_parameter_versioning_with_middleware_chain() {
 	// Setup versioning strategy
@@ -168,6 +172,7 @@ async fn test_query_parameter_versioning_with_middleware_chain() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_hostname_versioning_with_middleware_chain() {
 	// Setup versioning strategy
@@ -203,6 +208,7 @@ async fn test_hostname_versioning_with_middleware_chain() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_namespace_versioning_with_middleware_chain() {
 	// Setup versioning strategy
@@ -238,6 +244,7 @@ async fn test_namespace_versioning_with_middleware_chain() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_middleware_strategies() {
 	// Test combining multiple versioning strategies in sequence
@@ -271,6 +278,7 @@ async fn test_multiple_middleware_strategies() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_invalid_version_rejection() {
 	// Setup versioning with strict allowed versions
@@ -288,6 +296,7 @@ async fn test_invalid_version_rejection() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_version_propagation_through_request_lifecycle() {
 	// Test that version is correctly propagated through the entire request lifecycle
@@ -332,6 +341,7 @@ async fn test_version_propagation_through_request_lifecycle() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_empty_allowed_versions() {
 	// Test that empty allowed_versions list allows any version
@@ -355,6 +365,7 @@ async fn test_empty_allowed_versions() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_version_or_with_fallback() {
 	// Test RequestVersionExt::version_or() functionality
@@ -403,6 +414,7 @@ async fn test_version_or_with_fallback() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_requests_with_different_versions() {
 	// Test that multiple concurrent requests with different versions are handled correctly

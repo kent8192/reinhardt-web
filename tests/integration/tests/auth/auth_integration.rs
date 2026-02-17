@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 mod permission_tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test AllowAny permission grants access to all requests
 	///
@@ -242,6 +243,7 @@ mod permission_tests {
 mod jwt_tests {
 	use super::*;
 	use reinhardt_auth::jwt::{Claims, JwtAuth};
+	use rstest::rstest;
 
 	/// Test JWT token generation
 	///
@@ -336,6 +338,7 @@ mod jwt_tests {
 mod user_model_tests {
 	use super::*;
 	use reinhardt_auth::User;
+	use rstest::rstest;
 
 	/// Test SimpleUser implementation
 	///
@@ -422,6 +425,7 @@ mod database_integration_tests {
 	use reinhardt_auth::{BaseUser, DefaultUser, PermissionsMixin, User};
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_test::fixtures::postgres_container;
+	use rstest::rstest;
 	use serial_test::serial;
 	use sqlx::PgPool;
 	use std::sync::Arc;

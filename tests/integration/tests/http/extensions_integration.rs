@@ -10,6 +10,7 @@ use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Extensions, Request, Response};
 use reinhardt_test::{api_client_from_url, test_server_guard, ServerRouter as Router};
+use rstest::rstest;
 
 #[derive(Debug, Clone, PartialEq)]
 struct UserId(u64);
@@ -24,6 +25,7 @@ struct RequestMetadata {
 }
 
 /// Test Extensions data sharing between Request and Response
+#[rstest]
 #[tokio::test]
 async fn test_extensions_request_response_sharing() {
 	let mut router = Router::new();
@@ -61,6 +63,7 @@ async fn test_extensions_request_response_sharing() {
 }
 
 /// Test type-safe Extensions insertion and retrieval
+#[rstest]
 #[tokio::test]
 async fn test_extensions_type_safety() {
 	let mut router = Router::new();
@@ -114,6 +117,7 @@ async fn test_extensions_type_safety() {
 }
 
 /// Test Extensions lifecycle - insert, get, remove, clear
+#[rstest]
 #[tokio::test]
 async fn test_extensions_lifecycle() {
 	let mut router = Router::new();
@@ -185,6 +189,7 @@ async fn test_extensions_lifecycle() {
 }
 
 /// Test Extensions with complex custom types
+#[rstest]
 #[tokio::test]
 async fn test_extensions_complex_types() {
 	let mut router = Router::new();
@@ -232,6 +237,7 @@ async fn test_extensions_complex_types() {
 }
 
 /// Test Extensions cloning behavior
+#[rstest]
 #[tokio::test]
 async fn test_extensions_cloning() {
 	let mut router = Router::new();
@@ -287,6 +293,7 @@ async fn test_extensions_cloning() {
 }
 
 /// Test Extensions across multiple middleware layers
+#[rstest]
 #[tokio::test]
 async fn test_extensions_middleware_chain() {
 	let mut router = Router::new();
@@ -354,6 +361,7 @@ async fn test_extensions_middleware_chain() {
 }
 
 /// Test Extensions with multiple requests (isolation)
+#[rstest]
 #[tokio::test]
 async fn test_extensions_request_isolation() {
 	let mut router = Router::new();
@@ -405,6 +413,7 @@ async fn test_extensions_request_isolation() {
 }
 
 /// Test Extensions error handling when type not found
+#[rstest]
 #[tokio::test]
 async fn test_extensions_missing_type_handling() {
 	let mut router = Router::new();

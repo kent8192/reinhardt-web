@@ -3,6 +3,7 @@
 //! Tests ModelAdmin configuration, search, filtering, rendering, and permissions.
 
 use reinhardt_views::admin::{AdminView, ModelAdmin};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ struct TestModel {
 
 reinhardt_test::impl_test_model!(TestModel, i64, "test_models");
 
-#[test]
+#[rstest]
 fn test_model_admin_creation() {
 	// Arrange & Act
 	let admin = ModelAdmin::<TestModel>::new();
@@ -27,7 +28,7 @@ fn test_model_admin_creation() {
 	assert!(admin.search_fields().is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_model_admin_with_list_display() {
 	// Arrange & Act
 	let admin = ModelAdmin::<TestModel>::new()
@@ -39,7 +40,7 @@ fn test_model_admin_with_list_display() {
 	assert_eq!(admin.list_display()[1], "name");
 }
 
-#[test]
+#[rstest]
 fn test_model_admin_with_filters() {
 	// Arrange & Act
 	let admin = ModelAdmin::<TestModel>::new()
@@ -51,7 +52,7 @@ fn test_model_admin_with_filters() {
 	assert_eq!(admin.search_fields().len(), 1);
 }
 
-#[test]
+#[rstest]
 fn test_model_admin_search() {
 	// Arrange
 	let admin = ModelAdmin::<TestModel>::new().with_search_fields(vec!["name".to_string()]);
@@ -82,7 +83,7 @@ fn test_model_admin_search() {
 	assert_eq!(results[0].name, "Alice");
 }
 
-#[test]
+#[rstest]
 fn test_model_admin_filter() {
 	// Arrange
 	let admin = ModelAdmin::<TestModel>::new().with_list_filter(vec!["active".to_string()]);
@@ -116,6 +117,7 @@ fn test_model_admin_filter() {
 	assert!(results.iter().all(|r| r.active));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_model_admin_get_queryset() {
 	// Arrange
@@ -135,6 +137,7 @@ async fn test_model_admin_get_queryset() {
 	assert_eq!(queryset[0].name, "Test");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_model_admin_render_list() {
 	// Arrange
@@ -166,6 +169,7 @@ async fn test_model_admin_render_list() {
 	assert!(html.contains("<th>name</th>"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_model_admin_render_via_trait() {
 	// Arrange
@@ -184,7 +188,7 @@ async fn test_model_admin_render_via_trait() {
 	assert!(html.contains("<div class=\"admin-list\">"));
 }
 
-#[test]
+#[rstest]
 fn test_model_admin_permissions() {
 	// Arrange & Act
 	let admin = ModelAdmin::<TestModel>::new();

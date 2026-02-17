@@ -10,9 +10,10 @@
 
 use reinhardt::db::associations::ManyToManyField;
 use reinhardt::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
-#[test]
+#[rstest]
 fn test_auto_derive_all_traits() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test", table_name = "users")]
@@ -63,7 +64,7 @@ fn test_auto_derive_all_traits() {
 // The #[model] macro will automatically add Debug, Clone, PartialEq.
 // Users only need to add Serialize, Deserialize (and optionally Hash, Eq).
 
-#[test]
+#[rstest]
 fn test_model_first_derive_second() {
 	// Correct pattern: #[model] before #[derive]
 	// #[model] adds Model, Debug, Clone, PartialEq automatically
@@ -94,7 +95,7 @@ fn test_model_first_derive_second() {
 	let _: OrderedUser = serde_json::from_str(&json).expect("Deserialization failed");
 }
 
-#[test]
+#[rstest]
 fn test_model_with_hash_eq() {
 	// User can add Hash and Eq when needed
 	#[model(app_label = "test", table_name = "hashable_users")]
@@ -117,7 +118,7 @@ fn test_model_with_hash_eq() {
 	assert_eq!(set.len(), 1); // Still 1 (duplicate)
 }
 
-#[test]
+#[rstest]
 fn test_manual_hash_trait() {
 	// Note: Hash and Eq are NOT auto-derived by #[model] because not all types
 	// implement these traits (e.g., f64, f32). Users can manually add them when needed.
@@ -154,7 +155,7 @@ fn test_manual_hash_trait() {
 	assert_eq!(map.len(), 2); // Should still be 2 (updated p1's value)
 }
 
-#[test]
+#[rstest]
 fn test_partialeq() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test", table_name = "items")]
@@ -183,7 +184,7 @@ fn test_partialeq() {
 	assert_ne!(item1, item3);
 }
 
-#[test]
+#[rstest]
 fn test_many_to_many_accessor_methods_generated() {
 	// Test basic ManyToMany field generates accessor method
 	#[model(app_label = "test", table_name = "m2m_users")]
@@ -211,7 +212,7 @@ fn test_many_to_many_accessor_methods_generated() {
 	let _ = _accessor_method;
 }
 
-#[test]
+#[rstest]
 fn test_self_referential_many_to_many() {
 	// Test self-referential ManyToMany (User -> User)
 	#[model(app_label = "test", table_name = "social_users")]
@@ -237,7 +238,7 @@ fn test_self_referential_many_to_many() {
 	let _ = (_following, _blocked);
 }
 
-#[test]
+#[rstest]
 fn test_multiple_many_to_many_fields() {
 	#[model(app_label = "test", table_name = "m2m_groups")]
 	#[derive(Serialize, Deserialize)]
@@ -271,7 +272,7 @@ fn test_multiple_many_to_many_fields() {
 	let _ = (_groups, _friends);
 }
 
-#[test]
+#[rstest]
 fn test_no_many_to_many_fields() {
 	// Model without ManyToMany fields should not generate accessor methods
 	#[model(app_label = "test", table_name = "simple_users")]

@@ -10,12 +10,14 @@ use reinhardt_core::exception::Result;
 use reinhardt_di::{injectable, Injectable, Injected, InjectionContext, SingletonScope};
 use reinhardt_http::{Request, Response};
 use reinhardt_views::viewsets::{Action, ActionType, ViewSet};
+use rstest::rstest;
 use std::sync::Arc;
 
 // ============================================================================
 // Category 1: HTTP Request/Response Cycle (3 tests)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_complete_request_response_cycle() {
 	use std::sync::atomic::{AtomicUsize, Ordering};
@@ -82,6 +84,7 @@ async fn test_complete_request_response_cycle() {
 	assert!(body.contains("Handled GET /api/items/ with logger"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_post_request_with_body() {
 	#[derive(Clone)]
@@ -143,6 +146,7 @@ async fn test_post_request_with_body() {
 	assert_eq!(body, "Parsed: test data");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_headers_extraction() {
 	#[derive(Clone)]
@@ -226,6 +230,7 @@ async fn test_headers_extraction() {
 // Category 2: Multiple ViewSet Interactions (3 tests)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_viewsets_shared_service() {
 	use std::sync::Mutex;
@@ -317,6 +322,7 @@ async fn test_multiple_viewsets_shared_service() {
 	assert_eq!(body_b, "B: 1"); // Same shared counter
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_composition() {
 	#[derive(Clone)]
@@ -417,6 +423,7 @@ async fn test_viewset_composition() {
 	assert_eq!(body2, "Items: 1");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_dependency_chain() {
 	#[derive(Clone)]
@@ -484,6 +491,7 @@ async fn test_viewset_dependency_chain() {
 // Category 3: Action Routing (3 tests)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_action_based_routing() {
 	#[derive(Clone)]
@@ -552,6 +560,7 @@ async fn test_action_based_routing() {
 	assert_eq!(routes.len(), 5);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_action_handling() {
 	#[derive(Clone)]
@@ -619,6 +628,7 @@ async fn test_custom_action_handling() {
 	assert_eq!(body, "Custom: special");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_method_based_routing() {
 	#[derive(Clone)]
@@ -698,6 +708,7 @@ async fn test_method_based_routing() {
 // Category 4: State Management (3 tests)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_request_scoped_state() {
 	use std::sync::Mutex;
@@ -772,6 +783,7 @@ async fn test_request_scoped_state() {
 	assert_eq!(*stored_id, Some("req-123".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_singleton_state_persistence() {
 	use std::sync::Mutex;
@@ -856,6 +868,7 @@ async fn test_singleton_state_persistence() {
 	assert_eq!(body, "Count: 3");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_state_isolation() {
 	use std::sync::Mutex;
@@ -941,6 +954,7 @@ async fn test_session_state_isolation() {
 // Category 5: Error Handling and Edge Cases (3 tests)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_graceful_service_failure() {
 	#[derive(Clone, Default)]
@@ -993,6 +1007,7 @@ async fn test_graceful_service_failure() {
 	assert_eq!(body, "Service available");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_empty_request_handling() {
 	#[derive(Clone)]
@@ -1048,6 +1063,7 @@ async fn test_empty_request_handling() {
 	assert_eq!(body, "Empty body accepted");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_large_payload_handling() {
 	#[derive(Clone)]

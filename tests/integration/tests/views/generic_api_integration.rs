@@ -12,6 +12,7 @@ use reinhardt_views::generic::{
 	RetrieveUpdateAPIView, RetrieveUpdateDestroyAPIView, UpdateAPIView,
 };
 use reinhardt_views::View;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 // Test model for integration tests
@@ -41,6 +42,7 @@ fn create_test_request(method: Method, path: &str) -> Request {
 }
 
 // ListAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_list_api_view_get_request() {
 	let view = ListAPIView::<TestArticle, JsonSerializer<TestArticle>>::new()
@@ -57,6 +59,7 @@ async fn test_list_api_view_get_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_list_api_view_head_request() {
 	let view = ListAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -71,6 +74,7 @@ async fn test_list_api_view_head_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_list_api_view_disallowed_method() {
 	let view = ListAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -85,6 +89,7 @@ async fn test_list_api_view_disallowed_method() {
 }
 
 // CreateAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_create_api_view_post_request() {
 	let view = CreateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -99,6 +104,7 @@ async fn test_create_api_view_post_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_create_api_view_disallowed_method() {
 	let view = CreateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -113,6 +119,7 @@ async fn test_create_api_view_disallowed_method() {
 }
 
 // UpdateAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_update_api_view_put_request() {
 	let view = UpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new()
@@ -128,6 +135,7 @@ async fn test_update_api_view_put_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_update_api_view_patch_request() {
 	let view = UpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new().with_partial(true);
@@ -142,6 +150,7 @@ async fn test_update_api_view_patch_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_update_api_view_disallowed_method() {
 	let view = UpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -156,6 +165,7 @@ async fn test_update_api_view_disallowed_method() {
 }
 
 // DestroyAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_destroy_api_view_delete_request() {
 	let view = DestroyAPIView::<TestArticle>::new().with_lookup_field("id".to_string());
@@ -170,6 +180,7 @@ async fn test_destroy_api_view_delete_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_destroy_api_view_disallowed_method() {
 	let view = DestroyAPIView::<TestArticle>::new();
@@ -184,6 +195,7 @@ async fn test_destroy_api_view_disallowed_method() {
 }
 
 // ListCreateAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_list_create_api_view_get_request() {
 	let view =
@@ -199,6 +211,7 @@ async fn test_list_create_api_view_get_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_list_create_api_view_post_request() {
 	let view = ListCreateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -213,6 +226,7 @@ async fn test_list_create_api_view_post_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_list_create_api_view_disallowed_method() {
 	let view = ListCreateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -227,6 +241,7 @@ async fn test_list_create_api_view_disallowed_method() {
 }
 
 // RetrieveUpdateAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_api_view_get_request() {
 	let view = RetrieveUpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -241,6 +256,7 @@ async fn test_retrieve_update_api_view_get_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_api_view_put_request() {
 	let view = RetrieveUpdateAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -256,6 +272,7 @@ async fn test_retrieve_update_api_view_put_request() {
 }
 
 // RetrieveDestroyAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_destroy_api_view_get_request() {
 	let view = RetrieveDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -270,6 +287,7 @@ async fn test_retrieve_destroy_api_view_get_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_destroy_api_view_delete_request() {
 	let view = RetrieveDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -285,6 +303,7 @@ async fn test_retrieve_destroy_api_view_delete_request() {
 }
 
 // RetrieveUpdateDestroyAPIView integration tests
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_destroy_api_view_get_request() {
 	let view = RetrieveUpdateDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -299,6 +318,7 @@ async fn test_retrieve_update_destroy_api_view_get_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_destroy_api_view_put_request() {
 	let view = RetrieveUpdateDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -313,6 +333,7 @@ async fn test_retrieve_update_destroy_api_view_put_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_destroy_api_view_delete_request() {
 	let view = RetrieveUpdateDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();
@@ -327,6 +348,7 @@ async fn test_retrieve_update_destroy_api_view_delete_request() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_retrieve_update_destroy_api_view_disallowed_method() {
 	let view = RetrieveUpdateDestroyAPIView::<TestArticle, JsonSerializer<TestArticle>>::new();

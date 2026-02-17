@@ -8,7 +8,8 @@
 /// Test: Compile-fail cases
 ///
 /// Tests that invalid DI usage fails at compile time.
-#[test]
+use rstest::rstest;
+#[rstest]
 fn test_compile_fail_cases() {
 	let t = trybuild::TestCases::new();
 
@@ -25,7 +26,7 @@ fn test_compile_fail_cases() {
 ///
 /// Tests that valid DI usage compiles successfully.
 
-#[test]
+#[rstest]
 fn test_compile_pass_cases() {
 	let t = trybuild::TestCases::new();
 

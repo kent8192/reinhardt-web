@@ -4,6 +4,7 @@ use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResul
 use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::operations::FieldDefinition;
 use reinhardt_db::migrations::operations::models::{CreateModel, ValidationError};
+use rstest::rstest;
 
 /// Mock schema editor for testing SQL generation
 struct MockSchemaEditor;
@@ -16,7 +17,7 @@ impl BaseDatabaseSchemaEditor for MockSchemaEditor {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_empty_list_error() {
 	let result = CreateModel::new(
 		"users",
@@ -49,7 +50,7 @@ fn test_composite_pk_empty_list_error() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_nonexistent_field_error() {
 	let result = CreateModel::new(
 		"posts",
@@ -101,7 +102,7 @@ fn test_composite_pk_nonexistent_field_error() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_fields_not_null_constraint() {
 	let create = CreateModel::new(
 		"post_tags",

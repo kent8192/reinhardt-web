@@ -1,7 +1,8 @@
 use reinhardt_auth::{DefaultUser, PermissionsMixin};
+use rstest::rstest;
 use uuid::Uuid;
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_has_perm() {
 	// Test intent: Verify PermissionsMixin::has_perm() correctly checks
 	// if user has specific permission in user_permissions list
@@ -27,7 +28,7 @@ fn test_permissions_mixin_has_perm() {
 	assert!(!user.has_perm("blog.delete_post"));
 }
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_superuser_bypass() {
 	// Test intent: Verify superuser has_perm() returns true for any
 	// permission string without explicit grant in user_permissions
@@ -54,7 +55,7 @@ fn test_permissions_mixin_superuser_bypass() {
 	assert!(superuser.has_perm("any.permission"));
 }
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_has_module_perms() {
 	// Test intent: Verify has_module_perms() returns true if user has
 	// any permission with module prefix (e.g., "blog.x")
@@ -79,7 +80,7 @@ fn test_permissions_mixin_has_module_perms() {
 	assert!(!user.has_module_perms("shop"));
 }
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_group_permissions() {
 	// Test intent: Verify groups() method returns correct group list
 	// and contains() can check group membership
@@ -105,7 +106,7 @@ fn test_permissions_mixin_group_permissions() {
 	assert!(user.groups().contains(&"moderators".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_get_all_permissions() {
 	// Test intent: Verify get_all_permissions() returns complete list
 	// of user permissions with correct count and content
@@ -137,7 +138,7 @@ fn test_permissions_mixin_get_all_permissions() {
 	assert!(all_perms.contains("blog.delete_post"));
 }
 
-#[test]
+#[rstest]
 fn test_permissions_mixin_no_permissions() {
 	// Test intent: Verify permission checking methods correctly handle
 	// users with empty user_permissions and groups lists

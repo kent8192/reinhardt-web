@@ -120,8 +120,9 @@ impl MockSuccessMessageMixin {
 mod tests {
 	use super::*;
 	use reinhardt_core::messages::MemoryStorage;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_middleware_enabled() {
 		let middleware = MockMessageMiddleware::new();
 		let mut storage = MemoryStorage::new();
@@ -131,7 +132,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_disabled_error() {
 		let middleware = MockMessageMiddleware::new().with_enabled(false);
 		let mut storage = MemoryStorage::new();
@@ -145,7 +146,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_disabled_silent() {
 		let middleware = MockMessageMiddleware::new()
 			.with_enabled(false)
@@ -157,7 +158,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0); // Message not added
 	}
 
-	#[test]
+	#[rstest]
 	fn test_success_message_mixin() {
 		let mixin = MockSuccessMessageMixin::new("Successfully saved {name}");
 		let mut context = HashMap::new();

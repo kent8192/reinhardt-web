@@ -11,6 +11,7 @@
 
 use super::test_helpers::resolve_injectable;
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -125,6 +126,7 @@ impl Injectable for VeryDeep3 {
 }
 
 /// Baseline: Resolution time without dependencies
+#[rstest]
 #[tokio::test]
 async fn bench_baseline_resolution() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -151,6 +153,7 @@ async fn bench_baseline_resolution() {
 }
 
 /// Fast path on cache hit (cycle detection skipped)
+#[rstest]
 #[tokio::test]
 async fn bench_cached_resolution_fast_path() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -178,6 +181,7 @@ async fn bench_cached_resolution_fast_path() {
 }
 
 /// Slow path on cache miss (with cycle detection)
+#[rstest]
 #[tokio::test]
 async fn bench_uncached_resolution_with_detection() {
 	// Measurement: Create new context each time for cache miss
@@ -204,6 +208,7 @@ async fn bench_uncached_resolution_with_detection() {
 }
 
 /// Deep dependency chain (depth 10) resolution
+#[rstest]
 #[tokio::test]
 async fn bench_deep_dependency_chain_depth_10() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -264,6 +269,7 @@ async fn bench_deep_dependency_chain_depth_10() {
 }
 
 /// Very deep dependency chain (sampling test)
+#[rstest]
 #[tokio::test]
 async fn bench_very_deep_dependency_chain_with_sampling() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -286,6 +292,7 @@ async fn bench_very_deep_dependency_chain_with_sampling() {
 }
 
 /// Concurrent resolution performance
+#[rstest]
 #[tokio::test]
 async fn bench_concurrent_resolutions() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -318,6 +325,7 @@ async fn bench_concurrent_resolutions() {
 }
 
 /// Memory overhead verification (estimated)
+#[rstest]
 #[tokio::test]
 async fn bench_memory_overhead() {
 	use std::mem;

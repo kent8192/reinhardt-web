@@ -2,6 +2,7 @@
 
 use reinhardt_di::{Depends, DiResult, Injectable, InjectionContext, SingletonScope};
 use std::sync::Arc;
+use rstest::rstest;
 
 // Test structures
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +48,7 @@ impl Injectable for UserService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_basic_injection() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -56,6 +58,7 @@ async fn test_basic_injection() {
 	assert_eq!(db.connection_string, "postgres://localhost/test");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_injection() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -68,6 +71,7 @@ async fn test_nested_injection() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_depends_wrapper() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -77,6 +81,7 @@ async fn test_depends_wrapper() {
 	assert_eq!(db.connection_string, "postgres://localhost/test");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_request_scope_isolation() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -97,6 +102,7 @@ async fn test_request_scope_isolation() {
 	assert_eq!(*val2.unwrap(), "request2");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_singleton_scope_sharing() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -116,6 +122,7 @@ async fn test_singleton_scope_sharing() {
 	assert_eq!(*val2.unwrap(), "shared_value");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_request_scopes() {
 	use tokio::task;
@@ -149,6 +156,7 @@ async fn test_concurrent_request_scopes() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_di_integration_depends_clone() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -161,6 +169,7 @@ async fn test_di_integration_depends_clone() {
 	assert_eq!(db1.connection_string, db2.connection_string);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_mixed_scopes() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -232,6 +241,7 @@ impl Injectable for SingletonData {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_request_scope_isolation() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -261,6 +271,7 @@ async fn test_injectable_request_scope_isolation() {
 	assert_eq!(data2_unchanged.value, "request-specific");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_singleton_scope_sharing() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -278,6 +289,7 @@ async fn test_injectable_singleton_scope_sharing() {
 	assert_eq!(data1, data2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_concurrent_requests() {
 	use tokio::task;
@@ -318,6 +330,7 @@ async fn test_injectable_concurrent_requests() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_mixed_scopes() {
 	let singleton = Arc::new(SingletonScope::new());

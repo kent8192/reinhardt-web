@@ -4,7 +4,9 @@
 use reinhardt_rest::throttling::{
 	AnonRateThrottle, ScopedRateThrottle, Throttle, UserRateThrottle,
 };
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
 async fn test_request_throttling_multiple_throttles() {
 	// Ensure all throttle classes see each request even when the request is already being throttled
@@ -46,6 +48,7 @@ async fn test_request_throttling_multiple_throttles() {
 	assert_eq!(wait_time, Some(60));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_throttle_rate_change_negative() {
 	// Test that changing rate during execution doesn't break existing limits
@@ -78,6 +81,7 @@ async fn test_throttle_rate_change_negative() {
 	assert!(!throttle_new.allow_request(user_id).await.unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_seconds_fields() {
 	// Ensure retry-after header is set properly for second-based throttles
@@ -104,6 +108,7 @@ async fn test_seconds_fields() {
 	assert_eq!(wait_time, Some(1));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_minutes_fields() {
 	// Ensure retry-after header is set properly for minute-based throttles
@@ -130,6 +135,7 @@ async fn test_minutes_fields() {
 	assert_eq!(wait_time, Some(60));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_next_rate_remains_constant_if_followed() {
 	// If a client follows the recommended next request rate, the throttling rate should stay constant
@@ -154,6 +160,7 @@ async fn test_next_rate_remains_constant_if_followed() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_non_time_throttle() {
 	// Test throttle that doesn't use time-based limiting
@@ -212,6 +219,7 @@ async fn test_non_time_throttle() {
 	assert_eq!(wait_time, None);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_xff_spoofing_doesnt_change_machine_id_with_one_app_proxy() {
 	// Test that X-Forwarded-For spoofing doesn't allow bypassing throttle
@@ -248,6 +256,7 @@ async fn test_xff_spoofing_doesnt_change_machine_id_with_one_app_proxy() {
 	assert!(!allowed);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_xff_spoofing_doesnt_change_machine_id_with_two_app_proxies() {
 	// Test that X-Forwarded-For spoofing doesn't allow bypassing throttle with 2 proxies
@@ -281,6 +290,7 @@ async fn test_xff_spoofing_doesnt_change_machine_id_with_two_app_proxies() {
 	assert!(!allowed);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unique_clients_are_counted_independently_with_one_proxy() {
 	// Test that different clients are tracked separately
@@ -310,6 +320,7 @@ async fn test_unique_clients_are_counted_independently_with_one_proxy() {
 	assert_eq!(client1, client2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unique_clients_are_counted_independently_with_two_proxies() {
 	// Test that different clients are tracked separately with 2 proxies
@@ -349,6 +360,7 @@ async fn test_unique_clients_are_counted_independently_with_two_proxies() {
 	assert!(allowed);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_get_rate_raises_error_if_scope_is_missing() {
 	// Test that scoped throttle handles missing scope properly
@@ -363,6 +375,7 @@ async fn test_get_rate_raises_error_if_scope_is_missing() {
 	assert!(allowed);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_throttle_raises_error_if_rate_is_missing() {
 	// In Rust/Reinhardt, this is prevented by type system
@@ -378,6 +391,7 @@ async fn test_throttle_raises_error_if_rate_is_missing() {
 	// This is enforced by Rust's type system
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_parse_rate_returns_tuple_with_none_if_rate_not_provided() {
 	// Test that get_rate returns proper values
@@ -389,6 +403,7 @@ async fn test_parse_rate_returns_tuple_with_none_if_rate_not_provided() {
 	assert_eq!(duration, 3600);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_allow_request_returns_true_if_rate_is_none() {
 	// In Rust implementation, rate is always required
@@ -402,6 +417,7 @@ async fn test_allow_request_returns_true_if_rate_is_none() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_get_cache_key_raises_not_implemented_error() {
 	// This tests the base Throttle trait
@@ -426,6 +442,7 @@ async fn test_get_cache_key_raises_not_implemented_error() {
 	assert!(throttle.allow_request("user2").await.unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_allow_request_returns_true_if_key_is_none() {
 	// Test behavior with empty or None-like keys

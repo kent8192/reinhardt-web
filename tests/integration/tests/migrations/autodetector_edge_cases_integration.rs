@@ -95,7 +95,6 @@ fn add_fk_constraint(
 ///
 /// **Expected Behavior**: All 50 models detected, reasonable performance
 #[rstest]
-#[test]
 fn test_large_schema_50_models() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -136,7 +135,6 @@ fn test_large_schema_50_models() {
 ///
 /// **Expected Behavior**: All fields detected across multiple models
 #[rstest]
-#[test]
 fn test_large_schema_1000_fields() {
 	// from_state: 10 models with minimal fields
 	let mut from_state = ProjectState::new();
@@ -184,7 +182,6 @@ fn test_large_schema_1000_fields() {
 ///
 /// **Expected Behavior**: Dependency chain correctly ordered via topological sort
 #[rstest]
-#[test]
 fn test_deep_dependency_chain_10_levels() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -242,7 +239,6 @@ fn test_deep_dependency_chain_10_levels() {
 ///
 /// **Expected Behavior**: Topological sort produces valid order
 #[rstest]
-#[test]
 fn test_complex_dependency_graph() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -336,7 +332,6 @@ fn test_complex_dependency_graph() {
 ///
 /// **Expected Behavior**: All circular dependencies detected
 #[rstest]
-#[test]
 fn test_multiple_circular_dependencies() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -436,7 +431,6 @@ fn test_multiple_circular_dependencies() {
 ///
 /// **Expected Behavior**: Type change detected; SQLite may require table rebuild
 #[rstest]
-#[test]
 fn test_sqlite_alter_table_limitation() {
 	// from_state: User with VarChar username
 	let mut from_state = ProjectState::new();
@@ -481,7 +475,6 @@ fn test_sqlite_alter_table_limitation() {
 ///
 /// **Expected Behavior**: Fields with MySQL-specific types detected
 #[rstest]
-#[test]
 fn test_mysql_specific_types() {
 	// from_state: Empty
 	let from_state = ProjectState::new();
@@ -527,7 +520,6 @@ fn test_mysql_specific_types() {
 ///
 /// **Expected Behavior**: ENUM field modification detected
 #[rstest]
-#[test]
 fn test_postgres_enum_value_addition() {
 	// from_state: User with status ENUM('active', 'inactive')
 	let mut from_state = ProjectState::new();
@@ -607,7 +599,6 @@ fn test_postgres_enum_value_addition() {
 ///
 /// **Expected Behavior**: ENUM field modification detected
 #[rstest]
-#[test]
 fn test_postgres_enum_value_deletion() {
 	// from_state: User with status ENUM('active', 'inactive', 'pending')
 	let mut from_state = ProjectState::new();
@@ -689,7 +680,6 @@ fn test_postgres_enum_value_deletion() {
 ///
 /// **Expected Behavior**: Fulltext index addition detected
 #[rstest]
-#[test]
 fn test_mysql_fulltext_index() {
 	// from_state: Article without fulltext index
 	let mut from_state = ProjectState::new();
@@ -751,7 +741,6 @@ fn test_mysql_fulltext_index() {
 ///
 /// **Expected Behavior**: Reserved words detected, proper escaping applied
 #[rstest]
-#[test]
 fn test_sql_reserved_word_table_name() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -819,7 +808,6 @@ fn test_sql_reserved_word_table_name() {
 ///
 /// **Expected Behavior**: Special characters detected, proper escaping applied
 #[rstest]
-#[test]
 fn test_special_characters_in_names() {
 	// from_state: Basic model
 	let mut from_state = ProjectState::new();
@@ -908,7 +896,6 @@ fn test_special_characters_in_names() {
 ///
 /// **Expected Behavior**: Long identifiers detected, truncation handled
 #[rstest]
-#[test]
 fn test_very_long_identifier_63_chars() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -998,7 +985,6 @@ fn test_very_long_identifier_63_chars() {
 ///
 /// **Expected Behavior**: Inheritance changes detected, dependencies updated
 #[rstest]
-#[test]
 fn test_abstract_base_model_change() {
 	// from_state: Concrete model without base
 	let mut from_state = ProjectState::new();

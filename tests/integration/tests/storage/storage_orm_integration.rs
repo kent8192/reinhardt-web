@@ -5,6 +5,7 @@
 use image::{ImageBuffer, Rgb};
 use reinhardt_db::orm::file_fields::{FileField as ORMFileField, ImageField as ORMImageField};
 use reinhardt_utils::storage::{InMemoryStorage, LocalStorage, Storage};
+use rstest::rstest;
 use std::io::Cursor;
 use tempfile::TempDir;
 
@@ -27,6 +28,7 @@ fn create_test_image(width: u32, height: u32) -> Vec<u8> {
 	buffer.into_inner()
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_save() {
 	// Test saving a file through ORM FileField
@@ -43,6 +45,7 @@ async fn test_filefield_save() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_save_with_none_name() {
 	// Test FileField save when no name is provided
@@ -58,6 +61,7 @@ async fn test_filefield_save_with_none_name() {
 	storage.delete(&generated_path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_generate_filename() {
 	// Test filename generation for FileField
@@ -72,6 +76,7 @@ async fn test_filefield_generate_filename() {
 	assert!(generated.ends_with(extension));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_get_upload_to_string() {
 	// Test upload_to as a string path
@@ -87,6 +92,7 @@ async fn test_filefield_get_upload_to_string() {
 	storage.delete(&full_path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_attr_class() {
 	// Test FileField attribute class
@@ -94,6 +100,7 @@ async fn test_filefield_attr_class() {
 	assert_eq!(field.upload_to, "uploads/documents");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_path() {
 	// Test getting the path of a stored file
@@ -109,6 +116,7 @@ async fn test_filefield_path() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_repr() {
 	// Test FileField representation
@@ -117,6 +125,7 @@ async fn test_filefield_repr() {
 	assert!(repr.contains("FileField"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_url() {
 	// Test URL generation for stored files
@@ -132,6 +141,7 @@ async fn test_filefield_url() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_size() {
 	// Test getting file size
@@ -148,6 +158,7 @@ async fn test_filefield_size() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_pickle() {
 	// Test FileField serialization/deserialization
@@ -165,6 +176,7 @@ async fn test_filefield_pickle() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_filefield_pathlib() {
 	// Test FileField with pathlib-style paths
@@ -178,6 +190,7 @@ async fn test_filefield_pathlib() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_imagefield_constructor() {
 	// Test ImageField constructor
@@ -186,6 +199,7 @@ async fn test_imagefield_constructor() {
 	assert!(field.height_field.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_imagefield_dimensions() {
 	// Tests image dimension extraction from actual image data
@@ -203,6 +217,7 @@ async fn test_imagefield_dimensions() {
 	assert_eq!(extracted_height, height, "Height should match");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_imagefield_field_save_file() {
 	// Test ImageField save file operation
@@ -217,6 +232,7 @@ async fn test_imagefield_field_save_file() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_imagefield_update_dimension_fields() {
 	// Tests dimension extraction from resized images
@@ -238,6 +254,7 @@ async fn test_imagefield_update_dimension_fields() {
 	assert_eq!(field.height_field, Some("height".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_orm_file_with_inmemory_storage() {
 	// Test ORM file operations with InMemoryStorage
@@ -255,6 +272,7 @@ async fn test_orm_file_with_inmemory_storage() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_file_metadata_with_orm() {
 	// Test file metadata operations with ORM
@@ -274,6 +292,7 @@ async fn test_file_metadata_with_orm() {
 	storage.delete(path).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_file_cleanup_with_orm() {
 	// Test proper cleanup of ORM-managed files

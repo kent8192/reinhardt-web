@@ -5,6 +5,7 @@
 use reinhardt_db::orm::Field;
 use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 use reinhardt_rest::filters::{OrderingField, SearchableModel};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +28,7 @@ impl SearchableModel for TestPost {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_searchable_fields() {
 	let fields = TestPost::searchable_fields();
 	assert_eq!(fields.len(), 2);
@@ -35,13 +36,13 @@ fn test_searchable_fields() {
 	assert_eq!(fields[1].path(), &["content"]);
 }
 
-#[test]
+#[rstest]
 fn test_searchable_field_names() {
 	let names = TestPost::searchable_field_names();
 	assert_eq!(names, vec!["title", "content"]);
 }
 
-#[test]
+#[rstest]
 fn test_default_ordering() {
 	let ordering = TestPost::default_ordering();
 	assert_eq!(ordering.len(), 1);

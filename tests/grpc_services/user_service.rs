@@ -161,8 +161,10 @@ impl UserService for UserServiceImpl {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_storage_add_get() {
 		let storage = UserStorage::new();
@@ -182,6 +184,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().name, "Test User");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_storage_list() {
 		let storage = UserStorage::new();
@@ -201,6 +204,7 @@ mod tests {
 		assert_eq!(storage.list_users().await.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_storage_delete() {
 		let storage = UserStorage::new();
@@ -219,6 +223,7 @@ mod tests {
 		assert!(!storage.delete_user("del-1").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_create_user() {
 		let storage = UserStorage::new();
@@ -237,6 +242,7 @@ mod tests {
 		assert!(user.active);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_get_user() {
 		let storage = UserStorage::new();
@@ -263,6 +269,7 @@ mod tests {
 		assert_eq!(user.name, "Bob");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_get_user_not_found() {
 		let storage = UserStorage::new();
@@ -277,6 +284,7 @@ mod tests {
 		assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_update_user() {
 		let storage = UserStorage::new();
@@ -308,6 +316,7 @@ mod tests {
 		assert_eq!(user.email, "charlie@example.com");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_delete_user() {
 		let storage = UserStorage::new();
@@ -335,6 +344,7 @@ mod tests {
 		assert!(storage.get_user("delete-test-1").await.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_service_list_users() {
 		let storage = UserStorage::new();

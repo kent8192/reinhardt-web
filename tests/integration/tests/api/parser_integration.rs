@@ -11,6 +11,7 @@ use bytes::Bytes;
 use hyper::{header::CONTENT_TYPE, HeaderMap, Method, Version};
 use reinhardt_core::parsers::{parser::Parser, FormParser, JSONParser, MultiPartParser};
 use reinhardt_http::Request;
+use rstest::rstest;
 
 /// Test POST data access after parsing with FormParser and MultiPartParser
 ///
@@ -19,6 +20,7 @@ use reinhardt_http::Request;
 ///
 /// This test verifies that after accessing request.post(), the request.data()
 /// still works correctly with FormParser and MultiPartParser.
+#[rstest]
 #[tokio::test]
 async fn test_post_accessed_in_post_method() {
 	// Create form data body
@@ -65,6 +67,7 @@ async fn test_post_accessed_in_post_method() {
 ///
 /// This test verifies that with JSONParser, POST data access doesn't
 /// interfere with JSON parsing.
+#[rstest]
 #[tokio::test]
 async fn test_post_accessed_in_post_method_with_json_parser() {
 	// Create JSON data body
@@ -104,6 +107,7 @@ async fn test_post_accessed_in_post_method_with_json_parser() {
 /// Line: 163 in django-rest-framework/tests/test_parsers.py
 ///
 /// This test verifies that PUT requests also handle POST data access correctly.
+#[rstest]
 #[tokio::test]
 async fn test_post_accessed_in_put_method() {
 	// Create form data body
@@ -149,6 +153,7 @@ async fn test_post_accessed_in_put_method() {
 /// Line: 170 in django-rest-framework/tests/test_parsers.py
 ///
 /// This test verifies that accessing the body multiple times raises an error.
+#[rstest]
 #[tokio::test]
 async fn test_request_read_before_parsing() {
 	// Create form data body

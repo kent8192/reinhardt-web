@@ -8,6 +8,7 @@ use reinhardt_test::http::*;
 use base64::{engine::general_purpose, Engine as _};
 use hyper::header::{HeaderName, HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use hyper::StatusCode;
+use rstest::rstest;
 
 /// Create Basic Auth header value
 fn create_basic_auth(username: &str, password: &str) -> String {
@@ -32,7 +33,7 @@ fn parse_basic_auth(auth_header: &str) -> Option<(String, String)> {
 	Some((username, password))
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_encoding() {
 	// Test intent: Verify create_basic_auth() properly base64-encodes
 	// username:password credentials with "Basic " prefix
@@ -42,7 +43,7 @@ fn test_basic_auth_encoding() {
 	assert!(auth.len() > 6); // "Basic " + base64
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_parsing() {
 	// Test intent: Verify parse_basic_auth() correctly decodes base64
 	// credentials and extracts username and password separated by colon
@@ -53,7 +54,7 @@ fn test_basic_auth_parsing() {
 	assert_eq!(password, "password123");
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_with_special_chars() {
 	// Test intent: Verify Basic auth encoding/decoding handles special
 	// characters in password including @ : ! symbols
@@ -64,7 +65,7 @@ fn test_basic_auth_with_special_chars() {
 	assert_eq!(password, "p@ss:w0rd!");
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_invalid_format() {
 	// Test intent: Verify parse_basic_auth() returns None for invalid
 	// base64 encoding (contains invalid characters like !)
@@ -74,7 +75,7 @@ fn test_basic_auth_invalid_format() {
 	assert!(result.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_missing_colon() {
 	// Test intent: Verify parse_basic_auth() returns None when decoded
 	// credentials lack colon separator between username and password
@@ -86,7 +87,7 @@ fn test_basic_auth_missing_colon() {
 	assert!(result.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_bearer_token_format() {
 	// Test intent: Verify create_bearer_token() correctly formats
 	// token with "Bearer " prefix and exact token value
@@ -96,7 +97,7 @@ fn test_bearer_token_format() {
 	assert_eq!(auth, format!("Bearer {}", token));
 }
 
-#[test]
+#[rstest]
 fn test_bearer_token_extraction() {
 	// Test intent: Verify Bearer token can be extracted by stripping
 	// "Bearer " prefix from authorization header value
@@ -107,7 +108,7 @@ fn test_bearer_token_extraction() {
 	assert_eq!(extracted, token);
 }
 
-#[test]
+#[rstest]
 fn test_authorization_header_basic() {
 	// Test intent: Verify Basic auth can be added to HTTP request
 	// Authorization header and retrieved correctly
@@ -122,7 +123,7 @@ fn test_authorization_header_basic() {
 	assert!(auth_header.to_str().unwrap().starts_with("Basic "));
 }
 
-#[test]
+#[rstest]
 fn test_authorization_header_bearer() {
 	// Test intent: Verify Bearer token can be added to HTTP request
 	// Authorization header and retrieved with correct prefix
@@ -137,7 +138,7 @@ fn test_authorization_header_bearer() {
 	assert!(auth_header.to_str().unwrap().starts_with("Bearer "));
 }
 
-#[test]
+#[rstest]
 fn test_www_authenticate_header() {
 	// Test intent: Verify WWW-Authenticate header can be added to 401
 	// response and contains Basic realm specification
@@ -152,7 +153,7 @@ fn test_www_authenticate_header() {
 	assert_header_contains(&response, "www-authenticate", "Basic");
 }
 
-#[test]
+#[rstest]
 fn test_multiple_auth_schemes() {
 	// Test intent: Verify WWW-Authenticate header can advertise multiple
 	// authentication schemes (Basic and Bearer) in single header value
@@ -168,7 +169,7 @@ fn test_multiple_auth_schemes() {
 	assert!(auth_header.contains("Bearer"));
 }
 
-#[test]
+#[rstest]
 fn test_api_key_in_header() {
 	// Test intent: Verify custom X-API-Key header can be added to
 	// request and retrieved with exact value
@@ -184,7 +185,7 @@ fn test_api_key_in_header() {
 	assert_eq!(api_key.to_str().unwrap(), "my-api-key-123");
 }
 
-#[test]
+#[rstest]
 fn test_api_key_in_query() {
 	// Test intent: Verify API key can be passed via URL query parameter
 	// and retrieved from request URI
@@ -194,7 +195,7 @@ fn test_api_key_in_query() {
 	assert!(query.contains("api_key=secret123"));
 }
 
-#[test]
+#[rstest]
 fn test_api_key_in_cookie() {
 	// Test intent: Verify API key can be passed via Cookie header
 	// and retrieved from request headers
@@ -209,7 +210,7 @@ fn test_api_key_in_cookie() {
 	assert!(cookie.to_str().unwrap().contains("api_key="));
 }
 
-#[test]
+#[rstest]
 fn test_empty_authorization_header() {
 	// Test intent: Verify empty Authorization header can be set and
 	// retrieved as empty string
@@ -223,7 +224,7 @@ fn test_empty_authorization_header() {
 	assert_eq!(auth.to_str().unwrap(), "");
 }
 
-#[test]
+#[rstest]
 fn test_malformed_basic_auth() {
 	// Test intent: Verify malformed Basic auth header (missing space
 	// and credentials) can be set and retrieved as-is
@@ -242,7 +243,7 @@ fn test_malformed_basic_auth() {
 	assert_eq!(auth, "Basic"); // Missing space and credentials
 }
 
-#[test]
+#[rstest]
 fn test_case_sensitivity_auth_scheme() {
 	// Test intent: Verify auth scheme names (Basic, Bearer) can be
 	// case-insensitive and normalized to lowercase for comparison
@@ -256,7 +257,7 @@ fn test_case_sensitivity_auth_scheme() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_with_empty_password() {
 	// Test intent: Verify Basic auth encoding/decoding handles empty
 	// password string correctly with username:colon:empty pattern
@@ -267,7 +268,7 @@ fn test_basic_auth_with_empty_password() {
 	assert_eq!(password, "");
 }
 
-#[test]
+#[rstest]
 fn test_basic_auth_with_empty_username() {
 	// Test intent: Verify Basic auth encoding/decoding handles empty
 	// username string correctly with empty:colon:password pattern
@@ -278,7 +279,7 @@ fn test_basic_auth_with_empty_username() {
 	assert_eq!(password, "password");
 }
 
-#[test]
+#[rstest]
 fn test_bearer_token_with_special_chars() {
 	// Test intent: Verify Bearer token creation handles JWT-style tokens
 	// with dots, underscores, and dashes in token value
@@ -288,7 +289,7 @@ fn test_bearer_token_with_special_chars() {
 	assert!(auth.contains(token));
 }
 
-#[test]
+#[rstest]
 fn test_authorization_header_with_extra_spaces() {
 	// Test intent: Verify authorization header string with extra spaces
 	// between scheme and credentials still starts with "Basic"
@@ -298,7 +299,7 @@ fn test_authorization_header_with_extra_spaces() {
 	assert!(auth.starts_with("Basic"));
 }
 
-#[test]
+#[rstest]
 fn test_unauthorized_response_format() {
 	// Test intent: Verify 401 Unauthorized response can include
 	// WWW-Authenticate header with realm specification
@@ -313,7 +314,7 @@ fn test_unauthorized_response_format() {
 	assert_has_header(&response, "www-authenticate");
 }
 
-#[test]
+#[rstest]
 fn test_forbidden_vs_unauthorized() {
 	// Test intent: Verify distinction between 401 (no/invalid authentication)
 	// and 403 (valid auth but insufficient permissions) status codes

@@ -1,8 +1,10 @@
 use reinhardt_test::containers::RedisContainer;
 use reinhardt_utils::cache::redis_backend::RedisCache;
 use reinhardt_utils::cache::Cache;
+use rstest::rstest;
 use std::time::Duration;
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_cache_basic_operations() {
 	let redis = RedisContainer::new().await;
@@ -48,6 +50,7 @@ where
 	Err(format!("Timeout after {:?} waiting for condition", timeout))
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_cache_ttl() {
 	let redis = RedisContainer::new().await;
@@ -83,6 +86,7 @@ async fn test_redis_cache_ttl() {
 	assert_eq!(value, None);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_cache_batch_operations() {
 	let redis = RedisContainer::new().await;
@@ -116,6 +120,7 @@ async fn test_redis_cache_batch_operations() {
 	assert!(results.get("batch_key3").is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_cache_atomic_operations() {
 	let redis = RedisContainer::new().await;
@@ -137,6 +142,7 @@ async fn test_redis_cache_atomic_operations() {
 	assert_eq!(result, 4);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_cache_prefix() {
 	let redis = RedisContainer::new().await;

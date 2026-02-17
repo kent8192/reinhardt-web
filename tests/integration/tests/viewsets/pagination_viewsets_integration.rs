@@ -4,6 +4,7 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::{Request, Response};
 use reinhardt_views::viewsets::ReadOnlyModelViewSet;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -319,6 +320,7 @@ impl<P: Paginator> PaginatedViewSet<P> {
 // Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_default() {
 	let paginator = PageNumberPagination::new();
@@ -354,6 +356,7 @@ async fn test_page_number_pagination_default() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_custom_page() {
 	let paginator = PageNumberPagination::new();
@@ -381,6 +384,7 @@ async fn test_page_number_pagination_custom_page() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_custom_page_size() {
 	let paginator = PageNumberPagination::new();
@@ -416,6 +420,7 @@ async fn test_page_number_pagination_custom_page_size() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_max_page_size() {
 	let paginator = PageNumberPagination::new().with_max_page_size(15);
@@ -439,6 +444,7 @@ async fn test_page_number_pagination_max_page_size() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_out_of_bounds() {
 	let paginator = PageNumberPagination::new();
@@ -459,6 +465,7 @@ async fn test_page_number_pagination_out_of_bounds() {
 	assert_eq!(result.data.len(), 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cursor_pagination_first_page() {
 	let paginator = CursorPagination::new().with_page_size(5);
@@ -496,6 +503,7 @@ async fn test_cursor_pagination_first_page() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cursor_pagination_next_page() {
 	let paginator = CursorPagination::new().with_page_size(5);
@@ -530,6 +538,7 @@ async fn test_cursor_pagination_next_page() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cursor_pagination_last_page() {
 	let paginator = CursorPagination::new().with_page_size(5);
@@ -564,6 +573,7 @@ async fn test_cursor_pagination_last_page() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_limit_offset_pagination_default() {
 	let paginator = LimitOffsetPagination::new();
@@ -598,6 +608,7 @@ async fn test_limit_offset_pagination_default() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_limit_offset_pagination_custom() {
 	let paginator = LimitOffsetPagination::new();
@@ -633,6 +644,7 @@ async fn test_limit_offset_pagination_custom() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_pagination_with_filtering() {
 	let paginator = PageNumberPagination::new().with_page_size(5);
@@ -660,6 +672,7 @@ async fn test_pagination_with_filtering() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cursor_pagination_with_filtering() {
 	let paginator = CursorPagination::new().with_page_size(5);
@@ -682,6 +695,7 @@ async fn test_cursor_pagination_with_filtering() {
 	assert!(result.data.iter().all(|p| p.category == "B"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_readonly_viewset_supports_pagination() {
 	let _viewset: ReadOnlyModelViewSet<Product, ProductSerializer> =
@@ -690,6 +704,7 @@ async fn test_readonly_viewset_supports_pagination() {
 	// ReadOnlyModelViewSet should support pagination configuration
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_page_number_pagination_config() {
 	let paginator = PageNumberPagination::new()

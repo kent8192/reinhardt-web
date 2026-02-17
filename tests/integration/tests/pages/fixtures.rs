@@ -255,15 +255,16 @@ pub fn create_complex_cookie_string(pairs: &[(&str, &str)]) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_csrf_token_fixture() {
 		let token = csrf_token();
 		assert!(!token.is_empty());
 		assert!(token.starts_with("test-csrf-token"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_payload_fixture() {
 		let payload = test_payload();
 		assert_eq!(payload.id, 42);
@@ -271,7 +272,7 @@ mod tests {
 		assert!(payload.active);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_fixture() {
 		let model = test_model();
 		assert_eq!(model.id, 1);
@@ -279,7 +280,7 @@ mod tests {
 		assert!(model.published);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_json_payload() {
 		let payload = generate_json_payload(1000);
 		assert!(!payload.is_empty());
@@ -287,7 +288,7 @@ mod tests {
 		assert!(payload.ends_with(']'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_nested_html() {
 		let html = generate_nested_html(3);
 		assert!(html.contains(r#"data-hyd-id="comp-0""#));
@@ -297,7 +298,7 @@ mod tests {
 		assert_eq!(html.matches("</div>").count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_complex_cookie_string() {
 		let cookie = create_complex_cookie_string(&[
 			("session", "abc123"),

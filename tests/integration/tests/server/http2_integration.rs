@@ -1,6 +1,7 @@
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{serve_http2_with_shutdown, Http2Server, ShutdownCoordinator};
+use rstest::rstest;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +16,7 @@ impl Handler for TestHandler {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http2_server_with_graceful_shutdown() {
 	let handler = Arc::new(TestHandler);
@@ -48,6 +50,7 @@ async fn test_http2_server_with_graceful_shutdown() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http2_server_creation() {
 	let handler = Arc::new(TestHandler);
@@ -57,6 +60,7 @@ async fn test_http2_server_creation() {
 	assert!(!std::ptr::addr_of!(server).is_null());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_serve_http2_with_shutdown_function() {
 	let handler = Arc::new(TestHandler);

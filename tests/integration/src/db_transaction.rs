@@ -206,6 +206,7 @@ pub async fn shared_db_fixture() -> (testcontainers::ContainerAsync<GenericImage
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test that fixture provides valid connection
 	#[rstest]

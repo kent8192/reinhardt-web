@@ -6,7 +6,9 @@ use reinhardt_graphql::{
 	create_schema, EventBroadcaster, Mutation, Query, SubscriptionRoot, User, UserEvent,
 	UserStorage,
 };
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
 async fn test_full_graphql_workflow() {
 	// Setup
@@ -107,6 +109,7 @@ async fn test_full_graphql_workflow() {
 	assert_eq!(data["users"].as_array().unwrap().len(), 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_operations() {
 	let storage = UserStorage::new();
@@ -152,6 +155,7 @@ async fn test_concurrent_operations() {
 	assert_eq!(data["users"].as_array().unwrap().len(), 5);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_schema_introspection() {
 	let storage = UserStorage::new();
@@ -202,6 +206,7 @@ async fn test_schema_introspection() {
 	assert!(field_names.contains(&"active"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_graphql_integration_error_handling() {
 	let storage = UserStorage::new();
@@ -239,6 +244,7 @@ async fn test_graphql_integration_error_handling() {
 	assert!(!result.errors.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_complex_queries() {
 	let storage = UserStorage::new();
@@ -279,6 +285,7 @@ async fn test_complex_queries() {
 	assert_eq!(data["__typename"], "Query");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_batched_queries() {
 	let storage = UserStorage::new();
@@ -312,6 +319,7 @@ async fn test_batched_queries() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_subscription_lifecycle() {
 	// Create schema with subscription support
@@ -371,6 +379,7 @@ async fn test_subscription_lifecycle() {
 	assert!(data["userCreated"]["active"].as_bool().unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_context_propagation() {
 	let storage = UserStorage::new();
@@ -402,6 +411,7 @@ async fn test_context_propagation() {
 	assert!(!data["users"].as_array().unwrap().is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_mutation_rollback_on_error() {
 	let storage = UserStorage::new();
@@ -426,6 +436,7 @@ async fn test_mutation_rollback_on_error() {
 	assert_eq!(initial_count, final_count);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_with_variables() {
 	let storage = UserStorage::new();
@@ -464,6 +475,7 @@ async fn test_query_with_variables() {
 	assert_eq!(data["user"]["name"], "VarUser");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_aliases() {
 	let storage = UserStorage::new();
@@ -488,6 +500,7 @@ async fn test_query_aliases() {
 	assert!(data["allUsers"].is_array());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_subscriptions() {
 	// Create schema with subscription support

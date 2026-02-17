@@ -6,6 +6,7 @@ use reinhardt_http::{Request, Response, Result, ViewResult};
 use reinhardt_macros::get;
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_views::viewsets::{Action, ActionType, ViewSet};
+use rstest::rstest;
 
 // Mock ViewSet for testing
 #[derive(Clone)]
@@ -61,6 +62,7 @@ impl Handler for AboutView {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_basic_structure() {
 	let router = ServerRouter::new()
@@ -71,6 +73,7 @@ async fn test_unified_router_basic_structure() {
 	assert_eq!(router.namespace(), Some("api"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_mount_child() {
 	let child = ServerRouter::new().with_namespace("users");
@@ -83,6 +86,7 @@ async fn test_unified_router_mount_child() {
 	assert_eq!(router.children_count(), 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_with_viewset() {
 	let router = ServerRouter::new()
@@ -94,6 +98,7 @@ async fn test_unified_router_with_viewset() {
 	assert!(!routes.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_hierarchical_namespace() {
 	let users = ServerRouter::new()
@@ -112,6 +117,7 @@ async fn test_unified_router_hierarchical_namespace() {
 	assert_eq!(api.namespace(), Some("v1"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_url_reversal() {
 	let mut router = ServerRouter::new()
@@ -126,6 +132,7 @@ async fn test_unified_router_url_reversal() {
 	assert_eq!(url.unwrap(), "/health");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_nested_namespace_reversal() {
 	let users = ServerRouter::new()
@@ -145,6 +152,7 @@ async fn test_unified_router_nested_namespace_reversal() {
 	assert!(url.is_some());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_multiple_children() {
 	let users = ServerRouter::new()
@@ -166,6 +174,7 @@ async fn test_unified_router_multiple_children() {
 	assert!(!routes.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_mixed_api_styles() {
 	let router = ServerRouter::new()
@@ -179,6 +188,7 @@ async fn test_unified_router_mixed_api_styles() {
 	assert!(routes.len() >= 3);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_deep_nesting() {
 	// Create a dedicated handler for the action endpoint with POST method
@@ -209,6 +219,7 @@ async fn test_unified_router_deep_nesting() {
 	assert!(url.is_some());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_get_all_routes() {
 	let users = ServerRouter::new()
@@ -233,6 +244,7 @@ async fn test_unified_router_get_all_routes() {
 	assert!(has_combined_namespace);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_viewset_url_reversal() {
 	let mut router = ServerRouter::new()
@@ -250,6 +262,7 @@ async fn test_unified_router_viewset_url_reversal() {
 	assert!(detail_url.is_some());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unified_router_namespace_inheritance() {
 	// Create a dedicated handler for this test with POST method

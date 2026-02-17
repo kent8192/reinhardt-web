@@ -14,6 +14,7 @@ use tempfile::tempdir;
 
 #[cfg(feature = "image-optimization")]
 use reinhardt_utils::staticfiles::processing::images::ImageOptimizer;
+use rstest::rstest;
 
 #[cfg(feature = "source-maps")]
 use reinhardt_utils::staticfiles::processing::sourcemap::{
@@ -22,6 +23,7 @@ use reinhardt_utils::staticfiles::processing::sourcemap::{
 
 // ========== Minification Integration Tests ==========
 
+#[rstest]
 #[tokio::test]
 async fn test_css_minification_integration() {
 	let minifier = CssMinifier::new();
@@ -36,6 +38,7 @@ async fn test_css_minification_integration() {
 	assert!(output.len() < input.len());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_js_minification_integration() {
 	let minifier = JsMinifier::new();
@@ -51,6 +54,7 @@ async fn test_js_minification_integration() {
 
 // ========== Bundling Integration Tests ==========
 
+#[rstest]
 #[tokio::test]
 async fn test_bundle_with_dependencies() {
 	let mut bundler = AssetBundler::new();
@@ -70,6 +74,7 @@ async fn test_bundle_with_dependencies() {
 	assert!(utils_pos < main_pos);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_bundle_config_usage() {
 	let mut config = BundleConfig::new(PathBuf::from("bundle.js"))
@@ -86,6 +91,7 @@ async fn test_bundle_config_usage() {
 
 // ========== Compression Integration Tests ==========
 
+#[rstest]
 #[tokio::test]
 async fn test_gzip_compression() {
 	let compressor = GzipCompressor::new();
@@ -100,6 +106,7 @@ async fn test_gzip_compression() {
 	// For longer inputs, result should be smaller
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_brotli_compression() {
 	let compressor = BrotliCompressor::new();
@@ -112,6 +119,7 @@ async fn test_brotli_compression() {
 	assert!(!result.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_compression_config() {
 	let config = CompressionConfig::new()
@@ -130,6 +138,7 @@ async fn test_compression_config() {
 	assert!(config.should_compress(&PathBuf::from("file.txt"), 2000));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_gzip_levels() {
 	let input = b"Test data for compression level testing. This text repeats. Test data for compression level testing.";
@@ -154,6 +163,7 @@ async fn test_gzip_levels() {
 // ========== Image Optimization Tests (Feature Gated) ==========
 
 #[cfg(feature = "image-optimization")]
+#[rstest]
 #[tokio::test]
 async fn test_image_optimizer_creation() {
 	let optimizer = ImageOptimizer::new(85);
@@ -163,6 +173,7 @@ async fn test_image_optimizer_creation() {
 }
 
 #[cfg(feature = "image-optimization")]
+#[rstest]
 #[tokio::test]
 async fn test_image_optimizer_process_png() {
 	let optimizer = ImageOptimizer::new(85);
@@ -177,7 +188,7 @@ async fn test_image_optimizer_process_png() {
 // ========== Source Map Tests (Feature Gated) ==========
 
 #[cfg(feature = "source-maps")]
-#[test]
+#[rstest]
 fn test_source_map_creation() {
 	let map = SourceMap::new("app.min.js".to_string());
 	assert_eq!(map.version, 3);
@@ -185,7 +196,7 @@ fn test_source_map_creation() {
 }
 
 #[cfg(feature = "source-maps")]
-#[test]
+#[rstest]
 fn test_source_map_serialization() {
 	let mut map = SourceMap::new("app.min.js".to_string());
 	map.add_source("src/app.js".to_string());
@@ -216,7 +227,7 @@ fn test_source_map_serialization() {
 }
 
 #[cfg(feature = "source-maps")]
-#[test]
+#[rstest]
 fn test_source_map_generator() {
 	let generator = SourceMapGenerator::new();
 	let map = generator.generate_for_file(
@@ -231,7 +242,7 @@ fn test_source_map_generator() {
 }
 
 #[cfg(feature = "source-maps")]
-#[test]
+#[rstest]
 fn test_source_map_comment_generation() {
 	let generator = SourceMapGenerator::new();
 	let comment = generator.generate_comment("app.min.js.map");
@@ -239,7 +250,7 @@ fn test_source_map_comment_generation() {
 }
 
 #[cfg(feature = "source-maps")]
-#[test]
+#[rstest]
 fn test_source_map_merger() {
 	let mut merger = SourceMapMerger::new();
 
@@ -258,6 +269,7 @@ fn test_source_map_merger() {
 
 // ========== Processing Pipeline Integration Tests ==========
 
+#[rstest]
 #[tokio::test]
 async fn test_processing_pipeline_creation() {
 	let config = ProcessingConfig::new(PathBuf::from("dist"))
@@ -268,6 +280,7 @@ async fn test_processing_pipeline_creation() {
 	assert!(pipeline.config().minify);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_pipeline_css_processing() {
 	let config = ProcessingConfig::new(PathBuf::from("dist")).with_minification(true);
@@ -282,6 +295,7 @@ async fn test_pipeline_css_processing() {
 	assert!(!result.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_pipeline_js_processing() {
 	let config = ProcessingConfig::new(PathBuf::from("dist")).with_minification(true);
@@ -296,6 +310,7 @@ async fn test_pipeline_js_processing() {
 	assert!(!result.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_pipeline_unprocessed_file() {
 	let config = ProcessingConfig::new(PathBuf::from("dist"));
@@ -313,6 +328,7 @@ async fn test_pipeline_unprocessed_file() {
 
 // ========== End-to-End Workflow Tests ==========
 
+#[rstest]
 #[tokio::test]
 async fn test_minify_and_bundle_workflow() {
 	let css_minifier = CssMinifier::new();
@@ -343,6 +359,7 @@ async fn test_minify_and_bundle_workflow() {
 	assert!(output.contains("app.js"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_full_processing_pipeline_with_compression() {
 	let temp_dir = tempdir().unwrap();

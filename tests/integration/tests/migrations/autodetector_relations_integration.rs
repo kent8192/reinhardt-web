@@ -93,7 +93,6 @@ fn add_fk_constraint(
 ///
 /// **Expected Behavior**: FK field and constraint addition detected
 #[rstest]
-#[test]
 fn test_detect_add_foreign_key() {
 	// from_state: Post model without author FK
 	let mut from_state = ProjectState::new();
@@ -138,7 +137,6 @@ fn test_detect_add_foreign_key() {
 ///
 /// **Expected Behavior**: Constraint alteration detected
 #[rstest]
-#[test]
 fn test_detect_change_on_delete_action() {
 	// from_state: Post with FK (ON DELETE CASCADE)
 	let mut from_state = ProjectState::new();
@@ -193,7 +191,6 @@ fn test_detect_change_on_delete_action() {
 ///
 /// **Expected Behavior**: FK field with unique constraint detected
 #[rstest]
-#[test]
 fn test_detect_add_one_to_one_field() {
 	// from_state: User without profile link
 	let mut from_state = ProjectState::new();
@@ -250,7 +247,6 @@ fn test_detect_add_one_to_one_field() {
 ///
 /// **Expected Behavior**: Intermediate table creation detected
 #[rstest]
-#[test]
 fn test_detect_many_to_many_auto_through() {
 	// from_state: Book and Author without M2M
 	let mut from_state = ProjectState::new();
@@ -293,7 +289,6 @@ fn test_detect_many_to_many_auto_through() {
 ///
 /// **Expected Behavior**: Custom through model detected with extra fields
 #[rstest]
-#[test]
 fn test_detect_many_to_many_custom_through() {
 	// from_state: Book and Author without M2M
 	let mut from_state = ProjectState::new();
@@ -349,7 +344,6 @@ fn test_detect_many_to_many_custom_through() {
 ///
 /// **Expected Behavior**: Self-referential FK field detected
 #[rstest]
-#[test]
 fn test_detect_self_referencing_fk() {
 	// from_state: Category without parent link
 	let mut from_state = ProjectState::new();
@@ -396,7 +390,6 @@ fn test_detect_self_referencing_fk() {
 ///
 /// **Expected Behavior**: Base model with discriminator column detected
 #[rstest]
-#[test]
 fn test_detect_single_table_inheritance() {
 	// from_state: Simple Employee model
 	let mut from_state = ProjectState::new();
@@ -442,7 +435,6 @@ fn test_detect_single_table_inheritance() {
 ///
 /// **Expected Behavior**: Child table with FK to parent detected
 #[rstest]
-#[test]
 fn test_detect_joined_table_inheritance() {
 	// from_state: Employee model only
 	let mut from_state = ProjectState::new();

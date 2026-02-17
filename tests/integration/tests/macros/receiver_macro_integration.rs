@@ -10,6 +10,7 @@
 
 use reinhardt_core::signals::{auto_connect_receivers, get_signal_with_string, SignalError};
 use reinhardt_macros::receiver;
+use rstest::rstest;
 use serial_test::serial;
 use std::any::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -40,12 +41,13 @@ async fn custom_handler(_instance: Arc<dyn Any + Send + Sync>) -> Result<(), Sig
 	Ok(())
 }
 
-#[test]
+#[rstest]
 fn test_receiver_macro_compiles() {
 	// This test verifies that the macro compiles successfully
 	// The actual registration happens via inventory
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(receiver_registry)]
 async fn test_auto_connect_receivers() {
@@ -56,6 +58,7 @@ async fn test_auto_connect_receivers() {
 	// Note: Full integration testing would require actual signal dispatch
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(receiver_registry)]
 async fn test_receiver_invocation_via_signal() {
@@ -95,6 +98,7 @@ async fn test_receiver_invocation_via_signal() {
 	assert_eq!(CUSTOM_HANDLER_CALLS.load(Ordering::SeqCst), 1);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(receiver_registry)]
 async fn test_receiver_priority_ordering() {

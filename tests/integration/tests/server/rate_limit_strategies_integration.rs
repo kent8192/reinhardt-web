@@ -16,6 +16,7 @@ use reinhardt_server::{RateLimitConfig, RateLimitHandler, RateLimitStrategy};
 use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
 use reinhardt_urls::routers::ServerRouter as Router;
+use rstest::rstest;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -51,6 +52,7 @@ impl Handler for SlowHandler {
 ///
 /// This test verifies that the FixedWindow strategy correctly limits requests
 /// within a time window and rejects requests that exceed the limit.
+#[rstest]
 #[tokio::test]
 async fn test_fixed_window_rate_limit() {
 	// Configure rate limit: 3 requests per 1 second window
@@ -103,6 +105,7 @@ async fn test_fixed_window_rate_limit() {
 ///
 /// Verifies that rate limits are tracked independently per client IP address.
 /// Different clients should have separate rate limit counters.
+#[rstest]
 #[tokio::test]
 async fn test_independent_client_rate_limits() {
 	// Configure rate limit: 2 requests per window
@@ -164,6 +167,7 @@ async fn test_independent_client_rate_limits() {
 /// Verifies that the rate limiter does not include Retry-After header by default.
 /// This test documents the current behavior - if Retry-After header support is
 /// added in the future, this test should be updated accordingly.
+#[rstest]
 #[tokio::test]
 async fn test_retry_after_header() {
 	// Configure rate limit: 1 request per window
@@ -201,6 +205,7 @@ async fn test_retry_after_header() {
 ///
 /// Verifies that rate limit counters are reset after the time window expires.
 /// After the window resets, clients should be able to make new requests.
+#[rstest]
 #[tokio::test]
 async fn test_window_reset() {
 	// Configure rate limit: 2 requests per 500ms window
@@ -263,6 +268,7 @@ async fn test_window_reset() {
 ///
 /// Verifies that rate limiting works correctly when combined with timeout middleware.
 /// The middleware chain should handle both rate limiting and timeouts properly.
+#[rstest]
 #[tokio::test]
 async fn test_rate_limit_with_timeout() {
 	use reinhardt_server::TimeoutHandler;

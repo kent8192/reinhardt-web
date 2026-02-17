@@ -2,6 +2,7 @@
 
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_macros::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -23,7 +24,7 @@ struct User {
 	age: i32,
 }
 
-#[test]
+#[rstest]
 fn test_email_validator() {
 	let fields = User::field_metadata();
 
@@ -39,7 +40,7 @@ fn test_email_validator() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_url_validator() {
 	let fields = User::field_metadata();
 
@@ -55,7 +56,7 @@ fn test_url_validator() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_min_length_validator() {
 	let fields = User::field_metadata();
 
@@ -71,7 +72,7 @@ fn test_min_length_validator() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_min_max_value_validators() {
 	let fields = User::field_metadata();
 
@@ -93,7 +94,7 @@ fn test_min_max_value_validators() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_multiple_validators_on_single_field() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "products")]
@@ -130,7 +131,7 @@ fn test_multiple_validators_on_single_field() {
 	assert!(price_field.attributes.contains_key("max_value"));
 }
 
-#[test]
+#[rstest]
 fn test_no_validators() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_model")]

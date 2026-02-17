@@ -2,6 +2,7 @@
 
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_views::viewsets::{nested_url, ModelViewSet, NestedResource, NestedViewSet};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,7 @@ struct UserSerializer;
 #[derive(Debug, Clone)]
 struct PostSerializer;
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_router_basic_structure() {
 	// Create parent router for users
@@ -42,6 +44,7 @@ async fn test_nested_router_basic_structure() {
 	assert_eq!(api_router.children_count(), 2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_router_with_viewsets() {
 	// Create ViewSets
@@ -59,6 +62,7 @@ async fn test_nested_router_with_viewsets() {
 	assert_eq!(config.lookup_field, "user_id");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_url_helpers() {
 	// Test URL helpers
@@ -69,6 +73,7 @@ async fn test_nested_url_helpers() {
 	assert_eq!(nested_resource.parent, "user");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_deeply_nested_router() {
 	// Create deeply nested router structure:

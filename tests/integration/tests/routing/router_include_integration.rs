@@ -1,7 +1,9 @@
 //! Router mount() API integration tests
 
 use reinhardt_urls::routers::ServerRouter;
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
 async fn test_router_mount_basic() {
 	// Create child router
@@ -17,6 +19,7 @@ async fn test_router_mount_basic() {
 	assert_eq!(router.children_count(), 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_router_mount_mut() {
 	// Create parent router
@@ -35,6 +38,7 @@ async fn test_router_mount_mut() {
 	assert_eq!(router.children_count(), 2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_router_mount_multiple() {
 	// Create routers and verify mount works correctly
@@ -54,6 +58,7 @@ async fn test_router_mount_multiple() {
 	assert_eq!(router1.children_count(), router2.children_count());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_router_mount_nested() {
 	// Create deeply nested router structure

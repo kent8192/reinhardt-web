@@ -13,7 +13,9 @@
 //! use manual testing with real Sentinel clusters.
 
 use reinhardt_utils::cache::RedisSentinelConfig;
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_creation() {
 	// Test configuration creation with multiple sentinels
@@ -34,6 +36,7 @@ async fn test_redis_sentinel_config_creation() {
 	assert_eq!(config.db, 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_with_password() {
 	// Test configuration with password authentication
@@ -48,6 +51,7 @@ async fn test_redis_sentinel_config_with_password() {
 	assert_eq!(config.db, 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_with_multiple_dbs() {
 	// Test configuration for different database numbers
@@ -62,6 +66,7 @@ async fn test_redis_sentinel_config_with_multiple_dbs() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_validation() {
 	// Test configuration with single sentinel (minimum requirement)
@@ -76,6 +81,7 @@ async fn test_redis_sentinel_config_validation() {
 	assert!(!config.master_name.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_with_custom_ports() {
 	// Test configuration with non-standard sentinel ports
@@ -96,6 +102,7 @@ async fn test_redis_sentinel_config_with_custom_ports() {
 	assert!(config.sentinels[2].contains("5002"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_clone() {
 	// Test that configuration can be cloned
@@ -114,6 +121,7 @@ async fn test_redis_sentinel_config_clone() {
 	assert_eq!(config1.db, config2.db);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_with_hostname() {
 	// Test configuration with hostnames instead of IPs
@@ -132,6 +140,7 @@ async fn test_redis_sentinel_config_with_hostname() {
 	assert!(config.sentinels[1].contains("sentinel-2.example.com"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_redis_sentinel_config_default_values() {
 	// Test configuration with default-like values

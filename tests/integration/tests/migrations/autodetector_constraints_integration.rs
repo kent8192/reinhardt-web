@@ -70,7 +70,6 @@ fn add_field(model: &mut ModelState, name: &str, field_type: FieldType, nullable
 ///
 /// **Expected Behavior**: Index addition detected
 #[rstest]
-#[test]
 fn test_detect_add_single_column_index() {
 	// from_state: User without index on email
 	let mut from_state = ProjectState::new();
@@ -115,7 +114,6 @@ fn test_detect_add_single_column_index() {
 ///
 /// **Expected Behavior**: Composite index addition detected
 #[rstest]
-#[test]
 fn test_detect_add_composite_index() {
 	// from_state: User without composite index
 	let mut from_state = ProjectState::new();
@@ -175,7 +173,6 @@ fn test_detect_add_composite_index() {
 ///
 /// **Expected Behavior**: Index removal detected
 #[rstest]
-#[test]
 fn test_detect_remove_index() {
 	// from_state: User with index on email
 	let mut from_state = ProjectState::new();
@@ -219,7 +216,6 @@ fn test_detect_remove_index() {
 ///
 /// **Expected Behavior**: CHECK constraint addition detected
 #[rstest]
-#[test]
 fn test_detect_add_check_constraint_postgres() {
 	// from_state: Product without CHECK constraint
 	let mut from_state = ProjectState::new();
@@ -278,7 +274,6 @@ fn test_detect_add_check_constraint_postgres() {
 /// **Note**: Partial index requires condition in IndexDefinition,
 /// but current implementation treats it as regular index for simplicity
 #[rstest]
-#[test]
 fn test_detect_add_partial_index_postgres() {
 	// from_state: User without partial index
 	let mut from_state = ProjectState::new();
@@ -325,7 +320,6 @@ fn test_detect_add_partial_index_postgres() {
 ///
 /// **Expected Behavior**: ENUM field addition detected
 #[rstest]
-#[test]
 fn test_detect_add_enum_field_postgres() {
 	// from_state: User without status field
 	let mut from_state = ProjectState::new();
@@ -368,7 +362,6 @@ fn test_detect_add_enum_field_postgres() {
 ///
 /// **Expected Behavior**: Array field addition detected
 #[rstest]
-#[test]
 fn test_detect_add_array_field_postgres() {
 	// from_state: Post without tags
 	let mut from_state = ProjectState::new();
@@ -411,7 +404,6 @@ fn test_detect_add_array_field_postgres() {
 ///
 /// **Expected Behavior**: JSONB field addition detected
 #[rstest]
-#[test]
 fn test_detect_add_jsonb_field_postgres() {
 	// from_state: Product without metadata
 	let mut from_state = ProjectState::new();
@@ -457,7 +449,6 @@ fn test_detect_add_jsonb_field_postgres() {
 /// **Note**: Current IndexDefinition only supports column names.
 /// Expression-based indexes are represented via comments for future extension
 #[rstest]
-#[test]
 fn test_detect_index_with_expression() {
 	// from_state: User without expression index
 	let mut from_state = ProjectState::new();
@@ -502,7 +493,6 @@ fn test_detect_index_with_expression() {
 ///
 /// **Expected Behavior**: UNIQUE constraint on multiple columns detected
 #[rstest]
-#[test]
 fn test_detect_unique_together_constraint() {
 	// from_state: UserRole without unique constraint
 	let mut from_state = ProjectState::new();

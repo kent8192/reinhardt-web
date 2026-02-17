@@ -6,6 +6,7 @@ use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResul
 use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::operations::FieldDefinition;
 use reinhardt_db::migrations::operations::models::{CreateModel, DeleteModel};
+use rstest::rstest;
 
 /// Mock schema editor for testing SQL generation
 struct MockSchemaEditor;
@@ -18,7 +19,7 @@ impl BaseDatabaseSchemaEditor for MockSchemaEditor {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_rollback_migration() {
 	// Create a composite PK table
 	let create = CreateModel::new(
@@ -66,7 +67,7 @@ fn test_composite_pk_rollback_migration() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_sql_syntax_validation() {
 	let create = CreateModel::new(
 		"order_items",
@@ -166,7 +167,7 @@ fn test_composite_pk_sql_syntax_validation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_with_unique_constraint() {
 	// Test composite PK with additional UNIQUE constraint on PK field
 	let create = CreateModel::new(
@@ -230,7 +231,7 @@ fn test_composite_pk_with_unique_constraint() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_forward_backward_consistency() {
 	let table_name = "product_categories";
 	let pk_fields = vec!["product_id".to_string(), "category_id".to_string()];

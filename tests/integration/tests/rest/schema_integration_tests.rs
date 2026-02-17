@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use reinhardt_core::endpoint::EndpointMetadata;
 use reinhardt_rest::openapi::{EndpointInspector, Schema as OpenApiSchema, ToSchema};
+use rstest::rstest;
 
 /// Test model with Schema derivation
 #[derive(Debug, Clone, Serialize, Deserialize, reinhardt_rest::openapi::Schema)]
@@ -59,7 +60,7 @@ struct UserProfile {
 /// - ToSchema trait is implemented
 /// - schema() method returns valid OpenAPI schema
 /// - schema_name() returns correct type name
-#[test]
+#[rstest]
 fn test_schema_derive_macro_basic() {
 	// Verify ToSchema trait is implemented
 	let schema = CreateUserRequest::schema();
@@ -106,7 +107,7 @@ fn test_schema_derive_macro_basic() {
 /// - Schemas are automatically registered via inventory
 /// - GLOBAL_SCHEMA_REGISTRY contains the registered schema
 /// - Registered schema matches the generated schema
-#[test]
+#[rstest]
 fn test_schema_global_registry_registration() {
 	// Access global registry
 	let registry = reinhardt_rest::openapi::registry::get_all_schemas();
@@ -150,7 +151,7 @@ fn test_schema_global_registry_registration() {
 /// - EndpointInspector retrieves schema from global registry
 /// - Request body is created with correct schema
 /// - extract_paths() produces valid OpenAPI path items
-#[test]
+#[rstest]
 fn test_endpoint_inspector_uses_registered_schema() {
 	let inspector = EndpointInspector::new();
 
@@ -225,7 +226,7 @@ fn test_endpoint_inspector_uses_registered_schema() {
 /// - POST/PUT/PATCH methods generate request bodies
 /// - GET methods do not generate request bodies
 /// - Content-Type is correctly set
-#[test]
+#[rstest]
 fn test_request_body_with_registered_schema() {
 	// Test POST metadata
 	let post_metadata = EndpointMetadata {
@@ -269,7 +270,7 @@ fn test_request_body_with_registered_schema() {
 /// - Descriptions are included
 /// - Examples are included
 /// - Serde rename is respected
-#[test]
+#[rstest]
 fn test_schema_with_field_attributes() {
 	let schema = UserProfile::schema();
 
@@ -301,7 +302,7 @@ fn test_schema_with_field_attributes() {
 /// Verification:
 /// - Optional fields are correctly represented
 /// - Required fields list is accurate
-#[test]
+#[rstest]
 fn test_schema_with_optional_fields() {
 	let schema = UpdateUserRequest::schema();
 
@@ -336,7 +337,7 @@ fn test_schema_with_optional_fields() {
 /// - Multiple structs can derive Schema
 /// - Each gets registered independently
 /// - No conflicts between schemas
-#[test]
+#[rstest]
 fn test_multiple_schema_registration() {
 	let registry = reinhardt_rest::openapi::registry::get_all_schemas();
 

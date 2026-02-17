@@ -52,6 +52,7 @@ impl Handler for DelayHandler {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http_server_creation() {
 	let handler = Arc::new(SimpleHandler);
@@ -61,6 +62,7 @@ async fn test_http_server_creation() {
 	assert!(Arc::strong_count(&server.handler()) > 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http_server_handler_assignment() {
 	let handler1 = Arc::new(SimpleHandler);
@@ -74,6 +76,7 @@ async fn test_http_server_handler_assignment() {
 	assert_eq!(Arc::strong_count(&handler2), 2); // One for handler2, one for server2
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_listen_address_binding() {
 	// Test that server can bind to localhost with random port
@@ -86,6 +89,7 @@ async fn test_server_listen_address_binding() {
 	// Listener will be dropped and port will be freed
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_server_instances() {
 	// Test that multiple server instances can be created
@@ -103,6 +107,7 @@ async fn test_concurrent_server_instances() {
 	assert_eq!(Arc::strong_count(&handler3), 2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_with_delay() {
 	let handler = Arc::new(DelayHandler);
@@ -112,6 +117,7 @@ async fn test_handler_with_delay() {
 	assert!(Arc::strong_count(&server.handler()) > 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_serve_helper_function() {
 	// Test that serve function exists and can be used with a handler
@@ -125,6 +131,7 @@ async fn test_serve_helper_function() {
 	// If we got here, the serve function accepts our handler
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_handler_types() {
 	// Test that different handler types work with the server
@@ -141,6 +148,7 @@ async fn test_multiple_handler_types() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_graceful_shutdown() {
 	// Test that server future can be dropped/cancelled
@@ -161,6 +169,7 @@ async fn test_server_graceful_shutdown() {
 }
 
 // Test handler that counts requests
+use rstest::rstest;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct CountingHandler {
@@ -175,6 +184,7 @@ impl Handler for CountingHandler {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_handler_state_management() {
 	let count = Arc::new(AtomicUsize::new(0));

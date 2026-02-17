@@ -7,6 +7,7 @@ use reinhardt_core::exception::Result;
 use reinhardt_di::{injectable, Injectable, Injected, InjectionContext, SingletonScope};
 use reinhardt_http::{Request, Response};
 use reinhardt_views::viewsets::{Action, ViewSet};
+use rstest::rstest;
 use std::sync::Arc;
 
 /// Mock database dependency
@@ -78,6 +79,7 @@ impl ViewSet for UserViewSet {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_field_injection_basic() {
 	// Create DI context
@@ -93,6 +95,7 @@ async fn test_field_injection_basic() {
 	assert_eq!(viewset.name, ""); // Default::default()
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_field_injection_with_viewset_dispatch() {
 	// Create DI context
@@ -146,6 +149,7 @@ impl ViewSet for ServiceViewSet {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_field_injection_with_cache_control() {
 	// Create DI context
@@ -166,6 +170,7 @@ async fn test_field_injection_with_cache_control() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_field_injection_caching_behavior() {
 	// Create DI context

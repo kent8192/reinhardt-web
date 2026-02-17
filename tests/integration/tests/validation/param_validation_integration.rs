@@ -6,12 +6,13 @@ use reinhardt_core::validators::{
 	EmailValidator, MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator,
 	RangeValidator, RegexValidator, Validator,
 };
+use rstest::rstest;
 
 // ============================================================================
 // Numeric Validation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_range_validator_valid() {
 	let validator = RangeValidator::new(2, 10);
 
@@ -21,7 +22,7 @@ fn test_range_validator_valid() {
 	assert!(validator.validate(&10).is_ok()); // Boundary: max
 }
 
-#[test]
+#[rstest]
 fn test_range_validator_invalid() {
 	let validator = RangeValidator::new(2, 10);
 
@@ -34,7 +35,7 @@ fn test_range_validator_invalid() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_param_validation_min_value() {
 	let validator = MinValueValidator::new(1);
 
@@ -46,7 +47,7 @@ fn test_param_validation_min_value() {
 	assert!(validator.validate(&0).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_max_value_validator() {
 	let validator = MaxValueValidator::new(50);
 
@@ -62,7 +63,7 @@ fn test_max_value_validator() {
 // String Length Validation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_min_length_validator() {
 	let validator = MinLengthValidator::new(3);
 
@@ -74,7 +75,7 @@ fn test_min_length_validator() {
 	assert!(validator.validate("ab").is_err());
 }
 
-#[test]
+#[rstest]
 fn test_param_validation_max_length() {
 	let validator = MaxLengthValidator::new(20);
 
@@ -86,7 +87,7 @@ fn test_param_validation_max_length() {
 	assert!(validator.validate("123456789012345678901").is_err()); // 21 chars
 }
 
-#[test]
+#[rstest]
 fn test_string_length_combined() {
 	let min_validator = MinLengthValidator::new(3);
 	let max_validator = MaxLengthValidator::new(20);
@@ -110,7 +111,7 @@ fn test_string_length_combined() {
 // Email Validation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_email_validator_valid() {
 	let validator = EmailValidator::new();
 
@@ -131,7 +132,7 @@ fn test_email_validator_valid() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_email_validator_invalid() {
 	let validator = EmailValidator::new();
 
@@ -157,7 +158,7 @@ fn test_email_validator_invalid() {
 // Regex/Pattern Validation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_regex_validator_username() {
 	// Username must be alphanumeric or underscore
 	let validator = RegexValidator::new(r"^[a-zA-Z0-9_]+$")
@@ -175,7 +176,7 @@ fn test_regex_validator_username() {
 	assert!(validator.validate("test user").is_err()); // Has space
 }
 
-#[test]
+#[rstest]
 fn test_regex_validator_phone() {
 	// Phone format: 123-4567
 	let validator = RegexValidator::new(r"^\d{3}-\d{4}$").unwrap();
@@ -194,7 +195,7 @@ fn test_regex_validator_phone() {
 // Multiple Validators Combined Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_multiple_validators_all_pass() {
 	// Simulate validating a registration form field
 	let username = "john_doe";
@@ -209,7 +210,7 @@ fn test_multiple_validators_all_pass() {
 	assert!(pattern.validate(username).is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_multiple_validators_collect_errors() {
 	// Test that we can detect multiple validation failures
 	let invalid_username = "ab"; // Too short, doesn't match pattern
@@ -234,7 +235,7 @@ fn test_multiple_validators_collect_errors() {
 // Edge Cases and Boundary Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_validator_boundary_values() {
 	let range = RangeValidator::new(0, 100);
 
@@ -251,7 +252,7 @@ fn test_validator_boundary_values() {
 	assert!(range.validate(&101).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_string_validator_unicode() {
 	let min_len = MinLengthValidator::new(3);
 
@@ -260,7 +261,7 @@ fn test_string_validator_unicode() {
 	assert!(min_len.validate("🎉🎉🎉").is_ok()); // 3 emoji (12 bytes)
 }
 
-#[test]
+#[rstest]
 fn test_email_validator_edge_cases() {
 	let validator = EmailValidator::new();
 

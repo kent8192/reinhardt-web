@@ -6,9 +6,10 @@
 #[cfg(test)]
 mod tests {
 	use reinhardt_core::messages::{Level, MemoryStorage, Message, MessageStorage};
+	use rstest::rstest;
 	use std::str::FromStr;
 
-	#[test]
+	#[rstest]
 	fn test_memory_storage_add_and_get() {
 		// Test intent: Verify MemoryStorage adds message and peek() retrieves it
 		// without clearing the storage
@@ -25,7 +26,7 @@ mod tests {
 		assert_eq!(messages[0].level, Level::Info);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_storage_get_all_clears() {
 		let mut storage = MemoryStorage::new();
 
@@ -41,7 +42,7 @@ mod tests {
 		assert_eq!(remaining.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_storage_peek_does_not_clear() {
 		let mut storage = MemoryStorage::new();
 
@@ -56,7 +57,7 @@ mod tests {
 		assert_eq!(messages_again.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_storage_multiple_messages() {
 		let mut storage = MemoryStorage::new();
 
@@ -87,7 +88,7 @@ mod tests {
 		assert_eq!(messages[4].level, Level::Error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_storage_clear() {
 		let mut storage = MemoryStorage::new();
 
@@ -102,7 +103,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_with_extra_tags() {
 		let mut storage = MemoryStorage::new();
 
@@ -116,7 +117,7 @@ mod tests {
 		assert_eq!(messages[0].extra_tags, vec!["tag1", "tag2"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_storage_add_tag() {
 		let mut message = Message::new(Level::Warning, "Test");
 		assert!(message.extra_tags.is_empty());
@@ -126,7 +127,7 @@ mod tests {
 		assert_eq!(message.extra_tags[0], "custom");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_tags_includes_level() {
 		let message =
 			Message::new(Level::Error, "Error occurred").with_tags(vec!["critical".to_string()]);
@@ -139,7 +140,7 @@ mod tests {
 		assert_eq!(tags[1], "critical");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_ordering() {
 		// Verify that levels can be compared
 		assert!(Level::Debug < Level::Info);
@@ -148,7 +149,7 @@ mod tests {
 		assert!(Level::Warning < Level::Error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_as_str() {
 		assert_eq!(Level::Debug.as_str(), "debug");
 		assert_eq!(Level::Info.as_str(), "info");
@@ -157,7 +158,7 @@ mod tests {
 		assert_eq!(Level::Error.as_str(), "error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_integration_level_from_str() {
 		assert_eq!(Level::from_str("debug"), Ok(Level::Debug));
 		assert_eq!(Level::from_str("info"), Ok(Level::Info));
@@ -173,13 +174,13 @@ mod tests {
 		assert!(Level::from_str("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_storage() {
 		let storage = MemoryStorage::new();
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_shortcut_constructors() {
 		let debug = Message::debug("Debug");
 		assert_eq!(debug.level, Level::Debug);

@@ -10,6 +10,7 @@ use serde_json::json;
 
 // Import model definitions from fixtures
 use super::fixtures::models::{Post, Tables, User};
+use rstest::rstest;
 
 /// Tests basic model initialization using `Model::new()` pattern.
 #[rstest]

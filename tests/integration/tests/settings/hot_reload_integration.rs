@@ -8,6 +8,7 @@ use reinhardt_conf::settings::backends::MemoryBackend;
 use reinhardt_conf::settings::dynamic::DynamicSettings;
 #[cfg(feature = "hot-reload")]
 use reinhardt_conf::settings::hot_reload::HotReloadManager;
+use rstest::rstest;
 #[cfg(feature = "hot-reload")]
 use std::fs;
 #[cfg(feature = "hot-reload")]
@@ -20,6 +21,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 #[cfg(feature = "hot-reload")]
+#[rstest]
 #[tokio::test]
 async fn test_file_watching_callback_invocation() {
 	let temp_dir = TempDir::new().unwrap();
@@ -49,6 +51,7 @@ async fn test_file_watching_callback_invocation() {
 }
 
 #[cfg(feature = "hot-reload")]
+#[rstest]
 #[tokio::test]
 async fn test_multiple_file_watchers() {
 	let temp_dir = TempDir::new().unwrap();
@@ -92,6 +95,7 @@ async fn test_multiple_file_watchers() {
 }
 
 #[cfg(feature = "hot-reload")]
+#[rstest]
 #[tokio::test]
 async fn test_hot_reload_with_dynamic_settings() {
 	let temp_dir = TempDir::new().unwrap();
@@ -126,6 +130,7 @@ async fn test_hot_reload_with_dynamic_settings() {
 }
 
 #[cfg(feature = "hot-reload")]
+#[rstest]
 #[tokio::test]
 async fn test_debouncing_rapid_changes() {
 	let temp_dir = TempDir::new().unwrap();
@@ -163,6 +168,7 @@ async fn test_debouncing_rapid_changes() {
 }
 
 #[cfg(feature = "hot-reload")]
+#[rstest]
 #[tokio::test]
 async fn test_unwatch_file() {
 	let temp_dir = TempDir::new().unwrap();

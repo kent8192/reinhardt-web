@@ -10,6 +10,7 @@ use reinhardt_rest::metadata::{
 	BaseMetadata, FieldInfoBuilder, FieldType, MetadataOptions, SimpleMetadata,
 };
 use reinhardt_rest::versioning::{BaseVersioning, QueryParameterVersioning};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -228,6 +229,7 @@ impl VersionedAPIView {
 
 // Test 1: test_none_metadata
 // When metadata_class = None, OPTIONS should return HTTP 405
+#[rstest]
 #[tokio::test]
 async fn test_none_metadata() {
 	let view = MockAPIView::new("Example", "Example view.").with_metadata_class(None);
@@ -254,6 +256,7 @@ async fn test_none_metadata() {
 
 // Test 2: test_global_permissions
 // Metadata should exclude actions without global permissions
+#[rstest]
 #[tokio::test]
 async fn test_global_permissions() {
 	// POST requires authentication (will be denied)
@@ -290,6 +293,7 @@ async fn test_global_permissions() {
 
 // Test 3: test_object_permissions
 // Metadata should exclude actions without object permissions
+#[rstest]
 #[tokio::test]
 async fn test_object_permissions() {
 	// POST allows anyone (will be allowed)
@@ -326,6 +330,7 @@ async fn test_object_permissions() {
 
 // Test 4: test_bug_2455_clone_request
 // Cloned request should have 'version' attribute
+#[rstest]
 #[tokio::test]
 async fn test_bug_2455_clone_request() {
 	let versioning = Arc::new(
@@ -356,6 +361,7 @@ async fn test_bug_2455_clone_request() {
 
 // Test 5: test_bug_2477_clone_request
 // Cloned request should have 'versioning_scheme' attribute
+#[rstest]
 #[tokio::test]
 async fn test_bug_2477_clone_request() {
 	let versioning = Arc::new(
@@ -386,6 +392,7 @@ async fn test_bug_2477_clone_request() {
 
 // Test 6: test_read_only_primary_key_related_field
 // Metadata generation should work with read-only PrimaryKeyRelatedField
+#[rstest]
 #[tokio::test]
 async fn test_read_only_primary_key_related_field() {
 	// Simulate ModelSerializer with read-only PrimaryKeyRelatedField

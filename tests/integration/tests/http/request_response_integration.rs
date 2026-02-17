@@ -10,8 +10,10 @@ use bytes::Bytes;
 use hyper::{Method, StatusCode};
 use reinhardt_http::{Error, Request, Response};
 use reinhardt_test::{api_client_from_url, test_server_guard, ServerRouter as Router};
+use rstest::rstest;
 
 /// Test content negotiation: Accept header processing
+#[rstest]
 #[tokio::test]
 async fn test_content_negotiation_json() {
 	let mut router = Router::new();
@@ -67,6 +69,7 @@ async fn test_content_negotiation_json() {
 }
 
 /// Test content negotiation with wildcard Accept header
+#[rstest]
 #[tokio::test]
 async fn test_content_negotiation_wildcard() {
 	let mut router = Router::new();
@@ -105,6 +108,7 @@ async fn test_content_negotiation_wildcard() {
 }
 
 /// Test streaming response with StreamBody
+#[rstest]
 #[tokio::test]
 async fn test_streaming_response() {
 	let mut router = Router::new();
@@ -147,6 +151,7 @@ async fn test_streaming_response() {
 }
 
 /// Test large streaming response
+#[rstest]
 #[tokio::test]
 async fn test_large_streaming_response() {
 	let mut router = Router::new();
@@ -178,6 +183,7 @@ async fn test_large_streaming_response() {
 }
 
 /// Test request/response round-trip with POST data
+#[rstest]
 #[tokio::test]
 async fn test_request_response_post_roundtrip() {
 	let mut router = Router::new();
@@ -235,6 +241,7 @@ async fn test_request_response_post_roundtrip() {
 }
 
 /// Test error response in request/response flow
+#[rstest]
 #[tokio::test]
 async fn test_request_response_error_handling() {
 	let mut router = Router::new();
@@ -259,6 +266,7 @@ async fn test_request_response_error_handling() {
 }
 
 /// Test multiple Accept header types
+#[rstest]
 #[tokio::test]
 async fn test_multiple_accept_headers() {
 	let mut router = Router::new();
@@ -316,6 +324,7 @@ async fn test_multiple_accept_headers() {
 }
 
 /// Test request/response round-trip with query parameters
+#[rstest]
 #[tokio::test]
 async fn test_request_response_query_params() {
 	let mut router = Router::new();

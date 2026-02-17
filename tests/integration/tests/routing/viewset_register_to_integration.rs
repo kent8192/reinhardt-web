@@ -3,6 +3,7 @@
 use hyper::Method;
 use reinhardt_urls::routers::ServerRouter;
 use reinhardt_views::viewsets::ModelViewSet;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,6 +15,7 @@ struct TestUser {
 #[derive(Debug, Clone)]
 struct TestSerializer;
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_register_to() {
 	// Create router
@@ -36,6 +38,7 @@ async fn test_viewset_register_to() {
 	assert!(!routes.is_empty(), "Router should have registered routes");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_viewset_register_to_with_actions() {
 	let mut router = ServerRouter::new();
@@ -60,6 +63,7 @@ async fn test_viewset_register_to_with_actions() {
 	assert!(!routes.is_empty(), "Router should have registered routes");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_register_to_requires_actions() {
 	let mut router = ServerRouter::new();

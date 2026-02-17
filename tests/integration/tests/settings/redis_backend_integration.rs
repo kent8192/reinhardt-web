@@ -6,6 +6,7 @@
 
 use reinhardt_conf::settings::backends::RedisSettingsBackend;
 use reinhardt_test::containers::RedisContainer;
+use rstest::rstest;
 
 async fn create_test_backend() -> (RedisContainer, RedisSettingsBackend) {
 	let redis = RedisContainer::new().await;
@@ -15,6 +16,7 @@ async fn create_test_backend() -> (RedisContainer, RedisSettingsBackend) {
 	(redis, backend)
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_set_and_get_setting() {
 	let (_container, backend) = create_test_backend().await;
@@ -36,6 +38,7 @@ async fn test_set_and_get_setting() {
 	backend.delete(key).await.expect("Failed to delete setting");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_setting_exists() {
 	let (_container, backend) = create_test_backend().await;
@@ -66,6 +69,7 @@ async fn test_setting_exists() {
 	backend.delete(key).await.expect("Failed to delete setting");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_delete_setting() {
 	let (_container, backend) = create_test_backend().await;
@@ -98,6 +102,7 @@ async fn test_delete_setting() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_setting_without_ttl() {
 	let (_container, backend) = create_test_backend().await;
@@ -126,6 +131,7 @@ async fn test_setting_without_ttl() {
 	backend.delete(key).await.expect("Failed to delete setting");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_keys() {
 	let (_container, backend) = create_test_backend().await;
@@ -157,6 +163,7 @@ async fn test_keys() {
 		.expect("Failed to delete setting");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_overwrite_existing_setting() {
 	let (_container, backend) = create_test_backend().await;

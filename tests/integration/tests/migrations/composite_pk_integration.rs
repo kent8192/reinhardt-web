@@ -4,6 +4,7 @@ use reinhardt_db::backends::schema::{BaseDatabaseSchemaEditor, SchemaEditorResul
 use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::operations::FieldDefinition;
 use reinhardt_db::migrations::operations::models::CreateModel;
+use rstest::rstest;
 
 /// Mock schema editor for testing SQL generation
 struct MockSchemaEditor;
@@ -16,7 +17,7 @@ impl BaseDatabaseSchemaEditor for MockSchemaEditor {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_create_model_with_single_primary_key() {
 	let create = CreateModel::new(
 		"users",
@@ -40,7 +41,7 @@ fn test_create_model_with_single_primary_key() {
 	assert!(sql.contains("name VARCHAR(100)") || sql.contains("\"name\" VARCHAR(100)"));
 }
 
-#[test]
+#[rstest]
 fn test_create_model_with_composite_primary_key() {
 	let create = CreateModel::new(
 		"post_tags",
@@ -83,7 +84,7 @@ fn test_create_model_with_composite_primary_key() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_create_model_composite_pk_three_fields() {
 	let create = CreateModel::new(
 		"user_role_permission",
@@ -117,7 +118,7 @@ fn test_create_model_composite_pk_three_fields() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_create_model_composite_pk_with_additional_fields() {
 	let create = CreateModel::new(
 		"order_items",

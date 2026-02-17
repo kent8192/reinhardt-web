@@ -5,6 +5,7 @@
 use reinhardt_db::orm::Field;
 use reinhardt_rest::filters::field_extensions::FieldOrderingExt;
 use reinhardt_rest::filters::OrderDirection;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,7 +17,7 @@ struct TestPost {
 
 reinhardt_test::impl_test_model!(TestPost, i64, "test_posts");
 
-#[test]
+#[rstest]
 fn test_asc_ordering() {
 	let field = Field::<TestPost, String>::new(vec!["title"]);
 	let order = field.asc();
@@ -26,7 +27,7 @@ fn test_asc_ordering() {
 	assert_eq!(order.to_sql(), "title ASC");
 }
 
-#[test]
+#[rstest]
 fn test_desc_ordering() {
 	let field = Field::<TestPost, String>::new(vec!["created_at"]);
 	let order = field.desc();

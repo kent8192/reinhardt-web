@@ -5,6 +5,7 @@
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
 use std::collections::HashMap;
 use std::sync::Arc;
+use rstest::rstest;
 
 /// Test service for nested injection
 #[derive(Clone)]
@@ -39,6 +40,7 @@ impl Injectable for UserService {
 ///
 /// Tests that the same type can be injected both directly and via Depends<T>
 /// in the same handler function.
+#[rstest]
 #[tokio::test]
 async fn test_nested_inject_handler() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -87,6 +89,7 @@ impl Injectable for ComplexTypesService {
 ///
 /// Tests that complex types can be properly injected and serialized/deserialized
 /// through the DI system.
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_macro_with_complex_types() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -114,6 +117,7 @@ async fn test_endpoint_macro_with_complex_types() {
 /// Test: Complex nested structures
 ///
 /// Tests deeply nested structures with multiple levels of dependencies.
+#[rstest]
 #[tokio::test]
 async fn test_complex_nested_structures() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -136,6 +140,7 @@ async fn test_complex_nested_structures() {
 /// Test: Optional dependencies
 ///
 /// Tests that services can have optional dependencies that may or may not be resolved.
+#[rstest]
 #[tokio::test]
 async fn test_optional_dependencies() {
 	#[derive(Clone)]

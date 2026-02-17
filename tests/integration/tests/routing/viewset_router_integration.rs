@@ -4,6 +4,7 @@ use reinhardt_http::Handler;
 use reinhardt_http::Request;
 use reinhardt_urls::routers::{DefaultRouter, Router};
 use reinhardt_views::viewsets::{GenericViewSet, ModelViewSet, ViewSet};
+use rstest::rstest;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,7 @@ struct TestModel {
 struct TestSerializer;
 
 /// Test viewset registration with router
+#[rstest]
 #[tokio::test]
 async fn test_register_viewset_with_router() {
 	let mut router = DefaultRouter::new();
@@ -40,6 +42,7 @@ async fn test_register_viewset_with_router() {
 }
 
 /// Test viewset detail endpoint with router
+#[rstest]
 #[tokio::test]
 async fn test_viewset_detail_endpoint_with_router() {
 	let mut router = DefaultRouter::new();
@@ -64,6 +67,7 @@ async fn test_viewset_detail_endpoint_with_router() {
 }
 
 /// Test URL reversing with router (default basename)
+#[rstest]
 #[tokio::test]
 async fn test_reverse_action_default_basename() {
 	let mut router = DefaultRouter::new();
@@ -86,6 +90,7 @@ async fn test_reverse_action_default_basename() {
 }
 
 /// Test URL reversing with custom basename
+#[rstest]
 #[tokio::test]
 async fn test_reverse_action_custom_basename() {
 	let mut router = DefaultRouter::new();
@@ -102,6 +107,7 @@ async fn test_reverse_action_custom_basename() {
 }
 
 /// Test multiple viewset registration
+#[rstest]
 #[tokio::test]
 async fn test_multiple_viewset_registration() {
 	let mut router = DefaultRouter::new();
@@ -140,6 +146,7 @@ async fn test_multiple_viewset_registration() {
 }
 
 /// Test viewset with router handles different HTTP methods
+#[rstest]
 #[tokio::test]
 async fn test_viewset_router_http_methods() {
 	let mut router = DefaultRouter::new();
@@ -202,6 +209,7 @@ async fn test_viewset_router_http_methods() {
 }
 
 /// Test extra actions (custom actions) with router
+#[rstest]
 #[tokio::test]
 async fn test_extra_actions_with_router() {
 	use async_trait::async_trait;
@@ -295,6 +303,7 @@ async fn test_extra_actions_with_router() {
 }
 
 /// Test get_extra_actions method
+#[rstest]
 #[tokio::test]
 async fn test_get_extra_actions() {
 	use async_trait::async_trait;
@@ -357,6 +366,7 @@ async fn test_get_extra_actions() {
 }
 
 /// Test extra action URL map generation
+#[rstest]
 #[tokio::test]
 async fn test_extra_action_url_map() {
 	use async_trait::async_trait;
@@ -416,6 +426,7 @@ async fn test_extra_action_url_map() {
 }
 
 /// Test action names with name and suffix kwargs
+#[rstest]
 #[tokio::test]
 async fn test_action_names_with_kwargs() {
 	use async_trait::async_trait;
@@ -521,6 +532,7 @@ async fn test_action_names_with_kwargs() {
 }
 
 /// Test as_view() pattern for viewset initialization
+#[rstest]
 #[tokio::test]
 async fn test_initialize_view_set_with_empty_actions() {
 	// Test that as_view() without actions produces an error
@@ -539,6 +551,7 @@ async fn test_initialize_view_set_with_empty_actions() {
 }
 
 /// Test as_view() with both name and suffix raises error
+#[rstest]
 #[tokio::test]
 async fn test_initialize_view_set_with_both_name_and_suffix() {
 	use reinhardt_views::viewset_actions;
@@ -565,6 +578,7 @@ async fn test_initialize_view_set_with_both_name_and_suffix() {
 }
 
 /// Test viewset has required attributes after as_view()
+#[rstest]
 #[tokio::test]
 async fn test_args_kwargs_request_action_map_on_self() {
 	use reinhardt_views::viewset_actions;
@@ -612,6 +626,7 @@ async fn test_args_kwargs_request_action_map_on_self() {
 }
 
 /// Test login_required middleware compatibility
+#[rstest]
 #[tokio::test]
 async fn test_login_required_middleware_compat() {
 	use hyper::{Method, Version};

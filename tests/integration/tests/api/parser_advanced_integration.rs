@@ -5,12 +5,14 @@
 use bytes::Bytes;
 use hyper::HeaderMap;
 use reinhardt_core::parsers::{JSONParser, MediaType, ParseError, Parser};
+use rstest::rstest;
 use serde_json::json;
 
 // ============================================================================
 // JSON Parser Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_nested_objects() {
 	let parser = JSONParser::new();
@@ -54,6 +56,7 @@ async fn test_json_parser_nested_objects() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_error_handling() {
 	let parser = JSONParser::new();
@@ -74,6 +77,7 @@ async fn test_json_parser_error_handling() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_empty_body() {
 	let parser = JSONParser::new();
@@ -86,6 +90,7 @@ async fn test_json_parser_empty_body() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_empty_body_allowed() {
 	let parser = JSONParser::new().allow_empty(true);
@@ -102,7 +107,7 @@ async fn test_json_parser_empty_body_allowed() {
 // Media Type Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_media_type_basic() {
 	let media_type = MediaType::new("application", "json");
 
@@ -110,7 +115,7 @@ fn test_media_type_basic() {
 	assert_eq!(media_type.sub_type, "json");
 }
 
-#[test]
+#[rstest]
 fn test_media_type_with_parameters() {
 	let media_type = MediaType::new("text", "html")
 		.with_param("charset", "utf-8")
@@ -126,7 +131,7 @@ fn test_media_type_with_parameters() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_media_type_parse() {
 	let result = MediaType::parse("application/json; charset=utf-8").unwrap();
 
@@ -135,7 +140,7 @@ fn test_media_type_parse() {
 	assert_eq!(result.parameters.get("charset"), Some(&"utf-8".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_media_type_parse_complex() {
 	let result =
 		MediaType::parse("multipart/form-data; boundary=----WebKitFormBoundary; charset=utf-8")
@@ -150,7 +155,7 @@ fn test_media_type_parse_complex() {
 // Parser Content Type Support Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_json_parser_media_types() {
 	let parser = JSONParser::new();
 	let media_types = parser.media_types();
@@ -166,6 +171,7 @@ fn test_json_parser_media_types() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_array_data() {
 	let parser = JSONParser::new();
@@ -194,6 +200,7 @@ async fn test_json_parser_array_data() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_json_parser_unicode() {
 	let parser = JSONParser::new();

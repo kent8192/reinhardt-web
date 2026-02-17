@@ -13,10 +13,11 @@ use reinhardt_test::messages::{
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test basic message assertion functionality
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_assertion
-	#[test]
+	#[rstest]
 	fn test_assertion() {
 		// Create messages at all levels
 		let messages = vec![
@@ -51,7 +52,7 @@ mod tests {
 
 	/// Test message assertion with extra_tags
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_with_tags
-	#[test]
+	#[rstest]
 	fn test_with_tags() {
 		// Create messages with extra_tags
 		let messages = vec![
@@ -98,7 +99,7 @@ mod tests {
 
 	/// Test that message assertion can check order (or ignore order)
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_ordered
-	#[test]
+	#[rstest]
 	fn test_ordered() {
 		let messages = vec![
 			Message::info("First message"),
@@ -133,7 +134,7 @@ mod tests {
 
 	/// Test that assertion fails with helpful error when message count differs
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_mismatching_length
-	#[test]
+	#[rstest]
 	fn test_mismatching_length() {
 		let messages = vec![Message::info("Only message")];
 
@@ -168,7 +169,7 @@ mod tests {
 
 	/// Test that assertion helper methods are hidden from test failure stack traces
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_method_frames_ignored_by_unittest
-	#[test]
+	#[rstest]
 	fn test_method_frames_ignored_by_unittest() {
 		let mixin = MessagesTestMixin::with_settings(true);
 
@@ -190,7 +191,7 @@ mod tests {
 	}
 
 	/// Test MessagesTestMixin functionality
-	#[test]
+	#[rstest]
 	fn test_messages_test_mixin() {
 		let mixin = MessagesTestMixin::new();
 		let messages = vec![

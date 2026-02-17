@@ -7,6 +7,7 @@
 
 use reinhardt_tasks::locking::{RedisTaskLock, TaskLock};
 use reinhardt_tasks::TaskId;
+use rstest::rstest;
 use serial_test::serial;
 use std::time::Duration;
 use testcontainers::{
@@ -26,6 +27,7 @@ async fn setup_redis() -> testcontainers::ContainerAsync<GenericImage> {
 		.expect("Failed to start Redis container")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis_lock)]
 async fn test_redis_lock_acquire() {
@@ -48,6 +50,7 @@ async fn test_redis_lock_acquire() {
 	assert!(acquired);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis_lock)]
 async fn test_redis_lock_already_locked() {
@@ -73,6 +76,7 @@ async fn test_redis_lock_already_locked() {
 	assert!(!acquired);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis_lock)]
 async fn test_redis_lock_release() {

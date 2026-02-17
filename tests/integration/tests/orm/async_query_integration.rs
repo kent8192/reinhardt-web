@@ -76,6 +76,7 @@ async fn async_query_test_db(
 #[cfg(feature = "postgres")]
 mod postgres_tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test basic SQL generation with QueryCompiler for PostgreSQL
 	///
@@ -198,6 +199,7 @@ mod postgres_tests {
 #[cfg(any())] // MySQL support not yet enabled in integration tests
 mod mysql_tests {
 	use super::*;
+	use rstest::rstest;
 	use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 
 	async fn create_mysql_pool(
@@ -229,6 +231,7 @@ mod mysql_tests {
 		unreachable!()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_async_query_builder() {
 		let mysql_image = GenericImage::new("mysql", "8.0")
@@ -264,6 +267,7 @@ mod mysql_tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_async_query_execution() {
 		let mysql_image = GenericImage::new("mysql", "8.0")
@@ -300,6 +304,7 @@ mod mysql_tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_async_session() {
 		// MySQL's "ready for connections" message appears twice:

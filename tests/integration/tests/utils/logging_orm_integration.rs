@@ -10,6 +10,7 @@
 use reinhardt_db::orm::{IsolationLevel, Savepoint, Transaction};
 use reinhardt_utils::logging::handlers::MemoryHandler;
 use reinhardt_utils::logging::{LogLevel, Logger};
+use rstest::rstest;
 use std::sync::Arc;
 
 /// Transaction wrapper that logs all operations
@@ -68,6 +69,7 @@ impl LoggingTransaction {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_transaction_begin_logged() {
 	// Transaction start should be logged at DEBUG level
@@ -91,6 +93,7 @@ async fn test_transaction_begin_logged() {
 	assert!(records[0].message.contains("BEGIN TRANSACTION"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_transaction_commit_logged() {
 	// Transaction commit should be logged at DEBUG level
@@ -115,6 +118,7 @@ async fn test_transaction_commit_logged() {
 	assert!(records[1].message.contains("COMMIT"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_transaction_rollback_logged() {
 	// Transaction rollback should be logged at INFO level (more important than commit)
@@ -140,6 +144,7 @@ async fn test_transaction_rollback_logged() {
 	assert!(records[1].message.contains("ROLLBACK"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_savepoint_created_logged() {
 	// Savepoint creation (nested transaction) should be logged
@@ -166,6 +171,7 @@ async fn test_savepoint_created_logged() {
 	assert!(records[1].message.contains("SAVEPOINT"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_savepoint_rollback_logged() {
 	// Savepoint rollback should be logged
@@ -189,6 +195,7 @@ async fn test_savepoint_rollback_logged() {
 	assert!(records[2].message.contains("ROLLBACK TO SAVEPOINT"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_transaction_logging() {
 	// Multiple levels of nested transactions should all be logged
@@ -214,6 +221,7 @@ async fn test_nested_transaction_logging() {
 	assert!(records[2].message.contains("SAVEPOINT sp_3"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_isolation_level_logged() {
 	// Transaction with isolation level should include it in log
@@ -237,6 +245,7 @@ async fn test_isolation_level_logged() {
 	assert!(records[0].message.contains("SERIALIZABLE"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_transaction_logger_level_filtering() {
 	// Logger level should filter transaction logs appropriately
@@ -269,6 +278,7 @@ async fn test_transaction_logger_level_filtering() {
 	assert_eq!(records[0].level, LogLevel::Info);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_full_transaction_lifecycle() {
 	// Test complete transaction lifecycle with all operations
@@ -296,6 +306,7 @@ async fn test_full_transaction_lifecycle() {
 	assert!(records[3].message.contains("COMMIT"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_savepoint_object() {
 	// Test Savepoint utility functions
@@ -308,6 +319,7 @@ async fn test_savepoint_object() {
 	assert_eq!(savepoint.rollback_sql(), "ROLLBACK TO SAVEPOINT test_sp");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_transactions_separate_loggers() {
 	// Multiple transactions with different loggers should log independently

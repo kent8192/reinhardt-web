@@ -1,7 +1,9 @@
 use reinhardt_auth::{BaseUser, BaseUserManager, DefaultUser, DefaultUserManager};
+use rstest::rstest;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+#[rstest]
 #[tokio::test]
 async fn test_default_user_with_password() {
 	// Test intent: Verify DefaultUser password hashing, verification,
@@ -38,6 +40,7 @@ async fn test_default_user_with_password() {
 	assert_ne!(hash1, hash2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_default_user_manager_create_user() {
 	// Test intent: Verify DefaultUserManager creates regular user with correct
@@ -64,6 +67,7 @@ async fn test_default_user_manager_create_user() {
 	assert!(user.check_password("password123").unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_default_user_manager_create_superuser() {
 	// Test intent: Verify DefaultUserManager creates superuser with
@@ -82,6 +86,7 @@ async fn test_default_user_manager_create_superuser() {
 	assert!(admin.check_password("adminsecret").unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_username_already_exists() {
 	// Test intent: Verify DefaultUserManager returns error when attempting
@@ -100,6 +105,7 @@ async fn test_username_already_exists() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_email_normalization() {
 	// Test intent: Verify DefaultUserManager normalizes email addresses
@@ -118,6 +124,7 @@ async fn test_email_normalization() {
 	assert_eq!(user.email, "Alice@example.com");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_unusable_password() {
 	// Test intent: Verify set_unusable_password() creates password hash that

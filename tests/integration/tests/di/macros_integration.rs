@@ -29,6 +29,7 @@ use reinhardt_core::exception::Result as ExceptionResult;
 use reinhardt_http::Request;
 use reinhardt_macros::use_inject;
 use std::sync::Arc;
+use rstest::rstest;
 
 /// Helper to create a test Request with DI context attached
 fn create_test_request_with_di(ctx: Arc<InjectionContext>) -> Request {
@@ -126,6 +127,7 @@ async fn handler_no_inject(
 	Ok(format!("{}-{}", regular_param1, regular_param2))
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_with_single_inject() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -144,6 +146,7 @@ async fn test_endpoint_with_single_inject() {
 	assert!(result.contains("param: test_value"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_with_multiple_inject() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -160,6 +163,7 @@ async fn test_endpoint_with_multiple_inject() {
 	assert!(result.contains("param: 100"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_with_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -173,6 +177,7 @@ async fn test_endpoint_with_cache_control() {
 	assert_eq!(result, 42); // service.value
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_only_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -186,6 +191,7 @@ async fn test_endpoint_only_inject_params() {
 	assert_eq!(result.connection_string, "");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_endpoint_no_inject_params() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -267,6 +273,7 @@ async fn calculate_report(
 	))
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_simple_injection() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -279,6 +286,7 @@ async fn test_simple_injection() {
 	assert!(result.contains("Processing test_data"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_injections() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -294,6 +302,7 @@ async fn test_multiple_injections() {
 	assert!(result.contains("Logger:"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_use_inject_cache_control() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -307,6 +316,7 @@ async fn test_use_inject_cache_control() {
 	assert!(result.contains("Logger:"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_helper_function() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -323,6 +333,7 @@ async fn test_helper_function() {
 	assert!(!invalid);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_business_logic() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -336,6 +347,7 @@ async fn test_business_logic() {
 	assert!(result.contains("connections"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injection_caching() {
 	let singleton = Arc::new(SingletonScope::new());

@@ -93,7 +93,6 @@ fn add_fk_field(
 ///
 /// **Expected Behavior**: Circular dependency detected and reported
 #[rstest]
-#[test]
 fn test_detect_circular_dependency_abc() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -156,7 +155,6 @@ fn test_detect_circular_dependency_abc() {
 ///
 /// **Expected Behavior**: Field alteration detected; warning about potential data loss
 #[rstest]
-#[test]
 fn test_detect_not_null_without_default_error() {
 	// from_state: User with nullable email
 	let mut from_state = ProjectState::new();
@@ -213,7 +211,6 @@ fn test_detect_not_null_without_default_error() {
 ///
 /// **Expected Behavior**: UNIQUE index addition detected
 #[rstest]
-#[test]
 fn test_detect_unique_constraint_violation() {
 	// from_state: User with email (no unique constraint)
 	let mut from_state = ProjectState::new();
@@ -278,7 +275,6 @@ fn test_detect_unique_constraint_violation() {
 ///
 /// **Expected Behavior**: FK addition detected; dependency validation should flag missing table
 #[rstest]
-#[test]
 fn test_detect_fk_integrity_violation() {
 	// from_state: Post model only
 	let mut from_state = ProjectState::new();
@@ -322,7 +318,6 @@ fn test_detect_fk_integrity_violation() {
 ///
 /// **Expected Behavior**: CHECK constraint addition detected
 #[rstest]
-#[test]
 fn test_detect_check_constraint_violation() {
 	// from_state: Product with price (no CHECK constraint)
 	let mut from_state = ProjectState::new();
@@ -395,7 +390,6 @@ fn test_detect_check_constraint_violation() {
 ///
 /// **Expected Behavior**: Type conversion detected; potential data loss warning
 #[rstest]
-#[test]
 fn test_incompatible_type_conversion() {
 	// from_state: User with Text bio field
 	let mut from_state = ProjectState::new();
@@ -445,7 +439,6 @@ fn test_incompatible_type_conversion() {
 ///
 /// **Expected Behavior**: Field alteration detected; potential data truncation warning
 #[rstest]
-#[test]
 fn test_varchar_length_decrease_warning() {
 	// from_state: User with VarChar(255) username
 	let mut from_state = ProjectState::new();
@@ -505,7 +498,6 @@ fn test_varchar_length_decrease_warning() {
 ///
 /// **Expected Behavior**: Field alteration detected; precision loss warning
 #[rstest]
-#[test]
 fn test_numeric_precision_loss_warning() {
 	// from_state: Product with Decimal(10, 4) price
 	let mut from_state = ProjectState::new();
@@ -565,7 +557,6 @@ fn test_numeric_precision_loss_warning() {
 ///
 /// **Expected Behavior**: FK constraint addition detected; validation should catch missing table
 #[rstest]
-#[test]
 fn test_foreign_key_to_nonexistent_model() {
 	// from_state: Empty
 	let from_state = ProjectState::new();
@@ -627,7 +618,6 @@ fn test_foreign_key_to_nonexistent_model() {
 ///
 /// **Expected Behavior**: Both index additions detected; validation should catch duplicate names
 #[rstest]
-#[test]
 fn test_duplicate_index_name_error() {
 	// from_state: User model without indexes
 	let mut from_state = ProjectState::new();
@@ -715,7 +705,6 @@ fn test_duplicate_index_name_error() {
 ///
 /// **Expected Behavior**: Field addition detected; validation may catch invalid types
 #[rstest]
-#[test]
 fn test_invalid_field_type_error() {
 	// from_state: User model
 	let mut from_state = ProjectState::new();
@@ -766,7 +755,6 @@ fn test_invalid_field_type_error() {
 ///
 /// **Expected Behavior**: Field removal detected; orphaned index should also be removed
 #[rstest]
-#[test]
 fn test_index_on_deleted_field_error() {
 	// from_state: User with email field and index
 	let mut from_state = ProjectState::new();
@@ -833,7 +821,6 @@ fn test_index_on_deleted_field_error() {
 ///
 /// **Expected Behavior**: Field alteration detected; potential data conversion warning
 #[rstest]
-#[test]
 fn test_timezone_aware_datetime_warning() {
 	// from_state: Event with naive DateTime
 	let mut from_state = ProjectState::new();

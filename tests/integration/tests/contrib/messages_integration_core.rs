@@ -9,10 +9,11 @@
 //! - django/tests/messages_tests/test_cookie.py
 
 use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage, SessionStorage};
+use rstest::rstest;
 
 // ========== Session Storage Integration Tests ==========
 
-#[test]
+#[rstest]
 fn test_session_storage_add_and_retrieve() {
 	let mut storage = SessionStorage::new();
 
@@ -25,7 +26,7 @@ fn test_session_storage_add_and_retrieve() {
 	assert_eq!(messages[1].text, "Success!");
 }
 
-#[test]
+#[rstest]
 fn test_session_storage_get_all_consumes_messages() {
 	let mut storage = SessionStorage::new();
 
@@ -40,7 +41,7 @@ fn test_session_storage_get_all_consumes_messages() {
 	assert_eq!(messages_again.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_session_storage_peek_does_not_consume() {
 	let mut storage = SessionStorage::new();
 
@@ -59,7 +60,7 @@ fn test_session_storage_peek_does_not_consume() {
 	assert_eq!(messages.len(), 1);
 }
 
-#[test]
+#[rstest]
 fn test_session_storage_clear() {
 	let mut storage = SessionStorage::new();
 
@@ -70,7 +71,7 @@ fn test_session_storage_clear() {
 	assert_eq!(messages.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_session_storage_custom_session_key() {
 	let storage = SessionStorage::new().with_session_key("custom_messages");
 	assert_eq!(storage.session_key(), "custom_messages");
@@ -78,7 +79,7 @@ fn test_session_storage_custom_session_key() {
 
 // ========== Cookie Storage Integration Tests ==========
 
-#[test]
+#[rstest]
 fn test_cookie_storage_add_and_retrieve() {
 	let mut storage = CookieStorage::new();
 
@@ -91,19 +92,19 @@ fn test_cookie_storage_add_and_retrieve() {
 	assert_eq!(messages[1].text, "Warning!");
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_custom_cookie_name() {
 	let storage = CookieStorage::new().with_cookie_name("my_messages");
 	assert_eq!(storage.cookie_name(), "my_messages");
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_max_size() {
 	let storage = CookieStorage::new().with_max_size(8192);
 	assert_eq!(storage.max_cookie_size(), 8192);
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_serialize() {
 	let mut storage = CookieStorage::new();
 
@@ -114,7 +115,7 @@ fn test_cookie_storage_serialize() {
 	assert!(serialized.contains("Info"));
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_round_trip() {
 	let mut storage1 = CookieStorage::new();
 
@@ -135,7 +136,7 @@ fn test_cookie_storage_round_trip() {
 	assert_eq!(messages[1].text, "Message 2");
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_size_limit() {
 	let mut storage = CookieStorage::new().with_max_size(100);
 
@@ -150,7 +151,7 @@ fn test_cookie_storage_size_limit() {
 	assert!(!unstored.is_empty(), "Some messages should be unstored");
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_encode_for_cookie() {
 	// Test that RFC 6265 prohibited characters are properly encoded
 	let text = r#"Test with special chars: , ; \ ""#;
@@ -168,7 +169,7 @@ fn test_cookie_storage_encode_for_cookie() {
 
 // ========== Cross-Storage Integration Tests ==========
 
-#[test]
+#[rstest]
 fn test_message_transfer_between_storages() {
 	// Create message in session storage
 	let mut session_storage = SessionStorage::new();
@@ -190,7 +191,7 @@ fn test_message_transfer_between_storages() {
 	assert_eq!(cookie_messages[0].text, "Transfer test");
 }
 
-#[test]
+#[rstest]
 fn test_message_with_tags_across_storages() {
 	// Create tagged message
 	let msg = Message::new(Level::Info, "Tagged message")
@@ -217,7 +218,7 @@ fn test_message_with_tags_across_storages() {
 
 // ========== Message API Tests ==========
 
-#[test]
+#[rstest]
 fn test_message_level_tags() {
 	let debug_msg = Message::new(Level::Debug, "Debug");
 	assert_eq!(debug_msg.level.as_str(), "debug");
@@ -235,7 +236,7 @@ fn test_message_level_tags() {
 	assert_eq!(error_msg.level.as_str(), "error");
 }
 
-#[test]
+#[rstest]
 fn test_message_tags_method() {
 	let msg =
 		Message::new(Level::Info, "Tagged").with_tags(vec!["tag1".to_string(), "tag2".to_string()]);
@@ -247,7 +248,7 @@ fn test_message_tags_method() {
 	assert!(all_tags.contains(&"tag2".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_message_add_tag_mutably() {
 	let mut msg = Message::new(Level::Info, "Message");
 	msg.add_tag("custom".to_string());
@@ -260,21 +261,21 @@ fn test_message_add_tag_mutably() {
 
 // ========== Empty State Tests ==========
 
-#[test]
+#[rstest]
 fn test_empty_session_storage() {
 	let mut storage = SessionStorage::new();
 	let messages = storage.get_all();
 	assert_eq!(messages.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_empty_cookie_storage() {
 	let mut storage = CookieStorage::new();
 	let messages = storage.get_all();
 	assert_eq!(messages.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_empty_cookie_serialization() {
 	let storage = CookieStorage::new();
 	let serialized = storage.serialize().unwrap();

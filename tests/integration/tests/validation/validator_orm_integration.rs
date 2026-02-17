@@ -57,6 +57,7 @@ async fn validator_orm_test_db(
 #[cfg(test)]
 mod scalar_validation_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Based on SQLAlchemy: ValidatorTest::test_scalar
 	#[rstest]
@@ -90,7 +91,7 @@ mod scalar_validation_tests {
 	}
 
 	// Based on SQLAlchemy: test_validators_dict
-	#[test]
+	#[rstest]
 	fn test_multiple_field_validators() {
 		// Simulate validating multiple fields like SQLAlchemy's validator dict
 		let username_min = MinLengthValidator::new(3);
@@ -119,9 +120,10 @@ mod scalar_validation_tests {
 #[cfg(test)]
 mod numeric_validation_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test numeric validators with database constraints
-	#[test]
+	#[rstest]
 	fn test_price_validation() {
 		let min_price = MinValueValidator::new(0.0);
 		let max_price = MaxValueValidator::new(999999.99);
@@ -136,7 +138,7 @@ mod numeric_validation_tests {
 		assert!(max_price.validate(&1000000.0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_stock_quantity_validation() {
 		let stock_validator = RangeValidator::new(0, 10000);
 
@@ -150,7 +152,7 @@ mod numeric_validation_tests {
 		assert!(stock_validator.validate(&10001).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_quantity_validation() {
 		// Order quantity must be positive
 		let min_quantity = MinValueValidator::new(1);
@@ -171,9 +173,10 @@ mod numeric_validation_tests {
 #[cfg(test)]
 mod bulk_operation_validation_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Based on SQLAlchemy: test_validator_bulk_collection_set
-	#[test]
+	#[rstest]
 	fn test_bulk_validation() {
 		let username_validator = MinLengthValidator::new(3);
 
@@ -211,9 +214,10 @@ mod bulk_operation_validation_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_email_validation() {
 		use reinhardt_core::validators::EmailValidator;
+		use rstest::rstest;
 
 		let email_validator = EmailValidator::new();
 
@@ -249,9 +253,10 @@ mod bulk_operation_validation_tests {
 #[cfg(test)]
 mod constraint_validation_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test validators that mirror database constraints
-	#[test]
+	#[rstest]
 	fn test_not_null_with_min_length() {
 		let validator = MinLengthValidator::new(1);
 
@@ -262,7 +267,7 @@ mod constraint_validation_tests {
 		assert!(validator.validate("a").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_constraint_validation() {
 		// Simulate CHECK (stock >= 0) constraint
 		let stock_validator = MinValueValidator::new(0);
@@ -279,7 +284,7 @@ mod constraint_validation_tests {
 		assert!(quantity_validator.validate(&0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_constraint_simulation() {
 		// This test verifies in-memory uniqueness checking
 		// For actual database UNIQUE constraint validation, see test_unique_constraint_database_violation
@@ -300,6 +305,7 @@ mod constraint_validation_tests {
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
 		use reinhardt_core::validators::UniqueValidator;
+		use rstest::rstest;
 
 		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
 
@@ -381,6 +387,7 @@ mod constraint_validation_tests {
 #[cfg(test)]
 mod relationship_validation_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Based on SQLAlchemy: test_validator_backrefs
 	#[rstest]
@@ -414,6 +421,7 @@ mod relationship_validation_tests {
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
 		use reinhardt_core::validators::ExistsValidator;
+		use rstest::rstest;
 
 		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
 
@@ -621,8 +629,9 @@ mod relationship_validation_tests {
 #[cfg(test)]
 mod validator_composition_with_orm_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_combined_validators_for_model_field() {
 		// Simulate validating a model field with multiple validators
 		struct UserValidation {

@@ -4,13 +4,14 @@
 //! interactive HTML API documentation.
 
 use reinhardt_rest::browsable_api::{ApiContext, BrowsableApiRenderer, FormContext, FormField};
+use rstest::rstest;
 use serde_json::json;
 
 // ============================================================================
 // API Browser Rendering Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_browsable_api_html_response() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -70,7 +71,7 @@ fn test_browsable_api_html_response() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_browsable_api_json_data_display() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -130,7 +131,7 @@ fn test_browsable_api_json_data_display() {
 // Interactive Features Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_browsable_api_form_rendering() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -209,7 +210,7 @@ fn test_browsable_api_form_rendering() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_browsable_api_method_selection() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -262,7 +263,7 @@ fn test_browsable_api_method_selection() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_browsable_api_authentication_ui() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -304,7 +305,7 @@ fn test_browsable_api_authentication_ui() {
 // Content Negotiation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_browsable_api_accepts_header() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -342,7 +343,7 @@ fn test_browsable_api_accepts_header() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_browsable_api_json_response_display() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -392,7 +393,7 @@ fn test_browsable_api_json_response_display() {
 // Response Status Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_browsable_api_error_response() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -439,7 +440,7 @@ fn test_browsable_api_error_response() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_browsable_api_success_created() {
 	let renderer = BrowsableApiRenderer::new();
 
@@ -483,7 +484,7 @@ fn test_browsable_api_success_created() {
 // Form Field Types Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_browsable_api_various_field_types() {
 	let renderer = BrowsableApiRenderer::new();
 

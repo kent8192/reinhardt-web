@@ -5,12 +5,13 @@
 use reinhardt_core::messages::{
 	CookieStorage, FallbackStorage, Level, MemoryStorage, Message, MessageStorage, SessionStorage,
 };
+use rstest::rstest;
 
 // ============================================================================
 // Basic Message Operations Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_add_message() {
 	let mut storage = MemoryStorage::new();
 
@@ -22,7 +23,7 @@ fn test_add_message() {
 	assert_eq!(messages[0].level, Level::Info);
 }
 
-#[test]
+#[rstest]
 fn test_get_messages() {
 	let mut storage = MemoryStorage::new();
 
@@ -35,7 +36,7 @@ fn test_get_messages() {
 	assert_eq!(messages[1].text, "Check your email for confirmation");
 }
 
-#[test]
+#[rstest]
 fn test_messages_consumed_after_read() {
 	let mut storage = MemoryStorage::new();
 
@@ -54,7 +55,7 @@ fn test_messages_consumed_after_read() {
 // Message Levels Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_message_levels() {
 	let mut storage = MemoryStorage::new();
 
@@ -74,7 +75,7 @@ fn test_message_levels() {
 	assert_eq!(messages[4].level, Level::Error);
 }
 
-#[test]
+#[rstest]
 fn test_message_level_filtering() {
 	let mut storage = MemoryStorage::new();
 
@@ -96,7 +97,7 @@ fn test_message_level_filtering() {
 	assert_eq!(important_messages[1].level, Level::Error);
 }
 
-#[test]
+#[rstest]
 fn test_message_tags() {
 	let mut storage = MemoryStorage::new();
 
@@ -110,7 +111,7 @@ fn test_message_tags() {
 	assert!(messages[1].tags().contains(&"error".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_custom_message_tags() {
 	let mut storage = MemoryStorage::new();
 
@@ -130,7 +131,7 @@ fn test_custom_message_tags() {
 // Message Storage Backend Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_session_storage_backend() {
 	let mut storage = SessionStorage::new();
 
@@ -145,7 +146,7 @@ fn test_session_storage_backend() {
 	assert_eq!(empty_messages.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_cookie_storage_backend() {
 	let mut storage = CookieStorage::new();
 
@@ -156,7 +157,7 @@ fn test_cookie_storage_backend() {
 	assert_eq!(messages[0].text, "Cookie message");
 }
 
-#[test]
+#[rstest]
 fn test_fallback_storage_backend() {
 	let mut storage = FallbackStorage::new();
 
@@ -172,7 +173,7 @@ fn test_fallback_storage_backend() {
 // Message Context Tests (Template Integration)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_messages_in_template_context() {
 	let mut storage = MemoryStorage::new();
 
@@ -191,7 +192,7 @@ fn test_messages_in_template_context() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_extra_message_data() {
 	let mut storage = MemoryStorage::new();
 
@@ -215,7 +216,7 @@ fn test_extra_message_data() {
 // Storage Persistence Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_peek_does_not_consume() {
 	let mut storage = MemoryStorage::new();
 
@@ -238,7 +239,7 @@ fn test_peek_does_not_consume() {
 	assert_eq!(peek3.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_clear_messages() {
 	let mut storage = MemoryStorage::new();
 

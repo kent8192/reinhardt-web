@@ -6,6 +6,7 @@
 use reinhardt_test::http::*;
 
 use hyper::header::{HeaderValue, SET_COOKIE};
+use rstest::rstest;
 
 /// Parse Set-Cookie header for attributes
 fn parse_cookie_attributes(set_cookie: &str) -> Vec<String> {
@@ -35,7 +36,7 @@ fn get_cookie_attribute(set_cookie: &str, attribute: &str) -> Option<String> {
 	None
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_secure_flag() {
 	// Test: Session cookie should have Secure flag in production
 	let mut response = create_test_response();
@@ -48,7 +49,7 @@ fn test_session_cookie_secure_flag() {
 	assert!(has_cookie_attribute(cookie, "Secure"));
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_httponly_flag() {
 	// Test: Session cookie should have HttpOnly flag
 	let mut response = create_test_response();
@@ -61,7 +62,7 @@ fn test_session_cookie_httponly_flag() {
 	assert!(has_cookie_attribute(cookie, "HttpOnly"));
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_samesite() {
 	// Test: Session cookie should have SameSite attribute
 	let mut response = create_test_response();
@@ -74,7 +75,7 @@ fn test_session_cookie_samesite() {
 	assert!(has_cookie_attribute(cookie, "SameSite"));
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_samesite_strict() {
 	// Test: Session cookie with SameSite=Strict
 	let mut response = create_test_response();
@@ -88,7 +89,7 @@ fn test_session_cookie_samesite_strict() {
 	assert_eq!(samesite, "strict");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_samesite_lax() {
 	// Test: Session cookie with SameSite=Lax (default recommended)
 	let mut response = create_test_response();
@@ -102,7 +103,7 @@ fn test_session_cookie_samesite_lax() {
 	assert_eq!(samesite, "lax");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_samesite_none_requires_secure() {
 	// Test: SameSite=None requires Secure flag
 	let mut response = create_test_response();
@@ -117,7 +118,7 @@ fn test_session_cookie_samesite_none_requires_secure() {
 	assert_eq!(samesite, "none");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_domain() {
 	// Test: Session cookie can specify domain
 	let mut response = create_test_response();
@@ -131,7 +132,7 @@ fn test_session_cookie_domain() {
 	assert_eq!(domain, ".example.com");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_path() {
 	// Test: Session cookie with Path attribute
 	let mut response = create_test_response();
@@ -145,7 +146,7 @@ fn test_session_cookie_path() {
 	assert_eq!(path, "/");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_max_age() {
 	// Test: Session cookie with Max-Age
 	let mut response = create_test_response();
@@ -159,7 +160,7 @@ fn test_session_cookie_max_age() {
 	assert_eq!(max_age, "3600");
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_expires() {
 	// Test: Session cookie with Expires
 	let mut response = create_test_response();
@@ -172,7 +173,7 @@ fn test_session_cookie_expires() {
 	assert!(has_cookie_attribute(cookie, "Expires"));
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_deletion() {
 	// Test: Session cookie deletion (Max-Age=0 or past Expires)
 	let mut response = create_test_response();
@@ -186,7 +187,7 @@ fn test_session_cookie_deletion() {
 	assert_eq!(max_age, "0");
 }
 
-#[test]
+#[rstest]
 fn test_csrf_vs_session_cookie_httponly() {
 	// Test: CSRF cookies should NOT be HttpOnly (JS needs access)
 	// Session cookies SHOULD be HttpOnly (prevent XSS)
@@ -210,6 +211,7 @@ fn test_csrf_vs_session_cookie_httponly() {
 	assert!(!has_cookie_attribute(csrf_cookie, "HttpOnly"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_fixation_prevention() {
 	// Test: Session ID should be regenerated on login to prevent session fixation attacks
@@ -301,6 +303,7 @@ async fn test_session_fixation_prevention() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_timeout_valid_before_expiry() {
 	// Test: Session should be valid before timeout
@@ -321,6 +324,7 @@ async fn test_session_timeout_valid_before_expiry() {
 	assert!(session.validate_timeout().is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_timeout_invalid_after_expiry() {
 	// Test: Session should be invalid after timeout
@@ -345,6 +349,7 @@ async fn test_session_timeout_invalid_after_expiry() {
 	assert!(session.validate_timeout().is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_last_activity_updates() {
 	// Test: Session last_activity timestamp updates on each access
@@ -374,6 +379,7 @@ async fn test_session_last_activity_updates() {
 	assert!(second_activity > first_activity);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_update_activity_manually() {
 	// Test: Manual update_activity() extends session lifetime
@@ -401,6 +407,7 @@ async fn test_session_update_activity_manually() {
 	assert!(session.validate_timeout().is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_timeout_configuration() {
 	// Test: Session timeout can be configured
@@ -422,7 +429,7 @@ async fn test_session_timeout_configuration() {
 	assert_eq!(session.get_timeout(), 60);
 }
 
-#[test]
+#[rstest]
 fn test_multiple_cookies() {
 	// Test: Multiple Set-Cookie headers for different cookies
 	let mut response = create_test_response();
@@ -440,7 +447,7 @@ fn test_multiple_cookies() {
 	assert_eq!(cookies.len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_name() {
 	// Test: Session cookie has correct name
 	let mut response = create_test_response();
@@ -452,7 +459,7 @@ fn test_session_cookie_name() {
 	assert!(cookie.starts_with("sessionid="));
 }
 
-#[test]
+#[rstest]
 fn test_session_cookie_secure_production() {
 	// Test: In production (HTTPS), Secure flag must be set
 	let mut response = create_test_response();

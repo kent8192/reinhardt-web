@@ -4,6 +4,7 @@ use reinhardt_http::Request;
 use reinhardt_views::viewsets::{
 	Action, GenericViewSet, ModelViewSet, ReadOnlyModelViewSet, ViewSet,
 };
+use rstest::rstest;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -16,6 +17,7 @@ struct TestModel {
 struct TestSerializer;
 
 /// Test initializing viewset with action mapping
+#[rstest]
 #[tokio::test]
 async fn test_initialize_view_set_with_actions() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("test");
@@ -51,6 +53,7 @@ async fn test_initialize_view_set_with_actions() {
 }
 
 /// Test HEAD request handling with viewset
+#[rstest]
 #[tokio::test]
 async fn test_head_request_against_viewset() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("test");
@@ -73,6 +76,7 @@ async fn test_head_request_against_viewset() {
 }
 
 /// Test viewset action attribute is set correctly
+#[rstest]
 #[tokio::test]
 async fn test_viewset_action_attr() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("test");
@@ -82,6 +86,7 @@ async fn test_viewset_action_attr() {
 }
 
 /// Test viewset has correct basename
+#[rstest]
 #[tokio::test]
 async fn test_viewset_get_basename() {
 	let viewset = GenericViewSet::new("users", ());
@@ -96,6 +101,7 @@ async fn test_viewset_get_basename() {
 }
 
 /// Test different action types
+#[rstest]
 #[tokio::test]
 async fn test_viewset_action_types() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
@@ -236,6 +242,7 @@ async fn test_viewset_action_types() {
 }
 
 /// Test readonly viewset restrictions
+#[rstest]
 #[tokio::test]
 async fn test_readonly_viewset_restrictions() {
 	let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
@@ -333,6 +340,7 @@ async fn test_readonly_viewset_restrictions() {
 }
 
 /// Test custom actions
+#[rstest]
 #[tokio::test]
 async fn test_custom_actions() {
 	let list_action = Action::custom("custom_list", false);
@@ -343,6 +351,7 @@ async fn test_custom_actions() {
 }
 
 /// Test action metadata
+#[rstest]
 #[tokio::test]
 async fn test_action_metadata() {
 	let list = Action::list();

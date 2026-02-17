@@ -8,6 +8,7 @@ use reinhardt_db::migrations::{
 	ColumnDefinition, DatabaseMigrationRecorder, FieldType, Migration, MigrationSource,
 	MigrationStateLoader, Operation,
 };
+use rstest::rstest;
 use serial_test::serial;
 
 /// Helper struct for in-memory migration source (for testing)
@@ -30,6 +31,7 @@ impl MigrationSource for InMemoryMigrationSource {
 }
 
 /// Test that empty migration history returns empty ProjectState
+#[rstest]
 #[tokio::test]
 #[serial(state_loader_migrations)]
 async fn test_empty_migration_history_returns_empty_state() {
@@ -58,6 +60,7 @@ async fn test_empty_migration_history_returns_empty_state() {
 }
 
 /// Test that a single CreateTable migration is correctly replayed
+#[rstest]
 #[tokio::test]
 #[serial(state_loader_migrations)]
 async fn test_single_create_table_migration() {
@@ -133,6 +136,7 @@ async fn test_single_create_table_migration() {
 }
 
 /// Test that multiple migrations are replayed in correct order
+#[rstest]
 #[tokio::test]
 #[serial(state_loader_migrations)]
 async fn test_multiple_migrations_in_order() {
@@ -238,6 +242,7 @@ async fn test_multiple_migrations_in_order() {
 }
 
 /// Test that unapplied migrations are not included in state
+#[rstest]
 #[tokio::test]
 #[serial(state_loader_migrations)]
 async fn test_unapplied_migrations_not_included() {

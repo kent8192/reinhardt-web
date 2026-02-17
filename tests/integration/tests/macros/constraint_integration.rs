@@ -2,6 +2,7 @@
 
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_macros::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -20,7 +21,7 @@ struct Product {
 	quantity: i32,
 }
 
-#[test]
+#[rstest]
 fn test_constraint_metadata() {
 	let constraints = Product::constraint_metadata();
 
@@ -42,7 +43,7 @@ fn test_constraint_metadata() {
 	assert_eq!(quantity_constraint.definition, "quantity >= 0");
 }
 
-#[test]
+#[rstest]
 fn test_multiple_constraints() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "users")]
@@ -69,7 +70,7 @@ fn test_multiple_constraints() {
 	assert!(constraint_names.contains(&"balance_check".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_no_constraints() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "simple_model")]
@@ -85,7 +86,7 @@ fn test_no_constraints() {
 	assert_eq!(constraints.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_constraint_with_complex_expression() {
 	#[derive(Serialize, Deserialize)]
 	#[model(app_label = "test_app", table_name = "complex_constraints")]

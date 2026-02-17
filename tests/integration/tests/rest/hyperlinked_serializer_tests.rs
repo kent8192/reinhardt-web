@@ -3,6 +3,7 @@
 //! Tests for `HyperlinkedModelSerializer` and `UrlReverser` from reinhardt-rest.
 
 use reinhardt_rest::serializers::{HyperlinkedModelSerializer, Serializer, UrlReverser};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -16,7 +17,7 @@ struct TestModel {
 
 reinhardt_test::impl_test_model!(TestModel, i64, "test_models");
 
-#[test]
+#[rstest]
 fn test_hyperlinked_serializer_creation() {
 	// Verify the serializer works and produces correct default URL field
 	let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
@@ -32,7 +33,7 @@ fn test_hyperlinked_serializer_creation() {
 	assert!(value["url"].as_str().unwrap().contains("detail"));
 }
 
-#[test]
+#[rstest]
 fn test_custom_url_field_name() {
 	// Verify custom url_field_name via serialization output
 	let serializer =
@@ -48,7 +49,7 @@ fn test_custom_url_field_name() {
 	assert!(value.get("url").is_none());
 }
 
-#[test]
+#[rstest]
 fn test_serialize_with_url_fallback() {
 	// Test fallback path-based URL generation (no reverser)
 	let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
@@ -65,7 +66,7 @@ fn test_serialize_with_url_fallback() {
 	assert_eq!(value["url"], "/test_models/detail/42");
 }
 
-#[test]
+#[rstest]
 fn test_serialize_with_url_reverser() {
 	// Test proper URL reversal using custom UrlReverser implementation
 	struct TestUrlReverser;
@@ -94,7 +95,7 @@ fn test_serialize_with_url_reverser() {
 	assert_eq!(value["url"], "/models/42/");
 }
 
-#[test]
+#[rstest]
 fn test_serialize_without_pk_fails() {
 	let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
 	let model = TestModel {
@@ -107,7 +108,7 @@ fn test_serialize_without_pk_fails() {
 	assert!(result.unwrap_err().message().contains("no primary key"));
 }
 
-#[test]
+#[rstest]
 fn test_deserialize() {
 	let serializer = HyperlinkedModelSerializer::<TestModel>::new("detail", None);
 	let json = r#"{"id":42,"name":"test","url":"/test_models/detail/42"}"#;

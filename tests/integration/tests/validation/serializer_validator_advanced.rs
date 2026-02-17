@@ -355,7 +355,7 @@ impl TagList {
 /// - Bank transfer requires bank fields
 /// - Field validation depends on payment_method value
 /// - Invalid payment method is rejected
-#[test]
+#[rstest]
 fn test_conditional_validation_based_on_field_value() {
 	// Valid card payment
 	let card_payment =
@@ -497,7 +497,7 @@ async fn test_async_uniqueness_validation(
 /// - Custom error formatter applies field context
 /// - Multiple error messages are aggregated correctly
 /// - Error formatting maintains readability
-#[test]
+#[rstest]
 fn test_custom_validator_error_message_formatting() {
 	// Single field error
 	let field_error =
@@ -529,7 +529,7 @@ fn test_custom_validator_error_message_formatting() {
 /// - ShortCircuit strategy stops at first error
 /// - Comprehensive strategy collects all errors
 /// - Both strategies return correct error details
-#[test]
+#[rstest]
 fn test_validation_short_circuit_on_first_error() {
 	// Create data with multiple validation errors
 	let invalid_data = RegistrationData::new("ab", "invalid-email", "short", Some(15));
@@ -586,7 +586,7 @@ fn test_validation_short_circuit_on_first_error() {
 /// - Empty items are detected
 /// - Length constraints apply per item
 /// - Character constraints apply per item
-#[test]
+#[rstest]
 fn test_list_field_item_validation() {
 	// Valid tag list
 	let valid_tags = TagList::new(vec!["rust", "web-dev", "api-design"]);

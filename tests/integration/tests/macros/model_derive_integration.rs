@@ -8,6 +8,7 @@
 use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_macros::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -29,7 +30,7 @@ struct TestUser {
 	is_active: bool,
 }
 
-#[test]
+#[rstest]
 fn test_model_trait_implementation() {
 	// Verify Model trait methods are correctly implemented
 	assert_eq!(TestUser::table_name(), "test_users");
@@ -37,7 +38,7 @@ fn test_model_trait_implementation() {
 	assert_eq!(TestUser::primary_key_field(), "id");
 }
 
-#[test]
+#[rstest]
 fn test_field_metadata_generation() {
 	// Get field metadata
 	let fields = TestUser::field_metadata();
@@ -91,7 +92,7 @@ fn test_field_metadata_generation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_model_registration() {
 	// Verify the model was automatically registered via ctor
 	let registry = global_registry();
@@ -121,7 +122,7 @@ fn test_model_registration() {
 	assert!(test_model.fields.contains_key("is_active"));
 }
 
-#[test]
+#[rstest]
 fn test_primary_key_access() {
 	// Test with None primary key
 	let mut user = TestUser {
@@ -162,7 +163,7 @@ fn test_primary_key_access() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_multiple_models_registration() {
 	// Define another model to ensure multiple models can be registered
 	#[derive(Serialize, Deserialize)]

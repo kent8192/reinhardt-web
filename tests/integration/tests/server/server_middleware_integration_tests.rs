@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use reinhardt_http::{Request, Response};
+use rstest::rstest;
 
 /// Simple test handler for middleware chain tests
 struct TestHandler {
@@ -78,6 +79,7 @@ impl Middleware for OrderTrackingMiddleware {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_middleware_integration_chain() {
 	// Create a simple handler
@@ -108,6 +110,7 @@ async fn test_middleware_integration_chain() {
 	assert_eq!(body, "Response through middleware");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_middleware_integration_multiple() {
 	// Test that multiple middlewares can be chained
@@ -134,6 +137,7 @@ async fn test_server_middleware_integration_multiple() {
 }
 
 /// Test middleware with a real HTTP server
+#[rstest]
 #[tokio::test]
 async fn test_middleware_with_real_http_server() {
 	// Build middleware chain
@@ -159,6 +163,7 @@ async fn test_middleware_with_real_http_server() {
 }
 
 /// Test middleware execution order with real HTTP server
+#[rstest]
 #[tokio::test]
 async fn test_middleware_order_with_real_server() {
 	let execution_log = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -204,6 +209,7 @@ async fn test_middleware_order_with_real_server() {
 }
 
 /// Test multiple concurrent requests through middleware chain
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_requests_through_middleware() {
 	let base_handler = Arc::new(TestHandler::new("Concurrent response"));
@@ -237,6 +243,7 @@ async fn test_concurrent_requests_through_middleware() {
 }
 
 /// Test error handling in middleware chain with real server
+#[rstest]
 #[tokio::test]
 async fn test_middleware_error_handling() {
 	/// Middleware that can fail based on request path

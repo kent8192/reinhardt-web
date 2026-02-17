@@ -4,6 +4,7 @@ use async_graphql::*;
 use reinhardt_server::graphql_handler;
 use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 use reinhardt_test::APIClient;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -145,6 +146,7 @@ impl MutationRoot {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_query_all_books() {
 	let store = BookStore::new();
@@ -180,6 +182,7 @@ async fn test_e2e_graphql_query_all_books() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_query_single_book() {
 	let store = BookStore::new();
@@ -212,6 +215,7 @@ async fn test_e2e_graphql_query_single_book() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_search_books() {
 	let store = BookStore::new();
@@ -243,6 +247,7 @@ async fn test_e2e_graphql_search_books() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_add_book_mutation() {
 	let store = BookStore::new();
@@ -274,6 +279,7 @@ async fn test_e2e_graphql_add_book_mutation() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_update_book_mutation() {
 	let store = BookStore::new();
@@ -304,6 +310,7 @@ async fn test_e2e_graphql_update_book_mutation() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_delete_book_mutation() {
 	let store = BookStore::new();
@@ -341,6 +348,7 @@ async fn test_e2e_graphql_delete_book_mutation() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_full_workflow() {
 	let store = BookStore::new();
@@ -395,6 +403,7 @@ async fn test_e2e_graphql_full_workflow() {
 	shutdown_test_server(handle).await;
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_e2e_graphql_invalid_query() {
 	let store = BookStore::new();

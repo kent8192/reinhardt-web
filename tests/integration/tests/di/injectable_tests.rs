@@ -132,6 +132,7 @@ async fn injectable_returns_error(injection_context: InjectionContext) {
 }
 
 #[serial_test::serial(cached_service_counter)]
+#[rstest]
 #[tokio::test]
 async fn injectable_cached_in_request_scope() {
 	// Arrange
@@ -157,6 +158,7 @@ async fn injectable_cached_in_request_scope() {
 }
 
 #[serial_test::serial(singleton_counter)]
+#[rstest]
 #[tokio::test]
 async fn injectable_singleton_cached() {
 	// Arrange

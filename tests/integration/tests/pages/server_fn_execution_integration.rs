@@ -569,7 +569,7 @@ async fn test_server_fn_with_di() {
 
 /// Tests server function with random JSON payloads
 #[cfg(feature = "proptest")]
-#[test]
+#[rstest]
 fn test_server_fn_random_json_payload() {
 	use proptest::prelude::*;
 
@@ -588,7 +588,7 @@ fn test_server_fn_random_json_payload() {
 
 /// Tests codec roundtrip reversibility
 #[cfg(feature = "proptest")]
-#[test]
+#[rstest]
 fn test_server_fn_codec_roundtrip() {
 	use proptest::prelude::*;
 
@@ -812,6 +812,7 @@ async fn test_server_fn_payload_size_boundaries(#[case] size: usize) {
 	feature = "msgpack",
 	case::msgpack_authed_success("msgpack", true, None)
 )]
+#[rstest]
 #[tokio::test]
 async fn test_server_fn_decision_table(
 	#[case] codec_name: &str,
@@ -906,6 +907,7 @@ async fn test_server_fn_decision_table(
 	feature = "msgpack",
 	case::msgpack_not_authed_timeout("msgpack", false, Some("timeout"))
 )]
+#[rstest]
 #[tokio::test]
 async fn test_server_fn_decision_table_additional(
 	#[case] codec_name: &str,

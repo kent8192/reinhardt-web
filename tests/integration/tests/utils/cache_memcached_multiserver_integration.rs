@@ -1,7 +1,9 @@
 use reinhardt_utils::cache::memcached::{MemcachedCache, MemcachedConfig};
 use reinhardt_utils::cache::Cache;
+use rstest::rstest;
 use std::time::Duration;
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_servers_connection() {
 	// Start 3 Memcached containers
@@ -32,6 +34,7 @@ async fn test_multiple_servers_connection() {
 	assert_eq!(value, Some("value".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_round_robin_distribution() {
 	// Start 2 Memcached containers
@@ -68,6 +71,7 @@ async fn test_round_robin_distribution() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_failover() {
 	// Start 2 Memcached containers
@@ -101,6 +105,7 @@ async fn test_server_failover() {
 	assert_eq!(value, Some("data".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_clear_all_servers() {
 	// Start 2 Memcached containers

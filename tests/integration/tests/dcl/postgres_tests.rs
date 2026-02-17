@@ -301,6 +301,7 @@ async fn test_multiple_role_grants() {
 }
 
 #[stest]
+#[rstest]
 #[tokio::test]
 #[ignore = "Requires testcontainers setup"]
 async fn test_role_hierarchy() {

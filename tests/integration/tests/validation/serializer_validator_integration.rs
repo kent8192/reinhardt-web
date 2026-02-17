@@ -279,7 +279,7 @@ impl UserProfile {
 /// - Username length constraints (3-20 chars)
 /// - Allowed characters (alphanumeric + underscore)
 /// - Validation error messages
-#[test]
+#[rstest]
 fn test_username_validation() {
 	// Valid username
 	let valid = UserRegistration::new(
@@ -337,7 +337,7 @@ fn test_username_validation() {
 /// - Email format (contains @ and .)
 /// - Local part and domain presence
 /// - Validation error messages
-#[test]
+#[rstest]
 fn test_email_validation() {
 	// Valid email
 	let valid = UserRegistration::new("user", "user@example.com", "password1", "password1", None);
@@ -376,7 +376,7 @@ fn test_email_validation() {
 /// - Minimum length (8 chars)
 /// - Required number presence
 /// - Validation error messages
-#[test]
+#[rstest]
 fn test_password_validation() {
 	// Valid password
 	let valid = UserRegistration::new(
@@ -413,7 +413,7 @@ fn test_password_validation() {
 /// - Minimum age (13 years)
 /// - Maximum age (120 years)
 /// - Optional field handling (None is valid)
-#[test]
+#[rstest]
 fn test_age_validation() {
 	// Valid age
 	let valid = UserRegistration::new(
@@ -461,7 +461,7 @@ fn test_age_validation() {
 /// Verifies:
 /// - Passwords must match
 /// - Error message for mismatch
-#[test]
+#[rstest]
 fn test_password_match_validation() {
 	// Matching passwords
 	let matching =
@@ -482,7 +482,7 @@ fn test_password_match_validation() {
 /// - All validations run independently
 /// - Errors are collected per field
 /// - Multiple errors can be reported simultaneously
-#[test]
+#[rstest]
 fn test_all_validations_error_aggregation() {
 	// All valid
 	let all_valid = UserRegistration::new(
@@ -541,7 +541,7 @@ fn test_all_validations_error_aggregation() {
 /// - Address fields are validated
 /// - Required field validation
 /// - Error messages include field path
-#[test]
+#[rstest]
 fn test_nested_address_validation() {
 	// Valid address
 	let valid_address = Address::new("123 Main St", "New York", "10001", "USA");
@@ -571,7 +571,7 @@ fn test_nested_address_validation() {
 /// - Parent and nested validations run
 /// - Errors are properly namespaced (address.field)
 /// - All levels of nesting are validated
-#[test]
+#[rstest]
 fn test_nested_profile_validation() {
 	// Valid profile
 	let valid_address = Address::new("123 Main St", "New York", "10001", "USA");

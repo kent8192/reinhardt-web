@@ -6,6 +6,7 @@ use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_http::Request;
 use reinhardt_urls::routers::{DefaultRouter, Router};
 use reinhardt_views::viewsets::ModelViewSet;
+use rstest::rstest;
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -19,6 +20,7 @@ struct TestModel {
 struct TestSerializer;
 
 // Test: ViewSet registration with router (inspired by DRF's TestSimpleRouter)
+#[rstest]
 #[tokio::test]
 async fn test_viewset_registration() {
 	let mut router = DefaultRouter::new();
@@ -40,6 +42,7 @@ async fn test_viewset_registration() {
 }
 
 // Test: Multiple ViewSet registration
+#[rstest]
 #[tokio::test]
 async fn test_multiple_viewset_registration() {
 	let mut router = DefaultRouter::new();
@@ -57,6 +60,7 @@ async fn test_multiple_viewset_registration() {
 }
 
 // Test: ViewSet list route matching
+#[rstest]
 #[tokio::test]
 async fn test_viewset_list_route_matching() {
 	let mut router = DefaultRouter::new();
@@ -80,6 +84,7 @@ async fn test_viewset_list_route_matching() {
 }
 
 // Test: ViewSet detail route matching
+#[rstest]
 #[tokio::test]
 async fn test_viewset_detail_route_matching() {
 	let mut router = DefaultRouter::new();
@@ -103,6 +108,7 @@ async fn test_viewset_detail_route_matching() {
 }
 
 // Test: ViewSet create action (POST to list route)
+#[rstest]
 #[tokio::test]
 async fn test_viewset_create_action() {
 	let mut router = DefaultRouter::new();
@@ -126,6 +132,7 @@ async fn test_viewset_create_action() {
 }
 
 // Test: ViewSet update action (PUT to detail route)
+#[rstest]
 #[tokio::test]
 async fn test_viewset_update_action() {
 	let mut router = DefaultRouter::new();
@@ -149,6 +156,7 @@ async fn test_viewset_update_action() {
 }
 
 // Test: ViewSet destroy action (DELETE to detail route)
+#[rstest]
 #[tokio::test]
 async fn test_viewset_destroy_action() {
 	let mut router = DefaultRouter::new();
@@ -172,6 +180,7 @@ async fn test_viewset_destroy_action() {
 }
 
 // Test: ViewSet basename in routes
+#[rstest]
 #[tokio::test]
 async fn test_viewset_basename_in_routes() {
 	let mut router = DefaultRouter::new();
@@ -186,6 +195,7 @@ async fn test_viewset_basename_in_routes() {
 }
 
 // Test: ViewSet reverse URL lookup
+#[rstest]
 #[tokio::test]
 async fn test_viewset_reverse_url() {
 	let mut router = DefaultRouter::new();
@@ -208,6 +218,7 @@ async fn test_viewset_reverse_url() {
 }
 
 // Test: Nested ViewSet routes with prefix
+#[rstest]
 #[tokio::test]
 async fn test_nested_viewset_routes() {
 	let mut router = DefaultRouter::new();
@@ -222,6 +233,7 @@ async fn test_nested_viewset_routes() {
 }
 
 // Test: ViewSet with custom lookup field
+#[rstest]
 #[tokio::test]
 async fn test_viewset_custom_lookup_field() {
 	let mut router = DefaultRouter::new();
@@ -251,6 +263,7 @@ async fn test_viewset_custom_lookup_field() {
 }
 
 // Test: Multiple HTTP methods on same ViewSet route
+#[rstest]
 #[tokio::test]
 async fn test_viewset_multiple_http_methods() {
 	let mut router = DefaultRouter::new();
@@ -297,6 +310,7 @@ async fn test_viewset_multiple_http_methods() {
 }
 
 // Test: ViewSet route not found for invalid path
+#[rstest]
 #[tokio::test]
 async fn test_viewset_route_not_found() {
 	let mut router = DefaultRouter::new();
@@ -319,6 +333,7 @@ async fn test_viewset_route_not_found() {
 }
 
 // Test: ViewSet registration with trailing slashes
+#[rstest]
 #[tokio::test]
 async fn test_viewset_trailing_slashes() {
 	let mut router = DefaultRouter::new();

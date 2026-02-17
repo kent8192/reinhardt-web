@@ -84,6 +84,7 @@ async fn create_authenticated_session(
 // ============================================================================
 
 /// Test composite authentication falls back from JWT to Session
+#[rstest]
 #[tokio::test]
 async fn test_composite_auth_jwt_to_session_fallback() {
 	// Test intent: Verify CompositeAuthentication tries JWT first, then falls back to SessionAuthentication
@@ -127,6 +128,7 @@ async fn test_composite_auth_jwt_to_session_fallback() {
 }
 
 /// Test composite authentication falls back from Session to Token
+#[rstest]
 #[tokio::test]
 async fn test_composite_auth_session_to_token_fallback() {
 	// Test intent: Verify CompositeAuthentication tries Session first, then falls back to TokenAuthentication
@@ -160,6 +162,7 @@ async fn test_composite_auth_session_to_token_fallback() {
 }
 
 /// Test composite authentication tries all backends in chain
+#[rstest]
 #[tokio::test]
 async fn test_composite_auth_full_chain_fallback() {
 	// Test intent: Verify CompositeAuthentication tries JWT -> Session -> Token in order,
@@ -194,6 +197,7 @@ async fn test_composite_auth_full_chain_fallback() {
 }
 
 /// Test composite authentication returns None when all backends fail
+#[rstest]
 #[tokio::test]
 async fn test_composite_auth_all_backends_fail() {
 	// Test intent: Verify CompositeAuthentication returns None when all backends
@@ -227,6 +231,7 @@ async fn test_composite_auth_all_backends_fail() {
 // ============================================================================
 
 /// Test backend priority with JWT first
+#[rstest]
 #[tokio::test]
 async fn test_backend_priority_jwt_first() {
 	// Test intent: Verify CompositeAuthentication prioritizes JWT over Session
@@ -277,6 +282,7 @@ async fn test_backend_priority_jwt_first() {
 }
 
 /// Test backend priority with Session first
+#[rstest]
 #[tokio::test]
 async fn test_backend_priority_session_first() {
 	// Test intent: Verify CompositeAuthentication prioritizes Session over Token
@@ -324,6 +330,7 @@ async fn test_backend_priority_session_first() {
 }
 
 /// Test backend order affects authentication result
+#[rstest]
 #[tokio::test]
 async fn test_backend_order_affects_result() {
 	// Test intent: Verify changing backend registration order changes which backend
@@ -390,6 +397,7 @@ async fn test_backend_order_affects_result() {
 // ============================================================================
 
 /// Test single request with multiple valid credentials
+#[rstest]
 #[tokio::test]
 async fn test_single_request_multiple_valid_credentials() {
 	// Test intent: Verify CompositeAuthentication correctly handles request with
@@ -446,6 +454,7 @@ async fn test_single_request_multiple_valid_credentials() {
 }
 
 /// Test single request with one valid and one invalid credential
+#[rstest]
 #[tokio::test]
 async fn test_single_request_mixed_valid_invalid_credentials() {
 	// Test intent: Verify CompositeAuthentication skips invalid JWT and successfully
@@ -493,6 +502,7 @@ async fn test_single_request_mixed_valid_invalid_credentials() {
 }
 
 /// Test single request with all invalid credentials
+#[rstest]
 #[tokio::test]
 async fn test_single_request_all_invalid_credentials() {
 	// Test intent: Verify CompositeAuthentication returns None when request
@@ -529,6 +539,7 @@ async fn test_single_request_all_invalid_credentials() {
 // ============================================================================
 
 /// Test JWT backend returns JWT-specific user
+#[rstest]
 #[tokio::test]
 async fn test_jwt_backend_user_model() {
 	// Test intent: Verify JWT authentication returns user model with JWT-specific
@@ -562,6 +573,7 @@ async fn test_jwt_backend_user_model() {
 }
 
 /// Test Session backend returns Session-specific user
+#[rstest]
 #[tokio::test]
 async fn test_session_backend_user_model() {
 	// Test intent: Verify Session authentication returns user model with all fields
@@ -612,6 +624,7 @@ async fn test_session_backend_user_model() {
 }
 
 /// Test Token backend returns Token-specific user
+#[rstest]
 #[tokio::test]
 async fn test_token_backend_user_model() {
 	// Test intent: Verify Token authentication returns minimal user model with
@@ -642,6 +655,7 @@ async fn test_token_backend_user_model() {
 // ============================================================================
 
 /// Test API requests prefer JWT authentication
+#[rstest]
 #[tokio::test]
 async fn test_api_requests_prefer_jwt() {
 	// Test intent: Verify API endpoint requests (path starts with /api/) successfully
@@ -678,6 +692,7 @@ async fn test_api_requests_prefer_jwt() {
 }
 
 /// Test web requests prefer Session authentication
+#[rstest]
 #[tokio::test]
 async fn test_web_requests_prefer_session() {
 	// Test intent: Verify web page requests (non-API paths) successfully authenticate
@@ -715,6 +730,7 @@ async fn test_web_requests_prefer_session() {
 }
 
 /// Test mobile app requests use Token authentication
+#[rstest]
 #[tokio::test]
 async fn test_mobile_requests_use_token() {
 	// Test intent: Verify mobile app requests successfully authenticate with
@@ -746,6 +762,7 @@ async fn test_mobile_requests_use_token() {
 }
 
 /// Test same user can authenticate via different backends
+#[rstest]
 #[tokio::test]
 async fn test_same_user_different_backends() {
 	// Test intent: Verify same user can authenticate successfully via different

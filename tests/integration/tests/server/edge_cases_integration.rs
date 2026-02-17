@@ -15,6 +15,7 @@ use reinhardt_server::ShutdownCoordinator;
 use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
 use reinhardt_urls::routers::ServerRouter as Router;
+use rstest::rstest;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,6 +83,7 @@ async fn slow_handler(_req: Request) -> ViewResult<Response> {
 // Edge Case Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_empty_post_body() {
 	// Test server handling of POST request with Content-Length: 0
@@ -106,6 +108,7 @@ async fn test_empty_post_body() {
 	assert_eq!(text, "empty:true,length:0");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_empty_post_body_no_content_length() {
 	// Test server handling of POST without explicit Content-Length
@@ -125,6 +128,7 @@ async fn test_empty_post_body_no_content_length() {
 	assert_eq!(text, "empty:true,length:0");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_duplicate_headers() {
 	// Test server handling of multiple headers with the same name
@@ -169,6 +173,7 @@ async fn test_duplicate_headers() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http_1_0_compatibility() {
 	// Test server compatibility with HTTP/1.0 requests
@@ -209,6 +214,7 @@ async fn test_http_1_0_compatibility() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_minimum_request_size() {
 	// Test server handling of minimal 1-byte request body
@@ -228,6 +234,7 @@ async fn test_minimum_request_size() {
 	assert_eq!(text, "size:1");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_small_request_sizes() {
 	// Test various small request sizes (0, 1, 10, 100 bytes)
@@ -270,6 +277,7 @@ async fn test_small_request_sizes() {
 	assert_eq!(response.text(), "size:100");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_large_request_size() {
 	// Test server handling of large (but acceptable) request body
@@ -290,6 +298,7 @@ async fn test_large_request_size() {
 	assert_eq!(text, format!("size:{}", 1024 * 1024));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_request_during_shutdown() {
 	// Test server behavior when receiving requests during graceful shutdown
@@ -361,6 +370,7 @@ async fn test_request_during_shutdown() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_new_request_after_shutdown_signal() {
 	// Test that new requests after shutdown signal are rejected
@@ -411,6 +421,7 @@ async fn test_new_request_after_shutdown_signal() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_malformed_uri_special_characters() {
 	// Test server handling of URIs with special characters
@@ -441,6 +452,7 @@ async fn test_malformed_uri_special_characters() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_uri_without_query_string() {
 	// Test server handling of URI without query string
@@ -456,6 +468,7 @@ async fn test_uri_without_query_string() {
 	assert_eq!(text, "path:/uri,query:");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_uri_with_fragment() {
 	// Test server handling of URI with fragment (fragments should not be sent to server)
@@ -473,6 +486,7 @@ async fn test_uri_with_fragment() {
 	assert_eq!(text, "path:/uri,query:key=value");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_very_long_uri() {
 	// Test server handling of very long URI
@@ -493,6 +507,7 @@ async fn test_very_long_uri() {
 	assert!(text.contains(&long_value));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_extremely_long_uri() {
 	// Test server handling of extremely long URI (may exceed limits)
@@ -526,6 +541,7 @@ async fn test_extremely_long_uri() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_requests_during_shutdown() {
 	// Test multiple concurrent requests when shutdown is triggered

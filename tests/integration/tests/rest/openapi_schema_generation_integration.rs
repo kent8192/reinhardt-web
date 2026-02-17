@@ -57,7 +57,6 @@ fn generator() -> SchemaGenerator {
 /// - Collection endpoint (/api/users/) and detail endpoint (/api/users/{id}/)
 /// - Existence of each HTTP method
 #[rstest]
-#[test]
 fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 	// Build ModelViewSet
 	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
@@ -139,7 +138,6 @@ fn test_model_viewset_openapi_paths_generation(inspector: ViewSetInspector) {
 /// and generates all CRUD operations. ViewSet type detection functionality
 /// may be added in the future.
 #[rstest]
-#[test]
 fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
 	// Build ReadOnlyModelViewSet
 	let viewset = ReadOnlyModelViewSet::<User, UserSerializer>::new("users");
@@ -206,7 +204,6 @@ fn test_readonly_viewset_openapi_schema(inspector: ViewSetInspector) {
 /// - Accuracy of info section (title, version, description)
 /// - JSON serialization
 #[rstest]
-#[test]
 fn test_complete_openapi_schema_generation(
 	inspector: ViewSetInspector,
 	generator: SchemaGenerator,
@@ -253,7 +250,6 @@ fn test_complete_openapi_schema_generation(
 /// - Existence of responses
 /// - Responses for GET and PUT operations
 #[rstest]
-#[test]
 fn test_viewset_response_schema_generation(inspector: ViewSetInspector) {
 	let viewset = ModelViewSet::<User, UserSerializer>::new("users");
 	let paths = inspector.extract_paths(&viewset, "/api/users");
@@ -308,7 +304,6 @@ fn test_viewset_response_schema_generation(inspector: ViewSetInspector) {
 /// - description and tags settings are reflected
 /// - Configuration flexibility
 #[rstest]
-#[test]
 fn test_inspector_config_customization() {
 	// Custom InspectorConfig
 	let config = InspectorConfig {
@@ -354,7 +349,6 @@ fn test_inspector_config_customization() {
 /// - Accurate path generation with different basePaths
 /// - Path independence
 #[rstest]
-#[test]
 fn test_multiple_viewsets_path_generation(inspector: ViewSetInspector) {
 	// User ViewSet
 	let user_viewset = ModelViewSet::<User, UserSerializer>::new("users");
@@ -418,7 +412,6 @@ fn test_multiple_viewsets_path_generation(inspector: ViewSetInspector) {
 /// - Component reuse
 /// - $ref reference generation
 #[rstest]
-#[test]
 fn test_schema_generator_registry_integration(mut generator: SchemaGenerator) {
 	// Register User schema in registry
 	use reinhardt_rest::openapi::{Schema, SchemaExt};

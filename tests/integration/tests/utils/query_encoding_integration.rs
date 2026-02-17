@@ -5,6 +5,7 @@
 
 use hyper::Method;
 use reinhardt_http::Request;
+use rstest::rstest;
 
 // ============================================================================
 // Helper Functions
@@ -28,7 +29,7 @@ fn create_request_with_query(query: &str) -> Request {
 // Basic Query Parameter Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_basic_query_parameter_parsing() {
 	let request = create_request_with_query("name=Alice&age=30");
 
@@ -36,7 +37,7 @@ fn test_basic_query_parameter_parsing() {
 	assert_eq!(request.query_params.get("age"), Some(&"30".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_encoded_space_in_query_params() {
 	// %20 is the URL-encoded space
 	let request = create_request_with_query("greeting=hello%20world");
@@ -52,7 +53,7 @@ fn test_encoded_space_in_query_params() {
 	assert_eq!(decoded.get("greeting"), Some(&"hello world".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_encoded_special_characters() {
 	// @ symbol is preserved, but & needs encoding as %26
 	let request = create_request_with_query("email=user%40example.com");
@@ -61,7 +62,7 @@ fn test_encoded_special_characters() {
 	assert_eq!(decoded.get("email"), Some(&"user@example.com".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_utf8_encoded_query_params() {
 	// Japanese "こんにちは" URL-encoded
 	let request =
@@ -75,7 +76,7 @@ fn test_utf8_encoded_query_params() {
 // Decoding Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_decoded_query_params_basic() {
 	let request = create_request_with_query("name=John%20Doe&city=New%20York");
 
@@ -85,7 +86,7 @@ fn test_decoded_query_params_basic() {
 	assert_eq!(decoded.get("city"), Some(&"New York".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_decoded_query_params_preserves_unencoded() {
 	let request = create_request_with_query("plain=value&number=123");
 
@@ -95,7 +96,7 @@ fn test_decoded_query_params_preserves_unencoded() {
 	assert_eq!(decoded.get("number"), Some(&"123".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_decoded_utf8_round_trip() {
 	// Test that encoded UTF-8 strings decode correctly
 	// "東京" (Tokyo) URL-encoded
@@ -105,7 +106,7 @@ fn test_decoded_utf8_round_trip() {
 	assert_eq!(decoded.get("city"), Some(&"東京".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_mixed_encoded_and_plain_values() {
 	// "Hello World! 世界" partially encoded
 	let request = create_request_with_query("greeting=Hello%20World%21%20%E4%B8%96%E7%95%8C");
@@ -121,7 +122,7 @@ fn test_mixed_encoded_and_plain_values() {
 // Multiple Query Parameters Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_multiple_query_parameters() {
 	let request = create_request_with_query("a=1&b=2&c=3");
 
@@ -131,7 +132,7 @@ fn test_multiple_query_parameters() {
 	assert_eq!(request.query_params.get("c"), Some(&"3".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_query_params_with_encoded_ampersand_in_value() {
 	// Value contains an ampersand that's encoded as %26
 	let request = create_request_with_query("company=Smith%26Jones");
@@ -140,7 +141,7 @@ fn test_query_params_with_encoded_ampersand_in_value() {
 	assert_eq!(decoded.get("company"), Some(&"Smith&Jones".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_query_params_with_encoded_equals_in_value() {
 	// Value contains an equals sign that's encoded as %3D
 	let request = create_request_with_query("equation=1%2B1%3D2");
@@ -153,21 +154,21 @@ fn test_query_params_with_encoded_equals_in_value() {
 // Edge Cases Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_empty_query_value() {
 	let request = create_request_with_query("key=");
 
 	assert_eq!(request.query_params.get("key"), Some(&"".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_empty_query_string() {
 	let request = create_request_with_query("");
 
 	assert!(request.query_params.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_query_param_without_value() {
 	let request = create_request_with_query("flag");
 
@@ -175,7 +176,7 @@ fn test_query_param_without_value() {
 	assert!(request.query_params.contains_key("flag"));
 }
 
-#[test]
+#[rstest]
 fn test_special_url_characters_encoded() {
 	// Hash (#) and question mark (?) encoded
 	let request = create_request_with_query("fragment=%23section&query=%3Fq%3Dtest");
@@ -185,7 +186,7 @@ fn test_special_url_characters_encoded() {
 	assert_eq!(decoded.get("query"), Some(&"?q=test".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_plus_sign_in_query() {
 	// Plus sign can represent space in some encodings (form data)
 	// But in URL query strings, it should be preserved as-is or encoded as %2B
@@ -195,7 +196,7 @@ fn test_plus_sign_in_query() {
 	assert_eq!(decoded.get("math"), Some(&"a+b".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_numeric_query_values() {
 	let request = create_request_with_query("int=42&float=3.14&negative=-10");
 
@@ -207,7 +208,7 @@ fn test_numeric_query_values() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_boolean_query_values() {
 	let request = create_request_with_query("active=true&deleted=false");
 
@@ -225,7 +226,7 @@ fn test_boolean_query_values() {
 // JSON-like Query Parameter Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_json_string_as_query_value() {
 	// JSON string value URL-encoded
 	let request = create_request_with_query("data=%22hello%20world%22");
@@ -234,7 +235,7 @@ fn test_json_string_as_query_value() {
 	assert_eq!(decoded.get("data"), Some(&"\"hello world\"".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_json_object_as_query_value() {
 	// Simple JSON object URL-encoded: {"key":"value"}
 	let request = create_request_with_query("json=%7B%22key%22%3A%22value%22%7D");
@@ -245,7 +246,7 @@ fn test_json_object_as_query_value() {
 	assert!(json_value.contains("value"));
 }
 
-#[test]
+#[rstest]
 fn test_json_array_as_query_value() {
 	// JSON array URL-encoded: [1,2,3]
 	let request = create_request_with_query("items=%5B1%2C2%2C3%5D");
@@ -258,7 +259,7 @@ fn test_json_array_as_query_value() {
 // Request Building Integration Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_request_builder_with_complex_uri() {
 	let request = Request::builder()
 		.method(Method::GET)
@@ -273,7 +274,7 @@ fn test_request_builder_with_complex_uri() {
 	assert_eq!(decoded.get("limit"), Some(&"10".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_request_path_separate_from_query() {
 	let request = create_request_with_query("key=value");
 
@@ -281,7 +282,7 @@ fn test_request_path_separate_from_query() {
 	assert_eq!(request.query_params.get("key"), Some(&"value".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_request_with_unicode_path_and_query() {
 	let request = Request::builder()
 		.method(Method::GET)
@@ -299,7 +300,7 @@ fn test_request_with_unicode_path_and_query() {
 // Duplicate Key Handling Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_duplicate_query_keys() {
 	// When duplicate keys exist, the current implementation keeps one
 	// (behavior depends on HashMap insertion order)
@@ -315,7 +316,7 @@ fn test_duplicate_query_keys() {
 // Large Query String Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_many_query_parameters() {
 	let params: Vec<String> = (0..50).map(|i| format!("key{}=value{}", i, i)).collect();
 	let query_string = params.join("&");
@@ -333,7 +334,7 @@ fn test_many_query_parameters() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_long_query_value() {
 	let long_value = "x".repeat(1000);
 	let query = format!("data={}", long_value);
@@ -347,7 +348,7 @@ fn test_long_query_value() {
 // Whitespace Handling Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_leading_trailing_whitespace_encoded() {
 	// Leading and trailing spaces encoded as %20
 	let request = create_request_with_query("text=%20hello%20world%20");
@@ -356,7 +357,7 @@ fn test_leading_trailing_whitespace_encoded() {
 	assert_eq!(decoded.get("text"), Some(&" hello world ".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_tab_character_encoded() {
 	// Tab character encoded as %09
 	let request = create_request_with_query("text=hello%09world");
@@ -365,7 +366,7 @@ fn test_tab_character_encoded() {
 	assert_eq!(decoded.get("text"), Some(&"hello\tworld".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_newline_character_encoded() {
 	// Newline encoded as %0A
 	let request = create_request_with_query("text=line1%0Aline2");

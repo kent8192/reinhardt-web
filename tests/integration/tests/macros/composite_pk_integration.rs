@@ -1,6 +1,7 @@
 //! Integration tests for composite primary key support
 
 use reinhardt_macros::model;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 /// Test models module to avoid "Self" resolution issues with proc macros
@@ -61,7 +62,7 @@ mod test_models {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_definition() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -85,7 +86,7 @@ fn test_composite_pk_definition() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_values() {
 	use reinhardt_db::orm::composite_pk::PkValue;
 	use reinhardt_db::orm::Model;
@@ -119,7 +120,7 @@ fn test_composite_pk_values() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_with_optional_field() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -147,7 +148,7 @@ fn test_composite_pk_with_optional_field() {
 	assert_eq!(pk_values_none.len(), 2, "Should have 2 PK values");
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_sql_generation() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -164,7 +165,7 @@ fn test_composite_pk_sql_generation() {
 	assert!(sql.contains("tag_id"), "SQL should contain tag_id field");
 }
 
-#[test]
+#[rstest]
 fn test_composite_pk_field_metadata() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -186,7 +187,7 @@ fn test_composite_pk_field_metadata() {
 	assert!(pk_names.contains(&"tag_id"), "Should have tag_id as PK");
 }
 
-#[test]
+#[rstest]
 fn test_model_basic_properties() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -198,7 +199,7 @@ fn test_model_basic_properties() {
 	assert_eq!(UserRole::app_label(), "test_app");
 }
 
-#[test]
+#[rstest]
 fn test_index_metadata() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;
@@ -215,7 +216,7 @@ fn test_index_metadata() {
 	assert!(flattened.contains(&"username".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_no_index() {
 	use reinhardt_db::orm::Model;
 	use test_models::*;

@@ -67,7 +67,6 @@ fn add_field(model: &mut ModelState, name: &str, field_type: FieldType) {
 ///
 /// **Expected Behavior**: Detection results should be identical for common operations
 #[rstest]
-#[test]
 fn test_postgres_mysql_detection_consistency() {
 	// from_state: User model with basic fields
 	let mut from_state = ProjectState::new();
@@ -114,7 +113,6 @@ fn test_postgres_mysql_detection_consistency() {
 ///
 /// **Expected Behavior**: Type changes should be detected, though SQL generation may differ
 #[rstest]
-#[test]
 fn test_type_mapping_differences() {
 	// from_state: Product with Integer price
 	let mut from_state = ProjectState::new();
@@ -165,7 +163,6 @@ fn test_type_mapping_differences() {
 ///
 /// **Expected Behavior**: Composite PK constraint addition should be detected
 #[rstest]
-#[test]
 fn test_detect_add_composite_primary_key() {
 	// from_state: OrderItem with auto-increment id (single PK)
 	let mut from_state = ProjectState::new();
@@ -231,7 +228,6 @@ fn test_detect_add_composite_primary_key() {
 ///
 /// **Expected Behavior**: Old PK removal and new PK addition should be detected
 #[rstest]
-#[test]
 fn test_detect_modify_composite_primary_key() {
 	// from_state: OrderItem with composite PK (order_id, product_id)
 	let mut from_state = ProjectState::new();
@@ -311,7 +307,6 @@ fn test_detect_modify_composite_primary_key() {
 ///
 /// **Expected Behavior**: Detection should be consistent, though SQL syntax may differ
 #[rstest]
-#[test]
 fn test_cross_db_composite_pk_behavior() {
 	// from_state: Empty
 	let from_state = ProjectState::new();
@@ -377,7 +372,6 @@ fn test_cross_db_composite_pk_behavior() {
 ///
 /// **Expected Behavior**: All constraints should be detected independently
 #[rstest]
-#[test]
 fn test_composite_pk_with_other_constraints() {
 	// from_state: Empty
 	let from_state = ProjectState::new();

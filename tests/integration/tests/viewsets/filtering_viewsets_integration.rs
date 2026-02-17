@@ -143,6 +143,7 @@ async fn filter_test_db(
 /// **Test Intent**: Verify ViewSet returns None when no filter configuration is set.
 ///
 /// **Integration Point**: ViewSet → FilterConfig access
+#[rstest]
 #[tokio::test]
 async fn test_viewset_default_no_filter_config() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items");
@@ -155,6 +156,7 @@ async fn test_viewset_default_no_filter_config() {
 /// **Test Intent**: Verify ViewSet accepts and stores FilterConfig with filterable and search fields.
 ///
 /// **Integration Point**: ViewSet → FilterConfig builder pattern
+#[rstest]
 #[tokio::test]
 async fn test_viewset_with_filters() {
 	let filter_config = FilterConfig::new()
@@ -193,6 +195,7 @@ async fn test_viewset_with_filters() {
 /// ignoring invalid fields.
 ///
 /// **Integration Point**: ViewSet::extract_filters → Request query params
+#[rstest]
 #[tokio::test]
 async fn test_extract_filters_from_request() {
 	let filter_config = FilterConfig::new()
@@ -223,6 +226,7 @@ async fn test_extract_filters_from_request() {
 /// **Test Intent**: Verify ViewSet extracts search query parameter with URL decoding.
 ///
 /// **Integration Point**: ViewSet::extract_search → Request query params → URL decoding
+#[rstest]
 #[tokio::test]
 async fn test_extract_search_from_request() {
 	let filter_config = FilterConfig::new().with_search_fields(vec!["name", "description"]);
@@ -249,6 +253,7 @@ async fn test_extract_search_from_request() {
 /// and default ordering.
 ///
 /// **Integration Point**: ViewSet → OrderingConfig builder pattern
+#[rstest]
 #[tokio::test]
 async fn test_viewset_with_ordering() {
 	let ordering_config = OrderingConfig::new()
@@ -280,6 +285,7 @@ async fn test_viewset_with_ordering() {
 /// **Test Intent**: Verify ViewSet extracts ordering query parameter and validates fields.
 ///
 /// **Integration Point**: ViewSet::extract_ordering → Request query params → Field validation
+#[rstest]
 #[tokio::test]
 async fn test_extract_ordering_from_request() {
 	let ordering_config = OrderingConfig::new()
@@ -310,6 +316,7 @@ async fn test_extract_ordering_from_request() {
 /// ordering fields are invalid.
 ///
 /// **Integration Point**: ViewSet::extract_ordering → Field validation → Default fallback
+#[rstest]
 #[tokio::test]
 async fn test_extract_ordering_with_validation() {
 	let ordering_config = OrderingConfig::new()
@@ -340,6 +347,7 @@ async fn test_extract_ordering_with_validation() {
 /// **Test Intent**: Verify ViewSet correctly decodes URL-encoded filter values.
 ///
 /// **Integration Point**: ViewSet::extract_filters → URL decoding
+#[rstest]
 #[tokio::test]
 async fn test_extract_filters_url_decoding() {
 	let filter_config = FilterConfig::new().with_filterable_fields(vec!["name"]);
@@ -943,6 +951,7 @@ async fn test_viewset_multiple_filters_orm_integration(
 /// both filters and ordering.
 ///
 /// **Integration Point**: ViewSet builder pattern → Configuration chaining
+#[rstest]
 #[tokio::test]
 async fn test_viewset_builder_pattern_chaining() {
 	let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("items")
@@ -967,6 +976,7 @@ async fn test_viewset_builder_pattern_chaining() {
 /// as ModelViewSet.
 ///
 /// **Integration Point**: ReadOnlyModelViewSet → FilterConfig + OrderingConfig
+#[rstest]
 #[tokio::test]
 async fn test_readonly_viewset_with_filters_and_ordering() {
 	let filter_config = FilterConfig::new()

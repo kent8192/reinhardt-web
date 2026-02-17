@@ -4,6 +4,7 @@
 //! of the DI system.
 
 use reinhardt_di::{injectable, DiError, Injected, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 /// Test fixture: ServiceA (depends on ServiceB)
@@ -34,6 +35,7 @@ struct ServiceC {
 }
 
 /// Direct circular dependency: A -> B -> A
+#[rstest]
 #[tokio::test]
 async fn test_direct_circular_dependency() {
 	#[derive(Clone)]
@@ -73,6 +75,7 @@ async fn test_direct_circular_dependency() {
 }
 
 /// Indirect circular dependency: A -> B -> C -> A
+#[rstest]
 #[tokio::test]
 async fn test_indirect_circular_dependency() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -99,6 +102,7 @@ async fn test_indirect_circular_dependency() {
 }
 
 /// Self-reference: A -> A
+#[rstest]
 #[tokio::test]
 async fn test_self_dependency() {
 	#[derive(Clone)]
@@ -121,6 +125,7 @@ async fn test_self_dependency() {
 }
 
 /// Complex circular dependency: A -> B -> C -> D -> B
+#[rstest]
 #[tokio::test]
 async fn test_complex_circular_dependency() {
 	#[derive(Clone)]
@@ -170,6 +175,7 @@ async fn test_complex_circular_dependency() {
 }
 
 /// No circular dependency should succeed
+#[rstest]
 #[tokio::test]
 async fn test_no_circular_dependency_succeeds() {
 	#[derive(Clone)]
@@ -196,6 +202,7 @@ async fn test_no_circular_dependency_succeeds() {
 }
 
 /// Deep dependency chain (without cycle) should not error
+#[rstest]
 #[tokio::test]
 async fn test_deep_dependency_chain_without_cycle() {
 	#[derive(Clone, Default)]

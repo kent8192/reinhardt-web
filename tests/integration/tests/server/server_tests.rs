@@ -8,6 +8,7 @@ use reinhardt_macros::{get, post};
 use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
 use reinhardt_urls::routers::ServerRouter as Router;
+use rstest::rstest;
 
 // Handler for basic request test
 #[get("/test", name = "test")]
@@ -70,6 +71,7 @@ async fn get_user_handler(Path(id): Path<String>) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(format!("ID: {}", id)))
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_basic_request() {
 	let router = Router::new().endpoint(test_handler);
@@ -84,6 +86,7 @@ async fn test_server_basic_request() {
 	assert_eq!(response.text(), "Server works!");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_multiple_requests() {
 	let router = Router::new()
@@ -101,6 +104,7 @@ async fn test_server_multiple_requests() {
 	assert_eq!(response.text(), "Goodbye!");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_post_request() {
 	let router = Router::new().endpoint(submit_handler);
@@ -117,6 +121,7 @@ async fn test_server_post_request() {
 	assert_eq!(response.text(), "Received: test data");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_json_request_response() {
 	let router = Router::new().endpoint(echo_handler);
@@ -137,6 +142,7 @@ async fn test_server_json_request_response() {
 	assert_eq!(response_json["age"], 30);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_404_response() {
 	let router = Router::new().endpoint(exists_handler);
@@ -149,6 +155,7 @@ async fn test_server_404_response() {
 	assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_concurrent_requests() {
 	// Use a unique handler for this test to avoid name collision
@@ -179,6 +186,7 @@ async fn test_server_concurrent_requests() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_custom_headers() {
 	let router = Router::new().endpoint(headers_handler);
@@ -195,6 +203,7 @@ async fn test_server_custom_headers() {
 	assert_eq!(response.text(), "User-Agent: TestAgent/1.0");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_path_parameters() {
 	let router = Router::new().endpoint(get_user_handler);

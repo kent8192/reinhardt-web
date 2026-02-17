@@ -97,7 +97,6 @@ struct AppConfig {
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_env_var_override_basic(mut env_guard: TeardownGuard<EnvGuard>) {
 	// Create temporary directory for config files
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -137,7 +136,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_env_var_override_nested_with_underscore(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -184,7 +182,6 @@ password = "password"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_specific_settings_development(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path = temp_dir.path().join("base.toml");
@@ -239,7 +236,6 @@ database_url = "postgres://localhost/dev"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_specific_settings_production(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path = temp_dir.path().join("base.toml");
@@ -297,7 +293,6 @@ max_connections = 100
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_secret_management_from_environment(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -341,7 +336,6 @@ password = "placeholder"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_settings_reload_on_environment_change(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -392,7 +386,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_type_conversion_integers(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -431,7 +424,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_type_conversion_booleans(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -466,7 +458,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_priority_over_file(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path = temp_dir.path().join("base.toml");
@@ -516,7 +507,6 @@ port = 8080
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_missing_required_environment_variable() {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -555,7 +545,6 @@ password = "password"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_with_default_values(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -610,7 +599,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_case_sensitivity(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -645,7 +633,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_multiple_environment_prefixes() {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -685,7 +672,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_variable_empty_string(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -721,7 +707,6 @@ database_url = "postgres://localhost/db"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_complex_nested_environment_override(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -781,7 +766,6 @@ password = "password"
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_validation_with_invalid_type(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let config_path = temp_dir.path().join("base.toml");
@@ -811,7 +795,6 @@ port = 8000
 
 #[rstest]
 #[serial(env)]
-#[test]
 fn test_environment_staging_configuration(mut env_guard: TeardownGuard<EnvGuard>) {
 	let temp_dir = TempDir::new().expect("Failed to create temp dir");
 	let base_path = temp_dir.path().join("base.toml");

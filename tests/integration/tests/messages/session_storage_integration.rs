@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod tests {
 	use reinhardt_core::messages::{Level, Message, MessageStorage, SafeData, SessionStorage};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_no_session() {
 		// Test that SessionStorage raises error when session middleware is not installed
 		let storage = SessionStorage::without_session();
@@ -16,7 +17,7 @@ mod tests {
 			.contains("SessionStorage requires session middleware"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_session() {
 		// Test retrieving messages from session storage
 		let mut storage = SessionStorage::new();
@@ -39,7 +40,7 @@ mod tests {
 		assert_eq!(messages[1].text, "Session message 2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata_session() {
 		// Test that SafeData maintains its safe status in session
 		let mut storage = SessionStorage::new();

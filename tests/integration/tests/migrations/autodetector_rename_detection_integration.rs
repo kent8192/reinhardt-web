@@ -74,7 +74,6 @@ fn create_model_with_fields(
 ///
 /// **Expected Behavior**: Detected as RenameField (not AddField + RemoveField)
 #[rstest]
-#[test]
 fn test_rename_field_high_similarity() {
 	// from_state: User with 'user_email' field
 	let mut from_state = ProjectState::new();
@@ -132,7 +131,6 @@ fn test_rename_field_high_similarity() {
 ///
 /// **Expected Behavior**: Names just above threshold detected as rename, below as add/remove
 #[rstest]
-#[test]
 fn test_rename_field_threshold_boundary() {
 	// Case 1: Moderate similarity (near threshold)
 	// from_state: 'email' field
@@ -186,7 +184,6 @@ fn test_rename_field_threshold_boundary() {
 ///
 /// **Expected Behavior**: Highest similarity pair is matched first
 #[rstest]
-#[test]
 fn test_rename_field_multiple_candidates() {
 	// from_state: User with 'first_name' and 'last_name'
 	let mut from_state = ProjectState::new();
@@ -243,7 +240,6 @@ fn test_rename_field_multiple_candidates() {
 ///
 /// **Expected Behavior**: Model rename detected, plus field changes on the renamed model
 #[rstest]
-#[test]
 fn test_rename_model_with_field_changes() {
 	// from_state: 'User' model with 'email' field
 	let mut from_state = ProjectState::new();
@@ -300,7 +296,6 @@ fn test_rename_model_with_field_changes() {
 ///
 /// **Expected Behavior**: May detect as rename + alter, or as remove + add
 #[rstest]
-#[test]
 fn test_rename_field_with_type_change() {
 	// from_state: User with 'age' INTEGER field
 	let mut from_state = ProjectState::new();
@@ -352,7 +347,6 @@ fn test_rename_field_with_type_change() {
 ///
 /// **Expected Behavior**: Fields with matching prefixes score higher
 #[rstest]
-#[test]
 fn test_rename_detection_jaro_winkler_dominant() {
 	// Jaro-Winkler emphasizes prefix matching
 	// 'user_email' → 'user_email_address' scores high (prefix match)
@@ -409,7 +403,6 @@ fn test_rename_detection_jaro_winkler_dominant() {
 ///
 /// **Expected Behavior**: Different thresholds produce different detection results
 #[rstest]
-#[test]
 fn test_custom_similarity_threshold() {
 	// from_state: 'email' field
 	let mut from_state = ProjectState::new();

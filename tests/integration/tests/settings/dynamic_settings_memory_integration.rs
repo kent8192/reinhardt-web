@@ -6,9 +6,11 @@
 
 use reinhardt_conf::settings::backends::MemoryBackend;
 use reinhardt_conf::settings::dynamic::{DynamicBackend, DynamicSettings};
+use rstest::rstest;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_basic_crud() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -38,6 +40,7 @@ async fn test_memory_backend_basic_crud() {
 	assert!(deleted.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_multiple_types() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -66,6 +69,7 @@ async fn test_memory_backend_multiple_types() {
 	assert_eq!(tags, vec!["rust".to_string(), "framework".to_string()]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_ttl() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -89,6 +93,7 @@ async fn test_memory_backend_ttl() {
 	assert!(expired.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_observer_pattern() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -120,6 +125,7 @@ async fn test_memory_backend_observer_pattern() {
 	assert_eq!(change_count.load(Ordering::SeqCst), 3);
 }
 
+#[rstest]
 #[tokio::test]
 #[cfg(feature = "caching")]
 async fn test_memory_backend_with_cache() {
@@ -155,6 +161,7 @@ async fn test_memory_backend_with_cache() {
 	assert_eq!(value3, "modified_value");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_keys() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -181,6 +188,7 @@ async fn test_memory_backend_keys() {
 	assert!(!keys.contains(&"key2".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_exists() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -202,6 +210,7 @@ async fn test_memory_backend_exists() {
 	assert!(!settings.exists("test_key").await.unwrap());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_memory_backend_concurrent_access() {
 	let backend = Arc::new(MemoryBackend::new());
@@ -233,6 +242,7 @@ async fn test_memory_backend_concurrent_access() {
 	assert_eq!(keys.len(), 10);
 }
 
+#[rstest]
 #[tokio::test]
 #[cfg(feature = "caching")]
 async fn test_memory_backend_clear_cache() {

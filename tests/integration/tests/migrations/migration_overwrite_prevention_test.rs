@@ -13,6 +13,7 @@ use reinhardt_db::migrations::{
 };
 use serial_test::serial;
 use tempfile::TempDir;
+use rstest::rstest;
 
 /// Helper function to create a test migration
 fn create_test_migration(app_label: &str, name: &str) -> Migration {
@@ -21,6 +22,7 @@ fn create_test_migration(app_label: &str, name: &str) -> Migration {
 
 /// Test Case 1: Sequential migration creation
 /// Validates that consecutive migrations are numbered correctly (0001, 0002, 0003)
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_sequential_migration_creation() {
@@ -47,6 +49,7 @@ async fn test_sequential_migration_creation() {
 
 /// Test Case 2: Overwrite prevention
 /// Validates that attempting to save a migration with an existing name fails
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_overwrite_prevention() {
@@ -73,6 +76,7 @@ async fn test_overwrite_prevention() {
 
 /// Test Case 3: Migration numbering rollover
 /// Validates that numbering correctly handles 0099 → 0100 transition
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_migration_numbering_rollover() {
@@ -93,6 +97,7 @@ async fn test_migration_numbering_rollover() {
 
 /// Test Case 4: Multi-app independence
 /// Validates that different apps maintain independent migration numbering
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_multi_app_independence() {
@@ -130,6 +135,7 @@ async fn test_multi_app_independence() {
 
 /// Test Case 5: Directory structure correctness
 /// Validates that migrations are created in the correct directory structure
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_directory_structure_correctness() {
@@ -155,7 +161,7 @@ async fn test_directory_structure_correctness() {
 
 /// Test Case 6: Empty directory handling
 /// Validates that get_highest_number returns 0 for non-existent directories
-#[test]
+#[rstest]
 fn test_empty_directory_handling() {
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path();
@@ -173,7 +179,7 @@ fn test_empty_directory_handling() {
 
 /// Test Case 7: Invalid file name handling
 /// Validates that files without proper numbering are ignored
-#[test]
+#[rstest]
 fn test_invalid_file_name_handling() {
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path();
@@ -204,7 +210,7 @@ fn test_invalid_file_name_handling() {
 
 /// Test Case 8: Gap in numbering
 /// Validates that the system handles gaps in migration numbers correctly
-#[test]
+#[rstest]
 fn test_gap_in_numbering() {
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path();
@@ -231,6 +237,7 @@ fn test_gap_in_numbering() {
 
 /// Test Case 9: Migration list accuracy
 /// Validates that list() returns all migrations correctly
+#[rstest]
 #[tokio::test]
 #[serial(migration_overwrite)]
 async fn test_migration_list_accuracy() {
@@ -261,7 +268,7 @@ async fn test_migration_list_accuracy() {
 
 /// Test Case 10: Large number handling
 /// Validates that the system handles large migration numbers correctly
-#[test]
+#[rstest]
 fn test_large_number_handling() {
 	let temp_dir = TempDir::new().unwrap();
 	let migrations_dir = temp_dir.path();

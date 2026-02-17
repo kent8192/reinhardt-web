@@ -4,8 +4,9 @@
 //! utility functions from reinhardt-utils.
 
 use reinhardt_utils::{dateformat, encoding, html, text, timezone};
+use rstest::rstest;
 
-#[test]
+#[rstest]
 fn test_blog_publishing_pipeline() {
 	// Scenario: Publishing a blog post with sanitized content
 
@@ -36,7 +37,7 @@ fn test_blog_publishing_pipeline() {
 	assert_eq!(encoded_url, "%2Fblog%2Fhello-world-my-first-post");
 }
 
-#[test]
+#[rstest]
 fn test_user_profile_display() {
 	// Scenario: Displaying user profile with sanitized data
 
@@ -62,7 +63,7 @@ fn test_user_profile_display() {
 	assert!(bio_preview.ends_with("..."));
 }
 
-#[test]
+#[rstest]
 fn test_multilingual_metadata() {
 	// Scenario: Generating metadata for a multilingual site
 
@@ -86,7 +87,7 @@ fn test_multilingual_metadata() {
 	assert_eq!(encoded, "%2Fbonjour-le-monde");
 }
 
-#[test]
+#[rstest]
 fn test_comment_system() {
 	// Scenario: Processing and displaying user comments
 
@@ -111,7 +112,7 @@ fn test_comment_system() {
 	assert!(escaped.contains("http://example.com"));
 }
 
-#[test]
+#[rstest]
 fn test_api_response_generation() {
 	// Scenario: Generating API response with formatted data
 
@@ -142,7 +143,7 @@ fn test_api_response_generation() {
 	assert_eq!(formatted_count, "1,234,567");
 }
 
-#[test]
+#[rstest]
 fn test_search_results() {
 	// Scenario: Displaying search results with snippets
 
@@ -163,7 +164,7 @@ fn test_search_results() {
 	assert!(!time_display.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_form_validation() {
 	// Scenario: Validating and sanitizing form input
 
@@ -188,7 +189,7 @@ fn test_form_validation() {
 	assert!(encoded.contains("%"));
 }
 
-#[test]
+#[rstest]
 fn test_data_export() {
 	// Scenario: Exporting data with proper formatting
 

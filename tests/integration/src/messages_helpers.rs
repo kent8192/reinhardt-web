@@ -161,8 +161,9 @@ pub mod assertions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mock_request() {
 		let mut request = MockRequest::new();
 		assert!(request.cookies.is_empty());
@@ -171,13 +172,13 @@ mod tests {
 		assert_eq!(request.get_cookie("test"), Some(&"value".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_request_with_session() {
 		let request = MockRequest::new().with_session();
 		assert!(request.session().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response() {
 		let mut response = MockResponse::new();
 		assert_eq!(response.status, 200);
@@ -186,7 +187,7 @@ mod tests {
 		assert_eq!(response.get_cookie("message"), Some(&"test".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_session() {
 		let mut session = MockSession::new();
 		session.set("key", "value");

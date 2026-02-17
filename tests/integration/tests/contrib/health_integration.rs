@@ -10,16 +10,17 @@ use async_trait::async_trait;
 use reinhardt_utils::staticfiles::{
 	HealthCheck, HealthCheckManager, HealthCheckResult, HealthReport, HealthStatus,
 };
+use rstest::rstest;
 use std::sync::Arc;
 
-#[test]
+#[rstest]
 fn test_health_status_display() {
 	assert_eq!(format!("{}", HealthStatus::Healthy), "healthy");
 	assert_eq!(format!("{}", HealthStatus::Degraded), "degraded");
 	assert_eq!(format!("{}", HealthStatus::Unhealthy), "unhealthy");
 }
 
-#[test]
+#[rstest]
 fn test_health_check_result_healthy() {
 	let result = HealthCheckResult::healthy("database");
 	assert_eq!(result.component, "database");
@@ -28,7 +29,7 @@ fn test_health_check_result_healthy() {
 	assert!(result.metadata.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_health_check_result_degraded() {
 	let result = HealthCheckResult::degraded("cache", "Slow response");
 	assert_eq!(result.component, "cache");
@@ -36,7 +37,7 @@ fn test_health_check_result_degraded() {
 	assert_eq!(result.message, Some("Slow response".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_health_check_result_unhealthy() {
 	let result = HealthCheckResult::unhealthy("database", "Connection failed");
 	assert_eq!(result.component, "database");
@@ -44,7 +45,7 @@ fn test_health_check_result_unhealthy() {
 	assert_eq!(result.message, Some("Connection failed".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_health_check_result_with_metadata() {
 	let result = HealthCheckResult::healthy("api")
 		.with_metadata("response_time_ms", "45")
@@ -61,7 +62,7 @@ fn test_health_check_result_with_metadata() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_health_report_all_healthy() {
 	let checks = vec![
 		HealthCheckResult::healthy("database"),
@@ -76,7 +77,7 @@ fn test_health_report_all_healthy() {
 	assert!(!report.is_unhealthy());
 }
 
-#[test]
+#[rstest]
 fn test_health_report_with_degraded() {
 	let checks = vec![
 		HealthCheckResult::healthy("database"),
@@ -89,7 +90,7 @@ fn test_health_report_with_degraded() {
 	assert!(!report.is_unhealthy());
 }
 
-#[test]
+#[rstest]
 fn test_health_report_with_unhealthy() {
 	let checks = vec![
 		HealthCheckResult::healthy("database"),
@@ -103,7 +104,7 @@ fn test_health_report_with_unhealthy() {
 	assert!(report.is_unhealthy());
 }
 
-#[test]
+#[rstest]
 fn test_health_report_empty() {
 	let report = HealthReport::new(vec![]);
 	assert_eq!(report.status, HealthStatus::Healthy);
@@ -128,6 +129,7 @@ impl HealthCheck for MockHealthCheck {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_health_check_manager_default() {
 	// Test: HealthCheckManager can be created with default configuration
@@ -143,6 +145,7 @@ async fn test_health_check_manager_default() {
 	assert!(report.is_healthy());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_health_check_manager_with_single_check() {
 	let mut manager = HealthCheckManager::new();
@@ -161,6 +164,7 @@ async fn test_health_check_manager_with_single_check() {
 	assert!(report.is_healthy());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_health_check_manager_with_multiple_checks() {
 	let mut manager = HealthCheckManager::new();
@@ -187,6 +191,7 @@ async fn test_health_check_manager_with_multiple_checks() {
 	assert!(report.is_healthy());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_health_check_manager_with_failing_check() {
 	let mut manager = HealthCheckManager::new();

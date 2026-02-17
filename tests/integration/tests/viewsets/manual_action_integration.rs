@@ -5,6 +5,7 @@ use reinhardt_http::{Request, Response};
 use reinhardt_views::viewsets::{
 	action, clear_actions, register_action, ActionMetadata, FunctionActionHandler, ViewSet,
 };
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashSet;
 
@@ -37,6 +38,7 @@ impl ViewSet for TestViewSet {
 }
 
 /// Test manual action registration with proper registry cleanup
+#[rstest]
 #[tokio::test]
 #[serial(action_registry)]
 async fn test_manual_action_registration() {
@@ -85,6 +87,7 @@ async fn test_manual_action_registration() {
 }
 
 /// Test action metadata properties
+#[rstest]
 #[tokio::test]
 async fn test_action_metadata_properties() {
 	let action = ActionMetadata::new("test_action")
@@ -103,6 +106,7 @@ async fn test_action_metadata_properties() {
 }
 
 /// Test display name formatting
+#[rstest]
 #[tokio::test]
 async fn test_display_name_formatting() {
 	// Without custom_name or suffix - should format snake_case
@@ -119,6 +123,7 @@ async fn test_display_name_formatting() {
 }
 
 /// Test action helper function
+#[rstest]
 #[tokio::test]
 async fn test_action_helper() {
 	let my_action = action("test", false, |_req| async {
@@ -144,6 +149,7 @@ async fn test_action_helper() {
 }
 
 /// Test ViewSet without actions - registry should be empty after clear
+#[rstest]
 #[tokio::test]
 #[serial(action_registry)]
 async fn test_viewset_no_actions() {
@@ -162,6 +168,7 @@ async fn test_viewset_no_actions() {
 }
 
 /// Test that clearing actions works correctly
+#[rstest]
 #[tokio::test]
 #[serial(action_registry)]
 async fn test_clear_actions_functionality() {
@@ -202,6 +209,7 @@ async fn test_clear_actions_functionality() {
 }
 
 /// Test get_extra_action_url_map (should return empty for base ViewSet)
+#[rstest]
 #[tokio::test]
 async fn test_uninitialized_view_url_map() {
 	let viewset = TestViewSet::new("test");

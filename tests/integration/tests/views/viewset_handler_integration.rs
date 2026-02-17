@@ -9,6 +9,7 @@ use reinhardt_auth::{AllowAny, IsAuthenticated};
 use reinhardt_http::Request;
 use reinhardt_rest::serializers::ModelSerializer;
 use reinhardt_views::viewsets::{ModelViewSetHandler, ViewError};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -42,6 +43,7 @@ fn create_test_users() -> Vec<TestUser> {
 }
 
 /// Test: ModelViewSetHandler can be constructed with new()
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_new() {
 	// Arrange
@@ -66,6 +68,7 @@ async fn test_model_viewset_handler_new() {
 }
 
 /// Test: ModelViewSetHandler with queryset returns correct items
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_with_queryset() {
 	// Arrange
@@ -93,6 +96,7 @@ async fn test_model_viewset_handler_with_queryset() {
 }
 
 /// Test: ModelViewSetHandler with custom serializer
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_with_serializer() {
 	// Arrange
@@ -121,6 +125,7 @@ async fn test_model_viewset_handler_with_serializer() {
 }
 
 /// Test: ModelViewSetHandler with multiple permissions
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_add_permission() {
 	// Arrange - AllowAny should pass even with IsAuthenticated also registered
@@ -149,6 +154,7 @@ async fn test_model_viewset_handler_add_permission() {
 }
 
 /// Test: ModelViewSetHandler list returns all users
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_list() {
 	// Arrange
@@ -176,6 +182,7 @@ async fn test_model_viewset_handler_list() {
 }
 
 /// Test: ModelViewSetHandler retrieve returns single user
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_retrieve() {
 	// Arrange
@@ -202,6 +209,7 @@ async fn test_model_viewset_handler_retrieve() {
 }
 
 /// Test: ModelViewSetHandler retrieve returns error for non-existent user
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_retrieve_not_found() {
 	// Arrange
@@ -229,6 +237,7 @@ async fn test_model_viewset_handler_retrieve_not_found() {
 }
 
 /// Test: ModelViewSetHandler create returns CREATED status
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_create() {
 	// Arrange
@@ -254,6 +263,7 @@ async fn test_model_viewset_handler_create() {
 }
 
 /// Test: ModelViewSetHandler create returns error for invalid body
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_create_invalid_body() {
 	// Arrange
@@ -277,6 +287,7 @@ async fn test_model_viewset_handler_create_invalid_body() {
 }
 
 /// Test: ModelViewSetHandler update modifies existing user
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_update() {
 	// Arrange
@@ -304,6 +315,7 @@ async fn test_model_viewset_handler_update() {
 }
 
 /// Test: ModelViewSetHandler update returns error for non-existent user
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_update_not_found() {
 	// Arrange
@@ -329,6 +341,7 @@ async fn test_model_viewset_handler_update_not_found() {
 }
 
 /// Test: ModelViewSetHandler destroy returns NO_CONTENT
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_destroy() {
 	// Arrange
@@ -353,6 +366,7 @@ async fn test_model_viewset_handler_destroy() {
 }
 
 /// Test: ModelViewSetHandler destroy returns error for non-existent user
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_destroy_not_found() {
 	// Arrange
@@ -377,6 +391,7 @@ async fn test_model_viewset_handler_destroy_not_found() {
 }
 
 /// Test: ModelViewSetHandler denies access when IsAuthenticated permission is set
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_permission_denied() {
 	// Arrange
@@ -405,6 +420,7 @@ async fn test_model_viewset_handler_permission_denied() {
 }
 
 /// Test: ModelViewSetHandler allows access with AllowAny permission
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_allow_any_permission() {
 	// Arrange
@@ -430,6 +446,7 @@ async fn test_model_viewset_handler_allow_any_permission() {
 }
 
 /// Test: ViewError Display implementations
+#[rstest]
 #[tokio::test]
 async fn test_view_error_display() {
 	// Assert
@@ -450,6 +467,7 @@ async fn test_view_error_display() {
 }
 
 /// Test: ModelViewSetHandler default() is equivalent to new()
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_default() {
 	// Arrange
@@ -474,6 +492,7 @@ async fn test_model_viewset_handler_default() {
 }
 
 /// Test: ModelViewSetHandler with empty queryset returns empty list
+#[rstest]
 #[tokio::test]
 async fn test_model_viewset_handler_empty_queryset() {
 	// Arrange

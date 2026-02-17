@@ -12,6 +12,7 @@ use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_di::params::extract::FromRequest;
 use reinhardt_di::params::{ParamContext, Query};
 use reinhardt_http::Request;
+use rstest::rstest;
 use serde::Deserialize;
 
 /// Test: Query string with fragments and special characters
@@ -21,6 +22,7 @@ use serde::Deserialize;
 /// - Query string properly extracted even with URL fragments
 /// - Special characters URL-encoded in path
 /// - Fragment (#) handled correctly
+#[rstest]
 #[tokio::test]
 async fn test_query_string_with_fragment() {
 	#[derive(Debug, Deserialize)]
@@ -52,6 +54,7 @@ async fn test_query_string_with_fragment() {
 }
 
 /// Test: Query string with URL-encoded special characters
+#[rstest]
 #[tokio::test]
 async fn test_query_string_special_chars() {
 	#[derive(Debug, Deserialize)]
@@ -83,6 +86,7 @@ async fn test_query_string_special_chars() {
 /// NOTE: This test documents Django's behavior where changing request encoding
 /// re-parses query parameters. In Rust, encoding is typically UTF-8 by default.
 /// Test: Query string with Unicode characters
+#[rstest]
 #[tokio::test]
 async fn test_query_string_unicode() {
 	#[derive(Debug, Deserialize)]
@@ -110,6 +114,7 @@ async fn test_query_string_unicode() {
 }
 
 /// Test: Query string with emoji
+#[rstest]
 #[tokio::test]
 async fn test_query_string_emoji() {
 	#[derive(Debug, Deserialize)]
@@ -136,6 +141,7 @@ async fn test_query_string_emoji() {
 }
 
 /// Test: Query string with multiple values for same parameter
+#[rstest]
 #[tokio::test]
 async fn test_query_string_repeated_param() {
 	#[derive(Debug, Deserialize)]
@@ -173,6 +179,7 @@ async fn test_query_string_repeated_param() {
 }
 
 /// Test: Empty query string vs no query string
+#[rstest]
 #[tokio::test]
 async fn test_empty_vs_no_query_string() {
 	#[derive(Debug, Deserialize)]
@@ -219,6 +226,7 @@ async fn test_empty_vs_no_query_string() {
 }
 
 /// Test: Malformed query string handling
+#[rstest]
 #[tokio::test]
 async fn test_malformed_query_string() {
 	#[derive(Debug, Deserialize)]

@@ -5,6 +5,7 @@
 use reinhardt_db::orm::{Field, Lookup};
 use reinhardt_rest::filters::multi_term::MultiTermSearch;
 use reinhardt_rest::filters::{Operator, SearchableModel, TermType};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +26,7 @@ impl SearchableModel for TestPost {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_search_single_term() {
 	let terms = vec!["rust"];
 	let lookups = MultiTermSearch::search_terms::<TestPost>(terms);
@@ -34,7 +35,7 @@ fn test_search_single_term() {
 	assert_eq!(lookups[0].len(), 2); // Two fields (title, content)
 }
 
-#[test]
+#[rstest]
 fn test_search_multiple_terms() {
 	let terms = vec!["rust", "programming"];
 	let lookups = MultiTermSearch::search_terms::<TestPost>(terms);
@@ -44,7 +45,7 @@ fn test_search_multiple_terms() {
 	assert_eq!(lookups[1].len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_exact_terms() {
 	let terms = vec!["rust"];
 	let lookups = MultiTermSearch::exact_terms::<TestPost>(terms);
@@ -53,7 +54,7 @@ fn test_exact_terms() {
 	assert_eq!(lookups[0].len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_prefix_terms() {
 	let terms = vec!["rust"];
 	let lookups = MultiTermSearch::prefix_terms::<TestPost>(terms);
@@ -62,7 +63,7 @@ fn test_prefix_terms() {
 	assert_eq!(lookups[0].len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_compile_single_term_to_sql() {
 	let terms = vec!["rust"];
 	let lookups = MultiTermSearch::search_terms::<TestPost>(terms);
@@ -76,7 +77,7 @@ fn test_compile_single_term_to_sql() {
 	assert!(sql.contains("LOWER"));
 }
 
-#[test]
+#[rstest]
 fn test_compile_multiple_terms_to_sql() {
 	let terms = vec!["rust", "web"];
 	let lookups = MultiTermSearch::search_terms::<TestPost>(terms);
@@ -91,7 +92,7 @@ fn test_compile_multiple_terms_to_sql() {
 	assert!(sql.contains("LOWER"));
 }
 
-#[test]
+#[rstest]
 fn test_compile_empty_terms() {
 	let lookups: Vec<Vec<Lookup<TestPost>>> = vec![];
 	let sql = MultiTermSearch::compile_to_sql(lookups);
@@ -99,7 +100,7 @@ fn test_compile_empty_terms() {
 	assert!(sql.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_parse_simple_terms() {
 	let input = "rust, programming";
 	let terms = MultiTermSearch::parse_search_terms(input);
@@ -107,7 +108,7 @@ fn test_parse_simple_terms() {
 	assert_eq!(terms.len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_parse_quoted_terms() {
 	let input = "\"hello world\", rust";
 	let terms = MultiTermSearch::parse_search_terms(input);
@@ -117,7 +118,7 @@ fn test_parse_quoted_terms() {
 	assert_eq!(terms[1], "rust");
 }
 
-#[test]
+#[rstest]
 fn test_parse_empty_string() {
 	let input = "";
 	let terms = MultiTermSearch::parse_search_terms(input);
@@ -125,7 +126,7 @@ fn test_parse_empty_string() {
 	assert_eq!(terms.len(), 0);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_simple_terms() {
 	let query = "hello world";
 	let terms = MultiTermSearch::parse_query(query);
@@ -137,7 +138,7 @@ fn test_parse_query_simple_terms() {
 	assert_eq!(terms[1].term_type, TermType::Word);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_quoted_phrase() {
 	let query = r#""exact phrase""#;
 	let terms = MultiTermSearch::parse_query(query);
@@ -147,7 +148,7 @@ fn test_parse_query_quoted_phrase() {
 	assert_eq!(terms[0].term_type, TermType::Phrase);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_field_search() {
 	let query = "title:rust";
 	let terms = MultiTermSearch::parse_query(query);
@@ -158,7 +159,7 @@ fn test_parse_query_field_search() {
 	assert_eq!(terms[0].term_type, TermType::FieldValue);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_field_with_quoted_value() {
 	let query = r#"title:"machine learning""#;
 	let terms = MultiTermSearch::parse_query(query);
@@ -169,7 +170,7 @@ fn test_parse_query_field_with_quoted_value() {
 	assert_eq!(terms[0].term_type, TermType::FieldValue);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_wildcard() {
 	let query = "rust*";
 	let terms = MultiTermSearch::parse_query(query);
@@ -179,7 +180,7 @@ fn test_parse_query_wildcard() {
 	assert_eq!(terms[0].term_type, TermType::Wildcard);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_with_and_operator() {
 	let query = "rust AND web";
 	let terms = MultiTermSearch::parse_query(query);
@@ -191,7 +192,7 @@ fn test_parse_query_with_and_operator() {
 	assert_eq!(terms[1].operator, Operator::And);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_with_or_operator() {
 	let query = "rust OR python";
 	let terms = MultiTermSearch::parse_query(query);
@@ -202,7 +203,7 @@ fn test_parse_query_with_or_operator() {
 	assert_eq!(terms[1].operator, Operator::Or);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_complex() {
 	let query = r#"title:"machine learning" AND author:Smith OR year:2024"#;
 	let terms = MultiTermSearch::parse_query(query);
@@ -225,7 +226,7 @@ fn test_parse_query_complex() {
 	assert_eq!(terms[2].operator, Operator::Or);
 }
 
-#[test]
+#[rstest]
 fn test_parse_query_multiple_phrases() {
 	let query = r#""hello world" AND "rust programming""#;
 	let terms = MultiTermSearch::parse_query(query);

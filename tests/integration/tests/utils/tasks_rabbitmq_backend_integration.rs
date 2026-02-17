@@ -8,6 +8,7 @@
 use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::rabbitmq::{RabbitMQBackend, RabbitMQConfig};
 use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority};
+use rstest::rstest;
 use serial_test::serial;
 use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
 
@@ -45,6 +46,7 @@ async fn setup_rabbitmq() -> testcontainers::ContainerAsync<GenericImage> {
 		.expect("Failed to start RabbitMQ container")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(rabbitmq)]
 async fn test_rabbitmq_backend_enqueue() {
@@ -71,6 +73,7 @@ async fn test_rabbitmq_backend_enqueue() {
 	assert_eq!(result.unwrap(), task_id);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(rabbitmq)]
 async fn test_rabbitmq_backend_dequeue() {
@@ -106,6 +109,7 @@ async fn test_rabbitmq_backend_dequeue() {
 	assert_eq!(empty, None);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(rabbitmq)]
 async fn test_rabbitmq_backend_get_status() {
@@ -129,6 +133,7 @@ async fn test_rabbitmq_backend_get_status() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(rabbitmq)]
 async fn test_rabbitmq_backend_multiple_tasks() {
@@ -192,6 +197,7 @@ async fn test_rabbitmq_backend_multiple_tasks() {
 	assert_eq!(backend.dequeue().await.expect("Failed to dequeue"), None);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(rabbitmq)]
 async fn test_rabbitmq_config() {

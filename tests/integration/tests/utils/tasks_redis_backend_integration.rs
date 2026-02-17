@@ -9,6 +9,7 @@ use reinhardt_tasks::backend::TaskBackend;
 use reinhardt_tasks::backends::redis::{RedisTaskBackend, RedisTaskResultBackend};
 use reinhardt_tasks::result::ResultBackend;
 use reinhardt_tasks::{Task, TaskExecutionError, TaskId, TaskPriority, TaskStatus};
+use rstest::rstest;
 use serial_test::serial;
 use testcontainers::{
 	core::{ContainerPort, WaitFor},
@@ -46,6 +47,7 @@ async fn setup_redis() -> testcontainers::ContainerAsync<GenericImage> {
 		.expect("Failed to start Redis container")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_backend_enqueue() {
@@ -71,6 +73,7 @@ async fn test_redis_backend_enqueue() {
 	assert_eq!(result.unwrap(), task_id);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_backend_get_status() {
@@ -100,6 +103,7 @@ async fn test_redis_backend_get_status() {
 	assert_eq!(status, TaskStatus::Pending);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_backend_not_found() {
@@ -119,6 +123,7 @@ async fn test_redis_backend_not_found() {
 	assert!(matches!(result, Err(TaskExecutionError::NotFound(_))));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_backend_dequeue() {
@@ -150,6 +155,7 @@ async fn test_redis_backend_dequeue() {
 	assert_eq!(empty, None);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_backend_update_status() {
@@ -186,6 +192,7 @@ async fn test_redis_backend_update_status() {
 	assert_eq!(status, TaskStatus::Success);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_result_backend_store_and_retrieve() {
@@ -222,6 +229,7 @@ async fn test_redis_result_backend_store_and_retrieve() {
 	assert_eq!(retrieved.unwrap().result(), Some("Test result"));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(redis)]
 async fn test_redis_result_backend_delete() {

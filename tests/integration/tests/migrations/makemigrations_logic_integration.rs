@@ -25,6 +25,7 @@ use tokio::sync::Mutex;
 
 // Import DatabaseSchema and SchemaDiff from reinhardt_migrations
 use reinhardt_db::migrations::schema_diff::{ColumnSchema, DatabaseSchema, TableSchema};
+use rstest::rstest;
 
 // ============================================================================
 // Test Repository Implementation
@@ -302,6 +303,7 @@ fn create_users_schema() -> DatabaseSchema {
 // Normal Cases (NC-01 ~ NC-20)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn nc_01_new_model_creates_create_table_migration() {
 	// Test: Generate CreateTable from new model creation
@@ -341,6 +343,7 @@ async fn nc_01_new_model_creates_create_table_migration() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_02_field_addition_creates_add_column_migration() {
 	// Test: Generate AddColumn from field addition
@@ -381,6 +384,7 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_03_field_deletion_creates_drop_column_migration() {
 	// Test: Generate DropColumn from field deletion
@@ -422,6 +426,7 @@ async fn nc_03_field_deletion_creates_drop_column_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_04_field_type_change_creates_alter_column_migration() {
 	// Test: Generate AlterColumn from field type change
@@ -465,6 +470,7 @@ async fn nc_04_field_type_change_creates_alter_column_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_05_field_rename_creates_rename_column_migration() {
 	// Test: Generate RenameColumn from field rename
@@ -524,6 +530,7 @@ async fn nc_05_field_rename_creates_rename_column_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_06_index_addition_creates_create_index_migration() {
 	// Test: Generate CreateIndex from index addition
@@ -567,6 +574,7 @@ async fn nc_06_index_addition_creates_create_index_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 	// Test: Generate AddColumn + AddConstraint from ForeignKey addition
@@ -629,6 +637,7 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 	// Note: AddConstraint may be implicit in AddColumn or explicit
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_08_many_to_many_creates_junction_table() {
 	// Test: Generate CreateTable (junction table) from ManyToMany addition
@@ -748,6 +757,7 @@ async fn nc_08_many_to_many_creates_junction_table() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_09_initial_migration_correctness() {
 	// Test: Correct generation of initial migration (0001_initial)
@@ -831,6 +841,7 @@ async fn nc_09_initial_migration_correctness() {
 	assert!(has_todos, "Should create todos table");
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_10_sequential_migrations_dependency_chain() {
 	// Test: Correct generation of sequential migrations (0001 → 0002 → 0003)
@@ -906,6 +917,7 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_11_generated_migration_executability() {
 	// Test: Verify executability of generated migration
@@ -948,6 +960,7 @@ async fn nc_11_generated_migration_executability() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_12_one_to_one_creates_unique_foreign_key() {
 	// Test: Generate appropriate migration from OneToOne addition
@@ -1013,6 +1026,7 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 	assert!(has_unique_index, "Should create unique index on profile_id");
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_13_default_value_addition_creates_alter_column() {
 	// Test: Generate AlterColumn from default value addition
@@ -1056,6 +1070,7 @@ async fn nc_13_default_value_addition_creates_alter_column() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_14_null_constraint_change_creates_alter_column() {
 	// Test: Generate AlterColumn from NULL constraint change
@@ -1113,6 +1128,7 @@ async fn nc_14_null_constraint_change_creates_alter_column() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_15_unique_constraint_addition_creates_add_constraint() {
 	// Test: Generate AddConstraint from UNIQUE constraint addition
@@ -1161,6 +1177,7 @@ async fn nc_15_unique_constraint_addition_creates_add_constraint() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_16_index_deletion_creates_drop_index() {
 	// Test: Generate DropIndex from index deletion
@@ -1206,6 +1223,7 @@ async fn nc_16_index_deletion_creates_drop_index() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_17_constraint_deletion_creates_drop_constraint() {
 	// Test: Generate DropConstraint from constraint deletion
@@ -1253,6 +1271,7 @@ async fn nc_17_constraint_deletion_creates_drop_constraint() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_18_multiple_changes_in_single_migration() {
 	// Test: Generate migration with multiple changes
@@ -1332,6 +1351,7 @@ async fn nc_18_multiple_changes_in_single_migration() {
 	assert!(has_drop_column, "Should drop completed column");
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_19_multi_app_migrations_generation() {
 	// Test: Generate migrations for multiple apps simultaneously
@@ -1405,6 +1425,7 @@ async fn nc_19_multi_app_migrations_generation() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_20_data_preservation_verification() {
 	// Test: Data preservation verification (existing data is not lost)
@@ -1453,6 +1474,7 @@ async fn nc_20_data_preservation_verification() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_21_composite_primary_key_table_creation() {
 	// Test: Create new table with composite primary key
@@ -1502,6 +1524,7 @@ async fn nc_21_composite_primary_key_table_creation() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_22_add_composite_primary_key_to_existing_table() {
 	// Test: Add composite primary key to existing table
@@ -1545,6 +1568,7 @@ async fn nc_22_add_composite_primary_key_to_existing_table() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn nc_23_drop_composite_primary_key() {
 	// Test: Drop composite primary key
@@ -1592,6 +1616,7 @@ async fn nc_23_drop_composite_primary_key() {
 // Error Cases (EC-01 ~ EC-05)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn ec_01_no_models_error() {
 	// Test: Error when no models exist
@@ -1613,6 +1638,7 @@ async fn ec_01_no_models_error() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn ec_02_empty_flag_without_app_label_error() {
 	// Test: Error when app_label is missing with --empty flag
@@ -1621,6 +1647,7 @@ async fn ec_02_empty_flag_without_app_label_error() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn ec_03_from_state_construction_failure_error() {
 	// Test: Error on from_state construction failure
@@ -1629,6 +1656,7 @@ async fn ec_03_from_state_construction_failure_error() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn ec_04_invalid_field_definition_error() {
 	// Test: Error on invalid field definition
@@ -1638,6 +1666,7 @@ async fn ec_04_invalid_field_definition_error() {
 	// schema validation is the responsibility of upper layers.
 }
 
+#[rstest]
 #[tokio::test]
 async fn ec_05_file_write_permission_error() {
 	// Test: File write permission error
@@ -1650,6 +1679,7 @@ async fn ec_05_file_write_permission_error() {
 // Edge Cases (EDG-01 ~ EDG-14)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn edg_01_empty_migration_generation() {
 	// Test: Generate empty migration (--empty)
@@ -1689,6 +1719,7 @@ async fn edg_01_empty_migration_generation() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_02_no_changes_detected() {
 	// Test: No changes detected case
@@ -1707,6 +1738,7 @@ async fn edg_02_no_changes_detected() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_03_dry_run_mode() {
 	// Test: --dry-run mode
@@ -1715,6 +1747,7 @@ async fn edg_03_dry_run_mode() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_04_custom_name_specification() {
 	// Test: --name custom name specification
@@ -1723,6 +1756,7 @@ async fn edg_04_custom_name_specification() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_05_verbose_mode() {
 	// Test: --verbose mode
@@ -1731,6 +1765,7 @@ async fn edg_05_verbose_mode() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_06_custom_migrations_directory() {
 	// Test: --migrations-dir custom directory specification
@@ -1739,6 +1774,7 @@ async fn edg_06_custom_migrations_directory() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_07_from_db_mode() {
 	// Test: --from-db mode
@@ -1747,6 +1783,7 @@ async fn edg_07_from_db_mode() {
 	// Out of scope for AutoMigrationGenerator internal logic tests.
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_08_long_model_field_names() {
 	// Test: Long model/field names (255 characters)
@@ -1817,6 +1854,7 @@ async fn edg_08_long_model_field_names() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_09_large_number_of_fields() {
 	// Test: Large number of fields (100+)
@@ -1889,6 +1927,7 @@ async fn edg_09_large_number_of_fields() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_10_deep_dependency_chain() {
 	// Test: Deep dependency chain (10 levels)
@@ -1976,6 +2015,7 @@ async fn edg_10_deep_dependency_chain() {
 	assert_eq!(migrations.len(), 10);
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_11_unicode_in_names() {
 	// Test: Names with special characters (Unicode)
@@ -2067,6 +2107,7 @@ async fn edg_11_unicode_in_names() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_12_sql_reserved_words() {
 	// Test: Table/column names with SQL reserved words
@@ -2168,6 +2209,7 @@ async fn edg_12_sql_reserved_words() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_13_same_name_different_apps() {
 	// Test: Models with same name in different apps
@@ -2282,6 +2324,7 @@ async fn edg_13_same_name_different_apps() {
 	assert_eq!(app2_migrations[0].app_label, "app2");
 }
 
+#[rstest]
 #[tokio::test]
 async fn edg_14_cross_app_dependencies() {
 	// Test: Cross-app dependencies

@@ -10,6 +10,7 @@ use reinhardt_core::validators::{
 	EmailValidator, MaxLengthValidator, MinLengthValidator, MinValueValidator, RangeValidator,
 	ValidationError, Validator,
 };
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -188,7 +189,7 @@ impl CreateUserRequest {
 // Test 1: Path Parameter Validation
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_path_parameter_validation_integration() {
 	// Valid user ID (within range)
 	let valid_id = UserId::new(123);
@@ -222,7 +223,7 @@ fn test_path_parameter_validation_integration() {
 // Test 2: Multi-Value Query Parameters Validation
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_query_parameter_array_validation() {
 	// Valid query: multiple tags, valid pagination
 	let valid_query = SearchQuery {
@@ -301,7 +302,7 @@ fn test_query_parameter_array_validation() {
 // Test 3: Nested JSON Body Validation
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_nested_json_body_validation() {
 	// Valid request: all fields valid
 	let valid_request = CreateUserRequest {

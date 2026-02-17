@@ -121,6 +121,7 @@ fn read_migration_file(path: &Path) -> Result<String, std::io::Error> {
 // Normal Cases (NC-01 ~ NC-20)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_01_new_model_creates_create_table_migration() {
@@ -199,6 +200,7 @@ async fn nc_01_new_model_creates_create_table_migration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_02_field_addition_creates_add_column_migration() {
@@ -206,6 +208,7 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 	todo!("Implement E2E field addition test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_03_field_deletion_creates_drop_column_migration() {
@@ -213,6 +216,7 @@ async fn nc_03_field_deletion_creates_drop_column_migration() {
 	todo!("Implement E2E field deletion test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_04_field_type_change_creates_alter_column_migration() {
@@ -220,6 +224,7 @@ async fn nc_04_field_type_change_creates_alter_column_migration() {
 	todo!("Implement E2E field type change test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_05_field_rename_creates_rename_column_migration() {
@@ -227,6 +232,7 @@ async fn nc_05_field_rename_creates_rename_column_migration() {
 	todo!("Implement E2E field rename test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_06_index_addition_creates_create_index_migration() {
@@ -234,6 +240,7 @@ async fn nc_06_index_addition_creates_create_index_migration() {
 	todo!("Implement E2E index addition test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
@@ -241,6 +248,7 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 	todo!("Implement E2E foreign key test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_08_many_to_many_creates_junction_table() {
@@ -248,6 +256,7 @@ async fn nc_08_many_to_many_creates_junction_table() {
 	todo!("Implement E2E many-to-many test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_09_initial_migration_correctness() {
@@ -255,6 +264,7 @@ async fn nc_09_initial_migration_correctness() {
 	todo!("Implement E2E initial migration test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_10_sequential_migrations_dependency_chain() {
@@ -262,6 +272,7 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 	todo!("Implement E2E sequential migrations test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_11_generated_migration_executability() {
@@ -269,6 +280,7 @@ async fn nc_11_generated_migration_executability() {
 	todo!("Implement E2E executability test with real database")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_12_one_to_one_creates_unique_foreign_key() {
@@ -276,6 +288,7 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 	todo!("Implement E2E one-to-one test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_13_default_value_addition_creates_alter_column() {
@@ -283,6 +296,7 @@ async fn nc_13_default_value_addition_creates_alter_column() {
 	todo!("Implement E2E default value test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_14_null_constraint_change_creates_alter_column() {
@@ -290,6 +304,7 @@ async fn nc_14_null_constraint_change_creates_alter_column() {
 	todo!("Implement E2E null constraint test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_15_unique_constraint_addition_creates_add_constraint() {
@@ -297,6 +312,7 @@ async fn nc_15_unique_constraint_addition_creates_add_constraint() {
 	todo!("Implement E2E unique constraint test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_16_index_deletion_creates_drop_index() {
@@ -304,6 +320,7 @@ async fn nc_16_index_deletion_creates_drop_index() {
 	todo!("Implement E2E index deletion test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_17_constraint_deletion_creates_drop_constraint() {
@@ -311,6 +328,7 @@ async fn nc_17_constraint_deletion_creates_drop_constraint() {
 	todo!("Implement E2E constraint deletion test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_18_multiple_changes_in_single_migration() {
@@ -318,6 +336,7 @@ async fn nc_18_multiple_changes_in_single_migration() {
 	todo!("Implement E2E multiple changes test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_19_multi_app_migrations_generation() {
@@ -325,6 +344,7 @@ async fn nc_19_multi_app_migrations_generation() {
 	todo!("Implement E2E multi-app test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e)]
 async fn nc_20_data_preservation_verification() {
@@ -336,6 +356,7 @@ async fn nc_20_data_preservation_verification() {
 // Error Cases (EC-01 ~ EC-05)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_01_no_models_error() {
@@ -343,6 +364,7 @@ async fn ec_01_no_models_error() {
 	todo!("Implement E2E no models error test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_02_empty_flag_without_app_label_error() {
@@ -350,6 +372,7 @@ async fn ec_02_empty_flag_without_app_label_error() {
 	todo!("Implement E2E empty flag error test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_03_from_state_construction_failure_error() {
@@ -357,6 +380,7 @@ async fn ec_03_from_state_construction_failure_error() {
 	todo!("Implement E2E from_state failure test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_04_invalid_field_definition_error() {
@@ -364,6 +388,7 @@ async fn ec_04_invalid_field_definition_error() {
 	todo!("Implement E2E invalid field error test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_errors)]
 async fn ec_05_file_write_permission_error() {
@@ -426,6 +451,7 @@ async fn ec_05_file_write_permission_error() {
 // Edge Cases (EDG-01 ~ EDG-14)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_01_empty_migration_generation() {
@@ -433,6 +459,7 @@ async fn edg_01_empty_migration_generation() {
 	todo!("Implement E2E empty migration test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_02_no_changes_detected() {
@@ -440,6 +467,7 @@ async fn edg_02_no_changes_detected() {
 	todo!("Implement E2E no changes test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_03_dry_run_mode() {
@@ -447,6 +475,7 @@ async fn edg_03_dry_run_mode() {
 	todo!("Implement E2E dry-run test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_04_custom_name_specification() {
@@ -454,6 +483,7 @@ async fn edg_04_custom_name_specification() {
 	todo!("Implement E2E custom name test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_05_verbose_mode() {
@@ -461,6 +491,7 @@ async fn edg_05_verbose_mode() {
 	todo!("Implement E2E verbose mode test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_06_custom_migrations_directory() {
@@ -468,6 +499,7 @@ async fn edg_06_custom_migrations_directory() {
 	todo!("Implement E2E custom directory test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_07_from_db_mode() {
@@ -475,6 +507,7 @@ async fn edg_07_from_db_mode() {
 	todo!("Implement E2E from-db mode test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_08_long_model_field_names() {
@@ -482,6 +515,7 @@ async fn edg_08_long_model_field_names() {
 	todo!("Implement E2E long names test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_09_large_number_of_fields() {
@@ -489,6 +523,7 @@ async fn edg_09_large_number_of_fields() {
 	todo!("Implement E2E many fields test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_10_deep_dependency_chain() {
@@ -496,6 +531,7 @@ async fn edg_10_deep_dependency_chain() {
 	todo!("Implement E2E deep dependency test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_11_unicode_in_names() {
@@ -503,6 +539,7 @@ async fn edg_11_unicode_in_names() {
 	todo!("Implement E2E unicode test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_12_sql_reserved_words() {
@@ -510,6 +547,7 @@ async fn edg_12_sql_reserved_words() {
 	todo!("Implement E2E reserved words test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_13_same_name_different_apps() {
@@ -517,6 +555,7 @@ async fn edg_13_same_name_different_apps() {
 	todo!("Implement E2E same name test")
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(makemigrations_e2e_edge)]
 async fn edg_14_cross_app_dependencies() {

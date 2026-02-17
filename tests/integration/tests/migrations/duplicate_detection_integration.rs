@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 
 // Import DatabaseSchema and SchemaDiff from reinhardt_migrations
 use reinhardt_db::migrations::schema_diff::{ColumnSchema, DatabaseSchema, TableSchema};
+use rstest::rstest;
 
 /// Test repository implementation for integration tests
 struct TestRepository {
@@ -131,6 +132,7 @@ fn create_users_and_posts_schema() -> DatabaseSchema {
 	schema
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_scenario_1_makemigrations_migrate_makemigrations() {
 	// Scenario 1: makemigrations → migrate → makemigrations
@@ -179,6 +181,7 @@ async fn test_scenario_1_makemigrations_migrate_makemigrations() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_scenario_2_rapid_successive_makemigrations() {
 	// Scenario 2: makemigrations → makemigrations (rapid succession)
@@ -229,6 +232,7 @@ async fn test_scenario_2_rapid_successive_makemigrations() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nanosecond_precision_prevents_collision() {
 	// Test that nanosecond precision prevents timestamp collisions
@@ -275,6 +279,7 @@ async fn test_nanosecond_precision_prevents_collision() {
 	// This demonstrates that nanosecond precision allows rapid consecutive migrations
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_different_operations_not_duplicate() {
 	// Test that different operations are not considered duplicates
@@ -309,6 +314,7 @@ async fn test_different_operations_not_duplicate() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_duplicate_operations_detected() {
 	// Test that identical operations are detected as duplicates
@@ -355,6 +361,7 @@ async fn test_duplicate_operations_detected() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_semantic_duplicate_with_different_column_order() {
 	// Test that operations with different column order are detected as semantic duplicates
@@ -492,6 +499,7 @@ async fn test_semantic_duplicate_with_different_column_order() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_schema_diff_determinism() {
 	// Test that schema diff generation is deterministic

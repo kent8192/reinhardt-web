@@ -1,7 +1,8 @@
 use reinhardt_auth::{DefaultUser, FullUser};
+use rstest::rstest;
 use uuid::Uuid;
 
-#[test]
+#[rstest]
 fn test_full_user_get_full_name() {
 	// Test intent: Verify FullUser::get_full_name() concatenates
 	// first_name and last_name with space separator
@@ -25,7 +26,7 @@ fn test_full_user_get_full_name() {
 	assert_eq!(user.get_full_name(), "Alice Smith");
 }
 
-#[test]
+#[rstest]
 fn test_full_user_get_short_name() {
 	// Test intent: Verify FullUser::get_short_name() returns only
 	// the first_name field without last_name
@@ -49,7 +50,7 @@ fn test_full_user_get_short_name() {
 	assert_eq!(user.get_short_name(), "Bob");
 }
 
-#[test]
+#[rstest]
 fn test_full_user_empty_names() {
 	// Test intent: Verify FullUser name methods return empty strings
 	// when both first_name and last_name are empty
@@ -75,7 +76,7 @@ fn test_full_user_empty_names() {
 	assert_eq!(user.get_short_name(), "");
 }
 
-#[test]
+#[rstest]
 fn test_full_user_staff_and_superuser_flags() {
 	// Test intent: Verify FullUser::is_staff() and is_superuser() correctly
 	// return boolean flags for regular user, staff user, and superuser

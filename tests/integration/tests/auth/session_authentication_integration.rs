@@ -3,9 +3,11 @@ use hyper::{HeaderMap, Method, Version};
 use reinhardt_auth::sessions::{backends::InMemorySessionBackend, Session};
 use reinhardt_auth::{RestAuthentication, SessionAuthentication};
 use reinhardt_http::Request;
+use rstest::rstest;
 use uuid::Uuid;
 
 /// Test SessionAuthentication with InMemorySessionBackend
+#[rstest]
 #[tokio::test]
 async fn test_session_authentication_with_inmemory_backend() {
 	// Test intent: Verify SessionAuthentication successfully authenticates user
@@ -59,6 +61,7 @@ async fn test_session_authentication_with_inmemory_backend() {
 }
 
 /// Test SessionAuthentication without session cookie
+#[rstest]
 #[tokio::test]
 async fn test_session_authentication_no_cookie() {
 	// Test intent: Verify SessionAuthentication returns None when
@@ -86,6 +89,7 @@ async fn test_session_authentication_no_cookie() {
 }
 
 /// Test SessionAuthentication with invalid session key
+#[rstest]
 #[tokio::test]
 async fn test_session_authentication_invalid_session_key() {
 	// Test intent: Verify SessionAuthentication returns None when
@@ -115,6 +119,7 @@ async fn test_session_authentication_invalid_session_key() {
 }
 
 /// Test SessionAuthentication with session without user data
+#[rstest]
 #[tokio::test]
 async fn test_session_authentication_no_user_data() {
 	// Test intent: Verify SessionAuthentication returns None when
@@ -153,6 +158,7 @@ async fn test_session_authentication_no_user_data() {
 }
 
 /// Test SessionAuthentication with custom cookie name
+#[rstest]
 #[tokio::test]
 async fn test_session_authentication_custom_cookie_name() {
 	// Test intent: Verify SessionAuthentication correctly reads session key

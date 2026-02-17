@@ -5,10 +5,11 @@
 #[cfg(test)]
 mod tests {
 	use reinhardt_core::messages::{Level, MemoryStorage, Message, MessageStorage};
+	use rstest::rstest;
 
 	// Basic API tests that can run without full HTTP integration
 
-	#[test]
+	#[rstest]
 	fn test_message_creation_with_storage() {
 		// Test intent: Verify Message creation and storage via MemoryStorage::add()
 		// with correct text and level preservation
@@ -26,7 +27,7 @@ mod tests {
 		assert_eq!(stored[0].level, Level::Debug);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_messages_ordering() {
 		// Test intent: Verify MemoryStorage preserves insertion order
 		// of multiple messages with different levels
@@ -44,7 +45,7 @@ mod tests {
 		assert_eq!(messages[2].text, "Third message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_with_extra_tags_api() {
 		// Test intent: Verify Message::with_tags() correctly attaches
 		// extra tags to message and persists in storage
@@ -65,7 +66,7 @@ mod tests {
 
 	// HTTP/Middleware Integration Tests
 
-	#[test]
+	#[rstest]
 	fn test_request_with_middleware() {
 		// Test intent: Verify mock HTTP request can add and retrieve messages
 		// via Arc<Mutex<MemoryStorage>> shared state pattern
@@ -112,7 +113,7 @@ mod tests {
 		assert_eq!(messages[1].level, Level::Warning);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_request_is_none() {
 		// Test intent: Verify RequestWrapper correctly returns error when
 		// request is None and successfully stores messages when request is Some
@@ -199,7 +200,7 @@ mod tests {
 		assert_eq!(no_messages.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_missing() {
 		// Test intent: Verify MockRequest::add_message() returns error
 		// when has_message_middleware flag is false and succeeds when true
@@ -249,7 +250,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_missing_silently() {
 		// Test intent: Verify add_message_silently() respects fail_silently parameter:
 		// returns error when false, succeeds when true (even without middleware)
@@ -298,7 +299,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_request_wrapper() {
 		// Test intent: Verify CustomRequestWrapper can implement message storage
 		// interface with additional request properties (path field)

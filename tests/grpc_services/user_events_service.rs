@@ -114,15 +114,18 @@ impl UserEventsService for UserEventsServiceImpl {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use tokio_stream::StreamExt;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcaster_creation() {
 		let broadcaster = UserEventsBroadcaster::new();
 		let _subscriber = broadcaster.subscribe();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcast_event() {
 		let broadcaster = UserEventsBroadcaster::new();
@@ -141,6 +144,7 @@ mod tests {
 		assert_eq!(received.user_id, "test-id");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_subscribers() {
 		let broadcaster = UserEventsBroadcaster::new();
@@ -163,6 +167,7 @@ mod tests {
 		assert_eq!(received2.user_id, "multi-test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_subscribe_with_event_type_filter() {
 		let broadcaster = UserEventsBroadcaster::new();
@@ -209,6 +214,7 @@ mod tests {
 		assert_eq!(event2.user_id, "user3");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_subscribe_with_user_id_filter() {
 		let broadcaster = UserEventsBroadcaster::new();
@@ -255,6 +261,7 @@ mod tests {
 		assert_eq!(event2.r#type, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_subscribe_with_combined_filters() {
 		let broadcaster = UserEventsBroadcaster::new();
@@ -308,6 +315,7 @@ mod tests {
 		assert_eq!(event2.r#type, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_subscribe_without_filters() {
 		let broadcaster = UserEventsBroadcaster::new();

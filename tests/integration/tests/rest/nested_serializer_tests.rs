@@ -6,6 +6,7 @@
 use reinhardt_rest::serializers::{
 	ListSerializer, NestedSerializer, Serializer, WritableNestedSerializer,
 };
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,7 +25,7 @@ struct Author {
 reinhardt_test::impl_test_model!(Post, i64, "posts");
 reinhardt_test::impl_test_model!(Author, i64, "authors");
 
-#[test]
+#[rstest]
 fn test_nested_serializer_creation() {
 	// Verify the serializer works by serializing a post
 	let serializer = NestedSerializer::<Post, Author>::new("author");
@@ -36,7 +37,7 @@ fn test_nested_serializer_creation() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_nested_serializer_custom_depth() {
 	// Verify depth configuration works by serializing successfully
 	let serializer = NestedSerializer::<Post, Author>::new("author").depth(3);
@@ -48,7 +49,7 @@ fn test_nested_serializer_custom_depth() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_list_serializer_creation() {
 	let serializer = ListSerializer::<Post>::new();
 	let posts = vec![
@@ -68,7 +69,7 @@ fn test_list_serializer_creation() {
 	assert_eq!(value.as_array().unwrap().len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_serializer_creation() {
 	// Verify create and update permissions work via behavior
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author")
@@ -98,7 +99,7 @@ fn test_writable_nested_serializer_creation() {
 	assert!(serializer.deserialize(&json.to_string()).is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_default_permissions() {
 	// Verify default permissions reject both create and update
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
@@ -126,7 +127,7 @@ fn test_writable_nested_default_permissions() {
 	assert!(serializer.deserialize(&json.to_string()).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_rejects_create_when_not_allowed() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -148,7 +149,7 @@ fn test_writable_nested_deserialize_rejects_create_when_not_allowed() {
 		.contains("Creating nested instances is not allowed"));
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_rejects_update_when_not_allowed() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -170,7 +171,7 @@ fn test_writable_nested_deserialize_rejects_update_when_not_allowed() {
 		.contains("Updating nested instances is not allowed"));
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_allows_create_when_enabled() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author").allow_create(true);
 
@@ -188,7 +189,7 @@ fn test_writable_nested_deserialize_allows_create_when_enabled() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_allows_update_when_enabled() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author").allow_update(true);
 
@@ -206,7 +207,7 @@ fn test_writable_nested_deserialize_allows_update_when_enabled() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_array_rejects_create() {
 	let serializer = WritableNestedSerializer::<Author, Post>::new("posts");
 
@@ -226,7 +227,7 @@ fn test_writable_nested_deserialize_array_rejects_create() {
 		.contains("Creating nested instances is not allowed"));
 }
 
-#[test]
+#[rstest]
 fn test_writable_nested_deserialize_without_nested_data() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -240,7 +241,7 @@ fn test_writable_nested_deserialize_without_nested_data() {
 	assert!(result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_extract_nested_data_with_nested_object() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -260,7 +261,7 @@ fn test_extract_nested_data_with_nested_object() {
 	assert_eq!(nested.get("name").unwrap().as_str().unwrap(), "Alice");
 }
 
-#[test]
+#[rstest]
 fn test_extract_nested_data_without_nested_field() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -273,7 +274,7 @@ fn test_extract_nested_data_without_nested_field() {
 	assert!(result.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_extract_nested_data_with_null_nested_field() {
 	let serializer = WritableNestedSerializer::<Post, Author>::new("author");
 
@@ -287,7 +288,7 @@ fn test_extract_nested_data_with_null_nested_field() {
 	assert!(result.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_is_create_operation_with_null_pk() {
 	let data = serde_json::json!({
 		"id": null,
@@ -297,7 +298,7 @@ fn test_is_create_operation_with_null_pk() {
 	assert!(WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
 }
 
-#[test]
+#[rstest]
 fn test_is_create_operation_with_existing_pk() {
 	let data = serde_json::json!({
 		"id": 42,
@@ -307,7 +308,7 @@ fn test_is_create_operation_with_existing_pk() {
 	assert!(!WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
 }
 
-#[test]
+#[rstest]
 fn test_is_create_operation_without_pk_field() {
 	let data = serde_json::json!({
 		"name": "Author Without ID"
@@ -316,7 +317,7 @@ fn test_is_create_operation_without_pk_field() {
 	assert!(WritableNestedSerializer::<Post, Author>::is_create_operation(&data));
 }
 
-#[test]
+#[rstest]
 fn test_extract_nested_data_with_array() {
 	let serializer = WritableNestedSerializer::<Author, Post>::new("posts");
 
@@ -336,7 +337,7 @@ fn test_extract_nested_data_with_array() {
 }
 
 // Arena allocation tests
-#[test]
+#[rstest]
 fn test_nested_serializer_with_arena() {
 	let serializer = NestedSerializer::<Post, Author>::new("author");
 	let post = Post {
@@ -351,7 +352,7 @@ fn test_nested_serializer_with_arena() {
 	assert_eq!(value["title"], "Test Post");
 }
 
-#[test]
+#[rstest]
 fn test_nested_serializer_without_arena() {
 	let serializer = NestedSerializer::<Post, Author>::new("author").without_arena();
 	let post = Post {
@@ -366,7 +367,7 @@ fn test_nested_serializer_without_arena() {
 	assert_eq!(value["title"], "Test Post");
 }
 
-#[test]
+#[rstest]
 fn test_nested_serializer_arena_vs_non_arena() {
 	let post = Post {
 		id: Some(1),
@@ -386,7 +387,7 @@ fn test_nested_serializer_arena_vs_non_arena() {
 	assert_eq!(arena_value, non_arena_value);
 }
 
-#[test]
+#[rstest]
 fn test_nested_serializer_with_depth() {
 	let serializer = NestedSerializer::<Post, Author>::new("author").depth(5);
 

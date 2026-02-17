@@ -7,6 +7,7 @@ use reinhardt_di::{
 	injectable_factory,
 };
 use std::sync::Arc;
+use rstest::rstest;
 
 /// Simple config struct with `#[injectable]` macro
 #[injectable(scope = "singleton")]
@@ -40,6 +41,7 @@ async fn create_database(#[inject] config: Arc<AppConfig>) -> DatabaseConnection
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_macro_registration() {
 	// Initialize registry
@@ -59,6 +61,7 @@ async fn test_injectable_macro_registration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_factory_registration() {
 	let _registry = global_registry();
@@ -77,6 +80,7 @@ async fn test_injectable_factory_registration() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_resolve_injectable_struct() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -96,6 +100,7 @@ async fn test_resolve_injectable_struct() {
 	assert_eq!(config.api_key, "test-key-12345");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_resolve_injectable_factory_with_dependency() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -115,6 +120,7 @@ async fn test_resolve_injectable_factory_with_dependency() {
 	assert_eq!(db.connected, true);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_singleton_caching() {
 	let singleton_scope = Arc::new(SingletonScope::new());

@@ -9,6 +9,7 @@ use reinhardt_db::migrations::{
 };
 use std::fs;
 use tempfile::TempDir;
+use rstest::rstest;
 
 /// Helper function to leak a string to get a 'static lifetime
 fn leak_str(s: impl Into<String>) -> &'static str {
@@ -36,7 +37,7 @@ fn setup_migrations_dir() -> TempDir {
 	temp_dir
 }
 
-#[test]
+#[rstest]
 fn test_migration_numbering_with_existing_migrations() {
 	let temp_dir = setup_migrations_dir();
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -50,7 +51,7 @@ fn test_migration_numbering_with_existing_migrations() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_numbering_for_new_app() {
 	let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -64,7 +65,7 @@ fn test_migration_numbering_for_new_app() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_with_single_operation() {
 	let operations = vec![Operation::CreateTable {
 		name: leak_str("users").to_string(),
@@ -80,7 +81,7 @@ fn test_migration_naming_with_single_operation() {
 	assert_eq!(name, "users", "Single operation should use its fragment");
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_with_multiple_operations() {
 	let operations = vec![
 		Operation::AddColumn {
@@ -103,7 +104,7 @@ fn test_migration_naming_with_multiple_operations() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_initial() {
 	let operations = vec![];
 	let name = MigrationNamer::generate_name(&operations, true);
@@ -114,7 +115,7 @@ fn test_migration_naming_initial() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_with_run_sql() {
 	let operations = vec![Operation::RunSQL {
 		sql: leak_str("CREATE TRIGGER update_timestamp ...").to_string(),
@@ -135,7 +136,7 @@ fn test_migration_naming_with_run_sql() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_full_migration_name_generation() {
 	let temp_dir = setup_migrations_dir();
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -160,7 +161,7 @@ fn test_full_migration_name_generation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_struct_with_generated_name() {
 	let operations = vec![
 		Operation::CreateTable {
@@ -205,7 +206,7 @@ fn test_migration_struct_with_generated_name() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_numbering_get_all_numbers() {
 	let temp_dir = setup_migrations_dir();
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -232,7 +233,7 @@ fn test_migration_numbering_get_all_numbers() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_truncation() {
 	// Create operations that will generate a very long name
 	let mut operations = Vec::new();
@@ -260,7 +261,7 @@ fn test_migration_naming_truncation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_operation_describe_for_logging() {
 	let operations = [
 		Operation::CreateTable {
@@ -300,7 +301,7 @@ fn test_migration_operation_describe_for_logging() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_migration_number_format_consistency() {
 	let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
 	let migrations_dir = temp_dir.path().join("migrations");
@@ -325,7 +326,7 @@ fn test_migration_number_format_consistency() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_combined_workflow_new_migration() {
 	// Simulate the full workflow of creating a new migration
 	let temp_dir = setup_migrations_dir();
@@ -404,7 +405,7 @@ fn test_combined_workflow_new_migration() {
 	assert_eq!(migration.operations.len(), 2, "Should have two operations");
 }
 
-#[test]
+#[rstest]
 fn test_migration_naming_consistency_with_case() {
 	// Test that case doesn't affect consistency
 	let ops1 = vec![Operation::CreateTable {

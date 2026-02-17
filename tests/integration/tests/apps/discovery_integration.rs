@@ -6,6 +6,7 @@
 use linkme::distributed_slice;
 use reinhardt_apps::discovery::{discover_all_models, discover_models};
 use reinhardt_apps::registry::{ModelMetadata, MODELS};
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashSet;
 
@@ -24,7 +25,7 @@ static DISCOVERY_TEST_POST: ModelMetadata = ModelMetadata {
 	table_name: "discovery_test_posts",
 };
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_discover_models() {
 	let models = discover_models("discovery_test");
@@ -34,7 +35,7 @@ fn test_discover_models() {
 	assert_eq!(model_names, HashSet::from(["User", "Post"]));
 }
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_discover_all_models() {
 	let models = discover_all_models();
@@ -46,7 +47,7 @@ fn test_discover_all_models() {
 		.any(|m| m.app_label == "discovery_test" && m.model_name == "User"));
 }
 
-#[test]
+#[rstest]
 #[serial(app_registry)]
 fn test_discover_models_empty() {
 	let models = discover_models("nonexistent_app");

@@ -3,6 +3,7 @@
 //! Tests for `NestedSaveContext` and `ManyToManyManager` from reinhardt-rest.
 
 use reinhardt_rest::serializers::nested_orm::{ManyToManyManager, NestedSaveContext};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,7 +22,7 @@ struct TestGroup {
 
 reinhardt_test::impl_test_model!(TestGroup, i64, "groups");
 
-#[test]
+#[rstest]
 fn test_nested_save_context_creation() {
 	let context = NestedSaveContext::new();
 	assert_eq!(context.depth, 0);
@@ -30,7 +31,7 @@ fn test_nested_save_context_creation() {
 	assert!(context.parent_data.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_nested_save_context_with_parent_data() {
 	let context = NestedSaveContext::new()
 		.with_parent_data("user_id".to_string(), serde_json::json!(123))
@@ -47,7 +48,7 @@ fn test_nested_save_context_with_parent_data() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_nested_save_context_depth_limit() {
 	let mut context = NestedSaveContext::new().with_max_depth(2);
 
@@ -62,7 +63,7 @@ fn test_nested_save_context_depth_limit() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_nested_save_context_child_context() {
 	let parent = NestedSaveContext::new()
 		.with_parent_data("key".to_string(), serde_json::json!("value"))
@@ -78,7 +79,7 @@ fn test_nested_save_context_child_context() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_nested_save_context_child_exceeds_depth() {
 	let mut parent = NestedSaveContext::new().with_max_depth(1);
 	parent.depth = 1;
@@ -87,7 +88,7 @@ fn test_nested_save_context_child_exceeds_depth() {
 	assert!(result.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_many_to_many_manager_creation() {
 	let manager =
 		ManyToManyManager::<TestUser, TestGroup>::new("user_groups", "user_id", "group_id");

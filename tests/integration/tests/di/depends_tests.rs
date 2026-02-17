@@ -85,6 +85,7 @@ async fn depends_resolve_calls_injectable(injection_context: InjectionContext) {
 }
 
 #[serial_test::serial(uncached_counter)]
+#[rstest]
 #[tokio::test]
 async fn depends_with_use_cache_true() {
 	// Arrange
@@ -114,6 +115,7 @@ async fn depends_with_use_cache_true() {
 }
 
 #[serial_test::serial(uncached_counter)]
+#[rstest]
 #[tokio::test]
 async fn depends_with_use_cache_false() {
 	// Arrange

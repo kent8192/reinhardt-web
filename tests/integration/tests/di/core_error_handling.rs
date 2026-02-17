@@ -8,6 +8,7 @@
 
 use super::test_helpers::resolve_injectable;
 use reinhardt_di::{Depends, DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -123,6 +124,7 @@ impl Injectable for ResourceOwner {
 
 // === Test Cases ===
 
+#[rstest]
 #[tokio::test]
 async fn test_circular_dependency_detection() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -147,6 +149,7 @@ async fn test_circular_dependency_detection() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_failure_propagation() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -173,6 +176,7 @@ async fn test_injectable_failure_propagation() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injectable_async_timeout() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -197,6 +201,7 @@ async fn test_injectable_async_timeout() {
 	assert_eq!(service.delay_ms, 1000);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_depends_lifetime_management() {
 	let singleton = Arc::new(SingletonScope::new());

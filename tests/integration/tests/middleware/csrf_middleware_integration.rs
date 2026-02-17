@@ -9,6 +9,7 @@ use reinhardt_core::security::{generate_token_hmac, verify_token_hmac, CsrfConfi
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response, Result};
 use reinhardt_test::http::*;
+use rstest::rstest;
 
 // Mock handler for testing
 #[allow(dead_code)]
@@ -61,6 +62,7 @@ fn extract_csrf_token_from_response(response: &Response) -> Option<String> {
 		.into()
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_middleware_integration_token_generation() {
 	// Test: CSRF token is generated and set in cookie for GET requests
@@ -70,6 +72,7 @@ async fn test_csrf_middleware_integration_token_generation() {
 	assert_eq!(token.len(), 64); // HMAC-SHA256 produces 32 bytes = 64 hex chars
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_token_validation_success() {
 	// Test: Valid CSRF token passes validation
@@ -82,6 +85,7 @@ async fn test_csrf_token_validation_success() {
 	assert!(result);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_token_validation_failure() {
 	// Test: Invalid CSRF token fails validation
@@ -94,6 +98,7 @@ async fn test_csrf_token_validation_failure() {
 	assert!(!result);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_safe_methods_bypass() {
 	// Test: Safe methods (GET, HEAD, OPTIONS, TRACE) bypass CSRF check
@@ -107,6 +112,7 @@ async fn test_csrf_safe_methods_bypass() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_unsafe_methods_require_token() {
 	// Test: Unsafe methods (POST, PUT, DELETE, PATCH) require CSRF token
@@ -119,7 +125,7 @@ async fn test_csrf_unsafe_methods_require_token() {
 	}
 }
 
-#[test]
+#[rstest]
 fn test_csrf_token_in_cookie() {
 	// Test: CSRF token can be extracted from cookie
 	let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -131,7 +137,7 @@ fn test_csrf_token_in_cookie() {
 	assert!(cookie_header.to_str().unwrap().contains("csrftoken="));
 }
 
-#[test]
+#[rstest]
 fn test_csrf_token_in_header() {
 	// Test: CSRF token can be provided in X-CSRFToken header
 	let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -142,7 +148,7 @@ fn test_csrf_token_in_header() {
 	assert!(request.headers.contains_key("x-csrftoken"));
 }
 
-#[test]
+#[rstest]
 fn test_csrf_token_mismatch() {
 	// Test: Mismatched CSRF tokens should be detected
 	let secret1 = "abcdefghijklmnopqrstuvwxyz012345";
@@ -153,7 +159,7 @@ fn test_csrf_token_mismatch() {
 	assert_ne!(token1, token2);
 }
 
-#[test]
+#[rstest]
 fn test_referer_check_same_origin() {
 	// Test: Referer from same origin should pass
 	let mut request = create_secure_request("POST", "/api/test");
@@ -165,7 +171,7 @@ fn test_referer_check_same_origin() {
 	assert!(request.headers.contains_key("referer"));
 }
 
-#[test]
+#[rstest]
 fn test_referer_check_different_origin() {
 	// Test: Referer from different origin should be detected
 	let mut request = create_secure_request("POST", "/api/test");
@@ -178,7 +184,7 @@ fn test_referer_check_different_origin() {
 	assert!(referer.contains("evil.com"));
 }
 
-#[test]
+#[rstest]
 fn test_origin_check_present() {
 	// Test: Origin header check
 	let mut request = create_secure_request("POST", "/api/test");
@@ -190,7 +196,7 @@ fn test_origin_check_present() {
 	assert!(request.headers.contains_key("origin"));
 }
 
-#[test]
+#[rstest]
 fn test_csrf_exempt_view() {
 	// Test: Some views can be marked as CSRF exempt
 	// This would typically be handled via middleware configuration or decorators
@@ -199,7 +205,7 @@ fn test_csrf_exempt_view() {
 	assert_eq!(request.uri.path(), "/api/public");
 }
 
-#[test]
+#[rstest]
 fn test_csrf_cookie_httponly() {
 	// Test: CSRF cookie should NOT be HttpOnly
 	// CSRF tokens need to be accessible from JavaScript
@@ -218,7 +224,7 @@ fn test_csrf_cookie_httponly() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_csrf_cookie_secure() {
 	// Test: CSRF cookie Secure flag behavior
 	// In development: Secure should be false (allows HTTP)
@@ -237,7 +243,7 @@ fn test_csrf_cookie_secure() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_csrf_cookie_samesite() {
 	// Test: CSRF cookie SameSite attribute configuration
 	// SameSite provides additional CSRF protection by restricting cross-site cookie usage
@@ -264,7 +270,7 @@ fn test_csrf_cookie_samesite() {
 	assert_eq!(production_config.cookie_domain, None);
 }
 
-#[test]
+#[rstest]
 fn test_double_submit_cookie_pattern() {
 	// Test: Double submit cookie pattern validation
 	let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -289,6 +295,7 @@ fn test_double_submit_cookie_pattern() {
 	assert_eq!(cookie_token, header_token);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_csrf_rotation() {
 	// Test: CSRF token rotation on login

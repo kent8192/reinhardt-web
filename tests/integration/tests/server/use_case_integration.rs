@@ -19,6 +19,7 @@ use reinhardt_http::{Request, Response};
 use reinhardt_test::fixtures::*;
 use reinhardt_test::APIClient;
 use reinhardt_urls::routers::ServerRouter as Router;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -227,6 +228,7 @@ impl Handler for DeleteArticleHandler {
 /// 4. Update the article (PUT)
 /// 5. Delete the article (DELETE)
 /// 6. Verify deletion (GET returns 404)
+#[rstest]
 #[tokio::test]
 async fn test_restful_api_full_workflow() {
 	// Initialize store
@@ -421,6 +423,7 @@ impl Handler for DownloadFileHandler {
 /// 2. Download the file and verify content
 /// 3. Upload another file
 /// 4. Download and verify the second file
+#[rstest]
 #[tokio::test]
 async fn test_file_upload_download() {
 	// Initialize store
@@ -494,6 +497,7 @@ mod websocket_tests {
 	use super::*;
 	use futures_util::{SinkExt, StreamExt};
 	use reinhardt_server::{ShutdownCoordinator, WebSocketHandler, WebSocketServer};
+	use rstest::rstest;
 	use std::time::Duration;
 	use tokio::net::TcpListener;
 	use tokio_tungstenite::tungstenite::Message;
@@ -553,6 +557,7 @@ mod websocket_tests {
 	/// 2. Send messages from different clients
 	/// 3. Verify message broadcasting
 	/// 4. Disconnect clients gracefully
+	#[rstest]
 	#[tokio::test]
 	async fn test_realtime_chat() {
 		let room = ChatRoom::new();
@@ -648,6 +653,7 @@ mod graphql_tests {
 	use reinhardt_server::graphql_handler;
 	use reinhardt_test::server::{shutdown_test_server, spawn_test_server};
 	use reinhardt_test::APIClient;
+	use rstest::rstest;
 
 	/// User for pagination testing
 	#[derive(Debug, Clone, SimpleObject)]
@@ -778,6 +784,7 @@ mod graphql_tests {
 	/// 2. Fetch next page using cursor
 	/// 3. Apply age filter and paginate
 	/// 4. Verify page info (has_next_page, cursors)
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_pagination() {
 		let store = UserStore::new();
@@ -1049,6 +1056,7 @@ impl Handler for LogoutHandler {
 /// 3. Verify unauthorized access without cookie
 /// 4. Logout and clear session
 /// 5. Verify protected resource is inaccessible after logout
+#[rstest]
 #[tokio::test]
 async fn test_session_management() {
 	// Initialize store

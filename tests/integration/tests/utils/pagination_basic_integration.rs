@@ -10,8 +10,9 @@ use reinhardt_core::pagination::{
 #[cfg(test)]
 mod basic_pagination_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_basic_pagination() {
 		let items: Vec<i32> = (1..=50).collect();
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -30,7 +31,7 @@ mod basic_pagination_tests {
 		assert_eq!(page.results[9], 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_size_override() {
 		let items: Vec<i32> = (1..=50).collect();
 		let _paginator = PageNumberPagination::new()
@@ -50,7 +51,7 @@ mod basic_pagination_tests {
 		assert_eq!(page.results[19], 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_page_size_limit() {
 		let items: Vec<i32> = (1..=50).collect();
 		let _paginator = PageNumberPagination::new().page_size(10).max_page_size(15);
@@ -71,7 +72,7 @@ mod basic_pagination_tests {
 		assert_eq!(page.count, 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_last_page_handling() {
 		let items: Vec<i32> = (1..=25).collect();
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -105,7 +106,7 @@ mod basic_pagination_tests {
 		assert_eq!(last_page.results[4], 25);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_results() {
 		let items: Vec<i32> = vec![];
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -120,7 +121,7 @@ mod basic_pagination_tests {
 		assert!(page.previous.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orphans_handling() {
 		let items: Vec<i32> = (1..=23).collect(); // 23 items
 		let paginator = PageNumberPagination::new().page_size(10).orphans(3); // If last page has < 3 items, merge with previous
@@ -144,7 +145,7 @@ mod basic_pagination_tests {
 		assert_eq!(second_page.results[12], 23);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_page_number() {
 		let items: Vec<i32> = (1..=50).collect();
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -162,7 +163,7 @@ mod basic_pagination_tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_beyond_available() {
 		let items: Vec<i32> = (1..=25).collect();
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -172,7 +173,7 @@ mod basic_pagination_tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_limit_offset_pagination() {
 		let items: Vec<i32> = (1..=50).collect();
 		let paginator = LimitOffsetPagination::new().default_limit(10);
@@ -195,7 +196,7 @@ mod basic_pagination_tests {
 		assert_eq!(page.results[9], 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_pagination_basic() {
 		let items: Vec<i32> = (1..=50).collect();
 		let paginator = CursorPagination::new().page_size(10);
@@ -215,7 +216,7 @@ mod basic_pagination_tests {
 		assert!(result.is_err()); // Invalid cursor should fail
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pagination_metadata() {
 		let items: Vec<i32> = (1..=25).collect();
 		let paginator = PageNumberPagination::new().page_size(10);
@@ -249,7 +250,7 @@ mod basic_pagination_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pagination_json_structure() {
 		// Test that pagination response can be serialized to JSON with correct structure
 		let items: Vec<i32> = (1..=25).collect();
@@ -392,7 +393,7 @@ mod basic_pagination_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_pagination_json_structure() {
 		// Test cursor pagination JSON structure
 		let items: Vec<i32> = (1..=30).collect();
@@ -496,7 +497,7 @@ mod basic_pagination_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_limit_offset_pagination_json_structure() {
 		// Test limit-offset pagination JSON structure
 		let items: Vec<i32> = (1..=50).collect();

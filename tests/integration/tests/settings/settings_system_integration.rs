@@ -4,13 +4,14 @@
 //! validation, and access patterns.
 
 use reinhardt_conf::settings::{DatabaseConfig, Settings, TemplateConfig};
+use rstest::rstest;
 use std::path::PathBuf;
 
 // ============================================================================
 // Settings Loading Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_load_default_settings() {
 	let settings = Settings::default();
 
@@ -25,7 +26,7 @@ fn test_load_default_settings() {
 	assert!(settings.append_slash);
 }
 
-#[test]
+#[rstest]
 fn test_load_custom_settings() {
 	let settings = Settings::new(PathBuf::from("/app"), "super-secret-key".to_string());
 
@@ -34,7 +35,7 @@ fn test_load_custom_settings() {
 	assert!(settings.debug); // Still defaults to true
 }
 
-#[test]
+#[rstest]
 fn test_settings_with_root_urlconf() {
 	let settings = Settings::default().with_root_urlconf("myproject.urls");
 
@@ -45,7 +46,7 @@ fn test_settings_with_root_urlconf() {
 // Settings Modification Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_add_installed_app() {
 	let mut settings = Settings::default();
 
@@ -56,7 +57,7 @@ fn test_add_installed_app() {
 	assert!(settings.installed_apps.contains(&"myapp".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_add_middleware() {
 	let mut settings = Settings::default();
 
@@ -69,7 +70,7 @@ fn test_add_middleware() {
 		.contains(&"myapp.middleware.CustomMiddleware".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_modify_security_settings() {
 	let settings = Settings {
 		debug: false,
@@ -95,7 +96,7 @@ fn test_modify_security_settings() {
 // are in crates/reinhardt-apps/tests/test_settings.rs as unit tests.
 // These single-crate tests don't require integration testing.
 
-#[test]
+#[rstest]
 fn test_multiple_database_configs() {
 	let mut settings = Settings::default();
 
@@ -118,7 +119,7 @@ fn test_multiple_database_configs() {
 // Template Configuration Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_template_config_default() {
 	let config = TemplateConfig::default();
 
@@ -128,7 +129,7 @@ fn test_template_config_default() {
 	assert!(config.options.contains_key("context_processors"));
 }
 
-#[test]
+#[rstest]
 fn test_template_config_custom_dirs() {
 	let config = TemplateConfig::new("MyTemplateBackend")
 		.add_dir("/app/templates")
@@ -144,7 +145,7 @@ fn test_template_config_custom_dirs() {
 // Settings Serialization Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_settings_serialization() {
 	let settings = Settings::default();
 
@@ -165,7 +166,7 @@ fn test_settings_serialization() {
 	assert_eq!(parsed["debug"].as_bool(), Some(true));
 }
 
-#[test]
+#[rstest]
 fn test_settings_deserialization() {
 	let json = r#"{
         "base_dir": ".",
@@ -209,7 +210,7 @@ fn test_settings_deserialization() {
 // Settings Validation Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_production_settings_validation() {
 	let settings = Settings {
 		debug: false,
@@ -228,7 +229,7 @@ fn test_production_settings_validation() {
 	assert!(settings.csrf_cookie_secure);
 }
 
-#[test]
+#[rstest]
 fn test_required_settings_present() {
 	let settings = Settings::default();
 
@@ -243,7 +244,7 @@ fn test_required_settings_present() {
 // Settings Access Pattern Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_nested_settings_access() {
 	let mut settings = Settings::default();
 
@@ -259,7 +260,7 @@ fn test_nested_settings_access() {
 	assert_eq!(settings.databases.len(), 2);
 }
 
-#[test]
+#[rstest]
 fn test_settings_immutability_pattern() {
 	let settings = Settings::default();
 

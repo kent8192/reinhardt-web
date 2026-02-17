@@ -51,10 +51,11 @@ impl MessageConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test that MESSAGE_TAGS settings can override default level tags
 	/// Original: django/tests/messages_tests/tests.py::TestLevelTags::test_override_settings_level_tags
-	#[test]
+	#[rstest]
 	fn test_override_settings_level_tags() {
 		let mut custom_tags = HashMap::new();
 		custom_tags.insert(30, "caution".to_string()); // WARNING -> "caution"
@@ -74,7 +75,7 @@ mod tests {
 
 	/// Test that LEVEL_TAGS is lazily evaluated from settings
 	/// Original: django/tests/messages_tests/tests.py::TestLevelTags::test_lazy
-	#[test]
+	#[rstest]
 	fn test_lazy_level_tags() {
 		// Create initial config
 		let mut config = MessageConfig::new();
@@ -97,7 +98,7 @@ mod tests {
 
 	/// Test that LEVEL_TAGS updates when settings change after initialization
 	/// Original: django/tests/messages_tests/tests.py::TestLevelTags::test_override_settings_lazy
-	#[test]
+	#[rstest]
 	fn test_override_settings_lazy_update() {
 		// Initialize with one set of MESSAGE_TAGS
 		let mut config = MessageConfig::new();
@@ -123,7 +124,7 @@ mod tests {
 
 	/// Test support for custom numeric message levels
 	/// Original: django/tests/messages_tests/base.py::BaseTests::test_settings_level
-	#[test]
+	#[rstest]
 	fn test_custom_level_value() {
 		// Configure MESSAGE_LEVEL to a custom value (29)
 		let config = MessageConfig::new().with_level(29);
@@ -149,7 +150,7 @@ mod tests {
 
 	/// Test custom level with custom tag mapping
 	/// Original: django/tests/messages_tests/tests.py::AssertMessagesTest::test_custom_levelname
-	#[test]
+	#[rstest]
 	fn test_custom_level_tag() {
 		// Configure MESSAGE_TAGS with custom level (42 -> "CUSTOM")
 		let mut custom_tags = HashMap::new();
@@ -166,7 +167,7 @@ mod tests {
 
 	/// Test that custom MESSAGE_TAGS properly override default tags
 	/// Original: django/tests/messages_tests/base.py::BaseTests::test_custom_tags
-	#[test]
+	#[rstest]
 	fn test_custom_tags_mapping() {
 		// Configure custom MESSAGE_TAGS
 		let mut custom_tags = HashMap::new();

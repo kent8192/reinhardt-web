@@ -46,6 +46,7 @@ fn registry_guard() -> TeardownGuard<ContentTypeRegistryGuard> {
 mod multi_db_tests {
 	use super::*;
 	use reinhardt_db::contenttypes::{MultiDbContentTypeManager, CONTENT_TYPE_REGISTRY};
+	use rstest::rstest;
 
 	#[rstest]
 	#[serial(content_type_registry)]
@@ -186,6 +187,7 @@ mod multi_db_tests {
 mod orm_integration_tests {
 	use super::*;
 	use reinhardt_db::contenttypes::{ContentTypeQuery, ContentTypeTransaction};
+	use rstest::rstest;
 	use sqlx::AnyPool;
 	use std::sync::Arc;
 
@@ -371,6 +373,7 @@ mod combined_tests {
 	use reinhardt_db::contenttypes::{
 		ContentTypeQuery, ContentTypeTransaction, MultiDbContentTypeManager,
 	};
+	use rstest::rstest;
 	use sqlx::AnyPool;
 	use std::sync::Arc;
 

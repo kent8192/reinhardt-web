@@ -4,6 +4,7 @@
 //! focusing on the actual API provided by reinhardt-proxy.
 
 use reinhardt_urls::proxy::{AssociationProxy, CollectionProxy};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 /// Test models for proxy testing
@@ -67,6 +68,7 @@ struct UserProfile {
 }
 
 /// Test AssociationProxy basic construction
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_new() {
 	// Create basic association proxy
@@ -78,6 +80,7 @@ async fn test_association_proxy_new() {
 }
 
 /// Test AssociationProxy with optional name
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_with_name() {
 	// Create basic proxy - name field can be set via public field access
@@ -91,6 +94,7 @@ async fn test_association_proxy_with_name() {
 }
 
 /// Test AssociationProxy with creator function
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_with_creator() {
 	// Create proxy and set creator via public field
@@ -116,6 +120,7 @@ async fn test_association_proxy_with_creator() {
 }
 
 /// Test AssociationProxy with getter function
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_with_getter() {
 	// Define getter as a standalone function
@@ -136,6 +141,7 @@ async fn test_association_proxy_with_getter() {
 }
 
 /// Test AssociationProxy with setter function
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_with_setter() {
 	// Define setter as a standalone function
@@ -161,6 +167,7 @@ async fn test_association_proxy_with_setter() {
 }
 
 /// Test AssociationProxy with all options
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_complete_builder() {
 	// Define helper functions
@@ -210,6 +217,7 @@ async fn test_association_proxy_complete_builder() {
 }
 
 /// Test CollectionProxy serialization to JSON
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_serialization() {
 	// Create proxy with various options
@@ -226,6 +234,7 @@ async fn test_collection_proxy_serialization() {
 }
 
 /// Test CollectionProxy deserialization from JSON
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_deserialization() {
 	// Create JSON representation
@@ -248,6 +257,7 @@ async fn test_collection_proxy_deserialization() {
 }
 
 /// Test CollectionProxy with complex configuration
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_complex_config() {
 	// Create proxy with multiple configuration options
@@ -267,6 +277,7 @@ async fn test_collection_proxy_complex_config() {
 }
 
 /// Test CollectionProxy cascade configuration
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_cascade() {
 	// Create proxy with cascade enabled
@@ -278,6 +289,7 @@ async fn test_collection_proxy_cascade() {
 }
 
 /// Test CollectionProxy database routing
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_database_routing() {
 	// Create proxy with database routing
@@ -291,6 +303,7 @@ async fn test_collection_proxy_database_routing() {
 }
 
 /// Test CollectionProxy stored procedure support
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_stored_procedure() {
 	// Create proxy for stored procedure
@@ -304,6 +317,7 @@ async fn test_collection_proxy_stored_procedure() {
 }
 
 /// Test CollectionProxy trigger events
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_trigger_events() {
 	// Create proxy with trigger events
@@ -317,6 +331,7 @@ async fn test_collection_proxy_trigger_events() {
 }
 
 /// Test CollectionProxy view support
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_view() {
 	// Create proxy for database view
@@ -327,6 +342,7 @@ async fn test_collection_proxy_view() {
 }
 
 /// Test CollectionProxy async loading
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_async_loading() {
 	// Create proxy with async loading
@@ -340,6 +356,7 @@ async fn test_collection_proxy_async_loading() {
 }
 
 /// Test CollectionProxy with uniqueness
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_uniqueness() {
 	// Create unique collection proxy
@@ -359,6 +376,7 @@ async fn test_collection_proxy_uniqueness() {
 /// See `crates/reinhardt-urls/crates/proxy/src/collection.rs:955-1025` for implementation.]
 
 // Test AssociationProxy with None relationships
+#[rstest]
 #[tokio::test]
 async fn test_association_proxy_null_relationship() {
 	// Create user with no profile
@@ -384,6 +402,7 @@ async fn test_association_proxy_null_relationship() {
 }
 
 /// Test CollectionProxy with empty collections
+#[rstest]
 #[tokio::test]
 async fn test_collection_proxy_empty_collection() {
 	// Create user with empty posts
@@ -408,6 +427,7 @@ async fn test_collection_proxy_empty_collection() {
 }
 
 /// Test multiple proxy chaining concept
+#[rstest]
 #[tokio::test]
 async fn test_proxy_chaining_concept() {
 	// Create proxies for nested relationships

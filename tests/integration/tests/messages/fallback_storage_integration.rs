@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod tests {
 	use reinhardt_core::messages::{FallbackStorage, Level, Message, MessageStorage};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_no_fallback() {
 		// Test that messages fit in cookie without needing fallback
 		let mut storage = FallbackStorage::new();
@@ -21,7 +22,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_fallback() {
 		// Test that messages fall back to session when they don't fit in cookie
 		let mut storage = FallbackStorage::new().with_max_cookie_size(50);
@@ -42,7 +43,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_empty_fallback() {
 		// Test getting messages from empty fallback storage
 		let mut storage = FallbackStorage::new();
@@ -52,7 +53,7 @@ mod tests {
 		assert_eq!(storage.get_used_storage(), "none");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_fallback_cookie_and_session() {
 		// Test getting messages from both cookie and session
 		let mut storage = FallbackStorage::new().with_max_cookie_size(80);
@@ -73,7 +74,7 @@ mod tests {
 		assert!(!messages.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_fallback_only_session() {
 		// Test getting messages only from session
 		let mut storage = FallbackStorage::new();
@@ -88,7 +89,7 @@ mod tests {
 		assert_eq!(messages[0].text, "Session message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_fallback() {
 		// Test that session fallback works correctly
 		let mut storage = FallbackStorage::new().with_max_cookie_size(60);
@@ -105,7 +106,7 @@ mod tests {
 		assert!(!messages.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_fallback_only() {
 		// Test session-only fallback mode
 		let mut storage = FallbackStorage::new().with_max_cookie_size(10); // Very small
@@ -121,7 +122,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_flush_used_backends() {
 		// Test flushing used storage backends
 		let mut storage = FallbackStorage::new();

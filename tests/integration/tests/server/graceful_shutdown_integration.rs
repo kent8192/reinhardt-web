@@ -1,6 +1,7 @@
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_server::{serve_with_shutdown, HttpServer, ShutdownCoordinator};
+use rstest::rstest;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +16,7 @@ impl Handler for TestHandler {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_server_with_graceful_shutdown() {
 	let handler = Arc::new(TestHandler);
@@ -48,6 +50,7 @@ async fn test_server_with_graceful_shutdown() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_shutdown_coordinator_timeout() {
 	let coordinator = ShutdownCoordinator::new(Duration::from_millis(100));
@@ -61,6 +64,7 @@ async fn test_shutdown_coordinator_timeout() {
 	assert!(elapsed < Duration::from_millis(200));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_shutdown_signal_broadcast() {
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -76,6 +80,7 @@ async fn test_shutdown_signal_broadcast() {
 	assert!(rx3.recv().await.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_shutdown_calls() {
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -96,6 +101,7 @@ async fn test_multiple_shutdown_calls() {
 	coordinator.shutdown();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_shutdown_coordinator_clone() {
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -110,6 +116,7 @@ async fn test_shutdown_coordinator_clone() {
 	assert!(rx.recv().await.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_serve_with_shutdown_function() {
 	let handler = Arc::new(TestHandler);

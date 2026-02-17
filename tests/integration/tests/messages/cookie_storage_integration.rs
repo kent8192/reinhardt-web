@@ -4,8 +4,9 @@
 mod tests {
 	use reinhardt_core::messages::utils::{bisect_keep_left, bisect_keep_right};
 	use reinhardt_core::messages::{CookieStorage, Level, Message, MessageStorage, SafeData};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_get() {
 		// Test retrieving messages from cookie storage
 		let mut storage = CookieStorage::new();
@@ -20,7 +21,7 @@ mod tests {
 		assert_eq!(messages[1].text, "Test message 2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_settings() {
 		// Test that CookieStorage can be configured with custom settings
 		let storage = CookieStorage::new()
@@ -30,7 +31,7 @@ mod tests {
 		assert_eq!(storage.cookie_name(), "custom_messages");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_bad_cookie() {
 		// Test that invalid cookie data is handled gracefully
 		let mut storage = CookieStorage::new();
@@ -43,7 +44,7 @@ mod tests {
 		assert_eq!(storage.get_all().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_cookie_length() {
 		// Test that older messages are removed when cookie size limit is exceeded
 		let mut storage = CookieStorage::new().with_max_size(150);
@@ -70,7 +71,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_rfc6265() {
 		// Test that message encoding complies with RFC 6265
 		let text = r#"Test with special chars: , ; \ ""#;
@@ -83,7 +84,7 @@ mod tests {
 		assert!(!encoded.contains("\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_encoder_decoder() {
 		// Test that messages are properly encoded/decoded
 		let mut storage = CookieStorage::new();
@@ -109,7 +110,7 @@ mod tests {
 		assert!(messages[1].extra_tags.contains(&"important".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata() {
 		// Test that SafeData maintains its safe status through serialization
 		let safe_html = SafeData::new("<b>Bold</b>");
@@ -123,7 +124,7 @@ mod tests {
 		assert_eq!(safe_html.as_str(), "<b>Bold</b>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extra_tags_cookie() {
 		// Test that extra_tags are preserved in cookie storage
 		let mut storage = CookieStorage::new();
@@ -145,7 +146,7 @@ mod tests {
 		assert_eq!(messages[1].extra_tags.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left() {
 		// Test bisect_keep_left utility function
 		let items = vec!["msg1".to_string(), "msg2".to_string(), "msg3".to_string()];
@@ -161,7 +162,7 @@ mod tests {
 		assert!(count < 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_right() {
 		// Test bisect_keep_right utility function
 		let items = vec!["msg1".to_string(), "msg2".to_string(), "msg3".to_string()];

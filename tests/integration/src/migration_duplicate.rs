@@ -10,6 +10,7 @@ mod tests {
 		AutoMigrationGenerator, DatabaseSchema, FieldType, Migration, MigrationRepository,
 		schema_diff::SchemaDiff,
 	};
+	use rstest::rstest;
 	use std::collections::{BTreeMap, HashMap};
 	use std::sync::Arc;
 	use tempfile::TempDir;
@@ -72,7 +73,7 @@ mod tests {
 	}
 
 	/// Test that system tables (like reinhardt_migrations) are excluded from schema diff
-	#[test]
+	#[rstest]
 	fn test_system_tables_excluded_from_diff() {
 		// Create a schema with user tables and system table
 		let mut current_schema = DatabaseSchema {
@@ -142,7 +143,7 @@ mod tests {
 	}
 
 	/// Test that no changes are detected when schema hasn't changed
-	#[test]
+	#[rstest]
 	fn test_no_changes_when_schema_unchanged() {
 		// Create identical schemas
 		let mut schema = DatabaseSchema {
@@ -177,6 +178,7 @@ mod tests {
 	}
 
 	/// Test auto-migration generator with no changes
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_migration_no_changes_detected() {
 		let _temp_dir = TempDir::new().unwrap();
@@ -216,6 +218,7 @@ mod tests {
 	///
 	/// Note: FilesystemSource now parses operations via ast_parser module.
 	/// Full CLI integration test can be implemented when needed.
+	#[rstest]
 	#[tokio::test]
 	async fn test_makemigrations_workflow_unit() {
 		let _temp_dir = TempDir::new().unwrap();

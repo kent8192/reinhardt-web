@@ -79,7 +79,6 @@ fn add_field_to_model(
 ///
 /// **Expected Behavior**: DetectedChanges contains the newly created model
 #[rstest]
-#[test]
 fn test_detect_create_single_model() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -115,7 +114,6 @@ fn test_detect_create_single_model() {
 ///
 /// **Expected Behavior**: DetectedChanges contains all newly created models
 #[rstest]
-#[test]
 fn test_detect_create_multiple_models() {
 	// from_state: empty
 	let from_state = ProjectState::new();
@@ -159,7 +157,6 @@ fn test_detect_create_multiple_models() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the deleted model
 #[rstest]
-#[test]
 fn test_detect_delete_single_model() {
 	// from_state: one model
 	let mut from_state = ProjectState::new();
@@ -194,7 +191,6 @@ fn test_detect_delete_single_model() {
 ///
 /// **Expected Behavior**: DetectedChanges contains all deleted models
 #[rstest]
-#[test]
 fn test_detect_delete_multiple_models() {
 	// from_state: three models
 	let mut from_state = ProjectState::new();
@@ -238,7 +234,6 @@ fn test_detect_delete_multiple_models() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the added field
 #[rstest]
-#[test]
 fn test_detect_add_field_to_model() {
 	// from_state: User with only id
 	let mut from_state = ProjectState::new();
@@ -277,7 +272,6 @@ fn test_detect_add_field_to_model() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the removed field
 #[rstest]
-#[test]
 fn test_detect_remove_field_from_model() {
 	// from_state: User with id + email
 	let mut from_state = ProjectState::new();
@@ -316,7 +310,6 @@ fn test_detect_remove_field_from_model() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the altered field
 #[rstest]
-#[test]
 fn test_detect_alter_field_type() {
 	// from_state: User with email VARCHAR(255)
 	let mut from_state = ProjectState::new();
@@ -357,7 +350,6 @@ fn test_detect_alter_field_type() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the altered field
 #[rstest]
-#[test]
 fn test_detect_alter_field_nullable() {
 	// from_state: User with email nullable=false
 	let mut from_state = ProjectState::new();
@@ -398,7 +390,6 @@ fn test_detect_alter_field_nullable() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the altered field with nullable change
 #[rstest]
-#[test]
 fn test_detect_add_not_null_constraint() {
 	// from_state: User with email nullable=true
 	let mut from_state = ProjectState::new();
@@ -439,7 +430,6 @@ fn test_detect_add_not_null_constraint() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the added unique index
 #[rstest]
-#[test]
 fn test_detect_add_unique_constraint() {
 	// from_state: User without unique index on email
 	let mut from_state = ProjectState::new();
@@ -486,7 +476,6 @@ fn test_detect_add_unique_constraint() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the altered field
 #[rstest]
-#[test]
 fn test_detect_change_default_value() {
 	// from_state: User with status default='active'
 	let mut from_state = ProjectState::new();
@@ -537,7 +526,6 @@ fn test_detect_change_default_value() {
 ///
 /// **Expected Behavior**: Detects table rename or recreate operation
 #[rstest]
-#[test]
 fn test_detect_rename_table() {
 	// from_state: User with table 'testapp_user'
 	let mut from_state = ProjectState::new();
@@ -574,7 +562,6 @@ fn test_detect_rename_table() {
 ///
 /// **Expected Behavior**: Multiple PK fields are detected as additions
 #[rstest]
-#[test]
 fn test_detect_composite_primary_key() {
 	// from_state: UserRole with single id field
 	let mut from_state = ProjectState::new();
@@ -627,7 +614,6 @@ fn test_detect_composite_primary_key() {
 ///
 /// **Expected Behavior**: DetectedChanges contains the added field with default
 #[rstest]
-#[test]
 fn test_detect_add_field_with_default() {
 	// from_state: User without created_at
 	let mut from_state = ProjectState::new();
@@ -671,7 +657,6 @@ fn test_detect_add_field_with_default() {
 ///
 /// **Expected Behavior**: All changes (add field, remove field, alter field) detected
 #[rstest]
-#[test]
 fn test_detect_multiple_changes_same_model() {
 	// from_state: User with id, email, age
 	let mut from_state = ProjectState::new();

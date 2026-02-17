@@ -7,8 +7,9 @@ mod tests {
 	};
 	use reinhardt_integration_tests::message_middleware_mock::MockMessageMiddleware;
 	use reinhardt_integration_tests::messages_helpers::MockResponse;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_response_without_messages() {
 		// Test that MessageMiddleware tolerates messages not existing on request
 		let middleware = MockMessageMiddleware::new();
@@ -19,7 +20,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_request_response_cycle() {
 		// Test that messages are properly stored and retrieved across full request/response cycle
 		let mut storage = CookieStorage::new();
@@ -57,7 +58,7 @@ mod tests {
 		assert_eq!(new_storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_posts() {
 		// Test that messages persist properly when multiple POSTs are made before a GET
 		let mut storage = SessionStorage::new();
@@ -91,7 +92,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_disabled() {
 		// Test that an exception is raised when middleware is disabled and messages are added
 		let middleware = MockMessageMiddleware::new().with_enabled(false);
@@ -115,7 +116,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_disabled_fail_silently() {
 		// Test that no exception is raised when middleware is disabled and fail_silently=True
 		let middleware = MockMessageMiddleware::new()
@@ -134,6 +135,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_persistence_across_requests() {
 		// Test: Messages added in one request should appear in the next request
@@ -213,6 +215,7 @@ mod tests {
 		let _ = middleware.process(request2, handler2).await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_cleanup_after_display() {
 		// Test: Messages should be cleared after being retrieved
@@ -296,6 +299,7 @@ mod tests {
 		let _ = middleware.process(request2, handler2).await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_accumulation_across_multiple_requests() {
 		// Test: Multiple messages can be added and accumulated across requests

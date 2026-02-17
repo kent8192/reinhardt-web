@@ -15,6 +15,7 @@ use reinhardt_db::migrations::{
 	FieldState, FieldType, ModelState, ProjectState, autodetector::MigrationAutodetector,
 };
 use std::time::{Duration, Instant};
+use rstest::rstest;
 
 /// Helper function to create a model with specified fields
 fn create_model_with_fields(app_name: &str, model_name: &str, field_count: usize) -> ModelState {
@@ -52,7 +53,7 @@ fn create_simple_model(app_name: &str, model_name: &str) -> ModelState {
 ///
 /// # Performance Target
 /// - 1000 models detection: < 5 seconds
-#[test]
+#[rstest]
 fn test_1000_models_detection() {
 	let mut to_state = ProjectState::new();
 
@@ -93,7 +94,7 @@ fn test_1000_models_detection() {
 ///
 /// # Performance Target
 /// - 500 models detection: < 2 seconds
-#[test]
+#[rstest]
 fn test_500_models_detection() {
 	let mut to_state = ProjectState::new();
 
@@ -139,7 +140,7 @@ fn test_500_models_detection() {
 ///
 /// # Performance Target
 /// - 100 fields detection: < 2 seconds
-#[test]
+#[rstest]
 fn test_100_fields_addition_detection() {
 	// From state: model with just ID
 	let mut from_state = ProjectState::new();
@@ -181,7 +182,7 @@ fn test_100_fields_addition_detection() {
 ///
 /// # Performance Target
 /// - 50 fields across 10 models: < 1 second
-#[test]
+#[rstest]
 fn test_50_fields_across_models_detection() {
 	let mut from_state = ProjectState::new();
 	let mut to_state = ProjectState::new();
@@ -237,7 +238,7 @@ fn test_50_fields_across_models_detection() {
 ///
 /// # Performance Target
 /// - 100-level dependency chain: < 3 seconds
-#[test]
+#[rstest]
 fn test_deep_dependency_chain_100_levels() {
 	let mut to_state = ProjectState::new();
 
@@ -302,7 +303,7 @@ fn test_deep_dependency_chain_100_levels() {
 ///
 /// # Performance Target
 /// - 50 models referencing 1 central model: < 2 seconds
-#[test]
+#[rstest]
 fn test_wide_dependency_graph() {
 	let mut to_state = ProjectState::new();
 
@@ -368,7 +369,7 @@ fn test_wide_dependency_graph() {
 ///
 /// # Performance Target
 /// - 100 incremental detections: < 10 seconds total
-#[test]
+#[rstest]
 fn test_incremental_change_detection_performance() {
 	let mut total_elapsed = Duration::ZERO;
 
@@ -425,7 +426,7 @@ fn test_incremental_change_detection_performance() {
 ///
 /// Note: This test doesn't measure exact memory usage but ensures
 /// the operation completes without memory-related failures.
-#[test]
+#[rstest]
 fn test_large_scale_memory_efficiency() {
 	let mut to_state = ProjectState::new();
 
@@ -467,7 +468,7 @@ fn test_large_scale_memory_efficiency() {
 ///
 /// Verifies that running the autodetector multiple times doesn't
 /// cause memory growth or resource leaks.
-#[test]
+#[rstest]
 fn test_repeated_operations_no_resource_leak() {
 	let mut to_state = ProjectState::new();
 
@@ -521,7 +522,7 @@ fn test_repeated_operations_no_resource_leak() {
 ///
 /// Verifies that detection time scales approximately linearly with
 /// the number of models.
-#[test]
+#[rstest]
 fn test_linear_scaling() {
 	let sizes = [100, 200, 400];
 	let mut times = Vec::new();
