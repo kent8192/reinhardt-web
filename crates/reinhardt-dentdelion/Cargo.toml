@@ -81,6 +81,9 @@ boa_engine = { version = "0.21", optional = true }
 # HTML parsing (optional, for CSS/Meta extraction in SSR)
 scraper = { version = "0.22", optional = true }
 
+# URL parsing (for SSRF validation)
+url = { workspace = true }
+
 # Documentation
 aquamarine = { workspace = true }
 reinhardt-db = {workspace = true, features = ["backends"], optional = true}
