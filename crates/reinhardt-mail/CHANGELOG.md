@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.9...reinhardt-mail@v0.1.0-alpha.10) - 2026-02-17
+
+### Fixed
+
+- *(mail)* enable proper TLS hostname verification in SMTP backend
+
 ## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-mail@v0.1.0-alpha.8...reinhardt-mail@v0.1.0-alpha.9) - 2026-02-15
 
 ### Maintenance
