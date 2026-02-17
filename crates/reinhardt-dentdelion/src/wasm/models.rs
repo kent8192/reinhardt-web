@@ -279,8 +279,9 @@ pub type SharedModelRegistry = std::sync::Arc<ModelRegistry>;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_column_type_serde() {
 		let types = vec![
 			ColumnType::Integer,
@@ -305,7 +306,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_schema_builder() {
 		let schema = ModelSchema::new("users")
 			.column(ColumnDef {
@@ -335,7 +336,7 @@ mod tests {
 		assert_eq!(schema.indexes.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_register_model() {
 		let registry = ModelRegistry::new();
 
@@ -366,7 +367,7 @@ mod tests {
 		assert!(registry.register_model("other-plugin", schema).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_register_migration() {
 		let registry = ModelRegistry::new();
 
@@ -399,7 +400,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_list_models() {
 		let registry = ModelRegistry::new();
 
@@ -423,7 +424,7 @@ mod tests {
 		assert!(plugin_b_models.contains(&"products".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_remove_plugin_entries() {
 		let registry = ModelRegistry::new();
 
@@ -450,7 +451,7 @@ mod tests {
 		assert_eq!(registry.migration_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_get_model() {
 		let registry = ModelRegistry::new();
 

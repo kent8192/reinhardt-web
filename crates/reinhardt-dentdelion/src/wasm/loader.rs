@@ -381,7 +381,9 @@ impl std::fmt::Debug for WasmPluginLoader {
 mod tests {
 	use super::*;
 	use crate::wasm::runtime::WasmRuntimeConfig;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_discover_empty_dir() {
 		let runtime = Arc::new(WasmRuntime::new(WasmRuntimeConfig::default()).unwrap());
@@ -391,6 +393,7 @@ mod tests {
 		assert!(plugins.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_nonexistent_plugin() {
 		let runtime = Arc::new(WasmRuntime::new(WasmRuntimeConfig::default()).unwrap());

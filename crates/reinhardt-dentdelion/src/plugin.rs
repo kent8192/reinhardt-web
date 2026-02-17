@@ -237,6 +237,7 @@ mod tests {
 	use super::*;
 	use crate::capability::PluginCapability;
 	use crate::metadata::PluginMetadata;
+	use rstest::rstest;
 
 	struct TestPlugin {
 		metadata: PluginMetadata,
@@ -268,7 +269,7 @@ mod tests {
 	#[async_trait]
 	impl PluginLifecycle for TestPlugin {}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_trait() {
 		let plugin = TestPlugin::new();
 

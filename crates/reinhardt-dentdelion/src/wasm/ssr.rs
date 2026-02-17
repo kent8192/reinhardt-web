@@ -563,14 +563,15 @@ fn validate_component_path(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_ssr_proxy_unavailable_by_default() {
 		let proxy = SsrProxy::new();
 		assert!(!proxy.is_available());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_proxy_with_availability() {
 		let proxy = SsrProxy::with_availability(true);
 		assert!(proxy.is_available());
@@ -579,6 +580,7 @@ mod tests {
 		assert!(!proxy.is_available());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_render_react_returns_not_available() {
 		let proxy = SsrProxy::new();
@@ -588,7 +590,7 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_component_path_invalid_extension() {
 		use std::path::PathBuf;
 		let base_dir = PathBuf::from("/tmp");
@@ -596,7 +598,7 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::ComponentNotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_component_path_valid_extensions() {
 		use std::fs;
 		use tempfile::TempDir;
@@ -615,7 +617,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_component_path_prevents_traversal() {
 		use std::path::PathBuf;
 		let base_dir = PathBuf::from("/tmp/plugin_assets");
@@ -625,14 +627,14 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eval_js_returns_not_available() {
 		let proxy = SsrProxy::new();
 		let result = proxy.eval_js("console.log('test')");
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_options_default() {
 		let options = RenderOptions::default();
 		assert!(!options.include_hydration);
@@ -640,7 +642,7 @@ mod tests {
 		assert!(!options.extract_meta);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_result_structure() {
 		let result = RenderResult {
 			html: "<div>Hello</div>".to_string(),
@@ -655,7 +657,7 @@ mod tests {
 		assert!(result.hydration_script.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_error_display() {
 		let err = SsrError::NotAvailable;
 		assert!(err.to_string().contains("not available"));
@@ -667,7 +669,7 @@ mod tests {
 		assert!(err.to_string().contains("syntax error"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_component_without_runtime() {
 		let proxy = SsrProxy::new();
 		let result = proxy.render_component(
@@ -678,6 +680,7 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_eval_js_bytes_without_runtime() {
 		let proxy = SsrProxy::new();
@@ -689,16 +692,17 @@ mod tests {
 	mod ts_tests {
 		use super::*;
 		use crate::wasm::ts_runtime::TsRuntime;
+		use rstest::rstest;
 		use std::sync::Arc;
 
-		#[test]
+		#[rstest]
 		fn test_ssr_proxy_with_ts_runtime() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
 			assert!(proxy.is_available());
 		}
 
-		#[test]
+		#[rstest]
 		fn test_render_simple_component_with_ts_runtime() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
@@ -717,7 +721,7 @@ mod tests {
 			assert!(render_result.html.contains("<div>"));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_eval_js_with_ts_runtime() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
@@ -727,7 +731,7 @@ mod tests {
 			assert_eq!(result.unwrap(), "Hello, World");
 		}
 
-		#[test]
+		#[rstest]
 		fn test_hydration_script_generation() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
@@ -751,6 +755,7 @@ mod tests {
 			assert!(script.contains("Component"));
 		}
 
+		#[rstest]
 		#[tokio::test]
 		async fn test_eval_js_bytes_simple_object() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
@@ -766,6 +771,7 @@ mod tests {
 			assert_eq!(value["num"], 42);
 		}
 
+		#[rstest]
 		#[tokio::test]
 		async fn test_eval_js_bytes_complex_object() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
@@ -792,6 +798,7 @@ mod tests {
 			assert_eq!(value["str"], "hello");
 		}
 
+		#[rstest]
 		#[tokio::test]
 		async fn test_eval_js_bytes_invalid_json() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
@@ -803,7 +810,7 @@ mod tests {
 			assert!(matches!(result, Err(SsrError::EvalFailed(_))));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_css_extraction() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
@@ -831,7 +838,7 @@ mod tests {
 			assert!(css.contains(".test { color: red; }"));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_meta_extraction() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);
@@ -859,7 +866,7 @@ mod tests {
 			assert!(meta.contains(&("description".to_string(), "Test description".to_string())));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_no_extraction_when_disabled() {
 			let runtime = Arc::new(TsRuntime::new().unwrap());
 			let proxy = SsrProxy::with_ts_runtime(runtime);

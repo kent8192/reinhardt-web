@@ -384,6 +384,7 @@ impl PluginInstaller {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tempfile::TempDir;
 
 	fn create_test_cargo_toml(dir: &Path) {
@@ -397,7 +398,7 @@ serde = "1.0"
 		std::fs::write(dir.join("Cargo.toml"), content).unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_to_cargo_toml() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -410,7 +411,7 @@ serde = "1.0"
 		assert!(content.contains("1.0.0"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_duplicate_fails() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -422,7 +423,7 @@ serde = "1.0"
 		assert!(matches!(result, Err(PluginError::AlreadyRegistered(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_from_cargo_toml() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -435,7 +436,7 @@ serde = "1.0"
 		assert!(!content.contains("auth-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_nonexistent_fails() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -445,7 +446,7 @@ serde = "1.0"
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_manifest() {
 		let temp_dir = TempDir::new().unwrap();
 
@@ -457,7 +458,7 @@ serde = "1.0"
 		assert!(manifest.is_installed("auth-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_install_static() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -476,7 +477,7 @@ serde = "1.0"
 		assert!(manifest.is_installed("auth-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uninstall() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -496,7 +497,7 @@ serde = "1.0"
 		assert!(!manifest.is_installed("auth-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enable_disable_plugin() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -517,7 +518,7 @@ serde = "1.0"
 		assert!(manifest.get_plugin("auth-delion").unwrap().enabled);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_version() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -538,7 +539,7 @@ serde = "1.0"
 		assert_eq!(manifest.get_plugin("auth-delion").unwrap().version, "2.0.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_init_manifest() {
 		let temp_dir = TempDir::new().unwrap();
 
@@ -557,14 +558,14 @@ serde = "1.0"
 	// Path Getter Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_project_root() {
 		let temp_dir = TempDir::new().unwrap();
 		let installer = PluginInstaller::new(temp_dir.path());
 		assert_eq!(installer.project_root(), temp_dir.path());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cargo_toml_path() {
 		let temp_dir = TempDir::new().unwrap();
 		let installer = PluginInstaller::new(temp_dir.path());
@@ -574,7 +575,7 @@ serde = "1.0"
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manifest_path() {
 		let temp_dir = TempDir::new().unwrap();
 		let installer = PluginInstaller::new(temp_dir.path());
@@ -588,7 +589,7 @@ serde = "1.0"
 	// Edge Case Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_add_to_cargo_toml_no_file() {
 		let temp_dir = TempDir::new().unwrap();
 		// Don't create Cargo.toml
@@ -597,7 +598,7 @@ serde = "1.0"
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_to_cargo_toml_no_dependencies_section() {
 		let temp_dir = TempDir::new().unwrap();
 		let content = r#"[package]
@@ -616,7 +617,7 @@ version = "0.1.0-alpha.1"
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_version_nonexistent_plugin() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -628,7 +629,7 @@ version = "0.1.0-alpha.1"
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enable_nonexistent_plugin() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -640,7 +641,7 @@ version = "0.1.0-alpha.1"
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_disable_nonexistent_plugin() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -652,7 +653,7 @@ version = "0.1.0-alpha.1"
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uninstall_nonexistent_plugin() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -664,7 +665,7 @@ version = "0.1.0-alpha.1"
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uninstall_with_purge() {
 		let temp_dir = TempDir::new().unwrap();
 		create_test_cargo_toml(temp_dir.path());
@@ -682,7 +683,7 @@ version = "0.1.0-alpha.1"
 		assert!(!manifest.is_installed("auth-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_from_cargo_toml_no_file() {
 		let temp_dir = TempDir::new().unwrap();
 		// Don't create Cargo.toml
@@ -695,7 +696,7 @@ version = "0.1.0-alpha.1"
 	// InstalledPlugin Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_installed_plugin_new_static() {
 		let plugin = InstalledPlugin::new_static("test-delion", "1.0.0");
 		assert_eq!(plugin.name, "test-delion");
@@ -704,7 +705,7 @@ version = "0.1.0-alpha.1"
 		assert!(plugin.enabled);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_installed_plugin_new_wasm() {
 		let plugin = InstalledPlugin::new_wasm("test-delion", "1.0.0");
 		assert_eq!(plugin.name, "test-delion");
@@ -717,7 +718,7 @@ version = "0.1.0-alpha.1"
 	// Clone Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_installed_plugin_clone() {
 		let plugin = InstalledPlugin::new_static("test-delion", "1.0.0");
 		let cloned = plugin.clone();
@@ -726,7 +727,7 @@ version = "0.1.0-alpha.1"
 		assert_eq!(plugin.plugin_type, cloned.plugin_type);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_type_clone() {
 		let static_type = PluginType::Static;
 		let wasm_type = PluginType::Wasm;
@@ -734,7 +735,7 @@ version = "0.1.0-alpha.1"
 		assert_eq!(wasm_type, wasm_type.clone());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_type_equality() {
 		assert_eq!(PluginType::Static, PluginType::Static);
 		assert_eq!(PluginType::Wasm, PluginType::Wasm);

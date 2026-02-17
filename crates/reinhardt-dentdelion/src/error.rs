@@ -216,30 +216,31 @@ impl From<semver::Error> for PluginError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// ==========================================================================
 	// PluginError Display Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_not_found_error_display() {
 		let err = PluginError::NotFound("test-delion".to_string());
 		assert_eq!(err.to_string(), "plugin not found: test-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_already_installed_error_display() {
 		let err = PluginError::AlreadyInstalled("auth-delion".to_string());
 		assert_eq!(err.to_string(), "plugin already installed: auth-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_already_registered_error_display() {
 		let err = PluginError::AlreadyRegistered("cache-delion".to_string());
 		assert_eq!(err.to_string(), "plugin already registered: cache-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_version_conflict_error_display() {
 		let err = PluginError::VersionConflict {
 			plugin: "test-delion".to_string(),
@@ -253,7 +254,7 @@ mod tests {
 		assert!(msg.contains("2.0.0"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_dependency_error_display() {
 		let err = PluginError::MissingDependency {
 			plugin: "auth-delion".to_string(),
@@ -265,7 +266,7 @@ mod tests {
 		assert!(msg.contains("missing dependency"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_incompatible_version_error_display() {
 		let err = PluginError::IncompatibleVersion {
 			plugin: "auth-delion".to_string(),
@@ -280,7 +281,7 @@ mod tests {
 		assert!(msg.contains("2.0.0"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_dependency_error_display() {
 		let err = PluginError::CircularDependency;
 		assert_eq!(
@@ -289,7 +290,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_capability_error_display() {
 		let err = PluginError::MissingCapability {
 			plugin: "auth-delion".to_string(),
@@ -301,7 +302,7 @@ mod tests {
 		assert!(msg.contains("capability"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lifecycle_error_display() {
 		let err = PluginError::LifecycleError {
 			plugin: "test-delion".to_string(),
@@ -314,7 +315,7 @@ mod tests {
 		assert!(msg.contains("initialization failed"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_state_transition_error_display() {
 		let err = PluginError::InvalidStateTransition {
 			plugin: "test-delion".to_string(),
@@ -326,13 +327,13 @@ mod tests {
 		assert!(msg.contains("invalid state transition"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manifest_parse_error_display() {
 		let err = PluginError::ManifestParseError("invalid TOML".to_string());
 		assert_eq!(err.to_string(), "failed to parse manifest: invalid TOML");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manifest_not_found_error_display() {
 		let err = PluginError::ManifestNotFound("/path/to/dentdelion.toml".to_string());
 		assert_eq!(
@@ -341,7 +342,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_manifest_error_display() {
 		let err = PluginError::InvalidManifest("missing plugins section".to_string());
 		assert_eq!(
@@ -350,25 +351,25 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_toml_parse_error_display() {
 		let err = PluginError::TomlParse("unexpected token".to_string());
 		assert_eq!(err.to_string(), "TOML parse error: unexpected token");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_toml_edit_error_display() {
 		let err = PluginError::TomlEdit("edit failed".to_string());
 		assert_eq!(err.to_string(), "TOML edit error: edit failed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_version_error_display() {
 		let err = PluginError::InvalidVersion("not a valid semver".to_string());
 		assert_eq!(err.to_string(), "invalid version: not a valid semver");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_version_req_error_display() {
 		let err = PluginError::InvalidVersionReq("invalid requirement".to_string());
 		assert_eq!(
@@ -377,20 +378,20 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_execution_timeout_error_display() {
 		let err = PluginError::ExecutionTimeout;
 		assert_eq!(err.to_string(), "plugin execution timeout");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_error_display() {
 		let err = PluginError::Custom("custom error message".to_string());
 		assert_eq!(err.to_string(), "custom error message");
 	}
 
 	#[cfg(feature = "cli")]
-	#[test]
+	#[rstest]
 	fn test_network_error_display() {
 		let err = PluginError::Network("connection refused".to_string());
 		assert_eq!(err.to_string(), "network error: connection refused");
@@ -400,7 +401,7 @@ mod tests {
 	// PluginState Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_state_display() {
 		assert_eq!(PluginState::Registered.to_string(), "registered");
 		assert_eq!(PluginState::Loaded.to_string(), "loaded");
@@ -409,7 +410,7 @@ mod tests {
 		assert_eq!(PluginState::Failed.to_string(), "failed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_state_equality() {
 		assert_eq!(PluginState::Enabled, PluginState::Enabled);
 		assert_eq!(PluginState::Disabled, PluginState::Disabled);
@@ -417,20 +418,20 @@ mod tests {
 		assert_ne!(PluginState::Registered, PluginState::Loaded);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_state_clone() {
 		let state = PluginState::Enabled;
 		let cloned = state;
 		assert_eq!(state, cloned);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_state_debug() {
 		let debug_str = format!("{:?}", PluginState::Enabled);
 		assert_eq!(debug_str, "Enabled");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_state_hash() {
 		use std::collections::HashSet;
 		let mut set = HashSet::new();
@@ -447,7 +448,7 @@ mod tests {
 	// From Trait Conversion Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_io_error_conversion() {
 		let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
 		let plugin_err: PluginError = io_err.into();
@@ -455,7 +456,7 @@ mod tests {
 		assert!(plugin_err.to_string().contains("file not found"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_error_conversion() {
 		let result: Result<Version, _> = "invalid".parse();
 		let semver_err = result.unwrap_err();
@@ -467,7 +468,7 @@ mod tests {
 	// PluginError Debug Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_error_debug() {
 		let err = PluginError::NotFound("test".to_string());
 		let debug_str = format!("{:?}", err);
@@ -475,7 +476,7 @@ mod tests {
 		assert!(debug_str.contains("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_version_conflict_error_debug() {
 		let err = PluginError::VersionConflict {
 			plugin: "test".to_string(),

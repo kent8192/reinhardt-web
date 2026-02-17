@@ -375,8 +375,9 @@ fn error_to_code(error: &PluginError) -> u32 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_wit_capability_roundtrip() {
 		let wit_cap = WitCapability::Middleware;
 		let cap = wit_cap.to_capability();
@@ -384,13 +385,13 @@ mod tests {
 		assert_eq!(wit_cap, back);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_models_not_wasm_compatible() {
 		let cap = Capability::Core(PluginCapability::Models);
 		assert!(WitCapability::from_capability(&cap).is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_value_accessors() {
 		let string_val = ConfigValue::StringVal("test".to_string());
 		assert_eq!(string_val.as_string(), Some("test"));
@@ -404,7 +405,7 @@ mod tests {
 		assert_eq!(bool_val.as_bool(), Some(true));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wit_plugin_error() {
 		let error = WitPluginError::new(1, "Test error");
 		assert_eq!(error.code, 1);

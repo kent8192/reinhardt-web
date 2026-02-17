@@ -13,6 +13,7 @@
 //! 4. `tests/fixtures/network_plugin.wasm` - Plugin with NetworkAccess capability
 //! 5. `tests/fixtures/database_plugin.wasm` - Plugin with DatabaseAccess capability
 
+use rstest::rstest;
 #[cfg(feature = "wasm")]
 mod wasm_tests {
 	use reinhardt_dentdelion::{
@@ -20,6 +21,7 @@ mod wasm_tests {
 		plugin::PluginLifecycle,
 		wasm::{WasmPluginLoader, WasmRuntime, WasmRuntimeConfig},
 	};
+	use rstest::rstest;
 	use std::path::PathBuf;
 	use std::sync::Arc;
 
@@ -29,6 +31,7 @@ mod wasm_tests {
 	}
 
 	/// Test full plugin lifecycle (load -> enable -> disable -> unload)
+	#[rstest]
 	#[tokio::test]
 	async fn test_full_plugin_lifecycle() {
 		let wasm_path = fixtures_dir().join("minimal_plugin.wasm");
@@ -83,6 +86,7 @@ mod wasm_tests {
 	}
 
 	/// Test that invalid state transitions are rejected
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_state_transitions() {
 		let wasm_path = fixtures_dir().join("minimal_plugin.wasm");
@@ -125,6 +129,7 @@ mod wasm_tests {
 	}
 
 	/// Test that plugin can be re-enabled after disabling
+	#[rstest]
 	#[tokio::test]
 	async fn test_reenable_after_disable() {
 		let wasm_path = fixtures_dir().join("minimal_plugin.wasm");
@@ -169,6 +174,7 @@ mod wasm_tests {
 	}
 
 	/// Test host logging from WASM plugin
+	#[rstest]
 	#[tokio::test]
 	async fn test_host_logging_from_wasm() {
 		let plugins_dir = fixtures_dir().join("plugins/logging");
@@ -222,6 +228,7 @@ mod wasm_tests {
 	}
 
 	/// Test host config access from WASM plugin
+	#[rstest]
 	#[tokio::test]
 	async fn test_host_config_from_wasm() {
 		let plugins_dir = fixtures_dir().join("plugins/config");
@@ -265,6 +272,7 @@ mod wasm_tests {
 	}
 
 	/// Test that loading invalid WASM bytes fails gracefully
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_wasm_bytes_error() {
 		let runtime = Arc::new(
@@ -279,6 +287,7 @@ mod wasm_tests {
 	}
 
 	/// Test plugin discovery in fixtures directory
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_discovery() {
 		let runtime = Arc::new(

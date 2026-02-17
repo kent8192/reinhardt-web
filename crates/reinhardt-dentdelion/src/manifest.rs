@@ -470,8 +470,9 @@ pub struct WasmManifestConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_project_manifest() {
 		let toml_content = r#"
 [dentdelion]
@@ -512,7 +513,7 @@ token_expiry_hours = 24
 		assert_eq!(config.get("algorithm").unwrap().as_str().unwrap(), "HS256");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_manifest() {
 		let mut manifest = ProjectManifest::default_manifest();
 
@@ -527,7 +528,7 @@ token_expiry_hours = 24
 		assert!(manifest.is_installed("rate-limit-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enabled_disabled_plugins() {
 		let mut manifest = ProjectManifest::default_manifest();
 

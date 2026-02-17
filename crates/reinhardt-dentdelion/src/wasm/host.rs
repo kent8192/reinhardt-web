@@ -1185,8 +1185,9 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_host_state_config() {
 		let state = HostState::new("test-plugin");
 
@@ -1203,7 +1204,7 @@ mod tests {
 		assert!(state.get_config("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_services() {
 		let state = HostState::new("test-plugin");
 
@@ -1217,7 +1218,7 @@ mod tests {
 		assert!(state.get_service("my-service").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_builder() {
 		let state = HostStateBuilder::new("test-plugin")
 			.config("key1", ConfigValue::IntVal(42))
@@ -1229,7 +1230,7 @@ mod tests {
 		assert_eq!(state.get_config("key2"), Some(ConfigValue::BoolVal(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_capabilities() {
 		use crate::capability::PluginCapability;
 
@@ -1242,7 +1243,7 @@ mod tests {
 		assert!(state.has_capability(&cap));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_event_bus() {
 		// Create two host states sharing the same event bus
 		let event_bus = Arc::new(EventBus::new());
@@ -1270,7 +1271,7 @@ mod tests {
 		assert_eq!(events[0].payload, vec![1, 2, 3]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_event_bus_isolation() {
 		// Without sharing an event bus, plugins are isolated
 		let plugin_a = HostState::new("plugin-a");
@@ -1284,7 +1285,7 @@ mod tests {
 		assert!(events.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_event_unsubscribe() {
 		let state = HostState::new("test-plugin");
 
@@ -1293,7 +1294,7 @@ mod tests {
 		assert!(!state.unsubscribe_events(sub_id)); // Already unsubscribed
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_model_registry() {
 		let state = HostState::new("test-plugin");
 
@@ -1332,7 +1333,7 @@ mod tests {
 		assert!(state.get_registered_model("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_model_registry_duplicate() {
 		let state = HostState::new("test-plugin");
 
@@ -1343,7 +1344,7 @@ mod tests {
 		assert!(state.register_model_schema(schema).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_migration_registry() {
 		let state = HostState::new("test-plugin");
 
@@ -1362,7 +1363,7 @@ mod tests {
 		assert_eq!(migrations[0].version, "0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_shared_model_registry() {
 		// Create two host states sharing the same model registry
 		let model_registry = Arc::new(ModelRegistry::new());
@@ -1402,7 +1403,7 @@ mod tests {
 		assert_eq!(model_registry.schema_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_builder_with_model_registry() {
 		let model_registry = Arc::new(ModelRegistry::new());
 
@@ -1414,7 +1415,7 @@ mod tests {
 		assert!(Arc::ptr_eq(state.model_registry(), &model_registry));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_ssr_proxy_default() {
 		let state = HostState::new("test-plugin");
 
@@ -1422,7 +1423,7 @@ mod tests {
 		assert!(!state.is_ssr_available());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_ssr_proxy_with_availability() {
 		let ssr_proxy = Arc::new(SsrProxy::with_availability(true));
 
@@ -1437,6 +1438,7 @@ mod tests {
 		assert!(Arc::ptr_eq(state.ssr_proxy(), &ssr_proxy));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_host_state_render_react_not_available() {
 		let state = HostState::new("test-plugin");
@@ -1449,7 +1451,7 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_eval_js_not_available() {
 		let state = HostState::new("test-plugin");
 
@@ -1459,7 +1461,7 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_host_state_builder_with_ssr_proxy() {
 		let ssr_proxy = Arc::new(SsrProxy::with_availability(true));
 

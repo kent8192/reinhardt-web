@@ -584,6 +584,7 @@ mod tests {
 	use crate::capability::PluginCapability;
 	use crate::metadata::PluginMetadata;
 	use crate::plugin::Plugin;
+	use rstest::rstest;
 
 	struct TestPlugin {
 		metadata: PluginMetadata,
@@ -623,7 +624,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_plugin() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
@@ -634,7 +635,7 @@ mod tests {
 		assert_eq!(registry.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capability_providers() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(
@@ -652,7 +653,7 @@ mod tests {
 		assert_eq!(providers[0].name(), "auth-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_validation() {
 		let registry = PluginRegistry::new();
 
@@ -667,7 +668,7 @@ mod tests {
 		assert!(registry.validate_dependencies().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_dependency() {
 		let registry = PluginRegistry::new();
 
@@ -681,7 +682,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::MissingDependency { .. })));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enable_order() {
 		let registry = PluginRegistry::new();
 
@@ -712,7 +713,7 @@ mod tests {
 	// Circular Dependency Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_circular_dependency_detection() {
 		let registry = PluginRegistry::new();
 
@@ -728,7 +729,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::CircularDependency)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_dependency_three_plugins() {
 		let registry = PluginRegistry::new();
 
@@ -752,7 +753,7 @@ mod tests {
 	// Incompatible Version Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_incompatible_version() {
 		let registry = PluginRegistry::new();
 
@@ -771,7 +772,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compatible_version_minor() {
 		let registry = PluginRegistry::new();
 
@@ -791,6 +792,7 @@ mod tests {
 	// Unregister Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unregister_nonexistent_fails() {
 		use std::path::PathBuf;
@@ -801,6 +803,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unregister_enabled_plugin_fails() {
 		use std::path::PathBuf;
@@ -820,6 +823,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unregister_loaded_plugin_succeeds() {
 		use std::path::PathBuf;
@@ -836,6 +840,7 @@ mod tests {
 		assert!(!registry.is_registered("test-delion"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unregister_disabled_plugin_succeeds() {
 		use std::path::PathBuf;
@@ -856,7 +861,7 @@ mod tests {
 	// Register Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_register_same_version_twice_succeeds() {
 		let registry = PluginRegistry::new();
 		let plugin1 = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
@@ -869,7 +874,7 @@ mod tests {
 		assert_eq!(registry.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_different_version_fails() {
 		let registry = PluginRegistry::new();
 		let plugin1 = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
@@ -885,14 +890,14 @@ mod tests {
 	// Default and Debug Trait Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_registry_default() {
 		let registry = PluginRegistry::default();
 		assert!(registry.is_empty());
 		assert_eq!(registry.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_debug() {
 		let registry = PluginRegistry::new();
 		let debug_str = format!("{:?}", registry);
@@ -903,13 +908,13 @@ mod tests {
 	// State Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_get_state_nonexistent() {
 		let registry = PluginRegistry::new();
 		assert!(registry.get_state("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_state_registered() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
@@ -921,14 +926,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_state_nonexistent_fails() {
 		let registry = PluginRegistry::new();
 		let result = registry.set_state("nonexistent", PluginState::Enabled);
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_enabled() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new("test-delion", "1.0.0"));
@@ -946,7 +951,7 @@ mod tests {
 	// Plugin Names and Getters Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_names() {
 		let registry = PluginRegistry::new();
 		registry
@@ -966,7 +971,7 @@ mod tests {
 		assert!(names.contains(&"c-delion".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_plugin() {
 		let registry = PluginRegistry::new();
 		registry
@@ -978,7 +983,7 @@ mod tests {
 		assert_eq!(plugin.unwrap().name(), "test-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_plugin() {
 		let registry = PluginRegistry::new();
 		assert!(registry.get("nonexistent").is_none());
@@ -988,7 +993,7 @@ mod tests {
 	// Dependency Query Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_get_dependents() {
 		let registry = PluginRegistry::new();
 
@@ -1005,7 +1010,7 @@ mod tests {
 		assert_eq!(dependents[0], "auth-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_dependencies() {
 		let registry = PluginRegistry::new();
 
@@ -1022,7 +1027,7 @@ mod tests {
 		assert_eq!(deps[0], "core-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_dependencies_nonexistent() {
 		let registry = PluginRegistry::new();
 		let deps = registry.get_dependencies("nonexistent");
@@ -1033,7 +1038,7 @@ mod tests {
 	// Capability Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_enabled_with_capability() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(
@@ -1054,7 +1059,7 @@ mod tests {
 		assert!(services_providers.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capability_providers_empty() {
 		let registry = PluginRegistry::new();
 		let providers =
@@ -1066,6 +1071,7 @@ mod tests {
 	// Async Lifecycle Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_all_plugins() {
 		use crate::context::PluginContext;
@@ -1081,6 +1087,7 @@ mod tests {
 		assert_eq!(registry.get_state("test-delion"), Some(PluginState::Loaded));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_enable_all_plugins() {
 		use crate::context::PluginContext;
@@ -1097,6 +1104,7 @@ mod tests {
 		assert!(registry.is_enabled("test-delion"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_plugin_single() {
 		use crate::context::PluginContext;
@@ -1112,6 +1120,7 @@ mod tests {
 		assert_eq!(registry.get_state("test-delion"), Some(PluginState::Loaded));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_plugin_nonexistent() {
 		use crate::context::PluginContext;
@@ -1124,6 +1133,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_enable_plugin_single() {
 		use crate::context::PluginContext;
@@ -1140,6 +1150,7 @@ mod tests {
 		assert!(registry.is_enabled("test-delion"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_enable_plugin_nonexistent() {
 		use crate::context::PluginContext;
@@ -1152,6 +1163,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disable_plugin() {
 		use crate::context::PluginContext;
@@ -1174,6 +1186,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disable_plugin_nonexistent() {
 		use crate::context::PluginContext;
@@ -1186,6 +1199,7 @@ mod tests {
 		assert!(matches!(result, Err(PluginError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_lifecycle_order_with_dependencies() {
 		use crate::context::PluginContext;

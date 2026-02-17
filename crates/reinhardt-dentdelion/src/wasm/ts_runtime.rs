@@ -278,35 +278,36 @@ pub enum TsError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_ts_runtime_creation() {
 		let runtime = TsRuntime::new();
 		assert!(runtime.is_ok());
 		assert!(runtime.unwrap().is_preact_ready());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eval_simple_expression() {
 		let runtime = TsRuntime::new().unwrap();
 		let result = runtime.eval("(1 + 2).toString()").unwrap();
 		assert_eq!(result, "3");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eval_string_expression() {
 		let runtime = TsRuntime::new().unwrap();
 		let result = runtime.eval("'Hello, ' + 'World'").unwrap();
 		assert_eq!(result, "Hello, World");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eval_void() {
 		let runtime = TsRuntime::new().unwrap();
 		runtime.eval_void("var x = 42;").unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_simple_component() {
 		let runtime = TsRuntime::new().unwrap();
 		let component_code = r#"
@@ -323,7 +324,7 @@ mod tests {
 		assert!(html.contains("<div>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_nested_component() {
 		let runtime = TsRuntime::new().unwrap();
 		let component_code = r#"
@@ -345,7 +346,7 @@ mod tests {
 		assert!(html.contains("Nested!"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_with_attributes() {
 		let runtime = TsRuntime::new().unwrap();
 		let component_code = r#"

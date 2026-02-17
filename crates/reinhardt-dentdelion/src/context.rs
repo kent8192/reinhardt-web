@@ -210,8 +210,9 @@ impl PluginContextBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_context_creation() {
 		let ctx = PluginContext::new(PathBuf::from("/test/project"));
 
@@ -222,7 +223,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_operations() {
 		let ctx = PluginContext::new(PathBuf::from("/test"));
 
@@ -239,7 +240,7 @@ mod tests {
 		assert_eq!(ctx.get_config_bool("bool_key"), Some(true));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_service_registration() {
 		let ctx = PluginContext::new(PathBuf::from("/test"));
 
@@ -260,7 +261,7 @@ mod tests {
 		assert!(!ctx.has_service::<TestService>());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder() {
 		let mut config = HashMap::new();
 		config.insert(

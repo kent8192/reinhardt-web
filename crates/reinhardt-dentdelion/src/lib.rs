@@ -216,6 +216,7 @@ pub use inventory;
 #[cfg(test)]
 mod tests {
 	use super::prelude::*;
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	struct TestPlugin {
@@ -261,7 +262,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integration() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new());
@@ -276,7 +277,7 @@ mod tests {
 		assert_eq!(retrieved.version().to_string(), "1.0.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capability_query() {
 		let registry = PluginRegistry::new();
 		let plugin = Arc::new(TestPlugin::new());

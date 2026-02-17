@@ -287,8 +287,9 @@ pub type SharedEventBus = Arc<EventBus>;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_event_creation() {
 		let event = Event::new("user.created", vec![1, 2, 3], "test-plugin");
 
@@ -298,7 +299,7 @@ mod tests {
 		assert!(event.timestamp > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subscribe_and_unsubscribe() {
 		let bus = EventBus::new();
 
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(bus.subscription_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_emit_and_poll() {
 		let bus = EventBus::new();
 
@@ -340,7 +341,7 @@ mod tests {
 		assert!(events.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_matching() {
 		// Wildcard matches all
 		assert!(EventBus::matches_pattern("*", "anything"));
@@ -358,7 +359,7 @@ mod tests {
 		assert!(!EventBus::matches_pattern("user.created", "user.deleted"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_subscribers() {
 		let bus = EventBus::new();
 
@@ -380,7 +381,7 @@ mod tests {
 		assert_eq!(bus.pending_count(sub3), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_limit() {
 		let bus = EventBus::with_max_queue_size(3);
 		let sub_id = bus.subscribe("*", "test");
@@ -398,7 +399,7 @@ mod tests {
 		assert_eq!(events[2].name, "event.4");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_plugin_subscriptions() {
 		let bus = EventBus::new();
 
@@ -413,14 +414,14 @@ mod tests {
 		assert_eq!(bus.subscription_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_poll_nonexistent_subscription() {
 		let bus = EventBus::new();
 		let events = bus.poll(999, 10);
 		assert!(events.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_poll_limit() {
 		let bus = EventBus::new();
 		let sub_id = bus.subscribe("*", "test");

@@ -329,8 +329,9 @@ impl std::fmt::Debug for WasmRuntime {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = WasmRuntimeConfig::default();
 		assert_eq!(config.memory_limit_mb, DEFAULT_MEMORY_LIMIT_MB);
@@ -342,7 +343,7 @@ mod tests {
 		assert!(config.fuel_metering);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = WasmRuntimeConfigBuilder::new()
 			.memory_limit_mb(256)
@@ -357,14 +358,14 @@ mod tests {
 		assert!(!config.fuel_metering);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_creation() {
 		let config = WasmRuntimeConfig::default();
 		let result = WasmRuntime::new(config);
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_wasm_bytes() {
 		let config = WasmRuntimeConfig::default();
 		let runtime = WasmRuntime::new(config).unwrap();

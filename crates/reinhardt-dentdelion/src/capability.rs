@@ -608,15 +608,16 @@ impl std::str::FromStr for TrustLevel {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_plugin_capability_display() {
 		assert_eq!(PluginCapability::Middleware.to_string(), "middleware");
 		assert_eq!(PluginCapability::Models.to_string(), "models");
 		assert_eq!(PluginCapability::StaticFiles.to_string(), "static_files");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_capability_from_str() {
 		assert_eq!(
 			"middleware".parse::<PluginCapability>().unwrap(),
@@ -629,7 +630,7 @@ mod tests {
 		assert!("unknown".parse::<PluginCapability>().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capability_from_str() {
 		assert_eq!(
 			"middleware".parse::<Capability>().unwrap(),
@@ -641,7 +642,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wasm_compatibility() {
 		assert!(PluginCapability::Middleware.is_wasm_compatible());
 		assert!(PluginCapability::Commands.is_wasm_compatible());
@@ -649,7 +650,7 @@ mod tests {
 		assert!(!PluginCapability::StaticSiteGeneration.is_wasm_compatible());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_static_site_generation_capability() {
 		assert_eq!(
 			PluginCapability::StaticSiteGeneration.to_string(),
@@ -667,7 +668,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_frontend_capabilities() {
 		// FrontendSsr
 		assert_eq!(PluginCapability::FrontendSsr.to_string(), "frontend_ssr");
@@ -717,7 +718,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_frontend_capabilities_wasm_compatibility() {
 		// Frontend capabilities require TypeScript runtime, not WASM
 		assert!(!PluginCapability::FrontendSsr.is_wasm_compatible());
@@ -729,7 +730,7 @@ mod tests {
 		assert!(PluginCapability::BuildToolIntegration.is_wasm_compatible());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_requires_ts_runtime() {
 		assert!(PluginCapability::FrontendSsr.requires_ts_runtime());
 		assert!(PluginCapability::FrontendHydration.requires_ts_runtime());
@@ -745,19 +746,19 @@ mod tests {
 	// PluginTier Tests
 	// =========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_default() {
 		assert_eq!(PluginTier::default(), PluginTier::Standard);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_display() {
 		assert_eq!(PluginTier::Standard.to_string(), "standard");
 		assert_eq!(PluginTier::Premium.to_string(), "premium");
 		assert_eq!(PluginTier::Enterprise.to_string(), "enterprise");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_from_str() {
 		assert_eq!(
 			"standard".parse::<PluginTier>().unwrap(),
@@ -777,7 +778,7 @@ mod tests {
 		assert!("unknown".parse::<PluginTier>().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_memory_limits() {
 		assert_eq!(PluginTier::Standard.memory_limit_bytes(), 128 * 1024 * 1024);
 		assert_eq!(PluginTier::Premium.memory_limit_bytes(), 512 * 1024 * 1024);
@@ -787,21 +788,21 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_timeout() {
 		assert_eq!(PluginTier::Standard.timeout_secs(), 30);
 		assert_eq!(PluginTier::Premium.timeout_secs(), 60);
 		assert_eq!(PluginTier::Enterprise.timeout_secs(), 120);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_fuel_limits() {
 		assert_eq!(PluginTier::Standard.fuel_limit(), 100_000_000);
 		assert_eq!(PluginTier::Premium.fuel_limit(), 500_000_000);
 		assert_eq!(PluginTier::Enterprise.fuel_limit(), 1_000_000_000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_tier_all() {
 		let all = PluginTier::all();
 		assert_eq!(all.len(), 3);
@@ -814,19 +815,19 @@ mod tests {
 	// TrustLevel Tests
 	// =========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_default() {
 		assert_eq!(TrustLevel::default(), TrustLevel::Untrusted);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_display() {
 		assert_eq!(TrustLevel::Untrusted.to_string(), "untrusted");
 		assert_eq!(TrustLevel::Verified.to_string(), "verified");
 		assert_eq!(TrustLevel::Trusted.to_string(), "trusted");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_from_str() {
 		assert_eq!(
 			"untrusted".parse::<TrustLevel>().unwrap(),
@@ -852,42 +853,42 @@ mod tests {
 		assert!("unknown".parse::<TrustLevel>().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_network_access() {
 		assert!(!TrustLevel::Untrusted.allows_network());
 		assert!(TrustLevel::Verified.allows_network());
 		assert!(TrustLevel::Trusted.allows_network());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_database_access() {
 		assert!(!TrustLevel::Untrusted.allows_database());
 		assert!(TrustLevel::Verified.allows_database());
 		assert!(TrustLevel::Trusted.allows_database());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_filesystem_access() {
 		assert!(!TrustLevel::Untrusted.allows_filesystem());
 		assert!(!TrustLevel::Verified.allows_filesystem());
 		assert!(TrustLevel::Trusted.allows_filesystem());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_verification_requirement() {
 		assert!(!TrustLevel::Untrusted.requires_verification());
 		assert!(TrustLevel::Verified.requires_verification());
 		assert!(!TrustLevel::Trusted.requires_verification());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_third_party_safety() {
 		assert!(TrustLevel::Untrusted.is_safe_for_third_party());
 		assert!(TrustLevel::Verified.is_safe_for_third_party());
 		assert!(!TrustLevel::Trusted.is_safe_for_third_party());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trust_level_all() {
 		let all = TrustLevel::all();
 		assert_eq!(all.len(), 3);

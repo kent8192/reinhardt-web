@@ -443,12 +443,13 @@ impl std::fmt::Debug for CratesIoClient {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// ==========================================================================
 	// Plugin Naming Tests (existing)
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_plugin_name() {
 		assert!(CratesIoClient::is_valid_plugin_name("auth-delion"));
 		assert!(CratesIoClient::is_valid_plugin_name("rate-limit-delion"));
@@ -456,7 +457,7 @@ mod tests {
 		assert!(!CratesIoClient::is_valid_plugin_name("auth-plugin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_suggest_plugin_name() {
 		assert_eq!(CratesIoClient::suggest_plugin_name("auth"), "auth-delion");
 		assert_eq!(
@@ -469,7 +470,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_suffix_constant() {
 		assert_eq!(PLUGIN_SUFFIX, "-delion");
 	}
@@ -478,30 +479,30 @@ mod tests {
 	// Edge Case Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_plugin_name_empty() {
 		assert!(!CratesIoClient::is_valid_plugin_name(""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_plugin_name_just_suffix() {
 		// "-delion" alone technically ends with the suffix
 		assert!(CratesIoClient::is_valid_plugin_name("-delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_plugin_name_case_sensitive() {
 		// Suffix is case-sensitive
 		assert!(!CratesIoClient::is_valid_plugin_name("auth-DELION"));
 		assert!(!CratesIoClient::is_valid_plugin_name("auth-Delion"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_suggest_plugin_name_empty_string() {
 		assert_eq!(CratesIoClient::suggest_plugin_name(""), "-delion");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_suggest_plugin_name_already_has_suffix() {
 		assert_eq!(
 			CratesIoClient::suggest_plugin_name("my-delion"),
@@ -509,7 +510,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_suggest_plugin_name_with_hyphen() {
 		assert_eq!(
 			CratesIoClient::suggest_plugin_name("my-plugin"),
@@ -521,7 +522,7 @@ mod tests {
 	// CrateInfo Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_crate_info_is_plugin() {
 		let info = CrateInfo {
 			name: "auth-delion".to_string(),
@@ -538,7 +539,7 @@ mod tests {
 		assert_eq!(info.downloads, 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_crate_info_non_plugin() {
 		let info = CrateInfo {
 			name: "serde".to_string(),
@@ -555,7 +556,7 @@ mod tests {
 		assert!(info.repository.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_crate_info_with_versions() {
 		let info = CrateInfo {
 			name: "test-delion".to_string(),
@@ -583,7 +584,7 @@ mod tests {
 		assert!(info.versions[1].yanked);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_crate_info_clone() {
 		let info = CrateInfo {
 			name: "test-delion".to_string(),
@@ -600,7 +601,7 @@ mod tests {
 		assert_eq!(info.version, cloned.version);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_crate_info_debug() {
 		let info = CrateInfo {
 			name: "test-delion".to_string(),
@@ -621,7 +622,7 @@ mod tests {
 	// VersionInfo Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_version_info_yanked() {
 		let version = VersionInfo {
 			version: "1.0.0".to_string(),
@@ -632,7 +633,7 @@ mod tests {
 		assert_eq!(version.version, "1.0.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_version_info_not_yanked() {
 		let version = VersionInfo {
 			version: "2.0.0".to_string(),
@@ -643,7 +644,7 @@ mod tests {
 		assert_eq!(version.dependencies.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_version_info_clone() {
 		let version = VersionInfo {
 			version: "1.0.0".to_string(),
@@ -655,7 +656,7 @@ mod tests {
 		assert_eq!(version.dependencies, cloned.dependencies);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_version_info_debug() {
 		let version = VersionInfo {
 			version: "1.0.0".to_string(),
@@ -671,7 +672,7 @@ mod tests {
 	// Debug Trait Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_crates_io_client_debug_trait_bound() {
 		// Verify CratesIoClient implements Debug
 		fn _assert_debug<T: std::fmt::Debug>() {}
@@ -682,7 +683,7 @@ mod tests {
 	// Semver Compatibility Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_dependency_info_struct() {
 		let dep = DependencyInfo {
 			name: "reinhardt".to_string(),
@@ -695,7 +696,7 @@ mod tests {
 		assert!(!dep.optional);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_info_clone() {
 		let dep = DependencyInfo {
 			name: "reinhardt-orm".to_string(),
@@ -710,7 +711,7 @@ mod tests {
 		assert_eq!(dep.kind, cloned.kind);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_info_debug() {
 		let dep = DependencyInfo {
 			name: "reinhardt".to_string(),
@@ -723,7 +724,7 @@ mod tests {
 		assert!(debug_str.contains("reinhardt"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_version_req_matches_compatible() {
 		// Test that ^1.0.0 matches 1.2.0
 		let req = semver::VersionReq::parse("^1.0.0").unwrap();
@@ -731,7 +732,7 @@ mod tests {
 		assert!(req.matches(&version));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_version_req_matches_incompatible() {
 		// Test that ^1.0.0 does not match 2.0.0
 		let req = semver::VersionReq::parse("^1.0.0").unwrap();
@@ -739,7 +740,7 @@ mod tests {
 		assert!(!req.matches(&version));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_version_req_matches_exact() {
 		// Test exact version requirement
 		let req = semver::VersionReq::parse("=1.5.0").unwrap();
@@ -749,7 +750,7 @@ mod tests {
 		assert!(!req.matches(&version_no_match));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_version_req_matches_range() {
 		// Test range requirement >=0.5, <2.0
 		let req = semver::VersionReq::parse(">=0.5, <2.0").unwrap();
@@ -760,7 +761,7 @@ mod tests {
 		assert!(!req.matches(&semver::Version::parse("2.0.0").unwrap()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_semver_prerelease_version() {
 		// Pre-release versions
 		let req = semver::VersionReq::parse("^1.0.0-alpha").unwrap();
@@ -768,13 +769,13 @@ mod tests {
 		assert!(req.matches(&version));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_version_error() {
 		let result = semver::Version::parse("not-a-version");
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_version_req_error() {
 		let result = semver::VersionReq::parse("invalid-req");
 		assert!(result.is_err());

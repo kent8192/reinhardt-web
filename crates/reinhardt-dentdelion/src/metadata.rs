@@ -350,8 +350,9 @@ mod version_req_serde {
 mod tests {
 	use super::*;
 	use crate::capability::PluginCapability;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_metadata_builder() {
 		let metadata = PluginMetadata::builder("auth-delion", "1.0.0")
 			.description("JWT authentication plugin")
@@ -372,7 +373,7 @@ mod tests {
 		assert_eq!(metadata.dependencies.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_matches() {
 		let dep = PluginDependency::new("test-delion", "^1.0.0").unwrap();
 
@@ -382,7 +383,7 @@ mod tests {
 		assert!(!dep.matches(&Version::parse("0.9.0").unwrap()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_qualified_name() {
 		let metadata = PluginMetadata::builder("test-delion", "2.1.0")
 			.build()

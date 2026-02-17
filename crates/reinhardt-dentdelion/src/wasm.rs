@@ -79,8 +79,9 @@ pub fn is_valid_wasm(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_wasm_magic_validation() {
 		// Valid WASM magic
 		let valid = [0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];

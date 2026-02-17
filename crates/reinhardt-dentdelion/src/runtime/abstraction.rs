@@ -391,22 +391,23 @@ impl From<PluginTier> for RuntimeLimits {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_display() {
 		assert_eq!(RuntimeType::Static.to_string(), "static");
 		assert_eq!(RuntimeType::Wasm.to_string(), "wasm");
 		assert_eq!(RuntimeType::TypeScript.to_string(), "typescript");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_as_str() {
 		assert_eq!(RuntimeType::Static.as_str(), "static");
 		assert_eq!(RuntimeType::Wasm.as_str(), "wasm");
 		assert_eq!(RuntimeType::TypeScript.as_str(), "typescript");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_from_str() {
 		assert_eq!(
 			"static".parse::<RuntimeType>().unwrap(),
@@ -441,7 +442,7 @@ mod tests {
 		assert!("unknown".parse::<RuntimeType>().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_from_str_case_insensitive() {
 		assert_eq!(
 			"STATIC".parse::<RuntimeType>().unwrap(),
@@ -454,7 +455,7 @@ mod tests {
 		assert_eq!("WASM".parse::<RuntimeType>().unwrap(), RuntimeType::Wasm);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_capabilities() {
 		assert!(!RuntimeType::Static.supports_hmr());
 		assert!(!RuntimeType::Wasm.supports_hmr());
@@ -465,21 +466,21 @@ mod tests {
 		assert!(RuntimeType::TypeScript.supports_ssr());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_clone() {
 		let rt = RuntimeType::Static;
 		let cloned = rt;
 		assert_eq!(rt, cloned);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_eq() {
 		assert_eq!(RuntimeType::Static, RuntimeType::Static);
 		assert_ne!(RuntimeType::Static, RuntimeType::Wasm);
 		assert_ne!(RuntimeType::Wasm, RuntimeType::TypeScript);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_hash() {
 		use std::collections::HashSet;
 		let mut set = HashSet::new();
@@ -493,7 +494,7 @@ mod tests {
 		assert_eq!(set.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_serde() {
 		let rt = RuntimeType::Wasm;
 		let json = serde_json::to_string(&rt).unwrap();
@@ -503,7 +504,7 @@ mod tests {
 		assert_eq!(deserialized, rt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_type_serde_all_variants() {
 		// Verify all variants serialize correctly
 		// Note: serde rename_all = "snake_case" converts TypeScript -> type_script
@@ -521,7 +522,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_default() {
 		let limits = RuntimeLimits::default();
 		assert_eq!(limits.memory_limit_bytes, 128 * 1024 * 1024);
@@ -529,7 +530,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(100_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_clone() {
 		let limits = RuntimeLimits::default();
 		let cloned = limits.clone();
@@ -538,7 +539,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, cloned.fuel_limit);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_serde() {
 		let limits = RuntimeLimits {
 			memory_limit_bytes: 1024 * 1024,
@@ -552,7 +553,7 @@ mod tests {
 		assert_eq!(deserialized.fuel_limit, Some(50_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_debug() {
 		let limits = RuntimeLimits::default();
 		let debug_str = format!("{:?}", limits);
@@ -560,31 +561,31 @@ mod tests {
 		assert!(debug_str.contains("memory_limit_bytes"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_function_not_found() {
 		let err = RuntimeError::FunctionNotFound("test_fn".to_string());
 		assert_eq!(err.to_string(), "function not found: test_fn");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_execution_error() {
 		let err = RuntimeError::ExecutionError("panic occurred".to_string());
 		assert_eq!(err.to_string(), "execution error: panic occurred");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_capability_not_supported() {
 		let err = RuntimeError::CapabilityNotSupported("models".to_string());
 		assert_eq!(err.to_string(), "capability not supported: models");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_timeout() {
 		let err = RuntimeError::Timeout(std::time::Duration::from_secs(30));
 		assert_eq!(err.to_string(), "execution timeout after 30s");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_memory_limit_exceeded() {
 		let err = RuntimeError::MemoryLimitExceeded {
 			used: 200 * 1024 * 1024,
@@ -596,25 +597,25 @@ mod tests {
 		assert!(msg.contains("134217728 bytes"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_module_load_error() {
 		let err = RuntimeError::ModuleLoadError("file not found".to_string());
 		assert_eq!(err.to_string(), "module load error: file not found");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_serialization_error() {
 		let err = RuntimeError::SerializationError("invalid json".to_string());
 		assert_eq!(err.to_string(), "serialization error: invalid json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_internal() {
 		let err = RuntimeError::Internal("unexpected state".to_string());
 		assert_eq!(err.to_string(), "internal error: unexpected state");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_error_to_plugin_error() {
 		let runtime_err = RuntimeError::FunctionNotFound("missing".to_string());
 		let plugin_err: PluginError = runtime_err.into();
@@ -626,7 +627,7 @@ mod tests {
 	// RuntimeLimits from_tier and Builder Tests
 	// =========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_from_tier_standard() {
 		let limits = RuntimeLimits::from_tier(PluginTier::Standard);
 		assert_eq!(limits.memory_limit_bytes, 128 * 1024 * 1024);
@@ -634,7 +635,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(100_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_from_tier_premium() {
 		let limits = RuntimeLimits::from_tier(PluginTier::Premium);
 		assert_eq!(limits.memory_limit_bytes, 512 * 1024 * 1024);
@@ -642,7 +643,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(500_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_from_tier_enterprise() {
 		let limits = RuntimeLimits::from_tier(PluginTier::Enterprise);
 		assert_eq!(limits.memory_limit_bytes, 1024 * 1024 * 1024);
@@ -650,14 +651,14 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(1_000_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_from_plugin_tier_trait() {
 		let tier = PluginTier::Premium;
 		let limits: RuntimeLimits = tier.into();
 		assert_eq!(limits.memory_limit_bytes, 512 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_defaults() {
 		let limits = RuntimeLimits::builder().build();
 		assert_eq!(limits.memory_limit_bytes, 128 * 1024 * 1024);
@@ -665,7 +666,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(100_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_memory_bytes() {
 		let limits = RuntimeLimits::builder()
 			.memory_limit_bytes(256 * 1024 * 1024)
@@ -673,13 +674,13 @@ mod tests {
 		assert_eq!(limits.memory_limit_bytes, 256 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_memory_mb() {
 		let limits = RuntimeLimits::builder().memory_limit_mb(256).build();
 		assert_eq!(limits.memory_limit_bytes, 256 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_timeout() {
 		let limits = RuntimeLimits::builder()
 			.timeout(std::time::Duration::from_secs(60))
@@ -687,25 +688,25 @@ mod tests {
 		assert_eq!(limits.timeout, std::time::Duration::from_secs(60));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_timeout_secs() {
 		let limits = RuntimeLimits::builder().timeout_secs(45).build();
 		assert_eq!(limits.timeout, std::time::Duration::from_secs(45));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_fuel() {
 		let limits = RuntimeLimits::builder().fuel_limit(200_000_000).build();
 		assert_eq!(limits.fuel_limit, Some(200_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_no_fuel() {
 		let limits = RuntimeLimits::builder().no_fuel_limit().build();
 		assert_eq!(limits.fuel_limit, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_combined() {
 		let limits = RuntimeLimits::builder()
 			.memory_limit_mb(512)
@@ -717,7 +718,7 @@ mod tests {
 		assert_eq!(limits.fuel_limit, Some(300_000_000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_runtime_limits_builder_from_tier() {
 		let limits = RuntimeLimits::builder()
 			.timeout_secs(90) // Override timeout only
