@@ -102,11 +102,11 @@ pub async fn export_data(
 		// Allow: Excel/XML exports are permanently excluded features
 		#[allow(clippy::unimplemented)]
 		ExportFormat::Excel => {
-			unimplemented!("Excel export is not yet implemented")
+			unimplemented!("Excel export is permanently excluded")
 		}
 		#[allow(clippy::unimplemented)]
 		ExportFormat::XML => {
-			unimplemented!("XML export is not yet implemented")
+			unimplemented!("XML export is permanently excluded")
 		}
 	};
 
