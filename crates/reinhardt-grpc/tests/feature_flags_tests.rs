@@ -11,10 +11,11 @@
 mod di_feature_enabled {
 	use reinhardt_di::InjectionContext;
 	use reinhardt_grpc::GrpcRequestExt;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use tonic::Request;
 
-	#[test]
+	#[rstest]
 	fn test_di_feature_enabled_compilation() {
 		// This test verifies that the code compiles when di feature is enabled
 		// Simply compiling this module is sufficient to test
@@ -23,7 +24,7 @@ mod di_feature_enabled {
 		assert!(true, "GrpcRequestExt is available when di feature enabled");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grpc_request_ext_get_di_context() {
 		// Create a request with DI context extensions
 		let mut request = Request::new(());
@@ -44,7 +45,7 @@ mod di_feature_enabled {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grpc_request_ext_missing_context() {
 		// Create a request without DI context extensions
 		let request = Request::new(());
@@ -71,6 +72,7 @@ mod di_feature_disabled {
 	use async_trait::async_trait;
 	use reinhardt_grpc::adapter::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
 	use reinhardt_grpc::error::{GrpcError, GrpcResult};
+	use rstest::rstest;
 
 	// ===== Mock implementations for compilation testing =====
 	struct MockAdapter;
@@ -107,7 +109,7 @@ mod di_feature_disabled {
 	}
 
 	// ===== Tests =====
-	#[test]
+	#[rstest]
 	fn test_di_feature_disabled_compilation() {
 		// This test verifies that basic gRPC functionality works without di feature
 
@@ -124,7 +126,7 @@ mod di_feature_disabled {
 		assert!(true, "Basic gRPC functionality compiles without di feature");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_basic_grpc_without_di() {
 		// This test verifies that users can define adapters without DI
 		// Local struct definitions are intentionally not instantiated - this is a compile-time test
@@ -173,8 +175,9 @@ mod di_feature_disabled {
 mod common_tests {
 	use prost::Message;
 	use reinhardt_grpc::proto::common;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_proto_types_available_with_all_features() {
 		// Proto types should always be available regardless of feature flags
 

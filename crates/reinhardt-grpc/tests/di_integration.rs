@@ -7,6 +7,7 @@
 
 use reinhardt_di::{DiError, Injectable, InjectionContext, SingletonScope};
 use reinhardt_grpc::grpc_handler;
+use rstest::rstest;
 use std::sync::{Arc, Mutex};
 use tonic::{Request, Response, Status};
 
@@ -126,6 +127,7 @@ impl TestService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_grpc_handler_basic_di() {
 	// Setup
@@ -148,6 +150,7 @@ async fn test_grpc_handler_basic_di() {
 	assert_eq!(user, "User:123");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_grpc_handler_multiple_dependencies() {
 	// Setup
@@ -170,6 +173,7 @@ async fn test_grpc_handler_multiple_dependencies() {
 	assert_eq!(user, "User:456");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_grpc_handler_missing_di_context() {
 	// Setup
@@ -192,6 +196,7 @@ async fn test_grpc_handler_missing_di_context() {
 	assert!(status.message().contains("DI context not set"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_grpc_handler_cache_control() {
 	// Setup

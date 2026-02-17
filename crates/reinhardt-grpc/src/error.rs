@@ -36,8 +36,9 @@ impl From<tonic::Status> for GrpcError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_error_display() {
 		let err = GrpcError::Connection("test error".to_string());
 		assert!(err.to_string().contains("Connection error"));
@@ -46,7 +47,7 @@ mod tests {
 		assert!(err.to_string().contains("Not found"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_tonic_status() {
 		let status = tonic::Status::not_found("User not found");
 		let error = GrpcError::from(status);

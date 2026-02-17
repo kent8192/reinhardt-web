@@ -86,10 +86,11 @@ impl<T> GrpcRequestExt for tonic::Request<T> {
 mod tests {
 	use super::*;
 	use reinhardt_di::InjectionContext;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use tonic::Request;
 
-	#[test]
+	#[rstest]
 	fn test_grpc_request_ext_get_di_context() {
 		// Create a mock InjectionContext
 		let singleton_scope = reinhardt_di::SingletonScope::new();
@@ -108,7 +109,7 @@ mod tests {
 		assert!(Arc::ptr_eq(&injection_ctx, &extracted));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grpc_request_ext_missing_context() {
 		// Create a request without DI context
 		let request = Request::new(());
