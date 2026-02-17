@@ -2574,8 +2574,9 @@ pub(crate) fn is_svg_presentation_attr(attr: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_get_element_spec() {
 		assert!(get_element_spec("img").is_some());
 		assert!(get_element_spec("a").is_some());
@@ -2583,7 +2584,7 @@ mod tests {
 		assert!(get_element_spec("div").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_global_attribute() {
 		assert!(is_global_attribute("id"));
 		assert!(is_global_attribute("class"));
@@ -2592,7 +2593,7 @@ mod tests {
 		assert!(!is_global_attribute("href"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_img_spec() {
 		assert_eq!(IMG_SPEC.tag, "img");
 		assert_eq!(IMG_SPEC.required_attrs.len(), 2);
@@ -2600,7 +2601,7 @@ mod tests {
 		assert!(!IMG_SPEC.is_interactive);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_content_model() {
 		let spec = get_element_spec("select").unwrap();
 		match &spec.content_model {
@@ -2614,7 +2615,7 @@ mod tests {
 
 	// SVG Element Tests
 
-	#[test]
+	#[rstest]
 	fn test_get_svg_element_spec() {
 		// Basic SVG elements
 		assert!(get_element_spec("svg").is_some());
@@ -2650,7 +2651,7 @@ mod tests {
 		assert!(get_element_spec("desc").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_svg_element() {
 		// Should return true for SVG elements
 		assert!(is_svg_element("svg"));
@@ -2665,7 +2666,7 @@ mod tests {
 		assert!(!is_svg_element("img"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_svg_spec() {
 		let spec = get_element_spec("svg").unwrap();
 		assert_eq!(spec.tag, "svg");
@@ -2681,7 +2682,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_spec_void() {
 		let spec = get_element_spec("path").unwrap();
 		assert_eq!(spec.tag, "path");
@@ -2696,7 +2697,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gradient_content_model() {
 		let linear_spec = get_element_spec("linearGradient").unwrap();
 		match &linear_spec.content_model {
@@ -2717,7 +2718,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_svg_presentation_attrs() {
 		// Check common presentation attributes
 		assert!(is_svg_presentation_attr("fill"));
@@ -2732,7 +2733,7 @@ mod tests {
 		assert!(!is_svg_presentation_attr("cx"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_desc_text_only() {
 		let spec = get_element_spec("desc").unwrap();
 		assert!(matches!(spec.content_model, Some(ContentModel::TextOnly)));

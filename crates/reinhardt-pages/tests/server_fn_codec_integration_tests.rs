@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "msgpack")]
 use reinhardt_pages::server_fn::codec::MessagePackCodec;
+use rstest::rstest;
 
 /// Complex nested structure for integration testing
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,7 +36,7 @@ struct UserSettings {
 }
 
 /// Success Criterion 1: JSON codec with complex nested structures
-#[test]
+#[rstest]
 fn test_json_codec_complex_structure() {
 	let codec = JsonCodec;
 
@@ -68,7 +69,7 @@ fn test_json_codec_complex_structure() {
 }
 
 /// Success Criterion 2: URL codec with simple structures (GET request simulation)
-#[test]
+#[rstest]
 fn test_url_codec_get_request_params() {
 	let codec = UrlCodec;
 
@@ -106,7 +107,7 @@ fn test_url_codec_get_request_params() {
 
 /// Success Criterion 3: MessagePack codec efficiency (binary format)
 #[cfg(feature = "msgpack")]
-#[test]
+#[rstest]
 fn test_msgpack_codec_efficiency() {
 	let json_codec = JsonCodec;
 	let msgpack_codec = MessagePackCodec;
@@ -145,7 +146,7 @@ fn test_msgpack_codec_efficiency() {
 }
 
 /// Success Criterion 4: Content-Type headers are correct
-#[test]
+#[rstest]
 fn test_codec_content_types() {
 	let json_codec = JsonCodec;
 	let url_codec = UrlCodec;
@@ -164,7 +165,7 @@ fn test_codec_content_types() {
 }
 
 /// Success Criterion 5: Error handling for malformed data
-#[test]
+#[rstest]
 fn test_codec_error_handling() {
 	let json_codec = JsonCodec;
 
@@ -178,7 +179,7 @@ fn test_codec_error_handling() {
 }
 
 /// Integration test: Codec interoperability (encode with one, decode with same)
-#[test]
+#[rstest]
 fn test_codec_round_trip_guarantees() {
 	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 	struct TestData {
@@ -227,7 +228,7 @@ fn test_codec_round_trip_guarantees() {
 }
 
 /// Integration test: Codec name identification
-#[test]
+#[rstest]
 fn test_codec_names() {
 	let json_codec = JsonCodec;
 	let url_codec = UrlCodec;

@@ -100,8 +100,9 @@ impl std::error::Error for ServerFnError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_error_creation() {
 		let err = ServerFnError::network("Connection timeout");
 		assert!(matches!(err, ServerFnError::Network(_)));
@@ -110,7 +111,7 @@ mod tests {
 		assert!(matches!(err, ServerFnError::Server { status: 404, .. }));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_error_display() {
 		let err = ServerFnError::network("Connection timeout");
 		assert_eq!(err.to_string(), "Network error: Connection timeout");

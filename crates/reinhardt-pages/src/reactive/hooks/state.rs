@@ -364,8 +364,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_state_basic() {
 		let (count, set_count) = use_state(0);
 		assert_eq!(count.get(), 0);
@@ -377,7 +378,7 @@ mod tests {
 		assert_eq!(count.get(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_state_with_string() {
 		let (name, set_name) = use_state("Alice".to_string());
 		assert_eq!(name.get(), "Alice");
@@ -386,7 +387,7 @@ mod tests {
 		assert_eq!(name.get(), "Bob");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_state_setter_cloneable() {
 		let (count, set_count) = use_state(0);
 		let set_count2 = set_count.clone();
@@ -398,7 +399,7 @@ mod tests {
 		assert_eq!(count.get(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_reducer_basic() {
 		#[derive(Clone, Debug, PartialEq)]
 		struct State {
@@ -434,7 +435,7 @@ mod tests {
 		assert_eq!(state.get().count, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_reducer_complex_state() {
 		#[derive(Clone, Debug, PartialEq)]
 		struct TodoState {
@@ -499,7 +500,7 @@ mod tests {
 	// SharedSignal and use_shared_state tests
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	#[test]
+	#[rstest]
 	fn test_use_shared_state_basic() {
 		let (count, set_count) = use_shared_state(0);
 		assert_eq!(count.get(), 0);
@@ -511,7 +512,7 @@ mod tests {
 		assert_eq!(count.get(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_shared_state_with_string() {
 		let (name, set_name) = use_shared_state("Alice".to_string());
 		assert_eq!(name.get(), "Alice");
@@ -520,7 +521,7 @@ mod tests {
 		assert_eq!(name.get(), "Bob");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_shared_state_setter_cloneable() {
 		let (count, set_count) = use_shared_state(0);
 		let set_count2 = set_count.clone();
@@ -532,7 +533,7 @@ mod tests {
 		assert_eq!(count.get(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shared_signal_send_sync() {
 		// Compile-time verification that SharedSignal and SharedSetState are Send + Sync
 		fn assert_send<T: Send>() {}
@@ -544,7 +545,7 @@ mod tests {
 		assert_sync::<SharedSetState<i32>>();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shared_signal_update() {
 		let (count, _) = use_shared_state(0);
 
@@ -555,7 +556,7 @@ mod tests {
 		assert_eq!(count.get(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shared_signal_get_untracked() {
 		let (count, set_count) = use_shared_state(42);
 

@@ -79,14 +79,15 @@ pub trait MediaDefiningWidget {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_media_creation() {
 		let media = Media::new();
 		assert!(media.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_add_resources() {
 		let mut media = Media::new();
 		media.add_css("/static/css/forms.css");
@@ -97,7 +98,7 @@ mod tests {
 		assert_eq!(media.js(), &["/static/js/forms.js".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_render_css() {
 		let mut media = Media::new();
 		media.add_css("/static/css/forms.css");
@@ -108,7 +109,7 @@ mod tests {
 		assert!(rendered.contains(r#"<link rel="stylesheet" href="/static/css/widgets.css">"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_render_js() {
 		let mut media = Media::new();
 		media.add_js("/static/js/forms.js");
@@ -117,7 +118,7 @@ mod tests {
 		assert_eq!(rendered, r#"<script src="/static/js/forms.js"></script>"#);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_extend() {
 		let mut media1 = Media::new();
 		media1.add_css("/static/css/base.css");

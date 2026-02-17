@@ -184,11 +184,12 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_transition_pending_state() {
 		let transition = use_transition();
@@ -210,7 +211,7 @@ mod tests {
 		assert!(!transition.is_pending.get()); // Back to false after sync execution
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_deferred_value() {
 		let value = Signal::new(42);

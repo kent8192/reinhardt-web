@@ -211,8 +211,9 @@ impl IslandDetector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_island_node_struct() {
 		// Test that IslandNode can be created (compilation test)
 		#[cfg(target_arch = "wasm32")]

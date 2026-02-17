@@ -19,6 +19,7 @@
 
 use reinhardt_pages::auth::{AuthData, AuthState, auth_state};
 use reinhardt_pages::reactive::{Effect, Signal, with_runtime};
+use rstest::rstest;
 use std::collections::HashSet;
 
 // ============================================================================
@@ -26,7 +27,7 @@ use std::collections::HashSet;
 // ============================================================================
 
 /// Tests initial unauthenticated state
-#[test]
+#[rstest]
 fn test_initial_unauthenticated_state() {
 	let state = AuthState::new();
 
@@ -39,7 +40,7 @@ fn test_initial_unauthenticated_state() {
 }
 
 /// Tests basic login operation
-#[test]
+#[rstest]
 fn test_basic_login() {
 	let state = AuthState::new();
 	state.login(1, "testuser");
@@ -50,7 +51,7 @@ fn test_basic_login() {
 }
 
 /// Tests login with full user information
-#[test]
+#[rstest]
 fn test_login_full_with_all_fields() {
 	let state = AuthState::new();
 	state.login_full(
@@ -70,7 +71,7 @@ fn test_login_full_with_all_fields() {
 }
 
 /// Tests login without email
-#[test]
+#[rstest]
 fn test_login_full_without_email() {
 	let state = AuthState::new();
 	state.login_full(10, "staff_user", None, true, false);
@@ -82,7 +83,7 @@ fn test_login_full_without_email() {
 }
 
 /// Tests logout operation
-#[test]
+#[rstest]
 fn test_logout_clears_all_fields() {
 	let state = AuthState::new();
 	state.login_full(1, "user", Some("user@example.com".to_string()), true, false);
@@ -97,7 +98,7 @@ fn test_logout_clears_all_fields() {
 }
 
 /// Tests update with AuthData
-#[test]
+#[rstest]
 fn test_update_with_auth_data() {
 	let state = AuthState::new();
 	state.login(1, "initial");
@@ -110,7 +111,7 @@ fn test_update_with_auth_data() {
 }
 
 /// Tests creating state from server data
-#[test]
+#[rstest]
 fn test_from_server_data_authenticated() {
 	let data = AuthData::full(
 		99,
@@ -128,7 +129,7 @@ fn test_from_server_data_authenticated() {
 }
 
 /// Tests creating state from anonymous server data
-#[test]
+#[rstest]
 fn test_from_server_data_anonymous() {
 	let data = AuthData::anonymous();
 	let state = AuthState::from_server_data(data);
@@ -139,7 +140,7 @@ fn test_from_server_data_anonymous() {
 }
 
 /// Tests multiple login/logout cycles
-#[test]
+#[rstest]
 fn test_multiple_login_logout_cycles() {
 	let state = AuthState::new();
 
@@ -169,7 +170,7 @@ fn test_multiple_login_logout_cycles() {
 }
 
 /// Tests login overwrite
-#[test]
+#[rstest]
 fn test_login_overwrites_previous_session() {
 	let state = AuthState::new();
 	state.login(1, "first_user");
@@ -184,7 +185,7 @@ fn test_login_overwrites_previous_session() {
 // ============================================================================
 
 /// Tests basic permission check
-#[test]
+#[rstest]
 fn test_has_permission_basic() {
 	let state = AuthState::new();
 	let mut perms = HashSet::new();
@@ -196,7 +197,7 @@ fn test_has_permission_basic() {
 }
 
 /// Tests superuser has all permissions
-#[test]
+#[rstest]
 fn test_superuser_bypass_permission_check() {
 	let state = AuthState::new();
 	state.login_full(1, "superadmin", None, true, true);
@@ -208,7 +209,7 @@ fn test_superuser_bypass_permission_check() {
 }
 
 /// Tests has_any_permission with multiple permissions
-#[test]
+#[rstest]
 fn test_has_any_permission_partial_match() {
 	let state = AuthState::new();
 	let mut perms = HashSet::new();
@@ -222,7 +223,7 @@ fn test_has_any_permission_partial_match() {
 }
 
 /// Tests has_any_permission for superuser
-#[test]
+#[rstest]
 fn test_has_any_permission_superuser() {
 	let state = AuthState::new();
 	state.login_full(1, "admin", None, true, true);
@@ -231,7 +232,7 @@ fn test_has_any_permission_superuser() {
 }
 
 /// Tests has_all_permissions with complete match
-#[test]
+#[rstest]
 fn test_has_all_permissions_complete_match() {
 	let state = AuthState::new();
 	let mut perms = HashSet::new();
@@ -246,7 +247,7 @@ fn test_has_all_permissions_complete_match() {
 }
 
 /// Tests has_all_permissions for superuser
-#[test]
+#[rstest]
 fn test_has_all_permissions_superuser() {
 	let state = AuthState::new();
 	state.login_full(1, "admin", None, true, true);
@@ -255,7 +256,7 @@ fn test_has_all_permissions_superuser() {
 }
 
 /// Tests permission cache update
-#[test]
+#[rstest]
 fn test_permission_cache_update() {
 	let state = AuthState::new();
 
@@ -274,7 +275,7 @@ fn test_permission_cache_update() {
 }
 
 /// Tests permissions are cleared on logout
-#[test]
+#[rstest]
 fn test_permissions_cleared_on_logout() {
 	let state = AuthState::new();
 	let mut perms = HashSet::new();
@@ -290,7 +291,7 @@ fn test_permissions_cleared_on_logout() {
 }
 
 /// Tests permissions from AuthData
-#[test]
+#[rstest]
 fn test_permissions_from_auth_data_initialization() {
 	let data = AuthData {
 		is_authenticated: true,
@@ -314,7 +315,7 @@ fn test_permissions_from_auth_data_initialization() {
 }
 
 /// Tests permissions update via AuthData update
-#[test]
+#[rstest]
 fn test_permissions_updated_via_auth_data_update() {
 	let state = AuthState::new();
 	state.login(1, "user");
@@ -340,7 +341,7 @@ fn test_permissions_updated_via_auth_data_update() {
 // ============================================================================
 
 /// Tests signal updates when login is called
-#[test]
+#[rstest]
 fn test_signal_updates_on_login() {
 	let state = AuthState::new();
 	let auth_signal = state.is_authenticated_signal();
@@ -356,7 +357,7 @@ fn test_signal_updates_on_login() {
 }
 
 /// Tests signal updates when logout is called
-#[test]
+#[rstest]
 fn test_signal_updates_on_logout() {
 	let state = AuthState::new();
 	state.login(200, "temp_user");
@@ -370,7 +371,7 @@ fn test_signal_updates_on_logout() {
 }
 
 /// Tests effect triggered by authentication change
-#[test]
+#[rstest]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_auth_change() {
 	let state = AuthState::new();
@@ -396,7 +397,7 @@ fn test_effect_triggered_by_auth_change() {
 }
 
 /// Tests effect triggered by user_id change
-#[test]
+#[rstest]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_user_id_change() {
 	let state = AuthState::new();
@@ -415,7 +416,7 @@ fn test_effect_triggered_by_user_id_change() {
 }
 
 /// Tests effect triggered by permission change
-#[test]
+#[rstest]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_permission_change() {
 	let state = AuthState::new();
@@ -437,7 +438,7 @@ fn test_effect_triggered_by_permission_change() {
 }
 
 /// Tests multiple effects on same signal
-#[test]
+#[rstest]
 #[serial_test::serial(reactive)]
 fn test_multiple_effects_on_same_signal() {
 	let state = AuthState::new();
@@ -469,7 +470,7 @@ fn test_multiple_effects_on_same_signal() {
 }
 
 /// Tests signal clone shares same underlying value
-#[test]
+#[rstest]
 fn test_signal_clone_shares_value() {
 	let state = AuthState::new();
 	let signal1 = state.username_signal();
@@ -486,7 +487,7 @@ fn test_signal_clone_shares_value() {
 // ============================================================================
 
 /// Tests global auth_state function returns same instance
-#[test]
+#[rstest]
 #[serial_test::serial(auth)]
 fn test_global_auth_state_singleton() {
 	let state1 = auth_state();
@@ -502,7 +503,7 @@ fn test_global_auth_state_singleton() {
 }
 
 /// Tests global state persists across function calls
-#[test]
+#[rstest]
 #[serial_test::serial(auth)]
 fn test_global_state_persistence() {
 	// Get two instances of global auth state
@@ -521,7 +522,7 @@ fn test_global_state_persistence() {
 }
 
 /// Tests global state updates propagate
-#[test]
+#[rstest]
 #[serial_test::serial(auth)]
 fn test_global_state_update_propagation() {
 	let state1 = auth_state();
@@ -540,7 +541,7 @@ fn test_global_state_update_propagation() {
 }
 
 /// Tests global state logout affects all references
-#[test]
+#[rstest]
 #[serial_test::serial(auth)]
 fn test_global_state_logout_affects_all() {
 	let state1 = auth_state();
@@ -554,7 +555,7 @@ fn test_global_state_logout_affects_all() {
 }
 
 /// Tests global state permission changes propagate
-#[test]
+#[rstest]
 #[serial_test::serial(auth)]
 fn test_global_state_permission_propagation() {
 	let state1 = auth_state();

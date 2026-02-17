@@ -8,6 +8,7 @@
 
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::router::{Link, PathPattern, Redirect, Router, RouterOutlet, guard, guard_or};
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashMap;
 
@@ -32,7 +33,7 @@ fn not_found_view() -> Page {
 }
 
 /// Success Criterion 1: Path pattern matching
-#[test]
+#[rstest]
 fn test_path_pattern_exact_match() {
 	let pattern = PathPattern::new("/users/");
 
@@ -42,7 +43,7 @@ fn test_path_pattern_exact_match() {
 }
 
 /// Success Criterion 1: Path pattern with parameters
-#[test]
+#[rstest]
 fn test_path_pattern_with_params() {
 	let pattern = PathPattern::new("/users/{id}/");
 
@@ -54,7 +55,7 @@ fn test_path_pattern_with_params() {
 }
 
 /// Success Criterion 1: Path pattern with multiple parameters
-#[test]
+#[rstest]
 fn test_path_pattern_multiple_params() {
 	let pattern = PathPattern::new("/users/{user_id}/posts/{post_id}/");
 
@@ -67,7 +68,7 @@ fn test_path_pattern_multiple_params() {
 }
 
 /// Success Criterion 1: Reverse URL from pattern
-#[test]
+#[rstest]
 fn test_path_pattern_reverse() {
 	let pattern = PathPattern::new("/users/{id}/");
 
@@ -79,7 +80,7 @@ fn test_path_pattern_reverse() {
 }
 
 /// Success Criterion 2: Router with named routes
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_named_routes() {
 	let router = Router::new()
@@ -94,7 +95,7 @@ fn test_router_named_routes() {
 }
 
 /// Success Criterion 2: Reverse URL lookup by name
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_reverse_url() {
 	let router = Router::new()
@@ -111,7 +112,7 @@ fn test_router_reverse_url() {
 }
 
 /// Success Criterion 2: Reverse URL with invalid name
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_reverse_invalid_name() {
 	let router = Router::new().named_route("home", "/", home_view);
@@ -121,7 +122,7 @@ fn test_router_reverse_invalid_name() {
 }
 
 /// Success Criterion 3: Router path matching
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_match_path() {
 	let router = Router::new()
@@ -145,7 +146,7 @@ fn test_router_match_path() {
 }
 
 /// Success Criterion 3: Router with guards
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_with_guards() {
 	// Guard that always rejects
@@ -161,7 +162,7 @@ fn test_router_with_guards() {
 }
 
 /// Success Criterion 3: Router not found handler
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_not_found() {
 	let router = Router::new()
@@ -176,7 +177,7 @@ fn test_router_not_found() {
 }
 
 /// Success Criterion 4: Link component rendering
-#[test]
+#[rstest]
 fn test_link_component() {
 	let link = Link::new("/users/", "View Users")
 		.class("nav-link")
@@ -192,7 +193,7 @@ fn test_link_component() {
 }
 
 /// Success Criterion 4: Link component with replace
-#[test]
+#[rstest]
 fn test_link_with_replace() {
 	let link = Link::new("/dashboard/", "Dashboard").replace(true);
 
@@ -202,7 +203,7 @@ fn test_link_with_replace() {
 }
 
 /// Success Criterion 4: External link
-#[test]
+#[rstest]
 fn test_link_external() {
 	let link = Link::new("https://example.com", "External").external(true);
 
@@ -214,7 +215,7 @@ fn test_link_external() {
 }
 
 /// Success Criterion 4: RouterOutlet component
-#[test]
+#[rstest]
 fn test_router_outlet() {
 	use std::sync::Arc;
 	let router = Arc::new(Router::new());
@@ -230,7 +231,7 @@ fn test_router_outlet() {
 }
 
 /// Success Criterion 4: Redirect component
-#[test]
+#[rstest]
 fn test_redirect_component() {
 	let redirect = Redirect::new("/login/");
 
@@ -242,7 +243,7 @@ fn test_redirect_component() {
 }
 
 /// Success Criterion 4: Guard function
-#[test]
+#[rstest]
 fn test_guard_true() {
 	let guarded = guard(|| true, "Allowed Content");
 	let view = guarded();
@@ -251,7 +252,7 @@ fn test_guard_true() {
 }
 
 /// Success Criterion 4: Guard function with false condition
-#[test]
+#[rstest]
 fn test_guard_false() {
 	let guarded = guard(|| false, "Allowed Content");
 	let view = guarded();
@@ -260,7 +261,7 @@ fn test_guard_false() {
 }
 
 /// Success Criterion 4: Guard with fallback
-#[test]
+#[rstest]
 fn test_guard_or_fallback() {
 	let guarded = guard_or(|| false, "Main Content", "Fallback Content");
 	let view = guarded();
@@ -269,7 +270,7 @@ fn test_guard_or_fallback() {
 }
 
 /// Integration test: Full routing scenario
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_full_routing_scenario() {
 	// 1. Create router with various routes
@@ -298,7 +299,7 @@ fn test_full_routing_scenario() {
 }
 
 /// Integration test: Router navigation (non-WASM)
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_navigation() {
 	let router = Router::new()
@@ -313,7 +314,7 @@ fn test_router_navigation() {
 }
 
 /// Test pattern param names extraction
-#[test]
+#[rstest]
 fn test_path_pattern_param_names() {
 	let pattern = PathPattern::new("/users/{user_id}/posts/{post_id}/comments/{comment_id}/");
 
@@ -328,7 +329,7 @@ fn test_path_pattern_param_names() {
 }
 
 /// Test router route count
-#[test]
+#[rstest]
 #[serial(router)]
 fn test_router_route_count() {
 	let router = Router::new()
@@ -340,7 +341,7 @@ fn test_router_route_count() {
 }
 
 /// Test component names
-#[test]
+#[rstest]
 fn test_component_names() {
 	assert_eq!(Link::name(), "Link");
 	assert_eq!(RouterOutlet::name(), "RouterOutlet");

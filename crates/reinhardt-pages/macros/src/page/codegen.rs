@@ -628,6 +628,7 @@ fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> T
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn parse_and_generate(input: TokenStream) -> TokenStream {
 		use reinhardt_manouche::core::PageMacro;
@@ -638,7 +639,7 @@ mod tests {
 		generate(&typed_ast)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_simple_element() {
 		let input = quote::quote!(|| { div { "hello" } });
 		let output = parse_and_generate(input);
@@ -652,7 +653,7 @@ mod tests {
 		assert!(output_str.contains("\"hello\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_element_with_attr() {
 		let input = quote::quote!(|| {
 			div {
@@ -669,7 +670,7 @@ mod tests {
 		assert!(output_str.contains("\"container\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_with_params() {
 		let input = quote::quote!(|name: String| {
 			div { "hello" }
@@ -680,7 +681,7 @@ mod tests {
 		assert!(output_str.contains("name : String"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_data_attr_conversion() {
 		let input = quote::quote!(|| {
 			div {
@@ -695,7 +696,7 @@ mod tests {
 		assert!(output_str.contains("\"data-testid\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_component_basic() {
 		let input = quote::quote!(|| {
 			MyButton(label: "Click")
@@ -708,7 +709,7 @@ mod tests {
 		assert!(output_str.contains("\"Click\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_component_multiple_args() {
 		let input = quote::quote!(|| {
 			MyButton(label: "Click", disabled: true, count: 42)
@@ -722,7 +723,7 @@ mod tests {
 		assert!(output_str.contains("42"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_component_empty_args() {
 		let input = quote::quote!(|| { MyComponent() });
 		let output = parse_and_generate(input);
@@ -733,7 +734,7 @@ mod tests {
 		assert!(output_str.contains("()"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_component_with_children() {
 		let input = quote::quote!(|| {
 			MyWrapper(class: "container") {

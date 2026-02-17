@@ -216,11 +216,12 @@ pub struct TypedPageComponent {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use proc_macro2::Span;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_typed_page_attr_html_name() {
 		let attr = TypedPageAttr {
 			name: Ident::new("data_testid", Span::call_site()),
@@ -230,7 +231,7 @@ mod tests {
 		assert_eq!(attr.html_name(), "data-testid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_page_attr_html_name_aria() {
 		let attr = TypedPageAttr {
 			name: Ident::new("aria_label", Span::call_site()),
@@ -240,7 +241,7 @@ mod tests {
 		assert_eq!(attr.html_name(), "aria-label");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_page_element_is_void() {
 		let void_tags = ["br", "hr", "img", "input", "meta", "link"];
 		for tag in void_tags {
@@ -255,7 +256,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_page_attr_with_string_lit() {
 		let attr = TypedPageAttr {
 			name: Ident::new("src", Span::call_site()),
@@ -265,7 +266,7 @@ mod tests {
 		assert!(attr.value.is_string_literal());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_page_attr_with_dynamic() {
 		let attr = TypedPageAttr {
 			name: Ident::new("src", Span::call_site()),

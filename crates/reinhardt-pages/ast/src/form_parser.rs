@@ -829,10 +829,11 @@ fn parse_slots_block(input: ParseStream, span: Span) -> Result<FormSlots> {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use quote::quote;
 
-	#[test]
+	#[rstest]
 	fn test_parse_simple_form() {
 		let input = quote! {
 			name: LoginForm,
@@ -853,7 +854,7 @@ mod tests {
 		assert!(matches!(form.action, FormAction::Url(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_server_fn_action() {
 		let input = quote! {
 			name: VoteForm,
@@ -871,7 +872,7 @@ mod tests {
 		assert!(matches!(form.action, FormAction::ServerFn(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_missing_name() {
 		let input = quote! {
 			action: "/api/test",
@@ -886,7 +887,7 @@ mod tests {
 		assert!(result.unwrap_err().to_string().contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_state_block() {
 		let input = quote! {
 			name: ProfileForm,
@@ -911,7 +912,7 @@ mod tests {
 		assert!(state.has_success());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_state_single_field() {
 		let input = quote! {
 			name: SimpleForm,
@@ -935,7 +936,7 @@ mod tests {
 		assert!(!state.has_success());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_state_empty() {
 		let input = quote! {
 			name: EmptyStateForm,
@@ -958,7 +959,7 @@ mod tests {
 		assert!(!state.has_loading());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_form_without_state() {
 		let input = quote! {
 			name: NoStateForm,
@@ -976,7 +977,7 @@ mod tests {
 		assert!(form.state.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_callbacks_all() {
 		let input = quote! {
 			name: CallbackForm,
@@ -1003,7 +1004,7 @@ mod tests {
 		assert!(form.callbacks.on_loading.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_callbacks_single() {
 		let input = quote! {
 			name: SingleCallbackForm,
@@ -1029,7 +1030,7 @@ mod tests {
 		assert!(form.callbacks.on_loading.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_form_without_callbacks() {
 		let input = quote! {
 			name: NoCallbackForm,
@@ -1047,7 +1048,7 @@ mod tests {
 		assert!(!form.callbacks.has_any());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_callbacks_with_state() {
 		let input = quote! {
 			name: FullForm,
@@ -1086,7 +1087,7 @@ mod tests {
 		assert!(form.callbacks.on_loading.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_wrapper_basic() {
 		let input = quote! {
 			name: TestForm,
@@ -1114,7 +1115,7 @@ mod tests {
 		assert_eq!(wrapper.attrs[0].name.to_string(), "class");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_wrapper_multiple_attrs() {
 		let input = quote! {
 			name: TestForm,
@@ -1146,7 +1147,7 @@ mod tests {
 		assert_eq!(wrapper.attrs[2].name.to_string(), "data_testid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_wrapper_no_attrs() {
 		let input = quote! {
 			name: TestForm,
@@ -1171,7 +1172,7 @@ mod tests {
 		assert!(wrapper.attrs.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_wrapper_with_other_properties() {
 		let input = quote! {
 			name: TestForm,
@@ -1223,7 +1224,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_basic() {
 		let input = quote! {
 			name: TestForm,
@@ -1255,7 +1256,7 @@ mod tests {
 		assert_eq!(icon.children[0].tag.to_string(), "path");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_with_position() {
 		let input = quote! {
 			name: TestForm,
@@ -1282,7 +1283,7 @@ mod tests {
 		assert_eq!(field.get_icon_position(), IconPosition::Right);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_position_label() {
 		let input = quote! {
 			name: TestForm,
@@ -1307,7 +1308,7 @@ mod tests {
 		assert_eq!(field.get_icon_position(), IconPosition::Label);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_position_invalid() {
 		let input = quote! {
 			name: TestForm,
@@ -1330,7 +1331,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_invalid_element() {
 		let input = quote! {
 			name: TestForm,
@@ -1350,7 +1351,7 @@ mod tests {
 		assert!(result.unwrap_err().to_string().contains("svg element"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_with_nested_g_element() {
 		let input = quote! {
 			name: TestForm,
@@ -1383,7 +1384,7 @@ mod tests {
 		assert_eq!(icon.children[0].children.len(), 2); // two path elements
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_icon_default_position() {
 		let input = quote! {
 			name: TestForm,
@@ -1407,7 +1408,7 @@ mod tests {
 		assert_eq!(field.get_icon_position(), IconPosition::Left);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_custom_attrs_basic() {
 		let input = quote! {
 			name: TestForm,
@@ -1435,7 +1436,7 @@ mod tests {
 		assert_eq!(attrs[1].name.to_string(), "data_testid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_custom_attrs_single() {
 		let input = quote! {
 			name: TestForm,
@@ -1461,7 +1462,7 @@ mod tests {
 		assert_eq!(attrs[0].name.to_string(), "aria_required");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_custom_attrs_empty() {
 		let input = quote! {
 			name: TestForm,
@@ -1483,7 +1484,7 @@ mod tests {
 		assert!(attrs.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_without_attrs() {
 		let input = quote! {
 			name: TestForm,
@@ -1503,7 +1504,7 @@ mod tests {
 		assert!(field.get_attrs().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_bind_true() {
 		let input = quote! {
 			name: TestForm,
@@ -1525,7 +1526,7 @@ mod tests {
 		assert!(field.is_bind_enabled());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_bind_false() {
 		let input = quote! {
 			name: TestForm,
@@ -1548,7 +1549,7 @@ mod tests {
 		assert!(!field.is_bind_enabled());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_bind_default() {
 		let input = quote! {
 			name: TestForm,
@@ -1570,7 +1571,7 @@ mod tests {
 		assert!(field.is_bind_enabled());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_bind_invalid_value() {
 		let input = quote! {
 			name: TestForm,
@@ -1590,7 +1591,7 @@ mod tests {
 		assert!(err.contains("expected") || err.contains("bool"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_bind_with_other_properties() {
 		let input = quote! {
 			name: TestForm,
@@ -1623,7 +1624,7 @@ mod tests {
 		assert!(field.get_placeholder().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_watch_block() {
 		let input = quote! {
 			name: LoginForm,
@@ -1650,7 +1651,7 @@ mod tests {
 		assert_eq!(watch.items[0].name.to_string(), "error_display");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_watch_multiple_items() {
 		let input = quote! {
 			name: LoginForm,
@@ -1679,7 +1680,7 @@ mod tests {
 		assert_eq!(watch.items[2].name.to_string(), "success_message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_watch_empty_block() {
 		let input = quote! {
 			name: LoginForm,
@@ -1701,7 +1702,7 @@ mod tests {
 		assert!(watch.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_watch_complex_closure() {
 		let input = quote! {
 			name: LoginForm,
@@ -1733,7 +1734,7 @@ mod tests {
 		assert_eq!(watch.items[0].name.to_string(), "conditional_display");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_watch_with_other_form_options() {
 		let input = quote! {
 			name: ProfileForm,
@@ -1773,7 +1774,7 @@ mod tests {
 		assert_eq!(form.fields.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_no_watch_block() {
 		let input = quote! {
 			name: SimpleForm,
@@ -1791,7 +1792,7 @@ mod tests {
 		assert!(form.watch.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_redirect_on_success() {
 		let input = quote! {
 			name: ProfileForm,
@@ -1812,7 +1813,7 @@ mod tests {
 		assert_eq!(form.redirect_on_success.unwrap().value(), "/profile");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_redirect_with_parameter() {
 		let input = quote! {
 			name: ProfileForm,
@@ -1836,7 +1837,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_redirect_full_url() {
 		let input = quote! {
 			name: ExternalForm,
@@ -1860,7 +1861,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_no_redirect() {
 		let input = quote! {
 			name: SimpleForm,
@@ -1878,7 +1879,7 @@ mod tests {
 		assert!(form.redirect_on_success.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_redirect_with_callbacks() {
 		let input = quote! {
 			name: CallbackForm,
@@ -1905,7 +1906,7 @@ mod tests {
 	// initial_loader tests
 	// =====================================================
 
-	#[test]
+	#[rstest]
 	fn test_parse_initial_loader() {
 		let input = quote! {
 			name: ProfileEditForm,
@@ -1930,7 +1931,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_initial_loader_with_path() {
 		let input = quote! {
 			name: ProfileEditForm,
@@ -1950,7 +1951,7 @@ mod tests {
 		assert!(form.initial_loader.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_without_initial_loader() {
 		let input = quote! {
 			name: SimpleForm,
@@ -1968,7 +1969,7 @@ mod tests {
 		assert!(form.initial_loader.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_initial_from_field_property() {
 		let input = quote! {
 			name: ProfileEditForm,
@@ -2006,7 +2007,7 @@ mod tests {
 		assert_eq!(email_initial_from.unwrap().value(), "email_address");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_without_initial_from() {
 		let input = quote! {
 			name: SimpleForm,
@@ -2029,7 +2030,7 @@ mod tests {
 	// slots tests
 	// =====================================================
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_before_fields() {
 		let input = quote! {
 			name: LoginForm,
@@ -2054,7 +2055,7 @@ mod tests {
 		assert!(slots.after_fields.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_after_fields() {
 		let input = quote! {
 			name: LoginForm,
@@ -2079,7 +2080,7 @@ mod tests {
 		assert!(slots.after_fields.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_both() {
 		let input = quote! {
 			name: LoginForm,
@@ -2105,7 +2106,7 @@ mod tests {
 		assert!(slots.after_fields.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_empty() {
 		let input = quote! {
 			name: LoginForm,
@@ -2128,7 +2129,7 @@ mod tests {
 		assert!(slots.after_fields.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_no_slots() {
 		let input = quote! {
 			name: SimpleForm,
@@ -2146,7 +2147,7 @@ mod tests {
 		assert!(form.slots.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_unknown_slot() {
 		let input = quote! {
 			name: LoginForm,
@@ -2166,7 +2167,7 @@ mod tests {
 		assert!(result.unwrap_err().to_string().contains("Unknown slot"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_duplicate_before_fields() {
 		let input = quote! {
 			name: LoginForm,
@@ -2187,7 +2188,7 @@ mod tests {
 		assert!(result.unwrap_err().to_string().contains("already defined"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_slots_with_other_options() {
 		let input = quote! {
 			name: ProfileForm,
@@ -2226,7 +2227,7 @@ mod tests {
 		assert_eq!(form.fields.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_full_form_with_all_features() {
 		let input = quote! {
 			name: ProfileEditForm,
@@ -2297,7 +2298,7 @@ mod tests {
 	// field group tests
 	// =====================================================
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_basic() {
 		let input = quote! {
 			name: AddressForm,
@@ -2333,7 +2334,7 @@ mod tests {
 		assert_eq!(group.fields[1].name.to_string(), "city");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_with_class() {
 		let input = quote! {
 			name: AddressForm,
@@ -2360,7 +2361,7 @@ mod tests {
 		assert_eq!(group.class_name(), Some("address-section".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_without_label() {
 		let input = quote! {
 			name: AddressForm,
@@ -2386,7 +2387,7 @@ mod tests {
 		assert_eq!(group.class_name(), Some("address-section".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_mixed_with_fields() {
 		let input = quote! {
 			name: ProfileForm,
@@ -2428,7 +2429,7 @@ mod tests {
 		assert_eq!(email.name.to_string(), "email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_nested_prohibited() {
 		let input = quote! {
 			name: AddressForm,
@@ -2455,7 +2456,7 @@ mod tests {
 		assert!(err.contains("nested field groups are not allowed"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_field_count() {
 		let input = quote! {
 			name: AddressForm,
@@ -2481,7 +2482,7 @@ mod tests {
 		assert_eq!(group.field_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_fields_only() {
 		let input = quote! {
 			name: AddressForm,
@@ -2507,7 +2508,7 @@ mod tests {
 		assert_eq!(group.field_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_multiple_field_groups() {
 		let input = quote! {
 			name: AddressForm,
@@ -2547,7 +2548,7 @@ mod tests {
 		assert_eq!(group2.field_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_group_with_field_properties() {
 		let input = quote! {
 			name: AddressForm,
@@ -2593,7 +2594,7 @@ mod tests {
 	// Derived Block Tests
 	// ============================================================
 
-	#[test]
+	#[rstest]
 	fn test_parse_derived_block() {
 		let input = quote! {
 			name: TweetForm,
@@ -2618,7 +2619,7 @@ mod tests {
 		assert_eq!(derived.items[0].name.to_string(), "char_count");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_derived_multiple_items() {
 		let input = quote! {
 			name: TweetForm,
@@ -2647,7 +2648,7 @@ mod tests {
 		assert_eq!(derived.items[2].name.to_string(), "progress_percent");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_derived_empty_block() {
 		let input = quote! {
 			name: SimpleForm,
@@ -2669,7 +2670,7 @@ mod tests {
 		assert!(derived.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_derived_complex_closure() {
 		let input = quote! {
 			name: PriceForm,
@@ -2705,7 +2706,7 @@ mod tests {
 		assert_eq!(derived.items[1].name.to_string(), "formatted_price");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_no_derived_block() {
 		let input = quote! {
 			name: BasicForm,
@@ -2724,7 +2725,7 @@ mod tests {
 		assert!(form.derived.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_derived_with_watch() {
 		let input = quote! {
 			name: TweetForm,
@@ -2765,7 +2766,7 @@ mod tests {
 	// Dynamic ChoiceField tests (choices_loader, choices_from, etc.)
 	// ============================================================
 
-	#[test]
+	#[rstest]
 	fn test_parse_choices_loader() {
 		let input = quote! {
 			name: VotingForm,
@@ -2790,7 +2791,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_choices_loader_with_path() {
 		let input = quote! {
 			name: VotingForm,
@@ -2810,7 +2811,7 @@ mod tests {
 		assert!(form.choices_loader.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_without_choices_loader() {
 		let input = quote! {
 			name: SimpleForm,
@@ -2828,7 +2829,7 @@ mod tests {
 		assert!(form.choices_loader.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_choices_from_field_property() {
 		let input = quote! {
 			name: VotingForm,
@@ -2855,7 +2856,7 @@ mod tests {
 		assert_eq!(choices_from.unwrap().value(), "poll_options");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_choice_value_and_label_properties() {
 		let input = quote! {
 			name: VotingForm,
@@ -2898,7 +2899,7 @@ mod tests {
 		assert!(field.is_dynamic_choice_field());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_field_without_choices_from() {
 		let input = quote! {
 			name: SimpleForm,
@@ -2920,7 +2921,7 @@ mod tests {
 		assert!(!field.is_dynamic_choice_field());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_dynamic_choice_field_with_widget() {
 		let input = quote! {
 			name: VotingForm,
@@ -2950,7 +2951,7 @@ mod tests {
 		assert!(field.get_widget().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_choices_loader_with_initial_loader() {
 		let input = quote! {
 			name: EditPollForm,
@@ -2993,7 +2994,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_multiple_dynamic_choice_fields() {
 		let input = quote! {
 			name: FilterForm,

@@ -52,6 +52,7 @@ pub trait ApiModel: Serialize + DeserializeOwned + Sized {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Serialize, Deserialize)]
@@ -66,25 +67,25 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_model_endpoint() {
 		assert_eq!(TestUser::endpoint(), "/api/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_model_objects() {
 		let qs = TestUser::objects();
 		assert_eq!(qs.build_url(), "/api/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_model_filter_pk() {
 		let qs = TestUser::filter_pk(42);
 		let url = qs.build_url();
 		assert!(url.contains("pk=42"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_model_chaining() {
 		let qs = TestUser::objects()
 			.filter("is_active", true)

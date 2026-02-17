@@ -1365,9 +1365,10 @@ impl TypedFormFieldDef {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_form_method_as_str() {
 		assert_eq!(FormMethod::Post.as_str(), "POST");
 		assert_eq!(FormMethod::Get.as_str(), "GET");
@@ -1376,7 +1377,7 @@ mod tests {
 		assert_eq!(FormMethod::Patch.as_str(), "PATCH");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_method_requires_js() {
 		assert!(!FormMethod::Post.requires_js());
 		assert!(!FormMethod::Get.requires_js());
@@ -1385,7 +1386,7 @@ mod tests {
 		assert!(FormMethod::Patch.requires_js());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_field_type_rust_type() {
 		assert_eq!(TypedFieldType::CharField.rust_type(), "String");
 		assert_eq!(TypedFieldType::IntegerField.rust_type(), "i64");
@@ -1396,7 +1397,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_field_type_default_widget() {
 		assert_eq!(
 			TypedFieldType::CharField.default_widget(),
@@ -1416,7 +1417,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_widget_html_type() {
 		assert_eq!(TypedWidget::TextInput.html_type(), "text");
 		assert_eq!(TypedWidget::EmailInput.html_type(), "email");
@@ -1425,7 +1426,7 @@ mod tests {
 		assert_eq!(TypedWidget::DateInput.html_type(), "date");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_widget_is_input() {
 		assert!(TypedWidget::TextInput.is_input());
 		assert!(TypedWidget::EmailInput.is_input());
@@ -1433,14 +1434,14 @@ mod tests {
 		assert!(!TypedWidget::Select.is_input());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_widget_html_tag() {
 		assert_eq!(TypedWidget::TextInput.html_tag(), "input");
 		assert_eq!(TypedWidget::Textarea.html_tag(), "textarea");
 		assert_eq!(TypedWidget::Select.html_tag(), "select");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_field_styling_defaults() {
 		let styling = TypedFieldStyling::default();
 		assert_eq!(styling.input_class(), "reinhardt-input");
@@ -1449,7 +1450,7 @@ mod tests {
 		assert_eq!(styling.error_class(), "reinhardt-error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_field_styling_custom() {
 		let styling = TypedFieldStyling {
 			class: Some("custom-input".to_string()),
@@ -1463,7 +1464,7 @@ mod tests {
 		assert_eq!(styling.error_class(), "custom-error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_form_field_def_html_name() {
 		let field = TypedFormFieldDef::new(
 			Ident::new("username", Span::call_site()),
@@ -1474,7 +1475,7 @@ mod tests {
 		assert_eq!(field.html_id(), "id_username");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_custom_attr_html_name() {
 		let attr = TypedCustomAttr {
 			name: "aria_label".to_string(),
@@ -1484,7 +1485,7 @@ mod tests {
 		assert_eq!(attr.html_name(), "aria-label");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_custom_attr_is_aria() {
 		let aria_attr = TypedCustomAttr {
 			name: "aria_label".to_string(),
@@ -1502,7 +1503,7 @@ mod tests {
 		assert!(data_attr.is_data());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_custom_attr_data_prefix() {
 		let attr = TypedCustomAttr {
 			name: "data_testid".to_string(),
@@ -1513,7 +1514,7 @@ mod tests {
 		assert!(attr.is_data());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_form_field_custom_attrs() {
 		let mut field = TypedFormFieldDef::new(
 			Ident::new("email", Span::call_site()),

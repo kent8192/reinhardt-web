@@ -277,8 +277,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_link_new() {
 		let link = Link::new("/users/", "Users");
 		assert_eq!(link.to(), "/users/");
@@ -287,7 +288,7 @@ mod tests {
 		assert!(!link.is_external());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_link_builder() {
 		let link = Link::new("/admin/", "Admin")
 			.class("nav-link")
@@ -301,7 +302,7 @@ mod tests {
 		assert!(html.contains("aria-label=\"Admin Panel\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_link_external() {
 		let link = Link::new("https://example.com", "Example").external(true);
 
@@ -311,7 +312,7 @@ mod tests {
 		assert!(!html.contains("data-link"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_outlet() {
 		use crate::router::Router;
 		use std::sync::Arc;
@@ -331,7 +332,7 @@ mod tests {
 		assert!(html.contains("Test Route"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redirect() {
 		let redirect = Redirect::new("/login/");
 		assert_eq!(redirect.to(), "/login/");
@@ -341,35 +342,35 @@ mod tests {
 		assert!(html.contains("data-redirect=\"/login/\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_guard_true() {
 		let view = guard(|| true, "Allowed")();
 		assert_eq!(view.render_to_string(), "Allowed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_guard_false() {
 		let view = guard(|| false, "Allowed")();
 		assert_eq!(view.render_to_string(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_guard_with_fallback() {
 		let view = guard_or(|| false, "Allowed", "Denied")();
 		assert_eq!(view.render_to_string(), "Denied");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_link_component_name() {
 		assert_eq!(Link::name(), "Link");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_outlet_component_name() {
 		assert_eq!(RouterOutlet::name(), "RouterOutlet");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redirect_component_name() {
 		assert_eq!(Redirect::name(), "Redirect");
 	}

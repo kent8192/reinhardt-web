@@ -19,13 +19,14 @@
 //! environment with mock server.
 
 use reinhardt_pages::api::ApiQuerySet;
+use rstest::rstest;
 
 // ============================================================================
 // Category 1: Offset-Based Pagination (10 tests)
 // ============================================================================
 
 /// Tests limit parameter in URL
-#[test]
+#[rstest]
 fn test_offset_pagination_limit() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(20);
 
@@ -34,7 +35,7 @@ fn test_offset_pagination_limit() {
 }
 
 /// Tests offset parameter in URL
-#[test]
+#[rstest]
 fn test_offset_pagination_offset() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").offset(40);
 
@@ -43,7 +44,7 @@ fn test_offset_pagination_offset() {
 }
 
 /// Tests combined limit and offset
-#[test]
+#[rstest]
 fn test_offset_pagination_combined() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10).offset(30);
 
@@ -53,7 +54,7 @@ fn test_offset_pagination_combined() {
 }
 
 /// Tests first page (offset = 0)
-#[test]
+#[rstest]
 fn test_offset_pagination_first_page() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10).offset(0);
 
@@ -63,7 +64,7 @@ fn test_offset_pagination_first_page() {
 }
 
 /// Tests large limit value
-#[test]
+#[rstest]
 fn test_offset_pagination_large_limit() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(1000);
 
@@ -72,7 +73,7 @@ fn test_offset_pagination_large_limit() {
 }
 
 /// Tests large offset value
-#[test]
+#[rstest]
 fn test_offset_pagination_large_offset() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").offset(999999);
 
@@ -81,7 +82,7 @@ fn test_offset_pagination_large_offset() {
 }
 
 /// Tests pagination with filters
-#[test]
+#[rstest]
 fn test_offset_pagination_with_filters() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -95,7 +96,7 @@ fn test_offset_pagination_with_filters() {
 }
 
 /// Tests pagination with ordering
-#[test]
+#[rstest]
 fn test_offset_pagination_with_ordering() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.order_by(&["-created_at"])
@@ -108,7 +109,7 @@ fn test_offset_pagination_with_ordering() {
 }
 
 /// Tests updating limit on existing QuerySet
-#[test]
+#[rstest]
 fn test_offset_pagination_update_limit() {
 	let qs1: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10);
 
@@ -119,7 +120,7 @@ fn test_offset_pagination_update_limit() {
 }
 
 /// Tests updating offset on existing QuerySet
-#[test]
+#[rstest]
 fn test_offset_pagination_update_offset() {
 	let qs1: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").offset(0);
 
@@ -134,7 +135,7 @@ fn test_offset_pagination_update_offset() {
 // ============================================================================
 
 /// Tests calculating offset from page number (page 1, page_size 10)
-#[test]
+#[rstest]
 fn test_page_based_first_page() {
 	let page = 1;
 	let page_size = 10;
@@ -150,7 +151,7 @@ fn test_page_based_first_page() {
 }
 
 /// Tests calculating offset from page number (page 2, page_size 10)
-#[test]
+#[rstest]
 fn test_page_based_second_page() {
 	let page = 2;
 	let page_size = 10;
@@ -166,7 +167,7 @@ fn test_page_based_second_page() {
 }
 
 /// Tests calculating offset from page number (page 5, page_size 20)
-#[test]
+#[rstest]
 fn test_page_based_fifth_page() {
 	let page = 5;
 	let page_size = 20;
@@ -182,7 +183,7 @@ fn test_page_based_fifth_page() {
 }
 
 /// Tests page-based pagination with custom page size
-#[test]
+#[rstest]
 fn test_page_based_custom_page_size() {
 	let page = 3;
 	let page_size = 25;
@@ -198,7 +199,7 @@ fn test_page_based_custom_page_size() {
 }
 
 /// Tests page-based pagination with filters
-#[test]
+#[rstest]
 fn test_page_based_with_filters() {
 	let page = 2;
 	let page_size = 10;
@@ -216,7 +217,7 @@ fn test_page_based_with_filters() {
 }
 
 /// Tests calculating total pages from count and page size
-#[test]
+#[rstest]
 fn test_page_calculation_total_pages() {
 	let total_count = 95;
 	let page_size = 10;
@@ -226,7 +227,7 @@ fn test_page_calculation_total_pages() {
 }
 
 /// Tests page calculation for exact multiple
-#[test]
+#[rstest]
 fn test_page_calculation_exact_multiple() {
 	let total_count = 100;
 	let page_size = 10;
@@ -268,7 +269,7 @@ fn test_page_calculation_exact_multiple() {
 ///    - Support bidirectional pagination
 ///
 /// See: <https://jsonapi.org/profiles/ethanresnick/cursor-pagination/>
-#[test]
+#[rstest]
 fn test_cursor_pagination_documentation() {
 	// This test exists solely for documentation purposes
 	// Actual implementation will be added in a future phase

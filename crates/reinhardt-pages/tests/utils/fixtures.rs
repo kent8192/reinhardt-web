@@ -122,21 +122,22 @@ pub fn fixture_exists(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_fixtures_dir() {
 		let dir = fixtures_dir();
 		assert!(dir.ends_with("tests/fixtures"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Failed to load fixture")]
 	fn test_load_fixture_missing() {
 		load_fixture("nonexistent.json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fixture_exists() {
 		// This will be false until we create actual fixtures
 		let exists = fixture_exists("test.json");

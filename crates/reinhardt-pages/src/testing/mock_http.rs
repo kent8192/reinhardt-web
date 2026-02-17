@@ -358,6 +358,7 @@ pub(crate) fn get_mock_response(path: &str) -> Option<MockResponse> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -366,7 +367,7 @@ mod tests {
 		value: i32,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_ok() {
 		let data = TestData {
 			name: "test".to_string(),
@@ -379,7 +380,7 @@ mod tests {
 		assert!(response.body.contains("42"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_error() {
 		let response = MockResponse::error(401, "Unauthorized");
 
@@ -387,7 +388,7 @@ mod tests {
 		assert_eq!(response.body, "Unauthorized");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_fn_registration() {
 		clear_mocks();
 
@@ -404,7 +405,7 @@ mod tests {
 		clear_mocks();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_fn_error_registration() {
 		clear_mocks();
 
@@ -419,7 +420,7 @@ mod tests {
 		clear_mocks();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_call_history_recording() {
 		clear_mocks();
 
@@ -439,7 +440,7 @@ mod tests {
 		clear_mocks();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_mocks() {
 		mock_server_fn("/api/test", &"data");
 		record_mock_call("/api/test", "", "GET", 1000.0);
@@ -453,7 +454,7 @@ mod tests {
 		assert!(get_call_history().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_server_fn_called() {
 		clear_mocks();
 		record_mock_call("/api/login", "", "POST", 1000.0);
@@ -463,21 +464,21 @@ mod tests {
 		clear_mocks();
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Expected server function '/api/missing' to be called")]
 	fn test_assert_server_fn_called_panics_when_not_called() {
 		clear_mocks();
 		assert_server_fn_called("/api/missing");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_server_fn_not_called() {
 		clear_mocks();
 		assert_server_fn_not_called("/api/test");
 		clear_mocks();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_server_fn_call_count() {
 		clear_mocks();
 		record_mock_call("/api/test", "", "GET", 1000.0);

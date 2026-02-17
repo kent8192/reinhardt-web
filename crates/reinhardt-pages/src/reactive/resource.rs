@@ -310,8 +310,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_resource_state_constructors() {
 		let loading: ResourceState<String, String> = ResourceState::Loading;
 		assert!(loading.is_loading());
@@ -331,7 +332,7 @@ mod tests {
 		assert_eq!(error.error(), Some(&"failed".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resource_state_display() {
 		let loading: ResourceState<String, String> = ResourceState::Loading;
 		assert_eq!(format!("{}", loading), "Loading...");

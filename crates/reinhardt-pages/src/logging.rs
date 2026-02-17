@@ -180,10 +180,11 @@ macro_rules! error_log {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	// Import macros from crate root
 	use crate::{debug_log, error_log, info_log, warn_log};
 
-	#[test]
+	#[rstest]
 	fn test_logging_macros_compile() {
 		// These should compile without errors
 		debug_log!("Debug message: {}", 42);
@@ -192,7 +193,7 @@ mod tests {
 		error_log!("Error message: {}", "error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_logging_macros_no_args() {
 		// Macros should work without format arguments
 		debug_log!("Simple debug");

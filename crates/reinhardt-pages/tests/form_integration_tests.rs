@@ -21,6 +21,7 @@
 //! Note: DOM rendering tests require WASM environment with WASM test infrastructure.
 
 use reinhardt_pages::{FieldMetadata, FormComponent, FormMetadata, Widget};
+use rstest::rstest;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -28,7 +29,7 @@ use std::collections::HashMap;
 // ============================================================================
 
 /// Tests creating FormComponent from minimal metadata
-#[test]
+#[rstest]
 fn test_form_creation_minimal() {
 	let metadata = FormMetadata {
 		fields: vec![],
@@ -45,7 +46,7 @@ fn test_form_creation_minimal() {
 }
 
 /// Tests creating FormComponent with single field
-#[test]
+#[rstest]
 fn test_form_creation_single_field() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -70,7 +71,7 @@ fn test_form_creation_single_field() {
 }
 
 /// Tests creating FormComponent with multiple fields
-#[test]
+#[rstest]
 fn test_form_creation_multiple_fields() {
 	let metadata = FormMetadata {
 		fields: vec![
@@ -112,7 +113,7 @@ fn test_form_creation_multiple_fields() {
 }
 
 /// Tests FormComponent with field prefix
-#[test]
+#[rstest]
 fn test_form_creation_with_prefix() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -136,7 +137,7 @@ fn test_form_creation_with_prefix() {
 }
 
 /// Tests FormComponent with help text
-#[test]
+#[rstest]
 fn test_form_creation_with_help_text() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -163,7 +164,7 @@ fn test_form_creation_with_help_text() {
 }
 
 /// Tests FormComponent with bound state
-#[test]
+#[rstest]
 fn test_form_creation_bound_state() {
 	let metadata = FormMetadata {
 		fields: vec![],
@@ -180,7 +181,7 @@ fn test_form_creation_bound_state() {
 }
 
 /// Tests FormComponent with server-side errors
-#[test]
+#[rstest]
 fn test_form_creation_with_errors() {
 	let mut errors = HashMap::new();
 	errors.insert(
@@ -215,7 +216,7 @@ fn test_form_creation_with_errors() {
 // ============================================================================
 
 /// Tests getting default empty value
-#[test]
+#[rstest]
 fn test_get_value_empty_default() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -239,7 +240,7 @@ fn test_get_value_empty_default() {
 }
 
 /// Tests setting and getting field value
-#[test]
+#[rstest]
 fn test_set_and_get_value() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -265,7 +266,7 @@ fn test_set_and_get_value() {
 }
 
 /// Tests updating field value multiple times
-#[test]
+#[rstest]
 fn test_update_value_multiple_times() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -297,7 +298,7 @@ fn test_update_value_multiple_times() {
 }
 
 /// Tests getting value from non-existent field
-#[test]
+#[rstest]
 fn test_get_value_nonexistent_field() {
 	let metadata = FormMetadata {
 		fields: vec![],
@@ -314,7 +315,7 @@ fn test_get_value_nonexistent_field() {
 }
 
 /// Tests setting value on non-existent field (should be no-op)
-#[test]
+#[rstest]
 fn test_set_value_nonexistent_field() {
 	let metadata = FormMetadata {
 		fields: vec![],
@@ -332,7 +333,7 @@ fn test_set_value_nonexistent_field() {
 }
 
 /// Tests initial values from metadata
-#[test]
+#[rstest]
 fn test_initial_values_from_metadata() {
 	let mut initial = HashMap::new();
 	initial.insert("username".to_string(), serde_json::json!("john_doe"));
@@ -371,7 +372,7 @@ fn test_initial_values_from_metadata() {
 }
 
 /// Tests field-level initial value
-#[test]
+#[rstest]
 fn test_field_level_initial_value() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -395,7 +396,7 @@ fn test_field_level_initial_value() {
 }
 
 /// Tests managing values for multiple fields
-#[test]
+#[rstest]
 fn test_multiple_field_values() {
 	let metadata = FormMetadata {
 		fields: vec![
@@ -448,7 +449,7 @@ fn test_multiple_field_values() {
 // ============================================================================
 
 /// Tests validation passes for valid required field
-#[test]
+#[rstest]
 fn test_validation_required_field_valid() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -475,7 +476,7 @@ fn test_validation_required_field_valid() {
 }
 
 /// Tests validation fails for empty required field
-#[test]
+#[rstest]
 fn test_validation_required_field_empty() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -504,7 +505,7 @@ fn test_validation_required_field_empty() {
 }
 
 /// Tests validation passes for optional empty field
-#[test]
+#[rstest]
 fn test_validation_optional_field_empty() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -530,7 +531,7 @@ fn test_validation_optional_field_empty() {
 }
 
 /// Tests validation with multiple required fields
-#[test]
+#[rstest]
 fn test_validation_multiple_required_fields() {
 	let metadata = FormMetadata {
 		fields: vec![
@@ -586,7 +587,7 @@ fn test_validation_multiple_required_fields() {
 }
 
 /// Tests validation error message format
-#[test]
+#[rstest]
 fn test_validation_error_message() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -613,7 +614,7 @@ fn test_validation_error_message() {
 }
 
 /// Tests validation clears previous errors
-#[test]
+#[rstest]
 fn test_validation_clears_previous_errors() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -645,7 +646,7 @@ fn test_validation_clears_previous_errors() {
 }
 
 /// Tests validation with whitespace-only value
-#[test]
+#[rstest]
 fn test_validation_whitespace_only() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -672,7 +673,7 @@ fn test_validation_whitespace_only() {
 }
 
 /// Tests validation is callable multiple times
-#[test]
+#[rstest]
 fn test_validation_multiple_calls() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -702,7 +703,7 @@ fn test_validation_multiple_calls() {
 }
 
 /// Tests mixed required and optional fields validation
-#[test]
+#[rstest]
 fn test_validation_mixed_required_optional() {
 	let metadata = FormMetadata {
 		fields: vec![
@@ -743,7 +744,7 @@ fn test_validation_mixed_required_optional() {
 }
 
 /// Tests validation with no fields
-#[test]
+#[rstest]
 fn test_validation_empty_form() {
 	let metadata = FormMetadata {
 		fields: vec![],
@@ -760,7 +761,7 @@ fn test_validation_empty_form() {
 }
 
 /// Tests validation state persists until re-validated
-#[test]
+#[rstest]
 fn test_validation_state_persistence() {
 	let metadata = FormMetadata {
 		fields: vec![FieldMetadata {
@@ -801,7 +802,7 @@ fn test_validation_state_persistence() {
 // ============================================================================
 
 /// Tests form with multiple widget types
-#[test]
+#[rstest]
 fn test_multiple_widget_types() {
 	let metadata = FormMetadata {
 		fields: vec![

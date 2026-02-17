@@ -15,6 +15,7 @@ use reinhardt_pages::component::{
 	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use rstest::rstest;
 
 // ============================================================================
 // Test Components
@@ -112,7 +113,7 @@ impl Component for UserCard {
 // Category 1: Basic Rendering Tests (10-15 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_basic_component_render() {
 	let counter = Counter::new(42);
 	let html = counter.render().render_to_string();
@@ -122,7 +123,7 @@ fn test_basic_component_render() {
 	assert!(html.contains("Count: 42"));
 }
 
-#[test]
+#[rstest]
 fn test_component_with_button() {
 	let counter = Counter::new(0);
 	let html = counter.render().render_to_string();
@@ -133,7 +134,7 @@ fn test_component_with_button() {
 	assert!(html.contains("</button>"));
 }
 
-#[test]
+#[rstest]
 fn test_nested_components() {
 	let card = UserCard::new("Alice", "alice@example.com");
 	let html = card.render().render_to_string();
@@ -144,7 +145,7 @@ fn test_nested_components() {
 	assert!(html.contains("alice@example.com"));
 }
 
-#[test]
+#[rstest]
 fn test_conditional_rendering() {
 	let card_without_role = UserCard::new("Bob", "bob@example.com");
 	let html_without = card_without_role.render().render_to_string();
@@ -156,7 +157,7 @@ fn test_conditional_rendering() {
 	assert!(html_with.contains("Admin"));
 }
 
-#[test]
+#[rstest]
 fn test_list_rendering() {
 	let items = vec!["Apple", "Banana", "Cherry"];
 	let list = PageElement::new("ul");
@@ -174,7 +175,7 @@ fn test_list_rendering() {
 	assert!(html.contains("</ul>"));
 }
 
-#[test]
+#[rstest]
 fn test_empty_component() {
 	let empty = PageElement::new("div");
 	let html = empty.into_page().render_to_string();
@@ -182,7 +183,7 @@ fn test_empty_component() {
 	assert_eq!(html, "<div></div>");
 }
 
-#[test]
+#[rstest]
 fn test_component_composition() {
 	let container = PageElement::new("div")
 		.attr("class", "container")
@@ -196,7 +197,7 @@ fn test_component_composition() {
 	assert!(html.contains("Count: 2"));
 }
 
-#[test]
+#[rstest]
 fn test_multiple_attributes() {
 	let div = PageElement::new("div")
 		.attr("id", "main")
@@ -210,7 +211,7 @@ fn test_multiple_attributes() {
 	assert!(html.contains("data-test=\"value\""));
 }
 
-#[test]
+#[rstest]
 fn test_deeply_nested_structure() {
 	let deep = PageElement::new("div")
 		.child(
@@ -235,7 +236,7 @@ fn test_deeply_nested_structure() {
 	assert!(html.contains("</div>"));
 }
 
-#[test]
+#[rstest]
 fn test_text_only_element() {
 	let text = PageElement::new("p").child("Simple text");
 	let html = text.into_page().render_to_string();
@@ -247,7 +248,7 @@ fn test_text_only_element() {
 // Category 2: Escape Handling Tests (10-15 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_html_entity_escape_less_than() {
 	let text = PageElement::new("p").child("<script>");
 	let html = text.into_page().render_to_string();
@@ -256,7 +257,7 @@ fn test_html_entity_escape_less_than() {
 	assert!(!html.contains("<script>"));
 }
 
-#[test]
+#[rstest]
 fn test_html_entity_escape_greater_than() {
 	let text = PageElement::new("p").child("a > b");
 	let html = text.into_page().render_to_string();
@@ -264,7 +265,7 @@ fn test_html_entity_escape_greater_than() {
 	assert!(html.contains("a &gt; b"));
 }
 
-#[test]
+#[rstest]
 fn test_html_entity_escape_ampersand() {
 	let text = PageElement::new("p").child("a & b");
 	let html = text.into_page().render_to_string();
@@ -272,7 +273,7 @@ fn test_html_entity_escape_ampersand() {
 	assert!(html.contains("a &amp; b"));
 }
 
-#[test]
+#[rstest]
 fn test_html_entity_escape_quotes() {
 	let text = PageElement::new("p").child("\"quoted\"");
 	let html = text.into_page().render_to_string();
@@ -280,7 +281,7 @@ fn test_html_entity_escape_quotes() {
 	assert!(html.contains("&quot;quoted&quot;"));
 }
 
-#[test]
+#[rstest]
 fn test_html_entity_escape_single_quotes() {
 	let text = PageElement::new("p").child("'single'");
 	let html = text.into_page().render_to_string();
@@ -288,7 +289,7 @@ fn test_html_entity_escape_single_quotes() {
 	assert!(html.contains("&#x27;single&#x27;"));
 }
 
-#[test]
+#[rstest]
 fn test_attribute_escape() {
 	let div = PageElement::new("div").attr("data-value", "\"quoted\" & <special>");
 	let html = div.into_page().render_to_string();
@@ -296,7 +297,7 @@ fn test_attribute_escape() {
 	assert!(html.contains("data-value=\"&quot;quoted&quot; &amp; &lt;special&gt;\""));
 }
 
-#[test]
+#[rstest]
 fn test_xss_prevention_script_tag() {
 	let malicious = PageElement::new("div").child("<script>alert('xss')</script>");
 	let html = malicious.into_page().render_to_string();
@@ -306,7 +307,7 @@ fn test_xss_prevention_script_tag() {
 	assert!(html.contains("&lt;/script&gt;"));
 }
 
-#[test]
+#[rstest]
 fn test_xss_prevention_onclick() {
 	let malicious = PageElement::new("div").attr("title", "\" onclick=\"alert('xss')");
 	let html = malicious.into_page().render_to_string();
@@ -315,7 +316,7 @@ fn test_xss_prevention_onclick() {
 	assert!(!html.contains("onclick=\"alert"));
 }
 
-#[test]
+#[rstest]
 fn test_unicode_characters() {
 	let text = PageElement::new("p").child("こんにちは 世界 🌍");
 	let html = text.into_page().render_to_string();
@@ -323,7 +324,7 @@ fn test_unicode_characters() {
 	assert!(html.contains("こんにちは 世界 🌍"));
 }
 
-#[test]
+#[rstest]
 fn test_special_html_entities() {
 	let text = PageElement::new("p").child("© ® ™ € £ ¥");
 	let html = text.into_page().render_to_string();
@@ -331,7 +332,7 @@ fn test_special_html_entities() {
 	assert!(html.contains("© ® ™ € £ ¥"));
 }
 
-#[test]
+#[rstest]
 fn test_mixed_escape_content() {
 	let text = PageElement::new("p").child("<div>\"a & b\" > 'c'</div>");
 	let html = text.into_page().render_to_string();
@@ -347,7 +348,7 @@ fn test_mixed_escape_content() {
 // Category 3: Hydration Marker Tests (10-12 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_hydration_marker_enabled() {
 	let counter = Counter::new(10);
 	let options = SsrOptions::new();
@@ -358,7 +359,7 @@ fn test_hydration_marker_enabled() {
 	assert!(html.contains("data-rh-component=\"Counter\""));
 }
 
-#[test]
+#[rstest]
 fn test_hydration_marker_disabled() {
 	let counter = Counter::new(5);
 	let options = SsrOptions::new().no_hydration();
@@ -369,7 +370,7 @@ fn test_hydration_marker_disabled() {
 	assert!(html.contains("Count: 5"));
 }
 
-#[test]
+#[rstest]
 fn test_hydration_marker_component_name() {
 	let card = UserCard::new("Test", "test@example.com");
 	let mut renderer = SsrRenderer::new();
@@ -378,7 +379,7 @@ fn test_hydration_marker_component_name() {
 	assert!(html.contains("data-rh-component=\"UserCard\""));
 }
 
-#[test]
+#[rstest]
 fn test_hydration_marker_wraps_content() {
 	let counter = Counter::new(42);
 	let mut renderer = SsrRenderer::new();
@@ -389,7 +390,7 @@ fn test_hydration_marker_wraps_content() {
 	assert!(html.contains("Count: 42"));
 }
 
-#[test]
+#[rstest]
 fn test_multiple_components_different_markers() {
 	let counter1 = Counter::new(1);
 	let counter2 = Counter::new(2);
@@ -407,7 +408,7 @@ fn test_multiple_components_different_markers() {
 // Category 4: Full Page Rendering Tests (15-20 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_full_page_doctype() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
@@ -416,7 +417,7 @@ fn test_full_page_doctype() {
 	assert!(html.starts_with("<!DOCTYPE html>"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_html_structure() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
@@ -430,7 +431,7 @@ fn test_full_page_html_structure() {
 	assert!(html.ends_with("</html>"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_meta_charset() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
@@ -439,7 +440,7 @@ fn test_full_page_meta_charset() {
 	assert!(html.contains("<meta charset=\"UTF-8\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_meta_viewport() {
 	let counter = Counter::new(0);
 	let mut renderer = SsrRenderer::new();
@@ -450,7 +451,7 @@ fn test_full_page_meta_viewport() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_full_page_custom_title() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().title("Test Page");
@@ -461,7 +462,7 @@ fn test_full_page_custom_title() {
 	assert!(html.contains("<title>Test Page</title>"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_custom_lang() {
 	let counter = Counter::new(0);
 	let options = SsrOptions::new().lang("ja");
@@ -471,7 +472,7 @@ fn test_full_page_custom_lang() {
 	assert!(html.contains("<html lang=\"ja\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_css_link() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().link(LinkTag::stylesheet("/styles.css"));
@@ -482,7 +483,7 @@ fn test_full_page_css_link() {
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/styles.css\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_multiple_css_links() {
 	let counter = Counter::new(0);
 	let page_head = Head::new()
@@ -496,7 +497,7 @@ fn test_full_page_multiple_css_links() {
 	assert!(html.contains("<link rel=\"stylesheet\" href=\"/main.css\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_js_script() {
 	let counter = Counter::new(0);
 	let page_head = Head::new().script(ScriptTag::external("/app.js"));
@@ -507,7 +508,7 @@ fn test_full_page_js_script() {
 	assert!(html.contains("<script src=\"/app.js\"></script>"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_custom_meta_tags() {
 	let counter = Counter::new(0);
 	let page_head = Head::new()
@@ -521,7 +522,7 @@ fn test_full_page_custom_meta_tags() {
 	assert!(html.contains("<meta name=\"keywords\" content=\"test, rust, ssr\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_csrf_token() {
 	let counter = Counter::new(0);
 	let options = SsrOptions::new().csrf("test-token-123");
@@ -531,7 +532,7 @@ fn test_full_page_csrf_token() {
 	assert!(html.contains("<meta name=\"csrf-token\" content=\"test-token-123\">"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_app_container() {
 	let counter = Counter::new(42);
 	let mut renderer = SsrRenderer::new();
@@ -542,7 +543,7 @@ fn test_full_page_app_container() {
 	assert!(html.contains("</div>"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_with_auth_data() {
 	use reinhardt_pages::auth::AuthData;
 
@@ -557,7 +558,7 @@ fn test_full_page_with_auth_data() {
 	assert!(html.contains("testuser"));
 }
 
-#[test]
+#[rstest]
 fn test_full_page_combined_options() {
 	let counter = Counter::new(99);
 	let page_head = Head::new()
@@ -586,7 +587,7 @@ fn test_full_page_combined_options() {
 // Category 5: Performance Tests (5-8 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_large_list_rendering() {
 	let items: Vec<_> = (0..1000).map(|i| format!("Item {}", i)).collect();
 	let mut list = PageElement::new("ul");
@@ -603,7 +604,7 @@ fn test_large_list_rendering() {
 	assert!(html.contains("</ul>"));
 }
 
-#[test]
+#[rstest]
 fn test_deeply_nested_components() {
 	fn create_nested(depth: usize) -> Page {
 		if depth == 0 {
@@ -624,7 +625,7 @@ fn test_deeply_nested_components() {
 	assert!(html.contains("Leaf"));
 }
 
-#[test]
+#[rstest]
 fn test_many_attributes() {
 	let mut div = PageElement::new("div");
 
@@ -638,7 +639,7 @@ fn test_many_attributes() {
 	assert!(html.contains("data-attr-99=\"value-99\""));
 }
 
-#[test]
+#[rstest]
 fn test_large_component_tree() {
 	let counters: Vec<_> = (0..100).map(|i| Counter::new(i).render()).collect();
 
@@ -656,7 +657,7 @@ fn test_large_component_tree() {
 // Category 6: Edge Cases Tests (10-12 tests)
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_svg_element() {
 	let svg = PageElement::new("svg")
 		.attr("width", "100")
@@ -677,7 +678,7 @@ fn test_svg_element() {
 	assert!(html.contains("</svg>"));
 }
 
-#[test]
+#[rstest]
 fn test_data_attributes() {
 	let div = PageElement::new("div")
 		.attr("data-id", "123")
@@ -691,7 +692,7 @@ fn test_data_attributes() {
 	assert!(html.contains("data-active=\"true\""));
 }
 
-#[test]
+#[rstest]
 fn test_aria_attributes() {
 	let button = PageElement::new("button")
 		.attr("aria-label", "Close")
@@ -704,7 +705,7 @@ fn test_aria_attributes() {
 	assert!(html.contains("aria-expanded=\"false\""));
 }
 
-#[test]
+#[rstest]
 fn test_fragment_rendering() {
 	let fragment = Page::Fragment(vec![
 		Page::text("Hello, "),
@@ -716,14 +717,14 @@ fn test_fragment_rendering() {
 	assert_eq!(html, "Hello, World! Welcome.");
 }
 
-#[test]
+#[rstest]
 fn test_empty_view() {
 	let empty = Page::Empty;
 	let html = empty.render_to_string();
 	assert_eq!(html, "");
 }
 
-#[test]
+#[rstest]
 fn test_void_elements() {
 	let img = PageElement::new("img")
 		.attr("src", "/image.png")
@@ -737,7 +738,7 @@ fn test_void_elements() {
 	assert!(html.contains("alt=\"Test\""));
 }
 
-#[test]
+#[rstest]
 fn test_boolean_attributes() {
 	let input = PageElement::new("input")
 		.attr("type", "checkbox")
@@ -750,7 +751,7 @@ fn test_boolean_attributes() {
 	assert!(html.contains("disabled=\"disabled\""));
 }
 
-#[test]
+#[rstest]
 fn test_empty_attribute_value() {
 	let div = PageElement::new("div")
 		.attr("data-empty", "")
@@ -762,7 +763,7 @@ fn test_empty_attribute_value() {
 	assert!(html.contains("class=\"test\""));
 }
 
-#[test]
+#[rstest]
 fn test_numeric_content() {
 	let numbers = vec![42, 100, -5, 0];
 	let mut list = PageElement::new("ul");
@@ -779,7 +780,7 @@ fn test_numeric_content() {
 	assert!(html.contains("<li>0</li>"));
 }
 
-#[test]
+#[rstest]
 fn test_whitespace_preservation() {
 	let text = PageElement::new("pre").child("  Line 1\n  Line 2\n  Line 3");
 	let html = text.into_page().render_to_string();
@@ -788,7 +789,7 @@ fn test_whitespace_preservation() {
 	assert!(html.contains("  Line 1\n  Line 2\n  Line 3"));
 }
 
-#[test]
+#[rstest]
 fn test_mixed_content_types() {
 	let div = PageElement::new("div")
 		.child(Page::text("Text "))

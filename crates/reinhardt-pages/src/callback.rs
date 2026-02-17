@@ -327,14 +327,15 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_callback_creation() {
 		let callback = Callback::new(|_: i32| 42);
 		assert_eq!(callback.call(0), 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_callback_clone() {
 		let callback1 = Callback::new(|x: i32| x * 2);
 		let callback2 = callback1.clone();
@@ -343,7 +344,7 @@ mod tests {
 		assert_eq!(callback2.call(5), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_callback_with_captured_state() {
 		use std::sync::{Arc, Mutex};
 
@@ -363,7 +364,7 @@ mod tests {
 		assert_eq!(*counter.lock().unwrap(), 6);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_callback_debug() {
 		let callback = Callback::new(|_: ()| {});
 		let debug_str = format!("{:?}", callback);
@@ -371,7 +372,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_into_event_handler_closure() {
 		use crate::component::DummyEvent;
 
@@ -380,14 +381,14 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_into_event_handler_callback() {
 		let callback = Callback::new(|_: crate::component::DummyEvent| {});
 		let _handler: PageEventHandler = callback.into_event_handler();
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_into_event_handler_function() {
 		use crate::component::DummyEvent;
 

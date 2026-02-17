@@ -2,16 +2,18 @@
 //!
 //! Uses proptest to verify properties that should hold for all valid inputs.
 
+use rstest::rstest;
 #[cfg(not(target_arch = "wasm32"))]
 mod property_tests {
 	use proptest::prelude::*;
 	use proptest::proptest;
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use reinhardt_utils::staticfiles::TemplateStaticConfig;
+	use rstest::rstest;
 
 	proptest! {
 		/// Property: resolve_static is idempotent on result (calling it again returns same result)
-		#[test]
+	#[rstest]
 		fn prop_resolve_static_deterministic(
 			path in r"[a-zA-Z0-9._\-/]{1,100}"
 		) {
@@ -25,7 +27,7 @@ mod property_tests {
 		}
 
 		/// Property: Result always contains the base URL
-		#[test]
+	#[rstest]
 		fn prop_result_contains_base_url(
 			path in r"[a-zA-Z0-9._\-/]{1,100}"
 		) {
@@ -38,7 +40,7 @@ mod property_tests {
 		}
 
 		/// Property: Filename is preserved in result
-		#[test]
+	#[rstest]
 		fn prop_filename_preserved(
 			filename in r"[a-zA-Z0-9._\-]+\.[a-z]{1,4}"
 		) {
@@ -51,7 +53,7 @@ mod property_tests {
 		}
 
 		/// Property: Query string is preserved
-		#[test]
+	#[rstest]
 		fn prop_query_string_preserved(
 			path in r"[a-zA-Z0-9._\-/]{1,50}",
 			query in r"[a-zA-Z0-9&=]{1,50}"
@@ -66,7 +68,7 @@ mod property_tests {
 		}
 
 		/// Property: No double slashes in path portion (before query string)
-		#[test]
+	#[rstest]
 		fn prop_no_double_slashes_in_path(
 			path in r"[a-zA-Z0-9._\-/]{1,100}"
 		) {
@@ -87,7 +89,7 @@ mod property_tests {
 		}
 
 		/// Property: Result is non-empty for non-empty input
-		#[test]
+	#[rstest]
 		fn prop_non_empty_input_gives_non_empty_result(
 			path in r"[a-zA-Z0-9._\-/]{1,100}"
 		) {
@@ -100,7 +102,7 @@ mod property_tests {
 		}
 
 		/// Property: Result starts with base URL (or protocol if CDN)
-		#[test]
+	#[rstest]
 		fn prop_result_starts_with_base(
 			path in r"[a-zA-Z0-9._\-/]{1,100}"
 		) {
@@ -113,7 +115,7 @@ mod property_tests {
 		}
 
 		/// Property: All characters in path are preserved (not URL-encoded)
-		#[test]
+	#[rstest]
 		fn prop_ascii_characters_preserved(
 			path in r"[a-zA-Z0-9._\-]*[a-zA-Z0-9._\-][a-zA-Z0-9._\-/]*"
 		) {

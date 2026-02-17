@@ -403,46 +403,48 @@ pub(super) fn detach_all(registry: &mut EventRegistry) {
 	registry.clear();
 }
 
-// Phase 2-B Tests: Selective Event Attachment
-
-#[test]
-fn test_attach_options_default() {
-	let options = AttachOptions::default();
-	assert!(!options.island_only);
-	assert!(!options.skip_static);
-}
-
-#[test]
-fn test_attach_options_island_only() {
-	let options = AttachOptions::island_only();
-	assert!(options.island_only);
-	assert!(options.skip_static);
-}
-
-#[test]
-fn test_attach_options_full_hydration() {
-	let options = AttachOptions::full_hydration();
-	assert!(!options.island_only);
-	assert!(!options.skip_static);
-}
-
-#[test]
-fn test_attach_events_recursive_non_wasm() {
-	let mut registry = EventRegistry::new();
-	let bindings = vec![EventBinding::new("click", "el-1")];
-	let handlers: HashMap<String, EventHandler> = HashMap::new();
-	let options = AttachOptions::default();
-
-	let result = attach_events_recursive("root", &bindings, &handlers, &options, &mut registry);
-
-	assert!(result.is_ok());
-	assert!(!registry.is_empty());
-}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	// Phase 2-B Tests: Selective Event Attachment
+
+	#[rstest]
+	fn test_attach_options_default() {
+		let options = AttachOptions::default();
+		assert!(!options.island_only);
+		assert!(!options.skip_static);
+	}
+
+	#[rstest]
+	fn test_attach_options_island_only() {
+		let options = AttachOptions::island_only();
+		assert!(options.island_only);
+		assert!(options.skip_static);
+	}
+
+	#[rstest]
+	fn test_attach_options_full_hydration() {
+		let options = AttachOptions::full_hydration();
+		assert!(!options.island_only);
+		assert!(!options.skip_static);
+	}
+
+	#[rstest]
+	fn test_attach_events_recursive_non_wasm() {
+		let mut registry = EventRegistry::new();
+		let bindings = vec![EventBinding::new("click", "el-1")];
+		let handlers: HashMap<String, EventHandler> = HashMap::new();
+		let options = AttachOptions::default();
+
+		let result = attach_events_recursive("root", &bindings, &handlers, &options, &mut registry);
+
+		assert!(result.is_ok());
+		assert!(!registry.is_empty());
+	}
+
+	#[rstest]
 	fn test_event_binding_new() {
 		let binding = EventBinding::new("click", "rh-0");
 		assert_eq!(binding.event_type, "click");
@@ -451,7 +453,7 @@ mod tests {
 		assert!(!binding.once);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_binding_builder() {
 		let binding = EventBinding::new("submit", "rh-1")
 			.capture(true)
@@ -465,14 +467,14 @@ mod tests {
 		assert!(binding.stop_propagation);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_registry_new() {
 		let registry = EventRegistry::new();
 		assert!(registry.is_empty());
 		assert_eq!(registry.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_registry_register() {
 		let mut registry = EventRegistry::new();
 		registry.register("el-1", "click".to_string());
@@ -480,7 +482,7 @@ mod tests {
 		assert!(!registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_registry_unregister() {
 		let mut registry = EventRegistry::new();
 		registry.register("el-1", "click".to_string());
@@ -491,7 +493,7 @@ mod tests {
 		assert_eq!(registry.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_registry_clear() {
 		let mut registry = EventRegistry::new();
 		registry.register("el-1", "click".to_string());
@@ -501,7 +503,7 @@ mod tests {
 		assert!(registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_attach_error_display() {
 		let err = EventAttachError {
 			event_type: "click".to_string(),
@@ -511,7 +513,7 @@ mod tests {
 		assert!(err.to_string().contains("element not found"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_attach_event_non_wasm() {
 		let mut registry = EventRegistry::new();
 		let handler: EventHandler = Arc::new(|| {});
@@ -520,7 +522,7 @@ mod tests {
 		assert!(!registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_attach_events_non_wasm() {
 		let mut registry = EventRegistry::new();
 		let bindings = vec![
@@ -533,7 +535,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detach_all() {
 		let mut registry = EventRegistry::new();
 		registry.register("el-1", "click".to_string());

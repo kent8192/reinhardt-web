@@ -577,6 +577,7 @@ impl Router {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn test_view() -> Page {
 		Page::text("Test")
@@ -594,25 +595,25 @@ mod tests {
 		Page::text("404")
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_new() {
 		let route = Route::new("/", test_view);
 		assert!(route.name().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_named() {
 		let route = Route::named("home", "/", test_view);
 		assert_eq!(route.name(), Some("home"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_new() {
 		let router = Router::new();
 		assert_eq!(router.route_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_add_route() {
 		let router = Router::new()
 			.route("/", home_view)
@@ -621,7 +622,7 @@ mod tests {
 		assert_eq!(router.route_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_named_route() {
 		let router = Router::new()
 			.named_route("home", "/", home_view)
@@ -632,7 +633,7 @@ mod tests {
 		assert!(!router.has_route("nonexistent"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_match_exact() {
 		let router = Router::new()
 			.route("/", home_view)
@@ -643,7 +644,7 @@ mod tests {
 		assert!(router.match_path("/nonexistent/").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_match_params() {
 		let router = Router::new().route("/users/{id}/", user_view);
 
@@ -654,7 +655,7 @@ mod tests {
 		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_reverse() {
 		let router = Router::new()
 			.named_route("home", "/", home_view)
@@ -667,14 +668,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_reverse_invalid_name() {
 		let router = Router::new();
 		let result = router.reverse("nonexistent", &[]);
 		assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_not_found() {
 		let router = Router::new().not_found(not_found_view);
 
@@ -683,7 +684,7 @@ mod tests {
 		assert_eq!(html, "404");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_with_guard() {
 		let router = Router::new()
 			.guarded_route("/admin/", test_view, |_| false)
@@ -695,7 +696,7 @@ mod tests {
 		assert!(router.match_path("/public/").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_error_display() {
 		assert_eq!(
 			RouterError::NotFound("/test/".to_string()).to_string(),
@@ -707,7 +708,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_push_non_wasm() {
 		let router = Router::new()
 			.route("/", home_view)
@@ -717,7 +718,7 @@ mod tests {
 		assert!(router.push("/users/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_replace_non_wasm() {
 		let router = Router::new().route("/", home_view);
 

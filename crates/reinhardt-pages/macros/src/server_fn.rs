@@ -918,8 +918,9 @@ fn generate_server_handler(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_options_default() {
 		let options = ServerFnOptions::default();
 		assert_eq!(options.use_inject, false);
@@ -927,7 +928,7 @@ mod tests {
 		assert_eq!(options.codec, "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_options_parse() {
 		use darling::FromMeta;
 		use darling::ast::NestedMeta;

@@ -246,8 +246,9 @@ pub fn use_optimistic<T: Clone + 'static>(initial: T) -> OptimisticState<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_action_state_basic() {
 		#[derive(Clone, Debug, PartialEq)]
 		struct State {
@@ -271,7 +272,7 @@ mod tests {
 		assert_eq!(action_state.state.get().count, 8);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_optimistic_basic() {
 		let state = use_optimistic(10);
 
@@ -289,7 +290,7 @@ mod tests {
 		assert!(!state.is_optimistic());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_optimistic_revert() {
 		let state = use_optimistic(10);
 
@@ -303,7 +304,7 @@ mod tests {
 		assert!(!state.is_optimistic());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimistic_state_clone() {
 		let state1 = use_optimistic(42);
 		let state2 = state1.clone();

@@ -482,50 +482,52 @@ pub(super) fn compare_structure(_element: &str, _view: &Page) -> CompareResult {
 	CompareResult::success()
 }
 
-// Phase 2-B Tests: Selective Reconciliation
-
-#[test]
-fn test_reconcile_options_default() {
-	let options = ReconcileOptions::default();
-	assert!(!options.island_only);
-	assert!(!options.skip_static);
-	assert!(options.warn_on_mismatch);
-}
-
-#[test]
-fn test_reconcile_options_island_only() {
-	let options = ReconcileOptions::island_only();
-	assert!(options.island_only);
-	assert!(options.skip_static);
-	assert!(options.warn_on_mismatch);
-}
-
-#[test]
-fn test_reconcile_options_full_reconciliation() {
-	let options = ReconcileOptions::full_reconciliation();
-	assert!(!options.island_only);
-	assert!(!options.skip_static);
-	assert!(options.warn_on_mismatch);
-}
-
-#[test]
-fn test_reconcile_options_warn_on_mismatch() {
-	let options = ReconcileOptions::default().warn_on_mismatch(false);
-	assert!(!options.warn_on_mismatch);
-}
-
-#[test]
-fn test_reconcile_with_options_non_wasm() {
-	// Non-WASM version always succeeds
-	let view = Page::Empty;
-	let options = ReconcileOptions::default();
-	assert!(reconcile_with_options("", &view, &options).is_ok());
-}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	// Phase 2-B Tests: Selective Reconciliation
+
+	#[rstest]
+	fn test_reconcile_options_default() {
+		let options = ReconcileOptions::default();
+		assert!(!options.island_only);
+		assert!(!options.skip_static);
+		assert!(options.warn_on_mismatch);
+	}
+
+	#[rstest]
+	fn test_reconcile_options_island_only() {
+		let options = ReconcileOptions::island_only();
+		assert!(options.island_only);
+		assert!(options.skip_static);
+		assert!(options.warn_on_mismatch);
+	}
+
+	#[rstest]
+	fn test_reconcile_options_full_reconciliation() {
+		let options = ReconcileOptions::full_reconciliation();
+		assert!(!options.island_only);
+		assert!(!options.skip_static);
+		assert!(options.warn_on_mismatch);
+	}
+
+	#[rstest]
+	fn test_reconcile_options_warn_on_mismatch() {
+		let options = ReconcileOptions::default().warn_on_mismatch(false);
+		assert!(!options.warn_on_mismatch);
+	}
+
+	#[rstest]
+	fn test_reconcile_with_options_non_wasm() {
+		// Non-WASM version always succeeds
+		let view = Page::Empty;
+		let options = ReconcileOptions::default();
+		assert!(reconcile_with_options("", &view, &options).is_ok());
+	}
+
+	#[rstest]
 	fn test_reconcile_error_display() {
 		let err = ReconcileError::TagMismatch {
 			expected: "div".to_string(),
@@ -536,7 +538,7 @@ mod tests {
 		assert!(err.to_string().contains("span"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_child_count_mismatch_display() {
 		let err = ReconcileError::ChildCountMismatch {
 			expected: 3,
@@ -547,35 +549,35 @@ mod tests {
 		assert!(err.to_string().contains('2'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_normalize_whitespace() {
 		assert_eq!(normalize_whitespace("hello  world"), "hello world");
 		assert_eq!(normalize_whitespace("  foo   bar  "), "foo bar");
 		assert_eq!(normalize_whitespace("single"), "single");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compare_result_success() {
 		let result = CompareResult::success();
 		assert!(result.matches);
 		assert!(result.differences.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compare_result_failure() {
 		let result = CompareResult::failure(vec!["diff1".to_string(), "diff2".to_string()]);
 		assert!(!result.matches);
 		assert_eq!(result.differences.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_structure_matches_non_wasm() {
 		// Non-WASM version always returns true
 		let view = Page::Empty;
 		assert!(structure_matches("", &view));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reconcile_non_wasm() {
 		// Non-WASM version always succeeds
 		let view = Page::Empty;

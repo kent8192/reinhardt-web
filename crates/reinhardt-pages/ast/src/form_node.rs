@@ -1196,9 +1196,10 @@ impl FormFieldDef {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_form_field_property_is_styling() {
 		let class_prop = FormFieldProperty::Named {
 			name: Ident::new("class", Span::call_site()),
@@ -1228,7 +1229,7 @@ mod tests {
 		assert!(!required_flag.is_styling());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_field_def_is_required() {
 		let mut field = FormFieldDef::new(
 			Ident::new("username", Span::call_site()),
@@ -1244,7 +1245,7 @@ mod tests {
 		assert!(field.is_required());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_macro_uses_server_fn() {
 		let mut form = FormMacro::new(
 			Ident::new("LoginForm", Span::call_site()),

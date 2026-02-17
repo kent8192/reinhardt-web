@@ -495,8 +495,9 @@ impl std::error::Error for AuthError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_creation() {
 		let state = AuthState::new();
 		assert!(!state.is_authenticated());
@@ -504,7 +505,7 @@ mod tests {
 		assert!(state.username().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_login() {
 		let state = AuthState::new();
 		state.login(42, "testuser");
@@ -514,7 +515,7 @@ mod tests {
 		assert_eq!(state.username(), Some("testuser".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_logout() {
 		let state = AuthState::new();
 		state.login(42, "testuser");
@@ -525,7 +526,7 @@ mod tests {
 		assert!(state.username().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_from_server_data() {
 		let data = AuthData::full(
 			1,
@@ -544,14 +545,14 @@ mod tests {
 		assert!(state.is_superuser());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_data_anonymous() {
 		let data = AuthData::anonymous();
 		assert!(!data.is_authenticated);
 		assert!(data.user_id.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_data_authenticated() {
 		let data = AuthData::authenticated(1, "user");
 		assert!(data.is_authenticated);
@@ -559,7 +560,7 @@ mod tests {
 		assert_eq!(data.username, Some("user".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_update() {
 		let state = AuthState::new();
 		let data = AuthData::authenticated(99, "updated");
@@ -570,7 +571,7 @@ mod tests {
 		assert_eq!(state.username(), Some("updated".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_global_auth_state() {
 		let state1 = auth_state();
 		let state2 = auth_state();
@@ -579,7 +580,7 @@ mod tests {
 		assert!(state2.is_authenticated());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_error_display() {
 		let network_err = AuthError::Network("timeout".to_string());
 		assert_eq!(network_err.to_string(), "Network error: timeout");
@@ -594,7 +595,7 @@ mod tests {
 		assert_eq!(parse_err.to_string(), "Parse error: invalid json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_permission_with_cache() {
 		let state = AuthState::new();
 		let mut perms = HashSet::new();
@@ -606,7 +607,7 @@ mod tests {
 		assert!(!state.has_permission("blog.delete_post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_superuser_has_all_permissions() {
 		let state = AuthState::new();
 		state.login_full(1, "admin", None, true, true);
@@ -615,7 +616,7 @@ mod tests {
 		assert!(state.has_permission("another.permission"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_any_permission() {
 		let state = AuthState::new();
 		let mut perms = HashSet::new();
@@ -626,7 +627,7 @@ mod tests {
 		assert!(!state.has_any_permission(&["blog.delete", "blog.edit"]));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_all_permissions() {
 		let state = AuthState::new();
 		let mut perms = HashSet::new();
@@ -638,7 +639,7 @@ mod tests {
 		assert!(!state.has_all_permissions(&["blog.view", "blog.delete"]));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permissions_cleared_on_logout() {
 		let state = AuthState::new();
 		let mut perms = HashSet::new();
@@ -652,7 +653,7 @@ mod tests {
 		assert_eq!(state.permissions.get().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permissions_from_auth_data() {
 		let data = AuthData {
 			is_authenticated: true,
@@ -670,7 +671,7 @@ mod tests {
 		assert!(!state.has_permission("blog.delete"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permissions_update() {
 		let state = AuthState::new();
 		state.login(1, "user");

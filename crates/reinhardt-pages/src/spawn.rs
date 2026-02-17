@@ -38,8 +38,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_spawn_task_compiles() {
 		spawn_task(async {
 			// テスト処理

@@ -348,6 +348,7 @@ mod tests {
 	#[cfg(not(target_arch = "wasm32"))]
 	mod native_tests {
 		use super::*;
+		use rstest::rstest;
 
 		#[rstest]
 		fn test_resolve_static_fallback() {

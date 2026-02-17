@@ -411,14 +411,15 @@ pub fn mark_hydration_complete() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_hydration_context_new() {
 		let ctx = HydrationContext::new();
 		assert!(!ctx.is_hydrated());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hydration_context_mark_hydrated() {
 		let mut ctx = HydrationContext::new();
 		assert!(!ctx.is_hydrated());
@@ -426,7 +427,7 @@ mod tests {
 		assert!(ctx.is_hydrated());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hydration_context_from_state() {
 		let mut state = SsrState::new();
 		state.add_signal("count", 42);
@@ -434,7 +435,7 @@ mod tests {
 		assert_eq!(ctx.get_signal("count"), Some(&serde_json::json!(42)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hydration_error_display() {
 		let err = HydrationError::RootNotFound("#app".to_string());
 		assert_eq!(err.to_string(), "Hydration root element not found: #app");
@@ -447,7 +448,7 @@ mod tests {
 		assert!(err.to_string().contains("DOM structure mismatch"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hydration_context_from_window_non_wasm() {
 		// Non-WASM version should return empty context
 		let ctx = HydrationContext::from_window().unwrap();

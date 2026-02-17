@@ -465,44 +465,46 @@ pub(super) fn render_page<C: Component>(component: &C, options: SsrOptions) -> S
 	renderer.render_page(component)
 }
 
-// Phase 2-B Tests: SsrOptions Extension
-
-#[test]
-fn test_ssr_options_partial_hydration_default() {
-	let opts = SsrOptions::default();
-	assert!(!opts.enable_partial_hydration);
-	assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Full);
-}
-
-#[test]
-fn test_ssr_options_partial_hydration_builder() {
-	let opts = SsrOptions::new()
-		.partial_hydration(true)
-		.default_strategy(HydrationStrategy::Island);
-
-	assert!(opts.enable_partial_hydration);
-	assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Island);
-}
-
-#[test]
-fn test_ssr_options_islands_only() {
-	let opts = SsrOptions::new().islands_only();
-
-	assert!(opts.enable_partial_hydration);
-	assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Island);
-}
-
-#[test]
-fn test_ssr_options_default_strategy_static() {
-	let opts = SsrOptions::new().default_strategy(HydrationStrategy::Static);
-
-	assert!(!opts.enable_partial_hydration);
-	assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Static);
-}
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::component::PageElement;
+	use rstest::rstest;
+
+	// Phase 2-B Tests: SsrOptions Extension
+
+	#[rstest]
+	fn test_ssr_options_partial_hydration_default() {
+		let opts = SsrOptions::default();
+		assert!(!opts.enable_partial_hydration);
+		assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Full);
+	}
+
+	#[rstest]
+	fn test_ssr_options_partial_hydration_builder() {
+		let opts = SsrOptions::new()
+			.partial_hydration(true)
+			.default_strategy(HydrationStrategy::Island);
+
+		assert!(opts.enable_partial_hydration);
+		assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Island);
+	}
+
+	#[rstest]
+	fn test_ssr_options_islands_only() {
+		let opts = SsrOptions::new().islands_only();
+
+		assert!(opts.enable_partial_hydration);
+		assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Island);
+	}
+
+	#[rstest]
+	fn test_ssr_options_default_strategy_static() {
+		let opts = SsrOptions::new().default_strategy(HydrationStrategy::Static);
+
+		assert!(!opts.enable_partial_hydration);
+		assert_eq!(opts.default_hydration_strategy, HydrationStrategy::Static);
+	}
 
 	struct TestComponent {
 		message: String,
@@ -521,7 +523,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_options_default() {
 		let opts = SsrOptions::default();
 		assert!(opts.include_hydration_markers);
@@ -529,7 +531,7 @@ mod tests {
 		assert_eq!(opts.lang, "en");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_renderer_render() {
 		let component = TestComponent {
 			message: "Hello".to_string(),
@@ -539,7 +541,7 @@ mod tests {
 		assert_eq!(html, "<div class=\"test\">Hello</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_renderer_with_csrf() {
 		let component = TestComponent {
 			message: "Secure".to_string(),
@@ -552,7 +554,7 @@ mod tests {
 		assert!(html.contains("test-token-123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_renderer_with_auth() {
 		let component = TestComponent {
 			message: "Auth".to_string(),
@@ -566,7 +568,7 @@ mod tests {
 		assert!(html.contains("testuser"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_renderer_with_marker() {
 		let component = TestComponent {
 			message: "Hydrate".to_string(),
@@ -578,7 +580,7 @@ mod tests {
 		assert!(html.contains("data-rh-component=\"TestComponent\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_helper() {
 		let component = TestComponent {
 			message: "Helper".to_string(),
@@ -587,7 +589,7 @@ mod tests {
 		assert_eq!(html, "<div class=\"test\">Helper</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape() {
 		assert_eq!(html_escape("<script>"), "&lt;script&gt;");
 		assert_eq!(html_escape("a&b"), "a&amp;b");

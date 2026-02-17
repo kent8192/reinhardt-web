@@ -82,15 +82,16 @@ impl Injectable for ServerFnBody {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_request_wrapper() {
 		let request = Request::builder().uri("/test").build().unwrap();
 		let wrapped = ServerFnRequest(Arc::new(request));
 		assert_eq!(wrapped.inner().uri.path(), "/test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_server_fn_body_wrapper() {
 		let body = ServerFnBody("test body".to_string());
 		assert_eq!(body.inner(), "test body");

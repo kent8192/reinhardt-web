@@ -158,12 +158,14 @@ mod tests {
 	use crate::testing::mock_http::{
 		clear_mocks, get_call_history, mock_server_fn, mock_server_fn_error,
 	};
+	use rstest::rstest;
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	struct TestResponse {
 		message: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fetch_with_mock_returns_mocked_response() {
 		clear_mocks();
@@ -183,6 +185,7 @@ mod tests {
 		clear_mocks();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fetch_with_mock_records_call() {
 		clear_mocks();
@@ -200,6 +203,7 @@ mod tests {
 		clear_mocks();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fetch_with_mock_error_response() {
 		clear_mocks();
@@ -212,6 +216,7 @@ mod tests {
 		clear_mocks();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fetch_without_mock_fails_on_server() {
 		clear_mocks();

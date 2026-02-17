@@ -277,9 +277,10 @@ impl Default for MockServer {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_builder() {
 		let response = MockResponse::new()
 			.status(201)
@@ -295,7 +296,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_json() {
 		let response = MockResponse::json(r#"{"id": 1}"#);
 
@@ -308,7 +309,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_response_error() {
 		let response = MockResponse::error(404, "Not Found");
 
@@ -316,7 +317,7 @@ mod tests {
 		assert_eq!(response.body, "Not Found");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_registration() {
 		let mut server = MockServer::new();
 
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(server.routes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_handle_request() {
 		let mut server = MockServer::new();
 
@@ -340,7 +341,7 @@ mod tests {
 		assert_eq!(server.request_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_history() {
 		let mut server = MockServer::new();
 
@@ -361,7 +362,7 @@ mod tests {
 		assert_eq!(server.history()[1].body, Some("body".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_request_count_for() {
 		let mut server = MockServer::new();
 
@@ -374,7 +375,7 @@ mod tests {
 		assert_eq!(server.request_count_for(Method::POST, "/test"), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_assertions() {
 		let mut server = MockServer::new();
 
@@ -386,14 +387,14 @@ mod tests {
 		server.assert_not_requested(Method::POST, "/test");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Expected request to GET /missing but none was made")]
 	fn test_mock_server_assert_requested_fails() {
 		let server = MockServer::new();
 		server.assert_requested(Method::GET, "/missing");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_server_reset() {
 		let mut server = MockServer::new();
 

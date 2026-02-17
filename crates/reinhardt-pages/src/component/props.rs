@@ -133,6 +133,7 @@ pub(super) fn deserialize_props<P: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Debug, Default, PartialEq)]
 	struct TestProps {
@@ -151,7 +152,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_props_from_attrs() {
 		let mut attrs = HashMap::new();
 		attrs.insert("name".to_string(), "Test".to_string());
@@ -164,21 +165,21 @@ mod tests {
 		assert!(props.enabled);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_props_default_values() {
 		let attrs = HashMap::new();
 		let props = TestProps::from_attrs(&attrs);
 		assert_eq!(props, TestProps::default());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_props() {
 		let attrs = HashMap::new();
 		let props = EmptyProps::from_attrs(&attrs);
 		assert_eq!(std::mem::size_of_val(&props), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_props_builder() {
 		let props: TestProps = PropsBuilder::new()
 			.attr("name", "Builder")
@@ -191,7 +192,7 @@ mod tests {
 		assert!(props.enabled);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_props_builder_optional() {
 		let props: TestProps = PropsBuilder::new()
 			.attr("name", "Test")
@@ -203,7 +204,7 @@ mod tests {
 		assert_eq!(props.count, 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialize_props() {
 		use serde::Serialize;
 
@@ -223,7 +224,7 @@ mod tests {
 		assert_eq!(attrs.get("count"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deserialize_props() {
 		use serde::Deserialize;
 

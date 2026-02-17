@@ -100,8 +100,9 @@ pub fn reset_id_counter() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_id_unique() {
 		reset_id_counter();
 
@@ -114,7 +115,7 @@ mod tests {
 		assert_ne!(id1, id3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_id_format() {
 		reset_id_counter();
 
@@ -122,7 +123,7 @@ mod tests {
 		assert!(id.starts_with("reinhardt-id-"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_id_with_prefix() {
 		reset_id_counter();
 
@@ -130,7 +131,7 @@ mod tests {
 		assert!(id.starts_with("custom-"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_id_sequential() {
 		reset_id_counter();
 

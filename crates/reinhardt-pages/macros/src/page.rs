@@ -65,8 +65,9 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 mod tests {
 	use super::*;
 	use quote::quote;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_page_macro_basic() {
 		let input = quote!(|| { div { "hello" } });
 		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
@@ -77,7 +78,7 @@ mod tests {
 		assert!(!output.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_macro_with_params() {
 		let input = quote!(|name: String, count: i32| {
 			div {
@@ -95,7 +96,7 @@ mod tests {
 		assert!(output_str.contains("count : i32"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_macro_with_events() {
 		let input = quote!(|| {
 			button {
@@ -113,7 +114,7 @@ mod tests {
 		assert!(output_str.contains("Click"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_macro_nested_elements() {
 		let input = quote!(|| {
 			div {

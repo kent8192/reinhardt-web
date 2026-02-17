@@ -472,10 +472,11 @@ fn parse_component_args(input: ParseStream) -> Result<Vec<PageComponentArg>> {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use quote::quote;
 
-	#[test]
+	#[rstest]
 	fn test_parse_empty_params() {
 		let input = quote!(|| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -483,7 +484,7 @@ mod tests {
 		assert_eq!(result.body.nodes.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_single_param() {
 		let input = quote!(|name: String| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -491,7 +492,7 @@ mod tests {
 		assert_eq!(result.params[0].name.to_string(), "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_multiple_params() {
 		let input = quote!(|name: String, count: i32| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -500,7 +501,7 @@ mod tests {
 		assert_eq!(result.params[1].name.to_string(), "count");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_simple_element() {
 		let input = quote!(|| { div { "hello" } });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -514,7 +515,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_element_with_attrs() {
 		let input = quote!(|| {
 			div {
@@ -536,7 +537,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_element_with_event() {
 		let input = quote!(|| {
 			button {
@@ -556,7 +557,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_nested_elements() {
 		let input = quote!(|| {
 			div {
@@ -585,7 +586,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_text_node() {
 		let input = quote!(|| { "Hello, World!" });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -598,7 +599,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_if_node() {
 		let input = quote!(|| {
 			if show {
@@ -616,7 +617,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_if_else_node() {
 		let input = quote!(|| {
 			if is_admin {
@@ -641,7 +642,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_for_node() {
 		let input = quote!(|| {
 			for item in items {
@@ -658,7 +659,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_basic() {
 		let input = quote!(|| {
 			MyButton(label: "Click")
@@ -676,7 +677,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_multiple_args() {
 		let input = quote!(|| {
 			MyButton(label: "Click", disabled: true, count: 42)
@@ -695,7 +696,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_with_children() {
 		let input = quote!(|| {
 			MyWrapper(class: "container") {
@@ -715,7 +716,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_empty_args() {
 		let input = quote!(|| { MyComponent() });
 		let result: PageMacro = syn::parse2(input).unwrap();
@@ -730,7 +731,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_trailing_comma() {
 		let input = quote!(|| {
 			MyButton(label: "Click",)
@@ -745,7 +746,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_component_with_expression_arg() {
 		let input = quote!(|| {
 			MyComponent(count: items.len())
@@ -761,7 +762,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_mixed_elements_and_components() {
 		let input = quote!(|| {
 			div {
@@ -794,7 +795,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_with_head_directive() {
 		use proc_macro2::{Punct, Spacing};
 		// Build: # head : my_head , || { div { "hello" } }
@@ -809,7 +810,7 @@ mod tests {
 		assert_eq!(result.body.nodes.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_with_head_directive_and_params() {
 		use proc_macro2::{Punct, Spacing};
 		let pound = Punct::new('#', Spacing::Alone);
@@ -823,7 +824,7 @@ mod tests {
 		assert_eq!(result.params[0].name.to_string(), "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_unknown_directive_error() {
 		use proc_macro2::{Punct, Spacing};
 		let pound = Punct::new('#', Spacing::Alone);

@@ -8,6 +8,7 @@
 
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer, SsrState};
+use rstest::rstest;
 use serde::de::DeserializeOwned;
 
 /// Test component for SSR
@@ -80,7 +81,7 @@ impl Component for UserCard {
 }
 
 /// Success Criterion 1: Components render to HTML strings
-#[test]
+#[rstest]
 fn test_component_render_to_string() {
 	let counter = Counter::new(42);
 	let html = counter.render().render_to_string();
@@ -93,7 +94,7 @@ fn test_component_render_to_string() {
 }
 
 /// Success Criterion 1: Nested components render correctly
-#[test]
+#[rstest]
 fn test_nested_component_render() {
 	let card = UserCard::new("Alice", "alice@example.com");
 	let html = card.render().render_to_string();
@@ -112,7 +113,7 @@ fn get_signal_as<T: DeserializeOwned>(state: &SsrState, key: &str) -> Option<T> 
 }
 
 /// Success Criterion 2: SSR state serialization
-#[test]
+#[rstest]
 fn test_ssr_state_serialization() {
 	let mut state = SsrState::new();
 
@@ -137,7 +138,7 @@ fn test_ssr_state_serialization() {
 }
 
 /// Success Criterion 2: SSR state with complex values
-#[test]
+#[rstest]
 fn test_ssr_state_complex_values() {
 	let mut state = SsrState::new();
 
@@ -164,7 +165,7 @@ fn test_ssr_state_complex_values() {
 }
 
 /// Success Criterion 3: SSR renderer with hydration markers
-#[test]
+#[rstest]
 fn test_ssr_renderer_with_hydration_markers() {
 	let counter = Counter::new(10);
 
@@ -181,7 +182,7 @@ fn test_ssr_renderer_with_hydration_markers() {
 }
 
 /// Success Criterion 3: SSR renderer without hydration markers
-#[test]
+#[rstest]
 fn test_ssr_renderer_without_hydration_markers() {
 	let counter = Counter::new(5);
 
@@ -199,7 +200,7 @@ fn test_ssr_renderer_without_hydration_markers() {
 }
 
 /// Success Criterion 4: View fragment rendering
-#[test]
+#[rstest]
 fn test_view_fragment_rendering() {
 	let fragment = Page::Fragment(vec![Page::text("Hello, "), Page::text("World!")]);
 
@@ -208,7 +209,7 @@ fn test_view_fragment_rendering() {
 }
 
 /// Success Criterion 4: View empty rendering
-#[test]
+#[rstest]
 fn test_view_empty_rendering() {
 	let empty = Page::Empty;
 	let html = empty.render_to_string();
@@ -216,7 +217,7 @@ fn test_view_empty_rendering() {
 }
 
 /// Integration test: Full SSR flow with state
-#[test]
+#[rstest]
 fn test_full_ssr_flow() {
 	// 1. Create component
 	let counter = Counter::new(100);
@@ -248,7 +249,7 @@ fn test_full_ssr_flow() {
 }
 
 /// Integration test: Multiple components rendering
-#[test]
+#[rstest]
 fn test_multiple_components_rendering() {
 	let components: Vec<Box<dyn Component>> = vec![
 		Box::new(Counter::new(1)),
@@ -268,7 +269,7 @@ fn test_multiple_components_rendering() {
 }
 
 /// Test SSR state script tag generation
-#[test]
+#[rstest]
 fn test_ssr_state_script_tag() {
 	let mut state = SsrState::new();
 	state.add_signal("test", serde_json::json!(42));

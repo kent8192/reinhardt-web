@@ -262,8 +262,9 @@ pub fn csrf_headers() -> Option<(&'static str, String)> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_cookie_value() {
 		let cookie_str = "sessionid=abc123; csrftoken=xyz789; other=value";
 		assert_eq!(
@@ -277,7 +278,7 @@ mod tests {
 		assert_eq!(parse_cookie_value(cookie_str, "nonexistent"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_cookie_value_with_spaces() {
 		let cookie_str = " csrftoken = token123 ; other = value ";
 		assert_eq!(
@@ -286,20 +287,20 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csrf_manager_creation() {
 		let manager = CsrfManager::new();
 		assert!(manager.cached_token().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csrf_manager_set_token() {
 		let manager = CsrfManager::new();
 		manager.set_token("test-token");
 		assert_eq!(manager.cached_token(), Some("test-token".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csrf_manager_clear() {
 		let manager = CsrfManager::new();
 		manager.set_token("test-token");
@@ -307,7 +308,7 @@ mod tests {
 		assert!(manager.cached_token().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csrf_manager_default() {
 		let manager = CsrfManager::default();
 		assert!(manager.cached_token().is_none());

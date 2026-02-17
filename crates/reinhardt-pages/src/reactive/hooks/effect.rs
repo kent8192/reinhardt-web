@@ -117,11 +117,12 @@ where
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_effect_runs_immediately() {
 		let called = Rc::new(RefCell::new(false));
@@ -136,7 +137,7 @@ mod tests {
 		assert!(*called.borrow());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_effect_tracks_dependencies() {
 		let count = Signal::new(0);
@@ -159,7 +160,7 @@ mod tests {
 		// via the runtime's update mechanism
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_layout_effect() {
 		let called = Rc::new(RefCell::new(false));
@@ -174,7 +175,7 @@ mod tests {
 		assert!(*called.borrow());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_layout_effect_synchronous_execution() {
 		// Test that layout effects execute synchronously when dependencies change
@@ -201,7 +202,7 @@ mod tests {
 		// Note: In full implementation, this would be more evident with flush_updates()
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_layout_vs_passive_timing() {
 		// Test that layout effects have different timing than passive effects
@@ -241,7 +242,7 @@ mod tests {
 		// Passive effect may not have executed yet (scheduled for microtask)
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_mixed_layout_and_passive_effects() {
 		// Test execution order when both layout and passive effects depend on same signal

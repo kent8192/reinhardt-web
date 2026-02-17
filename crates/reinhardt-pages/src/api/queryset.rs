@@ -627,8 +627,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_filter_exact() {
 		let filter = Filter::exact("name", "test");
 		assert_eq!(filter.field, "name");
@@ -638,7 +639,7 @@ mod tests {
 		assert_eq!(value, "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_with_op() {
 		let filter = Filter::with_op("age", FilterOp::Gte, 18);
 		let (key, value) = filter.to_query_param();
@@ -646,19 +647,19 @@ mod tests {
 		assert_eq!(value, "18");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_negate() {
 		let filter = Filter::exact("status", "banned").negate();
 		assert!(filter.exclude);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_build_url_simple() {
 		let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/");
 		assert_eq!(qs.build_url(), "/api/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_build_url_with_filters() {
 		let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 			.filter("is_active", true)
@@ -669,7 +670,7 @@ mod tests {
 		assert!(url.contains("age__gte=18"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_build_url_with_ordering() {
 		let qs: ApiQuerySet<serde_json::Value> =
 			ApiQuerySet::new("/api/users/").order_by(&["-created_at", "username"]);
@@ -678,7 +679,7 @@ mod tests {
 		assert!(url.contains("ordering=-created_at%2Cusername"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_build_url_with_pagination() {
 		let qs: ApiQuerySet<serde_json::Value> =
 			ApiQuerySet::new("/api/users/").limit(10).offset(20);
@@ -688,7 +689,7 @@ mod tests {
 		assert!(url.contains("offset=20"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_build_url_with_fields() {
 		let qs: ApiQuerySet<serde_json::Value> =
 			ApiQuerySet::new("/api/users/").only(&["id", "username"]);
@@ -697,7 +698,7 @@ mod tests {
 		assert!(url.contains("fields=id%2Cusername"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_chain() {
 		let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 			.filter("is_active", true)
@@ -714,7 +715,7 @@ mod tests {
 		assert!(url.contains("limit=10"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_in_list() {
 		let filter = Filter::with_op("id", FilterOp::In, vec![1, 2, 3]);
 		let (key, value) = filter.to_query_param();

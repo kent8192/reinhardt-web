@@ -135,8 +135,9 @@ pub fn use_ref<T: 'static>(initial: T) -> Ref<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_ref_basic() {
 		let r = use_ref(42);
 		assert_eq!(*r.current(), 42);
@@ -145,7 +146,7 @@ mod tests {
 		assert_eq!(*r.current(), 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ref_update() {
 		let r = use_ref(vec![1, 2, 3]);
 
@@ -158,7 +159,7 @@ mod tests {
 		assert_eq!(*r.current(), vec![1, 2, 3]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ref_clone() {
 		let r1 = use_ref(0);
 		let r2 = r1.clone();
@@ -170,14 +171,14 @@ mod tests {
 		assert_eq!(*r1.current(), 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ref_get() {
 		let r = use_ref("hello".to_string());
 		let value = r.get();
 		assert_eq!(value, "hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ref_with_option() {
 		let r = use_ref(None::<String>);
 		assert!(r.current().is_none());
@@ -186,7 +187,7 @@ mod tests {
 		assert_eq!(r.current().as_ref(), Some(&"value".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ref_debug() {
 		let r = use_ref(42);
 		let debug_str = format!("{:?}", r);

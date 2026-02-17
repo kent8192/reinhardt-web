@@ -154,14 +154,15 @@ impl StateEntry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_new() {
 		let state = SsrState::new();
 		assert!(state.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_add_signal() {
 		let mut state = SsrState::new();
 		state.add_signal("counter", 42);
@@ -169,14 +170,14 @@ mod tests {
 		assert_eq!(state.get_signal("counter"), Some(&serde_json::json!(42)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_add_props() {
 		let mut state = SsrState::new();
 		state.add_props("rh-0", serde_json::json!({"name": "test"}));
 		assert_eq!(state.props_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_add_metadata() {
 		let mut state = SsrState::new();
 		state.add_metadata("version", "1.0.0");
@@ -186,7 +187,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_to_json() {
 		let mut state = SsrState::new();
 		state.add_signal("count", 10);
@@ -195,14 +196,14 @@ mod tests {
 		assert!(json.contains("\"count\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_from_json() {
 		let json = r#"{"signals":{"x":5},"props":{},"metadata":{}}"#;
 		let state = SsrState::from_json(json).unwrap();
 		assert_eq!(state.get_signal("x"), Some(&serde_json::json!(5)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_to_script_tag() {
 		let mut state = SsrState::new();
 		state.add_signal("test", true);
@@ -212,7 +213,7 @@ mod tests {
 		assert!(script.contains("</script>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ssr_state_merge() {
 		let mut state1 = SsrState::new();
 		state1.add_signal("a", 1);
@@ -224,14 +225,14 @@ mod tests {
 		assert_eq!(state1.signal_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_entry_signal() {
 		let entry = StateEntry::signal("rh-1", 42).unwrap();
 		assert_eq!(entry.id, "rh-1");
 		assert!(matches!(entry.entry_type, StateEntryType::Signal));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_entry_props() {
 		let entry = StateEntry::props("rh-2", serde_json::json!({"x": 1})).unwrap();
 		assert_eq!(entry.id, "rh-2");

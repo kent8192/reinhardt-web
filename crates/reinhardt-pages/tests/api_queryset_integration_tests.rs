@@ -20,13 +20,14 @@
 //! and will be tested separately with mock server infrastructure.
 
 use reinhardt_pages::api::{ApiQuerySet, Filter, FilterOp};
+use rstest::rstest;
 
 // ============================================================================
 // Category 1: Filter Construction (12 tests)
 // ============================================================================
 
 /// Tests Filter::exact creates correct filter
-#[test]
+#[rstest]
 fn test_filter_exact_string() {
 	let filter = Filter::exact("username", "alice");
 
@@ -36,7 +37,7 @@ fn test_filter_exact_string() {
 }
 
 /// Tests Filter::exact with numeric value
-#[test]
+#[rstest]
 fn test_filter_exact_number() {
 	let filter = Filter::exact("age", 25);
 	let (key, value) = filter.to_query_param();
@@ -45,7 +46,7 @@ fn test_filter_exact_number() {
 }
 
 /// Tests Filter::exact with boolean value
-#[test]
+#[rstest]
 fn test_filter_exact_boolean() {
 	let filter = Filter::exact("is_active", true);
 	let (key, value) = filter.to_query_param();
@@ -54,7 +55,7 @@ fn test_filter_exact_boolean() {
 }
 
 /// Tests Filter::with_op for greater than operation
-#[test]
+#[rstest]
 fn test_filter_op_gt() {
 	let filter = Filter::with_op("score", FilterOp::Gt, 100);
 	let (key, value) = filter.to_query_param();
@@ -63,7 +64,7 @@ fn test_filter_op_gt() {
 }
 
 /// Tests Filter::with_op for greater than or equal
-#[test]
+#[rstest]
 fn test_filter_op_gte() {
 	let filter = Filter::with_op("age", FilterOp::Gte, 18);
 	let (key, value) = filter.to_query_param();
@@ -72,7 +73,7 @@ fn test_filter_op_gte() {
 }
 
 /// Tests Filter::with_op for less than operation
-#[test]
+#[rstest]
 fn test_filter_op_lt() {
 	let filter = Filter::with_op("price", FilterOp::Lt, 50.0);
 	let (key, value) = filter.to_query_param();
@@ -81,7 +82,7 @@ fn test_filter_op_lt() {
 }
 
 /// Tests Filter::with_op for less than or equal
-#[test]
+#[rstest]
 fn test_filter_op_lte() {
 	let filter = Filter::with_op("quantity", FilterOp::Lte, 10);
 	let (key, value) = filter.to_query_param();
@@ -90,7 +91,7 @@ fn test_filter_op_lte() {
 }
 
 /// Tests Filter::with_op for contains operation
-#[test]
+#[rstest]
 fn test_filter_op_contains() {
 	let filter = Filter::with_op("title", FilterOp::Contains, "rust");
 	let (key, value) = filter.to_query_param();
@@ -99,7 +100,7 @@ fn test_filter_op_contains() {
 }
 
 /// Tests Filter::with_op for case-insensitive contains
-#[test]
+#[rstest]
 fn test_filter_op_icontains() {
 	let filter = Filter::with_op("description", FilterOp::IContains, "RUST");
 	let (key, value) = filter.to_query_param();
@@ -108,7 +109,7 @@ fn test_filter_op_icontains() {
 }
 
 /// Tests Filter::with_op for starts with operation
-#[test]
+#[rstest]
 fn test_filter_op_startswith() {
 	let filter = Filter::with_op("name", FilterOp::StartsWith, "A");
 	let (key, value) = filter.to_query_param();
@@ -117,7 +118,7 @@ fn test_filter_op_startswith() {
 }
 
 /// Tests Filter::with_op for ends with operation
-#[test]
+#[rstest]
 fn test_filter_op_endswith() {
 	let filter = Filter::with_op("email", FilterOp::EndsWith, "@example.com");
 	let (key, value) = filter.to_query_param();
@@ -126,7 +127,7 @@ fn test_filter_op_endswith() {
 }
 
 /// Tests Filter::with_op for in list operation
-#[test]
+#[rstest]
 fn test_filter_op_in() {
 	let filter = Filter::with_op("id", FilterOp::In, vec![1, 2, 3, 4, 5]);
 	let (key, value) = filter.to_query_param();
@@ -135,7 +136,7 @@ fn test_filter_op_in() {
 }
 
 /// Tests Filter::negate toggles exclude flag
-#[test]
+#[rstest]
 fn test_filter_negate() {
 	let filter = Filter::exact("status", "banned");
 
@@ -154,7 +155,7 @@ fn test_filter_negate() {
 // ============================================================================
 
 /// Tests creating a new QuerySet with endpoint
-#[test]
+#[rstest]
 fn test_queryset_new() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/");
 
@@ -164,7 +165,7 @@ fn test_queryset_new() {
 }
 
 /// Tests adding a single filter
-#[test]
+#[rstest]
 fn test_queryset_filter_single() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").filter("is_active", true);
@@ -174,7 +175,7 @@ fn test_queryset_filter_single() {
 }
 
 /// Tests adding multiple filters
-#[test]
+#[rstest]
 fn test_queryset_filter_multiple() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -186,7 +187,7 @@ fn test_queryset_filter_multiple() {
 }
 
 /// Tests filter_op method
-#[test]
+#[rstest]
 fn test_queryset_filter_op() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").filter_op("age", FilterOp::Gte, 18);
@@ -196,7 +197,7 @@ fn test_queryset_filter_op() {
 }
 
 /// Tests exclude method
-#[test]
+#[rstest]
 fn test_queryset_exclude() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").exclude("status", "banned");
@@ -206,7 +207,7 @@ fn test_queryset_exclude() {
 }
 
 /// Tests order_by with single field
-#[test]
+#[rstest]
 fn test_queryset_order_by_single() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").order_by(&["username"]);
@@ -216,7 +217,7 @@ fn test_queryset_order_by_single() {
 }
 
 /// Tests order_by with multiple fields
-#[test]
+#[rstest]
 fn test_queryset_order_by_multiple() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").order_by(&["-created_at", "username"]);
@@ -226,7 +227,7 @@ fn test_queryset_order_by_multiple() {
 }
 
 /// Tests limit method
-#[test]
+#[rstest]
 fn test_queryset_limit() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10);
 
@@ -235,7 +236,7 @@ fn test_queryset_limit() {
 }
 
 /// Tests offset method
-#[test]
+#[rstest]
 fn test_queryset_offset() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").offset(20);
 
@@ -244,7 +245,7 @@ fn test_queryset_offset() {
 }
 
 /// Tests only method for field selection
-#[test]
+#[rstest]
 fn test_queryset_only() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").only(&["id", "username", "email"]);
@@ -258,7 +259,7 @@ fn test_queryset_only() {
 }
 
 /// Tests method chaining combines all operations
-#[test]
+#[rstest]
 fn test_queryset_method_chaining() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -278,7 +279,7 @@ fn test_queryset_method_chaining() {
 }
 
 /// Tests QuerySet is cloneable
-#[test]
+#[rstest]
 fn test_queryset_clone() {
 	let qs1: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").filter("is_active", true);
@@ -290,7 +291,7 @@ fn test_queryset_clone() {
 }
 
 /// Tests combining filter and filter_op
-#[test]
+#[rstest]
 fn test_queryset_mixed_filters() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -304,7 +305,7 @@ fn test_queryset_mixed_filters() {
 }
 
 /// Tests empty ordering array
-#[test]
+#[rstest]
 fn test_queryset_empty_ordering() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").order_by(&[]);
 
@@ -318,7 +319,7 @@ fn test_queryset_empty_ordering() {
 // ============================================================================
 
 /// Tests build_url with no parameters
-#[test]
+#[rstest]
 fn test_build_url_simple() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/");
 	let url = qs.build_url();
@@ -326,7 +327,7 @@ fn test_build_url_simple() {
 }
 
 /// Tests build_url with single filter
-#[test]
+#[rstest]
 fn test_build_url_single_filter() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").filter("is_active", true);
@@ -337,7 +338,7 @@ fn test_build_url_single_filter() {
 }
 
 /// Tests build_url with multiple filters
-#[test]
+#[rstest]
 fn test_build_url_multiple_filters() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -349,7 +350,7 @@ fn test_build_url_multiple_filters() {
 }
 
 /// Tests build_url with exclude filter
-#[test]
+#[rstest]
 fn test_build_url_exclude() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").exclude("role", "admin");
@@ -359,7 +360,7 @@ fn test_build_url_exclude() {
 }
 
 /// Tests build_url with ordering
-#[test]
+#[rstest]
 fn test_build_url_ordering() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").order_by(&["-created_at", "username"]);
@@ -369,7 +370,7 @@ fn test_build_url_ordering() {
 }
 
 /// Tests build_url with limit only
-#[test]
+#[rstest]
 fn test_build_url_limit_only() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10);
 
@@ -378,7 +379,7 @@ fn test_build_url_limit_only() {
 }
 
 /// Tests build_url with offset only
-#[test]
+#[rstest]
 fn test_build_url_offset_only() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").offset(20);
 
@@ -387,7 +388,7 @@ fn test_build_url_offset_only() {
 }
 
 /// Tests build_url with limit and offset (pagination)
-#[test]
+#[rstest]
 fn test_build_url_pagination() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/").limit(10).offset(20);
 
@@ -397,7 +398,7 @@ fn test_build_url_pagination() {
 }
 
 /// Tests build_url with field selection
-#[test]
+#[rstest]
 fn test_build_url_fields() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").only(&["id", "username"]);
@@ -407,7 +408,7 @@ fn test_build_url_fields() {
 }
 
 /// Tests build_url with all parameters combined
-#[test]
+#[rstest]
 fn test_build_url_all_parameters() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users/")
 		.filter("is_active", true)
@@ -428,7 +429,7 @@ fn test_build_url_all_parameters() {
 }
 
 /// Tests build_url with special characters in filter values
-#[test]
+#[rstest]
 fn test_build_url_special_characters() {
 	let qs: ApiQuerySet<serde_json::Value> =
 		ApiQuerySet::new("/api/users/").filter("username", "alice@example.com");
@@ -439,7 +440,7 @@ fn test_build_url_special_characters() {
 }
 
 /// Tests build_url with complex filter operations
-#[test]
+#[rstest]
 fn test_build_url_complex_filters() {
 	let qs: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/posts/")
 		.filter_op("title", FilterOp::Contains, "rust")
@@ -453,7 +454,7 @@ fn test_build_url_complex_filters() {
 }
 
 /// Tests build_url maintains endpoint format
-#[test]
+#[rstest]
 fn test_build_url_endpoint_format() {
 	// Endpoint without trailing slash
 	let qs1: ApiQuerySet<serde_json::Value> = ApiQuerySet::new("/api/users").filter("id", 1);

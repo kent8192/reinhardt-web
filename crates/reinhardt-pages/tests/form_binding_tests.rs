@@ -20,6 +20,7 @@
 
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::{FieldMetadata, FormBinding, FormComponent, FormMetadata, Widget};
+use rstest::rstest;
 use serial_test::serial;
 use std::collections::HashMap;
 
@@ -64,7 +65,7 @@ fn create_test_form() -> FormComponent {
 // ============================================================================
 
 /// Tests creating FormBinding from FormComponent
-#[test]
+#[rstest]
 #[serial]
 fn test_form_binding_creation() {
 	let form = create_test_form();
@@ -74,7 +75,7 @@ fn test_form_binding_creation() {
 }
 
 /// Tests binding a single field
-#[test]
+#[rstest]
 #[serial]
 fn test_bind_single_field() {
 	let form = create_test_form();
@@ -88,7 +89,7 @@ fn test_bind_single_field() {
 }
 
 /// Tests binding multiple fields
-#[test]
+#[rstest]
 #[serial]
 fn test_bind_multiple_fields() {
 	let form = create_test_form();
@@ -106,7 +107,7 @@ fn test_bind_multiple_fields() {
 }
 
 /// Tests unbinding a field
-#[test]
+#[rstest]
 #[serial]
 fn test_unbind_field() {
 	let form = create_test_form();
@@ -124,7 +125,7 @@ fn test_unbind_field() {
 }
 
 /// Tests getting binding for a field
-#[test]
+#[rstest]
 #[serial]
 fn test_get_binding() {
 	let form = create_test_form();
@@ -145,7 +146,7 @@ fn test_get_binding() {
 // ============================================================================
 
 /// Tests Signal → Form synchronization
-#[test]
+#[rstest]
 #[serial]
 fn test_signal_to_form_sync() {
 	let form = create_test_form();
@@ -163,7 +164,7 @@ fn test_signal_to_form_sync() {
 }
 
 /// Tests Form → Signal synchronization
-#[test]
+#[rstest]
 #[serial]
 fn test_form_to_signal_sync() {
 	let form = create_test_form();
@@ -181,7 +182,7 @@ fn test_form_to_signal_sync() {
 }
 
 /// Tests sync_from_form updates all bindings
-#[test]
+#[rstest]
 #[serial]
 fn test_sync_from_form() {
 	let form = create_test_form();
@@ -206,7 +207,7 @@ fn test_sync_from_form() {
 }
 
 /// Tests sync_to_form updates all fields
-#[test]
+#[rstest]
 #[serial]
 fn test_sync_to_form() {
 	let form = create_test_form();
@@ -227,7 +228,7 @@ fn test_sync_to_form() {
 }
 
 /// Tests bidirectional sync maintains consistency
-#[test]
+#[rstest]
 #[serial]
 fn test_bidirectional_sync() {
 	let form = create_test_form();
@@ -248,7 +249,7 @@ fn test_bidirectional_sync() {
 }
 
 /// Tests sync preserves values for unbound fields
-#[test]
+#[rstest]
 #[serial]
 fn test_sync_preserves_unbound_fields() {
 	let metadata = FormMetadata {
@@ -300,7 +301,7 @@ fn test_sync_preserves_unbound_fields() {
 // ============================================================================
 
 /// Tests independent updates to multiple bindings
-#[test]
+#[rstest]
 #[serial]
 fn test_multiple_bindings_independent_updates() {
 	let form = create_test_form();
@@ -334,7 +335,7 @@ fn test_multiple_bindings_independent_updates() {
 }
 
 /// Tests bound_fields iterator
-#[test]
+#[rstest]
 #[serial]
 fn test_bound_fields_iterator() {
 	let form = create_test_form();
@@ -353,7 +354,7 @@ fn test_bound_fields_iterator() {
 }
 
 /// Tests rebinding same field updates binding
-#[test]
+#[rstest]
 #[serial]
 fn test_rebind_field() {
 	let form = create_test_form();
@@ -373,7 +374,7 @@ fn test_rebind_field() {
 }
 
 /// Tests unbinding one field doesn't affect others
-#[test]
+#[rstest]
 #[serial]
 fn test_unbind_preserves_other_bindings() {
 	let form = create_test_form();
@@ -402,7 +403,7 @@ fn test_unbind_preserves_other_bindings() {
 // ============================================================================
 
 /// Tests validation through FormBinding
-#[test]
+#[rstest]
 #[serial]
 fn test_validation_integration() {
 	let form = create_test_form();
@@ -416,7 +417,7 @@ fn test_validation_integration() {
 }
 
 /// Tests errors accessible through FormBinding
-#[test]
+#[rstest]
 #[serial]
 fn test_errors_integration() {
 	let form = create_test_form();
@@ -430,7 +431,7 @@ fn test_errors_integration() {
 }
 
 /// Tests validation updates after sync
-#[test]
+#[rstest]
 #[serial]
 fn test_validation_after_sync() {
 	let form = create_test_form();

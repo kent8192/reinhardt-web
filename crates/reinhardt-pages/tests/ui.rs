@@ -6,32 +6,33 @@
 //! - Valid form! macro usage compiles successfully (tests/ui/form/pass/*.rs)
 //! - Invalid form! macro usage fails to compile (tests/ui/form/fail/*.rs)
 
-#[test]
+use rstest::rstest;
+#[rstest]
 fn test_page_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/page/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_page_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/page/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_form_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/form/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_form_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/form/fail/*.rs");
 }
 
 // server_fn macro tests
-#[test]
+#[rstest]
 fn test_server_fn_macro_ui() {
 	let t = trybuild::TestCases::new();
 	// Codec tests

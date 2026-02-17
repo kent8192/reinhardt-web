@@ -183,16 +183,17 @@ where
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_memo_basic() {
 		let memo = use_memo(|| 42);
 		assert_eq!(memo.get(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_memo_with_signal() {
 		let count = Signal::new(5);
@@ -205,7 +206,7 @@ mod tests {
 		assert_eq!(doubled.get(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_use_memo_complex() {
 		let items = Signal::new(vec![1, 2, 3, 4, 5]);
@@ -219,7 +220,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_use_callback() {
 		use crate::component::DummyEvent;
 
@@ -228,7 +229,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_use_callback_with() {
 		let add_one = use_callback_with(|x: i32| x + 1);
 		assert_eq!(add_one.call(5), 6);

@@ -203,8 +203,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_debug_value() {
 		// Should not panic
 		use_debug_value(42);
@@ -212,14 +213,14 @@ mod tests {
 		use_debug_value(vec![1, 2, 3]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_debug_value_with() {
 		// Should not panic
 		use_debug_value_with(vec![1, 2, 3], |v| format!("len: {}", v.len()));
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_use_effect_event() {
 		use std::sync::{Arc, Mutex};
 
@@ -238,7 +239,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_use_effect_event_with() {
 		let add_one = use_effect_event_with(|x: i32| x + 1);
 		assert_eq!(add_one.call(5), 6);

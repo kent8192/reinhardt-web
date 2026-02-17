@@ -364,8 +364,9 @@ pub fn use_websocket(_url: &str, _options: UseWebSocketOptions) -> WebSocketHand
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	#[cfg(not(target_arch = "wasm32"))]
 	fn test_use_websocket_ssr_no_op() {
 		let ws = use_websocket("ws://test", UseWebSocketOptions::default());
@@ -377,21 +378,21 @@ mod tests {
 		assert!(!ws.is_open());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_connection_state_clone() {
 		let state1 = ConnectionState::Open;
 		let state2 = state1.clone();
 		assert_eq!(state1, state2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_message_clone() {
 		let msg1 = WebSocketMessage::Text("hello".to_string());
 		let msg2 = msg1.clone();
 		assert_eq!(msg1, msg2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_websocket_options_default() {
 		let options = UseWebSocketOptions::default();
 		assert!(options.auto_reconnect);

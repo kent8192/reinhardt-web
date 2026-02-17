@@ -898,8 +898,9 @@ impl TailwindRenderer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_text_input_render() {
 		let widget = TextInput::new();
 		let html = widget.render("username", Some("john"), &HashMap::new());
@@ -908,7 +909,7 @@ mod tests {
 		assert!(html.contains(r#"value="john""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_render() {
 		let widget = Select::new();
 		let choices = vec![
@@ -921,7 +922,7 @@ mod tests {
 		assert!(html.contains(r#"value="2" selected"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_checkbox_input_render() {
 		let widget = CheckboxInput::new();
 		let html = widget.render("agree", Some("true"), &HashMap::new());
@@ -929,7 +930,7 @@ mod tests {
 		assert!(html.contains("checked"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_radio_select_render() {
 		let widget = RadioSelect::new();
 		let choices = vec![
@@ -941,14 +942,14 @@ mod tests {
 		assert!(html.contains(r#"value="female" checked"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_forms_widgets_html_escape() {
 		assert_eq!(html_escape("<script>"), "&lt;script&gt;");
 		assert_eq!(html_escape("A & B"), "A &amp; B");
 		assert_eq!(html_escape(r#"He said "hi""#), "He said &quot;hi&quot;");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_widget_attrs_builder() {
 		let attrs = WidgetAttrs::new()
 			.class("form-control")
@@ -968,7 +969,7 @@ mod tests {
 		assert_eq!(attrs.get("required"), Some(&"required".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_widget_attrs_multiple_classes() {
 		let attrs = WidgetAttrs::new()
 			.class("form-control")
@@ -981,7 +982,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bootstrap_renderer() {
 		let html = BootstrapRenderer::render_text_input("username", Some("john"), HashMap::new());
 		assert!(html.contains("form-control"));
@@ -989,7 +990,7 @@ mod tests {
 		assert!(html.contains(r#"value="john""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_tailwind_renderer() {
 		let html = TailwindRenderer::render_text_input("email", None, HashMap::new());
 		assert!(html.contains("rounded-md"));
@@ -997,7 +998,7 @@ mod tests {
 		assert!(html.contains(r#"name="email""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_split_datetime_widget() {
 		let widget = SplitDateTimeWidget::new();
 		let html = widget.render("created_at", Some("2025-10-10T14:30:00"), &HashMap::new());
@@ -1007,7 +1008,7 @@ mod tests {
 		assert!(html.contains(r#"value="14:30:00""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_date_widget() {
 		let widget = SelectDateWidget::new();
 		let html = widget.render("birthday", Some("1990-05-15"), &HashMap::new());

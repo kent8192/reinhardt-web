@@ -754,9 +754,10 @@ mod tests {
 	use super::*;
 	use reinhardt_forms::Widget;
 	use reinhardt_forms::wasm_compat::{FieldMetadata, FormMetadata};
+	use rstest::rstest;
 	use std::collections::HashMap;
 
-	#[test]
+	#[rstest]
 	fn test_form_component_creation() {
 		let metadata = FormMetadata {
 			fields: vec![FieldMetadata {
@@ -783,7 +784,7 @@ mod tests {
 		assert!(component.values.contains_key("username"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_component_validation_required_field() {
 		let metadata = FormMetadata {
 			fields: vec![FieldMetadata {
@@ -819,7 +820,7 @@ mod tests {
 		assert!(errors.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_component_get_set_value() {
 		let metadata = FormMetadata {
 			fields: vec![FieldMetadata {
@@ -846,7 +847,7 @@ mod tests {
 		assert_eq!(component.get_value("name"), "John Doe");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_component_with_initial_values() {
 		let mut initial = HashMap::new();
 		initial.insert("username".to_string(), serde_json::json!("john_doe"));

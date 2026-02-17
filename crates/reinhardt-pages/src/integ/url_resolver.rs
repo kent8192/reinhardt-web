@@ -101,9 +101,10 @@ pub fn resolve_url(route_name: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial(url_resolver)]
 	fn test_resolve_basic_routes() {
 		let mut routes = HashMap::new();
@@ -118,7 +119,7 @@ mod tests {
 		assert_eq!(resolve_url("user-profile"), "/users/{id}");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(url_resolver)]
 	#[should_panic(expected = "Route 'nonexistent' not found")]
 	fn test_resolve_nonexistent_route() {
@@ -128,7 +129,7 @@ mod tests {
 		resolve_url("nonexistent");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "URL resolver not initialized")]
 	fn test_resolve_before_init() {
 		// Note: This test will fail if run after other tests that initialize the resolver

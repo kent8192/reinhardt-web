@@ -92,9 +92,10 @@ pub fn resolve_static_url(path: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial(static_context)]
 	fn test_resolve_with_manifest() {
 		let mut manifest = HashMap::new();
@@ -119,7 +120,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(static_context)]
 	fn test_resolve_fallback() {
 		// Initialize context if not already initialized (OnceLock can only be set once)
@@ -128,7 +129,7 @@ mod tests {
 		assert_eq!(resolve_static_url("unknown.png"), "/static/unknown.png");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Static context not initialized")]
 	fn test_resolve_before_init() {
 		// Note: This test will fail if run after other tests that initialize the context

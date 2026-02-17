@@ -137,6 +137,7 @@ where
 mod tests {
 	use super::*;
 	use crate::component::into_page::PageElement;
+	use rstest::rstest;
 
 	struct TestComponent {
 		message: String,
@@ -154,7 +155,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_component_render() {
 		let comp = TestComponent {
 			message: "Hello".to_string(),
@@ -163,12 +164,12 @@ mod tests {
 		assert_eq!(view.render_to_string(), "<div>Hello</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_component_name() {
 		assert_eq!(TestComponent::name(), "TestComponent");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_component_render_returns_page() {
 		let comp = TestComponent {
 			message: "World".to_string(),
@@ -178,7 +179,7 @@ mod tests {
 		assert_eq!(view.render_to_string(), "<div>World</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dyn_component() {
 		let comp = TestComponent {
 			message: "Dynamic".to_string(),
@@ -188,7 +189,7 @@ mod tests {
 		assert_eq!(dyn_comp.render().render_to_string(), "<div>Dynamic</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fn_component_no_args() {
 		fn greeting() -> Page {
 			Page::text("Hello")
@@ -198,7 +199,7 @@ mod tests {
 		assert_eq!(output.render_to_string(), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fn_component_one_arg() {
 		fn greeting(name: String) -> Page {
 			Page::text(format!("Hello, {}!", name))
@@ -208,7 +209,7 @@ mod tests {
 		assert_eq!(output.render_to_string(), "Hello, World!");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fn_component_two_args() {
 		fn greeting(first: String, last: String) -> Page {
 			Page::text(format!("Hello, {} {}!", first, last))

@@ -138,13 +138,14 @@ where
 mod tests {
 	use super::*;
 	use crate::router::PathError;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
 	fn test_view() -> Page {
 		Page::text("Test")
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_params_handler() {
 		let handler = NoParamsHandler::new(test_view);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
@@ -153,7 +154,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler() {
 		let handler = WithParamsHandler::new(|PathParams(id): PathParams<i32>| {
 			Page::text(format!("ID: {}", id))
@@ -168,7 +169,7 @@ mod tests {
 		assert_eq!(view.render_to_string(), "ID: 42");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler_error() {
 		let handler = WithParamsHandler::new(|PathParams(id): PathParams<i32>| {
 			Page::text(format!("ID: {}", id))
@@ -185,7 +186,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_handler_ok() {
 		let handler = ResultHandler::new(|PathParams(id): PathParams<i32>| {
 			if id > 0 {
@@ -201,7 +202,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_handler_err() {
 		let handler = ResultHandler::new(|PathParams(id): PathParams<i32>| {
 			if id > 0 {
@@ -222,7 +223,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler_tuple() {
 		let handler =
 			WithParamsHandler::new(|PathParams((user_id, post_id)): PathParams<(i64, i64)>| {
@@ -238,7 +239,7 @@ mod tests {
 		assert_eq!(view.render_to_string(), "User: 123, Post: 456");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_no_params_handler() {
 		let handler = no_params_handler(test_view);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
@@ -247,7 +248,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_with_params_handler() {
 		let handler = with_params_handler(|PathParams(id): PathParams<i32>| {
 			Page::text(format!("ID: {}", id))
@@ -259,7 +260,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_result_handler() {
 		let handler = result_handler(|PathParams(id): PathParams<i32>| {
 			if id > 0 {

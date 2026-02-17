@@ -10,6 +10,7 @@ use proptest::prelude::*;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
+use rstest::rstest;
 use serial_test::serial;
 
 // ============================================================================
@@ -20,7 +21,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Property: Any boolean condition should produce a valid View
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_arbitrary_boolean_condition(condition in any::<bool>()) {
 		let signal = Signal::new(condition);
@@ -71,7 +72,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Property: Alphanumeric content should be rendered correctly
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_arbitrary_alphanumeric_content(content in "[a-zA-Z0-9 ]{1,100}") {
 		let signal = Signal::new(content.clone());
@@ -102,7 +103,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(30))]
 
 	/// Property: Content with special HTML characters should be properly escaped
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_content_escaping_property(content in ".*") {
 		let signal = Signal::new(content.clone());
@@ -141,7 +142,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(20))]
 
 	/// Property: Nesting depth should not affect validity
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_arbitrary_nesting_depth(depth in 0u8..5) {
 		let signal = Signal::new(true);
@@ -228,7 +229,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Property: Integer values should be correctly formatted
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_integer_expression(value in any::<i32>()) {
 		let signal = Signal::new(value);
@@ -257,7 +258,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(30))]
 
 	/// Property: Lists of any size should render correctly
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_list_size_property(size in 0usize..20) {
 		let items: Vec<String> = (0..size).map(|i| format!("item-{}", i)).collect();
@@ -298,7 +299,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(30))]
 
 	/// Property: Multiple signals should all be tracked correctly
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_multiple_signals_property(
 		loading in any::<bool>(),
@@ -348,7 +349,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Property: Both branches of if-else should be mutually exclusive
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_condition_toggle_invariant(condition in any::<bool>()) {
 		let signal = Signal::new(condition);
@@ -388,7 +389,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(30))]
 
 	/// Property: Empty and non-empty content should both render valid HTML
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_empty_vs_nonempty_content(content in prop::option::of("[a-zA-Z0-9 ]{1,50}")) {
 		let signal = Signal::new(content.clone().unwrap_or_default());
@@ -424,7 +425,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(30))]
 
 	/// Property: page! macro always produces Page::Element at top level
-	#[test]
+	#[rstest]
 	#[serial(reactive)]
 	fn test_watch_view_variant_consistency(
 		show_content in any::<bool>(),

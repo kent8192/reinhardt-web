@@ -14,6 +14,7 @@
 use reinhardt_pages::component::{Head, IntoPage, LinkTag, Page, ScriptTag};
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::staticfiles::TemplateStaticConfig;
+use rstest::rstest;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -21,7 +22,7 @@ use std::collections::HashMap;
 // ============================================================================
 
 /// Test: Basic static URL in SSR render options
-#[test]
+#[rstest]
 fn test_ssr_with_basic_static_url() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
@@ -54,7 +55,7 @@ fn test_ssr_with_basic_static_url() {
 }
 
 /// Test: Multiple CSS and JS static URLs
-#[test]
+#[rstest]
 fn test_ssr_with_multiple_static_urls() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
@@ -109,7 +110,7 @@ fn test_ssr_with_multiple_static_urls() {
 }
 
 /// Test: Manifest-based hashed URLs in SSR
-#[test]
+#[rstest]
 fn test_ssr_with_manifest_urls() {
 	let mut manifest = HashMap::new();
 	manifest.insert(
@@ -162,7 +163,7 @@ fn test_ssr_with_manifest_urls() {
 }
 
 /// Test: CDN URLs in SSR
-#[test]
+#[rstest]
 fn test_ssr_with_cdn_urls() {
 	let static_config = TemplateStaticConfig::new("https://cdn.example.com/static/".to_string());
 
@@ -193,7 +194,7 @@ fn test_ssr_with_cdn_urls() {
 }
 
 /// Test: Query strings and fragments in static URLs
-#[test]
+#[rstest]
 fn test_ssr_with_query_and_fragment_urls() {
 	let static_config = TemplateStaticConfig::new("/static/".to_string());
 
@@ -226,7 +227,7 @@ fn test_ssr_with_query_and_fragment_urls() {
 }
 
 /// Test: Empty static config (no CSS/JS)
-#[test]
+#[rstest]
 fn test_ssr_without_static_files() {
 	let page_head = Head::new().title("No Static Files");
 
@@ -254,7 +255,7 @@ fn test_ssr_without_static_files() {
 }
 
 /// Test: Relative path normalization
-#[test]
+#[rstest]
 fn test_ssr_with_relative_paths() {
 	// Test various base URL formats
 	let configs = vec![
@@ -288,7 +289,7 @@ fn test_ssr_with_relative_paths() {
 }
 
 /// Test: Manifest fallback to original path
-#[test]
+#[rstest]
 fn test_ssr_manifest_fallback() {
 	let mut manifest = HashMap::new();
 	manifest.insert(

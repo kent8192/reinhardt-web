@@ -382,6 +382,7 @@ mod tests {
 	use crate::reactive::runtime::with_runtime;
 	use reinhardt_forms::Widget;
 	use reinhardt_forms::wasm_compat::{FieldMetadata, FormMetadata};
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::collections::HashMap;
 
@@ -416,7 +417,7 @@ mod tests {
 		FormComponent::new(metadata, "/api/submit")
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_form_binding_creation() {
 		let form = create_test_form();
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(binding.effects.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_bind_field() {
 		let form = create_test_form();
@@ -440,7 +441,7 @@ mod tests {
 		assert_eq!(binding.effects.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_two_way_binding_signal_to_form() {
 		let form = create_test_form();
@@ -459,7 +460,7 @@ mod tests {
 		assert_eq!(binding.get_field_value("username"), "john_doe");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_two_way_binding_form_to_signal() {
 		let form = create_test_form();
@@ -475,7 +476,7 @@ mod tests {
 		assert_eq!(username_signal.get(), "jane_doe");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_unbind_field() {
 		let form = create_test_form();
@@ -491,7 +492,7 @@ mod tests {
 		assert!(!binding.is_bound("username"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_get_binding() {
 		let form = create_test_form();
@@ -504,7 +505,7 @@ mod tests {
 		assert_eq!(retrieved_signal.get(), "test_value");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_sync_from_form() {
 		let form = create_test_form();
@@ -524,7 +525,7 @@ mod tests {
 		assert_eq!(username_signal.get(), "direct_update");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_sync_to_form() {
 		let form = create_test_form();
@@ -545,7 +546,7 @@ mod tests {
 		assert_eq!(binding.get_field_value("username"), "signal_update");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_validation_integration() {
 		let form = create_test_form();
@@ -574,7 +575,7 @@ mod tests {
 		assert!(binding.validate());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_multiple_field_bindings() {
 		let form = create_test_form();
@@ -600,7 +601,7 @@ mod tests {
 		assert_eq!(binding.get_field_value("email"), "john@example.com");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_bound_fields_iterator() {
 		let form = create_test_form();

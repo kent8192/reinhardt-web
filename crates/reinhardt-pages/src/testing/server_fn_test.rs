@@ -252,9 +252,10 @@ impl TestSessionData {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_server_fn_test_context_creation() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = ServerFnTestContext::new(singleton).build();
@@ -265,7 +266,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_test_session_data_creation() {
 		let session = TestSessionData::new();
 		assert!(session.user_id.is_none());
@@ -277,7 +278,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_test_session_data_with_extra_data() {
 		let session = TestSessionData::new()
 			.with_data("key1", "value1")

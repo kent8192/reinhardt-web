@@ -59,8 +59,9 @@ pub fn use_context<T: Clone + 'static>(ctx: &Context<T>) -> Option<T> {
 mod tests {
 	use super::*;
 	use crate::reactive::context::provide_context;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_use_context_with_value() {
 		let ctx: Context<i32> = Context::new();
 		provide_context(&ctx, 42);
@@ -69,7 +70,7 @@ mod tests {
 		assert_eq!(value, Some(42));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_context_without_value() {
 		let ctx: Context<String> = Context::new();
 

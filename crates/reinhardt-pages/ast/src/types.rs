@@ -197,10 +197,11 @@ impl AttrValue {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_string_lit() {
 		let expr: Expr = parse_quote!("hello");
 		let value = AttrValue::from_expr(expr);
@@ -209,7 +210,7 @@ mod tests {
 		assert_eq!(value.as_string(), Some("hello".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_bool_lit() {
 		let expr: Expr = parse_quote!(true);
 		let value = AttrValue::from_expr(expr);
@@ -217,7 +218,7 @@ mod tests {
 		assert!(value.is_bool_literal());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_int_lit() {
 		let expr: Expr = parse_quote!(42);
 		let value = AttrValue::from_expr(expr);
@@ -225,7 +226,7 @@ mod tests {
 		assert!(value.is_int_literal());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_float_lit() {
 		let expr: Expr = parse_quote!(3.14);
 		let value = AttrValue::from_expr(expr);
@@ -233,7 +234,7 @@ mod tests {
 		assert!(value.is_float_literal());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_dynamic() {
 		let expr: Expr = parse_quote!(variable_name);
 		let value = AttrValue::from_expr(expr);
@@ -241,7 +242,7 @@ mod tests {
 		assert!(value.is_dynamic());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_expr_function_call() {
 		let expr: Expr = parse_quote!(get_value());
 		let value = AttrValue::from_expr(expr);
@@ -249,7 +250,7 @@ mod tests {
 		assert!(value.is_dynamic());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_expr_roundtrip() {
 		let original: Expr = parse_quote!("test");
 		let value = AttrValue::from_expr(original.clone());

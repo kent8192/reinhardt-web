@@ -6,12 +6,13 @@
 //! 3. No memory leaks
 
 use reinhardt_pages::reactive::{Effect, Memo, Signal, with_runtime};
+use rstest::rstest;
 use serial_test::serial;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Success Criterion 1: Effects are automatically executed when Signals change
-#[test]
+#[rstest]
 #[serial]
 fn test_effect_auto_execution_on_signal_change() {
 	let count = Signal::new(0);
@@ -43,7 +44,7 @@ fn test_effect_auto_execution_on_signal_change() {
 }
 
 /// Success Criterion 1: Multiple Signals in one Effect
-#[test]
+#[rstest]
 #[serial]
 fn test_effect_with_multiple_signals() {
 	let signal1 = Signal::new(1);
@@ -78,7 +79,7 @@ fn test_effect_with_multiple_signals() {
 }
 
 /// Success Criterion 2: Memo values are cached and recalculated only when dependent Signals change
-#[test]
+#[rstest]
 #[serial]
 fn test_memo_caching() {
 	let count = Signal::new(5);
@@ -122,7 +123,7 @@ fn test_memo_caching() {
 // correctly in production code.
 
 /// Success Criterion 2: Effect depending on Memo
-#[test]
+#[rstest]
 #[serial]
 fn test_effect_with_memo_dependency() {
 	let count = Signal::new(3);
@@ -151,7 +152,7 @@ fn test_effect_with_memo_dependency() {
 }
 
 /// Success Criterion 3: No memory leaks - Signal drop
-#[test]
+#[rstest]
 #[serial]
 fn test_signal_cleanup_on_drop() {
 	let signal_id = {
@@ -166,7 +167,7 @@ fn test_signal_cleanup_on_drop() {
 }
 
 /// Success Criterion 3: No memory leaks - Effect drop
-#[test]
+#[rstest]
 #[serial]
 fn test_effect_cleanup_on_drop() {
 	let signal = Signal::new(0);
@@ -197,7 +198,7 @@ fn test_effect_cleanup_on_drop() {
 }
 
 /// Success Criterion 3: No memory leaks - Memo drop
-#[test]
+#[rstest]
 #[serial]
 fn test_memo_cleanup_on_drop() {
 	let signal = Signal::new(5);
@@ -229,7 +230,7 @@ fn test_memo_cleanup_on_drop() {
 }
 
 /// Complex scenario: Multiple Signals, Memos, and Effects
-#[test]
+#[rstest]
 #[serial]
 fn test_complex_reactive_graph() {
 	// Create signals
@@ -292,7 +293,7 @@ fn test_complex_reactive_graph() {
 }
 
 /// Test get_untracked doesn't create dependencies
-#[test]
+#[rstest]
 #[serial]
 fn test_get_untracked_no_dependency() {
 	let signal = Signal::new(42);
@@ -323,7 +324,7 @@ fn test_get_untracked_no_dependency() {
 ///
 /// With the `Rc<RefCell<T>>` refactoring, values are automatically managed via
 /// reference counting, and dropping some clones doesn't affect others.
-#[test]
+#[rstest]
 #[serial]
 fn test_signal_clone_partial_drop() {
 	let signal1 = Signal::new(42);
@@ -357,7 +358,7 @@ fn test_signal_clone_partial_drop() {
 /// Note: Signals are registered in Runtime only when they participate in
 /// dependency tracking (via get() inside Effect/Memo). This test creates
 /// an Effect to establish that relationship.
-#[test]
+#[rstest]
 #[serial]
 fn test_signal_cleanup_after_all_clones_dropped() {
 	let signal_id = {
@@ -405,7 +406,7 @@ fn test_signal_cleanup_after_all_clones_dropped() {
 /// - One clone is captured in an Effect closure
 /// - The original Signal is dropped (e.g., when bind_field() returns)
 /// - The Effect's clone should still work
-#[test]
+#[rstest]
 #[serial]
 fn test_signal_clone_in_effect_closure() {
 	let run_count = Rc::new(RefCell::new(0));

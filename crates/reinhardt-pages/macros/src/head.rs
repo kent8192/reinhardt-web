@@ -396,15 +396,16 @@ pub(crate) fn head_impl(input: TokenStream) -> TokenStream {
 mod tests {
 	use super::*;
 	use quote::quote;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_title() {
 		let input = quote!(|| { title { "My Page" } });
 		let ast: HeadMacro = syn::parse2(input).unwrap();
 		assert_eq!(ast.elements.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_meta() {
 		let input = quote!(|| {
 			meta {
@@ -416,7 +417,7 @@ mod tests {
 		assert_eq!(ast.elements.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_link() {
 		let input = quote!(|| {
 			link {
@@ -428,7 +429,7 @@ mod tests {
 		assert_eq!(ast.elements.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_script_external() {
 		let input = quote!(|| {
 			script {
@@ -440,7 +441,7 @@ mod tests {
 		assert_eq!(ast.elements.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_script_inline() {
 		let input = quote!(|| {
 			script { "console.log('hello');" }
@@ -449,7 +450,7 @@ mod tests {
 		assert_eq!(ast.elements.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_head_macro_multiple_elements() {
 		let input = quote!(|| {
 			title { "My Page" }
@@ -461,7 +462,7 @@ mod tests {
 		assert_eq!(ast.elements.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_codegen_title() {
 		let input = quote!(|| { title { "Test Title" } });
 		let ast: HeadMacro = syn::parse2(input).unwrap();

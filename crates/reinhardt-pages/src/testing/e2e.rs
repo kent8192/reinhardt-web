@@ -427,15 +427,16 @@ pub async fn e2e_fetch(
 #[cfg(not(target_arch = "wasm32"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_e2e_test_config_default() {
 		let config = E2ETestConfig::default();
 		assert_eq!(config.port, 0);
 		assert!(config.enable_cors);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_e2e_test_config_builder() {
 		let config = E2ETestConfig::new()
 			.with_port(8080)
@@ -447,7 +448,7 @@ mod tests {
 		assert_eq!(config.startup_delay, Duration::from_millis(200));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_e2e_server_url_env() {
 		// SAFETY: This test manipulates environment variables in a single-threaded
 		// context during testing. No other code runs concurrently that depends on
@@ -471,7 +472,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_e2e_test_error_display() {
 		let init_err = E2ETestError::Initialization("test".to_string());
 		assert!(init_err.to_string().contains("initialization"));

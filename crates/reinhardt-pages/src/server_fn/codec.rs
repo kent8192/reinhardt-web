@@ -241,6 +241,7 @@ impl Codec for MessagePackCodec {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 	struct TestData {
@@ -248,7 +249,7 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_codec() {
 		let codec = JsonCodec;
 		let data = TestData {
@@ -271,7 +272,7 @@ mod tests {
 		assert_eq!(codec.name(), "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_codec() {
 		let codec = UrlCodec;
 
@@ -302,7 +303,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "msgpack")]
-	#[test]
+	#[rstest]
 	fn test_msgpack_codec() {
 		let codec = MessagePackCodec;
 		let data = TestData {
@@ -327,7 +328,7 @@ mod tests {
 		assert_eq!(codec.name(), "msgpack");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_codec_error_handling() {
 		let codec = JsonCodec;
 

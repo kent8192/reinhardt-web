@@ -258,9 +258,10 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::cell::RefCell;
 
-	#[test]
+	#[rstest]
 	fn test_use_sync_external_store_basic() {
 		let store_value = Rc::new(RefCell::new(42));
 
@@ -278,7 +279,7 @@ mod tests {
 		assert_eq!(signal_with_sub.get(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_use_sync_external_store_with_update() {
 		let store_value = Rc::new(RefCell::new(0));
 		let on_change_fn: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
@@ -311,7 +312,7 @@ mod tests {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
+	#[rstest]
 	fn test_use_sync_external_store_with_server() {
 		let signal_with_sub = use_sync_external_store_with_server(
 			|_| Box::new(|| {}),
@@ -323,7 +324,7 @@ mod tests {
 		assert_eq!(signal_with_sub.get(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subscription_cleanup() {
 		let unsubscribed = Rc::new(RefCell::new(false));
 

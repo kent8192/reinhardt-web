@@ -3,15 +3,17 @@
 //! Tests that the resolver never panics with arbitrary inputs (fuzzing).
 //! Uses proptest to generate random inputs.
 
+use rstest::rstest;
 #[cfg(not(target_arch = "wasm32"))]
 mod fuzz_tests {
 	use proptest::prelude::*;
 	use reinhardt_pages::static_resolver::{init_static_resolver, resolve_static};
 	use reinhardt_utils::staticfiles::TemplateStaticConfig;
+	use rstest::rstest;
 
 	proptest! {
 		/// Fuzz test: resolve_static never panics with random ASCII paths
-		#[test]
+	#[rstest]
 		fn fuzz_resolve_static_ascii_paths_never_panic(
 			path in "[ -~]{0,1000}"
 		) {
@@ -24,7 +26,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: resolve_static never panics with random UTF-8 strings
-		#[test]
+	#[rstest]
 		fn fuzz_resolve_static_unicode_never_panic(
 			path in ".*"
 		) {
@@ -36,7 +38,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: resolve_static never panics with various base URLs
-		#[test]
+	#[rstest]
 		fn fuzz_resolve_static_random_base_urls_never_panic(
 			base_url in "[a-zA-Z0-9:/.\\-]{1,200}",
 			path in "[a-zA-Z0-9._\\-/]{0,100}"
@@ -49,7 +51,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: resolve_static never panics with paths containing special characters
-		#[test]
+	#[rstest]
 		fn fuzz_resolve_static_special_chars_never_panic(
 			path in "[!@#$%^&*()_+=\\[\\]{};:',.<>?/\\\\~`| -~]{0,200}"
 		) {
@@ -61,7 +63,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: TemplateStaticConfig.resolve_url never panics
-		#[test]
+	#[rstest]
 		fn fuzz_template_config_resolve_never_panics(
 			base_url in ".*",
 			path in ".*"
@@ -74,7 +76,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: Multiple sequential calls don't panic
-		#[test]
+	#[rstest]
 		fn fuzz_sequential_calls_never_panic(
 			paths in prop::collection::vec("[a-zA-Z0-9._\\-/]*", 1..10)
 		) {
@@ -87,7 +89,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: Extremely long paths don't cause issues
-		#[test]
+	#[rstest]
 		fn fuzz_very_long_paths_never_panic(
 			len in 0usize..10000
 		) {
@@ -99,7 +101,7 @@ mod fuzz_tests {
 		}
 
 		/// Fuzz test: Paths with null bytes don't panic (won't occur in Rust strings)
-		#[test]
+	#[rstest]
 		fn fuzz_paths_with_special_sequences_never_panic(
 			path in r"[a-zA-Z0-9._\-/\s]{0,200}"
 		) {

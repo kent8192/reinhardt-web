@@ -226,15 +226,16 @@ fn initialize_default_validators(registry: &Arc<Mutex<ValidatorRegistry>>) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_valid() {
 		let validator = EmailValidator;
 		assert!(validator.validate("user@example.com", &json!({})).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_invalid() {
 		let validator = EmailValidator;
 		assert!(validator.validate("invalid-email", &json!({})).is_err());
@@ -242,7 +243,7 @@ mod tests {
 		assert!(validator.validate("user@", &json!({})).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_length_validator() {
 		let validator = MinLengthValidator;
 
@@ -254,7 +255,7 @@ mod tests {
 		assert!(validator.validate("1234", &json!({"min": 5})).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_validator() {
 		let validator = MaxLengthValidator;
 
@@ -266,7 +267,7 @@ mod tests {
 		assert!(validator.validate("123456", &json!({"max": 5})).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_valid() {
 		let validator = UrlValidator;
 		assert!(
@@ -281,14 +282,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_invalid() {
 		let validator = UrlValidator;
 		assert!(validator.validate("not-a-url", &json!({})).is_err());
 		assert!(validator.validate("ftp://example.com", &json!({})).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_registry() {
 		let registry = Arc::new(Mutex::new(ValidatorRegistry::new()));
 		initialize_default_validators(&registry);
@@ -336,7 +337,7 @@ mod tests {
 		assert!(registry.validate("url", "not-a-url", &json!({})).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_registry_global() {
 		let registry = ValidatorRegistry::global();
 		let registry = registry.lock().unwrap();

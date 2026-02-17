@@ -413,9 +413,10 @@ pub fn debug_tokens(tokens: &TokenStream) -> String {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_page_attr_html_name() {
 		let attr = PageAttr {
 			name: Ident::new("data_testid", Span::call_site()),
@@ -425,7 +426,7 @@ mod tests {
 		assert_eq!(attr.html_name(), "data-testid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_attr_html_name_aria() {
 		let attr = PageAttr {
 			name: Ident::new("aria_label", Span::call_site()),
@@ -435,7 +436,7 @@ mod tests {
 		assert_eq!(attr.html_name(), "aria-label");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_element_is_void() {
 		let void_tags = ["br", "hr", "img", "input", "meta", "link"];
 		for tag in void_tags {
@@ -450,7 +451,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_page_event_dom_event_type() {
 		let event = PageEvent {
 			event_type: Ident::new("click", Span::call_site()),
