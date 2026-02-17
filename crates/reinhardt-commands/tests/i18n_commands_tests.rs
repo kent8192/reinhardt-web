@@ -5,6 +5,7 @@
 use reinhardt_commands::{
 	BaseCommand, CommandContext, CompileMessagesCommand, MakeMessagesCommand,
 };
+use rstest::rstest;
 use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
@@ -27,6 +28,7 @@ where
 	result
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_valid_locale() {
@@ -51,6 +53,7 @@ async fn test_makemessages_valid_locale() {
 	assert!(po_file.exists());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_invalid_locale_uppercase() {
@@ -68,6 +71,7 @@ async fn test_makemessages_invalid_locale_uppercase() {
 	// Should error about uppercase not allowed
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_no_locale() {
@@ -83,6 +87,7 @@ async fn test_makemessages_no_locale() {
 	// Should error about no locale specified
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_one_locale() {
@@ -111,6 +116,7 @@ async fn test_compilemessages_one_locale() {
 	assert!(mo_file.exists());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_multiple_locales() {
@@ -155,6 +161,7 @@ async fn test_compilemessages_multiple_locales() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_exclude() {
@@ -203,6 +210,7 @@ async fn test_compilemessages_exclude() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_no_locales() {
@@ -218,6 +226,7 @@ async fn test_compilemessages_no_locales() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_multiple_locales() {
@@ -253,6 +262,7 @@ async fn test_makemessages_multiple_locales() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_invalid_locale_start_with_underscore() {
@@ -267,6 +277,7 @@ async fn test_makemessages_invalid_locale_start_with_underscore() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_pot_charset_header() {
@@ -292,6 +303,7 @@ async fn test_makemessages_pot_charset_header() {
 	assert!(content.contains("charset=UTF-8"));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_update_existing_po() {
@@ -320,6 +332,7 @@ async fn test_makemessages_update_existing_po() {
 	assert!(po_file.exists());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_all_option() {
@@ -346,6 +359,7 @@ async fn test_makemessages_all_option() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_invalid_locale_hyphen() {
@@ -365,6 +379,7 @@ async fn test_makemessages_invalid_locale_hyphen() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_invalid_locale_special_chars() {
@@ -379,6 +394,7 @@ async fn test_makemessages_invalid_locale_special_chars() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_missing_po_file() {
@@ -405,6 +421,7 @@ async fn test_compilemessages_missing_po_file() {
 	assert!(!mo_file.exists());
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_all_locales() {
@@ -450,6 +467,7 @@ async fn test_compilemessages_all_locales() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_compilemessages_multiple_excludes() {
@@ -505,6 +523,7 @@ async fn test_compilemessages_multiple_excludes() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial]
 async fn test_makemessages_po_file_structure() {

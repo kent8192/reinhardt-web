@@ -4,6 +4,7 @@
 
 use proptest::prelude::*;
 use reinhardt_commands::{CommandContext, CommandRegistry, generate_secret_key};
+use rstest::rstest;
 
 proptest! {
 	#![proptest_config(ProptestConfig::with_cases(100))]
@@ -16,7 +17,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: arg() method is consistent with direct access
-	#[test]
+	#[rstest]
 	fn prop_arg_index_consistency(args in prop::collection::vec(any::<String>(), 0..100)) {
 		let ctx = CommandContext::new(args.clone());
 
@@ -30,7 +31,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: option() returns first value from option_values()
-	#[test]
+	#[rstest]
 	fn prop_option_first_matches_values_first(
 		key in "[a-z]+",
 		values in prop::collection::vec(any::<String>(), 1..10)
@@ -50,7 +51,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: has_option is consistent with option()
-	#[test]
+	#[rstest]
 	fn prop_has_option_consistency(
 		existing_keys in prop::collection::vec("[a-z]+", 0..10),
 		query_key in "[a-z]+"
@@ -71,7 +72,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: add_arg always appends exactly one argument
-	#[test]
+	#[rstest]
 	fn prop_add_arg_increases_length(
 		initial in prop::collection::vec(any::<String>(), 0..20),
 		new_arg in any::<String>()
@@ -88,7 +89,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: set_verbosity and verbosity are consistent
-	#[test]
+	#[rstest]
 	fn prop_verbosity_roundtrip(level in any::<u8>()) {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_verbosity(level);
@@ -100,7 +101,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: set_option with same key replaces value
-	#[test]
+	#[rstest]
 	fn prop_set_option_overwrites(
 		key in "[a-z]+",
 		value1 in any::<String>(),
@@ -122,7 +123,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: register -> get returns the command
-	#[test]
+	#[rstest]
 	fn prop_registry_register_get_roundtrip(name in "[a-zA-Z][a-zA-Z0-9]*") {
 		use async_trait::async_trait;
 		use reinhardt_commands::{BaseCommand, CommandResult};
@@ -147,7 +148,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: list() returns all registered command names
-	#[test]
+	#[rstest]
 	fn prop_registry_list_contains_all(
 		names in prop::collection::hash_set("[a-zA-Z][a-zA-Z0-9]*", 0..20)
 	) {
@@ -180,7 +181,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: Same name registration replaces previous
-	#[test]
+	#[rstest]
 	fn prop_registry_duplicate_overwrites(name in "[a-zA-Z]+") {
 		use async_trait::async_trait;
 		use reinhardt_commands::{BaseCommand, CommandResult};
@@ -214,7 +215,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: Secret key length is always 50
-	#[test]
+	#[rstest]
 	fn prop_secret_key_length(_dummy in 0..50u32) {
 		let key = generate_secret_key();
 		prop_assert_eq!(key.len(), 50);
@@ -224,7 +225,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: All characters in key are from valid set
-	#[test]
+	#[rstest]
 	fn prop_secret_key_valid_chars(_dummy in 0..50u32) {
 		let key = generate_secret_key();
 		let valid = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
@@ -238,7 +239,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: Generated keys are different
-	#[test]
+	#[rstest]
 	fn prop_secret_key_unique(_dummy in 0..20u32) {
 		let key1 = generate_secret_key();
 		let key2 = generate_secret_key();
@@ -255,7 +256,7 @@ proptest! {
 	///
 	/// **Category**: Property-based
 	/// **Verifies**: Clone produces equal context
-	#[test]
+	#[rstest]
 	fn prop_context_clone_equals(
 		args in prop::collection::vec(any::<String>(), 0..10),
 		verbosity in any::<u8>()
@@ -280,7 +281,7 @@ proptest! {
 ///
 /// **Category**: Property
 /// **Verifies**: Default returns minimal context
-#[test]
+#[rstest]
 fn test_context_default_is_empty() {
 	let ctx = CommandContext::default();
 
@@ -294,7 +295,7 @@ fn test_context_default_is_empty() {
 ///
 /// **Category**: Property
 /// **Verifies**: Default and new are equivalent
-#[test]
+#[rstest]
 fn test_registry_default_equals_new() {
 	let default_reg = CommandRegistry::default();
 	let new_reg = CommandRegistry::new();

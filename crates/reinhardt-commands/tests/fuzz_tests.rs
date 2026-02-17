@@ -7,6 +7,7 @@ use proptest::prelude::*;
 use reinhardt_commands::{
 	CommandContext, CommandRegistry, TemplateContext, generate_secret_key, to_camel_case,
 };
+use rstest::rstest;
 
 proptest! {
 	#![proptest_config(ProptestConfig::with_cases(100))]
@@ -19,7 +20,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: CommandContext handles arbitrary string arguments
-	#[test]
+	#[rstest]
 	fn fuzz_context_args(args in prop::collection::vec(any::<String>(), 0..50)) {
 		let ctx = CommandContext::new(args.clone());
 
@@ -39,7 +40,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: CommandContext handles arbitrary option data
-	#[test]
+	#[rstest]
 	fn fuzz_context_options(
 		options in prop::collection::hash_map("[a-z_-]{1,20}", any::<String>(), 0..20)
 	) {
@@ -62,7 +63,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: All verbosity values work correctly
-	#[test]
+	#[rstest]
 	fn fuzz_context_verbosity(level in any::<u8>()) {
 		let mut ctx = CommandContext::new(vec![]);
 		ctx.set_verbosity(level);
@@ -74,7 +75,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: add_arg handles arbitrary strings
-	#[test]
+	#[rstest]
 	fn fuzz_context_add_arg(initial_args in prop::collection::vec(any::<String>(), 0..10),
 							new_args in prop::collection::vec(any::<String>(), 0..20)) {
 		let mut ctx = CommandContext::new(initial_args.clone());
@@ -96,7 +97,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: TemplateContext handles arbitrary string data
-	#[test]
+	#[rstest]
 	fn fuzz_template_context_strings(
 		pairs in prop::collection::vec(("[a-zA-Z_][a-zA-Z0-9_]*", any::<String>()), 0..20)
 	) {
@@ -119,7 +120,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: TemplateContext handles numeric values
-	#[test]
+	#[rstest]
 	fn fuzz_template_context_numbers(
 		int_pairs in prop::collection::vec(("[a-zA-Z_][a-zA-Z0-9_]*", any::<i64>()), 0..10),
 		float_pairs in prop::collection::vec(("[a-zA-Z_][a-zA-Z0-9_]*", any::<f64>().prop_filter("finite", |f| f.is_finite())), 0..10)
@@ -141,7 +142,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: TemplateContext handles boolean values
-	#[test]
+	#[rstest]
 	fn fuzz_template_context_booleans(
 		pairs in prop::collection::vec(("[a-zA-Z_][a-zA-Z0-9_]*", any::<bool>()), 0..20)
 	) {
@@ -162,7 +163,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: Secret key generation is always valid
-	#[test]
+	#[rstest]
 	fn fuzz_generate_secret_key(_dummy in 0..100u32) {
 		let key = generate_secret_key();
 
@@ -180,7 +181,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: to_camel_case handles arbitrary strings
-	#[test]
+	#[rstest]
 	fn fuzz_to_camel_case(input in ".*") {
 		// Should not panic
 		let result = to_camel_case(&input);
@@ -193,7 +194,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: to_camel_case handles snake_case patterns
-	#[test]
+	#[rstest]
 	fn fuzz_to_camel_case_snake(
 		parts in prop::collection::vec("[a-z]{1,10}", 1..5)
 	) {
@@ -215,7 +216,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: CommandRegistry handles various command names
-	#[test]
+	#[rstest]
 	fn fuzz_registry_names(names in prop::collection::vec("[a-zA-Z][a-zA-Z0-9_-]*", 0..20)) {
 		use async_trait::async_trait;
 		use reinhardt_commands::{BaseCommand, CommandResult};
@@ -244,7 +245,7 @@ proptest! {
 	///
 	/// **Category**: Fuzz
 	/// **Verifies**: Registry handles many commands
-	#[test]
+	#[rstest]
 	fn fuzz_registry_list(count in 0usize..100) {
 		use async_trait::async_trait;
 		use reinhardt_commands::{BaseCommand, CommandResult};
@@ -280,7 +281,7 @@ proptest! {
 ///
 /// **Category**: Fuzz
 /// **Verifies**: Extreme Unicode is handled
-#[test]
+#[rstest]
 fn test_context_extreme_unicode() {
 	// RTL text, combining characters, ZWJ sequences
 	let extreme_strings = vec![
@@ -303,7 +304,7 @@ fn test_context_extreme_unicode() {
 ///
 /// **Category**: Fuzz
 /// **Verifies**: Edge-case keys are handled
-#[test]
+#[rstest]
 fn test_template_context_edge_keys() {
 	let mut ctx = TemplateContext::new();
 

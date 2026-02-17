@@ -380,8 +380,9 @@ pub fn to_camel_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_render_template_without_spaces() {
 		let template_cmd = TemplateCommand::new();
 		let mut context = TemplateContext::new();
@@ -394,7 +395,7 @@ mod tests {
 		assert_eq!(result, "name = \"my_project\"\nversion = \"1.0.0\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_template_with_spaces() {
 		let template_cmd = TemplateCommand::new();
 		let mut context = TemplateContext::new();
@@ -407,7 +408,7 @@ mod tests {
 		assert_eq!(result, "name = \"my_project\"\nversion = \"1.0.0\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_template_mixed_formats() {
 		let template_cmd = TemplateCommand::new();
 		let mut context = TemplateContext::new();
@@ -420,7 +421,7 @@ mod tests {
 		assert_eq!(result, "name = \"my_project\"\nversion = \"1.0.0\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_template_no_variables() {
 		let template_cmd = TemplateCommand::new();
 		let context = TemplateContext::new();
@@ -431,7 +432,7 @@ mod tests {
 		assert_eq!(result, template);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_template_undefined_variable() {
 		let template_cmd = TemplateCommand::new();
 		let context = TemplateContext::new();

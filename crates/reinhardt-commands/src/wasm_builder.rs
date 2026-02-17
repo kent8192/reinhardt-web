@@ -343,8 +343,9 @@ pub fn check_wasm_tools_installed() -> Result<(), Vec<String>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_defaults() {
 		let config = WasmBuildConfig::default();
 		assert_eq!(config.output_dir, PathBuf::from("dist"));
@@ -352,7 +353,7 @@ mod tests {
 		assert!(config.optimize);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = WasmBuildConfig::new("/path/to/project")
 			.output_dir("build")

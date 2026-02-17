@@ -103,14 +103,15 @@ pub fn run_formatters(paths: &[&str], formatter_path: Option<&str>) -> Result<()
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_run_formatters_empty_paths() {
 		let result = run_formatters(&[], None);
 		assert!(result.is_ok(), "Should succeed with empty paths");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_formatters_nonexistent_formatter() {
 		let result = run_formatters(&["src/lib.rs"], Some("/nonexistent/path/to/formatter"));
 		assert!(result.is_err(), "Should fail with nonexistent formatter");
@@ -123,7 +124,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_formatters_nonexistent_file() {
 		let result = run_formatters(&["/nonexistent/file.rs"], None);
 		assert!(result.is_err(), "Should fail with nonexistent file");

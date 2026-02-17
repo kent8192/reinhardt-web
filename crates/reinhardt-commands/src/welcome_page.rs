@@ -145,8 +145,9 @@ impl Component for WelcomePage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_welcome_page_renders() {
 		let page = WelcomePage::new("0.1.0");
 		let rendered = page.render();
@@ -161,7 +162,7 @@ mod tests {
 		assert!(html.contains("Modular"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_welcome_page_has_head() {
 		let page = WelcomePage::new("0.1.0");
 		let rendered = page.render();
@@ -177,7 +178,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_component_name() {
 		assert_eq!(WelcomePage::name(), "WelcomePage");
 	}

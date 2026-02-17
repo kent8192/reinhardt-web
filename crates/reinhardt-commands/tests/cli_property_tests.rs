@@ -15,7 +15,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that args can be added and retrieved correctly.
-	#[test]
+	#[rstest]
 	fn prop_context_args_roundtrip(args in prop::collection::vec("[a-z]{1,20}", 0..10)) {
 		let mut ctx = CommandContext::default();
 
@@ -33,7 +33,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that options can be set and retrieved correctly.
-	#[test]
+	#[rstest]
 	fn prop_context_options_roundtrip(
 		options in prop::collection::hash_map("[a-z]{1,10}", "[a-z0-9]{1,20}", 0..10)
 	) {
@@ -53,7 +53,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that verbosity is correctly bounded.
-	#[test]
+	#[rstest]
 	fn prop_context_verbosity_bounds(verbosity in 0u8..=255u8) {
 		let mut ctx = CommandContext::default();
 		ctx.set_verbosity(verbosity);
@@ -65,7 +65,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies has_option consistency with option().
-	#[test]
+	#[rstest]
 	fn prop_context_option_presence(key in "[a-z]{1,10}", value in "[a-z0-9]{1,20}") {
 		let mut ctx = CommandContext::default();
 		ctx.set_option(key.clone(), value);
@@ -78,7 +78,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that non-existent options return None.
-	#[test]
+	#[rstest]
 	fn prop_context_nonexistent_option(key in "[a-z]{1,10}") {
 		let ctx = CommandContext::default();
 
@@ -96,7 +96,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that out-of-bounds arg access returns None.
-	#[test]
+	#[rstest]
 	fn prop_arg_out_of_bounds(
 		args in prop::collection::vec("[a-z]{1,10}", 0..5),
 		index in 5usize..100
@@ -114,7 +114,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that Unicode characters are preserved in arguments.
-	#[test]
+	#[rstest]
 	fn prop_unicode_args_preserved(arg in "\\PC{1,50}") {
 		let mut ctx = CommandContext::default();
 		ctx.add_arg(arg.clone());
@@ -127,7 +127,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that Unicode characters are preserved in options.
-	#[test]
+	#[rstest]
 	fn prop_unicode_options_preserved(
 		key in "[a-z]{1,10}",
 		value in "\\PC{1,50}"
@@ -149,7 +149,7 @@ proptest! {
 	///
 	/// Category: Property
 	/// Verifies that cloned contexts have identical content.
-	#[test]
+	#[rstest]
 	fn prop_context_clone_invariant(
 		args in prop::collection::vec("[a-z]{1,10}", 0..5),
 		verbosity in 0u8..10u8
@@ -179,7 +179,7 @@ proptest! {
 	///
 	/// Category: Fuzz
 	/// Verifies handling of many arguments.
-	#[test]
+	#[rstest]
 	fn fuzz_many_args(args in prop::collection::vec("[a-z]{1,5}", 50..100)) {
 		let mut ctx = CommandContext::default();
 
@@ -198,7 +198,7 @@ proptest! {
 	///
 	/// Category: Fuzz
 	/// Verifies handling of many options.
-	#[test]
+	#[rstest]
 	fn fuzz_many_options(
 		options in prop::collection::vec(("[a-z]{1,5}", "[a-z]{1,5}"), 50..100)
 	) {
@@ -219,7 +219,7 @@ proptest! {
 	///
 	/// Category: Fuzz
 	/// Verifies handling of long string values.
-	#[test]
+	#[rstest]
 	fn fuzz_long_strings(
 		long_arg in "[a-z]{100,500}",
 		long_option_value in "[a-z]{100,500}"
@@ -238,7 +238,7 @@ proptest! {
 	///
 	/// Category: Fuzz
 	/// Verifies handling of empty string values.
-	#[test]
+	#[rstest]
 	fn fuzz_empty_strings(_dummy in Just(())) {
 		let mut ctx = CommandContext::default();
 		ctx.add_arg(String::new());

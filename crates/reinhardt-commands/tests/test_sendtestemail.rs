@@ -3,8 +3,10 @@
 
 use reinhardt_commands::{BaseCommand, CommandContext, SendTestEmailCommand};
 use reinhardt_conf::settings::{Contact, Settings};
+use rstest::rstest;
 use std::sync::Arc;
 
+#[rstest]
 #[tokio::test]
 async fn test_single_receiver() {
 	let command = SendTestEmailCommand::new();
@@ -14,6 +16,7 @@ async fn test_single_receiver() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_sendtestemail_multiple_receivers() {
 	let command = SendTestEmailCommand::new();
@@ -26,6 +29,7 @@ async fn test_sendtestemail_multiple_receivers() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_missing_receivers() {
 	let command = SendTestEmailCommand::new();
@@ -44,6 +48,7 @@ async fn test_missing_receivers() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manager_receivers() {
 	let command = SendTestEmailCommand::new();
@@ -65,6 +70,7 @@ async fn test_manager_receivers() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_admin_receivers() {
 	let command = SendTestEmailCommand::new();
@@ -86,6 +92,7 @@ async fn test_admin_receivers() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manager_and_admin_receivers() {
 	let command = SendTestEmailCommand::new();
@@ -112,6 +119,7 @@ async fn test_manager_and_admin_receivers() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_backend_console() {
 	let command = SendTestEmailCommand::new();
@@ -122,6 +130,7 @@ async fn test_custom_backend_console() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_backend_memory() {
 	let command = SendTestEmailCommand::new();
@@ -132,6 +141,7 @@ async fn test_custom_backend_memory() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_backend_file() {
 	let command = SendTestEmailCommand::new();
@@ -142,6 +152,7 @@ async fn test_custom_backend_file() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_verbose_output() {
 	let command = SendTestEmailCommand::new();
@@ -156,6 +167,7 @@ async fn test_verbose_output() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_settings_file_option() {
 	let command = SendTestEmailCommand::new();
@@ -171,6 +183,7 @@ async fn test_settings_file_option() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_backend_and_verbose_combined() {
 	let command = SendTestEmailCommand::new();

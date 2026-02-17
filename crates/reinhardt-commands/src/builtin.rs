@@ -2403,7 +2403,9 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_check_command_basic() {
 		let cmd = CheckCommand;
@@ -2415,6 +2417,7 @@ mod tests {
 		assert!(result.is_ok() || result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_check_command_with_deploy_flag() {
 		let cmd = CheckCommand;
@@ -2426,6 +2429,7 @@ mod tests {
 		assert!(result.is_ok() || result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(feature = "routers")]
 	async fn test_showurls_command() {
@@ -2436,6 +2440,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial(env_change)]
 	async fn test_migrate_command() {
@@ -2455,6 +2460,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial(env_change)]
 	#[cfg(feature = "migrations")]
@@ -2502,6 +2508,7 @@ mod tests {
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial(env_change)]
 	#[cfg(feature = "migrations")]
@@ -2550,6 +2557,7 @@ mod tests {
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial(runserver)]
 	async fn test_runserver_command() {
@@ -2598,7 +2606,7 @@ mod tests {
 
 	// ==================== Command Metadata Tests ====================
 
-	#[test]
+	#[rstest]
 	fn test_shell_command_metadata() {
 		let cmd = ShellCommand;
 		assert_eq!(cmd.name(), "shell");
@@ -2611,7 +2619,7 @@ mod tests {
 		assert_eq!(options[0].long, "command");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_checkdi_command_metadata() {
 		let cmd = CheckDiCommand;
 		assert_eq!(cmd.name(), "check-di");
@@ -2627,7 +2635,7 @@ mod tests {
 		assert!(options.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migrate_command_metadata() {
 		let cmd = MigrateCommand;
 		assert_eq!(cmd.name(), "migrate");
@@ -2643,7 +2651,7 @@ mod tests {
 		assert!(!options.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(feature = "migrations")]
 	fn test_makemigrations_command_metadata() {
 		let cmd = MakeMigrationsCommand;
@@ -2663,6 +2671,7 @@ mod tests {
 		assert!(option_names.contains(&"empty"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_checkdi_command_execution() {
 		let cmd = CheckDiCommand;
@@ -2687,6 +2696,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shell_command_with_command_option() {
 		let cmd = ShellCommand;
@@ -2704,9 +2714,10 @@ mod tests {
 	mod autoreload_tests {
 		use super::*;
 		use notify::{Event, EventKind};
+		use rstest::rstest;
 		use std::path::PathBuf;
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_rust_file() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2716,7 +2727,7 @@ mod tests {
 			assert!(RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_toml_file() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2726,7 +2737,7 @@ mod tests {
 			assert!(RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_target_dir_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2736,7 +2747,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_git_dir_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2746,7 +2757,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_swap_file_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2756,7 +2767,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_backup_file_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2766,7 +2777,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_tmp_file_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2776,7 +2787,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_non_rust_file_ignored() {
 			let event = Event {
 				kind: EventKind::Modify(notify::event::ModifyKind::Any),
@@ -2786,7 +2797,7 @@ mod tests {
 			assert!(!RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_create_event() {
 			let event = Event {
 				kind: EventKind::Create(notify::event::CreateKind::File),
@@ -2796,7 +2807,7 @@ mod tests {
 			assert!(RunServerCommand::is_relevant_change(&event));
 		}
 
-		#[test]
+		#[rstest]
 		fn test_is_relevant_change_remove_event() {
 			let event = Event {
 				kind: EventKind::Remove(notify::event::RemoveKind::File),

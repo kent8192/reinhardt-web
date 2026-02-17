@@ -553,19 +553,19 @@ mod tests {
 		tempdir().unwrap()
 	}
 
-	#[test]
+	#[rstest]
 	fn test_startproject_command_name() {
 		let cmd = StartProjectCommand;
 		assert_eq!(cmd.name(), "startproject");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_startapp_command_name() {
 		let cmd = StartAppCommand;
 		assert_eq!(cmd.name(), "startapp");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_pages_flag_exists() {
 		let cmd = StartProjectCommand;
 		let options = cmd.options();
@@ -575,7 +575,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_restful_flag_exists() {
 		let cmd = StartProjectCommand;
 		let options = cmd.options();
@@ -585,7 +585,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mtv_flag_removed() {
 		let cmd = StartProjectCommand;
 		let options = cmd.options();
@@ -595,7 +595,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_startapp_with_pages_flag_exists() {
 		let cmd = StartAppCommand;
 		let options = cmd.options();
@@ -605,7 +605,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_startapp_mtv_flag_removed() {
 		let cmd = StartAppCommand;
 		let options = cmd.options();

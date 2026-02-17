@@ -8,6 +8,7 @@
 use reinhardt_commands::{
 	BaseCommand, CommandContext, CommandError, CommandResult, StartAppCommand, StartProjectCommand,
 };
+use rstest::rstest;
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
@@ -79,6 +80,7 @@ impl TestEnvironment {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_creates_project_structure() {
 	let env = TestEnvironment::new();
@@ -100,6 +102,7 @@ async fn test_startproject_creates_project_structure() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_with_custom_directory() {
 	let env = TestEnvironment::new();
@@ -119,6 +122,7 @@ async fn test_startproject_with_custom_directory() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_missing_name() {
 	let ctx = CommandContext::new(vec![]);
@@ -135,6 +139,7 @@ async fn test_startproject_missing_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_mtv_style() {
 	let env = TestEnvironment::new();
@@ -154,6 +159,7 @@ async fn test_startproject_mtv_style() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_restful_style() {
 	let env = TestEnvironment::new();
@@ -173,6 +179,7 @@ async fn test_startproject_restful_style() {
 
 // Translation of Django's StartProject tests
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_wrong_args() {
 	// Test wrong number of arguments
@@ -183,6 +190,7 @@ async fn test_startproject_wrong_args() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_simple_project() {
 	let env = TestEnvironment::new();
@@ -195,6 +203,7 @@ async fn test_startproject_simple_project() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_importable_project_name() {
 	// Test that reserved keywords fail
@@ -211,6 +220,7 @@ async fn test_startproject_importable_project_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_command_does_not_import() {
 	// Verify command doesn't import project code
@@ -224,6 +234,7 @@ async fn test_startproject_command_does_not_import() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_simple_project_different_directory() {
 	let env = TestEnvironment::new();
@@ -236,6 +247,7 @@ async fn test_startproject_simple_project_different_directory() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template() {
 	// Test with custom template path
@@ -250,6 +262,7 @@ async fn test_startproject_custom_project_template() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_file_without_extension() {
 	let env = TestEnvironment::new();
@@ -283,6 +296,7 @@ async fn test_startproject_file_without_extension() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_context_variables() {
 	let env = TestEnvironment::new();
@@ -314,6 +328,7 @@ async fn test_startproject_custom_project_template_context_variables() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_no_escaping_of_project_variables() {
 	let env = TestEnvironment::new();
@@ -345,6 +360,7 @@ async fn test_startproject_no_escaping_of_project_variables() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_destination_missing() {
 	let env = TestEnvironment::new();
@@ -382,6 +398,7 @@ async fn test_startproject_custom_project_destination_missing() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startproject_honor_umask() {
 	#[cfg(unix)]
@@ -419,6 +436,7 @@ async fn test_startproject_honor_umask() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_creates_app_structure() {
 	let env = TestEnvironment::new();
@@ -444,6 +462,7 @@ async fn test_startapp_creates_app_structure() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_with_custom_directory() {
 	let env = TestEnvironment::new();
@@ -468,6 +487,7 @@ async fn test_startapp_with_custom_directory() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_missing_name() {
 	let ctx = CommandContext::new(vec![]);
@@ -484,6 +504,7 @@ async fn test_startapp_missing_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_mtv_style() {
 	let env = TestEnvironment::new();
@@ -506,6 +527,7 @@ async fn test_startapp_mtv_style() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_restful_style() {
 	let env = TestEnvironment::new();
@@ -528,6 +550,7 @@ async fn test_startapp_restful_style() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_workspace_mode() {
 	let env = TestEnvironment::new();
@@ -555,6 +578,7 @@ async fn test_startapp_workspace_mode() {
 
 // Translation of Django's StartApp tests
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_invalid_name() {
 	let env = TestEnvironment::new();
@@ -566,6 +590,7 @@ async fn test_startapp_invalid_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_importable_name() {
 	let env = TestEnvironment::new();
@@ -577,6 +602,7 @@ async fn test_startapp_importable_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_invalid_target_name() {
 	let env = TestEnvironment::new();
@@ -588,6 +614,7 @@ async fn test_startapp_invalid_target_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_importable_target_name() {
 	let env = TestEnvironment::new();
@@ -599,6 +626,7 @@ async fn test_startapp_importable_target_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_trailing_slash_in_target_app_directory_name() {
 	let env = TestEnvironment::new();
@@ -610,6 +638,7 @@ async fn test_startapp_trailing_slash_in_target_app_directory_name() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_overlaying_app() {
 	let env = TestEnvironment::new();
@@ -637,6 +666,7 @@ async fn test_startapp_overlaying_app() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_template() {
 	let env = TestEnvironment::new();
@@ -673,6 +703,7 @@ async fn test_startapp_template() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_creates_directory_when_custom_app_destination_missing() {
 	let env = TestEnvironment::new();
@@ -696,6 +727,7 @@ async fn test_startapp_creates_directory_when_custom_app_destination_missing() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_custom_app_destination_missing_with_nested_subdirectory() {
 	let env = TestEnvironment::new();
@@ -722,6 +754,7 @@ async fn test_startapp_custom_app_destination_missing_with_nested_subdirectory()
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_custom_name_with_app_within_other_app() {
 	let env = TestEnvironment::new();
@@ -751,6 +784,7 @@ async fn test_startapp_custom_name_with_app_within_other_app() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_startapp_custom_app_directory_creation_error_handling() {
 	let env = TestEnvironment::new();
@@ -780,7 +814,7 @@ async fn test_startapp_custom_app_directory_creation_error_handling() {
 // Command Context Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_command_context_arguments() {
 	let ctx = CommandContext::new(vec!["arg1".to_string(), "arg2".to_string()]);
 
@@ -789,7 +823,7 @@ fn test_command_context_arguments() {
 	assert_eq!(ctx.arg(2), None);
 }
 
-#[test]
+#[rstest]
 fn test_admin_scripts_context_options() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("verbose".to_string(), "true".to_string());
@@ -805,6 +839,7 @@ fn test_admin_scripts_context_options() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_base_command_lifecycle() {
 	struct TestCommand {
@@ -853,7 +888,7 @@ async fn test_base_command_lifecycle() {
 	assert!(*after.lock().unwrap(), "after_execute was not called");
 }
 
-#[test]
+#[rstest]
 fn test_command_argument_required() {
 	use reinhardt_commands::CommandArgument;
 
@@ -863,7 +898,7 @@ fn test_command_argument_required() {
 	assert_eq!(arg.description, "The name argument");
 }
 
-#[test]
+#[rstest]
 fn test_command_argument_optional() {
 	use reinhardt_commands::CommandArgument;
 
@@ -874,7 +909,7 @@ fn test_command_argument_optional() {
 	assert_eq!(arg.default, Some("/default/path".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_command_option_flag() {
 	use reinhardt_commands::CommandOption;
 
@@ -884,7 +919,7 @@ fn test_command_option_flag() {
 	assert!(!opt.takes_value);
 }
 
-#[test]
+#[rstest]
 fn test_command_option_value() {
 	use reinhardt_commands::CommandOption;
 
@@ -902,6 +937,7 @@ fn test_command_option_value() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_template_rendering() {
 	use reinhardt_commands::{TemplateCommand, TemplateContext};
@@ -939,7 +975,7 @@ async fn test_template_rendering() {
 // Error Handling Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_command_error_variants() {
 	let err1 = CommandError::NotFound("test_command".to_string());
 	assert!(err1.to_string().contains("test_command"));
@@ -956,6 +992,7 @@ fn test_command_error_variants() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_full_project_and_app_workflow() {
 	let env = TestEnvironment::new();
@@ -1001,7 +1038,7 @@ async fn test_full_project_and_app_workflow() {
 // Utility Function Tests
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_admin_scripts_generate_secret() {
 	use reinhardt_commands::generate_secret_key;
 
@@ -1019,7 +1056,7 @@ fn test_admin_scripts_generate_secret() {
 	assert!(key1.len() >= 32);
 }
 
-#[test]
+#[rstest]
 fn test_admin_scripts_to_camel_case() {
 	use reinhardt_commands::to_camel_case;
 
@@ -1035,6 +1072,7 @@ fn test_admin_scripts_to_camel_case() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_builtin_command() {
 	// Test builtin command execution without settings
@@ -1043,6 +1081,7 @@ async fn test_djangoadmin_nosettings_builtin_command() {
 	assert_eq!(ctx.arg(0), Some(&"--version".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(reinhardt_settings)]
 async fn test_djangoadmin_nosettings_builtin_with_bad_settings() {
@@ -1063,6 +1102,7 @@ async fn test_djangoadmin_nosettings_builtin_with_bad_settings() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_builtin_with_bad_environment() {
 	// Test builtin command with bad environment
@@ -1075,6 +1115,7 @@ async fn test_djangoadmin_nosettings_builtin_with_bad_environment() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_nosettings_commands_with_invalid_settings() {
 	// Test commands with invalid settings
@@ -1090,6 +1131,7 @@ async fn test_djangoadmin_nosettings_commands_with_invalid_settings() {
 // ============================================================================
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_builtin_command() {
 	let env = TestEnvironment::new();
@@ -1101,6 +1143,7 @@ async fn test_djangoadmin_defaultsettings_builtin_command() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_builtin_with_settings() {
 	let env = TestEnvironment::new();
@@ -1110,6 +1153,7 @@ async fn test_djangoadmin_defaultsettings_builtin_with_settings() {
 	assert!(env.file_exists("settings.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(reinhardt_settings)]
 async fn test_djangoadmin_defaultsettings_builtin_with_environment() {
@@ -1124,6 +1168,7 @@ async fn test_djangoadmin_defaultsettings_builtin_with_environment() {
 	// env_guard automatically cleans up on drop
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(reinhardt_settings)]
 async fn test_djangoadmin_defaultsettings_builtin_with_bad_settings() {
@@ -1138,6 +1183,7 @@ async fn test_djangoadmin_defaultsettings_builtin_with_bad_settings() {
 	// env_guard automatically cleans up on drop
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(reinhardt_settings)]
 async fn test_djangoadmin_defaultsettings_builtin_with_bad_environment() {
@@ -1150,6 +1196,7 @@ async fn test_djangoadmin_defaultsettings_builtin_with_bad_environment() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_custom_command() {
 	let env = TestEnvironment::new();
@@ -1160,6 +1207,7 @@ async fn test_djangoadmin_defaultsettings_custom_command() {
 }
 
 #[serial]
+#[rstest]
 #[tokio::test]
 async fn test_djangoadmin_defaultsettings_custom_command_with_settings() {
 	// Test custom command with explicit settings
@@ -1171,6 +1219,7 @@ async fn test_djangoadmin_defaultsettings_custom_command_with_settings() {
 	assert_eq!(ctx.arg(1), Some(&"custom.settings".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(reinhardt_settings)]
 async fn test_djangoadmin_defaultsettings_custom_command_with_environment() {

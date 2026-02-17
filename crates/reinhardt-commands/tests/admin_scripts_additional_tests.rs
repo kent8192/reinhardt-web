@@ -6,6 +6,7 @@
 use reinhardt_commands::{
 	BaseCommand, CommandContext, CommandError, CommandResult, StartProjectCommand,
 };
+use rstest::rstest;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -43,6 +44,7 @@ impl TestEnvironment {
 // ManageMultipleSettings Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_builtin_command() {
 	let env = TestEnvironment::new();
@@ -55,6 +57,7 @@ async fn test_manage_multiple_builtin_command() {
 	assert!(env.file_exists("settings2.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_builtin_with_settings() {
 	let env = TestEnvironment::new();
@@ -67,6 +70,7 @@ async fn test_manage_multiple_builtin_with_settings() {
 	assert!(env.file_exists("settings2.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_builtin_with_environment() {
 	unsafe {
@@ -78,6 +82,7 @@ async fn test_manage_multiple_builtin_with_environment() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_builtin_with_bad_settings() {
 	unsafe {
@@ -89,6 +94,7 @@ async fn test_manage_multiple_builtin_with_bad_settings() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_builtin_with_bad_environment() {
 	unsafe {
@@ -97,6 +103,7 @@ async fn test_manage_multiple_builtin_with_bad_environment() {
 	assert_eq!(std::env::var("REINHARDT_SETTINGS_MODULE").unwrap(), "");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_custom_command() {
 	let env = TestEnvironment::new();
@@ -104,6 +111,7 @@ async fn test_manage_multiple_custom_command() {
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_custom_command_with_settings() {
 	let env = TestEnvironment::new();
@@ -125,6 +133,7 @@ async fn test_manage_multiple_custom_command_with_settings() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_multiple_custom_command_with_environment() {
 	unsafe {
@@ -144,6 +153,7 @@ async fn test_manage_multiple_custom_command_with_environment() {
 // ManageCheck Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_check_broken_app() {
 	let env = TestEnvironment::new();
@@ -154,6 +164,7 @@ async fn test_manage_check_broken_app() {
 	assert!(env.file_exists("apps/broken/mod.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_check_complex_app() {
 	let env = TestEnvironment::new();
@@ -174,6 +185,7 @@ async fn test_manage_check_complex_app() {
 	// Complex app structure for testing check command
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_check_app_with_import() {
 	let env = TestEnvironment::new();
@@ -191,6 +203,7 @@ async fn test_manage_check_app_with_import() {
 	// App with import issues for testing check command
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_check_warning_does_not_halt() {
 	let env = TestEnvironment::new();
@@ -212,6 +225,7 @@ async fn test_manage_check_warning_does_not_halt() {
 // ManageRunserver Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_addrport() {
 	let ctx = CommandContext::new(vec!["127.0.0.1:8080".to_string()]);
@@ -219,6 +233,7 @@ async fn test_manage_runserver_addrport() {
 	assert_eq!(ctx.arg(0), Some(&"127.0.0.1:8080".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_zero_ip_addr() {
 	let ctx = CommandContext::new(vec!["0.0.0.0:8000".to_string()]);
@@ -226,6 +241,7 @@ async fn test_manage_runserver_zero_ip_addr() {
 	assert_eq!(ctx.arg(0), Some(&"0.0.0.0:8000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_on_bind() {
 	let env = TestEnvironment::new();
@@ -243,6 +259,7 @@ async fn test_manage_runserver_on_bind() {
 // Removed empty test: test_manage_runserver_hide_production_warning_with_environment_variable
 // This test was empty and will be implemented when needed
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_addrport_ipv6() {
 	let ctx = CommandContext::new(vec!["[::1]:8000".to_string()]);
@@ -250,6 +267,7 @@ async fn test_manage_runserver_runner_addrport_ipv6() {
 	assert_eq!(ctx.arg(0), Some(&"[::1]:8000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_hostname() {
 	let ctx = CommandContext::new(vec!["localhost:8000".to_string()]);
@@ -257,6 +275,7 @@ async fn test_manage_runserver_runner_hostname() {
 	assert_eq!(ctx.arg(0), Some(&"localhost:8000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_hostname_ipv6() {
 	let ctx = CommandContext::new(vec!["localhost6:8000".to_string()]);
@@ -264,6 +283,7 @@ async fn test_manage_runserver_runner_hostname_ipv6() {
 	assert_eq!(ctx.arg(0), Some(&"localhost6:8000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_custom_defaults() {
 	let mut ctx = CommandContext::new(vec![]);
@@ -274,6 +294,7 @@ async fn test_manage_runserver_runner_custom_defaults() {
 	assert_eq!(ctx.option("port"), Some(&"3000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_custom_defaults_ipv6() {
 	let mut ctx = CommandContext::new(vec![]);
@@ -284,6 +305,7 @@ async fn test_manage_runserver_runner_custom_defaults_ipv6() {
 	assert_eq!(ctx.option("host"), Some(&"::".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_runner_ambiguous() {
 	let ctx = CommandContext::new(vec!["8000".to_string()]);
@@ -291,6 +313,7 @@ async fn test_manage_runserver_runner_ambiguous() {
 	assert_eq!(ctx.arg(0), Some(&"8000".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_no_database() {
 	let env = TestEnvironment::new();
@@ -305,6 +328,7 @@ async fn test_manage_runserver_no_database() {
 	assert!(env.file_exists("Cargo.toml"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_readonly_database() {
 	let env = TestEnvironment::new();
@@ -319,6 +343,7 @@ async fn test_manage_runserver_readonly_database() {
 	assert!(env.file_exists("Cargo.toml"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_skip_checks() {
 	let mut ctx = CommandContext::new(vec![]);
@@ -328,6 +353,7 @@ async fn test_manage_runserver_skip_checks() {
 	assert!(ctx.has_option("skip-checks"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_custom_system_checks() {
 	let mut ctx = CommandContext::new(vec![]);
@@ -337,6 +363,7 @@ async fn test_manage_runserver_custom_system_checks() {
 	assert_eq!(ctx.option("check"), Some(&"custom.checks".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_migration_warning_one_app() {
 	let env = TestEnvironment::new();
@@ -352,6 +379,7 @@ async fn test_manage_runserver_migration_warning_one_app() {
 	assert!(env.file_exists("apps/myapp/migrations/001_initial.sql"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_migration_warning_multiple_apps() {
 	let env = TestEnvironment::new();
@@ -369,6 +397,7 @@ async fn test_manage_runserver_migration_warning_multiple_apps() {
 	assert!(env.file_exists("apps/app2/migrations/001.sql"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_empty_allowed_hosts_error() {
 	unsafe {
@@ -379,6 +408,7 @@ async fn test_manage_runserver_empty_allowed_hosts_error() {
 	assert_eq!(std::env::var("ALLOWED_HOSTS").unwrap(), "");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_help_output() {
 	let ctx = CommandContext::new(vec!["--help".to_string()]);
@@ -387,6 +417,7 @@ async fn test_manage_runserver_help_output() {
 	assert_eq!(ctx.arg(0), Some(&"--help".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_runserver_suppressed_options() {
 	let mut ctx = CommandContext::new(vec![]);
@@ -402,6 +433,7 @@ async fn test_manage_runserver_suppressed_options() {
 // ManageTestserver Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_testserver_handle_params() {
 	let ctx = CommandContext::new(vec!["fixture.json".to_string()]);
@@ -409,6 +441,7 @@ async fn test_manage_testserver_handle_params() {
 	assert_eq!(ctx.arg(0), Some(&"fixture.json".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_manage_testserver_params_to_runserver() {
 	let ctx = CommandContext::new(vec!["fixture.json".to_string(), "8001".to_string()]);
@@ -421,36 +454,42 @@ async fn test_manage_testserver_params_to_runserver() {
 // CommandTypes Tests - Version and Help
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_version() {
 	let ctx = CommandContext::new(vec!["--version".to_string()]);
 	assert_eq!(ctx.arg(0), Some(&"--version".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_version_alternative() {
 	let ctx = CommandContext::new(vec!["-V".to_string()]);
 	assert_eq!(ctx.arg(0), Some(&"-V".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_help() {
 	let ctx = CommandContext::new(vec!["--help".to_string()]);
 	assert_eq!(ctx.arg(0), Some(&"--help".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_help_commands() {
 	let ctx = CommandContext::new(vec!["help".to_string()]);
 	assert_eq!(ctx.arg(0), Some(&"help".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_help_alternative() {
 	let ctx = CommandContext::new(vec!["-h".to_string()]);
 	assert_eq!(ctx.arg(0), Some(&"-h".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_help_short_alert() {
 	let ctx = CommandContext::new(vec!["-h".to_string()]);
@@ -458,6 +497,7 @@ async fn test_commandtypes_help_short_alert() {
 	assert_eq!(ctx.arg(0), Some(&"-h".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_specific_help() {
 	let ctx = CommandContext::new(vec!["startproject".to_string(), "--help".to_string()]);
@@ -465,6 +505,7 @@ async fn test_commandtypes_specific_help() {
 	assert_eq!(ctx.arg(1), Some(&"--help".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_help_default_options_with_custom_arguments() {
 	let ctx = CommandContext::new(vec![
@@ -481,28 +522,28 @@ async fn test_commandtypes_help_default_options_with_custom_arguments() {
 // CommandTypes Tests - Color Output
 // ============================================================================
 
-#[test]
+#[rstest]
 fn test_commandtypes_command_color() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("color".to_string(), "true".to_string());
 	assert!(ctx.has_option("color"));
 }
 
-#[test]
+#[rstest]
 fn test_commandtypes_command_no_color() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("no-color".to_string(), "true".to_string());
 	assert!(ctx.has_option("no-color"));
 }
 
-#[test]
+#[rstest]
 fn test_commandtypes_force_color_command_init() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("force-color".to_string(), "true".to_string());
 	assert!(ctx.has_option("force-color"));
 }
 
-#[test]
+#[rstest]
 fn test_commandtypes_no_color_force_color_mutually_exclusive_execute() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("no-color".to_string(), "true".to_string());
@@ -512,7 +553,7 @@ fn test_commandtypes_no_color_force_color_mutually_exclusive_execute() {
 	assert!(ctx.has_option("force-color"));
 }
 
-#[test]
+#[rstest]
 fn test_commandtypes_no_color_force_color_mutually_exclusive_command_init() {
 	let mut ctx = CommandContext::new(vec![]);
 	ctx.set_option("no-color".to_string(), "true".to_string());
@@ -525,6 +566,7 @@ fn test_commandtypes_no_color_force_color_mutually_exclusive_command_init() {
 // CommandTypes Tests - Output Streams
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_custom_stdout() {
 	use std::io::Write;
@@ -535,6 +577,7 @@ async fn test_commandtypes_custom_stdout() {
 	assert_eq!(String::from_utf8(buffer).unwrap(), "Custom stdout test\n");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_custom_stderr() {
 	use std::io::Write;
@@ -549,6 +592,7 @@ async fn test_commandtypes_custom_stderr() {
 // CommandTypes Tests - Base Command
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_base_command() {
 	struct TestBaseCommand;
@@ -570,6 +614,7 @@ async fn test_commandtypes_base_command() {
 	assert!(result.is_ok());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_base_command_no_label() {
 	struct NoLabelCommand;
@@ -601,6 +646,7 @@ async fn test_commandtypes_base_command_no_label() {
 // CommandTypes Tests - App Commands
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_app_command() {
 	let env = TestEnvironment::new();
@@ -611,6 +657,7 @@ async fn test_commandtypes_app_command() {
 	assert!(env.file_exists("apps/testapp/mod.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_app_command_no_apps() {
 	let env = TestEnvironment::new();
@@ -620,6 +667,7 @@ async fn test_commandtypes_app_command_no_apps() {
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_commandtypes_app_command_multiple_apps() {
 	let env = TestEnvironment::new();
@@ -636,6 +684,7 @@ async fn test_commandtypes_app_command_multiple_apps() {
 // Discovery Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_precedence() {
 	let env = TestEnvironment::new();
@@ -657,6 +706,7 @@ async fn test_discovery_precedence() {
 // ArgumentOrder Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_argumentorder_setting_then_option() {
 	let ctx = CommandContext::new(vec![
@@ -681,6 +731,7 @@ async fn test_argumentorder_setting_then_option() {
 // DiffSettings Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_diffsettings_basic() {
 	let env = TestEnvironment::new();
@@ -691,6 +742,7 @@ async fn test_diffsettings_basic() {
 	assert!(env.file_exists("settings.rs"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_diffsettings_settings_configured() {
 	let env = TestEnvironment::new();
@@ -708,6 +760,7 @@ async fn test_diffsettings_settings_configured() {
 // Additional StartProject Tests
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_non_python_files_not_formatted() {
 	let env = TestEnvironment::new();
@@ -717,6 +770,7 @@ async fn test_startproject_custom_project_template_non_python_files_not_formatte
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_template_dir_with_trailing_slash() {
 	let env = TestEnvironment::new();
@@ -747,6 +801,7 @@ async fn test_startproject_template_dir_with_trailing_slash() {
 // Removed empty test: test_startproject_project_template_tarball_url
 // This test was empty and will be implemented when needed
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_with_non_ascii_templates() {
 	let env = TestEnvironment::new();
@@ -756,6 +811,7 @@ async fn test_startproject_custom_project_template_with_non_ascii_templates() {
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_hidden_directory_default_excluded() {
 	let env = TestEnvironment::new();
@@ -765,6 +821,7 @@ async fn test_startproject_custom_project_template_hidden_directory_default_excl
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_hidden_directory_included() {
 	let env = TestEnvironment::new();
@@ -774,6 +831,7 @@ async fn test_startproject_custom_project_template_hidden_directory_included() {
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_custom_project_template_exclude_directory() {
 	let env = TestEnvironment::new();
@@ -783,6 +841,7 @@ async fn test_startproject_custom_project_template_exclude_directory() {
 	assert!(env.path().exists());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_startproject_failure_to_format_code() {
 	let env = TestEnvironment::new();

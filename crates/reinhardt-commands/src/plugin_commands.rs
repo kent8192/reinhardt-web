@@ -770,6 +770,7 @@ impl BaseCommand for PluginUpdateCommand {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tempfile::TempDir;
 
 	/// Create a test project with a Cargo.toml file.
@@ -816,14 +817,14 @@ enabled = false
 	// Metadata Tests (existing)
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_list_command_metadata() {
 		let cmd = PluginListCommand;
 		assert_eq!(cmd.name(), "plugin list");
 		assert!(!cmd.requires_system_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_install_command_metadata() {
 		let cmd = PluginInstallCommand;
 		assert_eq!(cmd.name(), "plugin install");
@@ -831,7 +832,7 @@ enabled = false
 		assert_eq!(cmd.arguments()[0].name, "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_search_command_metadata() {
 		let cmd = PluginSearchCommand;
 		assert_eq!(cmd.name(), "plugin search");
@@ -842,7 +843,7 @@ enabled = false
 	// All Commands Metadata Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_plugin_info_command_metadata() {
 		let cmd = PluginInfoCommand;
 		assert_eq!(cmd.name(), "plugin info");
@@ -851,7 +852,7 @@ enabled = false
 		assert!(!cmd.requires_system_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_remove_command_metadata() {
 		let cmd = PluginRemoveCommand;
 		assert_eq!(cmd.name(), "plugin remove");
@@ -860,7 +861,7 @@ enabled = false
 		assert!(!cmd.requires_system_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_enable_command_metadata() {
 		let cmd = PluginEnableCommand;
 		assert_eq!(cmd.name(), "plugin enable");
@@ -869,7 +870,7 @@ enabled = false
 		assert!(!cmd.requires_system_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_disable_command_metadata() {
 		let cmd = PluginDisableCommand;
 		assert_eq!(cmd.name(), "plugin disable");
@@ -878,7 +879,7 @@ enabled = false
 		assert!(!cmd.requires_system_checks());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plugin_update_command_metadata() {
 		let cmd = PluginUpdateCommand;
 		assert_eq!(cmd.name(), "plugin update");
@@ -891,6 +892,7 @@ enabled = false
 	// PluginListCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_list_no_manifest() {
 		let temp_dir = TempDir::new().unwrap();
@@ -906,6 +908,7 @@ enabled = false
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_list_with_plugins() {
 		let temp_dir = TempDir::new().unwrap();
@@ -923,6 +926,7 @@ enabled = false
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_list_with_verbose() {
 		let temp_dir = TempDir::new().unwrap();
@@ -945,6 +949,7 @@ enabled = false
 	// PluginInfoCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_info_local_plugin() {
 		let temp_dir = TempDir::new().unwrap();
@@ -963,6 +968,7 @@ enabled = false
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_info_not_found() {
 		let temp_dir = TempDir::new().unwrap();
@@ -981,6 +987,7 @@ enabled = false
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_info_no_argument() {
 		let ctx = CommandContext::default();
@@ -994,6 +1001,7 @@ enabled = false
 	// PluginEnableCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_enable_success() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1012,6 +1020,7 @@ enabled = false
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_enable_not_found() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1030,6 +1039,7 @@ enabled = false
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_enable_no_argument() {
 		let ctx = CommandContext::default();
@@ -1043,6 +1053,7 @@ enabled = false
 	// PluginDisableCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_disable_success() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1061,6 +1072,7 @@ enabled = false
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_disable_not_found() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1079,6 +1091,7 @@ enabled = false
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_disable_no_argument() {
 		let ctx = CommandContext::default();
@@ -1092,6 +1105,7 @@ enabled = false
 	// PluginRemoveCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_remove_success() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1122,6 +1136,7 @@ test-delion = "1.0.0"
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_remove_not_found() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1141,6 +1156,7 @@ test-delion = "1.0.0"
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_remove_no_argument() {
 		let ctx = CommandContext::default();
@@ -1154,6 +1170,7 @@ test-delion = "1.0.0"
 	// PluginUpdateCommand Execute Tests
 	// ==========================================================================
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_update_no_manifest() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1170,6 +1187,7 @@ test-delion = "1.0.0"
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_plugin_update_no_args_no_all_flag() {
 		let temp_dir = TempDir::new().unwrap();
@@ -1192,7 +1210,7 @@ test-delion = "1.0.0"
 	// get_project_root Tests
 	// ==========================================================================
 
-	#[test]
+	#[rstest]
 	fn test_get_project_root_from_option() {
 		let temp_dir = TempDir::new().unwrap();
 		let mut ctx = CommandContext::default();
@@ -1205,7 +1223,7 @@ test-delion = "1.0.0"
 		assert_eq!(root, temp_dir.path());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_project_root_defaults_to_current_dir() {
 		let ctx = CommandContext::default();
 

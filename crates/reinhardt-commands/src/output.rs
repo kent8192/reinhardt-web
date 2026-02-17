@@ -141,10 +141,11 @@ impl<W: Write> Drop for OutputWrapper<W> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::io::Cursor;
 	use std::sync::{Arc, Mutex};
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_write() {
 		let buffer = Vec::new();
 		let mut output = OutputWrapper::new(buffer);
@@ -159,7 +160,7 @@ mod tests {
 		assert_eq!(String::from_utf8(buffer).unwrap(), "Hello, world!");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_writeln() {
 		let buffer = Vec::new();
 		let mut output = OutputWrapper::new(buffer);
@@ -177,7 +178,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_mixed() {
 		let buffer = Vec::new();
 		let mut output = OutputWrapper::new(buffer);
@@ -196,7 +197,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_flush() {
 		let buffer = Vec::new();
 		let mut output = OutputWrapper::new(buffer);
@@ -209,7 +210,7 @@ mod tests {
 		assert_eq!(String::from_utf8(buffer).unwrap(), "Test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_empty() {
 		let buffer = Vec::new();
 		let mut output = OutputWrapper::new(buffer);
@@ -220,7 +221,7 @@ mod tests {
 		assert_eq!(buffer.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_cursor() {
 		let cursor = Cursor::new(Vec::new());
 		let mut output = OutputWrapper::new(cursor);
@@ -235,7 +236,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_output_wrapper_drop_flushes() {
 		use std::sync::{Arc, Mutex};
 
