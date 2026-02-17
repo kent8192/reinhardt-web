@@ -697,14 +697,15 @@ impl DatabaseMigrationRecorder {
 mod tests {
 	use super::*;
 	use chrono::Utc;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_migration_recorder_creation() {
 		let recorder = MigrationRecorder::new();
 		assert_eq!(recorder.get_applied_migrations().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_applied() {
 		let mut recorder = MigrationRecorder::new();
 		recorder.record_applied("auth", "0001_initial");
@@ -713,7 +714,7 @@ mod tests {
 		assert!(recorder.is_applied("auth", "0001_initial"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_applied() {
 		let mut recorder = MigrationRecorder::new();
 
@@ -725,7 +726,7 @@ mod tests {
 		assert!(!recorder.is_applied("auth", "0002_add_field"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_applied_migrations() {
 		let mut recorder = MigrationRecorder::new();
 
@@ -754,7 +755,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_record_contains_timestamp() {
 		let mut recorder = MigrationRecorder::new();
 		let before = Utc::now();
@@ -772,7 +773,7 @@ mod tests {
 		assert!(record.applied <= after);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_apps_migrations() {
 		let mut recorder = MigrationRecorder::new();
 
@@ -789,6 +790,7 @@ mod tests {
 		assert!(!recorder.is_applied("comments", "0001_initial"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_async_record_applied() {
 		let mut recorder = MigrationRecorder::new();
@@ -801,6 +803,7 @@ mod tests {
 		assert!(recorder.is_applied("auth", "0001_initial"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_async_is_applied() {
 		let mut recorder = MigrationRecorder::new();
@@ -822,6 +825,7 @@ mod tests {
 		assert!(!result_not_applied);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ensure_schema_table_async() {
 		let recorder = MigrationRecorder::new();

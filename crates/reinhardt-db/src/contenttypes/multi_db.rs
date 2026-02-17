@@ -430,6 +430,7 @@ impl Default for MultiDbContentTypeManager {
 #[cfg(all(test, feature = "database"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::Once;
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -440,6 +441,7 @@ mod tests {
 		});
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_manager_creation() {
 		init_drivers();
@@ -448,6 +450,7 @@ mod tests {
 		assert_eq!(manager.list_databases().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_add_database() {
 		init_drivers();
@@ -461,6 +464,7 @@ mod tests {
 		assert_eq!(manager.list_databases().len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_multiple_databases() {
 		init_drivers();
@@ -480,6 +484,7 @@ mod tests {
 		assert!(databases.contains(&"analytics".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_get_or_create() {
 		init_drivers();
@@ -499,6 +504,7 @@ mod tests {
 		assert!(ct.id.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_get() {
 		init_drivers();
@@ -524,6 +530,7 @@ mod tests {
 		assert_eq!(ct.unwrap().model, "Post");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_get_by_id() {
 		init_drivers();
@@ -548,6 +555,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().model, "Product");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_search_all_databases() {
 		init_drivers();
@@ -579,6 +587,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_load_all() {
 		init_drivers();
@@ -606,6 +615,7 @@ mod tests {
 		assert_eq!(all.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_registry_caching() {
 		init_drivers();
@@ -630,6 +640,7 @@ mod tests {
 		assert_eq!(ct1.id, ct2.id);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_default_db() {
 		init_drivers();
@@ -638,6 +649,7 @@ mod tests {
 		assert_eq!(manager.default_db(), Some("main"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_nonexistent_database() {
 		init_drivers();
@@ -647,6 +659,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multi_db_isolated_registries() {
 		init_drivers();

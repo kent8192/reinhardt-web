@@ -359,6 +359,7 @@ impl<T, K> ReverseRelationship for ManyToMany<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -374,7 +375,7 @@ mod tests {
 		title: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_creation() {
 		let rel: ManyToMany<Course, i64> = ManyToMany::new("courses");
 		assert_eq!(rel.accessor_name(), "courses");
@@ -387,7 +388,7 @@ mod tests {
 		assert_eq!(rel.get_through_fields().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_builder() {
 		let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
 			.related_name("students")
@@ -408,7 +409,7 @@ mod tests {
 		assert_eq!(rel.get_db_constraint_prefix(), Some("m2m_sc"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_through_fields() {
 		let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")
 			.add_through_field("enrolled_at")
@@ -421,7 +422,7 @@ mod tests {
 		assert_eq!(rel.get_through_fields()[2], "status");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_actions() {
 		let actions = vec![
 			CascadeAction::NoAction,
@@ -437,7 +438,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_loading_configuration() {
 		let rel1: ManyToMany<Course, i64> = ManyToMany::new("courses").lazy(true);
 		assert!(rel1.is_lazy());
@@ -446,7 +447,7 @@ mod tests {
 		assert!(!rel2.is_lazy());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bidirectional_relationship() {
 		// Student -> Courses
 		let student_courses: ManyToMany<Course, i64> = ManyToMany::new("courses")
@@ -469,7 +470,7 @@ mod tests {
 		assert_eq!(course_students.get_related_name(), Some("courses"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_self_referential_relationship() {
 		// Users who follow other users
 		let followers: ManyToMany<Student, i64> = ManyToMany::new("followers")
@@ -483,7 +484,7 @@ mod tests {
 		assert_eq!(followers.get_through(), Some("user_follows"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_additional_data() {
 		// Many-to-many with timestamp and other metadata
 		let rel: ManyToMany<Course, i64> = ManyToMany::new("courses")

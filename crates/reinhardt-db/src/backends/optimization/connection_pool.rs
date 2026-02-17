@@ -123,8 +123,9 @@ impl<DB: sqlx::Database> Default for OptimizedPoolBuilder<DB> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = PoolOptimizationConfig::default();
 		assert_eq!(config.max_connections, 10);
@@ -132,7 +133,7 @@ mod tests {
 		assert!(config.test_on_acquire);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder() {
 		let builder = OptimizedPoolBuilder::<sqlx::Postgres>::new()
 			.max_connections(20)

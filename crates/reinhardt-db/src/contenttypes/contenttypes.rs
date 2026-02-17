@@ -208,8 +208,9 @@ impl GenericRelationQuery {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_content_type_creation() {
 		let ct = ContentType::new("blog", "Post");
 		assert_eq!(ct.app_label, "blog");
@@ -217,7 +218,7 @@ mod tests {
 		assert_eq!(ct.qualified_name(), "blog.Post");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_natural_key() {
 		let ct = ContentType::new("auth", "User");
 		let (app, model) = ct.natural_key();
@@ -225,7 +226,7 @@ mod tests {
 		assert_eq!(model, "User");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_register() {
 		let registry = ContentTypeRegistry::new();
 		let ct = ContentType::new("test", "Model");
@@ -235,7 +236,7 @@ mod tests {
 		assert_eq!(registered.app_label, "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_get() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app1", "Model1"));
@@ -245,7 +246,7 @@ mod tests {
 		assert_eq!(found.unwrap().model, "Model1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_get_by_id() {
 		let registry = ContentTypeRegistry::new();
 		let ct = registry.register(ContentType::new("app2", "Model2"));
@@ -256,7 +257,7 @@ mod tests {
 		assert_eq!(found.unwrap().app_label, "app2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_get_or_create() {
 		let registry = ContentTypeRegistry::new();
 
@@ -266,7 +267,7 @@ mod tests {
 		assert_eq!(ct1.id, ct2.id);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_all() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app4", "Model4"));
@@ -276,7 +277,7 @@ mod tests {
 		assert_eq!(all.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_foreign_key() {
 		let registry = ContentTypeRegistry::new();
 		let ct = registry.register(ContentType::new("test", "Article"));
@@ -293,7 +294,7 @@ mod tests {
 		assert!(!gfk.is_set());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_foreign_key_get_content_type() {
 		let ct = CONTENT_TYPE_REGISTRY.register(ContentType::new("blog", "Comment"));
 
@@ -305,7 +306,7 @@ mod tests {
 		assert_eq!(retrieved_ct.unwrap().model, "Comment");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_query() {
 		let ct = ContentType::new("shop", "Product").with_id(5);
 		let mut query = GenericRelationQuery::new(ct);
@@ -319,7 +320,7 @@ mod tests {
 		assert!(sql.contains("object_id IN (1, 2, 3)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_clear() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("temp", "TempModel"));
@@ -425,6 +426,7 @@ impl GenericForeignKey {
 #[cfg(test)]
 mod typed_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test model types
 	struct UserModel;
@@ -445,7 +447,7 @@ mod typed_tests {
 		const MODEL_NAME: &'static str = "Comment";
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contenttypes_typed_register() {
 		let registry = ContentTypeRegistry::new();
 		let ct = registry.register_typed::<UserModel>();
@@ -455,7 +457,7 @@ mod typed_tests {
 		assert!(ct.id.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contenttypes_typed_get() {
 		let registry = ContentTypeRegistry::new();
 		registry.register_typed::<PostModel>();
@@ -465,7 +467,7 @@ mod typed_tests {
 		assert_eq!(ct.unwrap().model, "Post");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contenttypes_typed_get_not_found() {
 		let registry = ContentTypeRegistry::new();
 
@@ -473,7 +475,7 @@ mod typed_tests {
 		assert!(ct.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_get_or_create() {
 		let registry = ContentTypeRegistry::new();
 
@@ -483,7 +485,7 @@ mod typed_tests {
 		assert_eq!(ct1.id, ct2.id);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_generic_foreign_key() {
 		// Clean up global registry first
 		CONTENT_TYPE_REGISTRY.clear();
@@ -508,7 +510,7 @@ mod typed_tests {
 		CONTENT_TYPE_REGISTRY.clear();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contenttypes_typed_and_regular_mixed() {
 		let registry = ContentTypeRegistry::new();
 
@@ -534,6 +536,7 @@ mod typed_tests {
 #[cfg(test)]
 mod inspired_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test helper: Setup function that clears registry before each test
 	// Note: Each test creates its own registry instance to ensure isolation
@@ -546,14 +549,14 @@ mod inspired_tests {
 	// ========== ContentType Model Tests ==========
 
 	/// Test: ContentType string representation
-	#[test]
+	#[rstest]
 	fn test_content_type_str() {
 		let ct = ContentType::new("contenttypes_tests", "site");
 		assert_eq!(ct.qualified_name(), "contenttypes_tests.site");
 	}
 
 	/// Test: ContentType natural key retrieval
-	#[test]
+	#[rstest]
 	fn test_content_type_natural_key_retrieval() {
 		let ct = ContentType::new("auth", "user");
 		let (app, model) = ct.natural_key();
@@ -562,7 +565,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Unknown model handling
-	#[test]
+	#[rstest]
 	fn test_content_type_unknown_model() {
 		let ct = ContentType::new("contenttypes_tests", "unknown");
 		assert_eq!(ct.model, "unknown");
@@ -573,7 +576,7 @@ mod inspired_tests {
 
 	/// Test: get_or_create with same params returns same instance
 	/// Inspired by: test_get_for_models_creation
-	#[test]
+	#[rstest]
 	fn test_get_or_create_returns_same_instance() {
 		let registry = setup_registry();
 
@@ -587,7 +590,7 @@ mod inspired_tests {
 
 	/// Test: Registry with empty initial state
 	/// Inspired by: test_get_for_models_empty_cache
-	#[test]
+	#[rstest]
 	fn test_registry_empty_initial_state() {
 		let registry = setup_registry();
 
@@ -599,7 +602,7 @@ mod inspired_tests {
 
 	/// Test: Registry with partial state
 	/// Inspired by: test_get_for_models_partial_cache
-	#[test]
+	#[rstest]
 	fn test_registry_partial_state() {
 		let registry = setup_registry();
 
@@ -616,7 +619,7 @@ mod inspired_tests {
 
 	/// Test: Registry with full state
 	/// Inspired by: test_get_for_models_full_cache
-	#[test]
+	#[rstest]
 	fn test_registry_full_state() {
 		let registry = setup_registry();
 
@@ -634,7 +637,7 @@ mod inspired_tests {
 
 	/// Test: Create content type if it doesn't exist
 	/// Inspired by: test_get_for_model_create_contenttype
-	#[test]
+	#[rstest]
 	fn test_get_or_create_creates_if_missing() {
 		let registry = setup_registry();
 
@@ -646,7 +649,7 @@ mod inspired_tests {
 
 	/// Test: Separate registries don't share state
 	/// Inspired by: test_cache_not_shared_between_managers
-	#[test]
+	#[rstest]
 	fn test_registries_not_shared() {
 		let registry1 = ContentTypeRegistry::new();
 		let registry2 = ContentTypeRegistry::new();
@@ -660,7 +663,7 @@ mod inspired_tests {
 
 	/// Test: Missing model handling
 	/// Inspired by: test_missing_model
-	#[test]
+	#[rstest]
 	fn test_missing_model_display() {
 		let registry = setup_registry();
 
@@ -676,7 +679,7 @@ mod inspired_tests {
 
 	/// Test: Missing model with existing model name in another app
 	/// Inspired by: test_missing_model_with_existing_model_name
-	#[test]
+	#[rstest]
 	fn test_missing_model_with_existing_name() {
 		let registry = setup_registry();
 
@@ -694,7 +697,7 @@ mod inspired_tests {
 
 	/// Test: GenericForeignKey respects deleted objects
 	/// Inspired by: test_get_object_cache_respects_deleted_objects
-	#[test]
+	#[rstest]
 	fn test_generic_foreign_key_respects_deletion() {
 		let registry = setup_registry();
 		let ct = registry.get_or_create("test", "Question");
@@ -713,7 +716,7 @@ mod inspired_tests {
 
 	/// Test: Clear cached generic relation
 	/// Inspired by: test_clear_cached_generic_relation
-	#[test]
+	#[rstest]
 	fn test_clear_cached_generic_relation() {
 		let registry = setup_registry();
 		let ct = registry.get_or_create("test", "Question");
@@ -736,7 +739,7 @@ mod inspired_tests {
 	/// Inspired by: test_get_content_type_no_arguments
 	/// ========== ContentType Operations Tests ==========
 	/// Test: ContentType ID uniqueness
-	#[test]
+	#[rstest]
 	fn test_content_type_id_uniqueness() {
 		let registry = setup_registry();
 
@@ -747,7 +750,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType registry all() method
-	#[test]
+	#[rstest]
 	fn test_registry_all_listing() {
 		let registry = setup_registry();
 
@@ -760,7 +763,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType with special characters
-	#[test]
+	#[rstest]
 	fn test_content_type_special_characters() {
 		let registry = setup_registry();
 
@@ -772,7 +775,7 @@ mod inspired_tests {
 	// ========== GenericRelationQuery Tests ==========
 
 	/// Test: Generic relation query SQL generation
-	#[test]
+	#[rstest]
 	fn test_generic_relation_query_sql() {
 		let ct = ContentType::new("shop", "Product").with_id(5);
 		let mut query = GenericRelationQuery::new(ct);
@@ -788,7 +791,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Generic relation query with empty objects
-	#[test]
+	#[rstest]
 	fn test_generic_relation_query_empty() {
 		let ct = ContentType::new("test", "Model").with_id(1);
 		let query = GenericRelationQuery::new(ct);
@@ -799,7 +802,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Generic relation query with single object
-	#[test]
+	#[rstest]
 	fn test_generic_relation_query_single() {
 		let ct = ContentType::new("blog", "Post").with_id(3);
 		let mut query = GenericRelationQuery::new(ct);
@@ -814,7 +817,7 @@ mod inspired_tests {
 	// ========== Edge Cases and Error Conditions ==========
 
 	/// Test: Registry clear removes all content types
-	#[test]
+	#[rstest]
 	fn test_registry_clear_removes_all() {
 		let registry = setup_registry();
 
@@ -828,7 +831,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Get non-existent content type returns None
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_returns_none() {
 		let registry = setup_registry();
 
@@ -837,7 +840,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Get by non-existent ID returns None
-	#[test]
+	#[rstest]
 	fn test_get_by_nonexistent_id_returns_none() {
 		let registry = setup_registry();
 
@@ -846,7 +849,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType equality
-	#[test]
+	#[rstest]
 	fn test_content_type_equality() {
 		let ct1 = ContentType::new("app", "Model");
 		let ct2 = ContentType::new("app", "Model");
@@ -855,7 +858,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType inequality with different app
-	#[test]
+	#[rstest]
 	fn test_content_type_inequality_different_app() {
 		let ct1 = ContentType::new("app1", "Model");
 		let ct2 = ContentType::new("app2", "Model");
@@ -864,7 +867,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType inequality with different model
-	#[test]
+	#[rstest]
 	fn test_content_type_inequality_different_model() {
 		let ct1 = ContentType::new("app", "Model1");
 		let ct2 = ContentType::new("app", "Model2");
@@ -873,7 +876,7 @@ mod inspired_tests {
 	}
 
 	/// Test: GenericForeignKey default state
-	#[test]
+	#[rstest]
 	fn test_generic_foreign_key_default() {
 		let gfk = GenericForeignKey::default();
 
@@ -883,7 +886,7 @@ mod inspired_tests {
 	}
 
 	/// Test: ContentType cloning
-	#[test]
+	#[rstest]
 	fn test_content_type_clone() {
 		let ct1 = ContentType::new("app", "Model").with_id(42);
 		let ct2 = ct1.clone();
@@ -893,7 +896,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Registry handles concurrent-like operations
-	#[test]
+	#[rstest]
 	fn test_registry_multiple_operations() {
 		let registry = setup_registry();
 
@@ -910,7 +913,7 @@ mod inspired_tests {
 	}
 
 	/// Test: Case sensitivity in app and model names
-	#[test]
+	#[rstest]
 	fn test_case_sensitivity() {
 		let registry = setup_registry();
 

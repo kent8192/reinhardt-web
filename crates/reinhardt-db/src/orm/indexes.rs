@@ -224,22 +224,23 @@ impl GistIndex {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_basic_index() {
 		let index = Index::new("idx_email", vec!["email".to_string()]);
 		let sql = index.to_sql("users");
 		assert_eq!(sql, "CREATE INDEX idx_email ON users (email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_index() {
 		let index = Index::new("idx_unique_email", vec!["email".to_string()]).unique();
 		let sql = index.to_sql("users");
 		assert_eq!(sql, "CREATE UNIQUE INDEX idx_unique_email ON users (email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_indexes_composite() {
 		let index = Index::new(
 			"idx_user_email",
@@ -252,7 +253,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_partial_index() {
 		let index = Index::new("idx_active_users", vec!["email".to_string()])
 			.with_condition("deleted_at IS NULL".to_string());
@@ -263,7 +264,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_indexes_covering() {
 		let index = Index::new("idx_email_covering", vec!["email".to_string()])
 			.include(vec!["name".to_string(), "created_at".to_string()]);
@@ -274,28 +275,28 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_btree_index() {
 		let index = BTreeIndex::new("idx_btree", vec!["id".to_string()]);
 		let sql = index.to_sql("users");
 		assert_eq!(sql, "CREATE INDEX idx_btree ON users (id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hash_index() {
 		let index = HashIndex::new("idx_hash", vec!["email".to_string()]);
 		let sql = index.to_sql("users");
 		assert_eq!(sql, "CREATE INDEX idx_hash ON users USING HASH (email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gin_index() {
 		let index = GinIndex::new("idx_gin", vec!["tags".to_string()]);
 		let sql = index.to_sql("posts");
 		assert_eq!(sql, "CREATE INDEX idx_gin ON posts USING GIN (tags)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gist_index() {
 		let index = GistIndex::new("idx_gist", vec!["location".to_string()]);
 		let sql = index.to_sql("places");

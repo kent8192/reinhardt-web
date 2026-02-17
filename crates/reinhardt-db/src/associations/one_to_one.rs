@@ -337,6 +337,7 @@ impl<T, K> ReverseRelationship for OneToOne<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -353,7 +354,7 @@ mod tests {
 		bio: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_creation() {
 		let rel: OneToOne<User, i64> = OneToOne::new("user_id");
 		assert_eq!(rel.get_field_name(), "user_id");
@@ -366,7 +367,7 @@ mod tests {
 		assert!(!rel.is_parent_link());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_builder() {
 		let rel: OneToOne<User, i64> = OneToOne::new("user_id")
 			.related_name("profile")
@@ -386,13 +387,13 @@ mod tests {
 		assert!(rel.is_parent_link());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_field_customization() {
 		let rel: OneToOne<User, i64> = OneToOne::new("user_id").to_field("uuid");
 		assert_eq!(rel.get_to_field(), "uuid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_actions() {
 		let actions = vec![
 			CascadeAction::NoAction,
@@ -408,7 +409,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_configuration() {
 		let rel1: OneToOne<User, i64> = OneToOne::new("user_id").null(true);
 		assert!(rel1.is_null());
@@ -417,7 +418,7 @@ mod tests {
 		assert!(!rel2.is_null());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parent_link() {
 		let rel1: OneToOne<User, i64> = OneToOne::new("base_ptr_id").parent_link(true);
 		assert!(rel1.is_parent_link());
@@ -426,7 +427,7 @@ mod tests {
 		assert!(!rel2.is_parent_link());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_index_always_true() {
 		// One-to-one relationships always have a database index
 		let rel: OneToOne<User, i64> = OneToOne::new("user_id");

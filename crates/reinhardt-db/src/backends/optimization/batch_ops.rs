@@ -156,8 +156,9 @@ impl BatchUpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_batch_insert_builder() {
 		let builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string(), "email".to_string()])
@@ -172,7 +173,7 @@ mod tests {
 		assert!(sql_statements[0].contains("Bob"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_insert_chunking() {
 		let mut builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string()])
@@ -187,7 +188,7 @@ mod tests {
 		assert_eq!(sql_statements.len(), 3); // 2 + 2 + 1
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_update_builder() {
 		let builder = BatchUpdateBuilder::new("users")
 			.add_update(
@@ -205,7 +206,7 @@ mod tests {
 		assert!(sql_statements[0].contains("WHERE id = 1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_injection_protection() {
 		let builder = BatchInsertBuilder::new("users")
 			.columns(vec!["name".to_string()])

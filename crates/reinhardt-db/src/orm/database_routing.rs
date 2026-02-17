@@ -298,15 +298,16 @@ impl DatabaseRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_router_with_default_db() {
 		let router = DatabaseRouter::new("default");
 		assert_eq!(router.default_db(), "default");
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_rule_single_database() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -315,7 +316,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_rule_multiple_models() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -328,7 +329,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_rule_overwrites_existing() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "db1")
@@ -339,7 +340,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_rule_with_string_types() {
 		let router = DatabaseRouter::new(String::from("default"))
 			.add_rule(String::from("User"), String::from("users_db"));
@@ -347,7 +348,7 @@ mod tests {
 		assert_eq!(router.db_for_read("User"), "users_db");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_write_rule_separate_databases() {
 		let router =
 			DatabaseRouter::new("default").add_read_write_rule("User", "replica", "primary");
@@ -357,7 +358,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_write_rule_multiple_models() {
 		let router = DatabaseRouter::new("default")
 			.add_read_write_rule("User", "replica1", "primary1")
@@ -369,7 +370,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Product"), "primary2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_write_rule_same_database() {
 		let router =
 			DatabaseRouter::new("default").add_read_write_rule("Log", "logs_db", "logs_db");
@@ -378,7 +379,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Log"), "logs_db");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_write_rule_overwrites_add_rule() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "unified_db")
@@ -389,7 +390,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_write_rule_with_string_types() {
 		let router = DatabaseRouter::new("default").add_read_write_rule(
 			String::from("User"),
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(router.db_for_write("User"), "primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_rule_new_model() {
 		let router = DatabaseRouter::new("default").add_read_rule("Analytics", "analytics_replica");
 
@@ -409,7 +410,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Analytics"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_rule_existing_model() {
 		let router = DatabaseRouter::new("default")
 			.add_write_rule("User", "primary")
@@ -419,7 +420,7 @@ mod tests {
 		assert_eq!(router.db_for_write("User"), "primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_rule_overwrites_previous_read() {
 		let router = DatabaseRouter::new("default")
 			.add_read_rule("Log", "replica1")
@@ -428,7 +429,7 @@ mod tests {
 		assert_eq!(router.db_for_read("Log"), "replica2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_rule_multiple_models() {
 		let router = DatabaseRouter::new("default")
 			.add_read_rule("User", "user_replica")
@@ -440,7 +441,7 @@ mod tests {
 		assert_eq!(router.db_for_read("Order"), "order_replica");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_read_rule_with_string_types() {
 		let router = DatabaseRouter::new("default")
 			.add_read_rule(String::from("User"), String::from("replica"));
@@ -448,7 +449,7 @@ mod tests {
 		assert_eq!(router.db_for_read("User"), "replica");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_write_rule_new_model() {
 		let router = DatabaseRouter::new("default").add_write_rule("AuditLog", "audit_primary");
 
@@ -456,7 +457,7 @@ mod tests {
 		assert_eq!(router.db_for_write("AuditLog"), "audit_primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_write_rule_existing_model() {
 		let router = DatabaseRouter::new("default")
 			.add_read_rule("User", "replica")
@@ -466,7 +467,7 @@ mod tests {
 		assert_eq!(router.db_for_write("User"), "primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_write_rule_overwrites_previous_write() {
 		let router = DatabaseRouter::new("default")
 			.add_write_rule("Order", "primary1")
@@ -475,7 +476,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Order"), "primary2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_write_rule_multiple_models() {
 		let router = DatabaseRouter::new("default")
 			.add_write_rule("User", "user_primary")
@@ -487,7 +488,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Order"), "order_primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_write_rule_with_string_types() {
 		let router = DatabaseRouter::new("default")
 			.add_write_rule(String::from("User"), String::from("primary"));
@@ -495,14 +496,14 @@ mod tests {
 		assert_eq!(router.db_for_write("User"), "primary");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_read_returns_default_for_unknown_model() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
 		assert_eq!(router.db_for_read("UnknownModel"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_read_with_multiple_rules() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -513,7 +514,7 @@ mod tests {
 		assert_eq!(router.db_for_read("Unknown"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_read_case_sensitive() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -522,13 +523,13 @@ mod tests {
 		assert_eq!(router.db_for_read("USER"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_read_empty_router() {
 		let router = DatabaseRouter::new("default");
 		assert_eq!(router.db_for_read("AnyModel"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_read_returns_reference_with_same_lifetime() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -537,14 +538,14 @@ mod tests {
 		assert_eq!(db1, db2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_write_returns_default_for_unknown_model() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
 		assert_eq!(router.db_for_write("UnknownModel"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_write_with_multiple_rules() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -555,7 +556,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Unknown"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_write_case_sensitive() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -564,13 +565,13 @@ mod tests {
 		assert_eq!(router.db_for_write("USER"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_write_empty_router() {
 		let router = DatabaseRouter::new("default");
 		assert_eq!(router.db_for_write("AnyModel"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_for_write_returns_reference_with_same_lifetime() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -579,7 +580,7 @@ mod tests {
 		assert_eq!(db1, db2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_rule_existing_model() {
 		let mut router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -595,7 +596,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_rule_non_existing_model() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -604,7 +605,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_rule_empty_router() {
 		let mut router = DatabaseRouter::new("default");
 
@@ -612,7 +613,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_rule_case_sensitive() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -621,7 +622,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_rule_multiple_times() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -631,27 +632,27 @@ mod tests {
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_rule_existing_model() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
 		assert!(router.has_rule("User"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_rule_non_existing_model() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
 		assert!(!router.has_rule("Product"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_rule_empty_router() {
 		let router = DatabaseRouter::new("default");
 		assert!(!router.has_rule("AnyModel"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_rule_case_sensitive() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -660,7 +661,7 @@ mod tests {
 		assert!(!router.has_rule("USER"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_rule_multiple_models() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -671,7 +672,7 @@ mod tests {
 		assert!(!router.has_rule("Order"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_rules_with_existing_rules() {
 		let mut router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -688,7 +689,7 @@ mod tests {
 		assert!(!router.has_rule("Order"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_rules_empty_router() {
 		let mut router = DatabaseRouter::new("default");
 
@@ -696,7 +697,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_rules_returns_to_default() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -706,7 +707,7 @@ mod tests {
 		assert_eq!(router.db_for_write("User"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_rules_multiple_times() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -715,7 +716,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_rules_then_add_new() {
 		let mut router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -728,20 +729,20 @@ mod tests {
 		assert!(router.has_rule("Product"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rule_count_empty_router() {
 		let router = DatabaseRouter::new("default");
 		assert_eq!(router.rule_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rule_count_single_rule() {
 		let router = DatabaseRouter::new("default").add_rule("User", "users_db");
 
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rule_count_multiple_rules() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -751,7 +752,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rule_count_after_overwrite() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("User", "db1")
@@ -760,7 +761,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rule_count_after_remove() {
 		let mut router = DatabaseRouter::new("default")
 			.add_rule("User", "users_db")
@@ -770,7 +771,7 @@ mod tests {
 		assert_eq!(router.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clone_router_preserves_state() {
 		let router1 = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -781,7 +782,7 @@ mod tests {
 		assert_eq!(router2.rule_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clone_router_shares_rules() {
 		let router1 = DatabaseRouter::new("default").add_rule("User", "users_db");
 
@@ -796,7 +797,7 @@ mod tests {
 		assert!(!router2.has_rule("User"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_routing_scenario() {
 		let router = DatabaseRouter::new("default")
 			.add_rule("Session", "sessions_db")
@@ -820,7 +821,7 @@ mod tests {
 		assert_eq!(router.db_for_write("Unknown"), "default");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_thread_safety_concurrent_reads() {
 		use std::sync::Arc;
 		use std::thread;
@@ -847,7 +848,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_thread_safety_concurrent_writes() {
 		use std::sync::Arc;
 		use std::thread;

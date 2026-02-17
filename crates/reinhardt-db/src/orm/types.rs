@@ -387,9 +387,10 @@ impl TypeRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
-	#[test]
+	#[rstest]
 	fn test_uuid_type() {
 		let uuid_type = UuidType;
 		let uuid = Uuid::new_v4();
@@ -405,7 +406,7 @@ mod tests {
 		assert_eq!(result, uuid);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_ddl_types() {
 		let uuid_type = UuidType;
 
@@ -418,7 +419,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_types_json() {
 		let json_type = JsonType;
 		let json_val = serde_json::json!({"key": "value", "number": 42});
@@ -429,7 +430,7 @@ mod tests {
 		assert_eq!(result, json_val);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_ddl_types() {
 		let json_type = JsonType;
 
@@ -438,7 +439,7 @@ mod tests {
 		assert_eq!(json_type.ddl_type(&DatabaseDialect::SQLite), "TEXT");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_type() {
 		let array_type = ArrayType::new("TEXT");
 		let arr = vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -449,7 +450,7 @@ mod tests {
 		assert_eq!(result, arr);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_ddl_type() {
 		let array_type = ArrayType::new("INTEGER");
 
@@ -460,7 +461,7 @@ mod tests {
 		assert_eq!(array_type.ddl_type(&DatabaseDialect::MySQL), "TEXT");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hstore_type() {
 		let hstore_type = HstoreType;
 		let mut map = HashMap::new();
@@ -474,7 +475,7 @@ mod tests {
 		assert_eq!(result.get("key1"), Some(&"value1".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inet_type() {
 		let inet_type = InetType;
 		let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
@@ -485,7 +486,7 @@ mod tests {
 		assert_eq!(result, ip);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inet_ipv6() {
 		let inet_type = InetType;
 		let ip: std::net::IpAddr = "2001:0db8::1".parse().unwrap();
@@ -496,7 +497,7 @@ mod tests {
 		assert_eq!(result, ip);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_registry() {
 		let mut registry = TypeRegistry::new();
 		registry.register("custom_uuid", "UUID");
@@ -507,13 +508,13 @@ mod tests {
 		assert_eq!(registry.get("nonexistent"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_error() {
 		let error = TypeError::new("Test error");
 		assert_eq!(error.to_string(), "Type error: Test error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_value_variants() {
 		let null = SqlValue::Null;
 		let bool_val = SqlValue::Boolean(true);

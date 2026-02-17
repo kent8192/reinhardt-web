@@ -388,8 +388,9 @@ impl CockroachDBConnection {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_default() {
 		let config = CockroachDBConnectionConfig::default();
 		assert_eq!(config.url, "postgresql://localhost:26257/defaultdb");
@@ -397,48 +398,48 @@ mod tests {
 		assert_eq!(config.min_connections, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_new() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb");
 		assert_eq!(config.url, "postgresql://localhost:26257/mydb");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_with_max_connections() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_max_connections(20);
 		assert_eq!(config.max_connections, 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_with_min_connections() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_min_connections(5);
 		assert_eq!(config.min_connections, 5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_with_connect_timeout() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_connect_timeout(Duration::from_secs(10));
 		assert_eq!(config.connect_timeout, Duration::from_secs(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_with_idle_timeout() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_idle_timeout(Duration::from_secs(300));
 		assert_eq!(config.idle_timeout, Duration::from_secs(300));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_with_application_name() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_application_name("my-app");
 		assert_eq!(config.application_name, Some("my-app".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_chaining() {
 		let config = CockroachDBConnectionConfig::new("postgresql://localhost:26257/mydb")
 			.with_max_connections(20)
@@ -452,6 +453,7 @@ mod tests {
 		assert_eq!(config.application_name, Some("my-app".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_from_pool() {
 		let pool = PgPool::connect_lazy("postgresql://localhost:26257/testdb")
@@ -461,6 +463,7 @@ mod tests {
 		assert!(Arc::strong_count(&conn.pool) >= 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_clone() {
 		let pool = Arc::new(

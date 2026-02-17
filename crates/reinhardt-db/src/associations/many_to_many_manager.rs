@@ -314,8 +314,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_manager_creation() {
 		let manager: ManyToManyManager<(), (), i64> = ManyToManyManager::new(
 			42,

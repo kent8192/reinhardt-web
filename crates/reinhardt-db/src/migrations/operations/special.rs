@@ -337,15 +337,16 @@ impl RunCode {
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_run_sql_basic() {
 		let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)");
 		assert_eq!(sql.sql, "CREATE INDEX idx_email ON users(email)");
 		assert!(sql.reverse_sql.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_sql_with_reverse() {
 		let sql = RunSQL::new("CREATE INDEX idx_email ON users(email)")
 			.with_reverse_sql("DROP INDEX idx_email");
@@ -355,7 +356,7 @@ mod tests {
 		assert_eq!(sql.get_reverse_sql(), Some("DROP INDEX idx_email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_sql_multi() {
 		let sql = RunSQL::new_multi(vec![
 			"INSERT INTO roles (name) VALUES ('admin')".to_string(),
@@ -370,7 +371,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_run_sql_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -382,21 +383,21 @@ mod tests {
 		assert_eq!(statements[0], "SELECT COUNT(*) FROM users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_code_basic() {
 		let code = RunCode::new("Test migration", |_connection| Ok(()));
 		assert_eq!(code.description, "Test migration");
 		assert!(code.reverse_code.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_code_with_reverse() {
 		let code = RunCode::new("Test migration", |_connection| Ok(()))
 			.with_reverse_code(|_connection| Ok(()));
 		assert!(code.reverse_code.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_operation_remove_model() {
 		use crate::migrations::operations::FieldDefinition;
 		use crate::migrations::operations::models::CreateModel;
@@ -629,8 +630,9 @@ impl MigrationOperation for DataMigration {
 #[cfg(test)]
 mod data_migration_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_data_migration_creation() {
 		let migration = DataMigration::new("users", "Migrate user data");
 		assert_eq!(migration.table, "users");
@@ -639,13 +641,13 @@ mod data_migration_tests {
 		assert!(migration.use_transactions);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_data_migration_batch_size() {
 		let migration = DataMigration::new("users", "Migrate").batch_size(500);
 		assert_eq!(migration.batch_size, 500);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_data_migration_add_transformation() {
 		let migration = DataMigration::new("users", "Clean")
 			.add_transformation("UPDATE users SET email = LOWER(email)")
@@ -654,13 +656,13 @@ mod data_migration_tests {
 		assert_eq!(migration.transformations.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_data_migration_use_transactions() {
 		let migration = DataMigration::new("users", "Migrate").use_transactions(false);
 		assert!(!migration.use_transactions);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_batched_sql() {
 		let migration = DataMigration::new("users", "Update")
 			.batch_size(100)
@@ -676,7 +678,7 @@ mod data_migration_tests {
 		assert!(statements[2].contains("id >= 200 AND id < 250"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_run_sql_with_transactions() {
 		let migration = DataMigration::new("users", "Migrate")
 			.add_transformation("UPDATE users SET status = 'active'")
@@ -688,7 +690,7 @@ mod data_migration_tests {
 		assert!(run_sql.sql.contains("UPDATE users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_run_sql_without_transactions() {
 		let migration = DataMigration::new("users", "Migrate")
 			.use_transactions(false)

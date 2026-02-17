@@ -1353,8 +1353,9 @@ impl TwoPhaseParticipant for MockParticipant {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_transaction() {
 		let tpc = TwoPhaseCommit::new("txn_test_001");
 		assert_eq!(tpc.transaction_id(), "txn_test_001");
@@ -1362,7 +1363,7 @@ mod tests {
 		assert_eq!(tpc.participant_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_begin_transaction() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_002");
 		let result = tpc.begin();
@@ -1370,7 +1371,7 @@ mod tests {
 		assert_eq!(tpc.state().unwrap(), TransactionState::Active);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_begin_twice() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_003");
 		tpc.begin().unwrap();
@@ -1382,7 +1383,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_participant() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_004");
 		tpc.begin().unwrap();
@@ -1391,7 +1392,7 @@ mod tests {
 		assert_eq!(tpc.participant_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_add_duplicate_participant() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_005");
 		tpc.begin().unwrap();
@@ -1404,7 +1405,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prepare_phase() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_006");
 		tpc.begin().unwrap();
@@ -1420,7 +1421,7 @@ mod tests {
 		assert_eq!(sqls.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prepare_without_participants() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_007");
 		tpc.begin().unwrap();
@@ -1429,7 +1430,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), TwoPhaseError::NoParticipants));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_commit_phase() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_008");
 		tpc.begin().unwrap();
@@ -1445,7 +1446,7 @@ mod tests {
 		assert!(sqls[0].contains("COMMIT PREPARED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_commit_without_prepare() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_009");
 		tpc.begin().unwrap();
@@ -1459,7 +1460,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rollback_active_transaction() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_010");
 		tpc.begin().unwrap();
@@ -1474,7 +1475,7 @@ mod tests {
 		assert!(sqls[0].contains("ROLLBACK"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rollback_prepared_transaction() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_011");
 		tpc.begin().unwrap();
@@ -1490,7 +1491,7 @@ mod tests {
 		assert!(sqls[0].contains("ROLLBACK PREPARED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_participants_prepare_commit() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_012");
 		tpc.begin().unwrap();
@@ -1507,7 +1508,7 @@ mod tests {
 		assert_eq!(tpc.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_participant_new() {
 		let participant = Participant::new("test_db");
 		assert_eq!(participant.db_alias, "test_db");
@@ -1515,7 +1516,7 @@ mod tests {
 		assert!(!participant.is_prepared());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_participant_is_prepared() {
 		let mut participant = Participant::new("test_db");
 		assert!(!participant.is_prepared());
@@ -1524,7 +1525,7 @@ mod tests {
 		assert!(participant.is_prepared());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_participants() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_013");
 		tpc.begin().unwrap();
@@ -1537,14 +1538,14 @@ mod tests {
 		assert!(participants.contains_key("db2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_transaction_id() {
 		let tpc = TwoPhaseCommit::default();
 		assert!(!tpc.transaction_id().is_empty());
 		assert_eq!(tpc.state().unwrap(), TransactionState::NotStarted);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_state_transitions() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_014");
 		assert_eq!(tpc.state().unwrap(), TransactionState::NotStarted);
@@ -1560,7 +1561,7 @@ mod tests {
 		assert_eq!(tpc.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_display() {
 		let err = TwoPhaseError::PrepareFailed("db1".to_string(), "Connection lost".to_string());
 		assert_eq!(err.to_string(), "Prepare failed for 'db1': Connection lost");
@@ -1572,7 +1573,7 @@ mod tests {
 		assert_eq!(err.to_string(), "Participant 'db1' already registered");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_add_participant_before_begin() {
 		let mut tpc = TwoPhaseCommit::new("txn_test_015");
 		let result = tpc.add_participant("db1");
@@ -1584,6 +1585,7 @@ mod tests {
 	}
 
 	// TwoPhaseCoordinator tests
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_basic_flow() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_001");
@@ -1615,6 +1617,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_prepare_failure_triggers_rollback() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_002");
@@ -1644,6 +1647,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_rollback() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_003");
@@ -1667,6 +1671,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_commit_failure() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_004");
@@ -1697,6 +1702,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_no_participants() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_005");
@@ -1708,6 +1714,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), TwoPhaseError::NoParticipants));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_duplicate_participant() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_006");
@@ -1727,6 +1734,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_recover() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_007");
@@ -1740,6 +1748,7 @@ mod tests {
 		assert_eq!(xids.len(), 0); // Mock returns empty list
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_multiple_participants() {
 		let mut coordinator = TwoPhaseCoordinator::new("coord_txn_008");

@@ -498,6 +498,7 @@ impl std::error::Error for SchemaEditorError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestSchemaEditor;
 
@@ -512,7 +513,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_statement() {
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 
@@ -529,7 +530,7 @@ mod tests {
 		assert!(sql.contains("\"name\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_statement() {
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 
@@ -547,7 +548,7 @@ mod tests {
 		assert!(sql_cascade.contains("CASCADE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_column_statement() {
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 
@@ -562,7 +563,7 @@ mod tests {
 		assert!(sql.contains("VARCHAR(255)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_statement() {
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 
@@ -595,7 +596,7 @@ mod tests {
 		assert!(error_msg.contains("WHERE active = true"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_statement() {
 		let editor = TestSchemaEditor;
 
@@ -612,7 +613,7 @@ mod tests {
 		assert!(sql.contains("TYPE TEXT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ddl_statement_table_name() {
 		let stmt = DDLStatement::CreateTable {
 			table: "users".to_string(),

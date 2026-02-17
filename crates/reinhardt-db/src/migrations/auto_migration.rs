@@ -371,6 +371,7 @@ mod tests {
 	use crate::migrations::repository::MigrationRepository;
 	use crate::migrations::{FieldType, Migration, MigrationError, Result};
 	use async_trait::async_trait;
+	use rstest::rstest;
 	use std::collections::{BTreeMap, HashMap};
 	use tokio::sync::Mutex;
 
@@ -421,7 +422,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rollback_generation() {
 		let target_schema = DatabaseSchema::default();
 		let repo = Arc::new(Mutex::new(TestRepository::new()));
@@ -441,7 +442,7 @@ mod tests {
 		assert!(matches!(rollback[0], Operation::DropTable { .. }));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_nullable_change() {
 		use crate::migrations::schema_diff::{ColumnSchema, TableSchema};
 

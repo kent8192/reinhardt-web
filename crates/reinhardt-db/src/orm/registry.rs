@@ -174,14 +174,15 @@ impl ColumnMapping {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mapper_registry_new() {
 		let registry = MapperRegistry::new();
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mapper_registry_register() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new("users");
@@ -189,7 +190,7 @@ mod tests {
 		assert_eq!(registry.count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mapper_registry_get() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new("users");
@@ -200,7 +201,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().table_name, "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mapper_registry_remove() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new("users");
@@ -210,7 +211,7 @@ mod tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mapper_registry_clear() {
 		let registry = MapperRegistry::new();
 		registry.register("User", EntityMapper::new("users"));
@@ -220,7 +221,7 @@ mod tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_entity_mapper_new() {
 		let mapper = EntityMapper::new("users");
 		assert_eq!(mapper.table_name, "users");
@@ -228,7 +229,7 @@ mod tests {
 		assert_eq!(mapper.primary_key.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_entity_mapper_add_column() {
 		let mut mapper = EntityMapper::new("users");
 		let column = ColumnMapping::new("id", "id", "INTEGER");
@@ -238,7 +239,7 @@ mod tests {
 		assert_eq!(mapper.columns[0].property_name, "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_entity_mapper_set_primary_key() {
 		let mut mapper = EntityMapper::new("users");
 		mapper.set_primary_key(vec!["id".to_string()]);
@@ -247,7 +248,7 @@ mod tests {
 		assert_eq!(mapper.primary_key[0], "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_column_mapping_new() {
 		let column = ColumnMapping::new("username", "user_name", "VARCHAR");
 		assert_eq!(column.property_name, "username");
@@ -256,7 +257,7 @@ mod tests {
 		assert!(column.nullable);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_column_mapping_not_null() {
 		let column = ColumnMapping::new("id", "id", "INTEGER").not_null();
 		assert!(!column.nullable);
@@ -455,6 +456,7 @@ impl MapperRegistry {
 #[cfg(test)]
 mod typed_tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test entity types
 	struct User;
@@ -475,7 +477,7 @@ mod typed_tests {
 		const TABLE_NAME: &'static str = "comments";
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_typed_register() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new(User::TABLE_NAME);
@@ -484,7 +486,7 @@ mod typed_tests {
 		assert_eq!(registry.count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_typed_get() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new(Post::TABLE_NAME);
@@ -495,7 +497,7 @@ mod typed_tests {
 		assert_eq!(retrieved.unwrap().table_name, "posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_typed_get_not_found() {
 		let registry = MapperRegistry::new();
 
@@ -503,7 +505,7 @@ mod typed_tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_remove() {
 		let registry = MapperRegistry::new();
 		let mapper = EntityMapper::new(User::TABLE_NAME);
@@ -516,7 +518,7 @@ mod typed_tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_typed_and_regular_mixed() {
 		let registry = MapperRegistry::new();
 

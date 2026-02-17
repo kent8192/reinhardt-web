@@ -141,8 +141,9 @@ impl BaseDatabaseSchemaEditor for SQLiteSchemaEditor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_note() {
 		let editor = SQLiteSchemaEditor::new();
 		let sql = editor.alter_column_note("users");
@@ -150,7 +151,7 @@ mod tests {
 		assert!(sql.contains("\"users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_statement() {
 		use crate::backends::schema::BaseDatabaseSchemaEditor;
 
@@ -162,14 +163,14 @@ mod tests {
 		assert!(sql.contains("\"users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_table_sql() {
 		let editor = SQLiteSchemaEditor::new();
 		let sql = editor.rename_table_sql("users", "people");
 		assert_eq!(sql, "ALTER TABLE \"users\" RENAME TO \"people\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_constraint_note() {
 		let editor = SQLiteSchemaEditor::new();
 		let sql = editor.add_constraint_note("users");
@@ -177,7 +178,7 @@ mod tests {
 		assert!(sql.contains("\"users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_constraint_note() {
 		let editor = SQLiteSchemaEditor::new();
 		let sql = editor.drop_constraint_note("users");

@@ -478,8 +478,9 @@ pub fn dump_with_natural_keys(registry: &ContentTypeRegistry) -> Vec<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_serializable_content_type_new() {
 		let sct = SerializableContentType::new("blog", "article");
 		assert_eq!(sct.app_label, "blog");
@@ -487,7 +488,7 @@ mod tests {
 		assert!(sct.id.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serializable_content_type_with_id() {
 		let sct = SerializableContentType::with_id("blog", "article", 42);
 		assert_eq!(sct.app_label, "blog");
@@ -495,13 +496,13 @@ mod tests {
 		assert_eq!(sct.id, Some(42));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serializable_content_type_natural_key() {
 		let sct = SerializableContentType::new("blog", "article");
 		assert_eq!(sct.natural_key(), "blog.article");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type() {
 		// Unregistered ContentType has no ID
 		let ct = ContentType::new("auth", "user");
@@ -511,7 +512,7 @@ mod tests {
 		assert!(sct.id.is_none()); // ID is None until registered
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_registered_content_type() {
 		// Registered ContentType has an ID
 		let registry = ContentTypeRegistry::new();
@@ -522,7 +523,7 @@ mod tests {
 		assert!(sct.id.is_some()); // ID is assigned after registration
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_content_type() {
 		let sct = SerializableContentType::new("blog", "article");
 		let ct = sct.to_content_type();
@@ -530,7 +531,7 @@ mod tests {
 		assert_eq!(ct.model, "article");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_export_new() {
 		let content_types = vec![
 			SerializableContentType::new("blog", "article"),
@@ -545,7 +546,7 @@ mod tests {
 		assert!(export.metadata.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_export_with_metadata() {
 		let content_types = vec![SerializableContentType::new("blog", "article")];
 		let mut metadata = HashMap::new();
@@ -560,7 +561,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_options_builder() {
 		let options = ImportOptions::new()
 			.skip_existing(true)
@@ -572,7 +573,7 @@ mod tests {
 		assert_eq!(options.filter_app_label, Some("blog".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_result() {
 		let mut result = ImportResult::new();
 		assert!(!result.has_changes());
@@ -587,7 +588,7 @@ mod tests {
 		assert_eq!(result.total_processed(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dump_to_json() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -600,7 +601,7 @@ mod tests {
 		assert!(json.contains("version"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dump_to_json_pretty() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -612,7 +613,7 @@ mod tests {
 		assert!(json.contains('\n'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_from_json() {
 		let registry = ContentTypeRegistry::new();
 
@@ -634,7 +635,7 @@ mod tests {
 		assert!(registry.get("auth", "user").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_from_json_skip_existing() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -657,7 +658,7 @@ mod tests {
 		assert_eq!(result.skipped, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_from_json_duplicate_error() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -680,7 +681,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_from_json_with_filter() {
 		let registry = ContentTypeRegistry::new();
 
@@ -709,7 +710,7 @@ mod tests {
 		assert!(registry.get("auth", "user").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dump_with_natural_keys() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -722,7 +723,7 @@ mod tests {
 		assert!(keys.contains(&"auth.user".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dump_app_to_json() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -737,7 +738,7 @@ mod tests {
 		assert!(!json.contains("user"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_json() {
 		let serializer = ContentTypeSerializer::new();
 
@@ -752,7 +753,7 @@ mod tests {
 		assert!(!serializer.validate_json(invalid_json));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_roundtrip() {
 		let registry1 = ContentTypeRegistry::new();
 		registry1.register(ContentType::new("blog", "article"));
@@ -769,7 +770,7 @@ mod tests {
 		assert!(registry2.get("auth", "user").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convenience_functions() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -797,7 +798,7 @@ mod tests {
 		assert_eq!(result.created, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialization_error_display() {
 		let json_error = SerializationError::JsonError("parse error".to_string());
 		assert!(json_error.to_string().contains("JSON error"));
@@ -812,7 +813,7 @@ mod tests {
 		assert!(duplicate_error.to_string().contains("blog.article"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dump_to_json_with_metadata() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));

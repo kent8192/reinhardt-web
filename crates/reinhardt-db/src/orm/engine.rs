@@ -460,6 +460,7 @@ pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine, D
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 	// Helper to create SQLite pool for tests
@@ -472,6 +473,7 @@ mod tests {
 			.expect("Failed to create SQLite pool")
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_engine_creation() {
 		let pool = create_test_pool().await;
@@ -480,6 +482,7 @@ mod tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_engine_execute() {
 		let pool = create_test_pool().await;
@@ -492,6 +495,7 @@ mod tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_engine_query() {
 		let pool = create_test_pool().await;
@@ -515,6 +519,7 @@ mod tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_engine_with_config() {
 		let pool = SqlitePoolOptions::new()
@@ -529,6 +534,7 @@ mod tests {
 		pool.close().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_transaction() {
 		let pool = create_test_pool().await;

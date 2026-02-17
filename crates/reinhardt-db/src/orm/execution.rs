@@ -759,6 +759,7 @@ impl Default for QueryOptions {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -798,7 +799,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_execution_get() {
 		use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
@@ -813,7 +814,7 @@ mod tests {
 		assert!(sql.contains("LIMIT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all() {
 		use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
@@ -828,7 +829,7 @@ mod tests {
 		assert!(sql.contains("users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_first() {
 		use reinhardt_query::prelude::{
 			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -845,7 +846,7 @@ mod tests {
 		assert!(sql.contains("LIMIT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_execution_count() {
 		use reinhardt_query::prelude::{
 			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -862,7 +863,7 @@ mod tests {
 		assert!(sql.contains("COUNT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_execution_exists() {
 		use reinhardt_query::prelude::{
 			Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -879,7 +880,7 @@ mod tests {
 		assert!(sql.contains("EXISTS"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_options() {
 		let options = QueryOptions::new()
 			.add_option(LoadOption::JoinedLoad("profile".to_string()))
@@ -890,7 +891,7 @@ mod tests {
 		assert!(comments.contains("defer(password)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_only() {
 		let option = LoadOption::LoadOnly(vec!["id".to_string(), "name".to_string()]);
 		let comment = option.to_sql_comment();

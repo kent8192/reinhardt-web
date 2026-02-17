@@ -285,8 +285,9 @@ impl Default for MigrationSquasher {
 mod tests {
 	use super::*;
 	use crate::migrations::{ColumnDefinition, FieldType};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_squash_basic() {
 		let migration1 = Migration::new("0001_initial", "myapp");
 		let migration2 =
@@ -304,7 +305,7 @@ mod tests {
 		assert_eq!(squashed.replaces.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_squash_empty_migrations() {
 		let squasher = MigrationSquasher::new();
 		let result = squasher.squash(&[], "squashed", SquashOptions::default());
@@ -312,7 +313,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_squash_different_apps() {
 		let migration1 = Migration::new("0001_initial", "app1");
 		let migration2 = Migration::new("0002_add_field", "app2");
@@ -325,7 +326,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_create_drop_table() {
 		let squasher = MigrationSquasher::new();
 
@@ -347,7 +348,7 @@ mod tests {
 		assert_eq!(optimized.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_add_drop_column() {
 		let squasher = MigrationSquasher::new();
 
@@ -367,7 +368,7 @@ mod tests {
 		assert_eq!(optimized.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_no_optimization() {
 		let squasher = MigrationSquasher::new();
 
@@ -391,7 +392,7 @@ mod tests {
 		assert_eq!(optimized.len(), ops.len());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_squash_with_operations() {
 		let migration1 =
 			Migration::new("0001_initial", "myapp").add_operation(Operation::CreateTable {
@@ -424,7 +425,7 @@ mod tests {
 		assert_eq!(squashed.operations.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_squash_external_dependencies() {
 		let migration1 =
 			Migration::new("0001_initial", "myapp").add_dependency("other_app", "0001_initial");

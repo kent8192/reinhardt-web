@@ -360,8 +360,9 @@ impl Constraint for CompositePrimaryKey {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_new_valid() {
 		let pk = CompositePrimaryKey::new(vec!["user_id".to_string(), "role_id".to_string()]);
 		let pk = pk.unwrap();
@@ -370,14 +371,14 @@ mod tests {
 		assert_eq!(pk.fields()[1], "role_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_new_empty_fields() {
 		let pk = CompositePrimaryKey::new(vec![]);
 		assert!(pk.is_err());
 		assert_eq!(pk.unwrap_err(), CompositePkError::EmptyFields);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_duplicate_fields() {
 		let pk =
 			CompositePrimaryKey::new(vec!["id".to_string(), "type".to_string(), "id".to_string()]);
@@ -388,7 +389,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_with_name() {
 		let pk =
 			CompositePrimaryKey::with_name(vec!["a".to_string(), "b".to_string()], "custom_pk");
@@ -396,7 +397,7 @@ mod tests {
 		assert_eq!(pk.name(), Some("custom_pk"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_to_sql_without_name() {
 		let pk =
 			CompositePrimaryKey::new(vec!["user_id".to_string(), "order_id".to_string()]).unwrap();
@@ -404,7 +405,7 @@ mod tests {
 		assert_eq!(sql, "PRIMARY KEY (user_id, order_id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_to_sql_with_name() {
 		let pk = CompositePrimaryKey::with_name(
 			vec!["user_id".to_string(), "order_id".to_string()],
@@ -418,7 +419,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_value_to_sql_string() {
 		assert_eq!(PkValue::Int(42).to_sql_string(), "42");
 		assert_eq!(PkValue::Uint(100).to_sql_string(), "100");
@@ -430,13 +431,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_value_sql_string_escapes_quotes() {
 		let value = PkValue::String("O'Brien".to_string());
 		assert_eq!(value.to_sql_string(), "'O''Brien'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_success() {
 		let pk = CompositePrimaryKey::new(vec!["id".to_string(), "type".to_string()]).unwrap();
 		let mut values = HashMap::new();
@@ -446,7 +447,7 @@ mod tests {
 		assert!(pk.validate(&values).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_missing_field() {
 		let pk = CompositePrimaryKey::new(vec!["id".to_string(), "type".to_string()]).unwrap();
 		let mut values = HashMap::new();
@@ -460,7 +461,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_where_clause_success() {
 		let pk =
 			CompositePrimaryKey::new(vec!["user_id".to_string(), "role_id".to_string()]).unwrap();
@@ -475,7 +476,7 @@ mod tests {
 		assert!(clause.contains(" AND "));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_where_clause_missing_field() {
 		let pk =
 			CompositePrimaryKey::new(vec!["user_id".to_string(), "role_id".to_string()]).unwrap();
@@ -486,7 +487,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contains_field() {
 		let pk = CompositePrimaryKey::new(vec!["a".to_string(), "b".to_string()]).unwrap();
 		assert!(pk.contains_field("a"));
@@ -494,21 +495,21 @@ mod tests {
 		assert!(!pk.contains_field("c"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_count() {
 		let pk = CompositePrimaryKey::new(vec!["a".to_string(), "b".to_string(), "c".to_string()])
 			.unwrap();
 		assert_eq!(pk.field_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_constraint_trait_implementation() {
 		let pk = CompositePrimaryKey::with_name(vec!["id".to_string()], "test_pk").unwrap();
 		assert_eq!(pk.name(), Some("test_pk"));
 		assert!(pk.to_sql().contains("PRIMARY KEY"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_pk_three_fields() {
 		let pk = CompositePrimaryKey::new(vec![
 			"org_id".to_string(),
@@ -523,7 +524,7 @@ mod tests {
 		assert!(sql.contains("project_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_clause_with_string_values() {
 		let pk = CompositePrimaryKey::new(vec!["country".to_string(), "city".to_string()]).unwrap();
 		let mut values = HashMap::new();
@@ -535,7 +536,7 @@ mod tests {
 		assert!(where_clause.contains("city = 'New York'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_clause_with_mixed_types() {
 		let pk = CompositePrimaryKey::new(vec!["id".to_string(), "active".to_string()]).unwrap();
 		let mut values = HashMap::new();
@@ -547,7 +548,7 @@ mod tests {
 		assert!(where_clause.contains("active = TRUE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_display() {
 		let err = CompositePkError::EmptyFields;
 		assert_eq!(
@@ -562,7 +563,7 @@ mod tests {
 		assert_eq!(err.to_string(), "Duplicate field name: id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_value_serialization() {
 		let value = PkValue::Int(42);
 		let serialized = serde_json::to_string(&value).unwrap();

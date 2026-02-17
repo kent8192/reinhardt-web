@@ -254,19 +254,20 @@ impl Field for GeneratedField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_storage_type_to_sql() {
 		assert_eq!(StorageType::Stored.to_sql(), "STORED");
 		assert_eq!(StorageType::Virtual.to_sql(), "VIRTUAL");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_storage_type_default() {
 		assert_eq!(StorageType::default(), StorageType::Virtual);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_new() {
 		let field = GeneratedField::new("price * 1.1", StorageType::Stored);
 		assert_eq!(field.expression, "price * 1.1");
@@ -275,7 +276,7 @@ mod tests {
 		assert!(field.db_persist);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_virtual() {
 		let field = GeneratedField::virtual_field("UPPER(name)");
 		assert_eq!(field.expression, "UPPER(name)");
@@ -283,7 +284,7 @@ mod tests {
 		assert!(!field.db_persist);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_stored() {
 		let field = GeneratedField::stored_field("quantity * price");
 		assert_eq!(field.expression, "quantity * price");
@@ -291,7 +292,7 @@ mod tests {
 		assert!(field.db_persist);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_to_sql() {
 		let field = GeneratedField::new("a + b", StorageType::Virtual);
 		let sql = field.to_sql();
@@ -302,7 +303,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_to_sql_stored() {
 		let field = GeneratedField::stored_field("CONCAT(first_name, ' ', last_name)");
 		let sql = field.to_sql();
@@ -313,7 +314,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_postgres_sql() {
 		let field = GeneratedField::virtual_field("price * 1.2");
 		let sql = field.to_postgres_sql();
@@ -324,7 +325,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_mysql_sql() {
 		let field = GeneratedField::stored_field("quantity * unit_price");
 		let sql = field.to_mysql_sql();
@@ -335,7 +336,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_sqlite_sql() {
 		let field = GeneratedField::virtual_field("json_extract(data, '$.name')");
 		let sql = field.to_sqlite_sql();
@@ -346,7 +347,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_deconstruct() {
 		let mut field = GeneratedField::stored_field("price + tax");
 		field.set_attributes_from_name("total_price");
@@ -365,7 +366,7 @@ mod tests {
 		assert_eq!(dec.kwargs.get("db_persist"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generated_field_not_editable() {
 		let field = GeneratedField::virtual_field("col1 + col2");
 		assert!(!field.base.editable);
@@ -375,7 +376,7 @@ mod tests {
 		assert!(!dec.kwargs.contains_key("editable"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_trait_implementation() {
 		let mut field = GeneratedField::virtual_field("x * y");
 		assert!(field.name().is_none());
@@ -384,7 +385,7 @@ mod tests {
 		assert_eq!(field.name(), Some("result"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_expression() {
 		let field = GeneratedField::stored_field(
 			"CASE WHEN status = 'active' THEN price * 0.9 ELSE price END",
@@ -398,14 +399,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_concat_expression() {
 		let field = GeneratedField::virtual_field("CONCAT(first_name, ' ', last_name)");
 		assert_eq!(field.expression, "CONCAT(first_name, ' ', last_name)");
 		assert_eq!(field.storage_type, StorageType::Virtual);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arithmetic_expression() {
 		let field = GeneratedField::stored_field("(price - discount) * quantity");
 		let sql = field.to_sql();
@@ -416,13 +417,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_extract_expression() {
 		let field = GeneratedField::virtual_field("json_extract(metadata, '$.title')");
 		assert_eq!(field.expression, "json_extract(metadata, '$.title')");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_field() {
 		let mut field = GeneratedField::virtual_field("col1 + col2");
 		field.base.null = true;
@@ -432,7 +433,7 @@ mod tests {
 		assert_eq!(dec.kwargs.get("null"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_backends_sql_generation() {
 		let field = GeneratedField::stored_field("price * tax_rate");
 
@@ -459,7 +460,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_storage_type_equality() {
 		let stored1 = StorageType::Stored;
 		let stored2 = StorageType::Stored;
@@ -469,7 +470,7 @@ mod tests {
 		assert_ne!(stored1, virtual1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_name_setting() {
 		let mut field = GeneratedField::virtual_field("a + b");
 		assert!(field.name().is_none());
@@ -481,7 +482,7 @@ mod tests {
 		assert_eq!(field.name(), Some("total"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_persist_flag() {
 		let virtual_field = GeneratedField::virtual_field("col1");
 		assert!(!virtual_field.db_persist);
@@ -490,7 +491,7 @@ mod tests {
 		assert!(stored_field.db_persist);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_expression() {
 		let field = GeneratedField::stored_field("DATE_ADD(created_at, INTERVAL 30 DAY)");
 		let sql = field.to_sql();
@@ -501,13 +502,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_function_expression() {
 		let field = GeneratedField::virtual_field("LOWER(TRIM(email))");
 		assert_eq!(field.expression, "LOWER(TRIM(email))");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_conditional_expression() {
 		let field = GeneratedField::stored_field("IF(quantity > 10, price * 0.9, price)");
 		let sql = field.to_sql();
@@ -518,7 +519,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_expression() {
 		let field = GeneratedField::virtual_field(
 			"(SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id)",
@@ -530,7 +531,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_expression() {
 		let field = GeneratedField::stored_field("COALESCE(discount, 0) + base_price");
 		let sql = field.to_sql();
@@ -541,7 +542,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deconstruct_virtual_field() {
 		let field = GeneratedField::virtual_field("x + y");
 		let dec = field.deconstruct();
@@ -553,7 +554,7 @@ mod tests {
 		assert!(!dec.kwargs.contains_key("db_persist"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_expression_with_special_characters() {
 		let field = GeneratedField::stored_field("regexp_replace(text, '[^a-zA-Z]', '')");
 		assert_eq!(field.expression, "regexp_replace(text, '[^a-zA-Z]', '')");

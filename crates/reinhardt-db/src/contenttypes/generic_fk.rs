@@ -291,8 +291,9 @@ pub mod constraints {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_new() {
 		let gfk = GenericForeignKeyField::new();
 		assert!(!gfk.is_set());
@@ -300,7 +301,7 @@ mod tests {
 		assert_eq!(gfk.object_id(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_with_values() {
 		let gfk = GenericForeignKeyField::with_values(Some(5), Some(42));
 		assert!(gfk.is_set());
@@ -308,7 +309,7 @@ mod tests {
 		assert_eq!(gfk.object_id(), Some(42));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_set() {
 		let mut gfk = GenericForeignKeyField::new();
 		let ct = ContentType::new("blog", "Post").with_id(3);
@@ -319,7 +320,7 @@ mod tests {
 		assert_eq!(gfk.object_id(), Some(99));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_clear() {
 		let mut gfk = GenericForeignKeyField::with_values(Some(1), Some(1));
 		assert!(gfk.is_set());
@@ -330,7 +331,7 @@ mod tests {
 		assert_eq!(gfk.object_id(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_setters() {
 		let mut gfk = GenericForeignKeyField::new();
 
@@ -343,13 +344,13 @@ mod tests {
 		assert!(gfk.is_set()); // Now fully set
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_default() {
 		let gfk = GenericForeignKeyField::default();
 		assert!(!gfk.is_set());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_get_content_type() {
 		use crate::contenttypes::CONTENT_TYPE_REGISTRY;
 
@@ -369,7 +370,7 @@ mod tests {
 		CONTENT_TYPE_REGISTRY.clear();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_partial_set() {
 		let mut gfk = GenericForeignKeyField::new();
 
@@ -387,7 +388,7 @@ mod tests {
 		assert!(gfk.is_set());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_serialization() {
 		let gfk = GenericForeignKeyField::with_values(Some(5), Some(10));
 
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(deserialized, gfk);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_fk_field_equality() {
 		let gfk1 = GenericForeignKeyField::with_values(Some(1), Some(2));
 		let gfk2 = GenericForeignKeyField::with_values(Some(1), Some(2));
@@ -417,6 +418,7 @@ mod database_tests {
 	use super::*;
 	use crate::contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
 	use constraints::GenericForeignKeyConstraints;
+	use rstest::rstest;
 	use std::sync::{Arc, Once};
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -434,6 +436,7 @@ mod database_tests {
 		let db_url = "sqlite::memory:?mode=rwc&cache=shared";
 
 		// Create persistence with minimal connection pool for tests
+		use rstest::rstest;
 		use sqlx::pool::PoolOptions;
 		let pool = PoolOptions::new()
 			.min_connections(1)
@@ -451,6 +454,7 @@ mod database_tests {
 		persistence
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_content_type() {
 		let persistence = create_test_persistence().await;
@@ -481,6 +485,7 @@ mod database_tests {
 		assert!(!valid);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_validated_content_type() {
 		let persistence = create_test_persistence().await;
@@ -506,6 +511,7 @@ mod database_tests {
 		assert_eq!(validated_ct.model, "User");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_unset_gfk() {
 		let persistence = create_test_persistence().await;

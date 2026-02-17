@@ -44,6 +44,7 @@ pub trait MigrationSource: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test helper to create a migration
 	fn create_test_migration(app_label: &str, name: &str) -> Migration {
@@ -74,6 +75,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_all_migrations() {
 		let source = TestSource {
@@ -89,6 +91,7 @@ mod tests {
 		assert_eq!(all[0].name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migrations_for_app() {
 		let source = TestSource {
@@ -108,6 +111,7 @@ mod tests {
 		assert_eq!(users_migrations[0].name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_migration() {
 		let source = TestSource {
@@ -122,6 +126,7 @@ mod tests {
 		assert_eq!(migration.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_migration_not_found() {
 		let source = TestSource {

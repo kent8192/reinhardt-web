@@ -621,8 +621,9 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_table_name_lower() {
 		assert_eq!(
 			ManyToManyAccessor::<TestUser, TestGroup>::table_name_lower("Users"),
@@ -634,7 +635,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_add() {
 		// Test that INSERT SQL is generated correctly
 		let query = Query::insert()
@@ -650,7 +651,7 @@ mod tests {
 		assert!(sql.contains("groups_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_remove() {
 		// Test that DELETE SQL is generated correctly
 		let query = Query::delete()
@@ -666,7 +667,7 @@ mod tests {
 		assert!(sql.contains("groups_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_clear() {
 		// Test that DELETE SQL for clear is generated correctly
 		let query = Query::delete()
@@ -680,7 +681,7 @@ mod tests {
 		assert!(sql.contains("users_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_all() {
 		// Test that SELECT SQL with JOIN is generated correctly
 		let query = Query::select()
@@ -703,7 +704,7 @@ mod tests {
 		assert!(sql.contains("auth_users_groups"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_filter_by_target() {
 		// Test that SELECT SQL with JOIN for filter_by_target is generated correctly
 		let query = Query::select()

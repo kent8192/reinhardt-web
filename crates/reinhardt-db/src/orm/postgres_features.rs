@@ -631,27 +631,28 @@ impl ArrayOverlap {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_array_agg_basic() {
 		let agg = ArrayAgg::<i32>::new("score".to_string());
 		assert_eq!(agg.to_sql(), "ARRAY_AGG(score)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_agg_distinct() {
 		let agg = ArrayAgg::<String>::new("category".to_string()).distinct();
 		assert_eq!(agg.to_sql(), "ARRAY_AGG(DISTINCT category)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_agg_with_ordering() {
 		let agg =
 			ArrayAgg::<i32>::new("id".to_string()).order_by(vec!["created_at DESC".to_string()]);
 		assert_eq!(agg.to_sql(), "ARRAY_AGG(id ORDER BY created_at DESC)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_agg_distinct_with_ordering() {
 		let agg = ArrayAgg::<String>::new("name".to_string())
 			.distinct()
@@ -662,19 +663,19 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_build_object_empty() {
 		let builder = JsonbBuildObject::new();
 		assert_eq!(builder.to_sql(), "jsonb_build_object()");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_build_object_single_pair() {
 		let builder = JsonbBuildObject::new().add("id", "user_id");
 		assert_eq!(builder.to_sql(), "jsonb_build_object('id', user_id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_build_object_multiple_pairs() {
 		let builder = JsonbBuildObject::new()
 			.add("id", "user_id")
@@ -686,7 +687,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_text_search_basic() {
 		let search = FullTextSearch::new("content".to_string(), "rust".to_string());
 		assert_eq!(
@@ -695,7 +696,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_text_search_custom_config() {
 		let search = FullTextSearch::new("title".to_string(), "database".to_string())
 			.with_config("french".to_string());
@@ -705,7 +706,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_text_search_complex_query() {
 		let search = FullTextSearch::new("body".to_string(), "rust & programming".to_string());
 		let sql = search.to_sql();
@@ -713,7 +714,7 @@ mod tests {
 		assert!(sql.contains("to_tsquery('english', 'rust & programming')"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_overlap_basic() {
 		let overlap = ArrayOverlap::new(
 			"tags".to_string(),
@@ -722,13 +723,13 @@ mod tests {
 		assert_eq!(overlap.to_sql(), "tags && ARRAY['rust', 'web']");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_overlap_single_value() {
 		let overlap = ArrayOverlap::new("categories".to_string(), vec!["tech".to_string()]);
 		assert_eq!(overlap.to_sql(), "categories && ARRAY['tech']");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_overlap_multiple_values() {
 		let overlap = ArrayOverlap::new(
 			"labels".to_string(),
@@ -744,7 +745,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_agg_type_safety() {
 		let int_agg = ArrayAgg::<i32>::new("scores".to_string());
 		let string_agg = ArrayAgg::<String>::new("names".to_string());
@@ -753,13 +754,13 @@ mod tests {
 		assert_eq!(string_agg.to_sql(), "ARRAY_AGG(names)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_build_object_default() {
 		let builder = JsonbBuildObject::default();
 		assert_eq!(builder.to_sql(), "jsonb_build_object()");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_text_search_config_getter() {
 		let search = FullTextSearch::new("text".to_string(), "query".to_string());
 		assert_eq!(search.config(), "english");
@@ -769,26 +770,26 @@ mod tests {
 	}
 
 	// StringAgg tests
-	#[test]
+	#[rstest]
 	fn test_string_agg_basic() {
 		let agg = StringAgg::new("name".to_string(), ", ".to_string());
 		assert_eq!(agg.to_sql(), "STRING_AGG(name, ', ')");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_agg_distinct() {
 		let agg = StringAgg::new("category".to_string(), "; ".to_string()).distinct();
 		assert_eq!(agg.to_sql(), "STRING_AGG(DISTINCT category, '; ')");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_agg_with_ordering() {
 		let agg = StringAgg::new("name".to_string(), ", ".to_string())
 			.order_by(vec!["name ASC".to_string()]);
 		assert_eq!(agg.to_sql(), "STRING_AGG(name, ', ' ORDER BY name ASC)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_agg_distinct_with_ordering() {
 		let agg = StringAgg::new("name".to_string(), ",".to_string())
 			.distinct()
@@ -800,25 +801,25 @@ mod tests {
 	}
 
 	// JsonbAgg tests
-	#[test]
+	#[rstest]
 	fn test_jsonb_agg_basic() {
 		let agg = JsonbAgg::new("user_data".to_string());
 		assert_eq!(agg.to_sql(), "JSONB_AGG(user_data)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_agg_distinct() {
 		let agg = JsonbAgg::new("category".to_string()).distinct();
 		assert_eq!(agg.to_sql(), "JSONB_AGG(DISTINCT category)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_agg_with_ordering() {
 		let agg = JsonbAgg::new("items".to_string()).order_by(vec!["created_at DESC".to_string()]);
 		assert_eq!(agg.to_sql(), "JSONB_AGG(items ORDER BY created_at DESC)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_agg_distinct_with_ordering() {
 		let agg = JsonbAgg::new("data".to_string())
 			.distinct()
@@ -830,7 +831,7 @@ mod tests {
 	}
 
 	// TsRank tests
-	#[test]
+	#[rstest]
 	fn test_ts_rank_basic() {
 		let rank = TsRank::new("search_vector".to_string(), "rust".to_string());
 		assert_eq!(
@@ -839,7 +840,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ts_rank_with_config() {
 		let rank = TsRank::new("content".to_string(), "bonjour".to_string())
 			.with_config("french".to_string());
@@ -849,7 +850,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ts_rank_with_normalization() {
 		let rank = TsRank::new("content".to_string(), "rust".to_string()).with_normalization(2);
 		assert_eq!(
@@ -858,7 +859,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ts_rank_with_config_and_normalization() {
 		let rank = TsRank::new("text_vector".to_string(), "database".to_string())
 			.with_config("simple".to_string())
@@ -869,7 +870,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ts_rank_config_getter() {
 		let rank = TsRank::new("content".to_string(), "query".to_string());
 		assert_eq!(rank.config(), "english");

@@ -554,8 +554,9 @@ pub struct PreparedTransactionInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_prepared_transaction_info_creation() {
 		let info = PreparedTransactionInfo {
 			gid: "txn_001".to_string(),
@@ -569,6 +570,7 @@ mod tests {
 		assert_eq!(info.database, "testdb");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_participant_clone() {
 		// Test that PostgresTwoPhaseParticipant can be cloned

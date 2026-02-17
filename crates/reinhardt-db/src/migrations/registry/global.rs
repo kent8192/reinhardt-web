@@ -132,9 +132,10 @@ pub fn global_registry() -> &'static GlobalRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_global_registry_singleton() {
 		let registry1 = GlobalRegistry::instance();
@@ -144,7 +145,7 @@ mod tests {
 		assert!(std::ptr::eq(registry1, registry2));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_runtime_registration() {
 		let registry = GlobalRegistry::instance();
@@ -182,7 +183,7 @@ mod tests {
 		registry.clear();
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_clear_runtime_migrations() {
 		let registry = GlobalRegistry::instance();
@@ -219,7 +220,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_migrations_for_app_filtering() {
 		let registry = GlobalRegistry::instance();
@@ -289,7 +290,7 @@ mod tests {
 		registry.clear();
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_migrations_for_nonexistent_app_returns_empty() {
 		let registry = GlobalRegistry::instance();
@@ -323,7 +324,7 @@ mod tests {
 		registry.clear();
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(global_registry)]
 	fn test_registered_app_labels_no_duplicates() {
 		let registry = GlobalRegistry::instance();

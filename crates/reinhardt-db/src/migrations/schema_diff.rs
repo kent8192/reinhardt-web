@@ -612,8 +612,9 @@ impl SchemaDiff {
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_detect_table_addition() {
 		let current = DatabaseSchema::default();
 		let mut target = DatabaseSchema::default();
@@ -634,7 +635,7 @@ mod tests {
 		assert_eq!(result.tables_to_add[0], "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_column_addition() {
 		let mut current = DatabaseSchema::default();
 		current.tables.insert(
@@ -674,7 +675,7 @@ mod tests {
 		assert_eq!(result.columns_to_add[0], ("users", "email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_destructive_changes_detection() {
 		let mut current = DatabaseSchema::default();
 		current.tables.insert(

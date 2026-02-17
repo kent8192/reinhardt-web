@@ -99,15 +99,16 @@ impl MigrationRegistry for LocalRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_registry_is_empty() {
 		let registry = LocalRegistry::new();
 		assert!(registry.all_migrations().is_empty());
 		assert!(registry.registered_app_labels().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_and_retrieve() {
 		let registry = LocalRegistry::new();
 
@@ -133,7 +134,7 @@ mod tests {
 		assert_eq!(all[0].name, "0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migrations_for_app_filtering() {
 		let registry = LocalRegistry::new();
 
@@ -194,7 +195,7 @@ mod tests {
 		assert_eq!(users_migrations[0].app_label, "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registered_app_labels() {
 		let registry = LocalRegistry::new();
 
@@ -251,7 +252,7 @@ mod tests {
 		assert_eq!(labels, vec!["polls", "users"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear() {
 		let registry = LocalRegistry::new();
 
@@ -278,7 +279,7 @@ mod tests {
 		assert!(registry.registered_app_labels().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_registries_isolated() {
 		let registry1 = LocalRegistry::new();
 		let registry2 = LocalRegistry::new();
@@ -323,7 +324,7 @@ mod tests {
 		assert_eq!(registry2.all_migrations()[0].app_label, "app2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migrations_for_nonexistent_app_returns_empty() {
 		let registry = LocalRegistry::new();
 

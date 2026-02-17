@@ -317,6 +317,7 @@ mod tests {
 	use super::*;
 	use crate::migrations::fields::FieldType;
 	use crate::migrations::operations::{ColumnDefinition, Operation};
+	use rstest::rstest;
 	use serial_test::serial;
 	use tempfile::TempDir;
 
@@ -339,6 +340,7 @@ mod tests {
 		migration
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_new() {
@@ -347,6 +349,7 @@ mod tests {
 		assert_eq!(repo.root_dir, temp_dir.path());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_save() {
@@ -367,6 +370,7 @@ mod tests {
 		assert!(content.contains("name: \"0001_initial\""));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_get() {
@@ -383,6 +387,7 @@ mod tests {
 		assert_eq!(retrieved.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_get_not_found() {
@@ -394,6 +399,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), MigrationError::NotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_list() {
@@ -413,6 +419,7 @@ mod tests {
 		assert_eq!(migrations.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_list_empty() {
@@ -423,6 +430,7 @@ mod tests {
 		assert_eq!(migrations.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_delete() {
@@ -444,6 +452,7 @@ mod tests {
 		assert!(!tokio::fs::try_exists(&path).await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_delete_not_found() {
@@ -455,6 +464,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), MigrationError::NotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_save_with_dependencies() {
@@ -472,6 +482,7 @@ mod tests {
 		assert!(content.contains("dependencies"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_repository)]
 	async fn test_filesystem_repository_save_prevents_overwrite() {

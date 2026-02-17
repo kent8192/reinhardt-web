@@ -1774,8 +1774,9 @@ impl Field for ManyToManyField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_auto_field_deconstruct() {
 		let mut field = AutoField::new();
 		field.set_attributes_from_name("id");
@@ -1787,7 +1788,7 @@ mod tests {
 		assert_eq!(dec.kwargs.get("primary_key"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_big_integer_field_deconstruct() {
 		let field = BigIntegerField::new();
 		let dec = field.deconstruct();
@@ -1797,7 +1798,7 @@ mod tests {
 		assert!(dec.kwargs.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_field_deconstruct() {
 		let field = BooleanField::new();
 		let dec = field.deconstruct();
@@ -1810,7 +1811,7 @@ mod tests {
 		assert_eq!(dec2.kwargs.get("default"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_deconstruct() {
 		let field = CharField::new(65);
 		let dec = field.deconstruct();
@@ -1824,7 +1825,7 @@ mod tests {
 		assert_eq!(dec2.kwargs.get("blank"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_choices() {
 		let choices = vec![
 			("A".to_string(), "One".to_string()),
@@ -1840,7 +1841,7 @@ mod tests {
 		assert_eq!(dec.kwargs.get("max_length"), Some(&FieldKwarg::Uint(1)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_deconstruct() {
 		let field = DateField::new();
 		let dec = field.deconstruct();
@@ -1852,7 +1853,7 @@ mod tests {
 		assert_eq!(dec2.kwargs.get("auto_now"), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_field_deconstruct() {
 		let field = DateTimeField::new();
 		let dec = field.deconstruct();
@@ -1874,7 +1875,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decimal_field_deconstruct() {
 		let field = DecimalField::new(5, 2);
 		let dec = field.deconstruct();
@@ -1884,7 +1885,7 @@ mod tests {
 		assert_eq!(dec.kwargs.get("decimal_places"), Some(&FieldKwarg::Uint(2)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_field_deconstruct() {
 		let field = EmailField::new();
 		let dec = field.deconstruct();

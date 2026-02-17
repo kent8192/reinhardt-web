@@ -469,8 +469,9 @@ impl FilteredRelationRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_exact() {
 		let condition = FilterCondition::new(
 			"status",
@@ -482,7 +483,7 @@ mod tests {
 		assert_eq!(sql, "p.status = 'active'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_gt() {
 		let condition = FilterCondition::new("age", LookupType::Gt, LookupValue::Int(18));
 
@@ -490,7 +491,7 @@ mod tests {
 		assert_eq!(sql, "u.age > 18");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_contains() {
 		let condition = FilterCondition::new(
 			"title",
@@ -502,7 +503,7 @@ mod tests {
 		assert_eq!(sql, "p.title LIKE '%rust%'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_is_null() {
 		let condition = FilterCondition::new("deleted_at", LookupType::IsNull, LookupValue::Null);
 
@@ -510,7 +511,7 @@ mod tests {
 		assert_eq!(sql, "p.deleted_at IS NULL");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_in() {
 		let condition = FilterCondition::new(
 			"status",
@@ -525,7 +526,7 @@ mod tests {
 		assert_eq!(sql, "p.status IN ('active', 'pending')");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_single_condition() {
 		let filtered = FilteredRelation::new("posts").filter(
 			"status",
@@ -538,7 +539,7 @@ mod tests {
 		assert!(filtered.has_conditions());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_multiple_conditions() {
 		let filtered = FilteredRelation::new("posts")
 			.filter(
@@ -558,7 +559,7 @@ mod tests {
 		assert!(sql.contains("p.views > 100"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_with_alias() {
 		let filtered = FilteredRelation::new("posts")
 			.with_alias("active_posts")
@@ -571,7 +572,7 @@ mod tests {
 		assert_eq!(filtered.alias(), Some("active_posts"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_empty_conditions() {
 		let filtered = FilteredRelation::new("posts");
 
@@ -580,7 +581,7 @@ mod tests {
 		assert_eq!(filtered.to_sql("posts", "p"), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_builder_exact() {
 		let filtered = FilteredRelationBuilder::new("users")
 			.exact("username", "alice")
@@ -589,7 +590,7 @@ mod tests {
 		assert_eq!(filtered.conditions().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_builder_numeric() {
 		let filtered = FilteredRelationBuilder::new("products")
 			.gt("price", 100)
@@ -599,7 +600,7 @@ mod tests {
 		assert_eq!(filtered.condition_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_builder_boolean() {
 		let filtered = FilteredRelationBuilder::new("posts")
 			.is_true("published")
@@ -611,7 +612,7 @@ mod tests {
 		assert!(sql.contains("p.deleted = false"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_builder_with_alias() {
 		let filtered = FilteredRelationBuilder::new("comments")
 			.is_true("approved")
@@ -621,7 +622,7 @@ mod tests {
 		assert_eq!(filtered.alias(), Some("approved_comments"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filtered_relation_builder_not_null() {
 		let filtered = FilteredRelationBuilder::new("orders")
 			.not_null("shipped_at")
@@ -631,7 +632,7 @@ mod tests {
 		assert_eq!(sql, "o.shipped_at IS NOT NULL");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_register_and_get() {
 		let mut registry = FilteredRelationRegistry::new();
 
@@ -648,7 +649,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().relation_name(), "posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_remove() {
 		let mut registry = FilteredRelationRegistry::new();
 
@@ -666,7 +667,7 @@ mod tests {
 		assert!(!registry.contains("active_posts"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_names() {
 		let mut registry = FilteredRelationRegistry::new();
 
@@ -679,7 +680,7 @@ mod tests {
 		assert!(names.contains(&&"published_posts".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_range() {
 		let condition = FilterCondition::new(
 			"age",
@@ -694,7 +695,7 @@ mod tests {
 		assert_eq!(sql, "u.age BETWEEN 18 AND 65");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_condition_regex() {
 		let condition = FilterCondition::new(
 			"email",
@@ -706,7 +707,7 @@ mod tests {
 		assert_eq!(sql, "u.email ~ '.*@example\\.com$'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_injection_protection() {
 		let condition = FilterCondition::new(
 			"name",

@@ -497,8 +497,9 @@ pub fn find_missing(registry: &ContentTypeRegistry, db_entries: &[SyncEntry]) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_sync_entry_new() {
 		let entry = SyncEntry::new("blog", "article");
 		assert_eq!(entry.app_label, "blog");
@@ -506,13 +507,13 @@ mod tests {
 		assert!(entry.db_id.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_entry_with_db_id() {
 		let entry = SyncEntry::with_db_id("blog", "article", 42);
 		assert_eq!(entry.db_id, Some(42));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_entry_from_content_type() {
 		// Unregistered ContentType has no ID
 		let ct = ContentType::new("auth", "user");
@@ -522,7 +523,7 @@ mod tests {
 		assert!(entry.db_id.is_none()); // ID is None until registered
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_entry_from_registered_content_type() {
 		// Registered ContentType has an ID
 		let registry = ContentTypeRegistry::new();
@@ -533,13 +534,13 @@ mod tests {
 		assert!(entry.db_id.is_some()); // ID is assigned after registration
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_entry_qualified_name() {
 		let entry = SyncEntry::new("blog", "article");
 		assert_eq!(entry.qualified_name(), "blog.article");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_plan_empty() {
 		let plan = SyncPlan::new();
 		assert!(!plan.has_changes());
@@ -547,7 +548,7 @@ mod tests {
 		assert_eq!(plan.operation_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_plan_with_changes() {
 		let mut plan = SyncPlan::new();
 		plan.to_create.push(SyncEntry::new("blog", "article"));
@@ -557,7 +558,7 @@ mod tests {
 		assert_eq!(plan.operation_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_plan_summary() {
 		let mut plan = SyncPlan::new();
 		plan.to_create.push(SyncEntry::new("blog", "article"));
@@ -568,7 +569,7 @@ mod tests {
 		assert!(summary.contains("1 in sync"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_result_empty() {
 		let result = SyncResult::new();
 		assert!(!result.has_changes());
@@ -576,7 +577,7 @@ mod tests {
 		assert_eq!(result.total_operations(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_result_with_changes() {
 		let mut result = SyncResult::new();
 		result.created = 2;
@@ -586,7 +587,7 @@ mod tests {
 		assert_eq!(result.total_operations(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_options_builder() {
 		let options = SyncOptions::new()
 			.mode(SyncMode::Full)
@@ -600,7 +601,7 @@ mod tests {
 		assert!(options.delete_stale);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plan_sync_creates() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -613,7 +614,7 @@ mod tests {
 		assert!(plan.to_delete.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plan_sync_deletes() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -632,7 +633,7 @@ mod tests {
 		assert_eq!(plan.to_delete[0].qualified_name(), "auth.user");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plan_sync_in_sync() {
 		let registry = ContentTypeRegistry::new();
 		// Register first, then get the assigned ID
@@ -649,7 +650,7 @@ mod tests {
 		assert_eq!(plan.in_sync.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plan_sync_with_filter() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -663,7 +664,7 @@ mod tests {
 		assert_eq!(plan.to_create[0].qualified_name(), "blog.article");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_dry_run() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -676,7 +677,7 @@ mod tests {
 		assert!(registry.get("blog", "article").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_add_only() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -691,7 +692,7 @@ mod tests {
 		assert_eq!(result.deleted, 0); // AddOnly doesn't delete
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_remove_only() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -709,7 +710,7 @@ mod tests {
 		assert_eq!(result.deleted, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_full() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -725,7 +726,7 @@ mod tests {
 		assert_eq!(result.deleted, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_stale() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -743,7 +744,7 @@ mod tests {
 		assert!(stale.iter().any(|e| e.qualified_name() == "auth.group"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_missing() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -757,7 +758,7 @@ mod tests {
 		assert_eq!(missing.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compare_registries() {
 		let source = ContentTypeRegistry::new();
 		source.register(ContentType::new("blog", "article"));
@@ -776,7 +777,7 @@ mod tests {
 		assert_eq!(plan.to_delete.len(), 1); // auth.user
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sync_error_display() {
 		let db_error = SyncError::DatabaseError("connection failed".to_string());
 		assert!(db_error.to_string().contains("Database error"));
@@ -788,7 +789,7 @@ mod tests {
 		assert!(invalid_error.to_string().contains("Invalid state"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convenience_functions() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));

@@ -8,8 +8,10 @@ mod integration_tests {
 		MockParticipant, TransactionState, TwoPhaseCoordinator,
 	};
 	use crate::orm::two_phase_commit::transaction_log::{InMemoryTransactionLog, TransactionLog};
+	use rstest::rstest;
 	use std::sync::Arc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_with_logging() {
 		let log = Arc::new(InMemoryTransactionLog::new());
@@ -43,6 +45,7 @@ mod integration_tests {
 		assert!(log.read("txn_log_001").unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_rollback_with_logging() {
 		let log = Arc::new(InMemoryTransactionLog::new());
@@ -61,6 +64,7 @@ mod integration_tests {
 		assert!(log.read("txn_log_002").unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_recovery_from_log() {
 		let log = Arc::new(InMemoryTransactionLog::new());
@@ -98,6 +102,7 @@ mod integration_tests {
 		assert_eq!(prepared_txns.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_coordinator_prepare_failure() {
 		let mut coordinator = TwoPhaseCoordinator::new("txn_fail_001");
@@ -123,6 +128,7 @@ mod integration_tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_coordinators_isolation() {
 		let log = Arc::new(InMemoryTransactionLog::new());
@@ -157,6 +163,7 @@ mod integration_tests {
 		assert_eq!(all_entries.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_log_entry_metadata() {
 		let log = Arc::new(InMemoryTransactionLog::new());

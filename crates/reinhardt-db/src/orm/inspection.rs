@@ -1117,8 +1117,9 @@ mod tests {
 	use crate::orm::fields::{
 		AutoField, BooleanField, CharField, DecimalField, EmailField, IntegerField,
 	};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_info_from_char_field() {
 		let mut field = CharField::new(100);
 		field.set_attributes_from_name("username");
@@ -1131,7 +1132,7 @@ mod tests {
 		assert!(info.editable);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_from_auto_field() {
 		let mut field = AutoField::new();
 		field.set_attributes_from_name("id");
@@ -1142,7 +1143,7 @@ mod tests {
 		assert!(info.primary_key);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_nullable_field() {
 		let mut field = CharField::with_null_blank(200);
 		field.set_attributes_from_name("bio");
@@ -1152,7 +1153,7 @@ mod tests {
 		assert!(info.blank);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_with_choices() {
 		let choices = vec![
 			("A".to_string(), "Active".to_string()),
@@ -1166,7 +1167,7 @@ mod tests {
 		assert_eq!(info.choices, Some(choices));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_db_column_name() {
 		let mut field = CharField::new(100);
 		field.base.db_column = Some("usr_name".to_string());
@@ -1176,7 +1177,7 @@ mod tests {
 		assert_eq!(info.db_column_name(), "usr_name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_db_column_name_fallback() {
 		let mut field = CharField::new(100);
 		field.set_attributes_from_name("email");
@@ -1185,7 +1186,7 @@ mod tests {
 		assert_eq!(info.db_column_name(), "email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_name() {
 		let mut field = IntegerField::new();
 		field.set_attributes_from_name("count");
@@ -1194,7 +1195,7 @@ mod tests {
 		assert_eq!(inspector.name(), "count");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_field_type() {
 		let mut field = EmailField::new();
 		field.set_attributes_from_name("contact_email");
@@ -1203,7 +1204,7 @@ mod tests {
 		assert_eq!(inspector.field_type(), "reinhardt.orm.models.EmailField");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_is_nullable() {
 		let mut nullable_field = CharField::with_null_blank(100);
 		nullable_field.set_attributes_from_name("middle_name");
@@ -1212,7 +1213,7 @@ mod tests {
 		assert!(inspector.is_nullable());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_is_primary_key() {
 		let mut pk_field = AutoField::new();
 		pk_field.set_attributes_from_name("id");
@@ -1221,7 +1222,7 @@ mod tests {
 		assert!(inspector.is_primary_key());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_is_unique() {
 		let mut field = CharField::new(100);
 		field.base.unique = true;
@@ -1231,7 +1232,7 @@ mod tests {
 		assert!(inspector.is_unique());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_is_blank() {
 		let mut field = CharField::with_null_blank(500);
 		field.set_attributes_from_name("description");
@@ -1240,7 +1241,7 @@ mod tests {
 		assert!(inspector.is_blank());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_is_editable() {
 		let mut field = CharField::new(100);
 		field.set_attributes_from_name("title");
@@ -1249,7 +1250,7 @@ mod tests {
 		assert!(inspector.is_editable());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_default_value() {
 		let mut field = BooleanField::with_default(true);
 		field.set_attributes_from_name("is_active");
@@ -1258,7 +1259,7 @@ mod tests {
 		assert_eq!(inspector.default_value(), Some(&FieldKwarg::Bool(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_db_column_name() {
 		let mut field = CharField::new(100);
 		field.base.db_column = Some("usr_email".to_string());
@@ -1268,7 +1269,7 @@ mod tests {
 		assert_eq!(inspector.db_column_name(), "usr_email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_choices() {
 		let choices = vec![
 			("S".to_string(), "Small".to_string()),
@@ -1282,7 +1283,7 @@ mod tests {
 		assert_eq!(inspector.choices(), Some(&choices));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_get_attribute() {
 		let mut field = DecimalField::new(10, 2);
 		field.set_attributes_from_name("price");
@@ -1298,7 +1299,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_inspector_attributes() {
 		let mut field = CharField::new(255);
 		field.set_attributes_from_name("url");
@@ -1308,7 +1309,7 @@ mod tests {
 		assert!(attributes.contains_key("max_length"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_info_creation() {
 		let info = RelationInfo::new("posts", RelationshipType::OneToMany, "Post");
 
@@ -1319,7 +1320,7 @@ mod tests {
 		assert!(info.back_populates.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_info_with_foreign_key() {
 		let info = RelationInfo::new("author", RelationshipType::ManyToOne, "User")
 			.with_foreign_key("author_id");
@@ -1327,7 +1328,7 @@ mod tests {
 		assert_eq!(info.foreign_key, Some("author_id".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_info_with_back_populates() {
 		let info = RelationInfo::new("comments", RelationshipType::OneToMany, "Comment")
 			.with_back_populates("post");
@@ -1335,7 +1336,7 @@ mod tests {
 		assert_eq!(info.back_populates, Some("post".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_info_from_index() {
 		let index = Index::new("email_idx", vec!["email".to_string()]);
 		let info = IndexInfo::from_index(&index);
@@ -1346,7 +1347,7 @@ mod tests {
 		assert!(info.condition.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_info_unique_index() {
 		let index = Index::new("username_idx", vec!["username".to_string()]).unique();
 		let info = IndexInfo::from_index(&index);
@@ -1354,7 +1355,7 @@ mod tests {
 		assert!(info.unique);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_constraint_info_from_check() {
 		let constraint = CheckConstraint::new("age_check", "age >= 18");
 		let info = ConstraintInfo::from_check(&constraint);
@@ -1364,7 +1365,7 @@ mod tests {
 		assert!(info.definition.contains("CHECK"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_constraint_info_from_unique() {
 		let constraint = UniqueConstraint::new("email_unique", vec!["email".to_string()]);
 		let info = ConstraintInfo::from_unique(&constraint);
@@ -1374,7 +1375,7 @@ mod tests {
 		assert!(info.definition.contains("UNIQUE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_inspector_table_name() {
 		use serde::{Deserialize, Serialize};
 
@@ -1416,7 +1417,7 @@ mod tests {
 		assert_eq!(inspector.table_name(), "test_table");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_inspector_primary_key_field() {
 		use serde::{Deserialize, Serialize};
 
@@ -1462,7 +1463,7 @@ mod tests {
 		assert_eq!(inspector.primary_key_field(), "article_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_inspector_get_field_nonexistent() {
 		use serde::{Deserialize, Serialize};
 
@@ -1504,7 +1505,7 @@ mod tests {
 		assert!(inspector.get_field("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_inspector_get_fields_empty() {
 		use serde::{Deserialize, Serialize};
 
@@ -1546,7 +1547,7 @@ mod tests {
 		assert!(inspector.get_fields().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_inspector_get_relations_empty() {
 		use serde::{Deserialize, Serialize};
 

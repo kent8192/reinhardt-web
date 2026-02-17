@@ -239,8 +239,9 @@ impl CompositeSynonym {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_composite_synonym_creation() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -252,7 +253,7 @@ mod tests {
 		assert_eq!(synonym.separator(), " ");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_composite_synonym_with_custom_separator() {
 		let synonym = CompositeSynonym::new(
 			"csv_data".to_string(),
@@ -263,7 +264,7 @@ mod tests {
 		assert_eq!(synonym.separator(), ", ");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_sql() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -275,7 +276,7 @@ mod tests {
 		assert!(sql.contains("' '"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_sql_single_field() {
 		let synonym = CompositeSynonym::new("alias".to_string(), vec!["field".to_string()]);
 
@@ -283,7 +284,7 @@ mod tests {
 		assert_eq!(sql, "field");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_sql_empty_fields() {
 		let synonym = CompositeSynonym::new("empty".to_string(), vec![]);
 
@@ -291,7 +292,7 @@ mod tests {
 		assert_eq!(sql, "NULL");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compute_value() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(result, "Alice Smith");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compute_value_with_custom_separator() {
 		let synonym = CompositeSynonym::new(
 			"address".to_string(),
@@ -334,7 +335,7 @@ mod tests {
 		assert_eq!(result, "123 Main St, Springfield");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compute_value_with_missing_fields() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -351,7 +352,7 @@ mod tests {
 		assert_eq!(result, "Alice");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_fields() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -379,7 +380,7 @@ mod tests {
 		assert!(synonym.validate_fields(&incomplete_object).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compute_value_strict() {
 		let synonym = CompositeSynonym::new(
 			"full_name".to_string(),
@@ -410,7 +411,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_concat_synonym() {
 		let synonym = CompositeSynonym::concat(
 			"code".to_string(),
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(synonym.separator(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csv_synonym() {
 		let synonym = CompositeSynonym::csv(
 			"tags".to_string(),
@@ -442,7 +443,7 @@ mod tests {
 		assert_eq!(synonym.separator(), ",");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_value_to_string() {
 		assert_eq!(FieldValue::Integer(42).to_string(), "42");
 		assert_eq!(FieldValue::Float(3.15).to_string(), "3.15");

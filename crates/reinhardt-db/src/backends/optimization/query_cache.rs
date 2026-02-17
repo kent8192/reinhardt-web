@@ -161,8 +161,9 @@ pub struct CacheStats {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_query_cache_basic() {
 		let cache = QueryCache::new(QueryCacheConfig::default());
 		let sql = "SELECT * FROM users WHERE id = $1".to_string();
@@ -180,7 +181,7 @@ mod tests {
 		assert_eq!(cached.params_hash, params_hash);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_expiration() {
 		let config = QueryCacheConfig {
 			max_size: 10,
@@ -203,7 +204,7 @@ mod tests {
 		assert!(cache.get(&sql, params_hash).is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_stats() {
 		let cache = QueryCache::new(QueryCacheConfig::default());
 		cache.set("query1".to_string(), 1, None);

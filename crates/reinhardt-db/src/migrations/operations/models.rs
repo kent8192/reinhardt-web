@@ -1050,8 +1050,9 @@ impl MigrationOperation for MoveModel {
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_definition_to_sql() {
 		let field = FieldDefinition::new("id", FieldType::Integer, true, false, None::<String>);
 		let sql = field.to_sql_definition();
@@ -1063,7 +1064,7 @@ mod tests {
 		assert_eq!(sql2, "VARCHAR(255) UNIQUE NOT NULL DEFAULT ''");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_model_state_forwards() {
 		let mut state = ProjectState::new();
 		let create = CreateModel::new(
@@ -1089,7 +1090,7 @@ mod tests {
 		assert_eq!(model.fields.get("name").unwrap().name, "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_model_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -1113,7 +1114,7 @@ mod tests {
 		assert!(state.get_model("myapp", "User").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_model_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -1140,7 +1141,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "db-postgres")]
-	#[test]
+	#[rstest]
 	fn test_delete_model_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -1153,7 +1154,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "db-postgres")]
-	#[test]
+	#[rstest]
 	fn test_rename_model_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -1165,7 +1166,7 @@ mod tests {
 		assert_eq!(sql[0], "ALTER TABLE \"users\" RENAME TO \"customers\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_definition_nullable() {
 		let field = FieldDefinition::new(
 			"email",
@@ -1181,7 +1182,7 @@ mod tests {
 		assert_eq!(sql, "VARCHAR(255)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_model_with_options() {
 		let mut options = HashMap::new();
 		options.insert("db_table".to_string(), "custom_users".to_string());
@@ -1205,7 +1206,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_model_with_bases() {
 		let bases = vec!["BaseModel".to_string(), "Timestamped".to_string()];
 
@@ -1225,7 +1226,7 @@ mod tests {
 		assert_eq!(create.bases.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_model_multiple_fields() {
 		let mut state = ProjectState::new();
 
@@ -1261,7 +1262,7 @@ mod tests {
 		assert_eq!(model.fields.get("is_active").unwrap().name, "is_active");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_definition_with_default() {
 		let field = FieldDefinition::new(
 			"status",
@@ -1277,7 +1278,7 @@ mod tests {
 		assert_eq!(sql, "VARCHAR(20) NOT NULL DEFAULT 'pending'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_model_removes_from_state() {
 		let mut state = ProjectState::new();
 
@@ -1317,7 +1318,7 @@ mod tests {
 		assert!(state.get_model("myapp", "Post").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_model_preserves_fields() {
 		let mut state = ProjectState::new();
 
@@ -1348,7 +1349,7 @@ mod tests {
 		assert_eq!(model.fields.get("name").unwrap().name, "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_move_model_basic() {
 		let mut state = ProjectState::new();
 
@@ -1379,7 +1380,7 @@ mod tests {
 		assert_eq!(model.app_label, "auth");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_move_model_preserves_fields() {
 		let mut state = ProjectState::new();
 
@@ -1418,7 +1419,7 @@ mod tests {
 		assert_eq!(model.fields.get("name").unwrap().name, "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_move_model_backwards() {
 		let mut state = ProjectState::new();
 
@@ -1451,7 +1452,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "db-postgres")]
-	#[test]
+	#[rstest]
 	fn test_move_model_without_table_rename() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -1464,7 +1465,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "db-postgres")]
-	#[test]
+	#[rstest]
 	fn test_move_model_with_table_rename() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -1479,7 +1480,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "db-postgres")]
-	#[test]
+	#[rstest]
 	fn test_move_model_backward_sql() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 

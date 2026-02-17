@@ -384,8 +384,9 @@ impl<'a> PermissionContext<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_permission_action_as_str() {
 		assert_eq!(PermissionAction::View.as_str(), "view");
 		assert_eq!(PermissionAction::Add.as_str(), "add");
@@ -393,7 +394,7 @@ mod tests {
 		assert_eq!(PermissionAction::Delete.as_str(), "delete");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_action_all() {
 		let actions = PermissionAction::all();
 		assert_eq!(actions.len(), 4);
@@ -403,7 +404,7 @@ mod tests {
 		assert!(actions.contains(&PermissionAction::Delete));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_action_from_str() {
 		assert_eq!(
 			PermissionAction::from_str("view"),
@@ -432,13 +433,13 @@ mod tests {
 		assert!("invalid".parse::<PermissionAction>().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_action_display() {
 		assert_eq!(format!("{}", PermissionAction::View), "view");
 		assert_eq!(format!("{}", PermissionAction::Add), "add");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_permission() {
 		let ct = ContentType::new("blog", "article");
 
@@ -460,7 +461,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_custom_permission() {
 		let ct = ContentType::new("blog", "article");
 
@@ -474,7 +475,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_permission() {
 		let parsed = ContentTypePermission::parse("blog.add_article");
 		assert_eq!(
@@ -496,7 +497,7 @@ mod tests {
 		assert_eq!(ContentTypePermission::parse("app.action_"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_permissions() {
 		let ct = ContentType::new("blog", "article");
 		let perms = ContentTypePermission::default_permissions(&ct);
@@ -508,7 +509,7 @@ mod tests {
 		assert!(perms.contains(&"blog.delete_article".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_permission() {
 		let ct = ContentType::new("blog", "article");
 
@@ -534,7 +535,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_content_type() {
 		let ct = ContentTypePermission::extract_content_type("blog.add_article");
 		assert!(ct.is_some());
@@ -545,7 +546,7 @@ mod tests {
 		assert!(ContentTypePermission::extract_content_type("invalid").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_action() {
 		assert_eq!(
 			ContentTypePermission::extract_action("blog.view_article"),
@@ -569,7 +570,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_context_authenticated() {
 		let ctx = PermissionContext::authenticated("alice");
 		assert_eq!(ctx.username, Some("alice"));
@@ -578,7 +579,7 @@ mod tests {
 		assert!(!ctx.is_superuser);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_context_staff() {
 		let ctx = PermissionContext::staff("bob");
 		assert_eq!(ctx.username, Some("bob"));
@@ -587,7 +588,7 @@ mod tests {
 		assert!(!ctx.is_superuser);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_context_superuser() {
 		let ctx = PermissionContext::superuser("admin");
 		assert_eq!(ctx.username, Some("admin"));
@@ -596,7 +597,7 @@ mod tests {
 		assert!(ctx.is_superuser);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_context_anonymous() {
 		let ctx = PermissionContext::anonymous();
 		assert_eq!(ctx.username, None);
@@ -605,7 +606,7 @@ mod tests {
 		assert!(!ctx.is_superuser);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_context_default() {
 		let ctx = PermissionContext::default();
 		assert_eq!(ctx.username, None);

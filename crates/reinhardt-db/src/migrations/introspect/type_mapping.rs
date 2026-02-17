@@ -311,8 +311,9 @@ pub(super) fn parse_decimal_precision(type_def: &str) -> Result<(u32, u32), Type
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_integer_type_mapping() {
 		let mapper = TypeMapper::default();
 
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(result.unwrap(), "i16");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nullable_type_mapping() {
 		let mapper = TypeMapper::default();
 
@@ -338,7 +339,7 @@ mod tests {
 		assert_eq!(result.unwrap(), "i32");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_type_mapping() {
 		let mapper = TypeMapper::default();
 
@@ -349,7 +350,7 @@ mod tests {
 		assert_eq!(result.unwrap(), "String");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_type_mapping() {
 		let mapper = TypeMapper::default();
 
@@ -360,7 +361,7 @@ mod tests {
 		assert_eq!(result.unwrap(), "chrono::DateTime<chrono::Utc>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_varchar_length() {
 		assert_eq!(parse_varchar_length("VARCHAR(255)").unwrap(), 255);
 		assert_eq!(parse_varchar_length("varchar(100)").unwrap(), 100);
@@ -368,7 +369,7 @@ mod tests {
 		assert!(parse_varchar_length("VARCHAR(abc)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_decimal_precision() {
 		assert_eq!(parse_decimal_precision("DECIMAL(10,2)").unwrap(), (10, 2));
 		assert_eq!(parse_decimal_precision("decimal(5, 3)").unwrap(), (5, 3));
@@ -376,7 +377,7 @@ mod tests {
 		assert!(parse_decimal_precision("DECIMAL(5,10)").is_err()); // scale > precision
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_override() {
 		let mut overrides = HashMap::new();
 		overrides.insert("users.status".to_string(), "UserStatus".to_string());

@@ -442,8 +442,9 @@ impl<K> Default for PolymorphicManyToMany<K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_association_creation() {
 		let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("commentable");
 		assert_eq!(rel.association_name(), "commentable");
@@ -454,7 +455,7 @@ mod tests {
 		assert!(rel.has_db_index());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_association_builder() {
 		let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("taggable")
 			.id_field("object_id")
@@ -471,14 +472,14 @@ mod tests {
 		assert!(!rel.has_db_index());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_association_default_field_names() {
 		let rel: PolymorphicAssociation<i64> = PolymorphicAssociation::new("imageable");
 		assert_eq!(rel.get_id_field(), "imageable_id");
 		assert_eq!(rel.get_type_field(), "imageable_type");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_many_to_many_creation() {
 		let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable");
 		assert_eq!(rel.association_name(), "taggable");
@@ -490,7 +491,7 @@ mod tests {
 		assert!(rel.is_lazy());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_many_to_many_builder() {
 		let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("taggable")
 			.through("taggings")
@@ -511,14 +512,14 @@ mod tests {
 		assert_eq!(rel.get_db_constraint_prefix(), Some("poly_tag"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_many_to_many_default_field_names() {
 		let rel: PolymorphicManyToMany<i64> = PolymorphicManyToMany::new("likeable");
 		assert_eq!(rel.get_target_id_field(), "likeable_id");
 		assert_eq!(rel.get_target_type_field(), "likeable_type");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_actions_polymorphic() {
 		let actions = vec![
 			CascadeAction::NoAction,
@@ -535,7 +536,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_configuration_polymorphic() {
 		let rel1: PolymorphicAssociation<i64> =
 			PolymorphicAssociation::new("commentable").null(true);
@@ -546,7 +547,7 @@ mod tests {
 		assert!(!rel2.is_null());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_index_configuration_polymorphic() {
 		let rel1: PolymorphicAssociation<i64> =
 			PolymorphicAssociation::new("commentable").db_index(true);

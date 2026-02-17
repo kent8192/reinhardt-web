@@ -314,8 +314,9 @@ impl Default for AggregateResult {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validate_identifier_valid() {
 		assert!(validate_identifier("user_id").is_ok());
 		assert!(validate_identifier("name123").is_ok());
@@ -324,7 +325,7 @@ mod tests {
 		assert!(validate_identifier("*").is_ok()); // Wildcard is allowed
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_identifier_invalid() {
 		// Starts with number
 		assert!(validate_identifier("123invalid").is_err());
@@ -343,21 +344,21 @@ mod tests {
 		assert!(validate_identifier("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Invalid field name")]
 	fn test_aggregate_rejects_invalid_field() {
 		// Should panic when trying to create aggregate with SQL injection attempt
 		Aggregate::sum("amount; DROP TABLE users");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Invalid alias")]
 	fn test_aggregate_rejects_invalid_alias() {
 		// Should panic when trying to use invalid alias
 		Aggregate::sum("amount").with_alias("total; DROP TABLE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_escapes_identifiers() {
 		// Test that identifiers are properly escaped using reinhardt-query
 		let agg = Aggregate::sum("user_id");
@@ -369,49 +370,49 @@ mod tests {
 		assert_eq!(sql, "SUM(user_id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_count_aggregate() {
 		let agg = Aggregate::count(Some("id"));
 		assert_eq!(agg.to_sql(), "COUNT(id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_count_all_aggregate() {
 		let agg = Aggregate::count_all();
 		assert_eq!(agg.to_sql(), "COUNT(*)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_count_distinct_aggregate() {
 		let agg = Aggregate::count_distinct("user_id");
 		assert_eq!(agg.to_sql(), "COUNT(DISTINCT user_id)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sum_aggregate() {
 		let agg = Aggregate::sum("amount");
 		assert_eq!(agg.to_sql(), "SUM(amount)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_avg_aggregate() {
 		let agg = Aggregate::avg("score");
 		assert_eq!(agg.to_sql(), "AVG(score)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_aggregate() {
 		let agg = Aggregate::max("price");
 		assert_eq!(agg.to_sql(), "MAX(price)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_aggregate() {
 		let agg = Aggregate::min("age");
 		assert_eq!(agg.to_sql(), "MIN(age)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_with_alias() {
 		let agg = Aggregate::sum("amount").with_alias("total_amount");
 		assert_eq!(agg.to_sql(), "SUM(amount) AS total_amount");

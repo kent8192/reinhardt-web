@@ -268,6 +268,7 @@ impl AsyncSession {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[allow(dead_code)]
@@ -316,6 +317,7 @@ mod tests {
 	#[cfg(feature = "sqlite")]
 	mod sqlite_tests {
 		use super::*;
+		use rstest::rstest;
 		use serial_test::serial;
 		use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 		use std::time::Duration;
@@ -329,6 +331,7 @@ mod tests {
 				.await
 		}
 
+		#[rstest]
 		#[tokio::test]
 		#[serial(async_query_sqlite)]
 		async fn test_sqlite_async_query_builder() {
@@ -354,6 +357,7 @@ mod tests {
 			pool.close().await;
 		}
 
+		#[rstest]
 		#[tokio::test]
 		#[serial(async_query_sqlite)]
 		async fn test_sqlite_async_query_execution() {
@@ -380,6 +384,7 @@ mod tests {
 			pool.close().await;
 		}
 
+		#[rstest]
 		#[tokio::test]
 		#[serial(async_query_sqlite)]
 		async fn test_sqlite_async_session() {

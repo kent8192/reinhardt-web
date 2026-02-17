@@ -238,13 +238,14 @@ impl<T, A, R> HybridMethod<T, A, R> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct User {
 		first_name: String,
 		last_name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hybrid_property_unit() {
 		let prop =
 			HybridProperty::new(|user: &User| format!("{} {}", user.first_name, user.last_name))

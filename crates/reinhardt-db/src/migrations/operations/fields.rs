@@ -445,8 +445,9 @@ mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
 	use crate::migrations::operations::models::CreateModel;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_add_field_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -481,7 +482,7 @@ mod tests {
 		assert!(model.fields.contains_key("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_field_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -510,7 +511,7 @@ mod tests {
 		assert!(!model.fields.contains_key("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_field_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -548,7 +549,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::VarChar(255));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_field_state_forwards() {
 		let mut state = ProjectState::new();
 
@@ -578,7 +579,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_add_field_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -602,7 +603,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_remove_field_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -617,7 +618,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_rename_field_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 

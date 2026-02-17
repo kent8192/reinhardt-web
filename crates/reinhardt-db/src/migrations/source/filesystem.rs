@@ -159,6 +159,7 @@ impl MigrationSource for FilesystemSource {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::fs;
 	use tempfile::TempDir;
@@ -173,6 +174,7 @@ mod tests {
 		fs::write(file_path, content).unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_new() {
@@ -181,6 +183,7 @@ mod tests {
 		assert_eq!(source.root_dir, temp_dir.path());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_all_migrations() {
@@ -235,6 +238,7 @@ pub fn migration() -> Migration {
 		assert!(migrations.iter().any(|m| m.app_label == "users"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_migrations_for_app() {
@@ -288,6 +292,7 @@ pub fn migration() -> Migration {
 		assert!(polls_migrations.iter().all(|m| m.app_label == "polls"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_get_migration() {
@@ -320,6 +325,7 @@ pub fn migration() -> Migration {
 		assert_eq!(migration.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_get_migration_not_found() {

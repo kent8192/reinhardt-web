@@ -160,6 +160,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone)]
 	struct Person {
@@ -225,7 +226,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_base_property() {
 		let person = Person {
 			first_name: "John".to_string(),
@@ -240,7 +241,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_override_property_getter_unit() {
 		let employee = Employee {
 			person: Person {
@@ -254,7 +255,7 @@ mod tests {
 		assert_eq!(property.get(&employee), "Jane Smith (E123)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_override_expression() {
 		let property = OverridableProperty::new(EmployeeNameProperty);
 		assert_eq!(
@@ -263,7 +264,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_override_property_setter_unit() {
 		let mut person = Person {
 			first_name: String::new(),
@@ -277,7 +278,7 @@ mod tests {
 		assert_eq!(person.last_name, "Johnson");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_employee_override_setter() {
 		let mut employee = Employee {
 			person: Person {

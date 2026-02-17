@@ -352,6 +352,7 @@ impl<L: Model, R: Model> TypedJoin<L, R> {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -429,7 +430,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_join_compiles() {
 		let join = TypedJoin::on(
 			Field::<User, i64>::new(vec!["id"]),
@@ -442,7 +443,7 @@ mod tests {
 		assert_eq!(condition, "users.id = posts.user_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_left_join() {
 		let join = TypedJoin::left_on(
 			Field::<User, i64>::new(vec!["id"]),

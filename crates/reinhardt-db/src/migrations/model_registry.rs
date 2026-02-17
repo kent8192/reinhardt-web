@@ -497,14 +497,15 @@ pub fn global_registry() -> &'static ModelRegistry {
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_model_registry_new() {
 		let registry = ModelRegistry::new();
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_model() {
 		let registry = ModelRegistry::new();
 		let metadata = ModelMetadata::new("blog", "Post", "blog_post");
@@ -512,7 +513,7 @@ mod tests {
 		assert_eq!(registry.count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_model() {
 		let registry = ModelRegistry::new();
 		let metadata = ModelMetadata::new("auth", "User", "auth_user");
@@ -523,7 +524,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().table_name, "auth_user");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_models() {
 		let registry = ModelRegistry::new();
 		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
@@ -533,7 +534,7 @@ mod tests {
 		assert_eq!(models.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_app_models() {
 		let registry = ModelRegistry::new();
 		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
@@ -547,7 +548,7 @@ mod tests {
 		assert_eq!(blog_models.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_model() {
 		let registry = ModelRegistry::new();
 		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
@@ -556,7 +557,7 @@ mod tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migrations_registry_clear() {
 		let registry = ModelRegistry::new();
 		registry.register_model(ModelMetadata::new("auth", "User", "auth_user"));
@@ -566,7 +567,7 @@ mod tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_to_model_state() {
 		let mut metadata = ModelMetadata::new("blog", "Post", "blog_post");
 
@@ -582,7 +583,7 @@ mod tests {
 		assert!(model_state.fields.contains_key("title"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_builder() {
 		let field = FieldMetadata::new(FieldType::Custom("CharField".to_string()))
 			.with_param("max_length", "100")

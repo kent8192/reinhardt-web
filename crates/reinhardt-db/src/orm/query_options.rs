@@ -310,8 +310,9 @@ impl Default for QueryOptionsBuilder {
 mod tests {
 	use super::*;
 	use crate::orm::loading::{joinedload, selectinload};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_execution_options() {
 		let opts = ExecutionOptions::new()
 			.with_timeout(30)
@@ -323,7 +324,7 @@ mod tests {
 		assert!(opts.autocommit);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_isolation_level_sql() {
 		assert_eq!(IsolationLevel::ReadUncommitted.to_sql(), "READ UNCOMMITTED");
 		assert_eq!(IsolationLevel::ReadCommitted.to_sql(), "READ COMMITTED");
@@ -331,7 +332,7 @@ mod tests {
 		assert_eq!(IsolationLevel::Serializable.to_sql(), "SERIALIZABLE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_options() {
 		let opts = QueryOptions::new()
 			.add_load_option(joinedload("posts"))
@@ -344,7 +345,7 @@ mod tests {
 		assert_eq!(opts.with_for_update, ForUpdateMode::NoWait);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_for_update_modes() {
 		assert_eq!(ForUpdateMode::Standard.to_sql(), "FOR UPDATE");
 		assert_eq!(ForUpdateMode::NoWait.to_sql(), "FOR UPDATE NOWAIT");
@@ -357,7 +358,7 @@ mod tests {
 		assert!(ForUpdateMode::Standard.is_locking());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_options_builder() {
 		let opts = QueryOptionsBuilder::new()
 			.load(joinedload("author"))
@@ -379,7 +380,7 @@ mod tests {
 		assert_eq!(opts.yield_per, Some(100));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_options_sql_hints() {
 		let opts = QueryOptions::new()
 			.add_load_option(joinedload("posts"))
@@ -391,7 +392,7 @@ mod tests {
 		assert!(hints.iter().any(|h| h.contains("FOR UPDATE NOWAIT")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_translation() {
 		let opts = ExecutionOptions::new()
 			.translate_schema("old_schema", "new_schema")
@@ -404,7 +405,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_options() {
 		let opts = ExecutionOptions::new()
 			.with_custom("max_rows", "1000")
@@ -414,7 +415,7 @@ mod tests {
 		assert_eq!(opts.custom.get("max_rows"), Some(&"1000".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compiled_cache_options() {
 		let opts = ExecutionOptions::new().with_compiled_cache(CompiledCacheOption::Use);
 

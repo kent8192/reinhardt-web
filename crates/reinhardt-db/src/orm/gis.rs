@@ -565,8 +565,9 @@ impl SpatialAggregate {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_point_creation() {
 		let point = Point::new(10.0, 20.0);
 		assert_eq!(point.x, 10.0);
@@ -574,7 +575,7 @@ mod tests {
 		assert_eq!(point.srid, 4326);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_point_distance() {
 		// Use Cartesian coordinates (not WGS84) for simple Euclidean distance test
 		let p1 = Point::with_srid(0.0, 0.0, 0);
@@ -582,7 +583,7 @@ mod tests {
 		assert_eq!(p1.distance_to(&p2), 5.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_conversions() {
 		let d = Distance::km(1.0);
 		assert_eq!(d.to_meters(), 1000.0);
@@ -591,7 +592,7 @@ mod tests {
 		assert!((d2.to_meters() - 1609.34).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gist_index_sql() {
 		let index = GiSTIndex::new("location");
 		let sql = index.create_sql("places", "places_location_idx");
@@ -599,7 +600,7 @@ mod tests {
 		assert!(sql.contains("location"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_lookup_sql() {
 		let point = Point::new(10.0, 20.0);
 		let lookup = SpatialLookup::Contains(point);
@@ -609,7 +610,7 @@ mod tests {
 	}
 
 	// Additional comprehensive GIS tests
-	#[test]
+	#[rstest]
 	fn test_point_with_custom_srid() {
 		let point = Point::with_srid(10.0, 20.0, 3857);
 		assert_eq!(point.srid, 3857);
@@ -617,7 +618,7 @@ mod tests {
 		assert_eq!(point.y, 20.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linestring_length() {
 		let line = LineString {
 			points: vec![
@@ -630,7 +631,7 @@ mod tests {
 		assert_eq!(line.length(), 7.0); // 3 + 4
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linestring_empty() {
 		let line = LineString {
 			points: vec![],
@@ -639,7 +640,7 @@ mod tests {
 		assert_eq!(line.length(), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_area() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -655,7 +656,7 @@ mod tests {
 		assert_eq!(polygon.area(), 12.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_with_hole() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -678,7 +679,7 @@ mod tests {
 		assert_eq!(polygon.interiors[0].len(), 5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multipoint_creation() {
 		let mp = MultiPoint {
 			points: vec![
@@ -691,7 +692,7 @@ mod tests {
 		assert_eq!(mp.points.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bounding_box_contains_point() {
 		let bbox = BoundingBox {
 			min_x: 0.0,
@@ -708,7 +709,7 @@ mod tests {
 		assert!(!bbox.contains_point(&Point::new(5.0, 11.0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bounding_box_intersects() {
 		let bbox1 = BoundingBox {
 			min_x: 0.0,
@@ -736,19 +737,19 @@ mod tests {
 		assert!(!bbox1.intersects(&bbox3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_meters() {
 		let d = Distance::m(500.0);
 		assert_eq!(d.to_meters(), 500.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_feet() {
 		let d = Distance::ft(100.0);
 		assert!((d.to_meters() - 30.48).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_coordinate_transform_creation() {
 		let transform = CoordinateTransform {
 			from_srid: 4326,
@@ -758,14 +759,14 @@ mod tests {
 		assert_eq!(transform.to_srid, 3857);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_lookup_contains() {
 		let point = Point::new(5.0, 5.0);
 		let lookup = SpatialLookup::Contains(point);
 		matches!(lookup, SpatialLookup::Contains(_));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_lookup_within() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -782,7 +783,7 @@ mod tests {
 		matches!(lookup, SpatialLookup::Within(_));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_lookup_intersects() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -799,14 +800,14 @@ mod tests {
 		matches!(lookup, SpatialLookup::Intersects(_));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_lookup_dwithin() {
 		let point = Point::new(0.0, 0.0);
 		let lookup = SpatialLookup::DWithin(point, 1000.0);
 		matches!(lookup, SpatialLookup::DWithin(_, _));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gist_index_with_different_column() {
 		let index = GiSTIndex::new("geometry");
 		let sql = index.create_sql("shapes", "shapes_geom_idx");
@@ -815,7 +816,7 @@ mod tests {
 		assert!(sql.contains("shapes_geom_idx"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multilinestring_total_length() {
 		let mls = MultiLineString {
 			lines: vec![
@@ -835,7 +836,7 @@ mod tests {
 		assert_eq!(total_length, 8.0); // 5 + 3
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multipolygon_total_area() {
 		let mp = MultiPolygon {
 			polygons: vec![
@@ -869,7 +870,7 @@ mod tests {
 		assert_eq!(total_area, 37.0); // 25 + 12
 	}
 
-	#[test]
+	#[rstest]
 	fn test_point_distance_negative_coords() {
 		// Use Cartesian coordinates (not WGS84) for simple Euclidean distance test
 		let p1 = Point::with_srid(-3.0, -4.0, 0);
@@ -877,13 +878,13 @@ mod tests {
 		assert_eq!(p1.distance_to(&p2), 5.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_point_distance_same_point() {
 		let p = Point::new(5.0, 5.0);
 		assert_eq!(p.distance_to(&p), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linestring_single_point() {
 		let line = LineString {
 			points: vec![Point::new(0.0, 0.0)],
@@ -892,7 +893,7 @@ mod tests {
 		assert_eq!(line.length(), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_polygon_with_multiple_holes() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -926,7 +927,7 @@ mod tests {
 		assert_eq!(polygon.area(), 366.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_spatial_reference_systems() {
 		let wgs84_point = Point::new(139.6917, 35.6895); // Tokyo in WGS84
 		assert_eq!(wgs84_point.srid, 4326);
@@ -935,7 +936,7 @@ mod tests {
 		assert_eq!(web_mercator_point.srid, 3857);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_unit_conversions() {
 		let km = Distance::km(1.0);
 		let m = Distance::m(1000.0);
@@ -944,7 +945,7 @@ mod tests {
 		assert_eq!(m.to_meters(), 1000.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wgs84_to_web_mercator() {
 		// Test transformation from WGS84 to Web Mercator
 		let wgs84_point = Point::with_srid(0.0, 0.0, 4326); // Equator at prime meridian
@@ -956,7 +957,7 @@ mod tests {
 		assert!((web_mercator.y - 0.0).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_web_mercator_to_wgs84() {
 		// Test transformation from Web Mercator to WGS84
 		let web_mercator = Point::with_srid(0.0, 0.0, 3857);
@@ -968,7 +969,7 @@ mod tests {
 		assert!((wgs84.y - 0.0).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_coordinate_transform_tokyo() {
 		// Test Tokyo coordinates (139.6917°E, 35.6895°N)
 		let tokyo_wgs84 = Point::with_srid(139.6917, 35.6895, 4326);
@@ -987,7 +988,7 @@ mod tests {
 		assert!((tokyo_back.y - 35.6895).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_with_holes_area() {
 		// 100x100 square with 20x20 hole
 		let polygon = Polygon {
@@ -1013,7 +1014,7 @@ mod tests {
 		assert_eq!(polygon.exterior_area(), 10000.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_perimeter() {
 		// 3x4 rectangle
 		let polygon = Polygon {
@@ -1032,7 +1033,7 @@ mod tests {
 		assert_eq!(polygon.perimeter(), 14.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_point_in_polygon() {
 		let polygon = Polygon {
 			exterior: vec![
@@ -1051,7 +1052,7 @@ mod tests {
 		assert!(!polygon.contains_point(&Point::new(-1.0, 5.0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linestring_geodesic_length() {
 		// Simple line for WGS84
 		let line = LineString {

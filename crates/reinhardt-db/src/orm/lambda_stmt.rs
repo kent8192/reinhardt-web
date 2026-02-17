@@ -318,8 +318,9 @@ impl Default for CacheStatistics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_lambda_stmt_cache_operations() {
 		let cache = QueryCache::new();
 		cache.set("key1".to_string(), "value1".to_string());
@@ -328,7 +329,7 @@ mod tests {
 		assert_eq!(cache.get("key1"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lambda_execution() {
 		let stmt = LambdaStmt::new("test_query", || {
 			"SELECT * FROM users WHERE active = true".to_string()
@@ -343,7 +344,7 @@ mod tests {
 		assert!(stmt.is_cached());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_statistics() {
 		let stats = CacheStatistics::new();
 		assert_eq!(stats.hits, 0);

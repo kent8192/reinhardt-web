@@ -287,14 +287,15 @@ impl CleanupStats {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_manager_new() {
 		let manager = ContentTypeCleanupManager::new();
 		assert_eq!(manager.active_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_as_active() {
 		let mut manager = ContentTypeCleanupManager::new();
 
@@ -304,7 +305,7 @@ mod tests {
 		assert_eq!(manager.active_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_content_type_active() {
 		let mut manager = ContentTypeCleanupManager::new();
 		let ct = ContentType::new("auth", "user");
@@ -313,7 +314,7 @@ mod tests {
 		assert!(manager.is_content_type_active(&ct));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_all_active() {
 		let mut manager = ContentTypeCleanupManager::new();
 		let types = vec![
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(manager.active_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_active() {
 		let mut manager = ContentTypeCleanupManager::new();
 		manager.mark_as_active("blog", "article");
@@ -338,7 +339,7 @@ mod tests {
 		assert_eq!(manager.active_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_stale_content_types() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -355,7 +356,7 @@ mod tests {
 		assert_eq!(stale[0].model, "comment");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_stale_for_app() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -372,7 +373,7 @@ mod tests {
 		assert_eq!(stale.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dry_run() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -392,7 +393,7 @@ mod tests {
 		assert!(registry.get("blog", "comment").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -414,7 +415,7 @@ mod tests {
 		assert!(registry.get("blog", "comment").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_content_type() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -429,7 +430,7 @@ mod tests {
 		assert!(registry.get("blog", "article").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_content_type_not_found() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -440,7 +441,7 @@ mod tests {
 		assert!(removed.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_model_unregistered() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -453,7 +454,7 @@ mod tests {
 		assert!(registry.get("blog", "comment").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_app_unregistered() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -468,7 +469,7 @@ mod tests {
 		assert!(registry.get("auth", "user").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_result() {
 		let mut result = CleanupResult::new();
 
@@ -483,7 +484,7 @@ mod tests {
 		assert_eq!(result.total_processed(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_stats() {
 		let mut result = CleanupResult::new();
 		result.removed.push(ContentType::new("blog", "article"));

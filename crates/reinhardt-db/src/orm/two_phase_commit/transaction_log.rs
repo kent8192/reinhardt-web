@@ -260,8 +260,9 @@ impl TransactionLog for FileTransactionLog {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_log_entry_creation() {
 		let entry = TransactionLogEntry::new(
 			"txn_001",
@@ -275,7 +276,7 @@ mod tests {
 		assert!(entry.metadata.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_log_entry_with_metadata() {
 		let entry = TransactionLogEntry::new("txn_002", TransactionState::Prepared, vec![])
 			.with_metadata("user", "alice")
@@ -288,7 +289,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_log_write_read() {
 		let log = InMemoryTransactionLog::new();
 		let entry =
@@ -300,7 +301,7 @@ mod tests {
 		assert_eq!(read_entry, Some(entry));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_log_delete() {
 		let log = InMemoryTransactionLog::new();
 		let entry = TransactionLogEntry::new("txn_004", TransactionState::Active, vec![]);
@@ -312,7 +313,7 @@ mod tests {
 		assert!(log.read("txn_004").unwrap().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_log_find_by_state() {
 		let log = InMemoryTransactionLog::new();
 
@@ -339,7 +340,7 @@ mod tests {
 		assert_eq!(prepared.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_log_read_all() {
 		let log = InMemoryTransactionLog::new();
 
@@ -360,7 +361,7 @@ mod tests {
 		assert_eq!(all.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_log_write_read() {
 		let temp_dir = std::env::temp_dir().join("reinhardt_2pc_test");
 		let _ = std::fs::remove_dir_all(&temp_dir); // Clean up if exists
@@ -384,7 +385,7 @@ mod tests {
 		std::fs::remove_dir_all(&temp_dir).unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_log_delete() {
 		let temp_dir = std::env::temp_dir().join("reinhardt_2pc_test_delete");
 		let _ = std::fs::remove_dir_all(&temp_dir);
@@ -402,7 +403,7 @@ mod tests {
 		std::fs::remove_dir_all(&temp_dir).unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_log_find_by_state() {
 		let temp_dir = std::env::temp_dir().join("reinhardt_2pc_test_state");
 		let _ = std::fs::remove_dir_all(&temp_dir);

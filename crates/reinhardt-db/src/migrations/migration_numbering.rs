@@ -230,9 +230,10 @@ impl MigrationNumbering {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::fs;
 
-	#[test]
+	#[rstest]
 	fn test_next_number_first_migration() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -241,7 +242,7 @@ mod tests {
 		assert_eq!(next, "0001");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_next_number_existing_migrations() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -257,7 +258,7 @@ mod tests {
 		assert_eq!(next, "0004");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_highest_number_no_migrations() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -266,7 +267,7 @@ mod tests {
 		assert_eq!(highest, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_highest_number_with_migrations() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -282,7 +283,7 @@ mod tests {
 		assert_eq!(highest, 5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_highest_number_ignores_non_migration_files() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -299,7 +300,7 @@ mod tests {
 		assert_eq!(highest, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_all_numbers() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");
@@ -320,7 +321,7 @@ mod tests {
 		assert_eq!(all_numbers.get("app2"), Some(&1));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zero_padding() {
 		let temp_dir = tempfile::tempdir().unwrap();
 		let migrations_dir = temp_dir.path().join("migrations");

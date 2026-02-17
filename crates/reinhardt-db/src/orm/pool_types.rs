@@ -614,38 +614,39 @@ impl PoolStatistics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_queue_pool_creation() {
 		let pool = QueuePool::new(10, Duration::from_secs(30));
 		assert_eq!(pool.max_connections, 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_pool_timeout() {
 		let pool = QueuePool::new(5, Duration::from_secs(10));
 		assert_eq!(pool.timeout, Duration::from_secs(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_pool_size() {
 		let pool = NullPool::new();
 		assert_eq!(pool.size(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_static_pool_size() {
 		let pool = StaticPool::new();
 		assert_eq!(pool.size(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_async_adapted_queue_pool_creation() {
 		let pool = AsyncAdaptedQueuePool::new(20);
 		assert_eq!(pool.max_connections, 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_pool_different_sizes() {
 		let small_pool = QueuePool::new(1, Duration::from_secs(30));
 		let large_pool = QueuePool::new(100, Duration::from_secs(30));
@@ -654,7 +655,7 @@ mod tests {
 		assert_eq!(large_pool.max_connections, 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_pool_different_timeouts() {
 		let short_timeout = QueuePool::new(10, Duration::from_secs(5));
 		let long_timeout = QueuePool::new(10, Duration::from_millis(500));
@@ -663,7 +664,7 @@ mod tests {
 		assert_eq!(long_timeout.timeout, Duration::from_millis(500));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_pool_types() {
 		let queue_pool = QueuePool::new(10, Duration::from_secs(30));
 		let null_pool = NullPool::new();
@@ -674,7 +675,7 @@ mod tests {
 		assert_eq!(static_pool.size(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_async_pool_different_sizes() {
 		let pool1 = AsyncAdaptedQueuePool::new(5);
 		let pool2 = AsyncAdaptedQueuePool::new(50);
@@ -683,7 +684,7 @@ mod tests {
 		assert_eq!(pool2.max_connections, 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pool_error_types() {
 		let timeout_error = PoolError::Timeout;
 		let max_error = PoolError::MaxConnectionsReached;
@@ -692,7 +693,7 @@ mod tests {
 		matches!(max_error, PoolError::MaxConnectionsReached);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pooled_connection_creation() {
 		let conn = PooledConnection::new(1);
 
@@ -701,7 +702,7 @@ mod tests {
 		assert!(!conn.has_handle());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pooled_connection_different_ids() {
 		let conn1 = PooledConnection::new(1);
 		let conn2 = PooledConnection::new(2);
@@ -709,7 +710,7 @@ mod tests {
 		assert_ne!(conn1.id, conn2.id);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pooled_connection_age() {
 		let conn = PooledConnection::new(1);
 
@@ -717,7 +718,7 @@ mod tests {
 		assert!(conn.age().as_millis() >= 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pooled_connection_idle_time() {
 		let mut conn = PooledConnection::new(1);
 
@@ -728,20 +729,20 @@ mod tests {
 		assert!(conn.idle_time().as_millis() < 5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pooled_connection_is_valid_without_handle() {
 		let conn = PooledConnection::new(1);
 		assert!(conn.is_valid()); // No handle means always valid
 		assert!(conn.database_type().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_pool_zero_timeout() {
 		let pool = QueuePool::new(10, Duration::from_secs(0));
 		assert_eq!(pool.timeout, Duration::from_secs(0));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_large_queue_pool() {
 		let pool = QueuePool::new(1000, Duration::from_secs(60));
 		assert_eq!(pool.max_connections, 1000);

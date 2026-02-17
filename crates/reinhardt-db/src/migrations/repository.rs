@@ -39,6 +39,7 @@ pub trait MigrationRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
 	/// Test helper to create a migration
@@ -105,6 +106,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_save_and_get() {
 		let mut repo = TestRepository::new();
@@ -117,6 +119,7 @@ mod tests {
 		assert_eq!(retrieved.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_list() {
 		let mut repo = TestRepository::new();
@@ -138,6 +141,7 @@ mod tests {
 		assert_eq!(users_migrations.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists() {
 		let mut repo = TestRepository::new();
@@ -149,6 +153,7 @@ mod tests {
 		assert!(!repo.exists("polls", "0002_nonexistent").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete() {
 		let mut repo = TestRepository::new();
@@ -163,6 +168,7 @@ mod tests {
 		assert!(!repo.exists("polls", "0001_initial").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_not_found() {
 		let repo = TestRepository::new();

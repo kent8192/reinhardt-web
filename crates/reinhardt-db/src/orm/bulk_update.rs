@@ -107,8 +107,9 @@ impl BulkUpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_plain() {
 		let builder = BulkUpdateBuilder::new("person").set("first_name", "Dr.");
 
@@ -118,7 +119,7 @@ mod tests {
 		assert_eq!(params, vec!["Dr."]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_with_where() {
 		let builder = BulkUpdateBuilder::new("person")
 			.set("first_name", "Dr.")
@@ -129,7 +130,7 @@ mod tests {
 		assert_eq!(params, vec!["Dr."]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_expanded() {
 		let builder = BulkUpdateBuilder::new("person")
 			.set_hybrid_expanded(vec![("first_name", "Dr."), ("last_name", "No")]);
@@ -141,7 +142,7 @@ mod tests {
 		assert_eq!(params.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synchronize_strategy() {
 		let builder = BulkUpdateBuilder::new("person")
 			.set("first_name", "Dr.")

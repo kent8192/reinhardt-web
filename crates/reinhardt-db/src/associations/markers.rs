@@ -532,8 +532,9 @@ impl<K, S> PolymorphicManyToManyField<K, S> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_field_creation() {
 		struct User;
 		struct Group;
@@ -541,25 +542,25 @@ mod tests {
 		let _field: ManyToManyField<User, Group> = ManyToManyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_field_self_referential() {
 		struct User;
 		// User -> User (self-referential, e.g., following)
 		let _field: ManyToManyField<User, User> = ManyToManyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_many_field_creation() {
 		struct Post;
 		let _field: OneToManyField<Post> = OneToManyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_many_to_many_field_creation() {
 		let _field: PolymorphicManyToManyField<i64> = PolymorphicManyToManyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_impl() {
 		#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 		struct Article;
@@ -571,7 +572,7 @@ mod tests {
 		assert_eq!(field1, field2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_field_with_metadata() {
 		struct User;
 		struct Tag;
@@ -584,13 +585,13 @@ mod tests {
 		let _field2: ManyToManyField<User, Tag, OrderedRelation> = ManyToManyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_field_creation() {
 		struct User;
 		let _field: ForeignKeyField<User> = ForeignKeyField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_field_default() {
 		#[derive(Debug, PartialEq)]
 		struct User;
@@ -599,13 +600,13 @@ mod tests {
 		assert_eq!(field1, field2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_field_creation() {
 		struct User;
 		let _field: OneToOneField<User> = OneToOneField::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_field_default() {
 		#[derive(Debug, PartialEq)]
 		struct User;

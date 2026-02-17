@@ -437,71 +437,72 @@ impl Default for CITextField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_array_field_basic() {
 		let field = ArrayField::<i32>::new("INTEGER");
 		assert_eq!(field.base_type(), "INTEGER");
 		assert_eq!(field.sql_type(), "INTEGER[]");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_field_with_size() {
 		let field = ArrayField::<String>::new("VARCHAR(50)").with_size(10);
 		assert_eq!(field.size(), Some(10));
 		assert_eq!(field.sql_type(), "VARCHAR(50)[10]");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_field() {
 		let field = JSONBField::new();
 		assert_eq!(field.sql_type(), "JSONB");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jsonb_field_with_default() {
 		let default = serde_json::json!({"key": "value"});
 		let field = JSONBField::new().with_default(default.clone());
 		assert_eq!(field.default(), Some(&default));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hstore_field() {
 		let field = HStoreField::new();
 		assert_eq!(field.sql_type(), "HSTORE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_range_field() {
 		let field = IntegerRangeField::new();
 		assert_eq!(field.sql_type(), "INT4RANGE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_biginteger_range_field() {
 		let field = BigIntegerRangeField::new();
 		assert_eq!(field.sql_type(), "INT8RANGE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_field() {
 		let field = DateRangeField::new();
 		assert_eq!(field.sql_type(), "DATERANGE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_range_field() {
 		let field = DateTimeRangeField::new();
 		assert_eq!(field.sql_type(), "TSTZRANGE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_citext_field() {
 		let field = CITextField::new();
 		assert_eq!(field.sql_type(), "CITEXT");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_citext_field_with_max_length() {
 		let field = CITextField::new().with_max_length(255);
 		assert_eq!(field.sql_type(), "CITEXT");

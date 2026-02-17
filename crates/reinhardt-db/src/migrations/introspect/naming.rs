@@ -271,8 +271,9 @@ pub(super) fn is_valid_rust_identifier(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape_rust_keyword() {
 		assert_eq!(escape_rust_keyword("type"), "r#type");
 		assert_eq!(escape_rust_keyword("struct"), "r#struct");
@@ -281,7 +282,7 @@ mod tests {
 		assert_eq!(escape_rust_keyword("id"), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_pascal_case() {
 		assert_eq!(to_pascal_case("user_profiles"), "UserProfiles");
 		assert_eq!(to_pascal_case("users"), "Users");
@@ -290,7 +291,7 @@ mod tests {
 		assert_eq!(to_pascal_case(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case() {
 		assert_eq!(to_snake_case("UserProfiles"), "user_profiles");
 		assert_eq!(to_snake_case("Users"), "users");
@@ -299,7 +300,7 @@ mod tests {
 		assert_eq!(to_snake_case(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sanitize_identifier() {
 		assert_eq!(sanitize_identifier("type"), "r#type");
 		assert_eq!(sanitize_identifier("1column"), "_1column");
@@ -308,7 +309,7 @@ mod tests {
 		assert_eq!(sanitize_identifier(""), "_");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_rust_identifier() {
 		assert!(is_valid_rust_identifier("valid_name"));
 		assert!(is_valid_rust_identifier("_private"));

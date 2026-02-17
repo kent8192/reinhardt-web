@@ -594,6 +594,7 @@ pub fn column(name: &str) -> Column {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -683,28 +684,28 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_select() {
 		let query = select::<User>();
 		let sql = query.to_sql();
 		assert_eq!(sql, "SELECT * FROM users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_columns() {
 		let query = select::<User>().columns(vec![column("id"), column("name")]);
 		let sql = query.to_sql();
 		assert_eq!(sql, "SELECT id, name FROM users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_where() {
 		let query = select::<User>().where_clause(Q::new("email", "=", "test@example.com"));
 		let sql = query.to_sql();
 		assert_eq!(sql, "SELECT * FROM users WHERE email = 'test@example.com'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_join() {
 		let query = select::<User>()
 			.join("posts", "users.id = posts.user_id")
@@ -717,14 +718,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_left_join() {
 		let query = select::<User>().left_join("posts", "users.id = posts.user_id");
 		let sql = query.to_sql();
 		assert!(sql.contains("LEFT JOIN posts ON users.id = posts.user_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_order_by() {
 		let query = select::<User>()
 			.order_by("name", true)
@@ -733,7 +734,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY name, created_at DESC"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_group_by() {
 		let query = select::<User>()
 			.columns(vec![column("status"), column("COUNT(*)")])
@@ -742,7 +743,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY status"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_having() {
 		let query = select::<User>()
 			.group_by(vec!["status"])
@@ -751,7 +752,7 @@ mod tests {
 		assert!(sql.contains("HAVING COUNT(*) > 5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_limit_offset() {
 		let query = select::<User>().limit(10).offset(20);
 		let sql = query.to_sql();
@@ -759,14 +760,14 @@ mod tests {
 		assert!(sql.contains("OFFSET 20"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqlalchemy_query_select_distinct() {
 		let query = select::<User>().distinct().columns(vec![column("email")]);
 		let sql = query.to_sql();
 		assert!(sql.contains("SELECT DISTINCT email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_query() {
 		let query = select::<User>()
 			.columns(vec![column("users.id"), column("users.name")])

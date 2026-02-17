@@ -321,8 +321,9 @@ impl Migration {
 mod migrations_extended_tests {
 	use crate::migrations::operations;
 	use crate::migrations::{FieldType, ForeignKeyAction};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_alter_order_with_respect_to() {
 		use crate::migrations::ProjectState;
@@ -391,7 +392,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("category_id"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_alter_order_with_respect_to_1() {
 		use crate::migrations::ProjectState;
@@ -451,7 +452,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_auto_field_does_not_request_default() {
 		use crate::migrations::ProjectState;
@@ -489,7 +490,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_auto_field_does_not_request_default_1() {
 		use crate::migrations::ProjectState;
@@ -520,7 +521,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "entries").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_blank_textfield_and_charfield() {
 		use crate::migrations::ProjectState;
@@ -561,7 +562,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("title"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_blank_textfield_and_charfield_1() {
 		use crate::migrations::ProjectState;
@@ -601,7 +602,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_composite_pk() {
 		use crate::migrations::ProjectState;
@@ -630,7 +631,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("product_id"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_composite_pk_1() {
 		use crate::migrations::ProjectState;
@@ -655,7 +656,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "user_roles").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints() {
 		use crate::migrations::operations::*;
@@ -671,7 +672,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("ADD CHECK (age >= 18)"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints_1() {
 		use crate::migrations::operations::*;
@@ -687,7 +688,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("ADD UNIQUE (sku)"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints_with_dict_keys() {
 		use crate::migrations::ProjectState;
@@ -735,7 +736,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("discount_price"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints_with_dict_keys_1() {
 		use crate::migrations::ProjectState;
@@ -762,7 +763,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "users").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints_with_new_model() {
 		use crate::migrations::ProjectState;
@@ -792,7 +793,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("age"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_constraints_with_new_model_1() {
 		use crate::migrations::ProjectState;
@@ -825,7 +826,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_custom_fk_with_hardcoded_to() {
 		use crate::migrations::ProjectState;
@@ -878,7 +879,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_custom_fk_with_hardcoded_to_1() {
 		use crate::migrations::ProjectState;
@@ -918,7 +919,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_add_asking_for_default() {
 		use crate::migrations::ProjectState;
@@ -962,7 +963,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_add_asking_for_default_1() {
 		use crate::migrations::ProjectState;
@@ -996,7 +997,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "articles").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition() {
 		use crate::migrations::ProjectState;
@@ -1037,7 +1038,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_add_not_asking_for_null_addition_1() {
 		use crate::migrations::ProjectState;
@@ -1071,7 +1072,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "logs").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_not_asking_for_default() {
 		use crate::migrations::ProjectState;
@@ -1110,7 +1111,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_date_fields_with_auto_now_not_asking_for_default_1() {
 		use crate::migrations::ProjectState;
@@ -1141,7 +1142,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "profiles").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field() {
 		use crate::migrations::ProjectState;
@@ -1175,7 +1176,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("name"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_1() {
 		use crate::migrations::ProjectState;
@@ -1212,7 +1213,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_and_unique_together() {
 		use crate::migrations::ProjectState;
@@ -1255,7 +1256,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_and_unique_together_1() {
 		use crate::migrations::ProjectState;
@@ -1298,7 +1299,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_before_generated_field() {
 		use crate::migrations::ProjectState;
@@ -1357,7 +1358,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("total"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_before_generated_field_1() {
 		use crate::migrations::ProjectState;
@@ -1410,7 +1411,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_with_default() {
 		use crate::migrations::ProjectState;
@@ -1447,7 +1448,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("status"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_field_with_default_1() {
 		use crate::migrations::ProjectState;
@@ -1487,7 +1488,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_fk_before_generated_field() {
 		use crate::migrations::ProjectState;
@@ -1560,7 +1561,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("display_price"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_fk_before_generated_field_1() {
 		use crate::migrations::ProjectState;
@@ -1627,7 +1628,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "orders").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_index_with_new_model() {
 		use crate::migrations::ProjectState;
@@ -1667,7 +1668,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "users").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_index_with_new_model_1() {
 		use crate::migrations::ProjectState;
@@ -1705,7 +1706,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_indexes() {
 		use crate::migrations::operations::*;
@@ -1729,7 +1730,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("email"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_indexes_1() {
 		use crate::migrations::operations::*;
@@ -1753,7 +1754,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("sku"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_many_to_many() {
 		use crate::migrations::ProjectState;
@@ -1813,7 +1814,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "students_courses").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_many_to_many_1() {
 		use crate::migrations::ProjectState;
@@ -1871,7 +1872,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "posts_tags").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to() {
 		use crate::migrations::ProjectState;
@@ -1922,7 +1923,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_1() {
 		use crate::migrations::ProjectState;
@@ -1950,7 +1951,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "ordered_items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_constraint() {
 		use crate::migrations::ProjectState;
@@ -1981,7 +1982,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_constraint_1() {
 		use crate::migrations::ProjectState;
@@ -2009,7 +2010,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "entries").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_index() {
 		use crate::migrations::ProjectState;
@@ -2050,7 +2051,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_index_1() {
 		use crate::migrations::ProjectState;
@@ -2075,7 +2076,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "tasks").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_unique_together() {
 		use crate::migrations::ProjectState;
@@ -2106,7 +2107,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_order_with_respect_to_unique_together_1() {
 		use crate::migrations::ProjectState;
@@ -2137,7 +2138,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "slides").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_with_field_removed_from_base_model() {
 		// Tests joined table inheritance where child model has its own table
@@ -2191,7 +2192,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_model_with_field_removed_from_base_model_1() {
 		// Tests single table inheritance where parent and children share one table
@@ -2241,7 +2242,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_non_blank_textfield_and_charfield() {
 		use crate::migrations::ProjectState;
@@ -2288,7 +2289,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("title"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_non_blank_textfield_and_charfield_1() {
 		use crate::migrations::ProjectState;
@@ -2325,7 +2326,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_not_null_field_with_db_default() {
 		use crate::migrations::ProjectState;
@@ -2361,7 +2362,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("created_at"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_not_null_field_with_db_default_1() {
 		use crate::migrations::ProjectState;
@@ -2401,7 +2402,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_unique_together() {
 		use crate::migrations::ProjectState;
@@ -2432,7 +2433,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_add_unique_together_1() {
 		use crate::migrations::ProjectState;
@@ -2467,7 +2468,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "books").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_constraint() {
 		use crate::migrations::operations::*;
@@ -2490,7 +2491,7 @@ mod migrations_extended_tests {
 		assert!(add_sql.contains("ADD CHECK (age >= 21)"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_constraint_1() {
 		use crate::migrations::operations::*;
@@ -2513,7 +2514,7 @@ mod migrations_extended_tests {
 		assert!(add_sql.contains("ADD CHECK (price > 0)"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_add() {
 		use crate::migrations::ProjectState;
@@ -2545,7 +2546,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "custom_users").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_add_1() {
 		use crate::migrations::ProjectState;
@@ -2575,7 +2576,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products_table").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_change() {
 		use crate::migrations::ProjectState;
@@ -2608,7 +2609,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "new_table").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_change_1() {
 		use crate::migrations::ProjectState;
@@ -2638,7 +2639,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "customers").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_add() {
 		use crate::migrations::operations::*;
@@ -2653,7 +2654,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("User accounts table"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_add_1() {
 		use crate::migrations::operations::*;
@@ -2668,7 +2669,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("COMMENT='Product catalog'"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_change() {
 		use crate::migrations::operations::*;
@@ -2683,7 +2684,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("Updated user table"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_change_1() {
 		use crate::migrations::operations::*;
@@ -2697,7 +2698,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("ALTER TABLE orders"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_no_changes() {
 		use crate::migrations::operations::*;
@@ -2712,7 +2713,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("COMMENT ON TABLE users"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_no_changes_1() {
 		use crate::migrations::operations::*;
@@ -2726,7 +2727,7 @@ mod migrations_extended_tests {
 		assert!(!sql.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_remove() {
 		use crate::migrations::operations::*;
@@ -2740,7 +2741,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("COMMENT ON TABLE users IS NULL"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_comment_remove_1() {
 		use crate::migrations::operations::*;
@@ -2754,7 +2755,7 @@ mod migrations_extended_tests {
 		assert!(sql.contains("COMMENT=''"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_no_changes() {
 		use crate::migrations::ProjectState;
@@ -2787,7 +2788,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "users").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_no_changes_1() {
 		use crate::migrations::ProjectState;
@@ -2818,7 +2819,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_remove() {
 		use crate::migrations::ProjectState;
@@ -2849,7 +2850,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "myapp_model").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_remove_1() {
 		use crate::migrations::ProjectState;
@@ -2879,7 +2880,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "app_default").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_with_model_change() {
 		use crate::migrations::ProjectState;
@@ -2918,7 +2919,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("email"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_db_table_with_model_change_1() {
 		use crate::migrations::ProjectState;
@@ -2948,7 +2949,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field() {
 		use crate::migrations::ProjectState;
@@ -2984,7 +2985,7 @@ mod migrations_extended_tests {
 		assert!(model.fields.contains_key("name"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_1() {
 		use crate::migrations::ProjectState;
@@ -3023,7 +3024,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_and_unique_together() {
 		use crate::migrations::ProjectState;
@@ -3063,7 +3064,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_and_unique_together_1() {
 		use crate::migrations::ProjectState;
@@ -3106,7 +3107,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "orders").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_fk_dependency_other_app() {
 		use crate::migrations::ProjectState;
@@ -3164,7 +3165,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_fk_dependency_other_app_1() {
 		use crate::migrations::ProjectState;
@@ -3213,7 +3214,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("store", "items").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_oneoff_default() {
 		use crate::migrations::ProjectState;
@@ -3259,7 +3260,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_oneoff_default_1() {
 		use crate::migrations::ProjectState;
@@ -3301,7 +3302,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_with_db_default() {
 		use crate::migrations::ProjectState;
@@ -3344,7 +3345,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_with_db_default_1() {
 		use crate::migrations::ProjectState;
@@ -3386,7 +3387,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_with_default() {
 		use crate::migrations::ProjectState;
@@ -3429,7 +3430,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_with_default_1() {
 		use crate::migrations::ProjectState;
@@ -3471,7 +3472,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_without_default() {
 		use crate::migrations::ProjectState;
@@ -3514,7 +3515,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_field_to_not_null_without_default_1() {
 		use crate::migrations::ProjectState;
@@ -3556,7 +3557,7 @@ mod migrations_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_fk_before_model_deletion() {
 		use crate::migrations::ProjectState;
@@ -3629,7 +3630,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("testapp", "referencing").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_fk_before_model_deletion_1() {
 		use crate::migrations::ProjectState;
@@ -3679,7 +3680,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_many_to_many() {
 		// Tests altering a many-to-many association table by adding extra fields
@@ -3768,7 +3769,7 @@ mod migrations_extended_tests {
 		assert!(assoc_model.fields.contains_key("contribution_role"));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_many_to_many_1() {
 		// Tests altering a many-to-many by changing field types in association table
@@ -3862,7 +3863,7 @@ mod migrations_extended_tests {
 		assert!(enrollment_model.fields.contains_key("grade"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "runtime-only")]
 	// From: Django/migrations
 	fn test_alter_model_managers() {
@@ -3881,7 +3882,7 @@ mod migrations_extended_tests {
 		)
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "runtime-only")]
 	// From: Django/migrations
 	fn test_alter_model_managers_1() {
@@ -3896,7 +3897,7 @@ mod migrations_extended_tests {
 		)
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_model_options() {
 		use crate::migrations::ProjectState;
@@ -3932,7 +3933,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "articles").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_model_options_1() {
 		use crate::migrations::ProjectState;
@@ -3974,7 +3975,7 @@ mod migrations_extended_tests {
 		assert!(state.get_model("app", "products").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "don't affect database schema")]
 	// From: Django/migrations
 	fn test_alter_model_options_proxy() {
@@ -3993,7 +3994,7 @@ mod migrations_extended_tests {
 		panic!("Proxy models don't require migrations as they don't affect database schema")
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "don't affect database schema")]
 	// From: Django/migrations
 	fn test_alter_model_options_proxy_1() {
@@ -4006,7 +4007,7 @@ mod migrations_extended_tests {
 		panic!("Proxy models don't require migrations as they don't affect database schema")
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_regex_string_to_compiled_regex() {
 		// Regex validators are application-level validation, not database schema.
@@ -4023,7 +4024,7 @@ mod migrations_extended_tests {
 		assert!(state.models.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/migrations
 	fn test_alter_regex_string_to_compiled_regex_1() {
 		// Validators (including regex) are runtime-only and don't affect schema

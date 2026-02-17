@@ -157,14 +157,15 @@ impl MigrationNamer {
 mod tests {
 	use super::*;
 	use crate::migrations::{ColumnDefinition, FieldType};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_initial_migration() {
 		let name = MigrationNamer::generate_name(&[], true);
 		assert_eq!(name, "initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_operation_create_table() {
 		let ops = vec![Operation::CreateTable {
 			name: "users".to_string(),
@@ -179,7 +180,7 @@ mod tests {
 		assert_eq!(name, "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_operations() {
 		let ops = vec![
 			Operation::AddColumn {
@@ -214,7 +215,7 @@ mod tests {
 		assert_eq!(name, "users_email_users_phone");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_fragments_auto_naming() {
 		let ops = vec![Operation::RunSQL {
 			sql: "SELECT 1".to_string(),
@@ -226,7 +227,7 @@ mod tests {
 		assert!(name.contains("_"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_long_name() {
 		let long_name = "a".repeat(60);
 		let truncated = MigrationNamer::truncate_name(&long_name);
@@ -235,7 +236,7 @@ mod tests {
 		assert!(truncated.ends_with("_and_more"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exact_max_length() {
 		let exact_name = "a".repeat(MAX_NAME_LENGTH);
 		let result = if exact_name.len() <= MAX_NAME_LENGTH {

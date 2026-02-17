@@ -310,8 +310,9 @@ pub fn list_models_for_app(registry: &ContentTypeRegistry, app_label: &str) -> V
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_get_content_type_for_model() {
 		let mut registry = ContentTypeRegistry::new();
 		let ct = get_content_type_for_model(&mut registry, "auth", "user");
@@ -324,7 +325,7 @@ mod tests {
 		assert_eq!(ct.id, ct2.id);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_content_type_for_object() {
 		struct TestModel {
 			id: i64,
@@ -346,7 +347,7 @@ mod tests {
 		assert_eq!(ct.model, "testmodel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_admin_url() {
 		let ct = ContentType::new("blog", "article");
 
@@ -360,13 +361,13 @@ mod tests {
 		assert_eq!(format_admin_url(&ct, None), "/admin/blog/article/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_admin_add_url() {
 		let ct = ContentType::new("blog", "article");
 		assert_eq!(format_admin_add_url(&ct), "/admin/blog/article/add/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_admin_delete_url() {
 		let ct = ContentType::new("blog", "article");
 		assert_eq!(
@@ -375,7 +376,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_admin_history_url() {
 		let ct = ContentType::new("blog", "article");
 		assert_eq!(
@@ -384,7 +385,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_model() {
 		let ct = ContentType::new("blog", "article");
 
@@ -393,7 +394,7 @@ mod tests {
 		assert!(!matches_model(&ct, "auth", "article"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_qualified_name() {
 		assert_eq!(
 			parse_qualified_name("blog.article"),
@@ -412,7 +413,7 @@ mod tests {
 		assert_eq!(parse_qualified_name("."), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_by_qualified_name() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -425,7 +426,7 @@ mod tests {
 		assert!(not_found.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_app() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -439,7 +440,7 @@ mod tests {
 		assert_eq!(grouped.get("auth").map(|v| v.len()), Some(2));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_app_labels() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -454,7 +455,7 @@ mod tests {
 		assert!(apps.contains(&"blog".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_models_for_app() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));

@@ -635,7 +635,7 @@ mod tests {
 		assert_eq!(result.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_order_value_variants() {
 		let int_value = OrderValue::Integer(42);
 		let str_value = OrderValue::String("test".to_string());

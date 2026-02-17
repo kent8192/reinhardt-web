@@ -769,6 +769,7 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 #[cfg(all(test, feature = "database"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::Once;
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -804,6 +805,7 @@ mod tests {
 		persistence
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_table() {
 		init_drivers();
@@ -824,6 +826,7 @@ mod tests {
 			.expect("Failed to create table second time");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_save_and_get() {
 		let persistence = create_test_persistence().await;
@@ -846,6 +849,7 @@ mod tests {
 		assert_eq!(loaded.model, "Post");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_by_id() {
 		let persistence = create_test_persistence().await;
@@ -865,6 +869,7 @@ mod tests {
 		assert_eq!(loaded.model, "User");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_or_create() {
 		let persistence = create_test_persistence().await;
@@ -884,6 +889,7 @@ mod tests {
 		assert_eq!(ct1.id, ct2.id);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_all() {
 		let persistence = create_test_persistence().await;
@@ -911,6 +917,7 @@ mod tests {
 		assert_eq!(all[2].app_label, "app3");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists() {
 		let persistence = create_test_persistence().await;
@@ -936,6 +943,7 @@ mod tests {
 		assert!(exists);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete() {
 		let persistence = create_test_persistence().await;
@@ -968,6 +976,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unique_constraint() {
 		let persistence = create_test_persistence().await;
@@ -985,6 +994,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_update_existing() {
 		let persistence = create_test_persistence().await;

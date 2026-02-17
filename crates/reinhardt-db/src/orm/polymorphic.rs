@@ -522,6 +522,7 @@ pub fn polymorphic_registry() -> &'static parking_lot::RwLock<PolymorphicRegistr
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -612,7 +613,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_config_creation() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		assert_eq!(config.type_field(), "content_type");
@@ -620,20 +621,20 @@ mod tests {
 		assert_eq!(config.inheritance_type(), InheritanceType::SingleTable);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_config_with_inheritance() {
 		let config =
 			PolymorphicConfig::new("type", "id").with_inheritance(InheritanceType::JoinedTable);
 		assert_eq!(config.inheritance_type(), InheritanceType::JoinedTable);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_config_with_default_type() {
 		let config = PolymorphicConfig::new("type", "id").with_default_type("post");
 		assert_eq!(config.default_type(), Some("post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_identity_creation() {
 		let identity = PolymorphicIdentity::new("user", "users", "id");
 		assert_eq!(identity.type_id(), "user");
@@ -641,7 +642,7 @@ mod tests {
 		assert_eq!(identity.pk_field(), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_identity_serialization() {
 		let identity = PolymorphicIdentity::new("post", "posts", "id");
 		let json = serde_json::to_string(&identity).unwrap();
@@ -649,7 +650,7 @@ mod tests {
 		assert_eq!(identity, deserialized);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_creation() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -657,7 +658,7 @@ mod tests {
 		assert_eq!(rel.relationship_type(), RelationshipType::ManyToOne);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_register_type() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let mut rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -669,7 +670,7 @@ mod tests {
 		assert_eq!(rel.type_ids(), vec!["post"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_multiple_types() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let mut rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -682,7 +683,7 @@ mod tests {
 		assert!(rel.get_identity("user").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_build_query() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let mut rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -695,7 +696,7 @@ mod tests {
 		assert!(sql.contains("WHERE id = 123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_build_query_unknown_type() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -704,7 +705,7 @@ mod tests {
 		assert!(sql.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_type_filter() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -713,7 +714,7 @@ mod tests {
 		assert_eq!(filter, "content_type = 'post'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_relation_join_clause() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let mut rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -726,13 +727,13 @@ mod tests {
 		assert!(join.contains("comments.object_id = posts.id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_registry_creation() {
 		let registry = PolymorphicRegistry::new();
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_registry_register() {
 		let mut registry = PolymorphicRegistry::new();
 		let identity = PolymorphicIdentity::new("user", "users", "id");
@@ -742,7 +743,7 @@ mod tests {
 		assert!(registry.get("user").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_registry_multiple_types() {
 		let mut registry = PolymorphicRegistry::new();
 		registry.register(PolymorphicIdentity::new("user", "users", "id"));
@@ -752,7 +753,7 @@ mod tests {
 		assert_eq!(registry.type_ids().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_registry_clear() {
 		let mut registry = PolymorphicRegistry::new();
 		registry.register(PolymorphicIdentity::new("user", "users", "id"));
@@ -762,13 +763,13 @@ mod tests {
 		assert_eq!(registry.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_registry_get_unknown() {
 		let registry = PolymorphicRegistry::new();
 		assert!(registry.get("unknown").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_query_creation() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -777,7 +778,7 @@ mod tests {
 		assert!(query.selected_type().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_query_filter_type() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -786,7 +787,7 @@ mod tests {
 		assert_eq!(query.selected_type(), Some("post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_query_build_sql() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -797,7 +798,7 @@ mod tests {
 		assert!(sql.contains("WHERE content_type = 'post'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polymorphic_query_multiple_filters() {
 		let config = PolymorphicConfig::new("content_type", "object_id");
 		let rel = PolymorphicRelation::<Comment>::new("content_object", config);
@@ -811,7 +812,7 @@ mod tests {
 		assert!(sql.contains(" AND "));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_global_registry_access() {
 		let registry = polymorphic_registry();
 		let mut reg = registry.write();
@@ -823,7 +824,7 @@ mod tests {
 		reg.clear();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inheritance_type_equality() {
 		assert_eq!(InheritanceType::SingleTable, InheritanceType::SingleTable);
 		assert_ne!(InheritanceType::SingleTable, InheritanceType::JoinedTable);

@@ -464,6 +464,7 @@ mod tests {
 	use crate::orm::Model;
 	use crate::orm::query_fields::field::Field;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -503,7 +504,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_simple_equality() {
 		let lookup =
 			Field::<TestUser, String>::new(vec!["email"]).eq("test@example.com".to_string());
@@ -511,14 +512,14 @@ mod tests {
 		assert_eq!(sql, "email = 'test@example.com'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_contains() {
 		let lookup = Field::<TestUser, String>::new(vec!["email"]).contains("example");
 		let sql = QueryFieldCompiler::compile(&lookup);
 		assert_eq!(sql, "email LIKE '%example%'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_lower_contains() {
 		let lookup = Field::<TestUser, String>::new(vec!["email"])
 			.lower()
@@ -527,28 +528,28 @@ mod tests {
 		assert_eq!(sql, "LOWER(email) LIKE '%example%'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_numeric_comparison() {
 		let lookup = Field::<TestUser, i32>::new(vec!["age"]).gte(18);
 		let sql = QueryFieldCompiler::compile(&lookup);
 		assert_eq!(sql, "age >= 18");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_range() {
 		let lookup = Field::<TestUser, i32>::new(vec!["age"]).in_range(18, 65);
 		let sql = QueryFieldCompiler::compile(&lookup);
 		assert_eq!(sql, "age BETWEEN 18 AND 65");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_is_null() {
 		let lookup = Field::<TestUser, Option<String>>::new(vec!["email"]).is_null();
 		let sql = QueryFieldCompiler::compile(&lookup);
 		assert_eq!(sql, "email IS NULL");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_injection_prevention() {
 		let lookup = Field::<TestUser, String>::new(vec!["email"])
 			.eq("test'; DROP TABLE users; --".to_string());

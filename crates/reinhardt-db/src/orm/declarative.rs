@@ -405,8 +405,9 @@ impl Default for DeclarativeBase {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_new() {
 		let field = FieldMetadata::new("username", "CharField");
 		assert_eq!(field.name, "username");
@@ -418,7 +419,7 @@ mod tests {
 		assert!(field.max_length.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_builder() {
 		let field = FieldMetadata::new("username", "CharField")
 			.nullable(true)
@@ -430,13 +431,13 @@ mod tests {
 		assert_eq!(field.max_length, Some(150));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_primary_key() {
 		let field = FieldMetadata::new("id", "AutoField").primary_key(true);
 		assert!(field.primary_key);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_chaining() {
 		let field = FieldMetadata::new("email", "EmailField")
 			.nullable(true)
@@ -449,7 +450,7 @@ mod tests {
 		assert_eq!(field.max_length, Some(254));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_from_char_field() {
 		use crate::orm::fields::{CharField, Field};
 
@@ -461,7 +462,7 @@ mod tests {
 		assert_eq!(metadata.field_type, "CharField");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_new() {
 		let metadata = ModelMetadata::new("users");
 		assert_eq!(metadata.table_name, "users");
@@ -469,7 +470,7 @@ mod tests {
 		assert_eq!(metadata.primary_key_fields.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_add_field() {
 		let mut metadata = ModelMetadata::new("users");
 		let field = FieldMetadata::new("username", "CharField").max_length(150);
@@ -478,7 +479,7 @@ mod tests {
 		assert_eq!(metadata.fields.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_add_primary_key() {
 		let mut metadata = ModelMetadata::new("users");
 		let id_field = FieldMetadata::new("id", "AutoField").primary_key(true);
@@ -488,7 +489,7 @@ mod tests {
 		assert_eq!(metadata.primary_key_fields[0], "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_get_field() {
 		let mut metadata = ModelMetadata::new("users");
 		let field = FieldMetadata::new("username", "CharField");
@@ -498,7 +499,7 @@ mod tests {
 		assert!(metadata.get_field("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_multiple_fields() {
 		let mut metadata = ModelMetadata::new("users");
 
@@ -514,13 +515,13 @@ mod tests {
 		assert_eq!(metadata.primary_key_fields.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_new() {
 		let base = DeclarativeBase::new();
 		assert_eq!(base.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_register_model() {
 		let base = DeclarativeBase::new();
 		let mut metadata = ModelMetadata::new("users");
@@ -531,7 +532,7 @@ mod tests {
 		assert_eq!(base.count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_get_metadata() {
 		let base = DeclarativeBase::new();
 		let mut metadata = ModelMetadata::new("users");
@@ -545,7 +546,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().table_name, "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_remove_model() {
 		let base = DeclarativeBase::new();
 		let metadata = ModelMetadata::new("users");
@@ -557,13 +558,13 @@ mod tests {
 		assert_eq!(base.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_remove_nonexistent() {
 		let base = DeclarativeBase::new();
 		assert!(!base.remove_model("NonExistent"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_clear() {
 		let base = DeclarativeBase::new();
 
@@ -575,7 +576,7 @@ mod tests {
 		assert_eq!(base.count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_count() {
 		let base = DeclarativeBase::new();
 		assert_eq!(base.count(), 0);
@@ -587,7 +588,7 @@ mod tests {
 		assert_eq!(base.count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_list_models() {
 		let base = DeclarativeBase::new();
 
@@ -600,7 +601,7 @@ mod tests {
 		assert!(names.contains(&"Post".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_declarative_base_multiple_models() {
 		let base = DeclarativeBase::new();
 
@@ -626,7 +627,7 @@ mod tests {
 		assert_eq!(post.fields.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_composite_primary_key() {
 		let mut metadata = ModelMetadata::new("user_groups");
 
@@ -645,7 +646,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_metadata_to_table_info() {
 		let mut metadata = ModelMetadata::new("users");
 

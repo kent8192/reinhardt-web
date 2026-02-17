@@ -1610,6 +1610,7 @@ mod tests {
 	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -1665,7 +1666,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_create_sql() {
 		let manager = TestUser::objects();
 		let mut lookup = HashMap::new();
@@ -1689,7 +1690,7 @@ mod tests {
 		assert!(insert_sql.contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_create_sql() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1712,7 +1713,7 @@ mod tests {
 		assert!(sql.contains("bob@example.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_create_sql_with_conflict() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1724,7 +1725,7 @@ mod tests {
 		assert!(sql.contains("ON CONFLICT DO NOTHING"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_sql() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1755,7 +1756,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_create_empty() {
 		use serde_json::Value;
 		let manager = TestUser::objects();
@@ -1766,7 +1767,7 @@ mod tests {
 		assert!(sql.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_empty() {
 		use serde_json::Value;
 		let manager = TestUser::objects();
@@ -1781,21 +1782,21 @@ mod tests {
 	// Additional manager tests
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_manager_new() {
 		let manager = super::Manager::<TestUser>::new();
 		// Manager is just a phantom type wrapper, so this just ensures it compiles
 		let _ = manager;
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manager_default() {
 		let manager = super::Manager::<TestUser>::default();
 		// Default should work the same as new
 		let _ = manager;
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_create_sql_empty_lookup() {
 		let manager = TestUser::objects();
 		let lookup: HashMap<String, String> = HashMap::new();
@@ -1809,7 +1810,7 @@ mod tests {
 		assert!(insert_sql.contains("INSERT") || insert_sql.contains("insert"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_create_sql_with_multiple_lookups() {
 		let manager = TestUser::objects();
 		let mut lookup = HashMap::new();
@@ -1826,7 +1827,7 @@ mod tests {
 		assert!(select_sql.contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_create_sql_single_row() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1840,7 +1841,7 @@ mod tests {
 		assert!(sql.contains("SingleUser"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bulk_update_sql_single_field() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -1859,7 +1860,7 @@ mod tests {
 		assert!(!sql.contains("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_string() {
 		use serde_json::json;
 		let value = json!("hello");
@@ -1870,7 +1871,7 @@ mod tests {
 		assert!(debug_str.contains("hello") || debug_str.contains("String"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_integer() {
 		use serde_json::json;
 		let value = json!(42);
@@ -1880,7 +1881,7 @@ mod tests {
 		assert!(debug_str.contains("42") || debug_str.contains("Int"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_float() {
 		use serde_json::json;
 		let value = json!(3.14);
@@ -1890,7 +1891,7 @@ mod tests {
 		assert!(debug_str.contains("3.14") || debug_str.contains("Double"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_bool() {
 		use serde_json::json;
 		let value = json!(true);
@@ -1900,7 +1901,7 @@ mod tests {
 		assert!(debug_str.contains("true") || debug_str.contains("Bool"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_null() {
 		use serde_json::json;
 		let value = json!(null);
@@ -1911,7 +1912,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_array() {
 		use serde_json::json;
 		let value = json!([1, 2, 3]);
@@ -1922,7 +1923,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_sea_value_object() {
 		use serde_json::json;
 		let value = json!({"key": "value"});
@@ -1933,7 +1934,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialize_value_string() {
 		use serde_json::json;
 		let value = json!("test_string");
@@ -1943,7 +1944,7 @@ mod tests {
 		assert!(serialized.contains("test_string"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialize_value_number() {
 		use serde_json::json;
 		let value = json!(123);

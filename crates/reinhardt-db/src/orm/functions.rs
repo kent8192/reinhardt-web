@@ -1235,14 +1235,15 @@ mod tests {
 	use super::*;
 	use crate::orm::annotation::Value;
 	use crate::orm::expressions::F;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cast_to_integer() {
 		let cast = Cast::new(AnnotationValue::Field(F::new("price")), SqlType::Integer);
 		assert_eq!(cast.to_sql(), "CAST(price AS INTEGER)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cast_to_varchar() {
 		let cast = Cast::new(
 			AnnotationValue::Field(F::new("id")),
@@ -1251,7 +1252,7 @@ mod tests {
 		assert_eq!(cast.to_sql(), "CAST(id AS VARCHAR(50))");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_greatest() {
 		let greatest = Greatest::new(vec![
 			AnnotationValue::Field(F::new("price1")),
@@ -1262,7 +1263,7 @@ mod tests {
 		assert_eq!(greatest.to_sql(), "GREATEST(price1, price2, 100)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_least() {
 		let least = Least::new(vec![
 			AnnotationValue::Field(F::new("score1")),
@@ -1272,7 +1273,7 @@ mod tests {
 		assert_eq!(least.to_sql(), "LEAST(score1, score2)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nullif() {
 		let nullif = NullIf::new(
 			AnnotationValue::Field(F::new("status")),
@@ -1281,7 +1282,7 @@ mod tests {
 		assert_eq!(nullif.to_sql(), "NULLIF(status, 'inactive')");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_concat() {
 		let concat = Concat::new(vec![
 			AnnotationValue::Field(F::new("first_name")),
@@ -1292,37 +1293,37 @@ mod tests {
 		assert_eq!(concat.to_sql(), "CONCAT(first_name, ' ', last_name)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_upper() {
 		let upper = Upper::new(AnnotationValue::Field(F::new("name")));
 		assert_eq!(upper.to_sql(), "UPPER(name)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lower() {
 		let lower = Lower::new(AnnotationValue::Field(F::new("email")));
 		assert_eq!(lower.to_sql(), "LOWER(email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_length() {
 		let length = Length::new(AnnotationValue::Field(F::new("description")));
 		assert_eq!(length.to_sql(), "LENGTH(description)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trim() {
 		let trim = Trim::new(AnnotationValue::Field(F::new("name")));
 		assert_eq!(trim.to_sql(), "TRIM(name)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trim_leading() {
 		let trim = Trim::new(AnnotationValue::Field(F::new("name"))).leading();
 		assert_eq!(trim.to_sql(), "LTRIM(name)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_substr() {
 		let substr = Substr::new(
 			AnnotationValue::Field(F::new("description")),
@@ -1332,31 +1333,31 @@ mod tests {
 		assert_eq!(substr.to_sql(), "SUBSTR(description, 1, 100)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_abs() {
 		let abs = Abs::new(AnnotationValue::Field(F::new("balance")));
 		assert_eq!(abs.to_sql(), "ABS(balance)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ceil() {
 		let ceil = Ceil::new(AnnotationValue::Field(F::new("price")));
 		assert_eq!(ceil.to_sql(), "CEIL(price)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floor() {
 		let floor = Floor::new(AnnotationValue::Field(F::new("score")));
 		assert_eq!(floor.to_sql(), "FLOOR(score)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_round() {
 		let round = Round::new(AnnotationValue::Field(F::new("price")), Some(2));
 		assert_eq!(round.to_sql(), "ROUND(price, 2)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mod() {
 		let mod_op = Mod::new(
 			AnnotationValue::Field(F::new("value")),
@@ -1365,7 +1366,7 @@ mod tests {
 		assert_eq!(mod_op.to_sql(), "MOD(value, 10)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_power() {
 		let power = Power::new(
 			AnnotationValue::Field(F::new("base")),
@@ -1374,67 +1375,67 @@ mod tests {
 		assert_eq!(power.to_sql(), "POWER(base, 2)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqrt() {
 		let sqrt = Sqrt::new(AnnotationValue::Field(F::new("area")));
 		assert_eq!(sqrt.to_sql(), "SQRT(area)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_greatest_minimum_expressions() {
 		let result = Greatest::new(vec![AnnotationValue::Field(F::new("x"))]);
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_least_minimum_expressions() {
 		let result = Least::new(vec![AnnotationValue::Field(F::new("x"))]);
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_concat_minimum_expressions() {
 		let result = Concat::new(vec![AnnotationValue::Field(F::new("x"))]);
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_year() {
 		let extract = Extract::year(AnnotationValue::Field(F::new("created_at")));
 		assert_eq!(extract.to_sql(), "EXTRACT(YEAR FROM created_at)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_month() {
 		let extract = Extract::month(AnnotationValue::Field(F::new("order_date")));
 		assert_eq!(extract.to_sql(), "EXTRACT(MONTH FROM order_date)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_day() {
 		let extract = Extract::day(AnnotationValue::Field(F::new("timestamp")));
 		assert_eq!(extract.to_sql(), "EXTRACT(DAY FROM timestamp)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_hour() {
 		let extract = Extract::hour(AnnotationValue::Field(F::new("event_time")));
 		assert_eq!(extract.to_sql(), "EXTRACT(HOUR FROM event_time)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_functions_now() {
 		let now = Now::new();
 		assert_eq!(now.to_sql(), "CURRENT_TIMESTAMP");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_current_date() {
 		let date = CurrentDate::new();
 		assert_eq!(date.to_sql(), "CURRENT_DATE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_current_time() {
 		let time = CurrentTime::new();
 		assert_eq!(time.to_sql(), "CURRENT_TIME");

@@ -123,8 +123,9 @@ pub trait ReverseRelationship {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_reverse_accessor() {
 		assert_eq!(generate_reverse_accessor("Post"), "post_set");
 		assert_eq!(generate_reverse_accessor("Comment"), "comment_set");
@@ -132,7 +133,7 @@ mod tests {
 		assert_eq!(generate_reverse_accessor("BlogPost"), "blog_post_set");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_reverse_accessor_singular() {
 		assert_eq!(
 			generate_reverse_accessor_singular("UserProfile"),
@@ -142,7 +143,7 @@ mod tests {
 		assert_eq!(generate_reverse_accessor_singular("Profile"), "profile");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case() {
 		assert_eq!(to_snake_case("UserProfile"), "user_profile");
 		assert_eq!(to_snake_case("Post"), "post");
@@ -151,25 +152,25 @@ mod tests {
 		assert_eq!(to_snake_case("HTTPRequest"), "http_request");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case_single_char() {
 		assert_eq!(to_snake_case("A"), "a");
 		assert_eq!(to_snake_case("B"), "b");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case_already_lowercase() {
 		assert_eq!(to_snake_case("post"), "post");
 		assert_eq!(to_snake_case("user"), "user");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case_mixed() {
 		assert_eq!(to_snake_case("XMLHttpRequest"), "xml_http_request");
 		assert_eq!(to_snake_case("IOError"), "io_error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_snake_case_consecutive_uppercase() {
 		assert_eq!(to_snake_case("HTTPSConnection"), "https_connection");
 		assert_eq!(to_snake_case("URLPattern"), "url_pattern");

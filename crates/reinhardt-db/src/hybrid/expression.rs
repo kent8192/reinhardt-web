@@ -118,8 +118,9 @@ impl Expression for &str {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_hybrid_expression_lower_unit() {
 		let expr = SqlExpression::lower("email");
 		assert_eq!(expr.sql, "LOWER(email)");

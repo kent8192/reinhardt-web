@@ -285,8 +285,9 @@ where
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::QueryStatementBuilder;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_all() {
 		// Test that SELECT SQL is generated correctly
 		let query = Query::select()
@@ -303,7 +304,7 @@ mod tests {
 		assert!(sql.contains("user_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_count() {
 		// Test that COUNT SQL is generated correctly
 		let query = Query::select()
@@ -321,7 +322,7 @@ mod tests {
 		assert!(sql.contains("user_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_generation_with_limit_offset() {
 		// Test that LIMIT and OFFSET clauses are generated correctly
 		let mut query = Query::select();

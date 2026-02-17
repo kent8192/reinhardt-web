@@ -351,6 +351,7 @@ pub enum RelationshipType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn create_router() -> Arc<DatabaseRouter> {
 		Arc::new(
@@ -361,7 +362,7 @@ mod tests {
 		)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_same_database() {
 		let router = Arc::new(DatabaseRouter::new("default"));
 		let validator = CrossDbConstraintValidator::new(router);
@@ -370,7 +371,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_different_databases_strict() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router).with_mode(ValidationMode::Strict);
@@ -395,7 +396,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_different_databases_warn() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router).with_mode(ValidationMode::Warn);
@@ -404,7 +405,7 @@ mod tests {
 		assert!(result.is_ok()); // Warn mode allows the relationship
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_different_databases_allow() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router).with_mode(ValidationMode::Allow);
@@ -413,7 +414,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_different_databases() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router);
@@ -426,7 +427,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_same_database() {
 		let router = Arc::new(DatabaseRouter::new("default"));
 		let validator = CrossDbConstraintValidator::new(router);
@@ -435,7 +436,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_one_different_databases() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router);
@@ -444,7 +445,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_validation() {
 		let router = create_router();
 		let validator = CrossDbConstraintValidator::new(router);
@@ -464,7 +465,7 @@ mod tests {
 		assert_eq!(errors.len(), 3); // All three relationships cross database boundaries
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_display() {
 		let error = CrossDbError::ForeignKeyAcrossDatabase {
 			source_model: "Post".to_string(),
@@ -482,7 +483,7 @@ mod tests {
 		assert!(message.contains("users_db"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_mode_getter() {
 		let router = Arc::new(DatabaseRouter::new("default"));
 		let validator = CrossDbConstraintValidator::new(router).with_mode(ValidationMode::Warn);

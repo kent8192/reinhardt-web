@@ -469,8 +469,9 @@ impl ZeroDowntimeMigration {
 mod tests {
 	use super::*;
 	use crate::migrations::{ColumnDefinition, FieldType};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_strategy_name() {
 		assert_eq!(
 			Strategy::ExpandContractPattern.name(),
@@ -482,14 +483,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strategy_description() {
 		let desc = Strategy::ExpandContractPattern.description();
 		assert!(desc.contains("Expand"));
 		assert!(desc.contains("contract"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_phase_creation() {
 		let migration = Migration::new("0001_test", "myapp");
 		let phase = MigrationPhase::new(1, "Test phase", migration);
@@ -499,7 +500,7 @@ mod tests {
 		assert!(!phase.requires_deployment);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phase_requires_deployment() {
 		let migration = Migration::new("0001_test", "myapp");
 		let phase = MigrationPhase::new(1, "Deploy", migration).requires_deployment(true);
@@ -507,7 +508,7 @@ mod tests {
 		assert!(phase.requires_deployment);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zero_downtime_expand_contract() {
 		let migration =
 			Migration::new("0001_add_column", "myapp").add_operation(Operation::AddColumn {
@@ -523,7 +524,7 @@ mod tests {
 		assert_eq!(phases[0].description, "Expand: Add new schema elements");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zero_downtime_blue_green() {
 		let migration = Migration::new("0001_schema_change", "myapp");
 		let zd = ZeroDowntimeMigration::new(migration, Strategy::BlueGreenDeployment);
@@ -533,7 +534,7 @@ mod tests {
 		assert!(phases[0].description.contains("green environment"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zero_downtime_rolling() {
 		let migration = Migration::new("0001_update", "myapp");
 		let zd = ZeroDowntimeMigration::new(migration, Strategy::RollingDeployment);
@@ -543,7 +544,7 @@ mod tests {
 		assert!(phases[0].description.contains("backward-compatible"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zero_downtime_shadow() {
 		let migration = Migration::new("0001_test_new_schema", "myapp");
 		let zd = ZeroDowntimeMigration::new(migration, Strategy::ShadowMode);
@@ -553,7 +554,7 @@ mod tests {
 		assert!(phases[0].description.contains("shadow"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_expand_operations() {
 		let migration = Migration::new("0001_mixed", "myapp")
 			.add_operation(Operation::CreateTable {
@@ -580,7 +581,7 @@ mod tests {
 		assert_eq!(expand_ops.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_contract_operations() {
 		let migration = Migration::new("0001_mixed", "myapp")
 			.add_operation(Operation::AddColumn {

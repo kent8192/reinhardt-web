@@ -450,6 +450,7 @@ pub fn association_table(
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -526,7 +527,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_table() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 
@@ -541,7 +542,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_table_with_extra_columns() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 
@@ -559,7 +560,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_join() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 
@@ -575,7 +576,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_add() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 
@@ -591,7 +592,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_to_many_remove() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 
@@ -607,7 +608,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_integer() {
 		let col_type = AssociationTable::parse_column_type("INTEGER");
 		assert!(matches!(col_type, ColumnType::Integer));
@@ -616,13 +617,13 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::Integer));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_bigint() {
 		let col_type = AssociationTable::parse_column_type("BIGINT");
 		assert!(matches!(col_type, ColumnType::BigInteger));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_string() {
 		let col_type = AssociationTable::parse_column_type("VARCHAR");
 		assert!(matches!(col_type, ColumnType::String(_)));
@@ -631,13 +632,13 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::String(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_text() {
 		let col_type = AssociationTable::parse_column_type("TEXT");
 		assert!(matches!(col_type, ColumnType::Text));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_boolean() {
 		let col_type = AssociationTable::parse_column_type("BOOLEAN");
 		assert!(matches!(col_type, ColumnType::Boolean));
@@ -646,7 +647,7 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::Boolean));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_datetime() {
 		let col_type = AssociationTable::parse_column_type("DATETIME");
 		assert!(matches!(col_type, ColumnType::DateTime));
@@ -655,7 +656,7 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::DateTime));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_json() {
 		let col_type = AssociationTable::parse_column_type("JSON");
 		assert!(matches!(col_type, ColumnType::Json));
@@ -664,13 +665,13 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::JsonBinary));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_uuid() {
 		let col_type = AssociationTable::parse_column_type("UUID");
 		assert!(matches!(col_type, ColumnType::Uuid));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_custom() {
 		let col_type = AssociationTable::parse_column_type("VARCHAR(255)");
 		assert!(matches!(col_type, ColumnType::Custom(_)));
@@ -679,7 +680,7 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::Custom(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_column_type_case_insensitive() {
 		let col_type = AssociationTable::parse_column_type("integer");
 		assert!(matches!(col_type, ColumnType::Integer));
@@ -691,7 +692,7 @@ mod tests {
 		assert!(matches!(col_type, ColumnType::Integer));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_table_with_typed_columns() {
 		use reinhardt_query::prelude::SqliteQueryBuilder;
 

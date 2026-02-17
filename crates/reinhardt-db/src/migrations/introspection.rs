@@ -1644,8 +1644,10 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use rstest::rstest;
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_introspector_read_schema() {
 		use sqlx::SqlitePool;
@@ -1695,6 +1697,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_introspector_read_table() {
 		use sqlx::SqlitePool;
@@ -1736,6 +1739,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_introspector_with_indexes() {
 		use sqlx::SqlitePool;
@@ -1774,6 +1778,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_introspector_foreign_keys_and_unique_constraints() {
 		use sqlx::SqlitePool;

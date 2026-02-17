@@ -72,8 +72,9 @@ impl Comparator for UpperCaseComparator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_uppercase_comparator_eq() {
 		let comparator = UpperCaseComparator::new("table.column".to_string());
 		assert_eq!(
@@ -82,7 +83,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uppercase_comparator_ne() {
 		let comparator = UpperCaseComparator::new("table.column".to_string());
 		assert_eq!(
@@ -91,7 +92,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uppercase_comparator_lt() {
 		let comparator = UpperCaseComparator::new("table.column".to_string());
 		assert_eq!(

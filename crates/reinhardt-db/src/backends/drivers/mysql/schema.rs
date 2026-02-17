@@ -106,15 +106,16 @@ impl BaseDatabaseSchemaEditor for MySQLSchemaEditor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_sql() {
 		let editor = MySQLSchemaEditor::new();
 		let sql = editor.alter_column_sql("users", "email", "TEXT");
 		assert_eq!(sql, "ALTER TABLE `users` MODIFY COLUMN `email` TEXT");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_statement() {
 		use crate::backends::schema::BaseDatabaseSchemaEditor;
 
@@ -128,21 +129,21 @@ mod tests {
 		assert!(!sql.contains("ALTER COLUMN"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_table_sql() {
 		let editor = MySQLSchemaEditor::new();
 		let sql = editor.rename_table_sql("users", "people");
 		assert_eq!(sql, "ALTER TABLE `users` RENAME TO `people`");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_constraint_sql() {
 		let editor = MySQLSchemaEditor::new();
 		let sql = editor.add_constraint_sql("users", "UNIQUE (email)");
 		assert_eq!(sql, "ALTER TABLE `users` ADD UNIQUE (email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_constraint_sql() {
 		let editor = MySQLSchemaEditor::new();
 		let sql = editor.drop_constraint_sql("users", "unique_email");

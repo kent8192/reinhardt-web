@@ -529,8 +529,9 @@ impl<T: Clone + PartialEq + Send + Sync> TypeDecorator for EnumType<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_encrypted_string() {
 		let key = [42u8; 32];
 		let decorator = EncryptedString::new(key);
@@ -543,7 +544,7 @@ mod tests {
 		assert_ne!(original.as_bytes(), encrypted.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_number_validation() {
 		let decorator = PhoneNumberType::new("US");
 
@@ -555,7 +556,7 @@ mod tests {
 		assert!(decorator.process_bind_param(&invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_number_formatting() {
 		let decorator = PhoneNumberType::new("US");
 
@@ -566,7 +567,7 @@ mod tests {
 		assert_eq!(retrieved, "15551234567");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validation() {
 		let decorator = EmailType::new();
 
@@ -577,7 +578,7 @@ mod tests {
 		assert!(decorator.process_bind_param(&invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_normalization() {
 		let decorator = EmailType::new();
 
@@ -588,7 +589,7 @@ mod tests {
 		assert_eq!(retrieved, "test@example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validation() {
 		let decorator = UrlType::new();
 
@@ -599,7 +600,7 @@ mod tests {
 		assert!(decorator.process_bind_param(&invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compressed_text() {
 		let decorator = CompressedTextType::new();
 
@@ -617,7 +618,7 @@ mod tests {
 		Pending,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enum_type() {
 		let decorator = EnumType::new(vec![
 			(Status::Active, "active".to_string()),
@@ -633,7 +634,7 @@ mod tests {
 		assert_eq!(String::from_utf8(stored).unwrap(), "active");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enum_type_invalid() {
 		let decorator = EnumType::new(vec![(Status::Active, "active".to_string())]);
 
@@ -647,7 +648,7 @@ mod tests {
 		value: i32,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_decorator_json() {
 		let decorator = JsonType::<TestData>::new();
 
@@ -662,7 +663,7 @@ mod tests {
 		assert_eq!(data, retrieved);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_sql_names() {
 		assert_eq!(EncryptedString::new([0u8; 32]).sql_type_name(), "BLOB");
 		assert_eq!(EmailType::new().sql_type_name(), "VARCHAR(255)");

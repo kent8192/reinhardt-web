@@ -456,8 +456,9 @@ impl MigrationStats {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_output_format_extension() {
 		assert_eq!(OutputFormat::Text.extension(), "txt");
 		assert_eq!(OutputFormat::Markdown.extension(), "md");
@@ -465,7 +466,7 @@ mod tests {
 		assert_eq!(OutputFormat::Json.extension(), "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_text_graph() {
 		let migration1 = Migration::new("0001_initial", "myapp");
 		let migration2 =
@@ -480,7 +481,7 @@ mod tests {
 		assert!(graph.contains("myapp.0002_add_field"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_markdown_graph() {
 		let migration = Migration::new("0001_initial", "myapp");
 		let migrations = vec![migration];
@@ -492,7 +493,7 @@ mod tests {
 		assert!(graph.contains("## myapp.0001_initial"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_dot_graph() {
 		let migration1 = Migration::new("0001_initial", "myapp");
 		let migration2 =
@@ -508,7 +509,7 @@ mod tests {
 		assert!(graph.contains("->"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_json_graph() {
 		let migration = Migration::new("0001_initial", "myapp");
 		let migrations = vec![migration];
@@ -521,7 +522,7 @@ mod tests {
 		assert!(graph.contains("myapp.0001_initial"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_timeline() {
 		let entries = vec![
 			HistoryEntry {
@@ -547,7 +548,7 @@ mod tests {
 		assert!(timeline.contains("3 operations"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_evolution_report() {
 		let migrations = vec![
 			Migration::new("0001_initial", "app1"),
@@ -563,7 +564,7 @@ mod tests {
 		assert!(report.contains("App: app2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_stats() {
 		let migrations = vec![
 			Migration::new("0001_initial", "app1"),
@@ -579,7 +580,7 @@ mod tests {
 		assert_eq!(stats.by_app.get("app2"), Some(&1));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_stats_report() {
 		let migrations = vec![
 			Migration::new("0001_initial", "myapp"),

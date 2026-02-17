@@ -103,6 +103,7 @@ impl<S, C, T> AssociationCollection<S, C, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -118,7 +119,7 @@ mod tests {
 		orders: Vec<Order>,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_collection_basic() {
 		let user = User {
 			id: 1,
@@ -142,7 +143,7 @@ mod tests {
 		assert_eq!(products[1], "Pen");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_collection_count() {
 		let user = User {
 			id: 1,
@@ -164,7 +165,7 @@ mod tests {
 		assert!(!proxy.is_empty(&user));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_collection_empty() {
 		let user = User {
 			id: 1,

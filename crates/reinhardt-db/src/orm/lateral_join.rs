@@ -343,15 +343,16 @@ impl LateralJoins {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_creation() {
 		let join = LateralJoin::new("sub", "SELECT * FROM orders WHERE user_id = users.id");
 		assert_eq!(join.alias, "sub");
 		assert_eq!(join.join_type, LateralJoinType::Left);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_types() {
 		let inner = LateralJoin::new("sub", "SELECT 1").inner();
 		assert_eq!(inner.join_type, LateralJoinType::Inner);
@@ -360,7 +361,7 @@ mod tests {
 		assert_eq!(left.join_type, LateralJoinType::Left);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_sql() {
 		let join = LateralJoin::new(
 			"recent_orders",
@@ -374,7 +375,7 @@ mod tests {
 		assert!(sql.contains("ON true"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_with_on_condition() {
 		let join =
 			LateralJoin::new("sub", "SELECT * FROM items").on("sub.category_id = categories.id");
@@ -383,7 +384,7 @@ mod tests {
 		assert!(sql.contains("ON sub.category_id = categories.id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_builder_pattern() {
 		let join = LateralJoinBuilder::new("latest")
 			.subquery(
@@ -396,7 +397,7 @@ mod tests {
 		assert!(join.subquery.contains("ORDER BY"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_top_n_pattern() {
 		let join = LateralJoinPatterns::top_n_per_group(
 			"top_products",
@@ -412,7 +413,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY sales DESC"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_latest_per_parent_pattern() {
 		let join = LateralJoinPatterns::latest_per_parent(
 			"latest_order",
@@ -427,7 +428,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY created_at DESC"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_per_parent_pattern() {
 		let join = LateralJoinPatterns::aggregate_per_parent(
 			"order_stats",
@@ -442,7 +443,7 @@ mod tests {
 		assert!(sql.contains("SUM(total)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ranked_per_parent_pattern() {
 		let join = LateralJoinPatterns::ranked_per_parent(
 			"ranked_reviews",
@@ -458,7 +459,7 @@ mod tests {
 		assert!(sql.contains("LIMIT 5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_conditional_aggregate_pattern() {
 		let join = LateralJoinPatterns::conditional_aggregate(
 			"high_value_orders",
@@ -474,7 +475,7 @@ mod tests {
 		assert!(sql.contains("COUNT(*)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_first_match_pattern() {
 		let join = LateralJoinPatterns::first_match(
 			"matching_promo",
@@ -488,7 +489,7 @@ mod tests {
 		assert!(sql.contains("LIMIT 1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_mysql_sql() {
 		let join = LateralJoin::new("sub", "SELECT * FROM orders LIMIT 5");
 		let sql = join.to_mysql_sql();
@@ -498,7 +499,7 @@ mod tests {
 		assert!(sql.contains("LEFT JOIN"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_joins_collection() {
 		let mut joins = LateralJoins::new();
 
@@ -511,14 +512,14 @@ mod tests {
 		assert_eq!(sqls.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lateral_join_empty_collection() {
 		let joins = LateralJoins::new();
 		assert!(joins.is_empty());
 		assert_eq!(joins.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_aggregate_pattern() {
 		let join = LateralJoinPatterns::window_aggregate(
 			"windowed",

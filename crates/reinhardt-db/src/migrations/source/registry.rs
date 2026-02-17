@@ -63,8 +63,10 @@ impl MigrationSource for RegistrySource {
 mod tests {
 	use super::*;
 	use crate::migrations::MigrationError;
+	use rstest::rstest;
 	use serial_test::serial;
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(global_registry)]
 	async fn test_registry_source_new() {
@@ -80,6 +82,7 @@ mod tests {
 		registry.clear();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(global_registry)]
 	async fn test_registry_source_all_migrations() {
@@ -126,6 +129,7 @@ mod tests {
 		registry.clear();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(global_registry)]
 	async fn test_registry_source_migrations_for_app() {
@@ -192,6 +196,7 @@ mod tests {
 		registry.clear();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(global_registry)]
 	async fn test_registry_source_get_migration() {
@@ -223,6 +228,7 @@ mod tests {
 		registry.clear();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(global_registry)]
 	async fn test_registry_source_get_migration_not_found() {

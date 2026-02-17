@@ -233,6 +233,7 @@ mod tests {
 	use super::*;
 	use crate::migrations::source::MigrationSource;
 	use async_trait::async_trait;
+	use rstest::rstest;
 	use std::collections::HashMap;
 	use tokio::sync::Mutex;
 
@@ -316,6 +317,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_load_all() {
 		let source = Arc::new(TestSource {
@@ -331,6 +333,7 @@ mod tests {
 		assert_eq!(migrations.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_load_for_app() {
 		let source = Arc::new(TestSource {
@@ -347,6 +350,7 @@ mod tests {
 		assert_eq!(polls_migrations.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_save_and_load() {
 		let source = Arc::new(TestSource {
@@ -366,6 +370,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_dependency_graph() {
 		let source = Arc::new(TestSource {
@@ -396,6 +401,7 @@ mod tests {
 		assert_eq!(sorted[1].name, "0002_add_field");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_detect_new_migrations() {
 		let source = Arc::new(TestSource {
@@ -419,6 +425,7 @@ mod tests {
 		assert_eq!(new_migrations[0].name, "0002_add_field");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_migration_service_delete() {
 		let source = Arc::new(TestSource {

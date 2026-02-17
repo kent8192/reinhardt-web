@@ -637,8 +637,9 @@ pub struct XaTransactionInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_xa_transaction_info_creation() {
 		let info = XaTransactionInfo {
 			format_id: 1,
@@ -654,13 +655,14 @@ mod tests {
 		assert_eq!(info.xid, "txn_001");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_xid() {
 		assert_eq!(MySqlTwoPhaseParticipant::escape_xid("simple"), "simple");
 		assert_eq!(MySqlTwoPhaseParticipant::escape_xid("it's"), "it''s");
 		assert_eq!(MySqlTwoPhaseParticipant::escape_xid("a'b'c"), "a''b''c");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_participant_clone() {
 		// Test that MySqlTwoPhaseParticipant can be cloned

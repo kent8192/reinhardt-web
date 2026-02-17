@@ -348,6 +348,7 @@ impl<T, K> ReverseRelationship for ForeignKey<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -356,7 +357,7 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_creation() {
 		let fk: ForeignKey<User, i64> = ForeignKey::new("author_id");
 		assert_eq!(fk.field_name(), "author_id");
@@ -368,7 +369,7 @@ mod tests {
 		assert!(fk.has_db_index());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_builder() {
 		let fk: ForeignKey<User, i64> = ForeignKey::new("author_id")
 			.related_name("posts")
@@ -387,12 +388,12 @@ mod tests {
 		assert_eq!(fk.get_db_constraint(), Some("fk_posts_author"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_action_default() {
 		assert_eq!(CascadeAction::default(), CascadeAction::NoAction);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_actions() {
 		let actions = vec![
 			CascadeAction::NoAction,
@@ -408,13 +409,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_field_customization() {
 		let fk: ForeignKey<User, i64> = ForeignKey::new("author_id").to_field("user_id");
 		assert_eq!(fk.get_to_field(), "user_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_configuration() {
 		let fk1: ForeignKey<User, i64> = ForeignKey::new("author_id").null(true);
 		assert!(fk1.is_null());
@@ -423,7 +424,7 @@ mod tests {
 		assert!(!fk2.is_null());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_db_index_configuration() {
 		let fk1: ForeignKey<User, i64> = ForeignKey::new("author_id").db_index(true);
 		assert!(fk1.has_db_index());

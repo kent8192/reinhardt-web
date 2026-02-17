@@ -3960,8 +3960,9 @@ impl MigrationOperation for Operation {
 mod tests {
 	use super::*;
 	use FieldType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_create_table_to_statement() {
 		let op = Operation::CreateTable {
 			name: "users".to_string(),
@@ -4010,7 +4011,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_to_statement() {
 		let op = Operation::DropTable {
 			name: "users".to_string(),
@@ -4035,7 +4036,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_column_to_statement() {
 		let op = Operation::AddColumn {
 			table: "users".to_string(),
@@ -4075,7 +4076,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_column_to_statement() {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
@@ -4106,7 +4107,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_column_to_statement() {
 		let op = Operation::AlterColumn {
 			table: "users".to_string(),
@@ -4143,7 +4144,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_table_to_statement() {
 		let op = Operation::RenameTable {
 			old_name: "users".to_string(),
@@ -4164,7 +4165,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_column_to_statement() {
 		let op = Operation::RenameColumn {
 			table: "users".to_string(),
@@ -4201,7 +4202,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_constraint_to_statement() {
 		let op = Operation::AddConstraint {
 			table: "users".to_string(),
@@ -4232,7 +4233,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_constraint_to_statement() {
 		let op = Operation::DropConstraint {
 			table: "users".to_string(),
@@ -4263,7 +4264,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_to_statement() {
 		let op = Operation::CreateIndex {
 			table: "users".to_string(),
@@ -4296,7 +4297,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_unique_index_to_statement() {
 		let op = Operation::CreateIndex {
 			table: "users".to_string(),
@@ -4329,7 +4330,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_to_statement() {
 		let op = Operation::DropIndex {
 			table: "users".to_string(),
@@ -4350,7 +4351,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_run_sql_to_statement() {
 		let op = Operation::RunSQL {
 			sql: "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"".to_string(),
@@ -4371,7 +4372,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_comment_to_statement() {
 		let op = Operation::AlterTableComment {
 			table: "users".to_string(),
@@ -4397,7 +4398,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_comment_null_to_statement() {
 		let op = Operation::AlterTableComment {
 			table: "users".to_string(),
@@ -4423,7 +4424,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_unique_together_to_statement() {
 		let op = Operation::AlterUniqueTogether {
 			table: "users".to_string(),
@@ -4459,7 +4460,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_unique_together_empty() {
 		let op = Operation::AlterUniqueTogether {
 			table: "users".to_string(),
@@ -4474,7 +4475,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_model_options_to_statement() {
 		let mut options = std::collections::HashMap::new();
 		options.insert("db_table".to_string(), "custom_users".to_string());
@@ -4489,7 +4490,7 @@ mod tests {
 		assert_eq!(sql, "", "SQL should be empty for model options operation");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_inherited_table_to_statement() {
 		let op = Operation::CreateInheritedTable {
 			name: "admin_users".to_string(),
@@ -4525,7 +4526,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_discriminator_column_to_statement() {
 		let op = Operation::AddDiscriminatorColumn {
 			table: "users".to_string(),
@@ -4557,7 +4558,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_create_table() {
 		let mut state = ProjectState::new();
 		let op = Operation::CreateTable {
@@ -4608,7 +4609,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_drop_table() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -4626,7 +4627,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_add_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -4661,7 +4662,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_drop_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -4692,7 +4693,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_rename_table() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -4715,7 +4716,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_rename_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -4744,7 +4745,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_reverse_sql_create_table() {
 		let op = Operation::CreateTable {
 			name: "users".to_string(),
@@ -4774,7 +4775,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_reverse_sql_drop_table() {
 		let op = Operation::DropTable {
 			name: "users".to_string(),
@@ -4788,7 +4789,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_reverse_sql_add_column() {
 		let op = Operation::AddColumn {
 			table: "users".to_string(),
@@ -4823,7 +4824,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_reverse_sql_run_sql_with_reverse() {
 		let op = Operation::RunSQL {
 			sql: "CREATE INDEX idx_name ON users(name)".to_string(),
@@ -4844,7 +4845,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_reverse_sql_run_sql_without_reverse() {
 		let op = Operation::RunSQL {
 			sql: "CREATE INDEX idx_name ON users(name)".to_string(),
@@ -4859,7 +4860,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_column_definition_new() {
 		let col = ColumnDefinition::new("id", FieldType::Integer);
 		assert_eq!(col.name, "id", "Column name should be 'id'");
@@ -4878,7 +4879,7 @@ mod tests {
 		assert!(col.default.is_none(), "default should be None");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_default_value_null() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4895,7 +4896,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_default_value_bool() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4918,7 +4919,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_default_value_integer() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4935,7 +4936,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_default_value_float() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4952,7 +4953,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_default_value_string() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4974,7 +4975,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apply_column_type_integer() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -4990,7 +4991,7 @@ mod tests {
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apply_column_type_varchar_with_length() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -5006,7 +5007,7 @@ mod tests {
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apply_column_type_custom() {
 		let op = Operation::CreateTable {
 			name: "test".to_string(),
@@ -5022,7 +5023,7 @@ mod tests {
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_composite() {
 		let op = Operation::CreateIndex {
 			table: "users".to_string(),
@@ -5054,7 +5055,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_comment_with_quotes() {
 		let op = Operation::AlterTableComment {
 			table: "users".to_string(),
@@ -5075,7 +5076,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_alter_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -5113,7 +5114,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_create_inherited_table() {
 		let mut state = ProjectState::new();
 		let op = Operation::CreateInheritedTable {
@@ -5150,7 +5151,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_add_discriminator_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");

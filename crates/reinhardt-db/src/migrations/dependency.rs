@@ -717,8 +717,9 @@ fn is_truthy(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_swappable_dependency_resolve_with_setting() {
 		let dep = SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial");
 
@@ -727,7 +728,7 @@ mod tests {
 		assert_eq!(migration, "0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_swappable_dependency_resolve_without_setting() {
 		let dep = SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial");
 
@@ -736,7 +737,7 @@ mod tests {
 		assert_eq!(migration, "0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optional_dependency_app_installed() {
 		let dep = OptionalDependency::new(
 			"gis",
@@ -754,7 +755,7 @@ mod tests {
 		assert!(dep.should_enforce(&apps, &|_| None, &HashSet::new()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optional_dependency_setting_enabled() {
 		let dep = OptionalDependency::new(
 			"audit",
@@ -794,7 +795,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_resolver() {
 		let context = DependencyResolutionContext::new()
 			.with_app("auth")
@@ -831,7 +832,7 @@ mod tests {
 		assert_eq!(resolver.resolve(&optional_not_satisfied), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_all_filters_unsatisfied() {
 		let context = DependencyResolutionContext::new().with_app("auth");
 
@@ -849,7 +850,7 @@ mod tests {
 		assert!(resolved.contains(&("users".to_string(), "0001_initial".to_string())));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_truthy() {
 		assert!(is_truthy("true"));
 		assert!(is_truthy("True"));

@@ -427,8 +427,9 @@ impl CTEPatterns {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cte_creation() {
 		let cte = CTE::new(
 			"regional_sales",
@@ -438,7 +439,7 @@ mod tests {
 		assert!(!cte.recursive);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_columns() {
 		let cte = CTE::new("sales", "SELECT * FROM orders")
 			.with_columns(vec!["region".to_string(), "total".to_string()]);
@@ -447,27 +448,27 @@ mod tests {
 		assert!(sql.contains("sales (region, total)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_recursive_unit() {
 		let cte = CTE::new("tree", "SELECT * FROM nodes").recursive();
 		assert!(cte.recursive);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_materialized_cte() {
 		let cte = CTE::new("expensive_query", "SELECT * FROM large_table").materialized(true);
 		let sql = cte.to_sql();
 		assert!(sql.contains("MATERIALIZED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_not_materialized_cte() {
 		let cte = CTE::new("simple_query", "SELECT * FROM small_table").materialized(false);
 		let sql = cte.to_sql();
 		assert!(sql.contains("NOT MATERIALIZED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_builder() {
 		let cte = CTEBuilder::new("user_stats")
 			.query("SELECT user_id, COUNT(*) as count FROM posts GROUP BY user_id")
@@ -479,7 +480,7 @@ mod tests {
 		assert_eq!(cte.columns.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_collection() {
 		let mut collection = CTECollection::new();
 
@@ -495,7 +496,7 @@ mod tests {
 		assert!(sql.contains("cte2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_recursive_collection() {
 		let mut collection = CTECollection::new();
 		collection.add(CTE::new("tree", "SELECT * FROM nodes").recursive());
@@ -504,7 +505,7 @@ mod tests {
 		assert!(sql.starts_with("WITH RECURSIVE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_recursive_hierarchy_pattern() {
 		let cte = CTEPatterns::recursive_hierarchy(
 			"org_tree",
@@ -520,7 +521,7 @@ mod tests {
 		assert!(cte.query.contains("path"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_series_pattern() {
 		let cte = CTEPatterns::date_series("dates", "2024-01-01", "2024-01-31");
 
@@ -529,7 +530,7 @@ mod tests {
 		assert!(cte.query.contains("+1 day"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_number_series_pattern() {
 		let cte = CTEPatterns::number_series("numbers", 1, 100);
 
@@ -537,7 +538,7 @@ mod tests {
 		assert!(cte.query.contains("n + 1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_moving_average_pattern() {
 		let cte = CTEPatterns::moving_average("ma", "sales", "amount", "date", 7);
 
@@ -546,7 +547,7 @@ mod tests {
 		assert!(cte.query.contains("PRECEDING"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deduplicate_pattern() {
 		let cte = CTEPatterns::deduplicate("deduped", "users", "email", "created_at DESC");
 
@@ -554,7 +555,7 @@ mod tests {
 		assert!(cte.query.contains("PARTITION BY"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_graph_traversal_pattern() {
 		let cte = CTEPatterns::graph_traversal("graph", "relationships", "id", "related_id", 1);
 
@@ -563,7 +564,7 @@ mod tests {
 		assert!(cte.query.contains("UNION ALL"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_running_total_pattern() {
 		let cte = CTEPatterns::running_total("totals", "transactions", "amount", "date");
 
@@ -572,7 +573,7 @@ mod tests {
 		assert!(cte.query.contains("running_total"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregation_cte_pattern() {
 		let cte = CTEPatterns::aggregation_cte(
 			"region_totals",
@@ -584,7 +585,7 @@ mod tests {
 		assert!(cte.query.contains("GROUP BY"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_collection_sql() {
 		let collection = CTECollection::new();
 		assert!(collection.to_sql().is_none());

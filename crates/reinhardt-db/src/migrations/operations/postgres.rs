@@ -366,8 +366,9 @@ impl MigrationOperation for CreateCollation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_create_extension_basic() {
 		let ext = CreateExtension::new("hstore");
 		assert_eq!(ext.name, "hstore");
@@ -375,21 +376,21 @@ mod tests {
 		assert!(ext.version.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_extension_with_schema() {
 		let ext = CreateExtension::new("hstore").with_schema("public");
 		assert_eq!(ext.name, "hstore");
 		assert_eq!(ext.schema, Some("public".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_extension_with_version() {
 		let ext = CreateExtension::new("postgis").with_version("3.0.0");
 		assert_eq!(ext.version, Some("3.0.0".to_string()));
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_create_extension_database_forwards() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -403,7 +404,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_create_extension_with_schema_sql() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -416,7 +417,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_drop_extension() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -430,7 +431,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest]
 	fn test_create_collation() {
 		use crate::backends::schema::test_utils::MockSchemaEditor;
 
@@ -444,7 +445,7 @@ mod tests {
 		assert!(sql[0].contains("de_DE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extension_helpers() {
 		let hstore = extensions::hstore();
 		assert_eq!(hstore.name, "hstore");

@@ -499,6 +499,7 @@ impl ContentTypeTransaction {
 mod tests {
 	use super::*;
 	use crate::contenttypes::persistence::ContentTypePersistence;
+	use rstest::rstest;
 	use std::sync::Once;
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -534,6 +535,7 @@ mod tests {
 		pool.into()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_all() {
 		let pool = setup_test_db().await;
@@ -550,6 +552,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_filter() {
 		let pool = setup_test_db().await;
@@ -571,6 +574,7 @@ mod tests {
 		assert_eq!(results[0].app_label, "auth");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_order_by() {
 		let pool = setup_test_db().await;
@@ -593,6 +597,7 @@ mod tests {
 		assert_eq!(results[1].app_label, "blog");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_limit_offset() {
 		let pool = setup_test_db().await;
@@ -616,6 +621,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_first() {
 		let pool = setup_test_db().await;
@@ -636,6 +642,7 @@ mod tests {
 		assert_eq!(result.unwrap().model, "User");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_count() {
 		let pool = setup_test_db().await;
@@ -657,6 +664,7 @@ mod tests {
 		assert_eq!(count, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_exists() {
 		let pool = setup_test_db().await;
@@ -686,6 +694,7 @@ mod tests {
 		assert!(!not_exists);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_transaction_create() {
 		let pool = setup_test_db().await;
@@ -701,6 +710,7 @@ mod tests {
 		assert!(ct.id.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_transaction_delete() {
 		let pool = setup_test_db().await;
@@ -719,6 +729,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_multiple_filters() {
 		let pool = setup_test_db().await;
@@ -740,6 +751,7 @@ mod tests {
 		assert_eq!(results[0].model, "User");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_query_order_desc() {
 		let pool = setup_test_db().await;

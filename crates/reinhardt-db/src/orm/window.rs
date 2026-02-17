@@ -674,20 +674,21 @@ impl WindowFunction for NthValue {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_window_partition_by() {
 		let window = Window::new().partition_by("department");
 		assert_eq!(window.to_sql(), "PARTITION BY department");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_order_by() {
 		let window = Window::new().order_by("salary DESC");
 		assert_eq!(window.to_sql(), "ORDER BY salary DESC");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_partition_and_order() {
 		let window = Window::new()
 			.partition_by("department")
@@ -698,7 +699,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_frame_rows() {
 		let frame = Frame::rows(
 			FrameBoundary::UnboundedPreceding,
@@ -710,7 +711,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_frame_range() {
 		let frame = Frame::range(
 			FrameBoundary::Preceding(3),
@@ -719,7 +720,7 @@ mod tests {
 		assert_eq!(frame.to_sql(), "RANGE BETWEEN 3 PRECEDING AND 3 FOLLOWING");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_row_number() {
 		let window = Window::new()
 			.partition_by("department")
@@ -731,7 +732,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rank() {
 		let window = Window::new()
 			.partition_by("department")
@@ -743,7 +744,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dense_rank() {
 		let window = Window::new().order_by("score DESC");
 		let dense_rank = DenseRank::new();
@@ -753,21 +754,21 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ntile() {
 		let window = Window::new().order_by("salary");
 		let ntile = NTile::new(4);
 		assert_eq!(ntile.to_sql(&window), "NTILE(4) OVER (ORDER BY salary)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lead() {
 		let window = Window::new().order_by("date");
 		let lead = Lead::new("value");
 		assert_eq!(lead.to_sql(&window), "LEAD(value, 1) OVER (ORDER BY date)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lead_with_offset_and_default() {
 		let window = Window::new().order_by("date");
 		let lead = Lead::new("value").offset(2).default("0");
@@ -777,21 +778,21 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lag() {
 		let window = Window::new().order_by("date");
 		let lag = Lag::new("value");
 		assert_eq!(lag.to_sql(&window), "LAG(value, 1) OVER (ORDER BY date)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lag_with_offset() {
 		let window = Window::new().order_by("date");
 		let lag = Lag::new("value").offset(3);
 		assert_eq!(lag.to_sql(&window), "LAG(value, 3) OVER (ORDER BY date)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_first_value() {
 		let window = Window::new()
 			.partition_by("department")
@@ -803,7 +804,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_last_value() {
 		let window = Window::new()
 			.partition_by("department")
@@ -815,7 +816,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nth_value() {
 		let window = Window::new().order_by("salary DESC");
 		let nth_val = NthValue::new("salary", 2);
@@ -825,7 +826,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_with_frame() {
 		let frame = Frame::rows(
 			FrameBoundary::Preceding(1),

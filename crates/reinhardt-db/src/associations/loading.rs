@@ -359,6 +359,7 @@ impl<T> Default for JoinedLoader<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -368,12 +369,12 @@ mod tests {
 		title: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_loading_strategy_default() {
 		assert_eq!(LoadingStrategy::default(), LoadingStrategy::Lazy);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_loading_strategies() {
 		let strategies = vec![
 			LoadingStrategy::Lazy,
@@ -389,20 +390,20 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_loader_creation() {
 		let _loader: LazyLoader<Post> = LazyLoader::new();
 		let _loader2: LazyLoader<Post> = LazyLoader::default();
 		// LazyLoader is just a marker type
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eager_loader_creation() {
 		let loader: EagerLoader<Post> = EagerLoader::new();
 		assert_eq!(loader.strategy(), LoadingStrategy::SelectIn);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eager_loader_with_strategy() {
 		let loader: EagerLoader<Post> = EagerLoader::with_strategy(LoadingStrategy::Joined);
 		assert_eq!(loader.strategy(), LoadingStrategy::Joined);
@@ -411,13 +412,13 @@ mod tests {
 		assert_eq!(loader2.strategy(), LoadingStrategy::Subquery);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_in_loader_creation() {
 		let loader: SelectInLoader<Post> = SelectInLoader::new();
 		assert_eq!(loader.get_batch_size(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_in_loader_batch_size() {
 		let loader: SelectInLoader<Post> = SelectInLoader::new().batch_size(100);
 		assert_eq!(loader.get_batch_size(), Some(100));
@@ -426,19 +427,19 @@ mod tests {
 		assert_eq!(loader2.get_batch_size(), Some(500));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_joined_loader_creation() {
 		let loader: JoinedLoader<Post> = JoinedLoader::new();
 		assert!(!loader.is_outer_join());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_joined_loader_outer() {
 		let loader: JoinedLoader<Post> = JoinedLoader::outer();
 		assert!(loader.is_outer_join());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_joined_loader_inner() {
 		let loader: JoinedLoader<Post> = JoinedLoader::new();
 		assert!(!loader.is_outer_join());

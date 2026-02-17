@@ -1306,6 +1306,7 @@ mod tests {
 	use super::*;
 	use crate::backends::backend::DatabaseBackend;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
+	use rstest::rstest;
 
 	// Mock transaction executor for testing
 	struct MockTransactionExecutor;
@@ -1390,7 +1391,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_basic() {
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users");
@@ -1401,7 +1402,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_where_eq() {
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users").where_eq("id", QueryValue::Int(1));
@@ -1413,7 +1414,7 @@ mod tests {
 		assert!(matches!(params[0], QueryValue::Int(1)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_where_in() {
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users")
@@ -1430,7 +1431,7 @@ mod tests {
 		assert!(matches!(params[1], QueryValue::Int(2)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_multiple_conditions() {
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users")
@@ -1533,7 +1534,7 @@ mod tests {
 	// PostgreSQL Tests - Exact SQL Verification
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_columns_do_nothing_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1553,7 +1554,7 @@ mod tests {
 		assert!(matches!(&params[0], QueryValue::String(s) if s == "test@example.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_columns_do_update_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1575,7 +1576,7 @@ mod tests {
 		assert_eq!(params.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_where_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1599,7 +1600,7 @@ mod tests {
 		assert_eq!(params.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_constraint_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1617,7 +1618,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_any_do_nothing_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1635,7 +1636,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_multiple_columns_postgres_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1656,7 +1657,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_multiple_update_columns_postgres() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1683,7 +1684,7 @@ mod tests {
 	// MySQL Tests - Exact SQL Verification
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_do_nothing_mysql_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -1698,7 +1699,7 @@ mod tests {
 		assert_eq!(sql, "INSERT IGNORE INTO `users` (`email`) VALUES (?)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_do_update_mysql_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -1716,7 +1717,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_do_update_multiple_columns_mysql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -1738,7 +1739,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_where_ignored_mysql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -1765,7 +1766,7 @@ mod tests {
 	// SQLite Tests - Exact SQL Verification
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_do_nothing_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -1783,7 +1784,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_do_update_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -1801,7 +1802,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_where_sqlite_exact_sql() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -1823,7 +1824,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_multiple_columns_sqlite() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -1844,7 +1845,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_any_do_nothing_sqlite() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -1866,7 +1867,7 @@ mod tests {
 	// Legacy API Tests - Backwards Compatibility
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_legacy_on_conflict_do_nothing_still_works() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1884,7 +1885,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_legacy_on_conflict_do_update_still_works() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1905,7 +1906,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_new_api_takes_precedence_over_legacy() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1926,7 +1927,7 @@ mod tests {
 	// Edge Cases and Error Conditions
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_single_column_single_update() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1944,7 +1945,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1961,7 +1962,7 @@ mod tests {
 		assert!(sql.contains("ON CONFLICT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_null_value() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -1979,7 +1980,7 @@ mod tests {
 		assert!(matches!(params[1], QueryValue::Null));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_integer_values() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2000,7 +2001,7 @@ mod tests {
 		assert!(matches!(params[1], QueryValue::Int(1)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_complex_where_condition() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2028,7 +2029,7 @@ mod tests {
 	// Fluent API Chain Tests
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_fluent_api_do_nothing_then_do_update_uses_last() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2047,7 +2048,7 @@ mod tests {
 		assert!(!sql.contains("DO NOTHING"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fluent_api_do_update_then_do_nothing_uses_last() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2066,7 +2067,7 @@ mod tests {
 		assert!(!sql.contains("DO UPDATE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_conflict_target_types() {
 		// Act - test ConflictTarget::Columns
 		let columns_clause = OnConflictClause::columns(vec!["a", "b"]);
@@ -2113,7 +2114,7 @@ mod tests {
 	// Parameter Preservation Tests
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_parameters_preserved_with_on_conflict() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2137,7 +2138,7 @@ mod tests {
 	// ANALYZE Builder Tests
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_postgres_database_wide() {
 		let backend = Arc::new(MockBackend);
 		let builder = AnalyzeBuilder::new(backend);
@@ -2145,7 +2146,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_postgres_specific_table() {
 		let backend = Arc::new(MockBackend);
 		let builder = AnalyzeBuilder::new(backend).table("users");
@@ -2153,7 +2154,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE \"users\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_postgres_verbose() {
 		let backend = Arc::new(MockBackend);
 		let builder = AnalyzeBuilder::new(backend).table("users").verbose(true);
@@ -2161,7 +2162,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE VERBOSE \"users\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_postgres_with_columns() {
 		let backend = Arc::new(MockBackend);
 		let builder = AnalyzeBuilder::new(backend)
@@ -2171,7 +2172,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE \"users\" (\"email\", \"created_at\")");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_postgres_verbose_with_columns() {
 		let backend = Arc::new(MockBackend);
 		let builder = AnalyzeBuilder::new(backend)
@@ -2182,7 +2183,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE VERBOSE \"users\" (\"email\")");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_mysql_specific_table() {
 		let backend = Arc::new(MockMysqlBackend);
 		let builder = AnalyzeBuilder::new(backend).table("users");
@@ -2190,7 +2191,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE TABLE `users`");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_mysql_database_wide() {
 		let backend = Arc::new(MockMysqlBackend);
 		let builder = AnalyzeBuilder::new(backend);
@@ -2198,7 +2199,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE TABLE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_sqlite_database_wide() {
 		let backend = Arc::new(MockSqliteBackend);
 		let builder = AnalyzeBuilder::new(backend);
@@ -2206,7 +2207,7 @@ mod tests {
 		assert_eq!(sql, "ANALYZE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_builder_sqlite_specific_table() {
 		let backend = Arc::new(MockSqliteBackend);
 		let builder = AnalyzeBuilder::new(backend).table("users");
@@ -2218,7 +2219,7 @@ mod tests {
 	// INSERT FROM SELECT Tests
 	// ==========================================
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_basic_postgres() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2241,7 +2242,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_with_where_clause() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2265,7 +2266,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_with_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2287,7 +2288,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_on_conflict_do_nothing_postgres() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2308,7 +2309,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_on_conflict_do_update_postgres() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2329,7 +2330,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_mysql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -2352,7 +2353,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_mysql_ignore() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
@@ -2373,7 +2374,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_sqlite() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -2396,7 +2397,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_from_select_sqlite_or_ignore() {
 		// Arrange
 		let backend = Arc::new(MockSqliteBackend);
@@ -2417,7 +2418,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_from_select_conversion() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2440,7 +2441,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_from_select_preserves_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2460,7 +2461,7 @@ mod tests {
 		assert!(sql.contains("RETURNING"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_from_select_preserves_on_conflict() {
 		// Arrange
 		let backend = Arc::new(MockBackend);

@@ -984,8 +984,9 @@ impl Default for MigrationGraph {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_migration_key_creation() {
 		let key = MigrationKey::new("auth", "0001_initial");
 		assert_eq!(key.app_label, "auth");
@@ -993,20 +994,20 @@ mod tests {
 		assert_eq!(key.id(), "auth.0001_initial");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_key_display() {
 		let key = MigrationKey::new("users", "0002_add_email");
 		assert_eq!(format!("{}", key), "users.0002_add_email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_graph_creation() {
 		let graph = MigrationGraph::new();
 		assert!(graph.is_empty());
 		assert_eq!(graph.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_migration() {
 		let mut graph = MigrationGraph::new();
 		let key = MigrationKey::new("auth", "0001_initial");
@@ -1017,7 +1018,7 @@ mod tests {
 		assert!(graph.has_migration(&key));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_dependencies() {
 		let mut graph = MigrationGraph::new();
 		let key1 = MigrationKey::new("auth", "0001_initial");
@@ -1031,7 +1032,7 @@ mod tests {
 		assert_eq!(deps[0], key1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_dependents() {
 		let mut graph = MigrationGraph::new();
 		let key1 = MigrationKey::new("auth", "0001_initial");
@@ -1051,7 +1052,7 @@ mod tests {
 		assert_eq!(dependents2[0], &key3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_topological_sort_simple() {
 		let mut graph = MigrationGraph::new();
 		let key1 = MigrationKey::new("auth", "0001_initial");
@@ -1066,7 +1067,7 @@ mod tests {
 		assert_eq!(order[1], key2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_topological_sort_complex() {
 		let mut graph = MigrationGraph::new();
 
@@ -1095,7 +1096,7 @@ mod tests {
 		assert!(pos3 < pos4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_dependency_detection() {
 		let mut graph = MigrationGraph::new();
 
@@ -1116,7 +1117,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_leaf_nodes() {
 		let mut graph = MigrationGraph::new();
 
@@ -1134,7 +1135,7 @@ mod tests {
 		assert!(leaves.contains(&&key3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_root_nodes() {
 		let mut graph = MigrationGraph::new();
 
@@ -1152,7 +1153,7 @@ mod tests {
 		assert!(roots.contains(&&key3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_migration() {
 		let mut graph = MigrationGraph::new();
 		let key = MigrationKey::new("auth", "0001_initial");
@@ -1165,7 +1166,7 @@ mod tests {
 		assert!(graph.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear() {
 		let mut graph = MigrationGraph::new();
 
@@ -1179,7 +1180,7 @@ mod tests {
 		assert_eq!(graph.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_root_nodes_sort() {
 		let mut graph = MigrationGraph::new();
 
@@ -1199,7 +1200,7 @@ mod tests {
 		assert!(order.contains(&posts_0001));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_dependency_chain() {
 		let mut graph = MigrationGraph::new();
 
@@ -1236,7 +1237,7 @@ mod tests {
 		assert!(pos_c < pos_d);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_replaces() {
 		let mut graph = MigrationGraph::new();
 
@@ -1263,7 +1264,7 @@ mod tests {
 		assert_eq!(graph.get_replacement(&squashed), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_execution_order_with_replaces() {
 		let mut graph = MigrationGraph::new();
 
@@ -1296,7 +1297,7 @@ mod tests {
 		assert!(pos_squashed < pos_old3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_migration_path_simple() {
 		let mut graph = MigrationGraph::new();
 
@@ -1315,7 +1316,7 @@ mod tests {
 		assert_eq!(path[2], key3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_migration_path_same_node() {
 		let mut graph = MigrationGraph::new();
 
@@ -1327,7 +1328,7 @@ mod tests {
 		assert_eq!(path[0], key);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_migration_path_no_path() {
 		let mut graph = MigrationGraph::new();
 
@@ -1341,7 +1342,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_backward_path() {
 		let mut graph = MigrationGraph::new();
 
@@ -1360,7 +1361,7 @@ mod tests {
 		assert_eq!(path[2], key1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_all_cycles_no_cycle() {
 		let mut graph = MigrationGraph::new();
 
@@ -1376,7 +1377,7 @@ mod tests {
 		assert!(cycles.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_all_cycles_with_cycle() {
 		let mut graph = MigrationGraph::new();
 
@@ -1392,7 +1393,7 @@ mod tests {
 		assert_eq!(cycles.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_replaces_scenario() {
 		let mut graph = MigrationGraph::new();
 
@@ -1435,7 +1436,7 @@ mod tests {
 		assert!(pos_app2_0001 < pos_app2_0002);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_app_diamond_dependency() {
 		let mut graph = MigrationGraph::new();
 
@@ -1476,7 +1477,7 @@ mod tests {
 		assert!(pos_posts < pos_comments);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_with_multiple_routes() {
 		let mut graph = MigrationGraph::new();
 

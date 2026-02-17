@@ -66,6 +66,7 @@ impl<S, A, T> AssociationProxy<S, A, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -81,7 +82,7 @@ mod tests {
 		address: Address,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_proxy_basic() {
 		let address = Address {
 			city: "Tokyo".to_string(),
@@ -95,7 +96,7 @@ mod tests {
 		assert_eq!(city_proxy.get(&user), "Tokyo");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_proxy_multiple_attributes() {
 		let address = Address {
 			city: "Paris".to_string(),
@@ -112,7 +113,7 @@ mod tests {
 		assert_eq!(country_proxy.get(&user), "France");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_association_proxy_full_object() {
 		let address = Address {
 			city: "Berlin".to_string(),

@@ -867,6 +867,7 @@ impl Q {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Test model for FieldRef demonstration
 	#[allow(dead_code)]
@@ -886,7 +887,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_basic() {
 		let id_ref = TestUser::field_id();
 		assert_eq!(id_ref.name(), "id");
@@ -894,34 +895,34 @@ mod tests {
 		assert_eq!(format!("{}", id_ref), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_string_field() {
 		let name_ref = TestUser::field_name();
 		assert_eq!(name_ref.name(), "name");
 		assert_eq!(name_ref.to_sql(), "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_to_f_conversion() {
 		let id_ref = TestUser::field_id();
 		let f: F = id_ref.into();
 		assert_eq!(f.to_sql(), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_expressions_f_unit() {
 		let f = F::new("price");
 		assert_eq!(f.to_sql(), "price");
 		assert_eq!(format!("{}", f), "price");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_simple_condition() {
 		let q = Q::new("age", ">=", "18");
 		assert_eq!(q.to_sql(), "age >= 18");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_and_operator() {
 		let q1 = Q::new("age", ">=", "18");
 		let q2 = Q::new("country", "=", "US");
@@ -935,7 +936,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_or_operator() {
 		let q1 = Q::new("status", "=", "active");
 		let q2 = Q::new("status", "=", "pending");
@@ -949,13 +950,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_not_operator() {
 		let q = Q::new("deleted", "=", "1").not();
 		assert_eq!(q.to_sql(), "NOT (deleted = 1)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_complex_query() {
 		// (age >= 18 AND country = 'US') OR (status = 'premium')
 		let q1 = Q::new("age", ">=", "18");
@@ -972,7 +973,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_chained_and() {
 		let q1 = Q::new("a", "=", "1");
 		let q2 = Q::new("b", "=", "2");
@@ -988,7 +989,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_q_chained_or() {
 		let q1 = Q::new("x", "=", "1");
 		let q2 = Q::new("y", "=", "2");
@@ -1004,13 +1005,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_outer_ref() {
 		let outer_ref = OuterRef::new("parent_id");
 		assert_eq!(outer_ref.to_sql(), "parent_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery() {
 		let subquery = Subquery::new("SELECT id FROM users WHERE active = 1");
 		let sql = subquery.to_sql();
@@ -1021,7 +1022,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_custom_template() {
 		let subquery =
 			Subquery::new("SELECT COUNT(*) FROM orders").with_template("COUNT = %(subquery)s");
@@ -1029,7 +1030,7 @@ mod tests {
 		assert_eq!(sql, "COUNT = SELECT COUNT(*) FROM orders");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_expressions_exists() {
 		let exists = Exists::new("SELECT 1 FROM orders WHERE user_id = 123");
 		let sql = exists.to_sql();
@@ -1042,7 +1043,7 @@ mod tests {
 
 	// FieldRef-based F expression tests
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_to_f_direct_conversion() {
 		// Verify FieldRef can be directly converted to F expression
 		let id_field = TestUser::field_id();
@@ -1052,7 +1053,7 @@ mod tests {
 		assert_eq!(format!("{}", f), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_string_field_to_f() {
 		// Verify String-typed FieldRef works with F expression
 		let name_field = TestUser::field_name();
@@ -1062,7 +1063,7 @@ mod tests {
 		assert_eq!(format!("{}", f), "name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_field_refs_to_f() {
 		// Verify multiple FieldRefs can be converted to F expressions
 		let id_f: F = TestUser::field_id().into();
@@ -1073,7 +1074,7 @@ mod tests {
 		assert_ne!(id_f.to_sql(), name_f.to_sql());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_preserves_field_name_in_f() {
 		// Ensure field name is correctly preserved through conversion
 		let id_field = TestUser::field_id();
@@ -1083,7 +1084,7 @@ mod tests {
 		assert_eq!(f.to_sql(), original_name);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_ref_const_to_f_conversion() {
 		// Verify const FieldRef can be converted to F
 		const ID_FIELD: FieldRef<TestUser, i64> = FieldRef::new("id");
@@ -1103,8 +1104,9 @@ mod expressions_extended_tests {
 	// Tests use annotation types directly
 	use crate::orm::annotation::Value;
 	use crate::orm::expressions::{F, Q};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_values_expression_group_by() {
 		// Test that Value expressions can be used in group by contexts
@@ -1112,7 +1114,7 @@ mod expressions_extended_tests {
 		assert_eq!(val.to_sql(), "'test_group'");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_values_expression_group_by_1() {
 		// Test that Value expressions can be used in group by contexts
@@ -1120,7 +1122,7 @@ mod expressions_extended_tests {
 		assert_eq!(val.to_sql(), "42");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregate_rawsql_annotation() {
 		// Test aggregate with annotation
@@ -1128,7 +1130,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "SUM(amount) AS total_amount");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregate_rawsql_annotation_1() {
 		// Test aggregate with annotation
@@ -1136,7 +1138,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "MAX(price) AS max_price");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregate_subquery_annotation() {
 		// Test subquery with aggregate
@@ -1149,7 +1151,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregate_subquery_annotation_1() {
 		// Test subquery with aggregate
@@ -1162,7 +1164,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregates() {
 		// Test basic aggregates
@@ -1170,7 +1172,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "AVG(score)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_aggregates_1() {
 		// Test basic aggregates
@@ -1178,7 +1180,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "MIN(age)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_by_empty_custom_exists() {
 		// Test EXISTS with empty subquery
@@ -1187,7 +1189,7 @@ mod expressions_extended_tests {
 		assert_eq!(sql, "EXISTS()");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_by_empty_custom_exists_1() {
 		// Test EXISTS with subquery
@@ -1196,7 +1198,7 @@ mod expressions_extended_tests {
 		assert_eq!(sql, "EXISTS(SELECT 1)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_aggregate() {
 		// Test aggregates with values
@@ -1204,7 +1206,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "COUNT(*) AS total");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_aggregate_1() {
 		// Test aggregates with values
@@ -1212,21 +1214,21 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "SUM(quantity) AS total_qty");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_count() {
 		let agg = Aggregate::count(Some("id")).with_alias("total");
 		assert_eq!(agg.to_sql(), "COUNT(id) AS total");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_count_1() {
 		let agg = Aggregate::count(Some("id")).with_alias("total");
 		assert_eq!(agg.to_sql(), "COUNT(id) AS total");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_filter() {
 		let q = Q::new("status", "=", "active");
@@ -1238,7 +1240,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotate_values_filter_1() {
 		let q = Q::new("status", "=", "active");
@@ -1250,7 +1252,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_deeply_nested_outerref() {
 		// Test deeply nested OuterRef
@@ -1258,7 +1260,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "parent.grandparent.id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_deeply_nested_outerref_1() {
 		// Test deeply nested OuterRef
@@ -1266,7 +1268,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "root.level1.level2.field");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_nested_outerref() {
 		// Test nested OuterRef
@@ -1274,7 +1276,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "parent.user_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_nested_outerref_1() {
 		// Test nested OuterRef
@@ -1282,7 +1284,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "outer.category_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_outerref() {
 		// Test OuterRef in annotation
@@ -1290,7 +1292,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "user_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_outerref_1() {
 		// Test OuterRef in annotation
@@ -1298,7 +1300,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "category_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_outerref_and_output_field() {
 		// Test OuterRef with output field
@@ -1308,7 +1310,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "product_price");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotation_with_outerref_and_output_field_1() {
 		// Test OuterRef with output field
@@ -1316,7 +1318,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "amount");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotations_within_subquery() {
 		// Test annotations in subquery
@@ -1329,7 +1331,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_annotations_within_subquery_1() {
 		// Test annotations in subquery
@@ -1343,7 +1345,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_case_in_filter_if_boolean_output_field() {
 		let q = Q::new("status", "=", "active");
@@ -1355,7 +1357,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_case_in_filter_if_boolean_output_field_1() {
 		let q = Q::new("status", "=", "active");
@@ -1367,7 +1369,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_date_subquery_subtraction() {
 		// Test date subtraction in subquery
@@ -1380,7 +1382,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_date_subquery_subtraction_1() {
 		// Test date subtraction in subquery
@@ -1393,7 +1395,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_and_duration_field_addition_with_annotate_and_no_output_field() {
 		// Test datetime and duration addition
@@ -1401,7 +1403,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "created_at + INTERVAL 7 DAY");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_and_duration_field_addition_with_annotate_and_no_output_field_1() {
 		// Test datetime and duration addition
@@ -1409,7 +1411,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "start_time + duration");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_and_durationfield_addition_with_filter() {
 		let q = Q::new("status", "=", "active");
@@ -1421,7 +1423,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_and_durationfield_addition_with_filter_1() {
 		let q = Q::new("status", "=", "active");
@@ -1433,7 +1435,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_subquery_subtraction() {
 		// Test datetime subtraction in subquery
@@ -1446,7 +1448,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_subquery_subtraction_1() {
 		// Test datetime subtraction in subquery
@@ -1459,7 +1461,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_subtraction_with_annotate_and_no_output_field() {
 		// Test datetime subtraction
@@ -1467,7 +1469,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "end_time - start_time");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_datetime_subtraction_with_annotate_and_no_output_field_1() {
 		// Test datetime subtraction
@@ -1475,7 +1477,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "checkout_time - checkin_time");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_distinct_aggregates() {
 		// Test DISTINCT aggregates
@@ -1483,7 +1485,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "COUNT(DISTINCT user_id)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_distinct_aggregates_1() {
 		// Test DISTINCT aggregates
@@ -1491,7 +1493,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "COUNT(DISTINCT email)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_empty_group_by() {
 		// Test empty group by - aggregate over all rows
@@ -1499,7 +1501,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "COUNT(*)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_empty_group_by_1() {
 		// Test empty group by - aggregate over all rows
@@ -1507,7 +1509,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "SUM(total)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_exists_in_filter() {
 		let q = Q::new("status", "=", "active");
@@ -1519,7 +1521,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_exists_in_filter_1() {
 		let q = Q::new("status", "=", "active");
@@ -1531,7 +1533,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_expressions_range_lookups_join_choice() {
 		// Test range lookups with expressions
@@ -1546,7 +1548,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_expressions_range_lookups_join_choice_1() {
 		// Test range lookups with expressions
@@ -1561,7 +1563,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter() {
 		let q = Q::new("status", "=", "active");
@@ -1573,7 +1575,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_1() {
 		let q = Q::new("status", "=", "active");
@@ -1585,7 +1587,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_by_empty_exists() {
 		let q = Q::new("status", "=", "active");
@@ -1597,7 +1599,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_by_empty_exists_1() {
 		let q = Q::new("status", "=", "active");
@@ -1609,7 +1611,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_decimal_expression() {
 		let q = Q::new("status", "=", "active");
@@ -1621,7 +1623,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_decimal_expression_1() {
 		let q = Q::new("status", "=", "active");
@@ -1633,7 +1635,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_inter_attribute() {
 		let q = Q::new("status", "=", "active");
@@ -1645,7 +1647,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_inter_attribute_1() {
 		let q = Q::new("status", "=", "active");
@@ -1657,7 +1659,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_not_equals_other_field() {
 		let q = Q::new("status", "=", "active");
@@ -1669,7 +1671,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_not_equals_other_field_1() {
 		let q = Q::new("status", "=", "active");
@@ -1681,7 +1683,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_with_join() {
 		let q = Q::new("status", "=", "active");
@@ -1693,7 +1695,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filter_with_join_1() {
 		let q = Q::new("status", "=", "active");
@@ -1705,7 +1707,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtered_aggregates() {
 		let q = Q::new("status", "=", "active");
@@ -1717,7 +1719,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtered_aggregates_1() {
 		let q = Q::new("status", "=", "active");
@@ -1729,7 +1731,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_annotate_that_uses_q() {
 		let q = Q::new("status", "=", "active");
@@ -1741,7 +1743,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_annotate_that_uses_q_1() {
 		let q = Q::new("status", "=", "active");
@@ -1753,7 +1755,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_q_that_is_boolean() {
 		let q = Q::new("status", "=", "active");
@@ -1765,7 +1767,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_q_that_is_boolean_1() {
 		let q = Q::new("status", "=", "active");
@@ -1777,7 +1779,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_rawsql_that_is_boolean() {
 		let q = Q::new("status", "=", "active");
@@ -1789,7 +1791,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_filtering_on_rawsql_that_is_boolean_1() {
 		let q = Q::new("status", "=", "active");
@@ -1801,7 +1803,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_in_lookup_allows_f_expressions_and_expressions_for_integers() {
 		// Test IN lookup with F expressions
@@ -1809,7 +1811,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "category_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_in_lookup_allows_f_expressions_and_expressions_for_integers_1() {
 		// Test IN lookup with integer expressions
@@ -1822,7 +1824,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_in_subquery() {
 		// Test IN with subquery
@@ -1835,7 +1837,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_in_subquery_1() {
 		// Test IN with subquery
@@ -1848,7 +1850,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_incorrect_field_in_f_expression() {
 		// Test F expression with any field name (no validation at this level)
@@ -1856,7 +1858,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "nonexistent_field");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_incorrect_field_in_f_expression_1() {
 		// Test F expression with any field name (no validation at this level)
@@ -1864,7 +1866,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "invalid__field__name");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_incorrect_joined_field_in_f_expression() {
 		// Test F expression with joined field reference
@@ -1872,7 +1874,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "related__invalid_field");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_incorrect_joined_field_in_f_expression_1() {
 		// Test F expression with joined field reference
@@ -1880,7 +1882,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "user__profile__missing");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_lookups_subquery() {
 		// Test lookups with subquery
@@ -1893,7 +1895,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_lookups_subquery_1() {
 		// Test lookups with subquery
@@ -1906,7 +1908,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_mixed_char_date_with_annotate() {
 		// Test mixed character and date fields
@@ -1916,7 +1918,7 @@ mod expressions_extended_tests {
 		assert_eq!(f2.to_sql(), "created_date");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_mixed_char_date_with_annotate_1() {
 		// Test mixed character and date fields
@@ -1926,7 +1928,7 @@ mod expressions_extended_tests {
 		assert_eq!(f_date.to_sql(), "birth_date");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_negated_empty_exists() {
 		// Test negated EXISTS
@@ -1940,7 +1942,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_negated_empty_exists_1() {
 		// Test negated EXISTS query
@@ -1953,7 +1955,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery() {
 		// Test nested subquery
@@ -1970,7 +1972,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_1() {
 		// Test nested subquery
@@ -1985,7 +1987,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_join_outer_ref() {
 		// Test nested subquery with OuterRef
@@ -2002,7 +2004,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_join_outer_ref_1() {
 		// Test nested subquery with OuterRef
@@ -2010,7 +2012,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "order.user_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_outer_ref_2() {
 		// Test OuterRef in nested subquery
@@ -2018,7 +2020,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "main.category_id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_outer_ref_2_1() {
 		// Test OuterRef in nested subquery
@@ -2026,7 +2028,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "outer_table.field");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_outer_ref_with_autofield() {
 		// Test OuterRef with autofield (id)
@@ -2034,7 +2036,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "id");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_nested_subquery_outer_ref_with_autofield_1() {
 		// Test OuterRef with pk field
@@ -2042,7 +2044,7 @@ mod expressions_extended_tests {
 		assert_eq!(outer_ref.to_sql(), "pk");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_non_empty_group_by() {
 		// Test group by with field
@@ -2052,7 +2054,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "COUNT(id)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_non_empty_group_by_1() {
 		// Test group by with multiple fields
@@ -2062,7 +2064,7 @@ mod expressions_extended_tests {
 		assert_eq!(f2.to_sql(), "month");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_object_create_with_aggregate() {
 		// Test creating object with aggregate value
@@ -2070,7 +2072,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "MAX(score)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_object_create_with_aggregate_1() {
 		// Test creating object with aggregate value
@@ -2078,7 +2080,7 @@ mod expressions_extended_tests {
 		assert_eq!(agg.to_sql(), "AVG(rating)");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_object_create_with_f_expression_in_subquery() {
 		// Test F expression in subquery
@@ -2092,7 +2094,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_object_create_with_f_expression_in_subquery_1() {
 		// Test F expression in subquery
@@ -2100,7 +2102,7 @@ mod expressions_extended_tests {
 		assert_eq!(f.to_sql(), "quantity");
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_by_exists() {
 		// Test ordering by EXISTS clause
@@ -2113,7 +2115,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_by_exists_1() {
 		// Test ordering by EXISTS clause
@@ -2126,7 +2128,7 @@ mod expressions_extended_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_by_multiline_sql() {
 		// Test multiline SQL expression
@@ -2143,7 +2145,7 @@ WHERE active = 1",
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_by_multiline_sql_1() {
 		// Test multiline SQL expression
@@ -2160,7 +2162,7 @@ GROUP BY user_id",
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_of_operations() {
 		// Test order of operations in Q expressions
@@ -2176,7 +2178,7 @@ GROUP BY user_id",
 		);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/expressions
 	fn test_order_of_operations_1() {
 		// Test order of operations with NOT

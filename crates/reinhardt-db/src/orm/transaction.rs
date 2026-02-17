@@ -1431,7 +1431,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_begin() {
 		let mut tx = Transaction::new();
 		let sql = tx.begin().unwrap();
@@ -1440,7 +1440,7 @@ mod tests {
 		assert_eq!(tx.depth(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_commit() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1450,7 +1450,7 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_transaction_rollback() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1460,7 +1460,7 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_transaction_begin() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1469,7 +1469,7 @@ mod tests {
 		assert_eq!(tx.depth(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_transaction_commit() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1480,7 +1480,7 @@ mod tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_transaction_rollback() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1491,14 +1491,14 @@ mod tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_isolation_level() {
 		let mut tx = Transaction::new().with_isolation_level(IsolationLevel::Serializable);
 		let sql = tx.begin().unwrap();
 		assert!(sql.contains("ISOLATION LEVEL SERIALIZABLE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manual_savepoint() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1506,7 +1506,7 @@ mod tests {
 		assert_eq!(sql, "SAVEPOINT my_savepoint");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_transaction_release_savepoint() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1515,7 +1515,7 @@ mod tests {
 		assert_eq!(sql, "RELEASE SAVEPOINT my_savepoint");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_transaction_rollback_savepoint() {
 		let mut tx = Transaction::new();
 		tx.begin().unwrap();
@@ -1524,7 +1524,7 @@ mod tests {
 		assert_eq!(sql, "ROLLBACK TO SAVEPOINT my_savepoint");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_is_active() {
 		let mut tx = Transaction::new();
 		assert!(!tx.is_active());
@@ -1534,21 +1534,21 @@ mod tests {
 		assert!(!tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_commit_without_begin() {
 		let mut tx = Transaction::new();
 		let result = tx.commit();
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rollback_without_begin() {
 		let mut tx = Transaction::new();
 		let result = tx.rollback();
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_savepoint_outside_transaction() {
 		let mut tx = Transaction::new();
 		let result = tx.savepoint("test");
@@ -1652,6 +1652,7 @@ mod tests {
 	/// NOTE: This test does NOT execute against a real database (no begin_db()).
 	/// It only tests SQL generation and state management logic.
 	/// Database execution tests are in tests/integration/.
+	#[rstest]
 	#[tokio::test]
 	async fn test_begin_db_execution() {
 		let mut tx = Transaction::new();
@@ -1668,6 +1669,7 @@ mod tests {
 		assert_eq!(tx.depth(), 1, "Transaction depth should be 1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_commit_db_sql_generation() {
 		// Test that commit_db() generates and attempts to execute correct SQL
@@ -1689,6 +1691,7 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rollback_db_sql_generation() {
 		// Test that rollback_db() generates and attempts to execute correct SQL
@@ -1708,6 +1711,7 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_nested_transaction_sql_generation() {
 		// Test nested transaction (savepoint) SQL generation
@@ -1738,6 +1742,7 @@ mod tests {
 		assert!(!tx.is_active());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_transaction_isolation_level_sql() {
 		// Test that isolation level is properly included in BEGIN statement
@@ -1857,7 +1862,7 @@ mod transaction_extended_tests {
 		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_alternate_decorator_syntax_commit() {
 		let mut tx = Transaction::new();
@@ -1866,7 +1871,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_alternate_decorator_syntax_commit_1() {
 		let mut tx = Transaction::new();
@@ -1875,7 +1880,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_alternate_decorator_syntax_rollback() {
 		let mut tx = Transaction::new();
@@ -1884,7 +1889,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_alternate_decorator_syntax_rollback_1() {
 		let mut tx = Transaction::new();
@@ -1893,7 +1898,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_allows_queries_after_fixing_transaction() {
 		let mut tx = Transaction::new();
@@ -1902,7 +1907,7 @@ mod transaction_extended_tests {
 		assert!(!tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_allows_queries_after_fixing_transaction_1() {
 		let mut tx = Transaction::new();
@@ -1911,7 +1916,7 @@ mod transaction_extended_tests {
 		assert!(!tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_does_not_leak_savepoints_on_failure() {
 		let mut tx = Transaction::new();
@@ -1922,7 +1927,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_does_not_leak_savepoints_on_failure_1() {
 		let mut tx = Transaction::new();
@@ -1933,7 +1938,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_calling_transaction_methods() {
 		let mut tx = Transaction::new();
@@ -1941,7 +1946,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_calling_transaction_methods_1() {
 		let mut tx = Transaction::new();
@@ -1949,7 +1954,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_queries_in_broken_transaction() {
 		let mut tx = Transaction::new();
@@ -1958,7 +1963,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_queries_in_broken_transaction_1() {
 		let mut tx = Transaction::new();
@@ -1967,7 +1972,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_queries_in_broken_transaction_after_client_close() {
 		let mut tx = Transaction::new();
@@ -1976,7 +1981,7 @@ mod transaction_extended_tests {
 		assert!(!tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_queries_in_broken_transaction_after_client_close_1() {
 		let mut tx = Transaction::new();
@@ -1985,7 +1990,7 @@ mod transaction_extended_tests {
 		assert!(!tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_setting_autocommit() {
 		let mut tx = Transaction::new();
@@ -1993,7 +1998,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_atomic_prevents_setting_autocommit_1() {
 		let mut tx = Transaction::new();
@@ -2001,7 +2006,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_commit() {
 		let mut tx = Transaction::new();
@@ -2010,7 +2015,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_commit_1() {
 		let mut tx = Transaction::new();
@@ -2019,7 +2024,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_commit_2() {
 		let mut tx = Transaction::new();
@@ -2028,7 +2033,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_commit_3() {
 		let mut tx = Transaction::new();
@@ -2037,7 +2042,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_decorator_syntax_commit() {
 		let mut tx = Transaction::new();
@@ -2046,7 +2051,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_decorator_syntax_commit_1() {
 		let mut tx = Transaction::new();
@@ -2055,7 +2060,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_decorator_syntax_rollback() {
 		let mut tx = Transaction::new();
@@ -2064,7 +2069,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_decorator_syntax_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2073,7 +2078,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_failure_on_exit_transaction() {
 		let mut tx = Transaction::new();
@@ -2082,7 +2087,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_failure_on_exit_transaction_1() {
 		let mut tx = Transaction::new();
@@ -2091,7 +2096,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_force_rollback() {
 		let mut tx = Transaction::new();
@@ -2100,7 +2105,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_force_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2109,7 +2114,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_implicit_savepoint_rollback() {
 		let mut tx = Transaction::new();
@@ -2120,7 +2125,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_implicit_savepoint_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2131,7 +2136,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_mark_for_rollback_on_error_in_autocommit() {
 		let mut tx = Transaction::new();
@@ -2140,7 +2145,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_mark_for_rollback_on_error_in_autocommit_1() {
 		let mut tx = Transaction::new();
@@ -2149,7 +2154,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_mark_for_rollback_on_error_in_transaction() {
 		let mut tx = Transaction::new();
@@ -2158,7 +2163,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state(), Ok(TransactionState::RolledBack));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_mark_for_rollback_on_error_in_transaction_1() {
 		let mut tx = Transaction::new();
@@ -2167,7 +2172,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state(), Ok(TransactionState::RolledBack));
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_commit_commit() {
 		let mut tx = Transaction::new();
@@ -2178,7 +2183,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_commit_commit_1() {
 		let mut tx = Transaction::new();
@@ -2189,7 +2194,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_commit_rollback() {
 		let mut tx = Transaction::new();
@@ -2200,7 +2205,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_commit_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2211,7 +2216,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_inner_savepoint_rollback() {
 		let mut tx = Transaction::new();
@@ -2222,7 +2227,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_inner_savepoint_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2233,7 +2238,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_outer_rollback() {
 		let mut tx = Transaction::new();
@@ -2244,7 +2249,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_outer_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2255,7 +2260,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_rollback_commit() {
 		let mut tx = Transaction::new();
@@ -2266,7 +2271,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_rollback_commit_1() {
 		let mut tx = Transaction::new();
@@ -2277,7 +2282,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_rollback_rollback() {
 		let mut tx = Transaction::new();
@@ -2288,7 +2293,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_merged_rollback_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2299,7 +2304,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_both_durable() {
 		let mut tx = Transaction::new();
@@ -2310,7 +2315,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_both_durable_1() {
 		let mut tx = Transaction::new();
@@ -2321,7 +2326,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_commit_commit() {
 		let mut tx = Transaction::new();
@@ -2333,7 +2338,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_commit_commit_1() {
 		let mut tx = Transaction::new();
@@ -2345,7 +2350,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_commit_rollback() {
 		let mut tx = Transaction::new();
@@ -2356,7 +2361,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_commit_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2367,7 +2372,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_inner_durable() {
 		let mut tx = Transaction::new();
@@ -2378,7 +2383,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_inner_durable_1() {
 		let mut tx = Transaction::new();
@@ -2389,7 +2394,7 @@ mod transaction_extended_tests {
 		assert!(tx.is_active());
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_outer_durable() {
 		let mut tx = Transaction::new();
@@ -2400,7 +2405,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_outer_durable_1() {
 		let mut tx = Transaction::new();
@@ -2411,7 +2416,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_rollback_commit() {
 		let mut tx = Transaction::new();
@@ -2422,7 +2427,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_rollback_commit_1() {
 		let mut tx = Transaction::new();
@@ -2433,7 +2438,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_rollback_rollback() {
 		let mut tx = Transaction::new();
@@ -2444,7 +2449,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_nested_rollback_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2455,7 +2460,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_orm_query_after_error_and_rollback() {
 		let mut tx = Transaction::new();
@@ -2464,7 +2469,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_orm_query_after_error_and_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2473,7 +2478,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_orm_query_without_autocommit() {
 		let mut tx = Transaction::new();
@@ -2483,7 +2488,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_orm_query_without_autocommit_1() {
 		let mut tx = Transaction::new();
@@ -2493,7 +2498,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_prevent_rollback() {
 		let mut tx = Transaction::new();
@@ -2502,7 +2507,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_prevent_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2511,7 +2516,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_commit_commit() {
 		let mut tx = Transaction::new();
@@ -2520,7 +2525,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_commit_commit_1() {
 		let mut tx = Transaction::new();
@@ -2529,7 +2534,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_commit_rollback() {
 		let mut tx = Transaction::new();
@@ -2538,7 +2543,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_commit_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2547,7 +2552,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_rollback_commit() {
 		let mut tx = Transaction::new();
@@ -2556,7 +2561,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_rollback_commit_1() {
 		let mut tx = Transaction::new();
@@ -2565,7 +2570,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_rollback_rollback() {
 		let mut tx = Transaction::new();
@@ -2574,7 +2579,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_reuse_rollback_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2583,7 +2588,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_rollback() {
 		let mut tx = Transaction::new();
@@ -2592,7 +2597,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_rollback_1() {
 		let mut tx = Transaction::new();
@@ -2601,7 +2606,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_sequence_of_durables() {
 		let mut tx = Transaction::new();
@@ -2610,7 +2615,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_sequence_of_durables_1() {
 		let mut tx = Transaction::new();
@@ -2619,7 +2624,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_wrap_callable_instance() {
 		let mut tx = Transaction::new();
@@ -2628,7 +2633,7 @@ mod transaction_extended_tests {
 		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
 	}
 
-	#[test]
+	#[rstest]
 	// From: Django/transactions
 	fn test_wrap_callable_instance_1() {
 		let mut tx = Transaction::new();

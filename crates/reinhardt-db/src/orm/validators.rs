@@ -1081,8 +1081,9 @@ impl Default for ModelValidators {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_orm_validators_required() {
 		let validator = RequiredValidator::new();
 		assert!(validator.validate("test").is_ok());
@@ -1090,7 +1091,7 @@ mod tests {
 		assert!(validator.validate("   ").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_validators_max_length() {
 		let validator = MaxLengthValidator::new(5);
 		assert!(validator.validate("test").is_ok());
@@ -1098,14 +1099,14 @@ mod tests {
 		assert!(validator.validate("test12").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_validators_min_length() {
 		let validator = MinLengthValidator::new(3);
 		assert!(validator.validate("test").is_ok());
 		assert!(validator.validate("te").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator() {
 		let validator = EmailValidator::new();
 
@@ -1177,7 +1178,7 @@ mod tests {
 		assert!(validator.validate(r#""user\"@example.com"#).is_err()); // Unclosed quote
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator() {
 		let validator = URLValidator::new();
 		// Valid URLs
@@ -1192,7 +1193,7 @@ mod tests {
 		assert!(validator.validate("http://").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_valid_pattern() {
 		let validator = RegexValidator::new(r"^\d{3}-\d{4}$");
 		assert!(validator.validate("123-4567").is_ok());
@@ -1202,7 +1203,7 @@ mod tests {
 		assert!(validator.validate("abc-defg").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_alphanumeric() {
 		let validator = RegexValidator::new(r"^[a-zA-Z0-9]+$");
 		assert!(validator.validate("abc123").is_ok());
@@ -1212,14 +1213,14 @@ mod tests {
 		assert!(validator.validate("abc 123").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Invalid regex pattern")]
 	fn test_regex_validator_invalid_pattern() {
 		// This should panic at construction time
 		RegexValidator::new(r"[invalid(regex");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_try_new_valid() {
 		let result = RegexValidator::try_new(r"^\d+$");
 		let validator = result.unwrap();
@@ -1227,13 +1228,13 @@ mod tests {
 		assert!(validator.validate("abc").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_try_new_invalid() {
 		let result = RegexValidator::try_new(r"[invalid(regex");
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_with_message() {
 		use reinhardt_core::validators::OrmValidator;
 		let validator = RegexValidator::with_message(r"^\d{5}$", "ZIP code must be 5 digits");
@@ -1245,13 +1246,13 @@ mod tests {
 		assert!(validator.validate("1234").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_pattern() {
 		let validator = RegexValidator::new(r"^\d+$");
 		assert_eq!(validator.pattern(), r"^\d+$");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_orm_range_validator() {
 		let validator = RangeValidator::new(Some(0), Some(100));
 		assert!(validator.validate("50").is_ok());
@@ -1261,7 +1262,7 @@ mod tests {
 		assert!(validator.validate("101").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_validators() {
 		let validators = FieldValidators::new()
 			.with_validator(Box::new(RequiredValidator::new()))
@@ -1272,7 +1273,7 @@ mod tests {
 		assert!(validators.validate("12345678901").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_validators() {
 		let mut model_validators = ModelValidators::new();
 
@@ -1290,7 +1291,7 @@ mod tests {
 		assert!(model_validators.validate("email", "invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_all() {
 		let mut model_validators = ModelValidators::new();
 

@@ -211,6 +211,7 @@ impl<T, K> ReverseRelationship for OneToMany<T, K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Clone)]
@@ -227,7 +228,7 @@ mod tests {
 		title: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_many_creation() {
 		let rel: OneToMany<Post, i64> = OneToMany::new("posts");
 		assert_eq!(rel.accessor_name(), "posts");
@@ -236,7 +237,7 @@ mod tests {
 		assert!(rel.is_lazy());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_many_builder() {
 		let rel: OneToMany<Post, i64> = OneToMany::new("posts")
 			.foreign_key("author_id")
@@ -249,19 +250,19 @@ mod tests {
 		assert!(!rel.is_lazy());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_field() {
 		let rel: OneToMany<Post, i64> = OneToMany::new("posts").foreign_key("user_id");
 		assert_eq!(rel.foreign_key_field(), "user_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_field_customization() {
 		let rel: OneToMany<Post, i64> = OneToMany::new("posts").to_field("user_uuid");
 		assert_eq!(rel.get_to_field(), "user_uuid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_loading_configuration() {
 		let rel1: OneToMany<Post, i64> = OneToMany::new("posts").lazy(true);
 		assert!(rel1.is_lazy());
@@ -270,7 +271,7 @@ mod tests {
 		assert!(!rel2.is_lazy());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_values() {
 		let rel: OneToMany<Post, i64> = OneToMany::new("comments");
 		assert_eq!(rel.accessor_name(), "comments");
@@ -278,7 +279,7 @@ mod tests {
 		assert_eq!(rel.get_to_field(), "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_relationships() {
 		let posts: OneToMany<Post, i64> = OneToMany::new("posts").foreign_key("author_id");
 		let comments: OneToMany<Post, i64> = OneToMany::new("comments").foreign_key("user_id");

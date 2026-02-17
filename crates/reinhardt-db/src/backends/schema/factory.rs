@@ -326,7 +326,7 @@ mod tests {
 	use super::*;
 	use rstest::*;
 
-	#[test]
+	#[rstest]
 	fn test_database_type_from_connection_string() {
 		assert_eq!(
 			DatabaseType::from_connection_string("postgres://localhost/mydb"),
@@ -350,14 +350,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_type_as_str() {
 		assert_eq!(DatabaseType::PostgreSQL.as_str(), "postgresql");
 		assert_eq!(DatabaseType::MySQL.as_str(), "mysql");
 		assert_eq!(DatabaseType::SQLite.as_str(), "sqlite");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_factory_creation() {
 		let factory = SchemaEditorFactory::new();
 		let _factory2 = SchemaEditorFactory::default();

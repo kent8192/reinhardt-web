@@ -508,8 +508,9 @@ pub fn validate(registry: &ContentTypeRegistry) -> Vec<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_inspect_options_builder() {
 		let options = InspectOptions::new()
 			.detailed(true)
@@ -523,7 +524,7 @@ mod tests {
 		assert_eq!(options.filter_model_pattern, Some("article".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_info() {
 		let ct = ContentType::new("blog", "article");
 		let info = ContentTypeInfo::from_content_type(ct);
@@ -532,7 +533,7 @@ mod tests {
 		assert!(info.reference_count.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_info_with_reference_count() {
 		let ct = ContentType::new("blog", "article");
 		let info = ContentTypeInfo::from_content_type(ct).with_reference_count(10);
@@ -540,7 +541,7 @@ mod tests {
 		assert_eq!(info.reference_count, Some(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_details() {
 		let ct = ContentType::new("blog", "article");
 		let details = ContentTypeDetails::from_content_type(ct);
@@ -559,7 +560,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_content_type_details_with_metadata() {
 		let ct = ContentType::new("blog", "article");
 		let details =
@@ -571,7 +572,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_stats() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -587,7 +588,7 @@ mod tests {
 		assert_eq!(stats.types_per_app.get("auth"), Some(&1));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_stats_average() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -600,7 +601,7 @@ mod tests {
 		assert!((stats.average_types_per_app() - 2.0).abs() < 0.001);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_all() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -612,7 +613,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_by_app() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -625,7 +626,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_sorted() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "comment"));
@@ -640,7 +641,7 @@ mod tests {
 		assert_eq!(results[2].qualified_name, "blog.comment");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inspect() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -654,7 +655,7 @@ mod tests {
 		assert_eq!(details.model, "article");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inspect_not_found() {
 		let registry = ContentTypeRegistry::new();
 
@@ -664,7 +665,7 @@ mod tests {
 		assert!(details.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inspect_by_name() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -675,7 +676,7 @@ mod tests {
 		assert!(details.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inspect_by_name_invalid() {
 		let registry = ContentTypeRegistry::new();
 
@@ -685,7 +686,7 @@ mod tests {
 		assert!(details.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_apps() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -701,7 +702,7 @@ mod tests {
 		assert_eq!(apps[2], "blog");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_models() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -717,7 +718,7 @@ mod tests {
 		assert_eq!(models[2], "tag");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_search() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -731,7 +732,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_search_case_insensitive() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("Blog", "Article"));
@@ -742,7 +743,7 @@ mod tests {
 		assert_eq!(results.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_orphaned() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -758,7 +759,7 @@ mod tests {
 		assert_eq!(orphaned[0].qualified_name, "blog.old_model");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_valid() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -770,7 +771,7 @@ mod tests {
 		assert!(errors.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_model_pattern() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -785,7 +786,7 @@ mod tests {
 		assert_eq!(results.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_report() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -803,7 +804,7 @@ mod tests {
 		assert!(report.contains("Validation: OK"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convenience_functions() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));

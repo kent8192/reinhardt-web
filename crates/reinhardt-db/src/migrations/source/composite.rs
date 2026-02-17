@@ -134,6 +134,7 @@ impl MigrationSource for CompositeSource {
 mod tests {
 	use super::*;
 	use crate::migrations::Migration;
+	use rstest::rstest;
 
 	/// Test source that returns predefined migrations
 	struct TestSource {
@@ -163,12 +164,14 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_new() {
 		let composite = CompositeSource::new();
 		assert_eq!(composite.sources.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_add_source() {
 		let source1 = Arc::new(TestSource {
@@ -179,6 +182,7 @@ mod tests {
 		assert_eq!(composite.sources.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_merge_migrations() {
 		let source1 = Arc::new(TestSource {
@@ -203,6 +207,7 @@ mod tests {
 		assert_eq!(migrations.len(), 4);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_deduplicate() {
 		// Source 1 has polls.0001_initial
@@ -233,6 +238,7 @@ mod tests {
 		assert!(!migration.atomic); // source2's value
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_migrations_for_app() {
 		let source1 = Arc::new(TestSource {
@@ -258,6 +264,7 @@ mod tests {
 		assert!(polls_migrations.iter().all(|m| m.app_label == "polls"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_get_migration() {
 		let source1 = Arc::new(TestSource {
@@ -280,6 +287,7 @@ mod tests {
 		assert_eq!(migration.name, "0001_initial");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_get_migration_not_found() {
 		let source1 = Arc::new(TestSource {
@@ -293,6 +301,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), MigrationError::NotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_source_empty() {
 		let composite = CompositeSource::new();

@@ -249,6 +249,7 @@ mod tests {
 	use crate::migrations::FieldType;
 	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use chrono::Utc;
+	use rstest::rstest;
 
 	/// Helper function to create a MigrationRecord for testing
 	fn create_migration_record(app: &str, name: &str) -> MigrationRecord {
@@ -327,6 +328,7 @@ mod tests {
 	mod build_applied_migration_graph {
 		use super::*;
 		use crate::backends::DatabaseConnection;
+		use rstest::rstest;
 
 		/// Mock migration source for testing
 		#[derive(Clone)]
@@ -342,6 +344,7 @@ mod tests {
 		}
 
 		/// Test that only applied migrations are included in the graph
+		#[rstest]
 		#[tokio::test]
 		async fn test_filters_unapplied_migrations() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -383,6 +386,7 @@ mod tests {
 		}
 
 		/// Test that multiple applied migrations are included with correct dependencies
+		#[rstest]
 		#[tokio::test]
 		async fn test_includes_all_applied_migrations() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -427,6 +431,7 @@ mod tests {
 		}
 
 		/// Test with migrations from multiple apps
+		#[rstest]
 		#[tokio::test]
 		async fn test_multiple_apps() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -472,6 +477,7 @@ mod tests {
 		}
 
 		/// Test with empty applied records
+		#[rstest]
 		#[tokio::test]
 		async fn test_empty_applied_records() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -500,6 +506,7 @@ mod tests {
 		}
 
 		/// Test with empty all_migrations
+		#[rstest]
 		#[tokio::test]
 		async fn test_empty_all_migrations() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -524,6 +531,7 @@ mod tests {
 		}
 
 		/// Test cross-app dependencies
+		#[rstest]
 		#[tokio::test]
 		async fn test_cross_app_dependencies() {
 			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
@@ -573,9 +581,10 @@ mod tests {
 
 	mod project_state_replay {
 		use super::*;
+		use rstest::rstest;
 
 		/// Test that CreateTable operation creates model with correct fields
-		#[test]
+		#[rstest]
 		fn test_create_table_creates_model() {
 			let mut state = ProjectState::default();
 
@@ -592,7 +601,7 @@ mod tests {
 		}
 
 		/// Test that AddColumn adds field to existing model
-		#[test]
+		#[rstest]
 		fn test_add_column_adds_field() {
 			let mut state = ProjectState::default();
 
@@ -612,7 +621,7 @@ mod tests {
 		}
 
 		/// Test that DropColumn removes field from model
-		#[test]
+		#[rstest]
 		fn test_drop_column_removes_field() {
 			let mut state = ProjectState::default();
 
@@ -635,7 +644,7 @@ mod tests {
 		}
 
 		/// Test that DropTable removes model
-		#[test]
+		#[rstest]
 		fn test_drop_table_removes_model() {
 			let mut state = ProjectState::default();
 
@@ -660,7 +669,7 @@ mod tests {
 		}
 
 		/// Test that RenameTable updates table name
-		#[test]
+		#[rstest]
 		fn test_rename_table_updates_name() {
 			let mut state = ProjectState::default();
 
@@ -678,7 +687,7 @@ mod tests {
 		}
 
 		/// Test that RenameColumn updates field name
-		#[test]
+		#[rstest]
 		fn test_rename_column_updates_field_name() {
 			let mut state = ProjectState::default();
 
@@ -698,7 +707,7 @@ mod tests {
 		}
 
 		/// Test sequential operations from multiple migrations
-		#[test]
+		#[rstest]
 		fn test_sequential_migrations() {
 			let mut state = ProjectState::default();
 

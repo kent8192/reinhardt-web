@@ -97,8 +97,9 @@ pub mod helpers {
 mod tests {
 	use super::*;
 	use reinhardt_query::prelude::{Alias, Expr, Query};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_build_select_postgres() {
 		use reinhardt_query::prelude::ExprTrait;
 
@@ -114,7 +115,7 @@ mod tests {
 		assert_eq!(values.0.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_select_mysql() {
 		let stmt = Query::select()
 			.from(Alias::new("users"))
@@ -126,7 +127,7 @@ mod tests {
 		assert!(sql.contains("`users`")); // MySQL uses backticks
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_select_sqlite() {
 		let stmt = Query::select()
 			.from(Alias::new("users"))

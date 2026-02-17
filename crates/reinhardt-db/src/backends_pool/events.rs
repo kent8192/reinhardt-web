@@ -191,8 +191,9 @@ impl PoolEventListener for EventLogger {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_pool_event_creation() {
 		let event = PoolEvent::connection_acquired("conn-1".to_string());
 		match event {

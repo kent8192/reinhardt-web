@@ -70,6 +70,7 @@ fn check_url_override(model_path: &str, obj: &dyn std::any::Any) -> Option<Strin
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::any::Any;
 
@@ -149,7 +150,7 @@ mod tests {
 		// No default implementation - relies entirely on override
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(url_overrides)]
 	fn test_get_absolute_url() {
 		clear_url_overrides();
@@ -158,7 +159,7 @@ mod tests {
 		assert_eq!("/test-a/1/", obj.get_absolute_url());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(url_overrides)]
 	fn test_override_get_absolute_url() {
 		clear_url_overrides();
@@ -175,7 +176,7 @@ mod tests {
 		clear_url_overrides();
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(url_overrides)]
 	fn test_insert_get_absolute_url() {
 		clear_url_overrides();

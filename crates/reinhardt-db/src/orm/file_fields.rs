@@ -659,9 +659,10 @@ impl Field for ImageField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// FileField tests
-	#[test]
+	#[rstest]
 	fn test_file_field_new() {
 		let field = FileField::new("uploads/documents");
 		assert_eq!(field.upload_to, "uploads/documents");
@@ -669,21 +670,21 @@ mod tests {
 		assert!(field.storage_path.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_with_max_length() {
 		let field = FileField::with_max_length("uploads/files", 255);
 		assert_eq!(field.upload_to, "uploads/files");
 		assert_eq!(field.max_length, 255);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_with_storage() {
 		let storage = PathBuf::from("/var/www/media");
 		let field = FileField::with_storage("uploads/files", storage.clone());
 		assert_eq!(field.storage_path, Some(storage));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_url() {
 		let field = FileField::new("uploads/files");
 		let url = field.url("uploads/files/document.pdf");
@@ -694,7 +695,7 @@ mod tests {
 		assert_eq!(url2, "/media/uploads/files/document.pdf");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_deconstruct() {
 		let mut field = FileField::new("uploads/files");
 		field.set_attributes_from_name("document");
@@ -708,14 +709,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_deconstruct_custom_max_length() {
 		let field = FileField::with_max_length("uploads/files", 200);
 		let dec = field.deconstruct();
 		assert_eq!(dec.kwargs.get("max_length"), Some(&FieldKwarg::Uint(200)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_save_and_exists() {
 		use std::env;
 
@@ -733,7 +734,7 @@ mod tests {
 		fs::remove_dir_all(temp_dir).ok();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_field_delete() {
 		use std::env;
 
@@ -753,7 +754,7 @@ mod tests {
 	}
 
 	// ImageField tests
-	#[test]
+	#[rstest]
 	fn test_image_field_new() {
 		let field = ImageField::new("uploads/images");
 		assert_eq!(field.upload_to, "uploads/images");
@@ -762,35 +763,35 @@ mod tests {
 		assert!(field.height_field.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_with_dimensions() {
 		let field = ImageField::with_dimensions("uploads/images", "img_width", "img_height");
 		assert_eq!(field.width_field, Some("img_width".into()));
 		assert_eq!(field.height_field, Some("img_height".into()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_with_storage() {
 		let storage = PathBuf::from("/var/www/media");
 		let field = ImageField::with_storage("uploads/images", storage.clone());
 		assert_eq!(field.storage_path, Some(storage));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_url() {
 		let field = ImageField::new("uploads/images");
 		let url = field.url("uploads/images/photo.png");
 		assert_eq!(url, "/media/uploads/images/photo.png");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_validate_dimensions_valid() {
 		let field = ImageField::new("uploads/images");
 		let result = field.validate_dimensions(800, 600, Some(1024), Some(768));
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_validate_dimensions_invalid_width() {
 		let field = ImageField::new("uploads/images");
 		let result = field.validate_dimensions(1200, 600, Some(1024), Some(768));
@@ -804,7 +805,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_validate_dimensions_invalid_height() {
 		let field = ImageField::new("uploads/images");
 		let result = field.validate_dimensions(800, 900, Some(1024), Some(768));
@@ -818,14 +819,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_validate_dimensions_no_limit() {
 		let field = ImageField::new("uploads/images");
 		let result = field.validate_dimensions(2000, 2000, None, None);
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_deconstruct() {
 		let mut field = ImageField::new("uploads/images");
 		field.set_attributes_from_name("photo");
@@ -839,7 +840,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_deconstruct_with_dimensions() {
 		let field = ImageField::with_dimensions("uploads/images", "width", "height");
 		let dec = field.deconstruct();
@@ -854,7 +855,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_validate_image_invalid() {
 		let field = ImageField::new("uploads/images");
 		let invalid_content = b"Not an image";
@@ -862,7 +863,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_resize() {
 		use image::{ImageBuffer, Rgb};
 
@@ -886,7 +887,7 @@ mod tests {
 		assert_eq!(resized_img.height(), 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_crop() {
 		use image::{ImageBuffer, Rgb};
 
@@ -916,7 +917,7 @@ mod tests {
 		assert_eq!(cropped_img.height(), 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_convert_format() {
 		use image::{ImageBuffer, ImageFormat, Rgb};
 
@@ -937,7 +938,7 @@ mod tests {
 		assert_eq!(jpeg_img.height(), 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_thumbnail() {
 		use image::{ImageBuffer, Rgb};
 
@@ -961,7 +962,7 @@ mod tests {
 		assert_eq!(thumbnail_img.height(), 40);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_resize_invalid_content() {
 		let field = ImageField::new("uploads/images");
 		let invalid_content = b"Not an image";
@@ -969,7 +970,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_crop_invalid_content() {
 		let field = ImageField::new("uploads/images");
 		let invalid_content = b"Not an image";
@@ -977,7 +978,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_field_convert_format_invalid_content() {
 		let field = ImageField::new("uploads/images");
 		let invalid_content = b"Not an image";

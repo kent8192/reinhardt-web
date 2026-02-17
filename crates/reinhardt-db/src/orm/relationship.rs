@@ -542,6 +542,7 @@ mod tests {
 	use super::*;
 	use crate::orm::types::DatabaseDialect;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -671,7 +672,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_one_to_many_relationship() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -682,7 +683,7 @@ mod tests {
 		assert_eq!(rel.lazy(), LoadingStrategy::Lazy);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_joined_query() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -693,7 +694,7 @@ mod tests {
 		assert!(query.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_select_query() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -711,7 +712,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY") && sql.contains("created_at"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bidirectional_relationship() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_back_populates("author")
@@ -723,191 +724,191 @@ mod tests {
 	// Auto-generated relationship tests
 	// Total: 30 tests
 
-	#[test]
+	#[rstest]
 	fn test_search_with_exact_lookup_relationship_field() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_search_with_exact_lookup_relationship_field_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_emptylistfieldfilter_reverse_relationships() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_emptylistfieldfilter_reverse_relationships_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedfieldlistfilter_reverse_relationships() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedfieldlistfilter_reverse_relationships_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedfieldlistfilter_reverse_relationships_default_ordering() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedfieldlistfilter_reverse_relationships_default_ordering_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedonlyfieldlistfilter_foreignkey_reverse_relationships() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id");
 		assert_eq!(rel.name(), "posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedonlyfieldlistfilter_foreignkey_reverse_relationships_1() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id");
 		assert_eq!(rel.name(), "posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedonlyfieldlistfilter_manytomany_reverse_relationships() {
 		let rel = Relationship::<User, Role>::new("roles", RelationshipType::ManyToMany)
 			.with_secondary("user_roles");
 		assert_eq!(rel.relationship_type(), RelationshipType::ManyToMany);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relatedonlyfieldlistfilter_manytomany_reverse_relationships_1() {
 		let rel = Relationship::<User, Role>::new("roles", RelationshipType::ManyToMany)
 			.with_secondary("user_roles");
 		assert_eq!(rel.relationship_type(), RelationshipType::ManyToMany);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_generic_relationship() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_generic_relationship_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_generic_relationship_with_explicit_fields() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_generic_relationship_with_explicit_fields_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_self_referential_generic_relationship() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_self_referential_generic_relationship_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_keeping_parents_relationships() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_keeping_parents_relationships_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fast_delete_combined_relationships() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fast_delete_combined_relationships_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_2() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aggregate_3() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_as_subquery() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_as_subquery_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_condition_deeper_relation_name() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_condition_deeper_relation_name_1() {
 		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
 		assert_eq!(rel.name(), "test_rel");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_order_by_single_column() {
 		let parsed = Relationship::<User, Post>::parse_order_by("created_at");
 		assert_eq!(parsed.len(), 1);
@@ -915,7 +916,7 @@ mod tests {
 		assert_eq!(parsed[0].1, Order::Asc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_order_by_with_desc() {
 		let parsed = Relationship::<User, Post>::parse_order_by("created_at DESC");
 		assert_eq!(parsed.len(), 1);
@@ -923,7 +924,7 @@ mod tests {
 		assert_eq!(parsed[0].1, Order::Desc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_order_by_with_asc() {
 		let parsed = Relationship::<User, Post>::parse_order_by("name ASC");
 		assert_eq!(parsed.len(), 1);
@@ -931,7 +932,7 @@ mod tests {
 		assert_eq!(parsed[0].1, Order::Asc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_order_by_multiple_columns() {
 		let parsed = Relationship::<User, Post>::parse_order_by("name ASC, created_at DESC");
 		assert_eq!(parsed.len(), 2);
@@ -941,7 +942,7 @@ mod tests {
 		assert_eq!(parsed[1].1, Order::Desc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_order_by_case_insensitive() {
 		let parsed_upper = Relationship::<User, Post>::parse_order_by("name desc");
 		assert_eq!(parsed_upper[0].1, Order::Desc);
@@ -950,7 +951,7 @@ mod tests {
 		assert_eq!(parsed_lower[0].1, Order::Asc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_join_config() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -963,7 +964,7 @@ mod tests {
 		assert_eq!(join_config.join_type, JoinType::LeftJoin);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_join_config_returns_none_for_non_joined() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -972,7 +973,7 @@ mod tests {
 		assert!(rel.get_join_config().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_subquery() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -987,7 +988,7 @@ mod tests {
 		assert!(subquery.contains("user_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_subquery_returns_none_for_non_subquery() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -997,7 +998,7 @@ mod tests {
 		assert!(rel.build_subquery(&parent_stmt).is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_sql_with_mssql() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
@@ -1008,7 +1009,7 @@ mod tests {
 		assert!(sql.contains("posts"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_order_by_in_query() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 

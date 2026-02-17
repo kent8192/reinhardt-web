@@ -552,6 +552,7 @@ mod tests {
 	use super::*;
 	use crate::orm::model::Model;
 	use crate::orm::registry::{ColumnMapping, EntityMapper, registry};
+	use rstest::rstest;
 	use serial_test::serial;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -607,14 +608,14 @@ mod tests {
 		registry().register("TestUser", mapper);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_reflector_for_model() {
 		let reflector = ModelReflector::for_model::<TestUser>();
 		assert_eq!(reflector.table_name(), "test_users");
 		assert!(reflector.model_name().contains("TestUser"));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_new() {
 		setup_test_registry();
@@ -623,7 +624,7 @@ mod tests {
 		assert_eq!(reflector.table_name(), "test_users");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_new_not_found() {
 		registry().clear();
@@ -635,7 +636,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_field_names() {
 		setup_test_registry();
@@ -648,7 +649,7 @@ mod tests {
 		assert!(field_names.contains(&"email".to_owned()));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_fields() {
 		setup_test_registry();
@@ -662,7 +663,7 @@ mod tests {
 		assert!(!id_field.nullable);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_field_info() {
 		setup_test_registry();
@@ -681,7 +682,7 @@ mod tests {
 		assert!(nonexistent.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_model_reflector_primary_key_fields() {
 		setup_test_registry();
@@ -691,7 +692,7 @@ mod tests {
 		assert_eq!(pk_fields[0], "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialize_to_map() {
 		let reflector = ModelReflector::for_model::<TestUser>();
 		let user = TestUser {
@@ -711,7 +712,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_field_value() {
 		let reflector = ModelReflector::for_model::<TestUser>();
 		let user = TestUser {
@@ -734,7 +735,7 @@ mod tests {
 		assert!(email_value.is_null());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_value_conversions() {
 		let int_value = FieldValue::Int(42);
 		assert_eq!(int_value.as_i64(), Some(42));
@@ -757,7 +758,7 @@ mod tests {
 		assert!(null_value.is_null());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_value_from_conversions() {
 		let int_value: FieldValue = 42i32.into();
 		assert_eq!(int_value.as_i64(), Some(42));
@@ -778,7 +779,7 @@ mod tests {
 		assert_eq!(owned_string_value.as_str(), Some("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_new() {
 		let field = FieldInfo::new("username", "user_name", "VARCHAR", false);
 		assert_eq!(field.name, "username");
@@ -787,7 +788,7 @@ mod tests {
 		assert!(!field.nullable);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reflection_error_display() {
 		let err1 = ReflectionError::ModelNotFound("User".to_owned());
 		assert_eq!(err1.to_string(), "Model not found: User");

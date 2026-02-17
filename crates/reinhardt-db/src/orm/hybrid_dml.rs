@@ -498,8 +498,9 @@ impl UpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_simple() {
 		let builder = InsertBuilder::new("person")
 			.value("first_name", "John")
@@ -545,7 +546,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_builder_simple() {
 		let builder = UpdateBuilder::new("person")
 			.set("first_name", "Jane")
@@ -566,7 +567,7 @@ mod tests {
 		assert_eq!(params[0], "Jane", "Expected 'Jane', got: {}", params[0]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_expanded() {
 		let builder = InsertBuilder::new("points").expanded_hybrid(vec![("x", "10"), ("y", "20")]);
 
@@ -594,7 +595,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_builder_expanded() {
 		let builder = UpdateBuilder::new("points")
 			.set_expanded(vec![("x", "30"), ("y", "40")])
@@ -624,7 +625,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_with_hybrid_expression() {
 		struct User {
 			email: String,
@@ -672,7 +673,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_builder_with_hybrid_no_expression() {
 		struct User {
 			email: String,
@@ -724,7 +725,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_builder_with_hybrid_expression() {
 		struct User {
 			email: String,
@@ -751,7 +752,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_builder_with_hybrid_no_expression() {
 		struct User {
 			email: String,

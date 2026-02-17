@@ -424,6 +424,7 @@ mod tests {
 	use super::*;
 	use crate::migrations::fields::FieldType;
 	use crate::migrations::introspection::{ColumnInfo, TableInfo, UniqueConstraintInfo};
+	use rstest::rstest;
 	use std::collections::HashMap;
 
 	fn create_test_table() -> TableInfo {
@@ -476,7 +477,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_model() {
 		let config = IntrospectConfig::default().with_app_label("test");
 		let generator = SchemaCodeGenerator::new(config);
@@ -502,7 +503,7 @@ mod tests {
 		assert!(code.contains("pub email: Option<String>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mask_password_in_url() {
 		assert_eq!(
 			mask_password_in_url("postgres://user:secret@localhost/db"),
@@ -515,7 +516,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_auto_default() {
 		assert!(is_auto_default("NOW()"));
 		assert!(is_auto_default("CURRENT_TIMESTAMP"));

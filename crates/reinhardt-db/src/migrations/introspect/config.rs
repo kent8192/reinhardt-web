@@ -354,8 +354,9 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = IntrospectConfig::default();
 
@@ -367,7 +368,7 @@ mod tests {
 		assert!(!config.output.single_file);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_toml_config() {
 		let toml = r#"
 [database]
@@ -400,7 +401,7 @@ exclude = ["^pg_"]
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_table_filtering() {
 		let config = IntrospectConfig {
 			tables: TableFilterConfig {
@@ -416,7 +417,7 @@ exclude = ["^pg_"]
 		assert!(!config.should_include_table("pg_tables"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cli_args_merge() {
 		let mut config = IntrospectConfig::default();
 		let args = CliArgs {
@@ -431,7 +432,7 @@ exclude = ["^pg_"]
 		assert_eq!(config.generation.app_label, "cli_app");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_pattern() {
 		let config = IntrospectConfig::default()
 			.with_database_url("postgres://localhost/test")

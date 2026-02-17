@@ -336,8 +336,9 @@ fn hash_name(input: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_table_reference() {
 		let table = Table::new("users", None::<String>);
 		assert_eq!(table.name(), "users");
@@ -349,7 +350,7 @@ mod tests {
 		assert_eq!(schema_table.qualified_name(), "blog.posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_columns_reference() {
 		let columns = Columns::new("users", &["id", "name", "email"]);
 		assert_eq!(columns.table(), "users");
@@ -357,7 +358,7 @@ mod tests {
 		assert_eq!(columns.columns_str(), "id, name, email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_name() {
 		let idx = IndexName::new("users", &["email"], "idx");
 		let name = idx.generate_name();
@@ -367,7 +368,7 @@ mod tests {
 		assert!(name.contains("idx"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_foreign_key_name() {
 		let fk = ForeignKeyName::new("posts", &["user_id"], "users", &["id"], "fk");
 		assert_eq!(fk.from_table(), "posts");
@@ -379,7 +380,7 @@ mod tests {
 		assert!(name.contains("users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_statement() {
 		let mut stmt = Statement::new("CREATE TABLE %(table)s (%(definition)s)");
 		stmt.set_param("table", "users");

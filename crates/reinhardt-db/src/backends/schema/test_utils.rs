@@ -55,14 +55,15 @@ impl BaseDatabaseSchemaEditor for MockSchemaEditor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mock_schema_editor_creation() {
 		let editor = MockSchemaEditor::new();
 		assert_eq!(editor.database_type(), DatabaseType::Sqlite);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_schema_editor_default() {
 		let editor = MockSchemaEditor::default();
 		assert_eq!(editor.database_type(), DatabaseType::Sqlite);

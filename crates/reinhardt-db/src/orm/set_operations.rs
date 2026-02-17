@@ -211,8 +211,9 @@ impl SetOperationBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_union() {
 		let combined = CombinedQuery::new("SELECT * FROM users WHERE active = true")
 			.union("SELECT * FROM users WHERE admin = true");
@@ -223,7 +224,7 @@ mod tests {
 		assert!(sql.contains("SELECT * FROM users WHERE admin = true"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_union_all() {
 		let combined = CombinedQuery::new("SELECT name FROM employees")
 			.union_all("SELECT name FROM contractors");
@@ -232,7 +233,7 @@ mod tests {
 		assert!(sql.contains("UNION ALL"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_intersect() {
 		let combined = CombinedQuery::new("SELECT id FROM customers")
 			.intersect("SELECT customer_id FROM orders");
@@ -241,7 +242,7 @@ mod tests {
 		assert!(sql.contains("INTERSECT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_except() {
 		let combined =
 			CombinedQuery::new("SELECT id FROM all_users").except("SELECT id FROM deleted_users");
@@ -250,7 +251,7 @@ mod tests {
 		assert!(sql.contains("EXCEPT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_operations() {
 		let combined = CombinedQuery::new("SELECT * FROM table1")
 			.union("SELECT * FROM table2")
@@ -260,7 +261,7 @@ mod tests {
 		assert_eq!(sql.matches("UNION").count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_order_by() {
 		let combined = CombinedQuery::new("SELECT name FROM users WHERE role = 'admin'")
 			.union("SELECT name FROM users WHERE role = 'moderator'")
@@ -270,7 +271,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY name ASC"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_limit() {
 		let combined = CombinedQuery::new("SELECT * FROM table1")
 			.union("SELECT * FROM table2")
@@ -280,7 +281,7 @@ mod tests {
 		assert!(sql.contains("LIMIT 10"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_offset() {
 		let combined = CombinedQuery::new("SELECT * FROM table1")
 			.union("SELECT * FROM table2")
@@ -290,7 +291,7 @@ mod tests {
 		assert!(sql.contains("OFFSET 5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_limit_and_offset() {
 		let combined = CombinedQuery::new("SELECT * FROM table1")
 			.union("SELECT * FROM table2")
@@ -304,7 +305,7 @@ mod tests {
 		assert!(sql.contains("OFFSET 10"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_operations() {
 		let combined = CombinedQuery::new("SELECT id FROM table1")
 			.union("SELECT id FROM table2")
@@ -315,7 +316,7 @@ mod tests {
 		assert!(sql.contains("INTERSECT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parenthesized_queries() {
 		let combined = CombinedQuery::new("SELECT * FROM users").union("SELECT * FROM admins");
 
@@ -326,7 +327,7 @@ mod tests {
 		assert!(sql.ends_with(")"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_operation_builder() {
 		let builder = SetOperationBuilder::new("SELECT * FROM users");
 		let combined = builder.union("SELECT * FROM admins");

@@ -5498,6 +5498,7 @@ fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 mod tests {
 	use crate::orm::query::UpdateValue;
 	use crate::orm::{FilterOperator, FilterValue, Model, QuerySet, query::Filter};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
@@ -5553,6 +5554,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_queryset_create_with_manager() {
 		// Test QuerySet::create() with explicit manager
@@ -5574,6 +5576,7 @@ mod tests {
 		assert!(result.is_err() || result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_queryset_create_without_manager() {
 		// Test QuerySet::create() fallback without manager
@@ -5592,7 +5595,7 @@ mod tests {
 		assert!(result.is_err() || result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_with_manager() {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager.clone());
@@ -5601,7 +5604,7 @@ mod tests {
 		assert!(queryset.manager.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_filter_preserves_manager() {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
@@ -5618,7 +5621,7 @@ mod tests {
 		assert!(filtered.manager.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_select_related_preserves_manager() {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
@@ -5630,7 +5633,7 @@ mod tests {
 		assert_eq!(selected.select_related_fields, vec!["profile", "posts"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queryset_prefetch_related_preserves_manager() {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
@@ -5645,6 +5648,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_composite_validation_error() {
 		use std::collections::HashMap;
@@ -5662,7 +5666,7 @@ mod tests {
 
 	// SQL Generation Tests
 
-	#[test]
+	#[rstest]
 	fn test_update_sql_single_field_single_filter() {
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
 			"id".to_string(),
@@ -5684,7 +5688,7 @@ mod tests {
 		assert_eq!(params, vec!["alice", "1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_sql_multiple_fields_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -5726,7 +5730,7 @@ mod tests {
 		assert_eq!(params[3], "%example.com%");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_sql_single_filter() {
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
 			"id".to_string(),
@@ -5740,7 +5744,7 @@ mod tests {
 		assert_eq!(params, vec!["1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_sql_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -5763,7 +5767,7 @@ mod tests {
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(
 		expected = "DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
 	)]
@@ -5772,7 +5776,7 @@ mod tests {
 		let _ = queryset.delete_sql();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_operators() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -5795,7 +5799,7 @@ mod tests {
 		assert_eq!(params, vec!["5", "admin"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_null_value_filter() {
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
 			"email".to_string(),
@@ -5809,7 +5813,7 @@ mod tests {
 		assert_eq!(params, Vec::<String>::new());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_not_null_value_filter() {
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
 			"email".to_string(),
@@ -5828,7 +5832,7 @@ mod tests {
 
 	// Query Optimization Tests
 
-	#[test]
+	#[rstest]
 	fn test_select_related_query_generation() {
 		// Test that select_related_query() generates SelectStatement correctly
 		let queryset = QuerySet::<TestUser>::new().select_related(&["profile", "department"]);
@@ -5844,7 +5848,7 @@ mod tests {
 		assert!(sql.contains("LEFT JOIN"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prefetch_related_queries_generation() {
 		// Test that prefetch_related_queries() generates correct queries
 		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
@@ -5860,7 +5864,7 @@ mod tests {
 		assert_eq!(queries[1].0, "comments");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prefetch_related_queries_empty_pk_values() {
 		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
 		let pk_values = vec![];
@@ -5871,7 +5875,7 @@ mod tests {
 		assert_eq!(queries.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_related_and_prefetch_together() {
 		// Test that both can be used together
 		let queryset = QuerySet::<TestUser>::new()
@@ -5892,7 +5896,7 @@ mod tests {
 
 	// SmallVec Optimization Tests
 
-	#[test]
+	#[rstest]
 	fn test_smallvec_stack_allocation_within_capacity() {
 		// Test with exactly 10 filters (at capacity)
 		let mut queryset = QuerySet::<TestUser>::new();
@@ -5914,7 +5918,7 @@ mod tests {
 		assert_eq!(params.len(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_smallvec_heap_fallback_over_capacity() {
 		// Test with 15 filters (5 over capacity, should trigger heap allocation)
 		let mut queryset = QuerySet::<TestUser>::new();
@@ -5936,7 +5940,7 @@ mod tests {
 		assert_eq!(params.len(), 15);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_smallvec_typical_use_case_1_5_filters() {
 		// Test typical use case: 1-5 filters (well within stack capacity)
 		let queryset = QuerySet::<TestUser>::new()
@@ -5968,7 +5972,7 @@ mod tests {
 		assert_eq!(params.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_smallvec_empty_initialization() {
 		// Test that empty SmallVec is initialized correctly
 		let queryset = QuerySet::<TestUser>::new();
@@ -5982,7 +5986,7 @@ mod tests {
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_smallvec_single_filter() {
 		// Test single filter (minimal usage)
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(

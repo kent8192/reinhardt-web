@@ -294,8 +294,9 @@ impl SchemaEditor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_database_type_transactional_ddl() {
 		assert!(DatabaseType::Postgres.supports_transactional_ddl());
 		assert!(DatabaseType::Sqlite.supports_transactional_ddl());

@@ -355,6 +355,7 @@ mod tests {
 	use reinhardt_query::prelude::{
 		MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqliteQueryBuilder,
 	};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	// Mock Model for testing
@@ -396,7 +397,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_count_query() {
 		let stmt = build_count_query::<TestModel>();
 		let (sql, _) = PostgresQueryBuilder::new().build_select(&stmt);
@@ -404,7 +405,7 @@ mod tests {
 		assert!(sql.contains("test_table"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_get_query() {
 		let stmt = build_get_query::<TestModel, _>(123);
 		let (sql, values) = PostgresQueryBuilder::new().build_select(&stmt);
@@ -416,7 +417,7 @@ mod tests {
 		assert_eq!(values.0.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_delete_query() {
 		let stmt = build_delete_query::<TestModel, _>(456);
 		let (sql, values) = PostgresQueryBuilder::new().build_delete(&stmt);
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(values.0.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_insert_query() {
 		let stmt = build_insert_query::<TestModel>(
 			vec!["name", "email"],
@@ -440,7 +441,7 @@ mod tests {
 		assert_eq!(values.0.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_update_query() {
 		let stmt = build_update_query::<TestModel, _>(
 			vec![("name", "Bob".into()), ("age", 30.into())],
@@ -455,7 +456,7 @@ mod tests {
 		assert_eq!(values.0.len(), 3); // 2 updates + 1 where condition
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_in_query() {
 		let stmt = build_in_query::<TestModel>("status", vec!["active".into(), "pending".into()]);
 		let (sql, values) = PostgresQueryBuilder::new().build_select(&stmt);
@@ -465,7 +466,7 @@ mod tests {
 		assert_eq!(values.0.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_different_backends() {
 		let stmt = build_count_query::<TestModel>();
 

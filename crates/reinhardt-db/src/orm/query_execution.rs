@@ -337,6 +337,7 @@ impl<T: Model> ExecutableQuery<T> {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -381,7 +382,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_select() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -402,7 +403,7 @@ mod tests {
 		assert!(sql.contains("test_models"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_select_with_where() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -416,7 +417,7 @@ mod tests {
 		assert!(sql.contains("age >= 18"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_select_with_limit_offset() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -436,7 +437,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_insert() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -451,7 +452,7 @@ mod tests {
 		assert!(sql.contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_update() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -470,7 +471,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compile_delete() {
 		use reinhardt_query::prelude::{QueryStatementBuilder, SqliteQueryBuilder};
 
@@ -484,7 +485,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_executable_query() {
 		let query = ExecutableQuery::<TestModel>::new("SELECT * FROM test_models");
 		assert_eq!(query.sql(), "SELECT * FROM test_models");

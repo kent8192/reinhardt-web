@@ -908,6 +908,7 @@ mod di_support {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	struct TestMapperListener {
@@ -957,6 +958,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mapper_event_dispatch() {
 		let registry = EventRegistry::new();
@@ -992,6 +994,7 @@ mod tests {
 		assert_eq!(before_update.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mapper_event_veto() {
 		let registry = EventRegistry::new();
@@ -1016,6 +1019,7 @@ mod tests {
 		assert_eq!(before_insert.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_event_dispatch() {
 		let registry = EventRegistry::new();
@@ -1041,6 +1045,7 @@ mod tests {
 		assert_eq!(after_commit.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_orm_events_multiple_listeners() {
 		let registry = EventRegistry::new();
@@ -1075,6 +1080,7 @@ mod tests {
 		assert_eq!(count2.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_listeners() {
 		let registry = EventRegistry::new();
@@ -1093,6 +1099,7 @@ mod tests {
 		assert_eq!(registry.mapper_listener_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_active_registry_scoping() {
 		// Outside any scope, get_active_registry returns None
@@ -1125,6 +1132,7 @@ mod tests {
 		assert!(get_active_registry().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_nested_registry_scoping() {
 		let outer_registry = Arc::new(EventRegistry::new());

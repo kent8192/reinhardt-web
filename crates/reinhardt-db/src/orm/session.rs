@@ -1473,6 +1473,7 @@ mod tests {
 		sqlx::any::install_default_drivers();
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_creation() {
@@ -1485,6 +1486,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_add_object() {
@@ -1503,6 +1505,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_get_from_identity_map() {
@@ -1566,6 +1569,7 @@ mod tests {
 		assert!(retrieved.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_transaction_begin() {
@@ -1600,6 +1604,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_transaction_rollback() {
@@ -1623,6 +1628,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_close() {
@@ -1634,6 +1640,7 @@ mod tests {
 		session.close().await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_operations_after_close() {
@@ -1652,6 +1659,7 @@ mod tests {
 		// This test verifies the API design
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_multiple_objects() {
@@ -1671,6 +1679,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_delete_removes_from_dirty() {
@@ -1690,6 +1699,7 @@ mod tests {
 		assert_eq!(session.dirty_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_query_creation() {
@@ -1699,6 +1709,7 @@ mod tests {
 		let _query = session.query::<TestUser>();
 	}
 
+	#[rstest]
 	#[tokio::test]
 
 	async fn test_session_double_begin_fails() {
@@ -1711,6 +1722,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_add_without_pk_succeeds() {
 		let pool = create_test_pool().await;
@@ -1731,43 +1743,43 @@ mod tests {
 	// Additional session tests - SessionError Display
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_session_error_database_error_display() {
 		let err = SessionError::DatabaseError("connection failed".to_string());
 		assert_eq!(err.to_string(), "Database error: connection failed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_object_not_found_display() {
 		let err = SessionError::ObjectNotFound("user:123".to_string());
 		assert_eq!(err.to_string(), "Object not found: user:123");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_transaction_error_display() {
 		let err = SessionError::TransactionError("commit failed".to_string());
 		assert_eq!(err.to_string(), "Transaction error: commit failed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_serialization_error_display() {
 		let err = SessionError::SerializationError("invalid json".to_string());
 		assert_eq!(err.to_string(), "Serialization error: invalid json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_invalid_state_display() {
 		let err = SessionError::InvalidState("session closed".to_string());
 		assert_eq!(err.to_string(), "Invalid state: session closed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_flush_error_display() {
 		let err = SessionError::FlushError("failed to write".to_string());
 		assert_eq!(err.to_string(), "Flush error: failed to write");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_debug() {
 		let err = SessionError::DatabaseError("test".to_string());
 		let debug_str = format!("{:?}", err);
@@ -1775,14 +1787,14 @@ mod tests {
 		assert!(debug_str.contains("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_clone() {
 		let err = SessionError::ObjectNotFound("key".to_string());
 		let cloned = err.clone();
 		assert_eq!(err.to_string(), cloned.to_string());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_error_is_std_error() {
 		let err: Box<dyn std::error::Error> =
 			Box::new(SessionError::DatabaseError("test".to_string()));
@@ -1793,7 +1805,7 @@ mod tests {
 	// json_to_reinhardt_query_value tests
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_string() {
 		use serde_json::json;
 		let value = json!("hello world");
@@ -1803,7 +1815,7 @@ mod tests {
 		assert!(debug_str.contains("hello world") || debug_str.contains("String"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_integer() {
 		use serde_json::json;
 		let value = json!(42);
@@ -1813,7 +1825,7 @@ mod tests {
 		assert!(debug_str.contains("42") || debug_str.contains("Int"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_float() {
 		use serde_json::json;
 		let value = json!(3.14159);
@@ -1823,7 +1835,7 @@ mod tests {
 		assert!(debug_str.contains("3.14159") || debug_str.contains("Double"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_bool_true() {
 		use serde_json::json;
 		let value = json!(true);
@@ -1833,7 +1845,7 @@ mod tests {
 		assert!(debug_str.contains("true") || debug_str.contains("Bool"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_bool_false() {
 		use serde_json::json;
 		let value = json!(false);
@@ -1843,7 +1855,7 @@ mod tests {
 		assert!(debug_str.contains("false") || debug_str.contains("Bool"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_null() {
 		use serde_json::json;
 		let value = json!(null);
@@ -1854,7 +1866,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_array() {
 		use serde_json::json;
 		let value = json!([1, 2, 3]);
@@ -1865,7 +1877,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_object() {
 		use serde_json::json;
 		let value = json!({"name": "test", "count": 42});
@@ -1876,7 +1888,7 @@ mod tests {
 		assert!(!debug_str.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_negative_integer() {
 		use serde_json::json;
 		let value = json!(-100);
@@ -1886,7 +1898,7 @@ mod tests {
 		assert!(debug_str.contains("-100") || debug_str.contains("Int"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_to_reinhardt_query_value_large_integer() {
 		use serde_json::json;
 		let value = json!(9223372036854775807i64); // i64::MAX
@@ -1901,6 +1913,7 @@ mod tests {
 	// DbBackend tests
 	// ──────────────────────────────────────────────────────────────
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_get_backend() {
 		let pool = create_test_pool().await;

@@ -585,6 +585,7 @@ mod tests {
 	use super::*;
 	use crate::orm::Model;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -631,7 +632,7 @@ mod tests {
 	}
 
 	// These tests verify that the type system works correctly
-	#[test]
+	#[rstest]
 	fn test_string_methods_compile() {
 		let _lookup = Field::<TestUser, String>::new(vec!["email"])
 			.lower()
@@ -642,19 +643,19 @@ mod tests {
 			.startswith("TEST");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_methods_compile() {
 		let _lookup = Field::<TestUser, i32>::new(vec!["age"]).abs().gte(18);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_methods_compile() {
 		let _lookup = Field::<TestUser, DateTime>::new(vec!["created_at"])
 			.year()
 			.eq(2025);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_comparison_methods_compile() {
 		let _lookup =
 			Field::<TestUser, String>::new(vec!["email"]).eq("test@example.com".to_string());

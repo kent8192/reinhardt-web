@@ -628,8 +628,9 @@ impl DocumentBackend for MongoDBBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_builder_default() {
 		let builder = MongoDBBackendBuilder::new();
 		assert_eq!(builder.url, "mongodb://localhost:27017");
@@ -638,7 +639,7 @@ mod tests {
 		assert_eq!(builder.min_pool_size, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_configuration() {
 		let builder = MongoDBBackendBuilder::new()
 			.url("mongodb://example.com:27017")
@@ -654,7 +655,7 @@ mod tests {
 		assert_eq!(builder.max_idle_time_secs, Some(300));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_backend_builder_method() {
 		let builder = MongoDBBackend::builder();
 		assert_eq!(builder.url, "mongodb://localhost:27017");

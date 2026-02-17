@@ -585,6 +585,7 @@ pub fn instrumentation() -> &'static Instrumentation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	struct TestListener {
@@ -618,6 +619,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_start_notification() {
 		let instr = Instrumentation::new();
@@ -638,6 +640,7 @@ mod tests {
 		assert_eq!(query_start.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_end_notification() {
 		let instr = Instrumentation::new();
@@ -664,6 +667,7 @@ mod tests {
 		assert_eq!(stats.successful_queries, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_error_notification() {
 		let instr = Instrumentation::new();
@@ -694,6 +698,7 @@ mod tests {
 		assert_eq!(stats.failed_queries, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_transaction_notifications() {
 		let instr = Instrumentation::new();
@@ -718,6 +723,7 @@ mod tests {
 		assert_eq!(tx_end.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_transaction() {
 		let instr = Instrumentation::new();
@@ -731,6 +737,7 @@ mod tests {
 		assert_eq!(stats.committed_transactions, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_statistics_aggregation() {
 		let instr = Instrumentation::new();
@@ -747,6 +754,7 @@ mod tests {
 		assert_eq!(stats.avg_duration, Duration::from_millis(20));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_listener_management() {
 		let instr = Instrumentation::new();
@@ -769,6 +777,7 @@ mod tests {
 		assert_eq!(instr.listener_count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_metrics() {
 		let instr = Instrumentation::new();
@@ -784,6 +793,7 @@ mod tests {
 		assert_eq!(stats_after.total_queries, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_metrics_retrieval() {
 		let instr = Instrumentation::new();
@@ -797,6 +807,7 @@ mod tests {
 		assert!(metrics[0].success);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_transaction_metrics_retrieval() {
 		let instr = Instrumentation::new();
@@ -811,6 +822,7 @@ mod tests {
 		assert!(metrics[0].committed);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_global_instrumentation() {
 		let instr = instrumentation();

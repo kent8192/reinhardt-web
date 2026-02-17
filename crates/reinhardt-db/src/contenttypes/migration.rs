@@ -403,8 +403,9 @@ pub fn create_app_rename(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_migration_record_creation() {
 		let record = MigrationRecord::new("old_app", "old_model", "new_app", "new_model");
 
@@ -415,7 +416,7 @@ mod tests {
 		assert!(record.timestamp > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_record_qualified_names() {
 		let record = MigrationRecord::new("blog", "article", "posts", "post");
 
@@ -423,7 +424,7 @@ mod tests {
 		assert_eq!(record.new_qualified_name(), "posts.post");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_record_rename_checks() {
 		let app_rename = MigrationRecord::new("old_app", "model", "new_app", "model");
 		assert!(app_rename.is_app_rename());
@@ -438,7 +439,7 @@ mod tests {
 		assert!(both_rename.is_model_rename());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_model() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "old_article"));
@@ -454,7 +455,7 @@ mod tests {
 		assert!(registry.get("blog", "old_article").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_app() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("old_app", "model1"));
@@ -472,7 +473,7 @@ mod tests {
 		assert!(registry.get("old_app", "model2").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_move_model() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app1", "model"));
@@ -488,7 +489,7 @@ mod tests {
 		assert!(registry.get("app1", "model").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_source_not_found() {
 		let registry = ContentTypeRegistry::new();
 
@@ -498,7 +499,7 @@ mod tests {
 		assert!(matches!(result, Err(MigrationError::SourceNotFound { .. })));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_target_exists() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -510,7 +511,7 @@ mod tests {
 		assert!(matches!(result, Err(MigrationError::TargetExists { .. })));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_same_source_and_target() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -521,7 +522,7 @@ mod tests {
 		assert!(matches!(result, Err(MigrationError::InvalidParameters(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_history() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app", "model1"));
@@ -539,7 +540,7 @@ mod tests {
 		assert_eq!(history.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_history() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app", "model"));
@@ -555,7 +556,7 @@ mod tests {
 		assert_eq!(migration.history().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_old_name() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app", "model"));
@@ -572,7 +573,7 @@ mod tests {
 		assert!(not_found.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_chained_renames() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("app", "model"));
@@ -594,7 +595,7 @@ mod tests {
 		assert_eq!(resolved, Some("app.model3".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_import_history() {
 		let registry1 = ContentTypeRegistry::new();
 		registry1.register(ContentType::new("app", "model"));
@@ -616,7 +617,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_result() {
 		let mut result = MigrationResult::new();
 
@@ -630,7 +631,7 @@ mod tests {
 		assert!(result.has_warnings());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_create_model_rename() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("blog", "article"));
@@ -641,7 +642,7 @@ mod tests {
 		assert_eq!(record.new_model, "post");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_create_app_rename() {
 		let registry = ContentTypeRegistry::new();
 		registry.register(ContentType::new("old_blog", "article"));
@@ -652,7 +653,7 @@ mod tests {
 		assert!(registry.get("blog", "article").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_error_display() {
 		let source_not_found = MigrationError::SourceNotFound {
 			app_label: "app".to_string(),

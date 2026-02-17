@@ -371,8 +371,9 @@ impl GenericRelationConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_set_new() {
 		let relation: GenericRelationSet<()> =
 			GenericRelationSet::new(1, 42, "content_type_id", "object_id");
@@ -383,7 +384,7 @@ mod tests {
 		assert_eq!(relation.fk_field(), "object_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_set_with_defaults() {
 		let relation: GenericRelationSet<()> = GenericRelationSet::with_defaults(5, 100);
 
@@ -393,14 +394,14 @@ mod tests {
 		assert_eq!(relation.fk_field(), "object_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_set_where_clause() {
 		let relation: GenericRelationSet<()> = GenericRelationSet::new(1, 42, "ct_id", "obj_id");
 
 		assert_eq!(relation.where_clause(), "ct_id = 1 AND obj_id = 42");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_set_sql_condition() {
 		let relation: GenericRelationSet<()> =
 			GenericRelationSet::new(1, 42, "content_type_id", "object_id");
@@ -410,7 +411,7 @@ mod tests {
 		assert_eq!(values, vec![1_i64, 42_i64]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_config_new() {
 		let config = GenericRelationConfig::new("Comment");
 
@@ -420,7 +421,7 @@ mod tests {
 		assert!(config.get_related_name().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_config_builder() {
 		let config = GenericRelationConfig::new("Comment")
 			.ct_field("ct_id")
@@ -433,7 +434,7 @@ mod tests {
 		assert_eq!(config.get_related_name(), Some("comments"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generic_relation_set_serialization() {
 		let relation: GenericRelationSet<()> = GenericRelationSet::new(1, 42, "ct", "obj");
 

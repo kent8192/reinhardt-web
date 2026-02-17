@@ -351,8 +351,9 @@ mod rand {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cluster_info_creation() {
 		let info = ClusterInfo {
 			version: "v23.1.0".to_string(),
@@ -361,7 +362,7 @@ mod tests {
 		assert_eq!(info.version, "v23.1.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_serialization_error() {
 		let err1 = DatabaseError::QueryError("SQLSTATE 40001: restart transaction".to_string());
 		assert!(CockroachDBTransactionManager::is_serialization_error(&err1));
@@ -380,6 +381,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_max_retries() {
 		let pool = Arc::new(
@@ -391,6 +393,7 @@ mod tests {
 		assert_eq!(tx_manager.max_retries, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_base_backoff() {
 		let pool = Arc::new(
@@ -403,6 +406,7 @@ mod tests {
 		assert_eq!(tx_manager.base_backoff, Duration::from_millis(200));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_calculate_backoff() {
 		let pool = Arc::new(
@@ -419,7 +423,7 @@ mod tests {
 		assert!(backoff2 > backoff1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_random_f64() {
 		let val1: f64 = rand::random();
 		let val2: f64 = rand::random();

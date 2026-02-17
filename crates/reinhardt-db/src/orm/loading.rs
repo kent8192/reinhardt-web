@@ -339,6 +339,7 @@ impl LoadContext {
 mod tests {
 	use super::*;
 	use reinhardt_core::validators::TableName;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,7 +378,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_loading_strategy_properties_unit() {
 		assert!(LoadingStrategy::Joined.is_eager());
 		assert!(LoadingStrategy::Selectin.is_eager());
@@ -387,7 +388,7 @@ mod tests {
 		assert!(LoadingStrategy::NoLoad.prevents_load());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_option_creation() {
 		let opt = LoadOption::new("author.posts", LoadingStrategy::Joined);
 		assert_eq!(opt.path(), "author.posts");
@@ -395,7 +396,7 @@ mod tests {
 		assert_eq!(opt.path_components(), vec!["author", "posts"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_option_builder() {
 		let options = LoadOptionBuilder::<User>::new()
 			.joinedload("posts")
@@ -412,7 +413,7 @@ mod tests {
 		assert_eq!(options[2].strategy(), LoadingStrategy::Raise);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_context() {
 		let mut ctx = LoadContext::new();
 		ctx.mark_loaded("posts".to_string(), LoadingStrategy::Joined);
@@ -428,7 +429,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_functions() {
 		let joined = joinedload("posts");
 		assert_eq!(joined.strategy(), LoadingStrategy::Joined);
@@ -440,7 +441,7 @@ mod tests {
 		assert_eq!(raise.strategy(), LoadingStrategy::Raise);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_loading_sql_hints() {
 		assert!(LoadingStrategy::Joined.sql_hint().is_some());
 		assert!(LoadingStrategy::Selectin.sql_hint().is_some());
