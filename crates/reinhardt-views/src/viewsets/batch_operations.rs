@@ -289,8 +289,9 @@ impl Default for BatchStatistics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_batch_operation_result_success() {
 		let result = BatchOperationResult::success(0, Some("data".to_string()));
 		assert!(result.success);
@@ -299,7 +300,7 @@ mod tests {
 		assert_eq!(result.error, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_operation_result_failure() {
 		let result: BatchOperationResult<String> =
 			BatchOperationResult::failure(1, "Error message");
@@ -309,7 +310,7 @@ mod tests {
 		assert_eq!(result.error, Some("Error message".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_request_new() {
 		let operations = vec![
 			BatchOperation::Create {
@@ -325,13 +326,13 @@ mod tests {
 		assert!(!request.atomic);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_request_atomic() {
 		let request: BatchRequest<String> = BatchRequest::new(vec![]).atomic();
 		assert!(request.atomic);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_response_statistics() {
 		let results = vec![
 			BatchOperationResult::success(0, Some("data1".to_string())),
@@ -347,7 +348,7 @@ mod tests {
 		assert!(response.any_failed());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_processor_all_success() {
 		let request = BatchRequest::new(vec![
 			BatchOperation::Create {
@@ -368,7 +369,7 @@ mod tests {
 		assert!(response.all_succeeded());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_processor_with_errors() {
 		let request = BatchRequest::new(vec![
 			BatchOperation::Create {
@@ -398,7 +399,7 @@ mod tests {
 		assert_eq!(response.failed, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_processor_atomic_mode() {
 		let request = BatchRequest::new(vec![
 			BatchOperation::Create {
@@ -430,7 +431,7 @@ mod tests {
 		assert_eq!(response.failed, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_processor_validate_size() {
 		let request: BatchRequest<String> = BatchRequest::new(vec![
 			BatchOperation::Create {
@@ -445,7 +446,7 @@ mod tests {
 		assert!(BatchProcessor::validate_size(&request, 1).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_statistics() {
 		let mut stats = BatchStatistics::new();
 		stats.increment("create");
@@ -458,7 +459,7 @@ mod tests {
 		assert_eq!(stats.processing_time_ms, 1000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_operation_serialization() {
 		let op = BatchOperation::Create {
 			data: "test".to_string(),
@@ -468,7 +469,7 @@ mod tests {
 		assert!(json.contains("\"data\":\"test\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_request_is_empty() {
 		let empty_request: BatchRequest<String> = BatchRequest::new(vec![]);
 		assert!(empty_request.is_empty());

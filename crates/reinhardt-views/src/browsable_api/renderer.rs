@@ -330,15 +330,16 @@ impl Default for BrowsableApiRenderer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_renderer_creation() {
 		let renderer = BrowsableApiRenderer::new("Test API", ColorScheme::Dark);
 		assert_eq!(renderer.title, "Test API");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_json() {
 		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
 		let data = json!({"message": "Hello, world!"});
@@ -348,7 +349,7 @@ mod tests {
 		assert!(html.contains("200"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_with_form() {
 		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Light);
 		let data = json!({"id": 1});
@@ -361,7 +362,7 @@ mod tests {
 		assert!(html.contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_status_info() {
 		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
 		let (class, text) = renderer.get_status_info(200);
@@ -369,7 +370,7 @@ mod tests {
 		assert!(text.contains("200"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_status_messages() {
 		let renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
 		assert_eq!(renderer.get_status_message(200), "OK");
@@ -377,14 +378,14 @@ mod tests {
 		assert_eq!(renderer.get_status_message(500), "Internal Server Error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_color_scheme() {
 		let mut renderer = BrowsableApiRenderer::new("Test", ColorScheme::Dark);
 		renderer.set_color_scheme(ColorScheme::Light);
 		assert_eq!(renderer.highlighter.color_scheme(), ColorScheme::Light);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_renderer() {
 		let renderer = BrowsableApiRenderer::default();
 		assert_eq!(renderer.title, "Browsable API");

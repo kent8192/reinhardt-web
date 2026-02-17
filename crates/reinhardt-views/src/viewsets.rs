@@ -236,6 +236,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]
@@ -247,12 +248,14 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestSerializer;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_get_basename() {
 		let viewset = GenericViewSet::new("test", ());
 		assert_eq!(viewset.get_basename(), "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_viewset_list_action() {
 		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
@@ -271,6 +274,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_viewset_retrieve_action() {
 		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
@@ -289,6 +293,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_viewset_create_action() {
 		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
@@ -307,6 +312,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::CREATED);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_viewset_update_action() {
 		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
@@ -325,6 +331,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_viewset_destroy_action() {
 		let viewset: ModelViewSet<TestModel, TestSerializer> = ModelViewSet::new("users");
@@ -343,6 +350,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::NO_CONTENT);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_readonly_viewset_list_allowed() {
 		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
@@ -362,6 +370,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_readonly_viewset_retrieve_allowed() {
 		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
@@ -381,6 +390,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_readonly_viewset_create_denied() {
 		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =
@@ -400,6 +410,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_readonly_viewset_delete_denied() {
 		let viewset: ReadOnlyModelViewSet<TestModel, TestSerializer> =

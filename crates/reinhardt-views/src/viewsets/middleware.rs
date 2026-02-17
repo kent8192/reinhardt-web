@@ -241,6 +241,7 @@ mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
 	fn create_test_request() -> Request {
 		Request::builder()
@@ -253,6 +254,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authentication_middleware_no_login_required() {
 		let middleware = AuthenticationMiddleware::new(false);
@@ -263,6 +265,7 @@ mod tests {
 		assert!(result.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authentication_middleware_login_required_authenticated() {
 		let middleware = AuthenticationMiddleware::new(true);
@@ -278,6 +281,7 @@ mod tests {
 		assert!(result.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authentication_middleware_login_required_not_authenticated() {
 		let middleware = AuthenticationMiddleware::new(true);
@@ -288,6 +292,7 @@ mod tests {
 		assert_eq!(response.status, hyper::StatusCode::UNAUTHORIZED);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_middleware_no_permissions_required() {
 		let middleware = PermissionMiddleware::new(vec![]);
@@ -298,6 +303,7 @@ mod tests {
 		assert!(result.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_middleware_permissions_required() {
 		let middleware = PermissionMiddleware::new(vec!["read".to_string()]);
@@ -308,6 +314,7 @@ mod tests {
 		assert_eq!(response.status, hyper::StatusCode::FORBIDDEN);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_middleware() {
 		let middleware = CompositeMiddleware::new()

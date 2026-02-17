@@ -627,9 +627,11 @@ where
 mod tests {
 	use super::*;
 	use hyper::Method;
+	use rstest::rstest;
 	use std::collections::HashMap;
 	use std::sync::Arc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_builder_validation_empty_actions() {
 		let viewset = ModelViewSet::<(), ()>::new("test");
@@ -649,6 +651,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_builder_name_suffix_mutual_exclusivity() {
 		let viewset = ModelViewSet::<(), ()>::new("test");
@@ -668,6 +671,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_builder_successful_build() {
 		let viewset = ModelViewSet::<(), ()>::new("test");
@@ -684,6 +688,7 @@ mod tests {
 		assert!(Arc::strong_count(&handler) > 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_builder_with_name() {
 		let viewset = ModelViewSet::<(), ()>::new("test");
@@ -699,6 +704,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_viewset_builder_with_suffix() {
 		let viewset = ModelViewSet::<(), ()>::new("test");

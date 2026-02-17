@@ -183,9 +183,10 @@ impl<V: ViewSet> InjectableViewSet for V {}
 mod tests {
 	use super::*;
 	use crate::viewsets::GenericViewSet;
+	use rstest::rstest;
 
 	// Basic compilation test - InjectableViewSet is automatically implemented
-	#[test]
+	#[rstest]
 	fn test_injectable_viewset_trait_is_implemented() {
 		fn assert_injectable<T: InjectableViewSet>() {}
 

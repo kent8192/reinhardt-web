@@ -344,8 +344,9 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::StatusCode;
 	use reinhardt_utils::cache::InMemoryCache;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cache_config_builder() {
 		let config = CacheConfig::new("users")
 			.with_ttl(Duration::from_secs(300))
@@ -357,7 +358,7 @@ mod tests {
 		assert!(config.cache_retrieve);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_config_list_only() {
 		let config = CacheConfig::new("posts").cache_list_only();
 
@@ -365,7 +366,7 @@ mod tests {
 		assert!(!config.cache_retrieve);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_config_retrieve_only() {
 		let config = CacheConfig::new("posts").cache_retrieve_only();
 
@@ -373,7 +374,7 @@ mod tests {
 		assert!(config.cache_retrieve);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cached_response_conversion() {
 		let mut original = Response::new(StatusCode::OK);
 		original.body = Bytes::from("test body");
@@ -387,7 +388,7 @@ mod tests {
 		assert_eq!(restored.body, Bytes::from("test body"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cached_viewset_creation() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet {
@@ -405,7 +406,7 @@ mod tests {
 		assert_eq!(cached_viewset.config.key_prefix, "users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_keys() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet;
@@ -423,6 +424,7 @@ mod tests {
 		assert_eq!(retrieve_key, "users:retrieve:123");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalidate_item() {
 		#[derive(Debug, Clone)]
@@ -457,6 +459,7 @@ mod tests {
 		assert!(cached.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalidate_all() {
 		#[derive(Debug, Clone)]
@@ -504,6 +507,7 @@ mod tests {
 		assert!(cached2.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalidate_all_does_not_affect_other_viewsets() {
 		#[derive(Debug, Clone)]
@@ -548,7 +552,7 @@ mod tests {
 		assert!(posts_cached.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_config_default() {
 		let config = CacheConfig::default();
 		assert_eq!(config.key_prefix, "viewset");

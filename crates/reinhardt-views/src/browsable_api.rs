@@ -45,13 +45,14 @@ impl ColorScheme {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_color_scheme_default() {
 		assert_eq!(ColorScheme::default(), ColorScheme::Dark);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_scheme_theme_names() {
 		assert_eq!(ColorScheme::Dark.theme_name(), "base16-ocean.dark");
 		assert_eq!(ColorScheme::Light.theme_name(), "InspiredGitHub");

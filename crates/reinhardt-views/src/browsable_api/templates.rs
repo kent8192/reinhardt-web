@@ -447,29 +447,30 @@ impl Default for InteractiveDocsRenderer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_renderer_creation() {
 		let renderer = InteractiveDocsRenderer::new("Test API");
 		assert_eq!(renderer.title, "Test API");
 		assert!(renderer.endpoints.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_description() {
 		let mut renderer = InteractiveDocsRenderer::new("API");
 		renderer.set_description("Test description");
 		assert_eq!(renderer.description, Some("Test description".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_base_url() {
 		let mut renderer = InteractiveDocsRenderer::new("API");
 		renderer.set_base_url("https://example.com");
 		assert_eq!(renderer.base_url, "https://example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_endpoint() {
 		let mut renderer = InteractiveDocsRenderer::new("API");
 		let endpoint = ApiEndpoint {
@@ -485,7 +486,7 @@ mod tests {
 		assert_eq!(renderer.endpoints.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_basic() {
 		let mut renderer = InteractiveDocsRenderer::new("API Docs");
 		let endpoint = ApiEndpoint {
@@ -504,7 +505,7 @@ mod tests {
 		assert!(html.contains("/api/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_with_parameters() {
 		let mut renderer = InteractiveDocsRenderer::new("API");
 		let endpoint = ApiEndpoint {
@@ -527,7 +528,7 @@ mod tests {
 		assert!(html.contains("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_renderer() {
 		let renderer = InteractiveDocsRenderer::default();
 		assert_eq!(renderer.title, "API Documentation");

@@ -164,14 +164,15 @@ impl Default for SyntaxHighlighter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_syntax_highlighter_creation() {
 		let highlighter = SyntaxHighlighter::new(ColorScheme::Dark);
 		assert_eq!(highlighter.color_scheme(), ColorScheme::Dark);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_json() {
 		let highlighter = SyntaxHighlighter::new(ColorScheme::Dark);
 		let json = r#"{"name": "Alice", "age": 30}"#;
@@ -180,7 +181,7 @@ mod tests {
 		assert!(!html.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_with_syntax() {
 		let highlighter = SyntaxHighlighter::new(ColorScheme::Light);
 		let rust_code = "fn main() { println!(\"Hello, world!\"); }";
@@ -188,14 +189,14 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_invalid_syntax() {
 		let highlighter = SyntaxHighlighter::new(ColorScheme::Dark);
 		let result = highlighter.highlight("code", "invalid_syntax");
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_and_wrap_json() {
 		let highlighter = SyntaxHighlighter::new(ColorScheme::Dark);
 		let json = r#"{"test": true}"#;
@@ -205,14 +206,14 @@ mod tests {
 		assert!(html.contains("</pre>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_color_scheme() {
 		let mut highlighter = SyntaxHighlighter::new(ColorScheme::Dark);
 		highlighter.set_color_scheme(ColorScheme::Monokai);
 		assert_eq!(highlighter.color_scheme(), ColorScheme::Monokai);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_highlighter() {
 		let highlighter = SyntaxHighlighter::default();
 		assert_eq!(highlighter.color_scheme(), ColorScheme::Dark);

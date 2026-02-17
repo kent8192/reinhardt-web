@@ -210,8 +210,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_nested_resource_new() {
 		let nested = NestedResource::new("user", "user_id", "user_id");
 		assert_eq!(nested.parent, "user");
@@ -219,14 +220,14 @@ mod tests {
 		assert_eq!(nested.lookup_field, "user_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_resource_path_single_level() {
 		let path = NestedResourcePath::new().add_segment("users", "user_id");
 		assert_eq!(path.build_url(), "users/{user_id}/");
 		assert_eq!(path.build_list_url(), "users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_resource_path_two_levels() {
 		let path = NestedResourcePath::new()
 			.add_segment("users", "user_id")
@@ -236,7 +237,7 @@ mod tests {
 		assert_eq!(path.build_list_url(), "users/posts/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_resource_path_three_levels() {
 		let path = NestedResourcePath::new()
 			.add_segment("organizations", "org_id")
@@ -250,7 +251,7 @@ mod tests {
 		assert_eq!(path.build_list_url(), "organizations/teams/members/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_parent_ids() {
 		let path = NestedResourcePath::new()
 			.add_segment("users", "user_id")
@@ -270,7 +271,7 @@ mod tests {
 		assert_eq!(ids.get("post_id"), Some(&"456".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_parent_ids_three_levels() {
 		let path = NestedResourcePath::new()
 			.add_segment("organizations", "org_id")
@@ -292,7 +293,7 @@ mod tests {
 		assert_eq!(ids.get("member_id"), Some(&"3".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_viewset_creation() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet {
@@ -310,7 +311,7 @@ mod tests {
 		assert_eq!(viewset.nested_config().parent_id_param, "post_id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_viewset_get_parent_id() {
 		#[derive(Debug, Clone)]
 		struct TestViewSet;
@@ -332,7 +333,7 @@ mod tests {
 		assert_eq!(parent_id, Some("123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_url_helpers() {
 		assert_eq!(nested_url("users", "123", "posts"), "users/123/posts/");
 		assert_eq!(
@@ -341,13 +342,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_resource_path_empty() {
 		let path = NestedResourcePath::new();
 		assert_eq!(path.build_list_url(), "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_parent_ids_empty_path() {
 		let path = NestedResourcePath::new();
 		let request = Request::builder()

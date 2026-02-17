@@ -323,9 +323,10 @@ impl FormGenerator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_form_generator_creation() {
 		let generator = FormGenerator::new("/api/test/", "POST");
 		assert_eq!(generator.action, "/api/test/");
@@ -333,7 +334,7 @@ mod tests {
 		assert!(generator.fields.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_field() {
 		let mut generator = FormGenerator::new("/api/test/", "POST");
 		generator.add_field("username", "text", true);
@@ -342,14 +343,14 @@ mod tests {
 		assert!(generator.fields[0].required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_csrf_token() {
 		let mut generator = FormGenerator::new("/api/test/", "POST");
 		generator.set_csrf_token("test_token");
 		assert_eq!(generator.csrf_token, Some("test_token".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_error() {
 		let mut generator = FormGenerator::new("/api/test/", "POST");
 		generator.add_error("email", "Invalid email");
@@ -357,7 +358,7 @@ mod tests {
 		assert_eq!(generator.errors["email"].len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_basic_form() {
 		let mut generator = FormGenerator::new("/api/users/", "POST");
 		generator.add_field("username", "text", true);
@@ -367,7 +368,7 @@ mod tests {
 		assert!(html.contains("</form>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_with_csrf() {
 		let mut generator = FormGenerator::new("/api/users/", "POST");
 		generator.set_csrf_token("token123");
@@ -377,7 +378,7 @@ mod tests {
 		assert!(html.contains("token123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_with_errors() {
 		let mut generator = FormGenerator::new("/api/users/", "POST");
 		generator.add_field("email", "email", true);
@@ -387,7 +388,7 @@ mod tests {
 		assert!(html.contains("invalid-feedback"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_schema() {
 		let schema = json!({
 			"username": {"type": "string", "required": true},

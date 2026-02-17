@@ -685,6 +685,7 @@ impl Default for ViewSetInspector {
 mod tests {
 	use super::*;
 	use crate::viewsets::ModelViewSet;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]
@@ -696,14 +697,14 @@ mod tests {
 	#[derive(Debug, Clone)]
 	struct TestSerializer;
 
-	#[test]
+	#[rstest]
 	fn test_viewset_inspector_new() {
 		let inspector = ViewSetInspector::new();
 		assert!(inspector.config.include_descriptions);
 		assert!(inspector.config.include_tags);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_paths_returns_collection_and_detail() {
 		let viewset = ModelViewSet::<TestModel, TestSerializer>::new("users");
 		let inspector = ViewSetInspector::new();
@@ -713,7 +714,7 @@ mod tests {
 		assert!(paths.contains_key("/api/users{id}/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_operations_includes_crud() {
 		let viewset = ModelViewSet::<TestModel, TestSerializer>::new("users");
 		let inspector = ViewSetInspector::new();
@@ -722,7 +723,7 @@ mod tests {
 		assert!(operations.len() >= 6); // At least the 6 CRUD operations
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_model_schema_creates_object() {
 		let inspector = ViewSetInspector::new();
 		let schema = inspector.extract_model_schema("User");
@@ -733,7 +734,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_config() {
 		let config = InspectorConfig {
 			include_descriptions: false,
@@ -747,7 +748,7 @@ mod tests {
 		assert_eq!(inspector.config.default_response_description, "OK");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_schema_from_type() {
 		use reinhardt_rest::ToSchema;
 		use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
@@ -821,7 +822,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_schema_with_name() {
 		use reinhardt_rest::ToSchema;
 		use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};

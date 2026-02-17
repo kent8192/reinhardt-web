@@ -396,8 +396,9 @@ impl ViewSetSchema {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_string() {
 		let schema = FieldSchema::string()
 			.with_description("Test field")
@@ -410,7 +411,7 @@ mod tests {
 		assert!(schema.required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_integer() {
 		let schema = FieldSchema::integer()
 			.with_minimum(0.0)
@@ -423,7 +424,7 @@ mod tests {
 		assert!(schema.required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_array() {
 		let items = FieldSchema::string();
 		let schema = FieldSchema::array(items)
@@ -436,7 +437,7 @@ mod tests {
 		assert_eq!(schema.max_length, Some(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_object() {
 		let schema = FieldSchema::object()
 			.add_property("id", FieldSchema::integer().required())
@@ -450,7 +451,7 @@ mod tests {
 		assert!(props.contains_key("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_schema() {
 		let schema = ModelSchema::new("User")
 			.with_description("User model")
@@ -466,7 +467,7 @@ mod tests {
 		assert!(!schema.fields.get("email").unwrap().required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_viewset_schema() {
 		let model_schema = ModelSchema::new("User")
 			.add_field("id", FieldSchema::integer().required())
@@ -484,7 +485,7 @@ mod tests {
 		assert_eq!(schema.tags.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_request_schema() {
 		let model_schema = ModelSchema::new("CreateUser")
 			.add_field("name", FieldSchema::string().required())
@@ -504,7 +505,7 @@ mod tests {
 		assert_eq!(request.schema.fields.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_response_schema() {
 		let model_schema = ModelSchema::new("User")
 			.add_field("id", FieldSchema::integer().required())
@@ -523,7 +524,7 @@ mod tests {
 		assert_eq!(response.schema.name, "User");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_enum() {
 		let schema = FieldSchema::string().with_enum(vec![
 			serde_json::json!("active"),
@@ -535,7 +536,7 @@ mod tests {
 		assert_eq!(schema.enum_values.unwrap().len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_schema_pattern() {
 		let schema = FieldSchema::string()
 			.with_pattern("^[a-zA-Z0-9]+$")
