@@ -8,6 +8,7 @@
 //! 3. Different dependency functions for the same type create separate instances
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 // Item type used in multiple dependencies
@@ -55,6 +56,7 @@ impl Injectable for DuplicateDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_duplicate_dependency_cached() {
 	let singleton = SingletonScope::new();
@@ -109,6 +111,7 @@ impl Injectable for NoDuplicateDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_no_duplicate_different_types() {
 	let singleton = SingletonScope::new();
@@ -141,6 +144,7 @@ impl Injectable for SubDuplicateDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_sub_duplicate_dependency() {
 	let singleton = SingletonScope::new();
@@ -176,6 +180,7 @@ impl Injectable for AggregateWithDuplicates {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_aggregate_with_duplicates() {
 	let singleton = SingletonScope::new();
@@ -206,6 +211,7 @@ impl Injectable for CustomItemDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_item_dependency_no_cache() {
 	let singleton = SingletonScope::new();
@@ -243,6 +249,7 @@ impl Injectable for ItemList {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_item_list_all_cached() {
 	let singleton = SingletonScope::new();
@@ -314,6 +321,7 @@ impl Injectable for UserProductService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_different_types_separate_caches() {
 	let singleton = SingletonScope::new();

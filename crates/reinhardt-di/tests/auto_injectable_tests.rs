@@ -5,6 +5,7 @@
 
 use reinhardt_di::{Depends, Injectable, InjectionContext, SingletonScope};
 use reinhardt_macros::injectable;
+use rstest::rstest;
 use std::sync::Arc;
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -23,6 +24,7 @@ struct AnotherConfig {
 	api_key: String,
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_auto_injectable_simple() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -32,6 +34,7 @@ async fn test_auto_injectable_simple() {
 	assert_eq!(config.port, 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_auto_injectable_with_depends() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -44,6 +47,7 @@ async fn test_auto_injectable_with_depends() {
 	assert_eq!(depends_config.port, 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_auto_injectable_caching() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -53,6 +57,7 @@ async fn test_auto_injectable_caching() {
 	assert_eq!(config1, config2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_auto_injectable_types() {
 	let singleton_scope = Arc::new(SingletonScope::new());
@@ -75,6 +80,7 @@ impl Injectable for CustomInjectable {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_custom_injectable_override() {
 	let singleton_scope = Arc::new(SingletonScope::new());

@@ -206,7 +206,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_generator_basic() {
 		let mut generator = DependencyGenerator::new(|co| {
@@ -223,6 +225,7 @@ mod tests {
 		assert_eq!(generator.next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_generator_collect() {
 		let generator = DependencyGenerator::new(|co| {
@@ -237,6 +240,7 @@ mod tests {
 		assert_eq!(deps, vec![1, 2, 3]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_stream() {
 		let mut stream = DependencyStream::new(|co| {
@@ -251,6 +255,7 @@ mod tests {
 		assert_eq!(stream.next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_scoped_generator() {
 		let stream = DependencyStream::new(|co| {
@@ -274,6 +279,7 @@ mod tests {
 		assert_eq!(generator.resolve_next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_async_operations_in_generator() {
 		let generator = DependencyGenerator::new(|co| {

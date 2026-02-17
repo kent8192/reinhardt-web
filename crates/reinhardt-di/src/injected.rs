@@ -397,6 +397,7 @@ pub type OptionalInjected<T> = Option<Injected<T>>;
 mod tests {
 	use super::*;
 	use crate::SingletonScope;
+	use rstest::rstest;
 
 	#[derive(Clone, Default, Debug)]
 	struct TestConfig {
@@ -412,6 +413,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_from_value() {
 		let config = TestConfig {
@@ -421,6 +423,7 @@ mod tests {
 		assert_eq!(injected.value, "custom");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_into_inner() {
 		let config = TestConfig {
@@ -431,6 +434,7 @@ mod tests {
 		assert_eq!(extracted.value, "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_clone() {
 		let config = TestConfig {
@@ -443,6 +447,7 @@ mod tests {
 		assert_eq!(injected2.value, "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_deref() {
 		let config = TestConfig {
@@ -454,6 +459,7 @@ mod tests {
 		assert_eq!(injected.value, "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_metadata() {
 		let config = TestConfig {
@@ -466,6 +472,7 @@ mod tests {
 		assert!(!metadata.cached);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_optional_injected_some() {
 		let config = TestConfig {
@@ -479,6 +486,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_optional_injected_none() {
 		let optional: OptionalInjected<TestConfig> = None;
@@ -487,14 +495,14 @@ mod tests {
 
 	// Additional dependency scope tests
 
-	#[test]
+	#[rstest]
 	fn test_dependency_scope_equality() {
 		assert_eq!(DependencyScope::Request, DependencyScope::Request);
 		assert_eq!(DependencyScope::Singleton, DependencyScope::Singleton);
 		assert_ne!(DependencyScope::Request, DependencyScope::Singleton);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_scope_debug() {
 		let request = DependencyScope::Request;
 		let singleton = DependencyScope::Singleton;
@@ -506,7 +514,7 @@ mod tests {
 		assert!(singleton_debug.contains("Singleton"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dependency_scope_clone() {
 		let request = DependencyScope::Request;
 		let cloned = request;
@@ -514,7 +522,7 @@ mod tests {
 		assert_eq!(request, cloned);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injection_metadata_debug() {
 		let metadata = InjectionMetadata {
 			scope: DependencyScope::Request,
@@ -528,7 +536,7 @@ mod tests {
 		assert!(debug_str.contains("true"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injection_metadata_clone() {
 		let metadata = InjectionMetadata {
 			scope: DependencyScope::Singleton,
@@ -541,7 +549,7 @@ mod tests {
 		assert!(!cloned.cached);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injection_metadata_copy() {
 		let metadata = InjectionMetadata {
 			scope: DependencyScope::Request,
@@ -557,6 +565,7 @@ mod tests {
 		assert!(metadata.cached);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_as_arc() {
 		let config = TestConfig {
@@ -573,6 +582,7 @@ mod tests {
 		assert_eq!(Arc::strong_count(arc), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_as_ref() {
 		let config = TestConfig {
@@ -585,6 +595,7 @@ mod tests {
 		assert_eq!(reference.value, "ref_test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_debug() {
 		let config = TestConfig {
@@ -597,6 +608,7 @@ mod tests {
 		assert!(debug_str.contains("Injected"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_resolve_with_context() {
 		let singleton_scope = Arc::new(SingletonScope::new());
@@ -609,6 +621,7 @@ mod tests {
 		assert_eq!(config.metadata().scope, DependencyScope::Request);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_resolve_uncached_with_context() {
 		let singleton_scope = Arc::new(SingletonScope::new());
@@ -622,6 +635,7 @@ mod tests {
 		assert!(!config.metadata().cached);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_clone_shares_arc() {
 		let config = TestConfig {
@@ -638,6 +652,7 @@ mod tests {
 		assert!(Arc::ptr_eq(injected1.as_arc(), injected2.as_arc()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_metadata_preserved_on_clone() {
 		let config = TestConfig {
@@ -651,6 +666,7 @@ mod tests {
 		assert_eq!(injected1.metadata().cached, injected2.metadata().cached);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_into_inner_with_single_reference() {
 		let config = TestConfig {
@@ -663,6 +679,7 @@ mod tests {
 		assert_eq!(inner.value, "single");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_injected_into_inner_with_multiple_references() {
 		let config = TestConfig {

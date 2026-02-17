@@ -327,8 +327,10 @@ impl<T> super::validation::WithValidation for Path<T> {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_struct_params() {
 		use bytes::Bytes;
@@ -359,6 +361,7 @@ mod tests {
 	}
 
 	// Test primitive type extraction
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_primitive_i64() {
 		use bytes::Bytes;
@@ -382,6 +385,7 @@ mod tests {
 		assert_eq!(*result.unwrap(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_primitive_string() {
 		use bytes::Bytes;
@@ -409,6 +413,7 @@ mod tests {
 		assert_eq!(*result.unwrap(), "foobar");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_primitive_f64() {
 		use bytes::Bytes;
@@ -432,6 +437,7 @@ mod tests {
 		assert_eq!(*result.unwrap(), 19.99);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_primitive_bool() {
 		use bytes::Bytes;
@@ -455,6 +461,7 @@ mod tests {
 		assert!(*result.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_multiple_params_struct() {
 		use bytes::Bytes;

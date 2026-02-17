@@ -323,12 +323,14 @@ macro_rules! submit_registration {
 mod tests {
 	use super::*;
 	use crate::scope::SingletonScope;
+	use rstest::rstest;
 
 	#[derive(Clone)]
 	struct TestService {
 		value: i32,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_basic() {
 		let registry = DependencyRegistry::new();
@@ -350,6 +352,7 @@ mod tests {
 		assert_eq!(service.value, 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_not_registered() {
 		let registry = DependencyRegistry::new();

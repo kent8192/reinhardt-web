@@ -3,6 +3,7 @@
 #![cfg(feature = "macros")]
 
 use reinhardt_di::{Injectable, Injected, InjectionContext, SingletonScope, injectable};
+use rstest::rstest;
 use serial_test::serial;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -47,6 +48,7 @@ impl Injectable for CountedService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injected_with_cache_default() {
 	let singleton = SingletonScope::new();
@@ -60,6 +62,7 @@ async fn test_injected_with_cache_default() {
 	assert_eq!(*params1, *params2);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(counted_service)]
 async fn test_injected_no_cache() {
@@ -82,6 +85,7 @@ async fn test_injected_no_cache() {
 	assert_eq!(service1.instance_id + 1, service2.instance_id);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(counted_service)]
 async fn test_injected_with_cache_enabled() {
@@ -99,6 +103,7 @@ async fn test_injected_with_cache_enabled() {
 	assert_eq!(service1.instance_id, service2.instance_id);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injected_from_value() {
 	let db = Database {
@@ -109,6 +114,7 @@ async fn test_injected_from_value() {
 	assert_eq!(injected.connection_count, 10);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_injected_deref() {
 	let singleton = SingletonScope::new();
@@ -121,6 +127,7 @@ async fn test_injected_deref() {
 	assert_eq!(params.limit, 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_fastapi_injected_clone() {
 	let singleton = SingletonScope::new();
@@ -134,6 +141,7 @@ async fn test_fastapi_injected_clone() {
 }
 
 // FastAPI-style usage example
+#[rstest]
 #[tokio::test]
 async fn test_fastapi_style_usage() {
 	async fn endpoint_handler(

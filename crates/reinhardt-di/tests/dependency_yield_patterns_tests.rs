@@ -13,6 +13,7 @@
 //! 4. HTTP exceptions are handled correctly in yield dependencies
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::{Arc, Mutex};
 
 // State tracking for cleanup verification
@@ -95,6 +96,7 @@ impl Injectable for YieldDependencyWithCleanup {
 }
 
 // Test 1: Cleanup runs after successful execution
+#[rstest]
 #[tokio::test]
 async fn test_yield_cleanup_success() {
 	let singleton = SingletonScope::new();
@@ -117,6 +119,7 @@ async fn test_yield_cleanup_success() {
 }
 
 // Test 2: Cleanup runs even when error occurs
+#[rstest]
 #[tokio::test]
 async fn test_yield_cleanup_after_raise() {
 	let singleton = SingletonScope::new();
@@ -166,6 +169,7 @@ impl Injectable for StreamingDependency {
 }
 
 // Test 3: Cleanup runs after streaming response completes
+#[rstest]
 #[tokio::test]
 async fn test_yield_with_streaming_response() {
 	let singleton = SingletonScope::new();
@@ -187,6 +191,7 @@ async fn test_yield_with_streaming_response() {
 }
 
 // Test 4: Multiple streaming dependencies
+#[rstest]
 #[tokio::test]
 async fn test_multiple_streaming_dependencies() {
 	let singleton = SingletonScope::new();
@@ -243,6 +248,7 @@ impl Injectable for WebSocketDependency {
 }
 
 // Test 5: WebSocket lifecycle
+#[rstest]
 #[tokio::test]
 async fn test_yield_with_websocket() {
 	let singleton = SingletonScope::new();
@@ -264,6 +270,7 @@ async fn test_yield_with_websocket() {
 }
 
 // Test 6: WebSocket cleanup on error
+#[rstest]
 #[tokio::test]
 async fn test_websocket_cleanup_on_error() {
 	let singleton = SingletonScope::new();
@@ -319,6 +326,7 @@ impl Injectable for HttpExceptionDependency {
 }
 
 // Test 7: Cleanup with HTTP exception
+#[rstest]
 #[tokio::test]
 async fn test_yield_except_httpexception() {
 	let singleton = SingletonScope::new();
@@ -342,6 +350,7 @@ async fn test_yield_except_httpexception() {
 }
 
 // Test 8: Cleanup without exception
+#[rstest]
 #[tokio::test]
 async fn test_yield_no_exception() {
 	let singleton = SingletonScope::new();
@@ -383,6 +392,7 @@ impl OuterYieldDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_yield_dependencies() {
 	let singleton = SingletonScope::new();

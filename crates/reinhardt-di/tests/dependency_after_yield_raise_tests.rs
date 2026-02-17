@@ -8,6 +8,7 @@
 //! 3. Response is sent before yield cleanup runs
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -83,6 +84,7 @@ impl Injectable for BrokenDep {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_catching_dependency_can_handle_errors() {
 	let singleton = SingletonScope::new();
@@ -103,6 +105,7 @@ async fn test_catching_dependency_can_handle_errors() {
 	assert!(error_catcher.load(Ordering::SeqCst));
 }
 
+#[rstest]
 #[tokio::test]
 #[should_panic(expected = "Broken after yield")]
 async fn test_broken_dependency_raises_on_drop() {
@@ -117,6 +120,7 @@ async fn test_broken_dependency_raises_on_drop() {
 	drop(broken);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_broken_dependency_no_raise_when_disabled() {
 	let singleton = SingletonScope::new();
@@ -164,6 +168,7 @@ impl Injectable for ResponseBeforeCleanup {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_response_sent_before_cleanup() {
 	let singleton = SingletonScope::new();

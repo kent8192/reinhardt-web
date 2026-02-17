@@ -1,6 +1,7 @@
 //! Tests for circular dependency detection
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 // Circular dependency structures
@@ -34,6 +35,7 @@ impl Injectable for ServiceB {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_no_circular_dependency() {
 	let singleton = SingletonScope::new();
@@ -43,6 +45,7 @@ async fn test_no_circular_dependency() {
 	let _service_b = ServiceB::inject(&ctx).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_deep_dependency_chain() {
 	#[derive(Clone, Debug)]
@@ -101,6 +104,7 @@ async fn test_deep_dependency_chain() {
 	let _level4 = Level4::inject(&ctx).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_dependencies() {
 	#[derive(Clone, Debug)]
@@ -148,6 +152,7 @@ async fn test_multiple_dependencies() {
 	let _service = MultiService::inject(&ctx).await.unwrap();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_optional_dependency() {
 	use reinhardt_di::DiError;

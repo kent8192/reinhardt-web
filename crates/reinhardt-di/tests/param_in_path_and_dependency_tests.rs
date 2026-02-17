@@ -15,6 +15,7 @@ use reinhardt_di::DiError;
 use reinhardt_di::params::Path;
 #[cfg(feature = "params")]
 use reinhardt_di::params::extract::FromRequest;
+use rstest::rstest;
 
 // Path parameter wrapper
 #[derive(Clone, Debug)]
@@ -68,6 +69,7 @@ impl Injectable for UserValidator {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_path_param_available_to_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -80,6 +82,7 @@ async fn test_path_param_available_to_dependency() {
 	assert!(validator.exists);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_path_param_shared_between_dependency_and_endpoint() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -96,6 +99,7 @@ async fn test_path_param_shared_between_dependency_and_endpoint() {
 }
 
 // Test with different user IDs
+#[rstest]
 #[tokio::test]
 async fn test_different_path_params_in_different_requests() {
 	// Request 1
@@ -132,6 +136,7 @@ impl Injectable for PathParamDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_dependencies_access_same_path_param() {
 	let singleton = Arc::new(SingletonScope::new());

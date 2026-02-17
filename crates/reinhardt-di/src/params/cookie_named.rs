@@ -216,28 +216,29 @@ impl<N: CookieName, T> super::validation::WithValidation for CookieNamed<N, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cookie_named_new() {
 		let cookie = CookieNamed::<SessionId, String>::new("12345".to_string());
 		assert_eq!(*cookie, "12345");
 		assert_eq!(CookieNamed::<SessionId, String>::name(), "sessionid");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_named_into_inner() {
 		let cookie = CookieNamed::<CsrfToken, String>::new("abc-def-ghi".to_string());
 		let value = cookie.into_inner();
 		assert_eq!(value, "abc-def-ghi");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_named_deref() {
 		let cookie = CookieNamed::<SessionId, String>::new("session123".to_string());
 		assert_eq!(&*cookie, "session123");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_named_optional() {
 		let cookie1 = CookieNamed::<CsrfToken, Option<String>>::new(Some("dark".to_string()));
 		assert_eq!(*cookie1, Some("dark".to_string()));
@@ -246,7 +247,7 @@ mod tests {
 		assert_eq!(*cookie2, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_cookies() {
 		let cookies = parse_cookies("sessionid=abc123; csrftoken=xyz789; user=john");
 		assert_eq!(cookies.get("sessionid"), Some(&"abc123".to_string()));
@@ -254,7 +255,7 @@ mod tests {
 		assert_eq!(cookies.get("user"), Some(&"john".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_cookies_with_encoding() {
 		let cookies = parse_cookies("name=value%20with%20spaces");
 		assert_eq!(cookies.get("name"), Some(&"value with spaces".to_string()));

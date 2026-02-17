@@ -8,6 +8,7 @@
 //! 3. Errors in dependencies are properly handled in WebSocket context
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -78,6 +79,7 @@ impl Injectable for BrokenSessionDep {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_websocket_dependency_after_yield() {
 	let singleton = SingletonScope::new();
@@ -98,6 +100,7 @@ async fn test_websocket_dependency_after_yield() {
 	drop(dep);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_websocket_dependency_after_yield_broken() {
 	let singleton = SingletonScope::new();
@@ -115,6 +118,7 @@ async fn test_websocket_dependency_after_yield_broken() {
 }
 
 // Test session cleanup on drop
+#[rstest]
 #[tokio::test]
 async fn test_session_cleanup_on_drop() {
 	let singleton = SingletonScope::new();
@@ -134,6 +138,7 @@ async fn test_session_cleanup_on_drop() {
 }
 
 // Test multiple iterations
+#[rstest]
 #[tokio::test]
 async fn test_session_data_iteration() {
 	let singleton = SingletonScope::new();
@@ -151,6 +156,7 @@ async fn test_session_data_iteration() {
 }
 
 // Test session state across WebSocket lifecycle
+#[rstest]
 #[tokio::test]
 async fn test_websocket_session_lifecycle() {
 	let singleton = SingletonScope::new();

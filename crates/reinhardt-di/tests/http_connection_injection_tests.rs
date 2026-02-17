@@ -8,6 +8,7 @@
 //! 3. WebSocket connections can also be injected
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -115,6 +116,7 @@ impl Injectable for ValueFromWebSocket {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_value_extracting_by_http() {
 	let singleton = SingletonScope::new();
@@ -131,6 +133,7 @@ async fn test_value_extracting_by_http() {
 	assert_eq!(value.0, 42);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_value_extracting_by_ws() {
 	let singleton = SingletonScope::new();
@@ -147,6 +150,7 @@ async fn test_value_extracting_by_ws() {
 	assert_eq!(value.0, 42);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_http_connection_cached() {
 	let singleton = SingletonScope::new();
@@ -162,6 +166,7 @@ async fn test_http_connection_cached() {
 	assert_eq!(conn1.app_state.get("value"), conn2.app_state.get("value"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_websocket_connection_cached() {
 	let singleton = SingletonScope::new();
@@ -177,6 +182,7 @@ async fn test_websocket_connection_cached() {
 	assert_eq!(conn1.app_state.get("value"), conn2.app_state.get("value"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_app_state_shared_across_connections() {
 	let singleton = Arc::new(SingletonScope::new());

@@ -176,28 +176,29 @@ impl<N: HeaderName, T> super::validation::WithValidation for HeaderNamed<N, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_header_named_new() {
 		let header = HeaderNamed::<ContentType, String>::new("test_value".to_string());
 		assert_eq!(*header, "test_value");
 		assert_eq!(HeaderNamed::<ContentType, String>::name(), "Content-Type");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_named_into_inner() {
 		let header = HeaderNamed::<Authorization, String>::new("Mozilla/5.0".to_string());
 		let value = header.into_inner();
 		assert_eq!(value, "Mozilla/5.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_named_deref() {
 		let header = HeaderNamed::<ContentType, String>::new("application/json".to_string());
 		assert_eq!(&*header, "application/json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_named_optional() {
 		let header1 = HeaderNamed::<Authorization, Option<String>>::new(Some("abc123".to_string()));
 		assert_eq!(*header1, Some("abc123".to_string()));

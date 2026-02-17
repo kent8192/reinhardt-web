@@ -203,8 +203,9 @@ pub enum CycleError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_simple_cycle_detection() {
 		// Start resolving TypeA
 		let type_a = TypeId::of::<TypeA>();
@@ -224,7 +225,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_depth_limit() {
 		// Test depth tracking and cleanup
 		// Since we can't easily create 100 unique TypeIds, we test that:

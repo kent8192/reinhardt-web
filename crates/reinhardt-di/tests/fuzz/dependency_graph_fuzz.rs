@@ -9,6 +9,7 @@
 use proptest::prelude::*;
 use reinhardt_di::{DiResult, Injectable, InjectionContext, RequestScope, SingletonScope};
 use std::sync::Arc;
+use rstest::rstest;
 
 // Generic service with arbitrary ID
 #[derive(Clone, Debug)]
@@ -61,6 +62,7 @@ impl NestedService {
 }
 
 // Fuzz Test 1: Random dependency chain lengths
+#[rstest]
 #[tokio::test]
 async fn fuzz_random_dependency_chains() {
 	proptest!(|(chain_length in 0usize..100)| {
@@ -91,6 +93,7 @@ async fn fuzz_random_dependency_chains() {
 }
 
 // Fuzz Test 2: Random type combinations
+#[rstest]
 #[tokio::test]
 async fn fuzz_random_type_combinations() {
 	proptest!(|(service_count in 1usize..20, inject_order in prop::collection::vec(0usize..10, 1..20))| {
@@ -123,6 +126,7 @@ async fn fuzz_random_type_combinations() {
 }
 
 // Fuzz Test 3: Random concurrent access patterns
+#[rstest]
 #[tokio::test]
 async fn fuzz_concurrent_resolutions() {
 	proptest!(|(task_count in 2usize..10, iteration_count in 1usize..5)| {

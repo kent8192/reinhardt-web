@@ -8,6 +8,7 @@
 //! 3. Nested dependencies share cached values
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -62,6 +63,7 @@ impl Injectable for SuperDep {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_dependency_cached_within_request() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -79,6 +81,7 @@ async fn test_dependency_cached_within_request() {
 	assert_eq!(counter1.counter_ref.load(Ordering::SeqCst), 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_nested_dependencies_share_cache() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -98,6 +101,7 @@ async fn test_nested_dependencies_share_cache() {
 	assert_eq!(counter.counter_ref.load(Ordering::SeqCst), 1);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_separate_requests_have_separate_caches() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -133,6 +137,7 @@ impl Injectable for NoCacheCounter {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_no_cache_creates_new_instances() {
 	// Reset global counter
@@ -202,6 +207,7 @@ impl Injectable for AggregateService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_services_share_cached_dependency() {
 	let singleton = Arc::new(SingletonScope::new());

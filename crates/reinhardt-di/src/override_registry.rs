@@ -219,6 +219,7 @@ impl OverrideRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn factory_a() -> String {
 		"production_a".to_string()
@@ -228,7 +229,7 @@ mod tests {
 		"production_b".to_string()
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_and_get_override() {
 		let registry = OverrideRegistry::new();
 
@@ -238,7 +239,7 @@ mod tests {
 		assert_eq!(value, Some("mock_a".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_different_functions_same_return_type() {
 		let registry = OverrideRegistry::new();
 
@@ -252,7 +253,7 @@ mod tests {
 		assert_eq!(value_b, Some("mock_b".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_returns_none() {
 		let registry = OverrideRegistry::new();
 
@@ -260,7 +261,7 @@ mod tests {
 		assert!(value.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_override() {
 		let registry = OverrideRegistry::new();
 
@@ -274,7 +275,7 @@ mod tests {
 		assert!(value.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_overrides() {
 		let registry = OverrideRegistry::new();
 
@@ -286,7 +287,7 @@ mod tests {
 		assert!(registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mismatch_returns_none() {
 		let registry = OverrideRegistry::new();
 

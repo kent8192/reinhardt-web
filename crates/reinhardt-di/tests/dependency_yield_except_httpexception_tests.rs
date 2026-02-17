@@ -8,6 +8,7 @@
 //! 3. Database changes are rolled back when exception occurs
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -101,6 +102,7 @@ impl Injectable for Database {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_dependency_gets_exception() {
 	let singleton = SingletonScope::new();
@@ -134,6 +136,7 @@ async fn test_dependency_gets_exception() {
 	assert_eq!(data_guard.get("rick").unwrap(), "Rick Sanchez");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_dependency_no_exception() {
 	let singleton = SingletonScope::new();

@@ -260,8 +260,9 @@ impl DependencyGraph {
 mod tests {
 	use super::*;
 	use crate::registry::DependencyRegistry;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_empty_graph() {
 		let registry = Arc::new(DependencyRegistry::new());
 		let graph = DependencyGraph::new(registry);
@@ -273,7 +274,7 @@ mod tests {
 		assert!(dot.contains("digraph Dependencies"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_dependency_chain() {
 		let registry = Arc::new(DependencyRegistry::new());
 
@@ -311,7 +312,7 @@ mod tests {
 		assert_eq!(leaves[0], type_id_c);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_dependency_detection() {
 		let registry = Arc::new(DependencyRegistry::new());
 
@@ -340,7 +341,7 @@ mod tests {
 		assert!(order.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dot_generation() {
 		let registry = Arc::new(DependencyRegistry::new());
 

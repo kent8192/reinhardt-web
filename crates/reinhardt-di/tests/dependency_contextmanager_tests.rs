@@ -9,6 +9,7 @@
 //! 4. State is properly shared between setup and cleanup
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -87,6 +88,7 @@ impl Injectable for AsyncGenDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_async_state_lifecycle() {
 	let singleton = SingletonScope::new();
@@ -140,6 +142,7 @@ impl Injectable for SyncGenDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_sync_state_lifecycle() {
 	let singleton = SingletonScope::new();
@@ -249,6 +252,7 @@ impl Injectable for AsyncGenTryDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_async_raise_other() {
 	let singleton = SingletonScope::new();
@@ -270,6 +274,7 @@ async fn test_async_raise_other() {
 	assert!(!error_tracker.has_error("/async_raise"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_async_raise_raises() {
 	let singleton = SingletonScope::new();
@@ -361,6 +366,7 @@ impl Injectable for ContextB {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_context_b() {
 	let singleton = SingletonScope::new();
@@ -383,6 +389,7 @@ async fn test_context_b() {
 	assert_eq!(state.get("context_a"), "finished a");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_context_b_raise() {
 	let singleton = SingletonScope::new();
@@ -406,6 +413,7 @@ async fn test_context_b_raise() {
 }
 
 // Background tasks simulation
+#[rstest]
 #[tokio::test]
 async fn test_background_tasks() {
 	let singleton = SingletonScope::new();
@@ -482,6 +490,7 @@ impl Injectable for SyncGenTryDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_sync_raise_other() {
 	let singleton = SingletonScope::new();
@@ -503,6 +512,7 @@ async fn test_sync_raise_other() {
 	assert!(!error_tracker.has_error("/sync_raise"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_sync_raise_raises() {
 	let singleton = SingletonScope::new();

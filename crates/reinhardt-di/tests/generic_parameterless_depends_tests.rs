@@ -7,6 +7,7 @@
 //! 2. Different type parameters create different dependency instances
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::any::type_name;
 
 // Type A
@@ -46,6 +47,7 @@ impl<T> Dep<T> {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_generic_parameterless_depends_type_a() {
 	let singleton = SingletonScope::new();
@@ -58,6 +60,7 @@ async fn test_generic_parameterless_depends_type_a() {
 	assert_eq!(dep.type_name(), "A");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_generic_parameterless_depends_type_b() {
 	let singleton = SingletonScope::new();
@@ -70,6 +73,7 @@ async fn test_generic_parameterless_depends_type_b() {
 	assert_eq!(dep.type_name(), "B");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_different_types_create_different_instances() {
 	let singleton = SingletonScope::new();
@@ -107,6 +111,7 @@ impl<T: Injectable + Send + Sync> Injectable for GenericService<T> {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_generic_service_with_type_a() {
 	let singleton = SingletonScope::new();
@@ -119,6 +124,7 @@ async fn test_generic_service_with_type_a() {
 	assert_eq!(dep.type_name(), "A");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_generic_service_with_type_b() {
 	let singleton = SingletonScope::new();

@@ -179,6 +179,7 @@ impl<'a, O: Clone + Send + Sync + 'static> FunctionHandle<'a, O> {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	use crate::{InjectionContext, SingletonScope};
@@ -191,7 +192,7 @@ mod tests {
 		"other_production".to_string()
 	}
 
-	#[test]
+	#[rstest]
 	fn test_override_with() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();
@@ -206,7 +207,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_override() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();
@@ -219,7 +220,7 @@ mod tests {
 		assert!(!ctx.dependency(create_string).has_override());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_different_functions_independent() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();
@@ -239,7 +240,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_func_ptr() {
 		let singleton = Arc::new(SingletonScope::new());
 		let ctx = InjectionContext::builder(singleton).build();

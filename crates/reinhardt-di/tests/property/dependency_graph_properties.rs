@@ -10,6 +10,7 @@ use proptest::prelude::*;
 use reinhardt_di::{DiResult, Injectable, InjectionContext, RequestScope, SingletonScope};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use rstest::rstest;
 
 // Test service with configurable behavior
 #[derive(Clone, Debug)]
@@ -70,6 +71,7 @@ impl Injectable for DependentService {
 
 // Property 1: Injection idempotency
 // Same context should yield same results when injecting multiple times
+#[rstest]
 #[tokio::test]
 async fn prop_injection_idempotency() {
 	proptest!(|(injection_count in 2usize..10)| {
@@ -103,6 +105,7 @@ async fn prop_injection_idempotency() {
 
 // Property 2: Scope isolation
 // Different RequestScope instances should have independent caches
+#[rstest]
 #[tokio::test]
 async fn prop_scope_isolation() {
 	proptest!(|(scope_count in 2usize..5)| {
@@ -134,6 +137,7 @@ async fn prop_scope_isolation() {
 
 // Property 3: Dependency cache consistency
 // Dependencies should share cached values within same context
+#[rstest]
 #[tokio::test]
 async fn prop_dependency_cache_consistency() {
 	proptest!(|(dependency_chain_length in 2usize..5)| {
@@ -168,6 +172,7 @@ async fn prop_dependency_cache_consistency() {
 
 // Property 4: Circular dependency detection determinism
 // Circular detection should be deterministic regardless of injection order
+#[rstest]
 #[tokio::test]
 async fn prop_circular_detection_deterministic() {
 	proptest!(|(attempt_count in 2usize..5)| {

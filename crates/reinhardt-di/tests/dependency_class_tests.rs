@@ -9,6 +9,7 @@
 //! 4. Generator-like patterns (setup/teardown) work with dependencies
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -37,6 +38,7 @@ impl Injectable for CallableDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_callable_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -72,6 +74,7 @@ impl Injectable for AsyncCallableDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_async_callable_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -128,6 +131,7 @@ impl Injectable for StatefulDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_stateful_dependency_cached() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -141,6 +145,7 @@ async fn test_stateful_dependency_cached() {
 	assert_eq!(dep1.get_id(), 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_stateful_dependency_separate_requests() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -180,6 +185,7 @@ impl Injectable for ServiceWithMethods {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_method_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -224,6 +230,7 @@ impl Injectable for ResourceDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_resource_dependency_lifecycle() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -266,6 +273,7 @@ impl ComplexDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_complex_dependency() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -314,6 +322,7 @@ impl Injectable for SingletonService {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_singleton_service_shared() {
 	let singleton = Arc::new(SingletonScope::new());

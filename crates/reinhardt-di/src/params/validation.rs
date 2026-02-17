@@ -712,8 +712,9 @@ pub trait WithValidation: Sized {
 mod tests {
 	use super::*;
 	use crate::params::Path;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validation_constraints_builder() {
 		let path = Path(42i32);
 		let constrained = path.min_value(0).max_value(100);
@@ -723,7 +724,7 @@ mod tests {
 		assert!(constrained.validate_number(&101).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_validation_constraints() {
 		let path = Path("test".to_string());
 		let constrained = path.min_length(2).max_length(10);

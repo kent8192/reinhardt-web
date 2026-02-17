@@ -8,6 +8,7 @@
 //! 3. Regular dependencies can be overridden alongside security dependencies
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 
 // Security scopes
 #[derive(Clone, Debug, PartialEq)]
@@ -100,6 +101,7 @@ impl Injectable for DataDependencyOverride {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_normal_security_with_scopes() {
 	let singleton = SingletonScope::new();
@@ -117,6 +119,7 @@ async fn test_normal_security_with_scopes() {
 	assert_eq!(data.data, vec![1, 2, 3]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_data_dependency() {
 	let singleton = SingletonScope::new();
@@ -136,6 +139,7 @@ async fn test_override_data_dependency() {
 	assert_eq!(data.data, vec![3, 4, 5]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_security_dependency() {
 	let singleton = SingletonScope::new();
@@ -156,6 +160,7 @@ async fn test_override_security_dependency() {
 }
 
 // Test that scopes are properly passed through security dependencies
+#[rstest]
 #[tokio::test]
 async fn test_security_scopes_preserved() {
 	let singleton = SingletonScope::new();
@@ -171,6 +176,7 @@ async fn test_security_scopes_preserved() {
 }
 
 // Test empty scopes
+#[rstest]
 #[tokio::test]
 async fn test_security_with_empty_scopes() {
 	let singleton = SingletonScope::new();

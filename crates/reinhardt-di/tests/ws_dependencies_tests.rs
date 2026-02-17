@@ -8,6 +8,7 @@
 //! 3. Multiple routers with dependencies work correctly
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::{Arc, Mutex};
 
 // Dependency list that tracks execution order
@@ -142,6 +143,7 @@ impl Injectable for RouterPrefixIndexDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -157,6 +159,7 @@ async fn test_index_dependencies() {
 	assert_eq!(items, vec!["app", "index"]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_router_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -174,6 +177,7 @@ async fn test_router_index_dependencies() {
 	assert_eq!(items, vec!["app", "router2", "router", "routerindex"]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_prefix_router_index_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -200,6 +204,7 @@ async fn test_prefix_router_index_dependencies() {
 }
 
 // Test that dependency list is shared across all dependencies in same request
+#[rstest]
 #[tokio::test]
 async fn test_dependency_list_shared() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -219,6 +224,7 @@ async fn test_dependency_list_shared() {
 }
 
 // Test different requests have different dependency lists
+#[rstest]
 #[tokio::test]
 async fn test_different_requests_different_lists() {
 	let singleton = Arc::new(SingletonScope::new());

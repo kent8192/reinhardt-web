@@ -9,6 +9,7 @@
 //! 4. Overrides work with different route configurations (main app, router, decorators)
 
 use reinhardt_di::{DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -177,6 +178,7 @@ async fn execute_endpoint_with_dependency(
 // Tests: Default behavior (without overrides)
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_main_depends() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -187,6 +189,7 @@ async fn test_main_depends() {
 	assert!(result.unwrap_err().contains("q parameter required"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_main_depends_q_foo() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -202,6 +205,7 @@ async fn test_main_depends_q_foo() {
 	assert_eq!(result.limit, 100);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_main_depends_q_foo_skip_100_limit_200() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -221,6 +225,7 @@ async fn test_main_depends_q_foo_skip_100_limit_200() {
 // Tests: Simple overrides
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_override_simple_no_query() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -240,6 +245,7 @@ async fn test_override_simple_no_query() {
 	app.clear_overrides();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_simple_with_query() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -259,6 +265,7 @@ async fn test_override_simple_with_query() {
 	app.clear_overrides();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_simple_ignores_query_params() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -286,6 +293,7 @@ async fn test_override_simple_ignores_query_params() {
 // Tests: Override with sub-dependency
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_override_with_sub_main_depends() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -309,6 +317,7 @@ async fn test_override_with_sub_main_depends() {
 	app.clear_overrides();
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_with_sub_main_depends_k_bar() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -337,6 +346,7 @@ async fn test_override_with_sub_main_depends_k_bar() {
 // Tests: Override isolation and clearing
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_override_cleared_between_requests() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -368,6 +378,7 @@ async fn test_override_cleared_between_requests() {
 	assert_eq!(result2.limit, 100); // Back to default
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_override_isolation() {
 	let singleton1 = SingletonScope::new();
@@ -399,6 +410,7 @@ async fn test_override_isolation() {
 // Tests: Multiple overrides
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_overrides() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -433,6 +445,7 @@ async fn test_multiple_overrides() {
 // Override with callable/factory pattern
 type OverrideFactory = Arc<dyn Fn() -> CommonParameters + Send + Sync>;
 
+#[rstest]
 #[tokio::test]
 async fn test_override_with_factory() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -453,6 +466,7 @@ async fn test_override_with_factory() {
 }
 
 // Test parametrized scenarios like in the original test
+#[rstest]
 #[tokio::test]
 async fn test_override_multiple_scenarios() {
 	let test_cases = vec![
@@ -488,6 +502,7 @@ async fn test_override_multiple_scenarios() {
 }
 
 // Test that overrides persist across multiple injections in same context
+#[rstest]
 #[tokio::test]
 async fn test_override_persists_in_context() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -510,6 +525,7 @@ async fn test_override_persists_in_context() {
 }
 
 // Test override replacement
+#[rstest]
 #[tokio::test]
 async fn test_override_replacement() {
 	let singleton = Arc::new(SingletonScope::new());

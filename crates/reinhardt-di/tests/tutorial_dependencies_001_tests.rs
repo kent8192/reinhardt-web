@@ -12,6 +12,7 @@
 use reinhardt_di::params::Query;
 use reinhardt_di::params::extract::FromRequest;
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 // Common query parameters dependency
@@ -66,6 +67,7 @@ impl Injectable for CommonQueryParams {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_default_query_params() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -79,6 +81,7 @@ async fn test_default_query_params() {
 	assert_eq!(params.limit, 100);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_params_with_q() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -94,6 +97,7 @@ async fn test_query_params_with_q() {
 	assert_eq!(params.limit, 100);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_params_with_skip() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -113,6 +117,7 @@ async fn test_query_params_with_skip() {
 	assert_eq!(params.limit, 100);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_query_params_with_all() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -132,6 +137,7 @@ async fn test_query_params_with_all() {
 	assert_eq!(params.limit, 30);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_shared_dependency_across_endpoints() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -152,6 +158,7 @@ async fn test_shared_dependency_across_endpoints() {
 	assert_eq!(params1, params2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_different_requests_have_different_params() {
 	let singleton = Arc::new(SingletonScope::new());

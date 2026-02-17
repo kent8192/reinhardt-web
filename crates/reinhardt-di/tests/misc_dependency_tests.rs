@@ -15,6 +15,7 @@
 use reinhardt_di::params::Path;
 use reinhardt_di::params::extract::FromRequest;
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 // Path parameter dependency
@@ -75,6 +76,7 @@ impl Injectable for UserExists {
 }
 
 // Test 1: Path parameter in dependency
+#[rstest]
 #[tokio::test]
 async fn test_param_in_path_and_dependency() {
 	let singleton = SingletonScope::new();
@@ -90,6 +92,7 @@ async fn test_param_in_path_and_dependency() {
 }
 
 // Test 2: Path parameter validation
+#[rstest]
 #[tokio::test]
 async fn test_path_param_validation() {
 	let singleton = SingletonScope::new();
@@ -141,6 +144,7 @@ impl Injectable for SecurityToken {
 }
 
 // Test 3: Security dependency override
+#[rstest]
 #[tokio::test]
 async fn test_security_override_authenticated() {
 	let singleton = SingletonScope::new();
@@ -156,6 +160,7 @@ async fn test_security_override_authenticated() {
 }
 
 // Test 4: Security dependency override - unauthenticated
+#[rstest]
 #[tokio::test]
 async fn test_security_override_unauthenticated() {
 	let singleton = SingletonScope::new();
@@ -170,6 +175,7 @@ async fn test_security_override_unauthenticated() {
 }
 
 // Test 5: Security dependency default
+#[rstest]
 #[tokio::test]
 async fn test_security_default() {
 	let singleton = SingletonScope::new();
@@ -232,6 +238,7 @@ impl Injectable for Service2 {
 }
 
 // Test 6: Repeated dependency returns same instance
+#[rstest]
 #[tokio::test]
 async fn test_repeated_dependency_cached() {
 	let singleton = SingletonScope::new();
@@ -246,6 +253,7 @@ async fn test_repeated_dependency_cached() {
 }
 
 // Test 7: Repeated dependency in schema
+#[rstest]
 #[tokio::test]
 async fn test_repeated_dependency_schema() {
 	let singleton = SingletonScope::new();
@@ -283,6 +291,7 @@ impl Injectable for ComplexService {
 }
 
 // Test 8: Complex dependency chain with repeated dependencies
+#[rstest]
 #[tokio::test]
 async fn test_complex_repeated_dependencies() {
 	let singleton = SingletonScope::new();

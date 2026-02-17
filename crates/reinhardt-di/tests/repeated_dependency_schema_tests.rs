@@ -10,6 +10,7 @@
 #![cfg(feature = "params")]
 
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext, SingletonScope};
+use rstest::rstest;
 use std::sync::Arc;
 
 // Simulates Header extraction
@@ -61,6 +62,7 @@ impl Injectable for DerivedDependency {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_repeated_dependency_uses_cache() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -78,6 +80,7 @@ async fn test_repeated_dependency_uses_cache() {
 	assert_eq!(dep2.0, "hello123");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_header_extracted_only_once() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -96,6 +99,7 @@ async fn test_header_extracted_only_once() {
 	assert_eq!(header1, header2);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_derived_dependency_uses_cached_header() {
 	let singleton = Arc::new(SingletonScope::new());
@@ -124,6 +128,7 @@ struct Endpoint2Result {
 	header: SomeHeader,
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_multiple_endpoints_share_dependencies() {
 	let singleton = Arc::new(SingletonScope::new());
