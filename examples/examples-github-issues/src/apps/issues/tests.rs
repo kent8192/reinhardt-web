@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use crate::config::schema::get_schema;
 	use crate::config::urls::AppSchema;
 	use async_graphql::Request;
@@ -60,6 +61,7 @@ mod tests {
 		(schema, token, project_id)
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_issue() {
 		let (schema, token, project_id) = create_test_context().await;
@@ -99,6 +101,7 @@ mod tests {
 		assert_eq!(data["createIssue"]["projectId"], project_id);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_update_issue() {
 		let (schema, token, project_id) = create_test_context().await;
@@ -151,6 +154,7 @@ mod tests {
 		assert_eq!(data["updateIssue"]["body"], "Updated body content");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_close_and_reopen_issue() {
 		let (schema, token, project_id) = create_test_context().await;
@@ -216,6 +220,7 @@ mod tests {
 		assert_eq!(data["reopenIssue"]["state"], "OPEN");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_issues_query() {
 		let (schema, token, project_id) = create_test_context().await;
@@ -276,6 +281,7 @@ mod tests {
 		assert_eq!(page_info["hasPreviousPage"], false);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_issues_query_by_project() {
 		let (schema, token, project_id) = create_test_context().await;
@@ -330,6 +336,7 @@ mod tests {
 		assert_eq!(data["issues"]["pageInfo"]["totalCount"], 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_issue_query_by_id() {
 		let (schema, token, project_id) = create_test_context().await;

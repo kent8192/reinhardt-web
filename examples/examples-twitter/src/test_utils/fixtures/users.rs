@@ -182,6 +182,7 @@ pub fn twitter_users() -> Vec<TestTwitterUser> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_twitter_user_fixture(twitter_user: TestTwitterUser) {

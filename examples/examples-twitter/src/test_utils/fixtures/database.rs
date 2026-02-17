@@ -88,6 +88,7 @@ pub async fn twitter_db_connection(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]

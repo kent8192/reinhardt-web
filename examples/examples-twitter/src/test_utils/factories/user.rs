@@ -270,6 +270,7 @@ pub fn profile_factory() -> ProfileFactory {
 mod tests {
 	use super::*;
 	use crate::test_utils::fixtures::database::twitter_db_pool;
+	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]

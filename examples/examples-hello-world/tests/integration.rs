@@ -8,12 +8,14 @@
 use reinhardt::core::serde::json;
 use reinhardt::test::client::APIClient;
 use reinhardt::test::fixtures::test_server_guard;
+use rstest::rstest;
 
 // ============================================================================
 // E2E Tests with Test Server
 // ============================================================================
 
 /// Test GET / endpoint returns "Hello, World!"
+#[rstest]
 #[tokio::test]
 async fn test_hello_world_endpoint() {
 	let router = examples_hello_world::config::urls::routes().into_server();
@@ -32,6 +34,7 @@ async fn test_hello_world_endpoint() {
 }
 
 /// Test GET /health endpoint returns JSON health status
+#[rstest]
 #[tokio::test]
 async fn test_health_check_endpoint() {
 	let router = examples_hello_world::config::urls::routes().into_server();
@@ -65,6 +68,7 @@ async fn test_health_check_endpoint() {
 // ============================================================================
 
 /// Test 404 Not Found for non-existent endpoint
+#[rstest]
 #[tokio::test]
 async fn test_404_not_found() {
 	let router = examples_hello_world::config::urls::routes().into_server();
@@ -84,6 +88,7 @@ async fn test_404_not_found() {
 }
 
 /// Test 405 Method Not Allowed for unsupported HTTP method
+#[rstest]
 #[tokio::test]
 async fn test_405_method_not_allowed() {
 	let router = examples_hello_world::config::urls::routes().into_server();

@@ -46,9 +46,10 @@ impl SnippetResponse {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
-	#[test]
+	#[rstest]
 	fn test_snippet_serializer_validation() {
 		// Valid snippet
 		let valid = SnippetSerializer {

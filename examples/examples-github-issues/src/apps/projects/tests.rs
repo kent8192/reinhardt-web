@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use crate::config::schema::get_schema;
 	use crate::config::urls::AppSchema;
 	use async_graphql::Request;
@@ -40,6 +41,7 @@ mod tests {
 		(claims, user_id)
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_project() {
 		let schema = get_schema();
@@ -69,6 +71,7 @@ mod tests {
 		assert_eq!(data["createProject"]["visibility"], "PUBLIC");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_private_project() {
 		let schema = get_schema();
@@ -95,6 +98,7 @@ mod tests {
 		assert_eq!(data["createProject"]["visibility"], "PRIVATE");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_projects_query() {
 		let schema = get_schema();
@@ -138,6 +142,7 @@ mod tests {
 		assert_eq!(projects.len(), 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_projects_query_with_visibility_filter() {
 		let schema = get_schema();
@@ -188,6 +193,7 @@ mod tests {
 		assert_eq!(projects[0]["visibility"], "PUBLIC");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_project_query_by_id() {
 		let schema = get_schema();
@@ -232,6 +238,7 @@ mod tests {
 		assert_eq!(data["project"]["description"], "Can be found by ID");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_add_member_to_project() {
 		let schema = get_schema();
@@ -298,6 +305,7 @@ mod tests {
 		assert_eq!(data["addMember"]["role"], "MAINTAINER");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remove_member_from_project() {
 		let schema = get_schema();
@@ -368,6 +376,7 @@ mod tests {
 		assert_eq!(data["removeMember"], true);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_project_with_members_relation() {
 		let schema = get_schema();

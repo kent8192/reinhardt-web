@@ -146,6 +146,7 @@ pub async fn authenticated_twitter_context(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]

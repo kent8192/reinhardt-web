@@ -28,10 +28,11 @@ pub fn create_vote_form() -> Form {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use reinhardt::forms::wasm_compat::FormExt;
 
-	#[test]
+	#[rstest]
 	fn test_vote_form_metadata() {
 		let form = create_vote_form();
 		let metadata = form.to_metadata();

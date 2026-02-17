@@ -4,9 +4,11 @@
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use crate::config::schema::get_schema;
 	use async_graphql::Request;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_register_user() {
 		let schema = get_schema();
@@ -47,6 +49,7 @@ mod tests {
 		assert_eq!(data["register"]["user"]["isActive"], true);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_login_user() {
 		let schema = get_schema();
@@ -89,6 +92,7 @@ mod tests {
 		assert_eq!(data["login"]["user"]["email"], "login@example.com");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_login_invalid_credentials() {
 		let schema = get_schema();
@@ -111,6 +115,7 @@ mod tests {
 		assert!(!response.errors.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_users_query() {
 		let schema = get_schema();
@@ -155,6 +160,7 @@ mod tests {
 		assert_eq!(users.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_query_by_id() {
 		let schema = get_schema();

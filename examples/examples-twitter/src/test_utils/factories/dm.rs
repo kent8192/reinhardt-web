@@ -375,6 +375,7 @@ mod tests {
 	use crate::test_utils::factories::user::UserFactory;
 	use crate::test_utils::fixtures::database::twitter_db_pool;
 	use crate::test_utils::fixtures::users::TestTwitterUser;
+	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]
