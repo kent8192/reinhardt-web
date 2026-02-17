@@ -13,6 +13,7 @@ pub trait Resolver: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
 	struct TestResolver {
@@ -41,6 +42,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_resolver_trait_implementation() {
 		let resolver = TestResolver { value: 21 };
@@ -48,6 +50,7 @@ mod tests {
 		assert_eq!(result, 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_string_resolver() {
 		let resolver = StringResolver {
@@ -57,6 +60,7 @@ mod tests {
 		assert_eq!(result, "Resolved: Hello GraphQL");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_resolver_multiple_calls() {
 		let resolver = TestResolver { value: 10 };

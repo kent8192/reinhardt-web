@@ -144,6 +144,7 @@ where
 mod tests {
 	use super::*;
 	use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
+	use rstest::rstest;
 
 	struct Query;
 
@@ -154,6 +155,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_context_ext_get_di_context() {
 		// Create a mock InjectionContext
@@ -170,6 +172,7 @@ mod tests {
 		assert!(result.errors.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_context_ext_missing_context() {
 		// Build schema without DI context

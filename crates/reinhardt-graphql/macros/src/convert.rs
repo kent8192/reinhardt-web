@@ -199,9 +199,10 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_basic_struct() {
 		let input: DeriveInput = parse_quote! {
 			struct User {
@@ -220,7 +221,7 @@ mod tests {
 		assert!(output_str.contains("impl From < User > for crate :: proto :: User"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_rename() {
 		let input: DeriveInput = parse_quote! {
 			struct User {
@@ -238,7 +239,7 @@ mod tests {
 		assert!(output_str.contains("user_name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_skip_if() {
 		let input: DeriveInput = parse_quote! {
 			struct User {
@@ -256,7 +257,7 @@ mod tests {
 		assert!(output_str.contains("Option :: is_none"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enum_error() {
 		let input: DeriveInput = parse_quote! {
 			enum UserType {

@@ -107,7 +107,9 @@ impl SubscriptionRoot {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcaster() {
 		let broadcaster = EventBroadcaster::new();
@@ -131,6 +133,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcaster_multiple_subscribers() {
 		let broadcaster = EventBroadcaster::new();
@@ -170,6 +173,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_event_created() {
 		let broadcaster = EventBroadcaster::new();
@@ -198,6 +202,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_event_updated() {
 		let broadcaster = EventBroadcaster::new();
@@ -225,6 +230,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_event_deleted() {
 		let broadcaster = EventBroadcaster::new();
@@ -245,6 +251,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_subscription_filtering() {
 		let broadcaster = EventBroadcaster::new();

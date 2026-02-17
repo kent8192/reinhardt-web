@@ -9,6 +9,7 @@ pub trait GraphQLField {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestType {
 		id: String,
@@ -23,7 +24,7 @@ mod tests {
 
 	impl GraphQLField for TestField {}
 
-	#[test]
+	#[rstest]
 	fn test_graphql_type_marker() {
 		let test_type = TestType {
 			id: "test-1".to_string(),
@@ -39,7 +40,7 @@ mod tests {
 		assert_eq!(test_type.value, 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_graphql_field_marker() {
 		let test_field = TestField {
 			name: "test_field".to_string(),
@@ -60,7 +61,7 @@ mod tests {
 	struct AnotherField;
 	impl GraphQLField for AnotherField {}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_implementations() {
 		let type1 = TestType {
 			id: "1".to_string(),

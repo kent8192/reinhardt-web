@@ -178,7 +178,9 @@ pub fn create_schema(storage: UserStorage) -> AppSchema {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_hello() {
 		let storage = UserStorage::new();
@@ -195,6 +197,7 @@ mod tests {
 		assert_eq!(data["hello"], "Hello, GraphQL!");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mutation_create_user() {
 		let storage = UserStorage::new();
@@ -216,6 +219,7 @@ mod tests {
 		assert!(data["createUser"]["active"].as_bool().unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_user() {
 		let storage = UserStorage::new();
@@ -248,6 +252,7 @@ mod tests {
 		assert!(data["user"]["active"].as_bool().unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_user_not_found() {
 		let storage = UserStorage::new();
@@ -267,6 +272,7 @@ mod tests {
 		assert!(data["user"].is_null());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_users_empty() {
 		let storage = UserStorage::new();
@@ -287,6 +293,7 @@ mod tests {
 		assert_eq!(data["users"].as_array().unwrap().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_users_multiple() {
 		let storage = UserStorage::new();
@@ -339,6 +346,7 @@ mod tests {
 		assert!(names.contains(&"Charlie"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mutation_update_user_status() {
 		let storage = UserStorage::new();
@@ -368,6 +376,7 @@ mod tests {
 		assert!(!data["updateUserStatus"]["active"].as_bool().unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mutation_update_nonexistent_user() {
 		let storage = UserStorage::new();
@@ -387,6 +396,7 @@ mod tests {
 		assert!(data["updateUserStatus"].is_null());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_object_fields() {
 		let user = User {
@@ -403,6 +413,7 @@ mod tests {
 		assert!(!user.active);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_storage_add_get() {
 		let storage = UserStorage::new();
@@ -424,6 +435,7 @@ mod tests {
 		assert!(retrieved.active);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_storage_list() {
 		let storage = UserStorage::new();
@@ -455,6 +467,7 @@ mod tests {
 		assert_eq!(users.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_schema_with_data() {
 		let storage = UserStorage::new();
@@ -483,6 +496,7 @@ mod tests {
 		assert_eq!(data["user"]["name"], "PreExisting");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_error_types() {
 		let err1 = GraphQLError::Schema("test schema error".to_string());

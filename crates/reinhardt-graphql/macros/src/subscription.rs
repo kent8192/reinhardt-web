@@ -209,9 +209,10 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_missing_required_attributes() {
 		// Missing all required attributes - should fail
 		let input: DeriveInput = parse_quote! {
@@ -228,7 +229,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complete_subscription_with_all_attrs() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(service = "proto::UserServiceClient", method = "subscribe_user_events", proto_type = "proto::UserEvent")]
@@ -261,7 +262,7 @@ mod tests {
 		assert!(output_str.contains("into_inner"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subscription_with_filter() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(service = "proto::EventServiceClient", method = "subscribe_events", proto_type = "proto::Event")]
@@ -279,7 +280,7 @@ mod tests {
 		assert!(output_str.contains("priority"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_service_attribute() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(method = "subscribe_users", proto_type = "proto::User")]
@@ -297,7 +298,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_method_attribute() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(service = "UserService", proto_type = "proto::User")]
@@ -310,7 +311,7 @@ mod tests {
 		assert!(result.unwrap_err().to_string().contains("method = \"...\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_proto_type_attribute() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(service = "UserService", method = "subscribe_users")]
@@ -328,7 +329,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_graphql_type_attribute() {
 		let input: DeriveInput = parse_quote! {
 			#[grpc(service = "UserService", method = "subscribe_users", proto_type = "proto::User")]

@@ -357,6 +357,7 @@ impl Default for GraphQLContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestLoader;
 
@@ -380,13 +381,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_new() {
 		let context = GraphQLContext::new();
 		assert!(context.get_data("any_key").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_and_get_data() {
 		let context = GraphQLContext::new();
 		let value = serde_json::json!({"name": "test", "value": 42});
@@ -397,14 +398,14 @@ mod tests {
 		assert_eq!(retrieved, Some(value));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_data() {
 		let context = GraphQLContext::new();
 		let result = context.get_data("nonexistent");
 		assert_eq!(result, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_data() {
 		let context = GraphQLContext::new();
 		let value = serde_json::json!("test_value");
@@ -416,7 +417,7 @@ mod tests {
 		assert_eq!(context.get_data("key"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_data() {
 		let context = GraphQLContext::new();
 
@@ -431,7 +432,7 @@ mod tests {
 		assert_eq!(context.get_data("key3"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_and_get_data_loader() {
 		let context = GraphQLContext::new();
 		let loader = Arc::new(TestLoader);
@@ -442,14 +443,14 @@ mod tests {
 		assert!(retrieved.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_loader() {
 		let context = GraphQLContext::new();
 		let result = context.get_data_loader::<TestLoader>();
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_data_loader() {
 		let context = GraphQLContext::new();
 		let loader = Arc::new(TestLoader);
@@ -461,7 +462,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_loaders() {
 		struct Loader1;
 		struct Loader2;
@@ -506,7 +507,7 @@ mod tests {
 		assert!(context.get_data_loader::<Loader2>().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_data_values() {
 		let context = GraphQLContext::new();
 
@@ -527,6 +528,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_load() {
 		let loader = TestLoader;
@@ -535,6 +537,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_load_many() {
 		let loader = TestLoader;
@@ -544,6 +547,7 @@ mod tests {
 		assert_eq!(result.unwrap(), vec![1, 2, 3]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_error() {
 		let loader = TestLoader;
@@ -555,13 +559,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_default() {
 		let context = GraphQLContext::default();
 		assert!(context.get_data("any_key").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_overwrite_data() {
 		let context = GraphQLContext::new();
 
