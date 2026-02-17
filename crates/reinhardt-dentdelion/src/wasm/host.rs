@@ -9,7 +9,7 @@
 //! - HTTP functions: Require network access permission
 //! - Database functions: Require database access permission
 
-use crate::capability::Capability;
+use crate::capability::{Capability, TrustLevel};
 use crate::error::PluginResult;
 
 use parking_lot::RwLock;
@@ -39,6 +39,8 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 pub struct HostState {
 	/// Plugin name (for logging context)
 	pub plugin_name: String,
+	/// Trust level for this plugin (determines security restrictions)
+	trust_level: TrustLevel,
 	/// Configuration values accessible to the plugin
 	config: RwLock<HashMap<String, ConfigValue>>,
 	/// Registered services (name -> MessagePack-serialized data)
@@ -107,6 +109,7 @@ impl HostState {
 	) -> Self {
 		Self {
 			plugin_name: plugin_name.into(),
+			trust_level: TrustLevel::default(),
 			config: RwLock::new(HashMap::new()),
 			services: RwLock::new(HashMap::new()),
 			typed_services: RwLock::new(HashMap::new()),
@@ -399,6 +402,13 @@ impl HostState {
 		))
 	}
 
+	// ===== Trust Level API =====
+
+	/// Get the trust level for this plugin.
+	pub fn trust_level(&self) -> TrustLevel {
+		self.trust_level
+	}
+
 	// ===== Capability Management =====
 
 	/// Add a capability to this host state.
@@ -540,13 +550,24 @@ impl HostState {
 	///
 	/// # Returns
 	///
-	/// Rendered HTML and optional extracted assets, or an error if SSR is not available.
+	/// Rendered HTML and optional extracted assets, or an error if SSR is not available
+	/// or the trust level is insufficient.
+	///
+	/// # Security
+	///
+	/// Only plugins with `Verified` or `Trusted` trust level can render components.
 	pub async fn render_react(
 		&self,
 		component_path: &str,
 		props: &[u8],
 		options: RenderOptions,
 	) -> Result<RenderResult, SsrError> {
+		if !self.trust_level.allows_ssr() {
+			return Err(SsrError::PermissionDenied(format!(
+				"SSR rendering requires at least Verified trust level, but plugin '{}' has {:?} trust level",
+				self.plugin_name, self.trust_level
+			)));
+		}
 		self.ssr_proxy
 			.render_react(component_path, props, options)
 			.await
@@ -560,13 +581,51 @@ impl HostState {
 	///
 	/// # Returns
 	///
-	/// The result as UTF-8 bytes, or an error if SSR is not available.
+	/// The result as UTF-8 bytes, or an error if the trust level is insufficient
+	/// or SSR is not available.
 	///
 	/// # Security
 	///
-	/// This function should only be available to plugins with elevated trust levels.
+	/// Only plugins with `Trusted` trust level can execute arbitrary JavaScript.
+	/// This prevents untrusted or verified plugins from accessing the JavaScript
+	/// runtime directly.
 	pub fn eval_js(&self, code: &str) -> Result<Vec<u8>, SsrError> {
+		if !self.trust_level.allows_js_execution() {
+			return Err(SsrError::PermissionDenied(format!(
+				"JavaScript execution requires Trusted trust level, but plugin '{}' has {:?} trust level",
+				self.plugin_name, self.trust_level
+			)));
+		}
 		self.ssr_proxy.eval_js(code).map(|s| s.into_bytes())
+	}
+
+	/// Render a component with trust level enforcement.
+	///
+	/// # Arguments
+	///
+	/// * `component_code` - JavaScript code defining the component
+	/// * `props_json` - JSON string representing component props
+	/// * `options` - Rendering options
+	///
+	/// # Security
+	///
+	/// Only plugins with `Verified` or `Trusted` trust level can render components.
+	/// `Untrusted` plugins cannot use SSR as it involves JavaScript execution.
+	/// Component code is also validated for dangerous patterns.
+	pub fn render_component(
+		&self,
+		component_code: &str,
+		props_json: &str,
+		options: RenderOptions,
+	) -> Result<RenderResult, SsrError> {
+		if !self.trust_level.allows_ssr() {
+			return Err(SsrError::PermissionDenied(format!(
+				"SSR rendering requires at least Verified trust level, but plugin '{}' has {:?} trust level",
+				self.plugin_name, self.trust_level
+			)));
+		}
+		self.ssr_proxy
+			.render_component(component_code, props_json, options)
 	}
 }
 
@@ -574,6 +633,7 @@ impl std::fmt::Debug for HostState {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("HostState")
 			.field("plugin_name", &self.plugin_name)
+			.field("trust_level", &self.trust_level)
 			.field("config_count", &self.config.read().len())
 			.field("service_count", &self.services.read().len())
 			.field("capabilities", &self.capabilities)
@@ -584,6 +644,7 @@ impl std::fmt::Debug for HostState {
 /// Builder for `HostState`.
 pub struct HostStateBuilder {
 	plugin_name: String,
+	trust_level: TrustLevel,
 	config: HashMap<String, ConfigValue>,
 	capabilities: HashSet<Capability>,
 	http_client: Option<reqwest::Client>,
@@ -601,6 +662,7 @@ impl HostStateBuilder {
 	pub fn new(plugin_name: impl Into<String>) -> Self {
 		Self {
 			plugin_name: plugin_name.into(),
+			trust_level: TrustLevel::default(),
 			config: HashMap::new(),
 			capabilities: HashSet::new(),
 			http_client: Some(reqwest::Client::new()),
@@ -609,6 +671,14 @@ impl HostStateBuilder {
 			model_registry: None,
 			ssr_proxy: None,
 		}
+	}
+
+	/// Set the trust level for this plugin.
+	///
+	/// Default is `TrustLevel::Untrusted`.
+	pub fn trust_level(mut self, trust_level: TrustLevel) -> Self {
+		self.trust_level = trust_level;
+		self
 	}
 
 	/// Add a configuration value.
@@ -711,6 +781,7 @@ impl HostStateBuilder {
 	pub fn build(self) -> HostState {
 		HostState {
 			plugin_name: self.plugin_name,
+			trust_level: self.trust_level,
 			config: RwLock::new(self.config),
 			services: RwLock::new(HashMap::new()),
 			typed_services: RwLock::new(HashMap::new()),
@@ -1139,6 +1210,8 @@ fn ssr_error_to_plugin_error(err: SsrError) -> GeneratedPluginError {
 		SsrError::PropsSerialization(_) => 400,
 		SsrError::RenderFailed(_) => 500,
 		SsrError::EvalFailed(_) => 500,
+		SsrError::PermissionDenied(_) => 403,
+		SsrError::DangerousPattern(_) => 403,
 	};
 	GeneratedPluginError {
 		code,
@@ -1169,11 +1242,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 		&mut self,
 		code: String,
 	) -> Result<Result<Vec<u8>, GeneratedPluginError>, anyhow::Error> {
-		let result = self
-			.ssr_proxy
-			.eval_js(&code)
-			.map(|s| s.into_bytes())
-			.map_err(ssr_error_to_plugin_error);
+		let result = Self::eval_js(self, &code).map_err(ssr_error_to_plugin_error);
 		Ok(result)
 	}
 
@@ -1439,7 +1508,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_host_state_render_react_not_available() {
-		let state = HostState::new("test-plugin");
+		// Verified plugin without SSR runtime should return NotAvailable
+		let state = HostStateBuilder::new("test-plugin")
+			.trust_level(TrustLevel::Verified)
+			.build();
 
 		let result = state
 			.render_react("test.jsx", &[], RenderOptions::default())
@@ -1451,7 +1523,10 @@ mod tests {
 
 	#[test]
 	fn test_host_state_eval_js_not_available() {
-		let state = HostState::new("test-plugin");
+		// Trusted plugin without SSR runtime should return NotAvailable
+		let state = HostStateBuilder::new("test-plugin")
+			.trust_level(TrustLevel::Trusted)
+			.build();
 
 		let result = state.eval_js("console.log('test')");
 
@@ -1470,5 +1545,161 @@ mod tests {
 		// Verify the proxy is shared
 		assert!(Arc::ptr_eq(state.ssr_proxy(), &ssr_proxy));
 		assert!(state.is_ssr_available());
+	}
+
+	// =========================================================================
+	// Trust Level Enforcement Tests (Issue #675 + #677)
+	// =========================================================================
+
+	#[test]
+	fn test_host_state_default_trust_level() {
+		// Arrange
+		let state = HostState::new("test-plugin");
+
+		// Act & Assert
+		assert_eq!(state.trust_level(), TrustLevel::Untrusted);
+	}
+
+	#[test]
+	fn test_host_state_builder_trust_level() {
+		// Arrange & Act
+		let state = HostStateBuilder::new("test-plugin")
+			.trust_level(TrustLevel::Trusted)
+			.build();
+
+		// Assert
+		assert_eq!(state.trust_level(), TrustLevel::Trusted);
+	}
+
+	#[test]
+	fn test_eval_js_denied_for_untrusted() {
+		// Arrange
+		let state = HostStateBuilder::new("untrusted-plugin")
+			.trust_level(TrustLevel::Untrusted)
+			.build();
+
+		// Act
+		let result = state.eval_js("1 + 1");
+
+		// Assert
+		assert!(matches!(result, Err(SsrError::PermissionDenied(_))));
+	}
+
+	#[test]
+	fn test_eval_js_denied_for_verified() {
+		// Arrange
+		let state = HostStateBuilder::new("verified-plugin")
+			.trust_level(TrustLevel::Verified)
+			.build();
+
+		// Act
+		let result = state.eval_js("1 + 1");
+
+		// Assert
+		assert!(matches!(result, Err(SsrError::PermissionDenied(_))));
+	}
+
+	#[test]
+	fn test_eval_js_allowed_for_trusted_returns_not_available() {
+		// Arrange
+		let state = HostStateBuilder::new("trusted-plugin")
+			.trust_level(TrustLevel::Trusted)
+			.build();
+
+		// Act
+		let result = state.eval_js("1 + 1");
+
+		// Assert - passes trust check, fails with NotAvailable (no runtime)
+		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	#[test]
+	fn test_render_component_denied_for_untrusted() {
+		// Arrange
+		let state = HostStateBuilder::new("untrusted-plugin")
+			.trust_level(TrustLevel::Untrusted)
+			.build();
+
+		// Act
+		let result = state.render_component(
+			"function Component() { return h('div', null, 'test'); }",
+			"{}",
+			RenderOptions::default(),
+		);
+
+		// Assert
+		assert!(matches!(result, Err(SsrError::PermissionDenied(_))));
+	}
+
+	#[test]
+	fn test_render_component_allowed_for_verified() {
+		// Arrange
+		let state = HostStateBuilder::new("verified-plugin")
+			.trust_level(TrustLevel::Verified)
+			.build();
+
+		// Act
+		let result = state.render_component(
+			"function Component() { return h('div', null, 'test'); }",
+			"{}",
+			RenderOptions::default(),
+		);
+
+		// Assert - passes trust check, fails with NotAvailable (no runtime)
+		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	#[test]
+	fn test_render_component_allowed_for_trusted() {
+		// Arrange
+		let state = HostStateBuilder::new("trusted-plugin")
+			.trust_level(TrustLevel::Trusted)
+			.build();
+
+		// Act
+		let result = state.render_component(
+			"function Component() { return h('div', null, 'test'); }",
+			"{}",
+			RenderOptions::default(),
+		);
+
+		// Assert - passes trust check, fails with NotAvailable (no runtime)
+		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	#[tokio::test]
+	async fn test_render_react_denied_for_untrusted() {
+		// Arrange
+		let state = HostStateBuilder::new("untrusted-plugin")
+			.trust_level(TrustLevel::Untrusted)
+			.build();
+
+		// Act
+		let result = state
+			.render_react("test.jsx", &[], RenderOptions::default())
+			.await;
+
+		// Assert
+		assert!(matches!(result, Err(SsrError::PermissionDenied(_))));
+	}
+
+	#[test]
+	fn test_render_component_rejects_dangerous_code_at_host_level() {
+		// Arrange - Verified plugin with SSR available
+		let ssr_proxy = Arc::new(SsrProxy::with_availability(true));
+		let state = HostStateBuilder::new("verified-plugin")
+			.trust_level(TrustLevel::Verified)
+			.ssr_proxy(ssr_proxy)
+			.build();
+
+		// Act - attempt to render with dangerous code
+		let result = state.render_component(
+			"var fs = require('fs'); function Component() { return h('div'); }",
+			"{}",
+			RenderOptions::default(),
+		);
+
+		// Assert - dangerous pattern detected by SsrProxy
+		assert!(matches!(result, Err(SsrError::DangerousPattern(_))));
 	}
 }
