@@ -1951,9 +1951,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if let Some(body) = &stmt.function_def.body {
 			writer.push_keyword("AS");
 			writer.push_space();
-			writer.push("$$");
+			let delimiter = generate_safe_dollar_quote_delimiter(body);
+			writer.push(&delimiter);
 			writer.push(body);
-			writer.push("$$");
+			writer.push(&delimiter);
 		}
 
 		writer.finish()
@@ -3608,9 +3609,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if let Some(body) = &stmt.procedure_def.body {
 			writer.push_keyword("AS");
 			writer.push_space();
-			writer.push("$$");
+			let delimiter = generate_safe_dollar_quote_delimiter(body);
+			writer.push(&delimiter);
 			writer.push(body);
-			writer.push("$$");
+			writer.push(&delimiter);
 		}
 
 		writer.finish()
@@ -4195,6 +4197,7 @@ mod tests {
 		query::Query,
 		types::IntoIden,
 	};
+	use rstest::rstest;
 
 	#[test]
 	fn test_escape_identifier() {
@@ -9012,6 +9015,103 @@ mod tests {
 
 		builder.build_set_default_role(&stmt);
 	}
+
+	// ==================== Dollar-quote delimiter safety tests ====================
+
+	#[rstest]
+	fn test_safe_delimiter_default_when_body_has_no_dollar_quotes() {
+		// Arrange
+		let body = "BEGIN RETURN 1; END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_avoids_collision_with_dollar_dollar() {
+		// Arrange
+		let body = "BEGIN $$ nested $$ END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_ne!(
+			delimiter, "$$",
+			"Delimiter must not be $$ when body contains $$"
+		);
+		assert!(
+			!body.contains(&delimiter),
+			"Delimiter must not appear in body"
+		);
+		assert_eq!(delimiter, "$body_0$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_injection_attempt_with_dollar_quotes() {
+		// Arrange: attacker tries to break out of dollar-quoting
+		let body = "$$ ; DROP TABLE users; --";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_ne!(delimiter, "$$");
+		assert!(!body.contains(&delimiter));
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_skips_collision_with_body_0() {
+		// Arrange: body contains both $$ and $body_0$
+		let body = "BEGIN $$ test $body_0$ END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$body_1$");
+		assert!(!body.contains(&delimiter));
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_multiple_collisions() {
+		// Arrange: body contains $$, $body_0$, $body_1$
+		let body = "$$ $body_0$ $body_1$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$body_2$");
+		assert!(!body.contains(&delimiter));
+	}
+}
+
+/// Generate a safe dollar-quote delimiter that does not appear in the body.
+///
+/// PostgreSQL dollar-quoting uses `$$` as the default delimiter. If the function
+/// body contains `$$`, an attacker could break out of the dollar-quoted string.
+/// This function generates a unique delimiter by appending a numeric suffix
+/// until a collision-free delimiter is found.
+fn generate_safe_dollar_quote_delimiter(body: &str) -> String {
+	let default = "$$".to_string();
+	if !body.contains(&default) {
+		return default;
+	}
+
+	// Try numbered delimiters: $body_0$, $body_1$, ...
+	for i in 0u64.. {
+		let candidate = format!("$body_{}$", i);
+		if !body.contains(&candidate) {
+			return candidate;
+		}
+	}
+
+	// Unreachable in practice, but satisfy the compiler
+	default
 }
 
 impl crate::query::QueryBuilderTrait for PostgresQueryBuilder {

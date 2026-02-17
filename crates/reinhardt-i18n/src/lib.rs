@@ -115,6 +115,16 @@ impl CatalogLoader {
 	/// let catalog = loader.load("fr").unwrap();
 	/// ```
 	pub fn load(&self, locale: &str) -> Result<MessageCatalog, I18nError> {
+		// Validate locale name to prevent path traversal attacks.
+		// Locale names should only contain alphanumeric characters, hyphens, and underscores.
+		if locale.is_empty()
+			|| !locale
+				.chars()
+				.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+		{
+			return Err(I18nError::InvalidLocale(locale.to_string()));
+		}
+
 		// Try multiple common .po file locations
 		let possible_paths = vec![
 			self.base_path

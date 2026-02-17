@@ -10,7 +10,7 @@ publish = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-auth = { workspace = true }
+reinhardt-auth = { workspace = true, features = ["argon2-hasher", "params"] }
 reinhardt-core = { workspace = true, features = ["exception"]}
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-di = { workspace = true }

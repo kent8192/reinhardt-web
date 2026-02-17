@@ -3,13 +3,13 @@
 //! Provides import operations for admin models from various formats (JSON, CSV, TSV).
 
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ImportFormat, ImportResponse};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
-use super::error::MapServerFnError;
+use super::error::{AdminAuth, MapServerFnError};
 
 /// Import model data from various formats
 ///
@@ -20,6 +20,10 @@ use super::error::MapServerFnError;
 ///
 /// This function is automatically exposed as an HTTP endpoint by the `#[server_fn]` macro.
 /// AdminSite and AdminDatabase dependencies are automatically injected via the DI system.
+///
+/// # Authentication
+///
+/// Requires staff (admin) permission and add permission for the model.
 ///
 /// # Example
 ///
@@ -43,7 +47,12 @@ pub async fn import_data(
 	data: Vec<u8>,
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
+	#[inject] http_request: ServerFnRequest,
 ) -> Result<ImportResponse, ServerFnError> {
+	// Authentication and authorization check
+	let auth = AdminAuth::from_request(&http_request);
+	auth.require_add_permission(&model_name)?;
+
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	let table_name = model_admin.table_name();
 
