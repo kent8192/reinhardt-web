@@ -10,7 +10,7 @@ use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 /// Configuration for allowed host validation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AllowedHostsConfig {
 	/// List of allowed host patterns.
 	///
@@ -18,14 +18,6 @@ pub struct AllowedHostsConfig {
 	/// (e.g., `"*.example.com"` matches `sub.example.com`).
 	/// An empty list allows all hosts (Django-compatible behavior).
 	pub allowed_hosts: Vec<String>,
-}
-
-impl Default for AllowedHostsConfig {
-	fn default() -> Self {
-		Self {
-			allowed_hosts: vec![],
-		}
-	}
 }
 
 impl AllowedHostsConfig {
@@ -265,12 +257,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_from_settings_conversion() {
 		// Arrange
-		let mut settings =
-			Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
-		settings.allowed_hosts = vec![
-			"example.com".to_string(),
-			"*.example.com".to_string(),
-		];
+		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
+		settings.allowed_hosts = vec!["example.com".to_string(), "*.example.com".to_string()];
 
 		// Act
 		let config = AllowedHostsConfig::from_settings(&settings);
@@ -365,8 +353,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_from_settings_middleware_creation() {
 		// Arrange
-		let mut settings =
-			Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
+		let mut settings = Settings::new(std::path::PathBuf::from("/app"), "secret".to_string());
 		settings.allowed_hosts = vec!["example.com".to_string()];
 		let middleware = AllowedHostsMiddleware::from_settings(&settings);
 		let handler = Arc::new(TestHandler);

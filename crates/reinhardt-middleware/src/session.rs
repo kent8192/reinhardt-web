@@ -290,9 +290,10 @@ impl SessionConfig {
 	/// assert!(!config.secure);
 	/// ```
 	pub fn from_settings(settings: &Settings) -> Self {
-		let mut config = Self::default();
-		config.secure = settings.session_cookie_secure;
-		config
+		Self {
+			secure: settings.session_cookie_secure,
+			..Self::default()
+		}
 	}
 }
 
