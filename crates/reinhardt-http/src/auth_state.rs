@@ -98,8 +98,9 @@ impl AuthState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_authenticated() {
 		let state = AuthState::authenticated("user-123", true, true);
 
@@ -109,7 +110,7 @@ mod tests {
 		assert!(state.is_active);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_anonymous() {
 		let state = AuthState::anonymous();
 

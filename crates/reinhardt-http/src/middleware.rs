@@ -287,6 +287,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
 	// Mock handler for testing
 	struct MockHandler {
@@ -330,6 +331,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_handler_basic() {
 		let handler = MockHandler {
@@ -343,6 +345,7 @@ mod tests {
 		assert_eq!(body, "Hello");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_basic() {
 		let handler = Arc::new(MockHandler {
@@ -360,6 +363,7 @@ mod tests {
 		assert_eq!(body, "Hello, World");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_empty() {
 		let handler = Arc::new(MockHandler {
@@ -375,6 +379,7 @@ mod tests {
 		assert_eq!(body, "Test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_single() {
 		let handler = Arc::new(MockHandler {
@@ -394,6 +399,7 @@ mod tests {
 		assert_eq!(body, "MW1:Handler");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_multiple() {
 		let handler = Arc::new(MockHandler {
@@ -420,6 +426,7 @@ mod tests {
 		assert_eq!(body, "M1:M2:Data");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_add_middleware() {
 		let handler = Arc::new(MockHandler {
@@ -459,6 +466,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_conditional_skip() {
 		let handler = Arc::new(MockHandler {
@@ -516,6 +524,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_short_circuit() {
 		let handler = Arc::new(MockHandler {
@@ -540,6 +549,7 @@ mod tests {
 		assert_eq!(body, "Auth required");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_no_short_circuit() {
 		let handler = Arc::new(MockHandler {
@@ -564,6 +574,7 @@ mod tests {
 		assert_eq!(body, "Normal:Handler Response");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_multiple_conditions() {
 		let handler = Arc::new(MockHandler {
@@ -611,6 +622,7 @@ mod tests {
 		assert_eq!(body, "Always:Base"); // Only always_mw prefix
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_response_should_stop_chain() {
 		let response = Response::ok();

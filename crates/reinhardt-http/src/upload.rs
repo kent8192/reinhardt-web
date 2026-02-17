@@ -616,22 +616,23 @@ impl MemoryFileUpload {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_file_upload_handler_creation() {
 		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
 		assert_eq!(handler.max_size(), 10 * 1024 * 1024);
 		assert_eq!(handler.upload_dir(), Path::new("/tmp/uploads"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_upload_handler_with_max_size() {
 		let handler =
 			FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(5 * 1024 * 1024);
 		assert_eq!(handler.max_size(), 5 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_upload_handler_size_validation() {
 		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads")).with_max_size(100);
 
@@ -647,7 +648,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_upload_handler_extension_validation() {
 		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"))
 			.with_allowed_extensions(vec!["jpg".to_string(), "png".to_string()]);
@@ -663,21 +664,21 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_temporary_file_upload_creation() {
 		let temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_temp.txt"));
 		assert_eq!(temp.path(), Path::new("/tmp/test_temp.txt"));
 		assert!(temp.auto_delete());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_temporary_file_upload_keep() {
 		let mut temp = TemporaryFileUpload::new(PathBuf::from("/tmp/test_keep.txt"));
 		temp.keep();
 		assert!(!temp.auto_delete());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_temporary_file_upload_with_content() {
 		let temp_path = PathBuf::from("/tmp/test_content_temp.txt");
 		let content = b"Test content";
@@ -692,7 +693,7 @@ mod tests {
 		assert!(!temp_path.exists());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_temporary_file_upload_auto_delete() {
 		let temp_path = PathBuf::from("/tmp/test_auto_delete.txt");
 		fs::write(&temp_path, b"test").unwrap();
@@ -705,7 +706,7 @@ mod tests {
 		assert!(!temp_path.exists());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_file_upload_creation() {
 		let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);
 
@@ -715,7 +716,7 @@ mod tests {
 		assert!(!upload.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_file_upload_with_content_type() {
 		let upload = MemoryFileUpload::with_content_type(
 			"image.png".to_string(),
@@ -727,7 +728,7 @@ mod tests {
 		assert_eq!(upload.content_type(), Some("image/png"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_file_upload_is_empty() {
 		let empty = MemoryFileUpload::new("empty.txt".to_string(), vec![]);
 		assert!(empty.is_empty());
@@ -738,7 +739,7 @@ mod tests {
 		assert_eq!(non_empty.size(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_memory_file_upload_save_to_disk() {
 		let temp_path = PathBuf::from("/tmp/test_memory_save.txt");
 		let upload = MemoryFileUpload::new("test.txt".to_string(), vec![1, 2, 3, 4, 5]);

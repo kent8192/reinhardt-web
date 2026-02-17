@@ -10,11 +10,12 @@
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
 use reinhardt_http::Request;
+use rstest::rstest;
 use std::str::FromStr;
 
 /// Test: Request type initialization
 /// DRF: test_request_type
-#[test]
+#[rstest]
 fn test_request_initialization() {
 	let method = Method::GET;
 	let uri = Uri::from_static("/api/users");
@@ -37,7 +38,7 @@ fn test_request_initialization() {
 
 /// Test: GET request has no content
 /// DRF: test_standard_behaviour_determines_no_content_GET
-#[test]
+#[rstest]
 fn test_get_has_no_content() {
 	let method = Method::GET;
 	let uri = Uri::from_static("/api/resource");
@@ -64,7 +65,7 @@ fn test_get_has_no_content() {
 
 /// Test: HEAD request has no content
 /// DRF: test_standard_behaviour_determines_no_content_HEAD
-#[test]
+#[rstest]
 fn test_head_has_no_content() {
 	let method = Method::HEAD;
 	let uri = Uri::from_static("/api/resource");
@@ -91,7 +92,7 @@ fn test_head_has_no_content() {
 
 /// Test: POST with form content
 /// DRF: test_request_POST_with_form_content
-#[test]
+#[rstest]
 fn test_post_with_form_content() {
 	let method = Method::POST;
 	let uri = Uri::from_static("/api/submit");
@@ -122,7 +123,7 @@ fn test_post_with_form_content() {
 
 /// Test: PUT with form content
 /// DRF: test_standard_behaviour_determines_form_content_PUT
-#[test]
+#[rstest]
 fn test_put_with_form_content() {
 	let method = Method::PUT;
 	let uri = Uri::from_static("/api/resource/1");
@@ -152,7 +153,7 @@ fn test_put_with_form_content() {
 
 /// Test: PUT with non-form content (JSON)
 /// DRF: test_standard_behaviour_determines_non_form_content_PUT
-#[test]
+#[rstest]
 fn test_put_with_json_content() {
 	let method = Method::PUT;
 	let uri = Uri::from_static("/api/resource/1");
@@ -190,7 +191,7 @@ fn test_put_with_json_content() {
 
 /// Test: Secure flag default false
 /// DRF: test_default_secure_false
-#[test]
+#[rstest]
 fn test_secure_default_false() {
 	let method = Method::GET;
 	let uri = Uri::from_static("http://example.com/api");
@@ -214,7 +215,7 @@ fn test_secure_default_false() {
 
 /// Test: Secure flag can be set true
 /// DRF: test_default_secure_true
-#[test]
+#[rstest]
 fn test_secure_can_be_true() {
 	let method = Method::GET;
 	let uri = Uri::from_static("https://example.com/api");
@@ -237,7 +238,7 @@ fn test_secure_can_be_true() {
 }
 
 /// Test: X-Forwarded-Proto header detection
-#[test]
+#[rstest]
 fn test_secure_via_forwarded_proto() {
 	let method = Method::GET;
 	let uri = Uri::from_static("/api");
@@ -262,7 +263,7 @@ fn test_secure_via_forwarded_proto() {
 
 /// Test: Request representation
 /// DRF: test_repr
-#[test]
+#[rstest]
 fn test_request_properties() {
 	let method = Method::POST;
 	let uri = Uri::from_static("/api/users?page=1&limit=10");
@@ -287,7 +288,7 @@ fn test_request_properties() {
 }
 
 /// Test: Query parameters parsing
-#[test]
+#[rstest]
 fn test_query_parameters() {
 	let uri = Uri::from_str("/api/search?q=test&category=books&page=2").unwrap();
 	let request = Request::builder()
@@ -308,7 +309,7 @@ fn test_query_parameters() {
 }
 
 /// Test: Path extraction
-#[test]
+#[rstest]
 fn test_path_extraction() {
 	let uri = Uri::from_str("/api/users/123?details=true").unwrap();
 	let request = Request::builder()
@@ -325,7 +326,7 @@ fn test_path_extraction() {
 
 /// Test: Body can only be consumed once
 /// DRF: test_duplicate_request_stream_parsing_exception
-#[test]
+#[rstest]
 fn test_body_consumed_once() {
 	let request = Request::builder()
 		.method(Method::POST)
@@ -346,7 +347,7 @@ fn test_body_consumed_once() {
 }
 
 /// Test: Build absolute URI
-#[test]
+#[rstest]
 fn test_build_absolute_uri() {
 	let uri = Uri::from_str("/api/users").unwrap();
 	let mut headers = HeaderMap::new();
@@ -366,7 +367,7 @@ fn test_build_absolute_uri() {
 }
 
 /// Test: Build absolute URI with HTTPS
-#[test]
+#[rstest]
 fn test_build_absolute_uri_https() {
 	let uri = Uri::from_str("/api/users").unwrap();
 	let mut headers = HeaderMap::new();
@@ -387,7 +388,7 @@ fn test_build_absolute_uri_https() {
 }
 
 /// Test: Accept-Language header parsing
-#[test]
+#[rstest]
 fn test_accept_language_parsing() {
 	let uri = Uri::from_static("/api");
 	let mut headers = HeaderMap::new();
@@ -418,7 +419,7 @@ fn test_accept_language_parsing() {
 }
 
 /// Test: Preferred language extraction
-#[test]
+#[rstest]
 fn test_preferred_language() {
 	let uri = Uri::from_static("/api");
 	let mut headers = HeaderMap::new();
@@ -441,7 +442,7 @@ fn test_preferred_language() {
 }
 
 /// Test: Language from cookie
-#[test]
+#[rstest]
 fn test_language_from_cookie() {
 	let uri = Uri::from_static("/api");
 	let mut headers = HeaderMap::new();
@@ -466,7 +467,7 @@ fn test_language_from_cookie() {
 }
 
 /// Test: JSON parsing
-#[test]
+#[rstest]
 fn test_json_parsing() {
 	#[derive(serde::Deserialize, serde::Serialize)]
 	struct User {
@@ -502,7 +503,7 @@ fn test_json_parsing() {
 }
 
 /// Test: Path parameters
-#[test]
+#[rstest]
 fn test_path_parameters() {
 	let mut request = Request::builder()
 		.method(Method::GET)
@@ -522,7 +523,7 @@ fn test_path_parameters() {
 }
 
 /// Test: Empty query string
-#[test]
+#[rstest]
 fn test_empty_query_string() {
 	let request = Request::builder()
 		.method(Method::GET)
@@ -537,7 +538,7 @@ fn test_empty_query_string() {
 }
 
 /// Test: Multiple values in query (last wins in simple HashMap)
-#[test]
+#[rstest]
 fn test_query_param_single_value() {
 	let uri = Uri::from_str("/api/search?tag=rust").unwrap();
 	let request = Request::builder()
@@ -553,7 +554,7 @@ fn test_query_param_single_value() {
 }
 
 /// Test: Invalid language codes are rejected
-#[test]
+#[rstest]
 fn test_invalid_language_codes_rejected() {
 	let uri = Uri::from_static("/api");
 	let mut headers = HeaderMap::new();

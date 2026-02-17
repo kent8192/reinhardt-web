@@ -139,6 +139,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_core::messages::{Level, MemoryStorage, Message};
+	use rstest::rstest;
 
 	struct AddMessageHandler;
 
@@ -163,6 +164,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_messages_middleware_injects_container() {
 		let storage = MemoryStorage::new();
@@ -191,6 +193,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_messages_middleware_persists_messages() {
 		let storage = MemoryStorage::new();
@@ -211,6 +214,7 @@ mod tests {
 		assert_eq!(stored[0].level, Level::Success);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_messages_middleware_loads_existing_messages() {
 		let mut storage = MemoryStorage::new();
@@ -241,6 +245,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_messages_middleware_chain_integration() {
 		let storage = MemoryStorage::new();

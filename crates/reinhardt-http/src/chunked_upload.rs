@@ -408,8 +408,9 @@ impl ChunkedUploadManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_session_creation() {
 		let session = ChunkedUploadSession::new(
 			"test123".to_string(),
@@ -428,7 +429,7 @@ mod tests {
 		assert!(!session.completed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_progress() {
 		let mut session = ChunkedUploadSession::new(
 			"test123".to_string(),
@@ -452,13 +453,13 @@ mod tests {
 		assert_eq!(session.progress(), 100.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manager_creation() {
 		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks"));
 		assert_eq!(manager.list_sessions().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_start_session() {
 		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks"));
 		let session = manager
@@ -470,7 +471,7 @@ mod tests {
 		assert_eq!(manager.list_sessions().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_upload_chunk() {
 		let temp_dir = PathBuf::from("/tmp/test_chunks_upload");
 		let manager = ChunkedUploadManager::new(temp_dir.clone());
@@ -489,7 +490,7 @@ mod tests {
 		manager.cleanup_session("session2").unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_session() {
 		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks"));
 		let chunk_data = vec![0u8; 100];
@@ -503,7 +504,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chunk_assembly() {
 		let temp_dir = PathBuf::from("/tmp/test_chunks_assembly");
 		let manager = ChunkedUploadManager::new(temp_dir.clone());
@@ -531,7 +532,7 @@ mod tests {
 		manager.cleanup_session("session3").unwrap();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_completion() {
 		let temp_dir = PathBuf::from("/tmp/test_chunks_completion");
 		let manager = ChunkedUploadManager::new(temp_dir.clone());

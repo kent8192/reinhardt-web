@@ -136,13 +136,14 @@ impl Extensions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Clone, Debug, PartialEq)]
 	struct TestData {
 		value: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_and_get() {
 		let extensions = Extensions::new();
 		let data = TestData {
@@ -155,7 +156,7 @@ mod tests {
 		assert_eq!(retrieved, Some(data));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent() {
 		let extensions = Extensions::new();
 		let retrieved = extensions.get::<TestData>();
@@ -163,7 +164,7 @@ mod tests {
 		assert_eq!(retrieved, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contains() {
 		let extensions = Extensions::new();
 		extensions.insert(TestData {
@@ -174,7 +175,7 @@ mod tests {
 		assert!(!extensions.contains::<String>());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove() {
 		let extensions = Extensions::new();
 		let data = TestData {
@@ -188,7 +189,7 @@ mod tests {
 		assert!(!extensions.contains::<TestData>());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear() {
 		let extensions = Extensions::new();
 		extensions.insert(TestData {
@@ -202,7 +203,7 @@ mod tests {
 		assert!(!extensions.contains::<String>());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_types() {
 		let extensions = Extensions::new();
 		extensions.insert(TestData {
