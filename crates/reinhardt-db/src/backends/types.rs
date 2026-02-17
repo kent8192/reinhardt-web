@@ -388,8 +388,7 @@ impl Savepoint {
 	/// characters and underscores are allowed (must not start with a digit).
 	pub fn new(name: impl Into<String>) -> Self {
 		let name = name.into();
-		validate_savepoint_name(&name)
-			.unwrap_or_else(|e| panic!("Invalid savepoint name: {}", e));
+		validate_savepoint_name(&name).unwrap_or_else(|e| panic!("Invalid savepoint name: {}", e));
 		Self { name }
 	}
 
@@ -410,7 +409,10 @@ impl Savepoint {
 
 	/// Generate SQL to rollback to this savepoint
 	pub fn rollback_sql(&self) -> String {
-		format!("ROLLBACK TO SAVEPOINT \"{}\"", self.name.replace('"', "\"\""))
+		format!(
+			"ROLLBACK TO SAVEPOINT \"{}\"",
+			self.name.replace('"', "\"\"")
+		)
 	}
 }
 

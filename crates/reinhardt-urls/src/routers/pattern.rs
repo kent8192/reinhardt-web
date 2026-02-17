@@ -1112,11 +1112,15 @@ mod tests {
 
 		// Act & Assert - should reject `..` segments
 		assert!(
-			pattern.extract_params("/files/../../../etc/passwd").is_none(),
+			pattern
+				.extract_params("/files/../../../etc/passwd")
+				.is_none(),
 			"Path type should reject directory traversal"
 		);
 		assert!(
-			pattern.extract_params("/files/foo/../../etc/passwd").is_none(),
+			pattern
+				.extract_params("/files/foo/../../etc/passwd")
+				.is_none(),
 			"Path type should reject embedded directory traversal"
 		);
 	}

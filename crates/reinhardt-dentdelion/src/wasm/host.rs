@@ -43,9 +43,8 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 	use std::net::ToSocketAddrs;
 
 	// Parse the URL
-	let parsed = url::Url::parse(url).map_err(|e| {
-		WitPluginError::with_details(400, "Invalid URL", e.to_string())
-	})?;
+	let parsed = url::Url::parse(url)
+		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
 
 	// Validate scheme: only http and https are allowed
 	match parsed.scheme() {
@@ -62,9 +61,9 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 	}
 
 	// Extract host
-	let host = parsed.host_str().ok_or_else(|| {
-		WitPluginError::new(400, "URL must contain a host")
-	})?;
+	let host = parsed
+		.host_str()
+		.ok_or_else(|| WitPluginError::new(400, "URL must contain a host"))?;
 
 	// Determine port (default to 80 for http, 443 for https)
 	let port = parsed.port_or_known_default().unwrap_or(80);
@@ -78,7 +77,10 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 		.collect();
 
 	if socket_addrs.is_empty() {
-		return Err(WitPluginError::new(400, "Hostname resolved to no addresses"));
+		return Err(WitPluginError::new(
+			400,
+			"Hostname resolved to no addresses",
+		));
 	}
 
 	// Check each resolved IP address against blocklists

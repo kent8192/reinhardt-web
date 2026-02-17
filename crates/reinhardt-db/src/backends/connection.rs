@@ -711,10 +711,7 @@ mod tests {
 		let sql = build_create_database_sql(db_name);
 
 		// Assert: double quotes are escaped by doubling
-		assert_eq!(
-			sql,
-			"CREATE DATABASE \"test\"\"; DROP TABLE users; --\""
-		);
+		assert_eq!(sql, "CREATE DATABASE \"test\"\"; DROP TABLE users; --\"");
 		// The escaped SQL treats the entire string as a single identifier,
 		// preventing the attacker from injecting additional SQL statements
 	}

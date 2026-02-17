@@ -518,10 +518,7 @@ fn test_builder_accepts_valid_emails() {
 #[rstest]
 fn test_builder_allows_empty_from_email() {
 	// Arrange & Act
-	let result = EmailMessage::builder()
-		.subject("Test")
-		.body("Body")
-		.build();
+	let result = EmailMessage::builder().subject("Test").body("Body").build();
 
 	// Assert
 	assert!(result.is_ok());

@@ -138,9 +138,7 @@ fn annotation_value_to_safe_expr(
 /// Recursively converts arithmetic expressions using type-safe SeaQuery API
 /// for field references and values. For complex expression types (Case, Coalesce),
 /// falls back to SQL output from the expression's own serialization.
-fn annotation_expr_to_safe_expr(
-	expr: &reinhardt_db::orm::annotation::Expression,
-) -> SimpleExpr {
+fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression) -> SimpleExpr {
 	use reinhardt_db::orm::annotation::Expression as AnnotExpr;
 
 	match expr {

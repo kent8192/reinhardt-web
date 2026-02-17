@@ -9039,8 +9039,14 @@ mod tests {
 		let delimiter = generate_safe_dollar_quote_delimiter(body);
 
 		// Assert
-		assert_ne!(delimiter, "$$", "Delimiter must not be $$ when body contains $$");
-		assert!(!body.contains(&delimiter), "Delimiter must not appear in body");
+		assert_ne!(
+			delimiter, "$$",
+			"Delimiter must not be $$ when body contains $$"
+		);
+		assert!(
+			!body.contains(&delimiter),
+			"Delimiter must not appear in body"
+		);
 		assert_eq!(delimiter, "$body_0$");
 	}
 

@@ -591,34 +591,19 @@ mod tests {
 
 		assert!(
 			manager
-				.start_session(
-					"foo/bar".to_string(),
-					"file.bin".to_string(),
-					1000,
-					100,
-				)
+				.start_session("foo/bar".to_string(), "file.bin".to_string(), 1000, 100,)
 				.is_err()
 		);
 
 		assert!(
 			manager
-				.start_session(
-					"foo\\bar".to_string(),
-					"file.bin".to_string(),
-					1000,
-					100,
-				)
+				.start_session("foo\\bar".to_string(), "file.bin".to_string(), 1000, 100,)
 				.is_err()
 		);
 
 		assert!(
 			manager
-				.start_session(
-					"null\0byte".to_string(),
-					"file.bin".to_string(),
-					1000,
-					100,
-				)
+				.start_session("null\0byte".to_string(), "file.bin".to_string(), 1000, 100,)
 				.is_err()
 		);
 

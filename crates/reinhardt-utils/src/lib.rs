@@ -46,7 +46,9 @@ pub mod humanize;
 // Re-export utils-core modules
 pub use crate::utils_core::{dateformat, encoding, html, text, timezone};
 
-pub use crate::utils_core::path_safety::{PathTraversalError, is_safe_filename_component, safe_path_join};
+pub use crate::utils_core::path_safety::{
+	PathTraversalError, is_safe_filename_component, safe_path_join,
+};
 pub use dateformat::format as format_date;
 pub use encoding::{escapejs, slugify, truncate_chars, truncate_words, urldecode, urlencode};
 pub use html::{SafeString, escape, escape_attr, strip_tags, unescape};
