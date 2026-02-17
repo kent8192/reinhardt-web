@@ -105,9 +105,15 @@ pub struct Settings {
 	pub allowed_hosts: Vec<String>,
 
 	/// List of installed applications
+	///
+	/// Defaults to an empty vector. Use the `installed_apps!` macro
+	/// to register application modules with compile-time validation.
 	pub installed_apps: Vec<String>,
 
 	/// List of middleware classes
+	///
+	/// Defaults to an empty vector. Configure middleware as needed
+	/// for your application.
 	pub middleware: Vec<String>,
 
 	/// Root URL configuration module
@@ -202,7 +208,7 @@ impl Settings {
 	/// assert_eq!(settings.secret_key, "my-secret-key-12345");
 	/// assert!(settings.debug);
 	/// assert_eq!(settings.time_zone, "UTC");
-	/// assert!(settings.installed_apps.contains(&"reinhardt.contrib.admin".to_string()));
+	/// assert!(settings.installed_apps.is_empty());
 	/// ```
 	pub fn new(base_dir: PathBuf, secret_key: String) -> Self {
 		Self {
@@ -210,23 +216,8 @@ impl Settings {
 			secret_key,
 			debug: true,
 			allowed_hosts: vec![],
-			installed_apps: vec![
-				"reinhardt.contrib.admin".to_string(),
-				"reinhardt.contrib.auth".to_string(),
-				"reinhardt.contrib.contenttypes".to_string(),
-				"reinhardt.contrib.sessions".to_string(),
-				"reinhardt.contrib.messages".to_string(),
-				"reinhardt.contrib.staticfiles".to_string(),
-			],
-			middleware: vec![
-				"reinhardt.middleware.security.SecurityMiddleware".to_string(),
-				"reinhardt.contrib.sessions.middleware.SessionMiddleware".to_string(),
-				"reinhardt.middleware.common.CommonMiddleware".to_string(),
-				"reinhardt.middleware.csrf.CsrfViewMiddleware".to_string(),
-				"reinhardt.contrib.auth.middleware.AuthenticationMiddleware".to_string(),
-				"reinhardt.contrib.messages.middleware.MessageMiddleware".to_string(),
-				"reinhardt.middleware.clickjacking.XFrameOptionsMiddleware".to_string(),
-			],
+			installed_apps: vec![],
+			middleware: vec![],
 			root_urlconf: String::new(),
 			databases: {
 				let mut dbs = HashMap::new();
