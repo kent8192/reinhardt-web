@@ -579,8 +579,9 @@ impl BaseSettingsValidator for ChoiceValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_settings_validation_required() {
 		let validator = RequiredValidator::new(vec!["key1".to_string(), "key2".to_string()]);
 
@@ -593,7 +594,7 @@ mod tests {
 		assert!(validator.validate_settings(&settings).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_security_validator_production() {
 		let validator = SecurityValidator::new(Profile::Production);
 
@@ -608,7 +609,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_security_validator_development() {
 		let validator = SecurityValidator::new(Profile::Development);
 
@@ -623,7 +624,7 @@ mod tests {
 		assert!(validator.validate_settings(&settings).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_range_validator() {
 		let validator = RangeValidator::between(0.0, 100.0);
 
@@ -640,7 +641,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_validation_choice() {
 		let validator =
 			ChoiceValidator::new(vec!["a".to_string(), "b".to_string(), "c".to_string()]);

@@ -275,8 +275,9 @@ pub fn parse_cache_url(url_str: &str) -> Result<CacheUrl, String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_bool() {
 		assert!(parse_bool("true").unwrap());
 		assert!(parse_bool("True").unwrap());
@@ -293,7 +294,7 @@ mod tests {
 		assert!(parse_bool("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_list() {
 		assert_eq!(parse_list("a,b,c"), vec!["a", "b", "c"]);
 		assert_eq!(parse_list("a, b, c"), vec!["a", "b", "c"]);
@@ -301,14 +302,14 @@ mod tests {
 		assert_eq!(parse_list("single"), vec!["single"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_dict() {
 		let dict = parse_dict("key1=value1,key2=value2");
 		assert_eq!(dict.get("key1").unwrap(), "value1");
 		assert_eq!(dict.get("key2").unwrap(), "value2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_sqlite_memory() {
 		let db = parse_database_url("sqlite::memory:").unwrap();
 		assert_eq!(db.engine, "reinhardt.db.backends.sqlite3");
@@ -316,14 +317,14 @@ mod tests {
 		assert!(db.user.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_sqlite_file() {
 		let db = parse_database_url("sqlite:///path/to/db.sqlite3").unwrap();
 		assert_eq!(db.engine, "reinhardt.db.backends.sqlite3");
 		assert_eq!(db.name, "path/to/db.sqlite3");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_postgresql() {
 		let db = parse_database_url("postgresql://user:pass@localhost:5432/mydb").unwrap();
 		assert_eq!(db.engine, "reinhardt.db.backends.postgresql");
@@ -334,7 +335,7 @@ mod tests {
 		assert_eq!(db.port.unwrap(), 5432);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_mysql() {
 		let db = parse_database_url("mysql://root:secret@127.0.0.1:3306/testdb").unwrap();
 		assert_eq!(db.engine, "reinhardt.db.backends.mysql");
@@ -345,14 +346,14 @@ mod tests {
 		assert_eq!(db.port.unwrap(), 3306);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_cache_locmem() {
 		let cache = parse_cache_url("locmem://").unwrap();
 		assert_eq!(cache.backend, "reinhardt.cache.backends.locmem.LocMemCache");
 		assert!(cache.location.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_cache_redis() {
 		let cache = parse_cache_url("redis://localhost:6379/0").unwrap();
 		assert_eq!(cache.backend, "reinhardt.cache.backends.redis.RedisCache");

@@ -272,8 +272,9 @@ impl SecretAuditLogger {
 mod tests {
 	use super::*;
 	use backends::MemorySecretAuditBackend;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_secret_access_event_creation() {
 		let event = SecretAccessEvent::new(
 			"test_secret".to_string(),
@@ -289,6 +290,7 @@ mod tests {
 		assert!(event.timestamp <= Utc::now());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_secret_audit_logger() {
 		let backend = Arc::new(MemorySecretAuditBackend::new());
@@ -302,6 +304,7 @@ mod tests {
 		assert_eq!(events.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_secret_audit_logger_with_filter() {
 		let backend = Arc::new(MemorySecretAuditBackend::new());
@@ -325,6 +328,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_secret_audit_filter_by_name() {
 		let backend = Arc::new(MemorySecretAuditBackend::new());

@@ -226,8 +226,9 @@ impl Default for DatabaseConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_settings_db_config_sqlite() {
 		let db = DatabaseConfig::sqlite("test.db");
 		assert_eq!(db.engine, "reinhardt.db.backends.sqlite3");
@@ -235,7 +236,7 @@ mod tests {
 		assert!(db.user.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_db_config_postgresql() {
 		let db = DatabaseConfig::postgresql("testdb", "user", "pass", "localhost", 5432);
 		assert_eq!(db.engine, "reinhardt.db.backends.postgresql");

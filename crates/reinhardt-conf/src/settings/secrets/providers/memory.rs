@@ -81,7 +81,9 @@ impl SecretProvider for MemorySecretProvider {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_provider_basic() {
 		let provider = MemorySecretProvider::new();
@@ -110,6 +112,7 @@ mod tests {
 		assert!(!provider.exists("test_key"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_provider_not_found() {
 		let provider = MemorySecretProvider::new();
@@ -118,6 +121,7 @@ mod tests {
 		assert!(matches!(result, Err(SecretError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_provider_with_metadata() {
 		let provider = MemorySecretProvider::new();

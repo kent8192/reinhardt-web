@@ -365,11 +365,12 @@ pub fn load_env_optional(path: impl Into<PathBuf>) -> Result<bool, EnvError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::fs::File;
 	use std::io::Write;
 	use tempfile::TempDir;
 
-	#[test]
+	#[rstest]
 	fn test_parse_simple_env() {
 		let content = r#"
 # Comment
@@ -389,7 +390,7 @@ KEY2=value2
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_quoted_values() {
 		let content = r#"
 QUOTED_SINGLE='single quoted'
@@ -408,7 +409,7 @@ QUOTED_DOUBLE="double quoted"
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_export() {
 		let content = r#"
 export EXPORTED_VAR="exported value"
@@ -424,7 +425,7 @@ export EXPORTED_VAR="exported value"
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_variable_expansion() {
 		unsafe {
 			env::set_var("BASE_VAR", "base");
@@ -448,7 +449,7 @@ EXPANDED_BRACES=${BASE_VAR}/expanded
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escaped_dollar() {
 		let content = r#"
 ESCAPED=\$not_expanded
@@ -464,7 +465,7 @@ ESCAPED=\$not_expanded
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_from_file() {
 		let temp_dir = TempDir::new().unwrap();
 		let env_path = temp_dir.path().join(".env");

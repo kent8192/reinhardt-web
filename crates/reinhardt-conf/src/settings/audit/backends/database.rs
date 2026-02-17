@@ -314,6 +314,7 @@ impl AuditBackend for DatabaseAuditBackend {
 mod tests {
 	use super::*;
 	use reinhardt_query::Func;
+	use rstest::rstest;
 	use serde_json::json;
 	use std::sync::Once;
 
@@ -352,6 +353,7 @@ mod tests {
 		backend
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_database_backend_init() {
 		let backend = create_test_backend().await;
@@ -375,6 +377,7 @@ mod tests {
 		assert_eq!(count, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_database_backend_log_event() {
 		let backend = create_test_backend().await;
@@ -401,6 +404,7 @@ mod tests {
 		assert_eq!(events[0].event_type, EventType::ConfigUpdate);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_database_backend_filter_by_type() {
 		let backend = create_test_backend().await;
@@ -436,6 +440,7 @@ mod tests {
 		assert_eq!(update_events.len(), 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_database_backend_filter_by_user() {
 		let backend = create_test_backend().await;

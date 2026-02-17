@@ -349,7 +349,9 @@ impl DynamicBackend for RedisSettingsBackend {
 #[cfg(all(test, not(feature = "dynamic-redis")))]
 mod tests_no_feature {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redis_backend_disabled() {
 		let result = RedisSettingsBackend::new("redis://localhost:6379").await;

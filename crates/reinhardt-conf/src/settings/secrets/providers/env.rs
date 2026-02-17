@@ -109,7 +109,9 @@ impl SecretProvider for EnvSecretProvider {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_env_provider_with_prefix() {
 		let provider = EnvSecretProvider::new("TEST_SECRET_");
@@ -133,6 +135,7 @@ mod tests {
 		assert!(!provider.exists("db_password"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_env_provider_without_prefix() {
 		let provider = EnvSecretProvider::without_prefix();
@@ -148,6 +151,7 @@ mod tests {
 		provider.delete_secret("my_key").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_env_provider_not_found() {
 		let provider = EnvSecretProvider::new("TEST_");
@@ -156,6 +160,7 @@ mod tests {
 		assert!(matches!(result, Err(SecretError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_env_provider_list() {
 		let provider = EnvSecretProvider::new("LIST_TEST_");

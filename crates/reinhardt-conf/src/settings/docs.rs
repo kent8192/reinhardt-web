@@ -335,8 +335,9 @@ impl Default for DocsGenerator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_setting_doc_builder() {
 		let doc = SettingDoc::new("DEBUG", "bool")
 			.with_description("Enable debug mode")
@@ -353,7 +354,7 @@ mod tests {
 		assert_eq!(doc.constraints.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_group() {
 		let group = SettingsGroup::new("Database")
 			.with_description("Database configuration settings")
@@ -375,7 +376,7 @@ mod tests {
 		assert!(!group.settings[1].required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_markdown_generation() {
 		let mut generator = DocsGenerator::new();
 
@@ -400,7 +401,7 @@ mod tests {
 		assert!(markdown.contains("✓")); // Required marker
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_schema_generation() {
 		let mut generator = DocsGenerator::new();
 
@@ -433,14 +434,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deprecated_setting() {
 		let doc = SettingDoc::new("OLD_SETTING", "String").deprecated_since("v2.0");
 
 		assert_eq!(doc.deprecated, Some("v2.0".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_groups() {
 		let subgroup = SettingsGroup::new("Cache").add_setting(
 			SettingDoc::new("CACHE_TTL", "i64")

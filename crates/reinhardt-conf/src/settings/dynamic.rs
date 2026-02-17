@@ -734,6 +734,7 @@ impl DynamicSettings {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestBackend {
 		data: Arc<RwLock<HashMap<String, serde_json::Value>>>,
@@ -777,6 +778,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_crud() {
 		let backend = Arc::new(TestBackend::new());
@@ -797,6 +799,7 @@ mod tests {
 		assert!(!settings.exists("key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_type_safety() {
 		let backend = Arc::new(TestBackend::new());
@@ -815,6 +818,7 @@ mod tests {
 		assert_eq!(string, "text");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_observer_pattern() {
 		let backend = Arc::new(TestBackend::new());
@@ -835,6 +839,7 @@ mod tests {
 		assert!(*called.read());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unsubscribe() {
 		let backend = Arc::new(TestBackend::new());
@@ -856,6 +861,7 @@ mod tests {
 		assert_eq!(*called.read(), 1); // Should not increment
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_keys() {
 		let backend = Arc::new(TestBackend::new());
@@ -873,6 +879,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "caching")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_caching() {
 		let backend = Arc::new(TestBackend::new());

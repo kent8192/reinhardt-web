@@ -417,8 +417,9 @@ pub enum SettingsError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_settings() {
 		let settings = AdvancedSettings::default();
 		assert!(!settings.debug);
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(settings.cache.backend, "memory");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_validation() {
 		let mut settings = AdvancedSettings::default();
 
@@ -438,7 +439,7 @@ mod tests {
 		assert!(settings.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_settings() {
 		let mut settings = AdvancedSettings::default();
 

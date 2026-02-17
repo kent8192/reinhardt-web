@@ -179,8 +179,9 @@ impl<T: Zeroize + Eq> Eq for SecretValue<T> {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_debug() {
 		let secret = SecretString::new("my-secret-password");
 		let debug_output = format!("{:?}", secret);
@@ -188,7 +189,7 @@ mod tests {
 		assert!(debug_output.contains("REDACTED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_display() {
 		let secret = SecretString::new("my-secret-password");
 		let display_output = format!("{}", secret);
@@ -196,13 +197,13 @@ mod tests {
 		assert!(display_output.contains("REDACTED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_expose() {
 		let secret = SecretString::new("my-secret-password");
 		assert_eq!(secret.expose_secret(), "my-secret-password");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_len() {
 		let secret = SecretString::new("password");
 		assert_eq!(secret.len(), 8);
@@ -213,7 +214,7 @@ mod tests {
 		assert!(empty.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_equality() {
 		let secret1 = SecretString::new("password");
 		let secret2 = SecretString::new("password");
@@ -223,7 +224,7 @@ mod tests {
 		assert_ne!(secret1, secret3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_value_debug() {
 		let secret = SecretValue::new(12345);
 		let debug_output = format!("{:?}", secret);
@@ -231,13 +232,13 @@ mod tests {
 		assert!(debug_output.contains("REDACTED"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_value_expose() {
 		let secret = SecretValue::new(vec![1, 2, 3, 4, 5]);
 		assert_eq!(secret.expose_secret(), &vec![1, 2, 3, 4, 5]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_string_serialization() {
 		let secret = SecretString::new("test-secret");
 		let json = serde_json::to_string(&secret).unwrap();
@@ -245,7 +246,7 @@ mod tests {
 		assert_eq!(deserialized.expose_secret(), "test-secret");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_secret_value_serialization() {
 		let secret = SecretValue::new(42);
 		let json = serde_json::to_string(&secret).unwrap();

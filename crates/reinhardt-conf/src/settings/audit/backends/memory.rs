@@ -212,9 +212,11 @@ impl AuditBackend for MemoryAuditBackend {
 mod tests {
 	use super::*;
 	use crate::settings::audit::{ChangeRecord, EventType};
+	use rstest::rstest;
 	use serde_json::json;
 	use std::collections::HashMap;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_new() {
 		let backend = MemoryAuditBackend::new();
@@ -222,6 +224,7 @@ mod tests {
 		assert_eq!(backend.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_log_event() {
 		let backend = MemoryAuditBackend::new();
@@ -243,6 +246,7 @@ mod tests {
 		assert!(!backend.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_get_events() {
 		let backend = MemoryAuditBackend::new();
@@ -266,6 +270,7 @@ mod tests {
 		assert_eq!(events.len(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_filter_by_event_type() {
 		let backend = MemoryAuditBackend::new();
@@ -289,6 +294,7 @@ mod tests {
 		assert_eq!(events[0].event_type, EventType::ConfigUpdate);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_filter_by_user() {
 		let backend = MemoryAuditBackend::new();
@@ -323,6 +329,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_clear() {
 		let backend = MemoryAuditBackend::new();

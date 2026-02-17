@@ -693,7 +693,9 @@ impl DynamicBackend for DatabaseBackend {
 #[cfg(all(test, not(feature = "dynamic-database")))]
 mod tests_no_feature {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_database_backend_disabled() {
 		let result = DatabaseBackend::new("sqlite::memory:?mode=rwc&cache=shared").await;
@@ -705,6 +707,7 @@ mod tests_no_feature {
 #[cfg(all(test, feature = "dynamic-database"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 	use std::sync::Once;
 
@@ -739,6 +742,7 @@ mod tests {
 		backend
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_set_and_get_setting() {
 		let backend = create_test_backend().await;
@@ -760,6 +764,7 @@ mod tests {
 		assert_eq!(retrieved, Some(value));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_setting_exists() {
 		let backend = create_test_backend().await;
@@ -787,6 +792,7 @@ mod tests {
 		assert!(exists);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete_setting() {
 		let backend = create_test_backend().await;
@@ -819,6 +825,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_expired_setting() {
 		let backend = create_test_backend().await;
@@ -837,6 +844,7 @@ mod tests {
 		assert_eq!(retrieved, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cleanup_expired() {
 		let backend = create_test_backend().await;
@@ -876,6 +884,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_setting_without_ttl() {
 		let backend = create_test_backend().await;
@@ -901,6 +910,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_overwrite_existing_setting() {
 		let backend = create_test_backend().await;
@@ -923,6 +933,7 @@ mod tests {
 		assert_eq!(retrieved, Some(json!({"value": 2})));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_keys_retrieval() {
 		let backend = create_test_backend().await;
@@ -951,6 +962,7 @@ mod tests {
 		assert!(keys.contains(&"key3".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_keys_excludes_expired() {
 		let backend = create_test_backend().await;

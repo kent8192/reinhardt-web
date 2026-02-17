@@ -315,6 +315,7 @@ impl DynamicBackend for MemoryBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Poll a condition until it returns true or timeout expires
 	async fn poll_until<F, Fut>(
@@ -336,6 +337,7 @@ mod tests {
 		Err(format!("Condition not met within {:?}", timeout))
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_operations() {
 		let backend = MemoryBackend::new();
@@ -357,6 +359,7 @@ mod tests {
 		assert!(!backend.exists("key1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ttl_expiration() {
 		let backend = MemoryBackend::new();
@@ -384,6 +387,7 @@ mod tests {
 		assert_eq!(backend.get("temp_key").await.unwrap(), None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_values() {
 		let backend = MemoryBackend::new();
@@ -433,6 +437,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_overwrite_value() {
 		let backend = MemoryBackend::new();
@@ -468,6 +473,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cleanup_expired() {
 		let backend = MemoryBackend::new();
@@ -501,6 +507,7 @@ mod tests {
 		assert!(!backend.exists("temp2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_keys_filters_expired() {
 		let backend = MemoryBackend::new();
@@ -530,6 +537,7 @@ mod tests {
 		assert!(!keys.contains(&"expired".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear() {
 		let backend = MemoryBackend::new();
@@ -559,6 +567,7 @@ mod tests {
 		assert_eq!(backend.keys().await.unwrap().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_concurrent_access() {
 		use std::sync::Arc;
@@ -591,6 +600,7 @@ mod tests {
 		assert_eq!(keys.len(), 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_implementation() {
 		let backend = MemoryBackend::default();

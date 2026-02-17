@@ -430,9 +430,10 @@ pub enum GetError {
 mod tests {
 	use super::*;
 	use crate::settings::sources::DefaultSource;
+	use rstest::rstest;
 	use serde::Deserialize;
 
-	#[test]
+	#[rstest]
 	fn test_settings_builder_basic() {
 		let settings = SettingsBuilder::new()
 			.add_source(
@@ -447,7 +448,7 @@ mod tests {
 		assert_eq!(settings.get::<String>("secret_key").unwrap(), "test-key");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_merge_priority() {
 		let settings = SettingsBuilder::new()
 			.add_source(
@@ -461,7 +462,7 @@ mod tests {
 		assert!(settings.contains_key("key"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_optional() {
 		let settings = SettingsBuilder::new()
 			.add_source(
@@ -477,7 +478,7 @@ mod tests {
 		assert!(settings.get_optional::<String>("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or() {
 		let settings = SettingsBuilder::new().build().unwrap();
 
@@ -487,7 +488,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_typed() {
 		#[derive(Debug, Deserialize, PartialEq)]
 		struct Config {
@@ -514,7 +515,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contains_key() {
 		let settings = SettingsBuilder::new()
 			.add_source(DefaultSource::new().with_value("key1", Value::String("value".to_string())))
@@ -525,7 +526,7 @@ mod tests {
 		assert!(!settings.contains_key("key2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_builder_keys() {
 		let settings = SettingsBuilder::new()
 			.add_source(

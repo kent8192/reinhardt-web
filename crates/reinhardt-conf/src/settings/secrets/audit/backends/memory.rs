@@ -193,7 +193,9 @@ impl SecretAuditBackend for MemorySecretAuditBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_new() {
 		let backend = MemorySecretAuditBackend::new();
@@ -201,6 +203,7 @@ mod tests {
 		assert_eq!(backend.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_log_access() {
 		let backend = MemorySecretAuditBackend::new();
@@ -214,6 +217,7 @@ mod tests {
 		assert!(!backend.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_get_accesses() {
 		let backend = MemorySecretAuditBackend::new();
@@ -228,6 +232,7 @@ mod tests {
 		assert_eq!(events.len(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_filter_by_secret_name() {
 		let backend = MemorySecretAuditBackend::new();
@@ -252,6 +257,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_filter_by_success() {
 		let backend = MemorySecretAuditBackend::new();
@@ -276,6 +282,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_clear() {
 		let backend = MemorySecretAuditBackend::new();

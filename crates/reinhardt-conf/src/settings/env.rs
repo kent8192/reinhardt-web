@@ -216,8 +216,9 @@ pub enum EnvError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_env_str() {
 		unsafe {
 			env::set_var("TEST_STR", "hello");
@@ -229,7 +230,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_str_with_default() {
 		let env = Env::new();
 		assert_eq!(
@@ -239,7 +240,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_bool() {
 		unsafe {
 			env::set_var("TEST_BOOL_TRUE", "true");
@@ -262,7 +263,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_int() {
 		unsafe {
 			env::set_var("TEST_INT", "42");
@@ -274,7 +275,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_list() {
 		unsafe {
 			env::set_var("TEST_LIST", "a,b,c");
@@ -286,7 +287,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_env_with_prefix() {
 		unsafe {
 			env::set_var("REINHARDT_DEBUG", "true");
@@ -298,7 +299,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_path() {
 		unsafe {
 			env::set_var("TEST_PATH", "/tmp/test");

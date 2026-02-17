@@ -168,8 +168,9 @@ impl fmt::Display for Profile {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_profile_parse() {
 		assert_eq!(Profile::parse("development"), Profile::Development);
 		assert_eq!(Profile::parse("dev"), Profile::Development);
@@ -180,14 +181,14 @@ mod tests {
 		assert_eq!(Profile::parse("unknown"), Profile::Custom);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_profile_as_str() {
 		assert_eq!(Profile::Development.as_str(), "development");
 		assert_eq!(Profile::Staging.as_str(), "staging");
 		assert_eq!(Profile::Production.as_str(), "production");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_profile_checks() {
 		assert!(Profile::Production.is_production());
 		assert!(!Profile::Development.is_production());
@@ -196,14 +197,14 @@ mod tests {
 		assert!(!Profile::Production.is_development());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_debug() {
 		assert!(Profile::Development.default_debug());
 		assert!(Profile::Staging.default_debug());
 		assert!(!Profile::Production.default_debug());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_file_name() {
 		assert_eq!(Profile::Development.env_file_name(), ".env.development");
 		assert_eq!(Profile::Staging.env_file_name(), ".env.staging");
@@ -211,7 +212,7 @@ mod tests {
 		assert_eq!(Profile::Custom.env_file_name(), ".env");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_profile_from_env() {
 		unsafe {
 			env::set_var("REINHARDT_ENV", "production");

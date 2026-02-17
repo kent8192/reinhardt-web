@@ -405,6 +405,7 @@ impl SecretProvider for AwsSecretsProvider {
 #[cfg(all(test, feature = "aws-secrets"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test helper struct that tests pure logic (prefix handling, JSON parsing)
 	/// without requiring actual AWS SDK client initialization (which needs TLS certs)
@@ -459,7 +460,7 @@ mod tests {
 	}
 
 	/// Test: Full name generation without prefix
-	#[test]
+	#[rstest]
 	fn test_get_full_name_without_prefix() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -471,7 +472,7 @@ mod tests {
 	}
 
 	/// Test: Full name generation with prefix
-	#[test]
+	#[rstest]
 	fn test_get_full_name_with_prefix() {
 		let provider = TestableAwsProvider::new(Some("myapp/".to_string()));
 
@@ -483,7 +484,7 @@ mod tests {
 	}
 
 	/// Test: Parse plain text secret
-	#[test]
+	#[rstest]
 	fn test_parse_plain_text_secret() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -493,7 +494,7 @@ mod tests {
 	}
 
 	/// Test: Parse JSON secret with single key (common AWS pattern)
-	#[test]
+	#[rstest]
 	fn test_parse_json_secret_single_key() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -504,7 +505,7 @@ mod tests {
 	}
 
 	/// Test: Parse JSON secret with multiple keys (returns raw JSON)
-	#[test]
+	#[rstest]
 	fn test_parse_json_secret_multiple_keys() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -516,7 +517,7 @@ mod tests {
 	}
 
 	/// Test: Parse JSON secret with non-string value
-	#[test]
+	#[rstest]
 	fn test_parse_json_secret_non_string_value() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -528,7 +529,7 @@ mod tests {
 	}
 
 	/// Test: Filter secrets by prefix
-	#[test]
+	#[rstest]
 	fn test_filter_secrets_by_prefix() {
 		let provider = TestableAwsProvider::new(Some("myapp/".to_string()));
 
@@ -550,7 +551,7 @@ mod tests {
 	}
 
 	/// Test: Filter secrets without prefix (returns all)
-	#[test]
+	#[rstest]
 	fn test_filter_secrets_without_prefix() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -565,6 +566,7 @@ mod tests {
 	}
 
 	/// Test: Provider name
+	#[rstest]
 	#[tokio::test]
 	async fn test_provider_name() {
 		// Test that provider name is correct without creating actual client
@@ -573,7 +575,7 @@ mod tests {
 	}
 
 	/// Test: Various prefix formats
-	#[test]
+	#[rstest]
 	fn test_prefix_formats() {
 		// With trailing slash
 		let provider1 = TestableAwsProvider::new(Some("prod/".to_string()));
@@ -589,7 +591,7 @@ mod tests {
 	}
 
 	/// Test: Empty key handling
-	#[test]
+	#[rstest]
 	fn test_empty_key_handling() {
 		let provider = TestableAwsProvider::new(Some("prefix/".to_string()));
 		assert_eq!(provider.get_full_name(""), "prefix/");
@@ -599,7 +601,7 @@ mod tests {
 	}
 
 	/// Test: Parse empty JSON object
-	#[test]
+	#[rstest]
 	fn test_parse_empty_json_object() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -609,7 +611,7 @@ mod tests {
 	}
 
 	/// Test: Parse invalid JSON (returns as-is)
-	#[test]
+	#[rstest]
 	fn test_parse_invalid_json() {
 		let provider = TestableAwsProvider::new(None);
 
@@ -622,7 +624,9 @@ mod tests {
 #[cfg(all(test, not(feature = "aws-secrets")))]
 mod tests_no_feature {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_aws_provider_disabled() {
 		let result = AwsSecretsProvider::new(None).await;

@@ -314,8 +314,9 @@ macro_rules! assert_env_not_exists {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_env_isolation() {
 		let mut env = TestEnv::new().unwrap();
 
@@ -330,7 +331,7 @@ mod tests {
 		assert!(env::var("TEST_VAR_ISOLATION").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_env_restoration() {
 		// Set an original value
 		unsafe {
@@ -352,7 +353,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_env_file() {
 		let env = TestEnv::new().unwrap();
 
@@ -364,7 +365,7 @@ mod tests {
 		assert_eq!(read_content, content);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_config_file() {
 		let env = TestEnv::new().unwrap();
 
@@ -376,7 +377,7 @@ mod tests {
 		assert_eq!(read_content, content);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_builder() {
 		let env = TestSettingsBuilder::new()
 			.env("BUILDER_TEST_KEY", "builder_value")
@@ -389,7 +390,7 @@ mod tests {
 		assert!(config_path.exists());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_var() {
 		unsafe {
 			env::set_var("TEST_REMOVE_VAR", "exists");
@@ -410,7 +411,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_macro_assert_env() {
 		unsafe {
 			env::set_var("MACRO_TEST_VAR", "macro_value");

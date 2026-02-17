@@ -190,8 +190,10 @@ impl SecretAuditBackend for FileSecretAuditBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tempfile::NamedTempFile;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_new() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -199,6 +201,7 @@ mod tests {
 		assert_eq!(backend.path(), temp_file.path());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_log_access() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -213,6 +216,7 @@ mod tests {
 		assert_eq!(events.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_multiple_events() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -228,6 +232,7 @@ mod tests {
 		assert_eq!(events.len(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_filter_by_secret_name() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -253,6 +258,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_filter_by_success() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -278,6 +284,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_persistence() {
 		let temp_file = NamedTempFile::new().unwrap();

@@ -342,7 +342,9 @@ impl SecretProvider for VaultSecretProvider {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_vault_provider_basic() {
 		let mut server = mockito::Server::new_async().await;

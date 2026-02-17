@@ -346,15 +346,16 @@ impl SecretRotation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_rotation_policy_default() {
 		let policy = RotationPolicy::default();
 		assert_eq!(policy.interval, Duration::from_secs(86400));
 		assert_eq!(policy.max_age, Some(Duration::from_secs(604800)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rotation_entry_new() {
 		let entry = RotationEntry::new("secret".to_string(), "user".to_string());
 		assert_eq!(entry.secret_name, "secret");
@@ -363,7 +364,7 @@ mod tests {
 		assert!(entry.timestamp <= Utc::now());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rotation_entry_with_reason() {
 		let entry = RotationEntry::with_reason(
 			"secret".to_string(),
@@ -373,18 +374,21 @@ mod tests {
 		assert_eq!(entry.reason, Some("reason".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_secret_rotation_new() {
 		let rotation = SecretRotation::new(RotationPolicy::default());
 		assert!(rotation.get_history().is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_should_rotate_new_secret() {
 		let rotation = SecretRotation::new(RotationPolicy::default());
 		assert!(rotation.should_rotate("new_secret").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rotate_secret() {
 		let policy = RotationPolicy {
@@ -400,6 +404,7 @@ mod tests {
 		assert_eq!(history[0].secret_name, "secret");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rotate_too_soon() {
 		let policy = RotationPolicy {
@@ -415,6 +420,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_force_rotate() {
 		let rotation = SecretRotation::new(RotationPolicy::default());
@@ -430,6 +436,7 @@ mod tests {
 		assert_eq!(history[0].reason, Some("Emergency".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_history_for_secret() {
 		let rotation = SecretRotation::new(RotationPolicy::default());

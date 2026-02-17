@@ -612,8 +612,9 @@ impl MiddlewareConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_settings_default_unit() {
 		let settings = Settings::default();
 		assert!(settings.debug);
@@ -621,14 +622,14 @@ mod tests {
 		assert_eq!(settings.time_zone, "UTC");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_config() {
 		let config = TemplateConfig::default();
 		assert!(config.app_dirs);
 		assert_eq!(config.backend, "reinhardt.template.backends.jinja2.Jinja2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_config() {
 		let middleware = MiddlewareConfig::new("reinhardt.middleware.TestMiddleware")
 			.with_option("enabled", serde_json::json!(true));
@@ -640,14 +641,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contact_creation() {
 		let contact = Contact::new("Alice Smith", "alice@example.com");
 		assert_eq!(contact.name, "Alice Smith");
 		assert_eq!(contact.email, "alice@example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_admins() {
 		let mut settings = Settings::default();
 		assert_eq!(settings.admins.len(), 0);
@@ -658,7 +659,7 @@ mod tests {
 		assert_eq!(settings.admins[0].email, "john@example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_managers() {
 		let mut settings = Settings::default();
 		assert_eq!(settings.managers.len(), 0);
@@ -669,7 +670,7 @@ mod tests {
 		assert_eq!(settings.managers[0].email, "jane@example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_managers_from_admins() {
 		let mut settings = Settings::default();
 		settings.add_admin("John Doe", "john@example.com");
@@ -683,7 +684,7 @@ mod tests {
 		assert_eq!(settings.managers, settings.admins);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_admins_fluent_api() {
 		let settings = Settings::default().with_admins(vec![
 			Contact::new("Alice", "alice@example.com"),
@@ -695,7 +696,7 @@ mod tests {
 		assert_eq!(settings.admins[1].name, "Bob");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_managers_fluent_api() {
 		let settings =
 			Settings::default().with_managers(vec![Contact::new("Charlie", "charlie@example.com")]);

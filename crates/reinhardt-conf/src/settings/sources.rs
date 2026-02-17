@@ -598,12 +598,13 @@ impl ConfigSource for LowPriorityEnvSource {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::env;
 	use std::fs::File;
 	use std::io::Write;
 	use tempfile::TempDir;
 
-	#[test]
+	#[rstest]
 	fn test_env_source() {
 		unsafe {
 			env::set_var("SECRET_KEY", "test-secret");
@@ -625,7 +626,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_toml_source() {
 		let temp_dir = TempDir::new().unwrap();
 		let config_path = temp_dir.path().join("config.toml");
@@ -650,7 +651,7 @@ secret_key = "test-key"
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_source() {
 		let temp_dir = TempDir::new().unwrap();
 		let config_path = temp_dir.path().join("config.json");
@@ -675,7 +676,7 @@ secret_key = "test-key"
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_source() {
 		let source = DefaultSource::new()
 			.with_value("key1", Value::String("value1".to_string()))
@@ -690,7 +691,7 @@ secret_key = "test-key"
 		assert_eq!(config.get("key2").unwrap(), &Value::Bool(true));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_source_priority() {
 		assert_eq!(EnvSource::new().priority(), 100);
 		assert_eq!(DotEnvSource::new().priority(), 90);

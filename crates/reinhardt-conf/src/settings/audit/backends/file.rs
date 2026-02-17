@@ -195,10 +195,12 @@ impl AuditBackend for FileAuditBackend {
 mod tests {
 	use super::*;
 	use crate::settings::audit::{ChangeRecord, EventType};
+	use rstest::rstest;
 	use serde_json::json;
 	use std::collections::HashMap;
 	use tempfile::NamedTempFile;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_new() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -206,6 +208,7 @@ mod tests {
 		assert_eq!(backend.path(), temp_file.path());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_log_event() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -228,6 +231,7 @@ mod tests {
 		assert_eq!(events.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_multiple_events() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -251,6 +255,7 @@ mod tests {
 		assert_eq!(events.len(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_filter_by_event_type() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -274,6 +279,7 @@ mod tests {
 		assert_eq!(events[0].event_type, EventType::ConfigUpdate);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_filter_by_user() {
 		let temp_file = NamedTempFile::new().unwrap();
@@ -308,6 +314,7 @@ mod tests {
 		assert_eq!(events.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_persistence() {
 		let temp_file = NamedTempFile::new().unwrap();

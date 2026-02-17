@@ -274,10 +274,12 @@ impl SecretProvider for AzureKeyVaultProvider {
 #[cfg(all(test, feature = "azure-keyvault"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Note: These tests require Azure credentials and a Key Vault, won't run in CI
 	// They are here for local testing purposes
 
+	#[rstest]
 	#[tokio::test]
 	#[ignore] // Ignore by default as it requires Azure credentials
 	async fn test_azure_provider_creation() {
@@ -289,6 +291,7 @@ mod tests {
 		assert!(result.is_ok() || result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[ignore]
 	async fn test_azure_get_nonexistent_secret() {
@@ -311,7 +314,9 @@ mod tests {
 #[cfg(all(test, not(feature = "azure-keyvault")))]
 mod tests_no_feature {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_azure_provider_disabled() {
 		let result = AzureKeyVaultProvider::new("https://test.vault.azure.net").await;

@@ -373,9 +373,10 @@ impl AuditLogger {
 mod tests {
 	use super::*;
 	use backends::MemoryAuditBackend;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_event_type_as_str() {
 		assert_eq!(EventType::ConfigUpdate.as_str(), "config_update");
 		assert_eq!(EventType::ConfigDelete.as_str(), "config_delete");
@@ -384,7 +385,7 @@ mod tests {
 		assert_eq!(EventType::SecretRotation.as_str(), "secret_rotation");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_change_record_creation() {
 		let record = ChangeRecord {
 			old_value: Some(json!(false)),
@@ -395,7 +396,7 @@ mod tests {
 		assert_eq!(record.new_value, Some(json!(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_audit_event_creation() {
 		let mut changes = HashMap::new();
 		changes.insert(
@@ -418,6 +419,7 @@ mod tests {
 		assert!(event.timestamp <= Utc::now());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_audit_logger_log_event() {
 		let backend = Arc::new(MemoryAuditBackend::new());
@@ -441,6 +443,7 @@ mod tests {
 		assert_eq!(events.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_audit_logger_with_filter() {
 		let backend = Arc::new(MemoryAuditBackend::new());

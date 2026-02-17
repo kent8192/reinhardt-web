@@ -393,21 +393,25 @@ impl Default for HotReloadManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::fs;
 	use tempfile::TempDir;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_new_manager() {
 		let manager = HotReloadManager::new();
 		assert_eq!(manager.watched_paths().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_custom_debounce() {
 		let manager = HotReloadManager::with_debounce(Duration::from_millis(500));
 		assert_eq!(manager.debounce_duration, Duration::from_millis(500));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_watch_file() {
 		let temp_dir = TempDir::new().unwrap();
@@ -421,6 +425,7 @@ mod tests {
 		assert_eq!(watched.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unwatch_file() {
 		let temp_dir = TempDir::new().unwrap();
@@ -435,6 +440,7 @@ mod tests {
 		assert_eq!(manager.watched_paths().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_stop_watching() {
 		let temp_dir = TempDir::new().unwrap();
@@ -451,6 +457,7 @@ mod tests {
 	// Note: File system event tests are moved to integration tests
 	// because they depend on OS-level file watching which can be flaky in unit tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_watch_nonexistent_file() {
 		let manager = HotReloadManager::new();
@@ -458,6 +465,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_implementation() {
 		let manager = HotReloadManager::default();
