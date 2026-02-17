@@ -103,6 +103,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 	use std::time::Duration;
 	use tokio::time::sleep;
 
@@ -127,6 +128,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fast_request_completes() {
 		let config = TimeoutConfig::new(Duration::from_secs(1));
@@ -146,6 +148,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_slow_request_times_out() {
 		let config = TimeoutConfig::new(Duration::from_millis(100));
@@ -168,6 +171,7 @@ mod tests {
 		assert_eq!(response.body, Bytes::from("Request Timeout"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_just_within_timeout() {
 		let config = TimeoutConfig::new(Duration::from_millis(200));
@@ -189,6 +193,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_timeout_duration() {
 		let custom_duration = Duration::from_secs(5);
@@ -197,6 +202,7 @@ mod tests {
 		assert_eq!(config.duration, custom_duration);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_timeout_config() {
 		let config = TimeoutConfig::default();

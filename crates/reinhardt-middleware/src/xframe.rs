@@ -207,6 +207,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -217,6 +218,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_deny_option() {
 		let middleware = XFrameOptionsMiddleware::deny();
@@ -235,6 +237,7 @@ mod tests {
 		assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_same_origin_option() {
 		let middleware = XFrameOptionsMiddleware::same_origin();
@@ -256,6 +259,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_is_same_origin() {
 		let middleware = XFrameOptionsMiddleware::default();
@@ -277,6 +281,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_does_not_override_existing_header() {
 		struct TestHandlerWithHeader;
@@ -310,6 +315,7 @@ mod tests {
 		assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_new_constructor_with_deny() {
 		let middleware = XFrameOptionsMiddleware::new(XFrameOptions::Deny);
@@ -327,6 +333,7 @@ mod tests {
 		assert_eq!(response.headers.get(&X_FRAME_OPTIONS).unwrap(), "DENY");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_new_constructor_with_same_origin() {
 		let middleware = XFrameOptionsMiddleware::new(XFrameOptions::SameOrigin);
@@ -347,6 +354,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_response_body_preserved() {
 		struct TestHandlerWithBody;
@@ -378,6 +386,7 @@ mod tests {
 		assert_eq!(response.body, Bytes::from(&b"custom response body"[..]));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_reusable_across_requests() {
 		let middleware = XFrameOptionsMiddleware::deny();

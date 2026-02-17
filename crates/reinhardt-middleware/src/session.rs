@@ -477,6 +477,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 	use std::thread;
 
 	struct TestHandler;
@@ -488,6 +489,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_creation() {
 		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
@@ -517,6 +519,7 @@ mod tests {
 		assert!(cookie.starts_with("sessionid="));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_persistence() {
 		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
@@ -577,6 +580,7 @@ mod tests {
 		assert!(cookie2.contains(session_id));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_expiration() {
 		let config = SessionConfig::new("sessionid".to_string(), Duration::from_millis(100));
@@ -644,6 +648,7 @@ mod tests {
 		assert_ne!(session_id1, session_id2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_attributes() {
 		let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600))
@@ -677,6 +682,7 @@ mod tests {
 		assert!(cookie.contains("Path=/app"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_data() {
 		let mut session = SessionData::new(Duration::from_secs(3600));
@@ -699,6 +705,7 @@ mod tests {
 		assert!(!session.contains_key("username"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_store() {
 		let store = SessionStore::new();
@@ -723,6 +730,7 @@ mod tests {
 		assert!(store.get(&id2).is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_cleanup() {
 		let store = SessionStore::new();
@@ -741,6 +749,7 @@ mod tests {
 		assert!(store.get(&id2).is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_defaults_constructor() {
 		let middleware = SessionMiddleware::with_defaults();
@@ -772,6 +781,7 @@ mod tests {
 		assert!(cookie.contains("Path=/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_cookie_name() {
 		let config = SessionConfig::new("my_session".to_string(), Duration::from_secs(3600));

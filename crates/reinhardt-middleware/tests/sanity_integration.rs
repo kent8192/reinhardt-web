@@ -15,6 +15,7 @@ mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_test_request};
 use reinhardt_http::Middleware;
+use rstest::rstest;
 use std::sync::Arc;
 
 // =============================================================================
@@ -22,7 +23,7 @@ use std::sync::Arc;
 // =============================================================================
 
 /// Tests that CircuitBreaker::get_state returns a valid state.
-#[test]
+#[rstest]
 fn sanity_circuit_breaker_get_state() {
 	use reinhardt_middleware::circuit_breaker::{
 		CircuitBreakerConfig, CircuitBreakerMiddleware, CircuitState,
@@ -48,7 +49,7 @@ fn sanity_circuit_breaker_get_state() {
 }
 
 /// Tests that CircuitBreaker::reset returns circuit to Closed state.
-#[test]
+#[rstest]
 fn sanity_circuit_breaker_reset() {
 	use reinhardt_middleware::circuit_breaker::{
 		CircuitBreakerConfig, CircuitBreakerMiddleware, CircuitState,
@@ -80,6 +81,7 @@ fn sanity_circuit_breaker_reset() {
 // =============================================================================
 
 /// Tests that ETagMiddleware::default returns a valid middleware.
+#[rstest]
 #[tokio::test]
 async fn sanity_etag_default() {
 	use reinhardt_middleware::etag::ETagMiddleware;
@@ -94,6 +96,7 @@ async fn sanity_etag_default() {
 }
 
 /// Tests that CspMiddleware::default returns a valid middleware.
+#[rstest]
 #[tokio::test]
 async fn sanity_csp_default() {
 	use reinhardt_middleware::csp::CspMiddleware;
@@ -109,6 +112,7 @@ async fn sanity_csp_default() {
 }
 
 /// Tests that CacheConfig::default creates valid config.
+#[rstest]
 #[tokio::test]
 async fn sanity_cache_default_config() {
 	use reinhardt_middleware::cache::{CacheConfig, CacheMiddleware};
@@ -124,6 +128,7 @@ async fn sanity_cache_default_config() {
 }
 
 /// Tests that MetricsConfig::default creates valid config.
+#[rstest]
 #[tokio::test]
 async fn sanity_metrics_default_config() {
 	use reinhardt_middleware::metrics::{MetricsConfig, MetricsMiddleware};
@@ -139,6 +144,7 @@ async fn sanity_metrics_default_config() {
 }
 
 /// Tests that RequestIdConfig::default creates valid config.
+#[rstest]
 #[tokio::test]
 async fn sanity_request_id_default_config() {
 	use reinhardt_middleware::request_id::{RequestIdConfig, RequestIdMiddleware};
@@ -155,6 +161,7 @@ async fn sanity_request_id_default_config() {
 }
 
 /// Tests that TracingConfig::default creates valid config.
+#[rstest]
 #[tokio::test]
 async fn sanity_tracing_default_config() {
 	use reinhardt_middleware::tracing::{TracingConfig, TracingMiddleware};
@@ -176,11 +183,14 @@ async fn sanity_tracing_default_config() {
 #[cfg(feature = "sessions")]
 mod session_sanity {
 	use super::*;
+	use rstest::rstest;
 
 	/// Tests that SessionConfig::default creates valid config.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_session_default_config() {
 		use reinhardt_middleware::session::{SessionConfig, SessionMiddleware};
+		use rstest::rstest;
 
 		let config = SessionConfig::default();
 		let middleware = Arc::new(SessionMiddleware::new(config));
@@ -200,8 +210,10 @@ mod session_sanity {
 #[cfg(feature = "rate-limit")]
 mod rate_limit_sanity {
 	use super::*;
+	use rstest::rstest;
 
 	/// Tests that RateLimitConfig fields are properly initialized.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_rate_limit_config_fields() {
 		use reinhardt_middleware::rate_limit::{
@@ -228,11 +240,13 @@ mod rate_limit_sanity {
 	}
 
 	/// Tests that excluded paths bypass rate limiting.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_rate_limit_exclude_paths() {
 		use reinhardt_middleware::rate_limit::{
 			RateLimitConfig, RateLimitMiddleware, RateLimitStrategy,
 		};
+		use rstest::rstest;
 
 		let config = RateLimitConfig {
 			capacity: 1.0,
@@ -274,8 +288,10 @@ mod rate_limit_sanity {
 #[cfg(feature = "cors")]
 mod cors_sanity {
 	use super::*;
+	use rstest::rstest;
 
 	/// Tests that CorsConfig fields are properly initialized.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_cors_config_fields() {
 		use reinhardt_middleware::cors::{CorsConfig, CorsMiddleware};
@@ -300,9 +316,11 @@ mod cors_sanity {
 	}
 
 	/// Tests that empty origins list is handled.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_cors_empty_origins() {
 		use reinhardt_middleware::cors::{CorsConfig, CorsMiddleware};
+		use rstest::rstest;
 
 		let config = CorsConfig {
 			allow_origins: vec![],
@@ -331,8 +349,10 @@ mod cors_sanity {
 #[cfg(feature = "compression")]
 mod compression_sanity {
 	use super::*;
+	use rstest::rstest;
 
 	/// Tests that GZipMiddleware::new creates valid middleware.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_gzip_new() {
 		use reinhardt_middleware::gzip::GZipMiddleware;
@@ -348,9 +368,11 @@ mod compression_sanity {
 	}
 
 	/// Tests that GZipConfig fields work properly.
+	#[rstest]
 	#[tokio::test]
 	async fn sanity_gzip_config() {
 		use reinhardt_middleware::gzip::{GZipConfig, GZipMiddleware};
+		use rstest::rstest;
 
 		let config = GZipConfig {
 			min_length: 100,
@@ -374,6 +396,7 @@ mod compression_sanity {
 // =============================================================================
 
 /// Tests that middleware can be shared across threads.
+#[rstest]
 #[tokio::test]
 async fn sanity_middleware_thread_safe() {
 	use reinhardt_middleware::etag::ETagMiddleware;
@@ -404,6 +427,7 @@ async fn sanity_middleware_thread_safe() {
 }
 
 /// Tests concurrent access to middleware.
+#[rstest]
 #[tokio::test]
 async fn sanity_middleware_concurrent_access() {
 	use reinhardt_middleware::request_id::{RequestIdConfig, RequestIdMiddleware};
@@ -434,6 +458,7 @@ async fn sanity_middleware_concurrent_access() {
 // =============================================================================
 
 /// Tests XFrameOptionsMiddleware with different options.
+#[rstest]
 #[tokio::test]
 async fn sanity_xframe_options_deny() {
 	use reinhardt_middleware::xframe::{XFrameOptions, XFrameOptionsMiddleware};
@@ -449,6 +474,7 @@ async fn sanity_xframe_options_deny() {
 }
 
 /// Tests XFrameOptionsMiddleware with SameOrigin.
+#[rstest]
 #[tokio::test]
 async fn sanity_xframe_options_sameorigin() {
 	use reinhardt_middleware::xframe::{XFrameOptions, XFrameOptionsMiddleware};
@@ -470,6 +496,7 @@ async fn sanity_xframe_options_sameorigin() {
 // =============================================================================
 
 /// Tests TimeoutConfig with various durations.
+#[rstest]
 #[tokio::test]
 async fn sanity_timeout_config_durations() {
 	use reinhardt_middleware::timeout::{TimeoutConfig, TimeoutMiddleware};
@@ -496,6 +523,7 @@ async fn sanity_timeout_config_durations() {
 // =============================================================================
 
 /// Tests LocaleMiddleware::new creates valid middleware.
+#[rstest]
 #[tokio::test]
 async fn sanity_locale_new() {
 	use reinhardt_middleware::locale::LocaleMiddleware;
@@ -514,6 +542,7 @@ async fn sanity_locale_new() {
 // =============================================================================
 
 /// Tests CsrfMiddleware::new creates valid middleware.
+#[rstest]
 #[tokio::test]
 async fn sanity_csrf_new() {
 	use reinhardt_middleware::csrf::CsrfMiddleware;
@@ -529,6 +558,7 @@ async fn sanity_csrf_new() {
 }
 
 /// Tests CSRF allows safe methods.
+#[rstest]
 #[tokio::test]
 async fn sanity_csrf_safe_methods() {
 	use reinhardt_middleware::csrf::CsrfMiddleware;
@@ -554,6 +584,7 @@ async fn sanity_csrf_safe_methods() {
 // =============================================================================
 
 /// Tests LoggingMiddleware with default config.
+#[rstest]
 #[tokio::test]
 async fn sanity_logging_middleware() {
 	use reinhardt_middleware::logging::LoggingMiddleware;

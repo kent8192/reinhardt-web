@@ -604,7 +604,9 @@ pub fn assert_body_eq(response: &Response, expected: &str) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_handler_always_success() {
 		let handler = ConfigurableTestHandler::always_success();
@@ -616,6 +618,7 @@ mod tests {
 		assert_eq!(handler.count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_handler_always_failure() {
 		let handler = ConfigurableTestHandler::always_failure();
@@ -627,6 +630,7 @@ mod tests {
 		assert_eq!(handler.count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_handler_alternating() {
 		let handler = ConfigurableTestHandler::alternating();
@@ -649,6 +653,7 @@ mod tests {
 		assert_eq!(handler.count(), 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_handler_fail_after() {
 		let handler = ConfigurableTestHandler::fail_after(3);
@@ -668,6 +673,7 @@ mod tests {
 		assert_eq!(handler.count(), 4);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_handler_with_delay() {
 		let handler =
@@ -685,6 +691,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_request_with_headers() {
 		let request = create_request_with_headers(

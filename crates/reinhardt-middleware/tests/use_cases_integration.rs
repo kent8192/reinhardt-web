@@ -18,6 +18,7 @@ mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};
 use reinhardt_http::Middleware;
+use rstest::rstest;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,6 +34,7 @@ use std::time::Duration;
 /// 1. Session middleware assigns session ID on first request
 /// 2. CSRF middleware validates tokens for GET requests (safe methods)
 /// 3. Auth middleware validates user identity
+#[rstest]
 #[tokio::test]
 async fn use_case_rest_api_auth_flow() {
 	use reinhardt_middleware::csrf::CsrfMiddleware;
@@ -76,6 +78,7 @@ async fn use_case_rest_api_auth_flow() {
 }
 
 /// Tests CSRF protection with valid token.
+#[rstest]
 #[tokio::test]
 async fn use_case_csrf_protected_form_submission() {
 	use reinhardt_middleware::csrf::CsrfMiddleware;
@@ -116,6 +119,7 @@ async fn use_case_csrf_protected_form_submission() {
 /// 1. Site middleware identifies tenant
 /// 2. Locale middleware detects user's language preference
 /// 3. Session maintains user's locale choice
+#[rstest]
 #[tokio::test]
 async fn use_case_multi_tenant_locale_detection() {
 	use reinhardt_middleware::locale::LocaleMiddleware;
@@ -178,6 +182,7 @@ async fn use_case_multi_tenant_locale_detection() {
 /// 1. First request generates ETag
 /// 2. Conditional request returns 304 if unchanged
 /// 3. GZip compression for text content
+#[rstest]
 #[tokio::test]
 async fn use_case_cdn_caching_workflow() {
 	use reinhardt_middleware::cache::{CacheConfig, CacheMiddleware};
@@ -218,6 +223,7 @@ async fn use_case_cdn_caching_workflow() {
 }
 
 /// Tests conditional GET with If-None-Match header.
+#[rstest]
 #[tokio::test]
 async fn use_case_conditional_get_304_response() {
 	use reinhardt_middleware::conditional::ConditionalGetMiddleware;
@@ -270,6 +276,7 @@ async fn use_case_conditional_get_304_response() {
 /// 2. Circuit breaker protects against failing backends
 /// 3. Metrics track request patterns
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 async fn use_case_api_gateway_protection() {
 	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
@@ -331,6 +338,7 @@ async fn use_case_api_gateway_protection() {
 }
 
 /// Tests circuit breaker opening under high failure rate.
+#[rstest]
 #[tokio::test]
 async fn use_case_circuit_breaker_cascade_protection() {
 	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
@@ -371,6 +379,7 @@ async fn use_case_circuit_breaker_cascade_protection() {
 /// - Content-Security-Policy (CSP)
 /// - X-Frame-Options
 /// - CORS headers
+#[rstest]
 #[tokio::test]
 async fn use_case_security_headers_stack() {
 	use reinhardt_middleware::csp::CspMiddleware;
@@ -402,6 +411,7 @@ async fn use_case_security_headers_stack() {
 
 /// Tests Security middleware for various security headers.
 #[cfg(feature = "security")]
+#[rstest]
 #[tokio::test]
 async fn use_case_security_middleware() {
 	use reinhardt_middleware::security_middleware::SecurityMiddleware;
@@ -419,6 +429,7 @@ async fn use_case_security_middleware() {
 
 /// Tests CORS handling for cross-origin API requests.
 #[cfg(feature = "cors")]
+#[rstest]
 #[tokio::test]
 async fn use_case_cors_api_access() {
 	use reinhardt_middleware::cors::{CorsConfig, CorsMiddleware};
@@ -475,6 +486,7 @@ async fn use_case_cors_api_access() {
 /// 1. Rate limit applies stricter limits to /login
 /// 2. Logging captures login attempts
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 async fn use_case_login_throttling() {
 	use reinhardt_middleware::logging::LoggingMiddleware;
@@ -537,6 +549,7 @@ async fn use_case_login_throttling() {
 /// 2. Brotli for modern browsers
 /// 3. ETag for cache validation
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn use_case_content_compression_delivery() {
 	use reinhardt_middleware::etag::ETagMiddleware;
@@ -570,6 +583,7 @@ async fn use_case_content_compression_delivery() {
 
 /// Tests Brotli compression for modern browsers.
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn use_case_brotli_compression() {
 	use reinhardt_middleware::brotli::BrotliMiddleware;
@@ -604,6 +618,7 @@ async fn use_case_brotli_compression() {
 /// 1. RequestId generates unique ID
 /// 2. Tracing propagates context
 /// 3. Metrics records timing
+#[rstest]
 #[tokio::test]
 async fn use_case_request_tracing_workflow() {
 	use reinhardt_middleware::metrics::{MetricsConfig, MetricsMiddleware};
@@ -666,6 +681,7 @@ async fn use_case_request_tracing_workflow() {
 /// Tests timeout protection for slow endpoints.
 ///
 /// Scenario: Prevent slow requests from blocking resources
+#[rstest]
 #[tokio::test]
 async fn use_case_timeout_protection() {
 	use reinhardt_middleware::timeout::{TimeoutConfig, TimeoutMiddleware};
@@ -685,6 +701,7 @@ async fn use_case_timeout_protection() {
 }
 
 /// Tests timeout triggering for slow handlers.
+#[rstest]
 #[tokio::test]
 async fn use_case_slow_request_timeout() {
 	use reinhardt_middleware::timeout::{TimeoutConfig, TimeoutMiddleware};
@@ -716,6 +733,7 @@ async fn use_case_slow_request_timeout() {
 /// Tests session-based flash message workflow.
 ///
 /// Scenario: Display one-time messages after redirect
+#[rstest]
 #[tokio::test]
 async fn use_case_flash_messages() {
 	use reinhardt_middleware::messages::{MessageMiddleware, SessionStorage};
@@ -746,6 +764,7 @@ async fn use_case_flash_messages() {
 /// Tests HTTPS redirect for security.
 ///
 /// Scenario: Ensure all traffic uses HTTPS
+#[rstest]
 #[tokio::test]
 async fn use_case_https_redirect() {
 	use reinhardt_middleware::https_redirect::HttpsRedirectMiddleware;
@@ -771,6 +790,7 @@ async fn use_case_https_redirect() {
 /// Scenario: User browses, adds to cart, and checks out
 ///
 /// This tests multiple middlewares working together in a realistic scenario.
+#[rstest]
 #[tokio::test]
 async fn use_case_ecommerce_checkout_flow() {
 	use reinhardt_middleware::cache::{CacheConfig, CacheMiddleware};

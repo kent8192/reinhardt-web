@@ -148,6 +148,7 @@ impl Handler for ContentHandler {
 	true,
 	false
 )]
+#[rstest]
 #[tokio::test]
 async fn test_cors_decision_table(
 	#[case] origin: Option<&str>,
@@ -262,6 +263,7 @@ async fn test_cache_decision_table(
 	}
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(cache_hit)]
 async fn test_cache_decision_table_hit_on_second_request() {
@@ -404,6 +406,7 @@ async fn test_circuit_breaker_decision_table_basic(
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(circuit_open_rejection)]
 async fn test_circuit_breaker_open_state_rejects_requests() {
@@ -430,6 +433,7 @@ async fn test_circuit_breaker_open_state_rejects_requests() {
 	assert_eq!(result.unwrap().status.as_u16(), 503);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(circuit_halfopen_to_closed)]
 async fn test_circuit_breaker_halfopen_success_closes() {
@@ -457,6 +461,7 @@ async fn test_circuit_breaker_halfopen_success_closes() {
 	assert_eq!(middleware.get_state(), CircuitState::Closed);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(circuit_halfopen_to_open)]
 async fn test_circuit_breaker_halfopen_failure_opens() {
@@ -538,6 +543,7 @@ async fn test_rate_limit_decision_table(
 }
 
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 #[serial(rate_limit_exhaustion)]
 async fn test_rate_limit_exhaustion() {

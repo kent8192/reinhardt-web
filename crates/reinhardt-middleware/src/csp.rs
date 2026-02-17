@@ -367,6 +367,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -377,6 +378,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_csp_header() {
 		let middleware = CspMiddleware::new();
@@ -398,6 +400,7 @@ mod tests {
 		assert!(csp_header.to_str().unwrap().contains("default-src 'self'"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_csp_directives() {
 		let mut directives = HashMap::new();
@@ -436,6 +439,7 @@ mod tests {
 		assert!(csp_header.contains("script-src 'self' https://cdn.example.com"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_report_only_mode() {
 		let config = CspConfig {
@@ -469,6 +473,7 @@ mod tests {
 		assert!(!response.headers.contains_key("Content-Security-Policy"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_nonce_generation() {
 		let config = CspConfig {
@@ -503,6 +508,7 @@ mod tests {
 		assert!(csp_header.contains("'nonce-"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_strict_csp() {
 		let middleware = CspMiddleware::strict();
@@ -532,6 +538,7 @@ mod tests {
 		assert!(csp_header.contains("base-uri 'self'"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_directive_values() {
 		let mut directives = HashMap::new();
@@ -572,6 +579,7 @@ mod tests {
 		assert!(csp_header.contains("img-src 'self' data: https:"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_nonce_only_added_to_script_and_style() {
 		let mut directives = HashMap::new();
@@ -610,6 +618,7 @@ mod tests {
 		assert_eq!(nonce_count, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_directives() {
 		let config = CspConfig {
@@ -635,6 +644,7 @@ mod tests {
 		assert!(response.headers.contains_key("Content-Security-Policy"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_frame_ancestors_directive() {
 		let mut directives = HashMap::new();
@@ -671,6 +681,7 @@ mod tests {
 		assert!(csp_header.contains("frame-ancestors 'self' https://trusted.com"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_nonce_uniqueness_across_requests() {
 		let config = CspConfig {
@@ -739,6 +750,7 @@ mod tests {
 		assert_ne!(nonce1, nonce2, "Nonces should be unique across requests");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_response_body_preserved() {
 		struct TestHandlerWithBody;

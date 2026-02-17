@@ -254,6 +254,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -264,6 +265,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_append_slash_redirects() {
 		let config = CommonConfig {
@@ -289,6 +291,7 @@ mod tests {
 		assert!(location.to_str().unwrap().contains("/path/to/page/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_redirect_with_trailing_slash() {
 		let config = CommonConfig {
@@ -312,6 +315,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_redirect_for_file_extensions() {
 		let config = CommonConfig {
@@ -335,6 +339,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_append_slash_with_query_params() {
 		let config = CommonConfig {
@@ -362,6 +367,7 @@ mod tests {
 		assert!(loc_str.contains("?q=test"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prepend_www() {
 		let config = CommonConfig {
@@ -390,6 +396,7 @@ mod tests {
 		assert!(location.to_str().unwrap().contains("www.example.com"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_prepend_www_for_localhost() {
 		let config = CommonConfig {
@@ -416,6 +423,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_prepend_www_when_already_present() {
 		let config = CommonConfig {
@@ -442,6 +450,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_both_transformations() {
 		let config = CommonConfig {
@@ -472,6 +481,7 @@ mod tests {
 		assert!(loc_str.contains("/page/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_both_disabled() {
 		let config = CommonConfig {

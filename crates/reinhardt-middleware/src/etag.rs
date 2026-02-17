@@ -268,6 +268,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		body: Vec<u8>,
@@ -286,6 +287,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_etag_generation() {
 		let config = ETagConfig::new();
@@ -311,6 +313,7 @@ mod tests {
 		assert!(etag.ends_with('"'));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_weak_etag() {
 		let config = ETagConfig::new().with_weak_etag();
@@ -332,6 +335,7 @@ mod tests {
 		assert!(etag.starts_with("W/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_none_match_hit() {
 		let config = ETagConfig::new();
@@ -368,6 +372,7 @@ mod tests {
 		assert!(response2.body.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_none_match_miss() {
 		let config = ETagConfig::new();
@@ -395,6 +400,7 @@ mod tests {
 		assert!(!response.body.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_match_success() {
 		let config = ETagConfig::new();
@@ -430,6 +436,7 @@ mod tests {
 		assert_eq!(response2.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_paths() {
 		let config = ETagConfig::new().with_excluded_paths(vec!["/admin".to_string()]);
@@ -451,6 +458,7 @@ mod tests {
 		assert!(!response.headers.contains_key("etag"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_methods() {
 		let config = ETagConfig::new().with_excluded_methods(vec!["POST".to_string()]);
@@ -472,6 +480,7 @@ mod tests {
 		assert!(!response.headers.contains_key("etag"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_same_body_same_etag() {
 		let config = ETagConfig::new();
@@ -504,6 +513,7 @@ mod tests {
 		assert_eq!(etag1, etag2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_body_different_etag() {
 		let config = ETagConfig::new();

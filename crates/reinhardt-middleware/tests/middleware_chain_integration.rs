@@ -6,10 +6,12 @@
 //! - Context sharing between middlewares
 
 use reinhardt_middleware::csrf::CsrfMiddleware;
+use rstest::rstest;
 use serial_test::serial;
 
 /// Test CSRF middleware instantiation in chain
 #[serial(middleware_chain)]
+#[rstest]
 #[tokio::test]
 async fn test_csrf_middleware_in_chain() {
 	// Create CSRF middleware
@@ -22,6 +24,7 @@ async fn test_csrf_middleware_in_chain() {
 
 /// Test CSRF middleware with test secret
 #[serial(middleware_chain)]
+#[rstest]
 #[tokio::test]
 async fn test_csrf_with_test_secret() {
 	// Create CSRF middleware with test secret for deterministic testing
@@ -33,6 +36,7 @@ async fn test_csrf_with_test_secret() {
 
 /// Test multiple CSRF middleware instances
 #[serial(middleware_chain)]
+#[rstest]
 #[tokio::test]
 async fn test_multiple_csrf_instances() {
 	// Create multiple CSRF middleware instances

@@ -195,6 +195,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -205,6 +206,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redirect_http_to_https() {
 		let middleware = HttpsRedirectMiddleware::default_config();
@@ -231,6 +233,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_redirect_for_https() {
 		let middleware = HttpsRedirectMiddleware::default_config();
@@ -254,6 +257,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exempt_paths() {
 		let config = HttpsRedirectConfig {

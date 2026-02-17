@@ -473,6 +473,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		status: StatusCode,
@@ -500,6 +501,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_miss() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
@@ -521,6 +523,7 @@ mod tests {
 		assert_eq!(response.headers.get("x-cache").unwrap(), "MISS");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_hit() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
@@ -554,6 +557,7 @@ mod tests {
 		assert_eq!(handler.get_call_count(), 1); // Handler is not called
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_expiration() {
 		let config = CacheConfig::new(Duration::from_millis(100), CacheKeyStrategy::UrlOnly);
@@ -588,6 +592,7 @@ mod tests {
 		assert_eq!(handler.get_call_count(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_non_cacheable_method() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
@@ -609,6 +614,7 @@ mod tests {
 		assert!(!response.headers.contains_key("x-cache"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_paths() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly)
@@ -631,6 +637,7 @@ mod tests {
 		assert!(!response.headers.contains_key("x-cache"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_urls() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
@@ -663,6 +670,7 @@ mod tests {
 		assert_eq!(handler.get_call_count(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_store() {
 		let store = CacheStore::new();
@@ -680,6 +688,7 @@ mod tests {
 		assert_eq!(retrieved.body, b"test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_cleanup() {
 		let store = CacheStore::new();
@@ -696,6 +705,7 @@ mod tests {
 		assert!(store.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_status_codes_cached() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlOnly);
@@ -754,6 +764,7 @@ mod tests {
 		assert_eq!(response2.headers.get("x-cache").unwrap(), "MISS");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_key_strategy_url_and_method() {
 		let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod);

@@ -637,6 +637,7 @@ async fn test_gzip_empty_body_boundary(#[case] body_size: usize) {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_timeout_zero_duration() {
 	// Zero timeout should cause immediate timeout
@@ -688,6 +689,7 @@ async fn test_rate_limit_large_capacity_boundary(#[case] capacity: usize) {
 }
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_large_body_boundary() {
 	let config = GZipConfig {
@@ -716,6 +718,7 @@ async fn test_gzip_large_body_boundary() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_timeout_large_duration() {
 	// Very large timeout should not cause overflow

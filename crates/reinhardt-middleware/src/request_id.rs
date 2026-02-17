@@ -236,6 +236,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -252,6 +253,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generate_request_id() {
 		let config = RequestIdConfig::new();
@@ -282,6 +284,7 @@ mod tests {
 		assert!(Uuid::parse_str(request_id).is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_propagate_existing_request_id() {
 		let config = RequestIdConfig::new();
@@ -310,6 +313,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_always_generate_new_id() {
 		let config = RequestIdConfig::new().always_generate();
@@ -342,6 +346,7 @@ mod tests {
 		assert!(Uuid::parse_str(new_id).is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_header_name() {
 		let config = RequestIdConfig::new().with_header("X-Correlation-ID".to_string());
@@ -364,6 +369,7 @@ mod tests {
 		assert!(!response.headers.contains_key(REQUEST_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_generation_if_missing() {
 		let config = RequestIdConfig::new().no_generation();
@@ -385,6 +391,7 @@ mod tests {
 		assert!(!response.headers.contains_key(REQUEST_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_id_in_handler() {
 		let config = RequestIdConfig::new();
@@ -408,6 +415,7 @@ mod tests {
 		assert!(Uuid::parse_str(body_str).is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_requests_different_ids() {
 		let config = RequestIdConfig::new();
@@ -441,6 +449,7 @@ mod tests {
 		assert_eq!(unique_ids.len(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_request_id_header_generates_new() {
 		let config = RequestIdConfig::new();
@@ -472,6 +481,7 @@ mod tests {
 		assert!(Uuid::parse_str(request_id).is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_middleware() {
 		let middleware = RequestIdMiddleware::default();

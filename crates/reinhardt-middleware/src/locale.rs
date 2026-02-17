@@ -296,6 +296,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -313,6 +314,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_locale() {
 		let config = LocaleConfig::new();
@@ -333,6 +335,7 @@ mod tests {
 		assert_eq!(body, "en");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_accept_language_detection() {
 		let config = LocaleConfig::with_locales(
@@ -359,6 +362,7 @@ mod tests {
 		assert_eq!(body, "ja");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_accept_language_with_quality() {
 		let config = LocaleConfig::with_locales(
@@ -388,6 +392,7 @@ mod tests {
 		assert_eq!(body, "ja"); // Highest quality score
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_detection() {
 		let config = LocaleConfig::with_locales(
@@ -414,6 +419,7 @@ mod tests {
 		assert_eq!(body, "fr");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_overrides_accept_language() {
 		let config = LocaleConfig::with_locales(
@@ -441,6 +447,7 @@ mod tests {
 		assert_eq!(body, "fr"); // Cookie takes precedence
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_url_path_detection() {
 		let mut config = LocaleConfig::with_locales(
@@ -466,6 +473,7 @@ mod tests {
 		assert_eq!(body, "ja");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_url_path_overrides_all() {
 		let mut config = LocaleConfig::with_locales(
@@ -495,6 +503,7 @@ mod tests {
 		assert_eq!(body, "en"); // URL path takes highest precedence
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unsupported_locale_fallback() {
 		let config =
@@ -519,6 +528,7 @@ mod tests {
 		assert_eq!(body, "en"); // Falls back to default
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_accept_language_with_region() {
 		let config =
@@ -543,6 +553,7 @@ mod tests {
 		assert_eq!(body, "ja"); // Extracts base language code
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_cookie_value() {
 		let config =

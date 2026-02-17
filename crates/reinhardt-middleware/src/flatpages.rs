@@ -362,6 +362,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		status: StatusCode,
@@ -388,6 +389,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_flatpage() {
 		let config = FlatpagesConfig::new();
@@ -419,6 +421,7 @@ mod tests {
 		assert!(body.contains("<h1>About Us</h1>"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_flatpage_with_trailing_slash() {
 		let config = FlatpagesConfig::new();
@@ -451,6 +454,7 @@ mod tests {
 		assert!(body.contains("Contact"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_flatpage_without_trailing_slash() {
 		let config = FlatpagesConfig::new();
@@ -483,6 +487,7 @@ mod tests {
 		assert!(body.contains("FAQ"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_flatpage_found() {
 		let config = FlatpagesConfig::new();
@@ -506,6 +511,7 @@ mod tests {
 		assert_eq!(body, "handler response");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_non_404_response_passthrough() {
 		let config = FlatpagesConfig::new();
@@ -538,6 +544,7 @@ mod tests {
 		assert_eq!(body, "handler response");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_middleware() {
 		let config = FlatpagesConfig::disabled();
@@ -567,6 +574,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::NOT_FOUND);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_flatpage_store_operations() {
 		let store = FlatpageStore::new();
@@ -603,6 +611,7 @@ mod tests {
 		assert_eq!(store.get_all().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_flatpage_with_comments() {
 		let page = Flatpage::new(
@@ -615,6 +624,7 @@ mod tests {
 		assert!(page.enable_comments);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_flatpage_require_registration() {
 		let page = Flatpage::new(
@@ -627,6 +637,7 @@ mod tests {
 		assert!(page.registration_required);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exact_match_priority() {
 		let config = FlatpagesConfig::new();
@@ -675,6 +686,7 @@ mod tests {
 		assert!(body.contains("Without Slash"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_append_slash_disabled() {
 		let mut config = FlatpagesConfig::new();
@@ -705,6 +717,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::NOT_FOUND);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registration_required_authenticated_user() {
 		let config = FlatpagesConfig::new();
@@ -744,6 +757,7 @@ mod tests {
 		assert!(body.contains("Protected Content"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registration_required_anonymous_user() {
 		let config = FlatpagesConfig::new();
@@ -781,6 +795,7 @@ mod tests {
 		assert!(response.headers.contains_key("WWW-Authenticate"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_registration_required_anonymous_user() {
 		let config = FlatpagesConfig::new();

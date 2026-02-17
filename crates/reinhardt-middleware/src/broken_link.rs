@@ -386,6 +386,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct NotFoundHandler;
 
@@ -405,6 +406,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_internal_404_detected() {
 		let config = BrokenLinkConfig::new();
@@ -430,6 +432,7 @@ mod tests {
 		// In a real scenario, we'd check logs or email was sent
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_external_404_ignored() {
 		let config = BrokenLinkConfig::new();
@@ -455,6 +458,7 @@ mod tests {
 		// External referrer should not trigger detection
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_referrer_ignored() {
 		let config = BrokenLinkConfig::new();
@@ -479,6 +483,7 @@ mod tests {
 		// No referrer should not trigger detection
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ignored_path() {
 		let config = BrokenLinkConfig::new();
@@ -504,6 +509,7 @@ mod tests {
 		// favicon.ico is in ignored paths
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ignored_user_agent() {
 		let config = BrokenLinkConfig::new();
@@ -530,6 +536,7 @@ mod tests {
 		// Bot user agents should be ignored
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_200_response_ignored() {
 		let config = BrokenLinkConfig::new();
@@ -555,6 +562,7 @@ mod tests {
 		// 200 responses should not trigger detection
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_www_subdomain_handling() {
 		let config = BrokenLinkConfig::new();
@@ -580,6 +588,7 @@ mod tests {
 		// www.example.com should be treated as same domain as example.com
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_config() {
 		let config = BrokenLinkConfig::new().disabled();
@@ -605,6 +614,7 @@ mod tests {
 		// Disabled config should not trigger detection
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_ignored_paths() {
 		let config = BrokenLinkConfig::new().with_ignored_paths(vec!["/admin/.*".to_string()]);
@@ -630,6 +640,7 @@ mod tests {
 		// Custom ignored paths should work
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_email_configuration() {
 		let config = BrokenLinkConfig::new().with_emails(vec!["admin@example.com".to_string()]);

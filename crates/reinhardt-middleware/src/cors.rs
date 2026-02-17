@@ -204,6 +204,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -214,6 +215,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_preflight_request() {
 		let config = CorsConfig {
@@ -286,6 +288,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_regular_request_with_cors_headers() {
 		let config = CorsConfig {
@@ -332,6 +335,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permissive_mode() {
 		let middleware = CorsMiddleware::permissive();
@@ -374,6 +378,7 @@ mod tests {
 		assert!(methods_header.contains("DELETE"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_origins() {
 		let config = CorsConfig {

@@ -398,6 +398,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicU64, Ordering};
 	use std::thread;
 
@@ -430,6 +431,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_closed_state() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
@@ -451,6 +453,7 @@ mod tests {
 		assert_eq!(middleware.get_state(), CircuitState::Closed);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_opens_on_errors() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
@@ -474,6 +477,7 @@ mod tests {
 		assert_eq!(middleware.get_state(), CircuitState::Open);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_open_rejects_requests() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));
@@ -508,6 +512,7 @@ mod tests {
 		assert!(response.headers.contains_key("x-circuit-breaker"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_half_open_transition() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100));
@@ -546,6 +551,7 @@ mod tests {
 		assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_closes_after_recovery() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_millis(100))
@@ -608,6 +614,7 @@ mod tests {
 		assert_eq!(middleware.get_state(), CircuitState::Closed);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_circuit_stats() {
 		let config = CircuitBreakerConfig::new(0.5, 10, Duration::from_secs(30));
@@ -655,6 +662,7 @@ mod tests {
 		assert_eq!(stats.error_rate(), 0.4);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_reset_circuit() {
 		let config = CircuitBreakerConfig::new(0.5, 5, Duration::from_secs(30));

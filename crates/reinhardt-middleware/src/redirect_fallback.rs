@@ -198,6 +198,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct NotFoundHandler;
 
@@ -217,6 +218,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redirect_on_404() {
 		let config = RedirectResponseConfig::new("/404".to_string());
@@ -241,6 +243,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_redirect_on_200() {
 		let config = RedirectResponseConfig::new("/404".to_string());
@@ -262,6 +265,7 @@ mod tests {
 		assert!(!response.headers.contains_key(hyper::header::LOCATION));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_pattern_matching_redirect() {
 		let config = RedirectResponseConfig::new("/404".to_string())
@@ -288,6 +292,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_pattern_no_match_no_redirect() {
 		let config = RedirectResponseConfig::new("/404".to_string())
@@ -311,6 +316,7 @@ mod tests {
 		assert!(!response.headers.contains_key(hyper::header::LOCATION));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_redirect_status() {
 		let config = RedirectResponseConfig::new("/404".to_string()).with_status(301);
@@ -335,6 +341,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prevent_redirect_loop() {
 		let config = RedirectResponseConfig::new("/404".to_string());
@@ -357,6 +364,7 @@ mod tests {
 		assert!(!response.headers.contains_key(hyper::header::LOCATION));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_pattern_matching() {
 		let config = RedirectResponseConfig::new("/error".to_string())
@@ -391,6 +399,7 @@ mod tests {
 		assert_eq!(response2.status, StatusCode::FOUND);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_http_methods() {
 		let config = RedirectResponseConfig::new("/404".to_string());
@@ -416,6 +425,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_patterns_matches_all() {
 		let config = RedirectResponseConfig::new("/fallback".to_string());
@@ -445,6 +455,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_complex_pattern_matching() {
 		let config = RedirectResponseConfig::new("/404".to_string())

@@ -447,6 +447,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 	use std::thread;
 	use std::time::Duration;
 
@@ -479,6 +480,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_request_count() {
 		let config = MetricsConfig::new();
@@ -500,6 +502,7 @@ mod tests {
 		assert_eq!(middleware.store.get_request_count("GET", "/test"), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_multiple_requests() {
 		let config = MetricsConfig::new();
@@ -522,6 +525,7 @@ mod tests {
 		assert_eq!(middleware.store.get_request_count("GET", "/test"), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_status_codes() {
 		let config = MetricsConfig::new();
@@ -555,6 +559,7 @@ mod tests {
 		assert_eq!(middleware.store.get_status_count(404), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_response_time_tracking() {
 		let config = MetricsConfig::new();
@@ -581,6 +586,7 @@ mod tests {
 		assert!(durations[0] >= 10.0); // At least 10ms
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_metrics_endpoint() {
 		let config = MetricsConfig::new();
@@ -620,6 +626,7 @@ mod tests {
 		assert!(body.contains("http_responses_total"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_paths() {
 		let config = MetricsConfig::new();
@@ -641,6 +648,7 @@ mod tests {
 		assert_eq!(middleware.store.total_requests(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_metrics_endpoint() {
 		let config = MetricsConfig::new().with_endpoint("/prometheus".to_string());
@@ -660,6 +668,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disable_response_time() {
 		let config = MetricsConfig::new().without_response_time();
@@ -681,6 +690,7 @@ mod tests {
 		assert!(times.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_methods() {
 		let config = MetricsConfig::new();
@@ -717,6 +727,7 @@ mod tests {
 		assert_eq!(middleware.store.total_requests(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prometheus_format() {
 		let store = MetricsStore::new();
@@ -735,6 +746,7 @@ mod tests {
 		assert!(output.contains("http_response_time_seconds"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_metrics() {
 		let store = MetricsStore::new();
@@ -748,6 +760,7 @@ mod tests {
 		assert!(output.contains("cache_hit_ratio 0.87"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_reset_metrics() {
 		let config = MetricsConfig::new();
@@ -773,6 +786,7 @@ mod tests {
 		assert_eq!(middleware.store.total_requests(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_middleware() {
 		let middleware = MetricsMiddleware::default();

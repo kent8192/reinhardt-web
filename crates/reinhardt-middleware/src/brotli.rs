@@ -282,6 +282,7 @@ impl Middleware for BrotliMiddleware {
 mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		body: String,
@@ -306,6 +307,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_brotli_compression_basic() {
 		let config = BrotliConfig::default();
@@ -331,6 +333,7 @@ mod tests {
 		assert!(response.body.len() < body.len());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_compression_without_accept_encoding() {
 		let middleware = BrotliMiddleware::new();
@@ -352,6 +355,7 @@ mod tests {
 		assert_eq!(response.body.len(), body.len());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_compression_for_small_body() {
 		let config = BrotliConfig {
@@ -379,6 +383,7 @@ mod tests {
 		assert!(!response.headers.contains_key(CONTENT_ENCODING));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_compression_for_non_text_content() {
 		let middleware = BrotliMiddleware::new();
@@ -402,6 +407,7 @@ mod tests {
 		assert!(!response.headers.contains_key(CONTENT_ENCODING));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_compression_quality_levels() {
 		for quality in &[
@@ -436,6 +442,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_compression() {
 		let middleware = BrotliMiddleware::new();
@@ -463,6 +470,7 @@ mod tests {
 		assert!(response.body.len() < body.len());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_javascript_compression() {
 		let middleware = BrotliMiddleware::new();
@@ -489,6 +497,7 @@ mod tests {
 		assert_eq!(response.headers.get(CONTENT_ENCODING).unwrap(), "br");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_compressible_types() {
 		let config = BrotliConfig {
@@ -519,6 +528,7 @@ mod tests {
 		assert_eq!(response.headers.get(CONTENT_ENCODING).unwrap(), "br");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_window_size_configuration() {
 		let config = BrotliConfig {

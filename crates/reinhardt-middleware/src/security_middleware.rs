@@ -278,6 +278,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -288,6 +289,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hsts_header_on_secure_request() {
 		let config = SecurityConfig {
@@ -324,6 +326,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_security_middleware_hsts_full() {
 		let config = SecurityConfig {
@@ -364,6 +367,7 @@ mod tests {
 		assert!(hsts_header.contains("preload"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_hsts_on_insecure_request() {
 		let config = SecurityConfig {
@@ -394,6 +398,7 @@ mod tests {
 		assert!(!response.headers.contains_key("Strict-Transport-Security"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ssl_redirect() {
 		let config = SecurityConfig {
@@ -430,6 +435,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ssl_redirect_only_for_get_and_head() {
 		let config = SecurityConfig {
@@ -463,6 +469,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_nosniff_header() {
 		let middleware = SecurityMiddleware::new();
@@ -485,6 +492,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_referrer_policy_header() {
 		let config = SecurityConfig {
@@ -517,6 +525,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cross_origin_opener_policy_header() {
 		let config = SecurityConfig {
@@ -549,6 +558,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_all_security_headers_together() {
 		let config = SecurityConfig {

@@ -18,6 +18,7 @@ mod fixtures;
 use fixtures::{ConfigurableTestHandler, create_test_request};
 use proptest::prelude::*;
 use reinhardt_http::Middleware;
+use rstest::rstest;
 use std::sync::Arc;
 
 // =============================================================================
@@ -28,7 +29,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(20))]
 
 	/// Property: Same body content always produces the same ETag.
-	#[test]
+	#[rstest]
 	fn prop_etag_deterministic(body in "[a-zA-Z0-9]{1,100}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -55,7 +56,7 @@ proptest! {
 	}
 
 	/// Property: Different bodies produce different ETags.
-	#[test]
+	#[rstest]
 	fn prop_etag_different_content(
 		body1 in "[a-z]{5,20}",
 		body2 in "[A-Z]{5,20}"
@@ -98,7 +99,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(20))]
 
 	/// Property: Remaining tokens never exceed capacity.
-	#[test]
+	#[rstest]
 	fn prop_ratelimit_tokens_bounded(
 		capacity in 1.0f64..100.0,
 		refill_rate in 0.1f64..10.0,
@@ -135,7 +136,7 @@ proptest! {
 	}
 
 	/// Property: Rate limit always allows at least one request with fresh tokens.
-	#[test]
+	#[rstest]
 	fn prop_ratelimit_allows_first_request(
 		capacity in 1.0f64..100.0,
 		refill_rate in 0.1f64..10.0
@@ -177,7 +178,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Circuit breaker state is always valid.
-	#[test]
+	#[rstest]
 	fn prop_circuit_breaker_valid_state(
 		error_threshold in 0.1f64..0.9,
 		min_requests in 1u64..20
@@ -201,7 +202,7 @@ proptest! {
 	}
 
 	/// Property: Circuit breaker in closed state allows requests.
-	#[test]
+	#[rstest]
 	fn prop_circuit_breaker_closed_allows_requests(
 		error_threshold in 0.1f64..0.9,
 		min_requests in 5u64..20
@@ -239,7 +240,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(20))]
 
 	/// Property: Request ID is always unique for each request.
-	#[test]
+	#[rstest]
 	fn prop_request_id_unique(num_requests in 2usize..20) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -266,7 +267,7 @@ proptest! {
 	}
 
 	/// Property: Request ID has valid UUID format.
-	#[test]
+	#[rstest]
 	fn prop_request_id_valid_format(_iteration in 0usize..10) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -296,7 +297,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Request count monotonically increases.
-	#[test]
+	#[rstest]
 	fn prop_metrics_count_increases(num_requests in 1usize..20) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -326,7 +327,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Fast handler completes within any timeout.
-	#[test]
+	#[rstest]
 	fn prop_timeout_fast_handler_succeeds(timeout_ms in 100u64..5000) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -357,7 +358,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Locale middleware always processes requests without error.
-	#[test]
+	#[rstest]
 	fn prop_locale_always_processes(_iteration in 0usize..10) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -382,7 +383,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Cache miss followed by hit returns same response.
-	#[test]
+	#[rstest]
 	fn prop_cache_consistency(path in "/[a-z]{1,10}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -407,7 +408,7 @@ proptest! {
 	}
 
 	/// Property: POST requests bypass cache.
-	#[test]
+	#[rstest]
 	fn prop_cache_bypass_unsafe_methods(path in "/[a-z]{1,10}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -438,7 +439,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: GZip compression preserves response status.
-	#[test]
+	#[rstest]
 	fn prop_gzip_preserves_status(_iteration in 0usize..10) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -468,7 +469,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(10))]
 
 	/// Property: Session middleware always returns a response.
-	#[test]
+	#[rstest]
 	fn prop_session_always_responds(_iteration in 0usize..10) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {

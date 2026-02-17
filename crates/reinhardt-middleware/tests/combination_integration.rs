@@ -15,6 +15,7 @@ mod fixtures;
 
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};
 use reinhardt_http::Middleware;
+use rstest::rstest;
 use std::sync::Arc;
 
 // =============================================================================
@@ -24,6 +25,7 @@ use std::sync::Arc;
 /// Tests that GZip compression and ETag work together.
 /// The ETag should be based on the uncompressed content.
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_and_etag_combination() {
 	use reinhardt_middleware::etag::ETagMiddleware;
@@ -51,6 +53,7 @@ async fn test_gzip_and_etag_combination() {
 }
 
 /// Tests that ETag middleware correctly generates same ETags for same content.
+#[rstest]
 #[tokio::test]
 async fn test_etag_generates_consistent_tags() {
 	use reinhardt_middleware::etag::ETagMiddleware;
@@ -85,6 +88,7 @@ async fn test_etag_generates_consistent_tags() {
 /// Tests that RateLimit and CircuitBreaker protect differently.
 /// RateLimit rejects based on request count, CircuitBreaker on error rate.
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 async fn test_ratelimit_and_circuit_breaker_cascade() {
 	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
@@ -151,6 +155,7 @@ async fn test_ratelimit_and_circuit_breaker_cascade() {
 // =============================================================================
 
 /// Tests that multiple security headers can be added together.
+#[rstest]
 #[tokio::test]
 async fn test_security_headers_combination() {
 	use reinhardt_middleware::csp::CspMiddleware;
@@ -188,6 +193,7 @@ async fn test_security_headers_combination() {
 /// Tests that Session and CSRF middleware work together.
 /// CSRF protection requires session for token storage.
 #[cfg(feature = "sessions")]
+#[rstest]
 #[tokio::test]
 async fn test_session_and_csrf_combination() {
 	use reinhardt_middleware::csrf::CsrfMiddleware;
@@ -225,6 +231,7 @@ async fn test_session_and_csrf_combination() {
 
 /// Tests that Timeout and CircuitBreaker work together.
 /// Timeouts can contribute to circuit breaker error count.
+#[rstest]
 #[tokio::test]
 async fn test_timeout_and_circuit_breaker_combination() {
 	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
@@ -274,6 +281,7 @@ async fn test_timeout_and_circuit_breaker_combination() {
 // =============================================================================
 
 /// Tests locale middleware processes requests correctly.
+#[rstest]
 #[tokio::test]
 async fn test_locale_middleware_standalone() {
 	use reinhardt_middleware::locale::LocaleMiddleware;
@@ -302,6 +310,7 @@ async fn test_locale_middleware_standalone() {
 // =============================================================================
 
 /// Tests cache middleware with different request methods.
+#[rstest]
 #[tokio::test]
 async fn test_cache_middleware_method_handling() {
 	use reinhardt_middleware::cache::{CacheConfig, CacheMiddleware};
@@ -336,6 +345,7 @@ async fn test_cache_middleware_method_handling() {
 // =============================================================================
 
 /// Tests metrics middleware collects request information.
+#[rstest]
 #[tokio::test]
 async fn test_metrics_middleware_collection() {
 	use reinhardt_middleware::metrics::{MetricsConfig, MetricsMiddleware};
@@ -363,6 +373,7 @@ async fn test_metrics_middleware_collection() {
 // =============================================================================
 
 /// Tests RequestId middleware generates unique IDs.
+#[rstest]
 #[tokio::test]
 async fn test_request_id_uniqueness() {
 	use reinhardt_middleware::request_id::{RequestIdConfig, RequestIdMiddleware};
@@ -404,6 +415,7 @@ async fn test_request_id_uniqueness() {
 
 /// Tests CORS middleware with different origins.
 #[cfg(feature = "cors")]
+#[rstest]
 #[tokio::test]
 async fn test_cors_middleware_origin_handling() {
 	use reinhardt_middleware::cors::{CorsConfig, CorsMiddleware};
@@ -431,6 +443,7 @@ async fn test_cors_middleware_origin_handling() {
 
 /// Tests CORS preflight request handling.
 #[cfg(feature = "cors")]
+#[rstest]
 #[tokio::test]
 async fn test_cors_preflight_handling() {
 	use reinhardt_middleware::cors::{CorsConfig, CorsMiddleware};
@@ -471,6 +484,7 @@ async fn test_cors_preflight_handling() {
 // =============================================================================
 
 /// Tests a full security middleware pipeline.
+#[rstest]
 #[tokio::test]
 async fn test_full_security_pipeline() {
 	use reinhardt_middleware::csp::CspMiddleware;
@@ -502,6 +516,7 @@ async fn test_full_security_pipeline() {
 // =============================================================================
 
 /// Tests that middleware order affects response headers.
+#[rstest]
 #[tokio::test]
 async fn test_middleware_order_matters() {
 	use reinhardt_middleware::request_id::{RequestIdConfig, RequestIdMiddleware};
@@ -526,6 +541,7 @@ async fn test_middleware_order_matters() {
 }
 
 /// Tests concurrent middleware processing.
+#[rstest]
 #[tokio::test]
 async fn test_concurrent_middleware_processing() {
 	use reinhardt_middleware::etag::ETagMiddleware;

@@ -530,6 +530,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 	use std::thread;
 	use std::time::Duration;
 
@@ -550,6 +551,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_allowed() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 10.0, 1.0);
@@ -572,6 +574,7 @@ mod tests {
 		assert!(response.headers.contains_key("x-ratelimit-remaining"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_exceeded() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 2.0, 0.1);
@@ -607,6 +610,7 @@ mod tests {
 		assert!(response.headers.contains_key("retry-after"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_bucket_refill() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 2.0, 2.0);
@@ -644,6 +648,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_paths() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 1.0, 0.1)
@@ -666,6 +671,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_error_message() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 1.0, 0.1)
@@ -700,6 +706,7 @@ mod tests {
 		assert_eq!(body, "Custom error message");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_routes() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerRoute, 1.0, 0.1);
@@ -731,6 +738,7 @@ mod tests {
 		assert_eq!(response2.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_store() {
 		let store = RateLimitStore::new();
@@ -743,6 +751,7 @@ mod tests {
 		assert_eq!(count, 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_store_cleanup() {
 		let store = RateLimitStore::new();
@@ -756,6 +765,7 @@ mod tests {
 		assert_eq!(count, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_ip_from_x_forwarded_for() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -782,6 +792,7 @@ mod tests {
 		assert_eq!(ip, "203.0.113.195");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_ip_from_x_real_ip() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -803,6 +814,7 @@ mod tests {
 		assert_eq!(ip, "198.51.100.42");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_ip_from_remote_addr() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -824,6 +836,7 @@ mod tests {
 		assert_eq!(ip, "192.0.2.123");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_ip_fallback_to_localhost() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -842,6 +855,7 @@ mod tests {
 		assert_eq!(ip, "127.0.0.1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_ip_priority_x_forwarded_for_over_x_real_ip() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -864,6 +878,7 @@ mod tests {
 		assert_eq!(ip, "203.0.113.195"); // X-Forwarded-For takes priority
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_user_id_from_string() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
@@ -885,6 +900,7 @@ mod tests {
 		assert_eq!(user_id, Some("user123".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_user_id_from_i64() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
@@ -906,6 +922,7 @@ mod tests {
 		assert_eq!(user_id, Some("42".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_user_id_anonymous() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
@@ -924,6 +941,7 @@ mod tests {
 		assert_eq!(user_id, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generate_key_per_user_authenticated() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
@@ -944,6 +962,7 @@ mod tests {
 		assert_eq!(key, "user:user456");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generate_key_per_user_anonymous() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 10.0, 1.0);
@@ -962,6 +981,7 @@ mod tests {
 		assert_eq!(key, "user:anonymous");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generate_key_per_ip() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 10.0, 1.0);
@@ -983,6 +1003,7 @@ mod tests {
 		assert_eq!(key, "ip:203.0.113.195");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_per_ip_different_ips() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerIp, 1.0, 0.1);
@@ -1018,6 +1039,7 @@ mod tests {
 		assert_eq!(response2.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_per_user_different_users() {
 		let config = RateLimitConfig::new(RateLimitStrategy::PerUser, 1.0, 0.1);

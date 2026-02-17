@@ -6,11 +6,13 @@
 //! - Cache hit/miss verification
 
 use reinhardt_middleware::cache::{CacheConfig, CacheKeyStrategy, CacheMiddleware};
+use rstest::rstest;
 use serial_test::serial;
 use std::time::Duration;
 
 /// Test cache middleware with default config
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_cache_with_defaults() {
 	// Create cache middleware with defaults
@@ -23,6 +25,7 @@ async fn test_cache_with_defaults() {
 
 /// Test cache middleware with custom config
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_cache_with_custom_config() {
 	// Create cache config with custom settings
@@ -35,6 +38,7 @@ async fn test_cache_with_custom_config() {
 
 /// Test cache store operations
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_cache_store_operations() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod);
@@ -47,6 +51,7 @@ async fn test_cache_store_operations() {
 
 /// Test multiple cache middleware instances
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_multiple_cache_instances() {
 	// Create multiple cache middleware instances
@@ -63,6 +68,7 @@ async fn test_multiple_cache_instances() {
 
 /// Test cache config with excluded paths
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_cache_with_excluded_paths() {
 	// Create cache config with excluded paths
@@ -77,6 +83,7 @@ async fn test_cache_with_excluded_paths() {
 
 /// Test cache config with max entries
 #[serial(cache)]
+#[rstest]
 #[tokio::test]
 async fn test_cache_with_max_entries() {
 	// Create cache config with max entries limit

@@ -251,6 +251,7 @@ mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_http::Response;
+	use rstest::rstest;
 
 	struct TestHandler {
 		response_body: &'static str,
@@ -269,6 +270,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_gzip_compression() {
 		let middleware = GZipMiddleware::new();
@@ -297,6 +299,7 @@ mod tests {
 		assert!(!response.body.is_empty()); // Has compressed content
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_gzip_if_client_doesnt_accept() {
 		let middleware = GZipMiddleware::new();
@@ -321,6 +324,7 @@ mod tests {
 		assert_eq!(response.body, Bytes::from(body));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_gzip_for_small_response() {
 		let config = GZipConfig {
@@ -350,6 +354,7 @@ mod tests {
 		assert!(!response.headers.contains_key(CONTENT_ENCODING));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_gzip_for_non_compressible_type() {
 		let middleware = GZipMiddleware::new();
@@ -375,6 +380,7 @@ mod tests {
 		assert!(!response.headers.contains_key(CONTENT_ENCODING));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_gzip_non_200_response() {
 		// Test that compression works for non-200 status codes
@@ -414,6 +420,7 @@ mod tests {
 		assert_eq!(response.headers.get(CONTENT_ENCODING).unwrap(), "gzip");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_compress_already_compressed() {
 		// Test that already compressed responses are not re-compressed
@@ -455,6 +462,7 @@ mod tests {
 		assert_eq!(response.headers.get(CONTENT_ENCODING).unwrap(), "deflate");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_gzip_json_content() {
 		// Test that JSON content is compressed
@@ -492,6 +500,7 @@ mod tests {
 		assert_eq!(response.headers.get(CONTENT_ENCODING).unwrap(), "gzip");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_length_updated() {
 		// Test that Content-Length is updated after compression

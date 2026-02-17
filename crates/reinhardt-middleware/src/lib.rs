@@ -191,6 +191,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
 	use reinhardt_http::{Handler, Middleware, Request, Response};
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	struct TestHandler;
@@ -202,6 +203,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cors_middleware_simple_request() {
 		use cors::CorsConfig;
@@ -233,6 +235,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cors_middleware_preflight_request() {
 		use cors::CorsConfig;
@@ -272,6 +275,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cors_middleware_permissive() {
 		let middleware = CorsMiddleware::permissive();
@@ -290,6 +294,7 @@ mod tests {
 		assert!(response.headers.contains_key("Access-Control-Allow-Origin"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logging_middleware() {
 		let middleware = LoggingMiddleware::new();

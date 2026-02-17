@@ -6,10 +6,12 @@
 //! - CSRF attack prevention
 
 use reinhardt_middleware::{csrf::CsrfMiddleware, session::SessionMiddleware};
+use rstest::rstest;
 use serial_test::serial;
 
 /// Test CSRF and session middleware integration
 #[serial(csrf_session)]
+#[rstest]
 #[tokio::test]
 async fn test_csrf_session_integration() {
 	// Create session and CSRF middlewares
@@ -23,6 +25,7 @@ async fn test_csrf_session_integration() {
 
 /// Test CSRF with test secret for deterministic testing
 #[serial(csrf_session)]
+#[rstest]
 #[tokio::test]
 async fn test_csrf_with_session_and_test_secret() {
 	// Create session middleware
@@ -38,6 +41,7 @@ async fn test_csrf_with_session_and_test_secret() {
 
 /// Test multiple CSRF and session middleware instances
 #[serial(csrf_session)]
+#[rstest]
 #[tokio::test]
 async fn test_multiple_csrf_session_instances() {
 	// Create multiple session middleware instances

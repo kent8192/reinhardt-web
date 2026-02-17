@@ -240,6 +240,7 @@ mod tests {
 	use reinhardt_auth::AuthenticationError;
 	use reinhardt_auth::SimpleUser;
 	use reinhardt_auth::session::{InMemorySessionStore, Session};
+	use rstest::rstest;
 	use uuid::Uuid;
 
 	struct TestHandler;
@@ -284,6 +285,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auth_middleware_with_valid_session() {
 		let session_store = Arc::new(InMemorySessionStore::new());
@@ -325,6 +327,7 @@ mod tests {
 		assert_eq!(response.status, reinhardt_http::Response::ok().status);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auth_middleware_without_session() {
 		let session_store = Arc::new(InMemorySessionStore::new());
@@ -349,7 +352,7 @@ mod tests {
 		assert!(body_str.contains("\"is_authenticated\":false"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_from_extensions() {
 		let extensions = reinhardt_http::Extensions::new();
 		extensions.insert("user123".to_string());
@@ -360,7 +363,7 @@ mod tests {
 		assert!(!auth_state.unwrap().is_anonymous());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_state_is_anonymous() {
 		let anon_state = AuthState {
 			user_id: String::new(),

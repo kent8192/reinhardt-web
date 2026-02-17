@@ -33,6 +33,7 @@ use reinhardt_middleware::gzip::{GZipConfig, GZipMiddleware};
 use reinhardt_middleware::rate_limit::{RateLimitConfig, RateLimitMiddleware, RateLimitStrategy};
 use reinhardt_middleware::session::{SessionConfig, SessionMiddleware};
 use reinhardt_middleware::timeout::{TimeoutConfig, TimeoutMiddleware};
+use rstest::rstest;
 use serial_test::serial;
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,6 +102,7 @@ impl Handler for HeaderEchoHandler {
 // Empty Input Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_etag_empty_body() {
 	let config = ETagConfig::default();
@@ -116,6 +118,7 @@ async fn test_etag_empty_body() {
 }
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_empty_body() {
 	let config = GZipConfig {
@@ -134,6 +137,7 @@ async fn test_gzip_empty_body() {
 	assert_no_header(&response, "content-encoding");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_empty_response() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)
@@ -168,6 +172,7 @@ async fn test_cache_empty_response() {
 // Unicode and Special Character Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_session_unicode_cookie_value() {
 	let config = SessionConfig::new("session_id".to_string(), Duration::from_secs(60));
@@ -196,6 +201,7 @@ async fn test_session_unicode_cookie_value() {
 	assert_has_header(&response, "set-cookie");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_unicode_url() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)
@@ -229,6 +235,7 @@ async fn test_cache_unicode_url() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_etag_unicode_body() {
 	let config = ETagConfig::default();
@@ -256,6 +263,7 @@ async fn test_etag_unicode_body() {
 // ============================================================================
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_multiple_accept_encoding_headers() {
 	let config = GZipConfig {
@@ -291,6 +299,7 @@ async fn test_gzip_multiple_accept_encoding_headers() {
 }
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_q_value_accept_encoding() {
 	let config = GZipConfig {
@@ -321,6 +330,7 @@ async fn test_gzip_q_value_accept_encoding() {
 // HTTP Version Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_session_http10_client() {
 	let config = SessionConfig::new("session".to_string(), Duration::from_secs(60));
@@ -343,6 +353,7 @@ async fn test_session_http10_client() {
 	assert_has_header(&response, "set-cookie");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_http10_client() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)
@@ -370,6 +381,7 @@ async fn test_cache_http10_client() {
 // Concurrent Access Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 #[serial(concurrent_session)]
 async fn test_concurrent_session_creation() {
@@ -410,6 +422,7 @@ async fn test_concurrent_session_creation() {
 }
 
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 #[serial(concurrent_rate_limit)]
 async fn test_concurrent_rate_limit_enforcement() {
@@ -455,6 +468,7 @@ async fn test_concurrent_rate_limit_enforcement() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 #[serial(concurrent_circuit_breaker)]
 async fn test_concurrent_circuit_breaker_state() {
@@ -492,6 +506,7 @@ async fn test_concurrent_circuit_breaker_state() {
 // ============================================================================
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_very_large_response() {
 	let config = GZipConfig {
@@ -517,6 +532,7 @@ async fn test_gzip_very_large_response() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_many_entries() {
 	let max_entries = 100;
@@ -543,6 +559,7 @@ async fn test_cache_many_entries() {
 // Special Header Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_etag_conditional_request_with_quotes() {
 	let config = ETagConfig::default();
@@ -577,6 +594,7 @@ async fn test_etag_conditional_request_with_quotes() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_malformed_cookie() {
 	let config = SessionConfig::new("session".to_string(), Duration::from_secs(60));
@@ -594,6 +612,7 @@ async fn test_session_malformed_cookie() {
 	assert_has_header(&response, "set-cookie");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_session_expired_cookie() {
 	let config = SessionConfig::new("session".to_string(), Duration::from_millis(50));
@@ -634,6 +653,7 @@ async fn test_session_expired_cookie() {
 // Timeout Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_timeout_immediate_response() {
 	let config = TimeoutConfig::new(Duration::from_secs(1));
@@ -648,6 +668,7 @@ async fn test_timeout_immediate_response() {
 	assert_status(&result.unwrap(), 200);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_timeout_just_before_deadline() {
 	let config = TimeoutConfig::new(Duration::from_millis(200));
@@ -668,6 +689,7 @@ async fn test_timeout_just_before_deadline() {
 // ============================================================================
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_binary_content() {
 	let config = GZipConfig {
@@ -692,6 +714,7 @@ async fn test_gzip_binary_content() {
 }
 
 #[cfg(feature = "compression")]
+#[rstest]
 #[tokio::test]
 async fn test_gzip_charset_content_type() {
 	let config = GZipConfig {
@@ -719,6 +742,7 @@ async fn test_gzip_charset_content_type() {
 // Method Edge Cases
 // ============================================================================
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_head_request() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)
@@ -740,6 +764,7 @@ async fn test_cache_head_request() {
 	assert_status(&response, 200);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_cache_post_not_cached() {
 	let config = CacheConfig::new(Duration::from_secs(60), CacheKeyStrategy::UrlAndMethod)

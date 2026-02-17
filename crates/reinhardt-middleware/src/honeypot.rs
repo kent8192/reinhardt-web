@@ -169,8 +169,9 @@ impl HoneypotField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_field_creation() {
 		let honeypot = HoneypotField::new("trap".to_string());
 
@@ -178,7 +179,7 @@ mod tests {
 		assert_eq!(honeypot.label(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_field_with_label() {
 		let honeypot =
 			HoneypotField::new("trap".to_string()).with_label("Leave this empty".to_string());
@@ -186,7 +187,7 @@ mod tests {
 		assert_eq!(honeypot.label(), Some("Leave this empty"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_field_validate_empty() {
 		let honeypot = HoneypotField::new("trap".to_string());
 
@@ -194,7 +195,7 @@ mod tests {
 		assert!(honeypot.validate(Some("")).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_field_validate_filled() {
 		let honeypot = HoneypotField::new("trap".to_string());
 
@@ -202,7 +203,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_form_data_validation() {
 		let honeypot = HoneypotField::new("email_confirm".to_string());
 
@@ -215,7 +216,7 @@ mod tests {
 		assert!(honeypot.validate_form_data(&data).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_form_data_missing_field() {
 		let honeypot = HoneypotField::new("nonexistent".to_string());
 
@@ -223,7 +224,7 @@ mod tests {
 		assert!(honeypot.validate_form_data(&data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_honeypot_form_data_null_value() {
 		let honeypot = HoneypotField::new("trap".to_string());
 

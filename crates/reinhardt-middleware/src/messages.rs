@@ -316,8 +316,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_message_creation() {
 		let msg = Message::debug("Debug message".to_string());
 		assert_eq!(msg.level, MessageLevel::Debug);
@@ -335,7 +336,7 @@ mod tests {
 		assert_eq!(msg.level, MessageLevel::Error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_add_and_get() {
 		let storage = SessionStorage::new();
 		let session_id = "test-session";
@@ -349,7 +350,7 @@ mod tests {
 		assert_eq!(messages[1].level, MessageLevel::Success);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_clear() {
 		let storage = SessionStorage::new();
 		let session_id = "test-session";
@@ -365,7 +366,7 @@ mod tests {
 		assert_eq!(messages.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_add_and_get() {
 		let storage = CookieStorage::new();
 		let session_id = "test-session";
@@ -379,7 +380,7 @@ mod tests {
 		assert_eq!(messages[1].level, MessageLevel::Error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_clear() {
 		let storage = CookieStorage::new();
 		let session_id = "test-session";
@@ -394,7 +395,7 @@ mod tests {
 		assert_eq!(messages.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_separate_sessions() {
 		let storage = SessionStorage::new();
 
@@ -427,6 +428,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_with_session_storage() {
 		let storage: Arc<dyn MessageStorage> = Arc::new(SessionStorage::new());
@@ -456,6 +458,7 @@ mod tests {
 		assert_eq!(messages[0].level, MessageLevel::Success);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_default_session() {
 		let storage: Arc<dyn MessageStorage> = Arc::new(SessionStorage::new());
@@ -482,6 +485,7 @@ mod tests {
 		assert_eq!(messages.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_with_cookie_storage() {
 		let storage: Arc<dyn MessageStorage> = Arc::new(CookieStorage::new());

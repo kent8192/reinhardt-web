@@ -357,8 +357,9 @@ impl Default for XssProtector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_xss_config_default() {
 		let config = XssConfig::default();
 		assert!(!config.strip_all_tags);
@@ -366,7 +367,7 @@ mod tests {
 		assert!(config.allowed_tags.contains(&"b".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_config_strict() {
 		let config = XssConfig::strict();
 		assert!(config.strip_all_tags);
@@ -374,7 +375,7 @@ mod tests {
 		assert!(config.allowed_tags.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_config_permissive() {
 		let config = XssConfig::permissive();
 		assert!(!config.strip_all_tags);
@@ -382,7 +383,7 @@ mod tests {
 		assert!(config.allowed_attributes.contains(&"href".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_remove_script() {
 		let protector = XssProtector::new();
 		let input = "<script>alert('xss')</script>Hello";
@@ -391,7 +392,7 @@ mod tests {
 		assert!(result.contains("Hello"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_remove_event_handlers() {
 		let protector = XssProtector::new();
 		let input = r#"<div onclick="alert('xss')">Click</div>"#;
@@ -399,7 +400,7 @@ mod tests {
 		assert!(!result.contains("onclick"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_remove_dangerous_protocols() {
 		let protector = XssProtector::new();
 		let input = r#"<a href="javascript:alert('xss')">Link</a>"#;
@@ -407,7 +408,7 @@ mod tests {
 		assert!(!result.contains("javascript:"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_strip_tags() {
 		let protector = XssProtector::strict();
 		let input = "<b>Bold</b><script>alert(1)</script>";
@@ -417,7 +418,7 @@ mod tests {
 		assert!(result.contains("Bold"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_escape_html() {
 		let protector = XssProtector::strict();
 		let input = "<b>Test & \"quotes\"</b>";
@@ -426,7 +427,7 @@ mod tests {
 		assert!(result.contains("&quot;"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_contains_xss() {
 		let protector = XssProtector::new();
 
@@ -436,7 +437,7 @@ mod tests {
 		assert!(!protector.contains_xss("<p>Safe content</p>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_permissive_config() {
 		let config = XssConfig::permissive();
 		let protector = XssProtector::with_config(config);
@@ -449,7 +450,7 @@ mod tests {
 		assert!(!result.contains("<script>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_custom_allowed_tags() {
 		let config = XssConfig::default().allow_tags(vec!["b".to_string()]);
 		let protector = XssProtector::with_config(config);
@@ -461,7 +462,7 @@ mod tests {
 		assert!(!result.contains("<i>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_nested_scripts() {
 		let protector = XssProtector::new();
 		let input = "<div><script>alert(1)</script></div>";
@@ -469,7 +470,7 @@ mod tests {
 		assert!(!result.contains("<script>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xss_protector_multiple_event_handlers() {
 		let protector = XssProtector::new();
 		let input = r#"<div onclick="alert(1)" onload="alert(2)" onerror="alert(3)">Test</div>"#;

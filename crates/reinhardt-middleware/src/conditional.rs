@@ -277,6 +277,7 @@ impl Middleware for ConditionalGetMiddleware {
 mod tests {
 	use super::*;
 	use hyper::{HeaderMap, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		body: &'static str,
@@ -304,6 +305,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generates_etag() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -327,6 +329,7 @@ mod tests {
 		assert!(response.headers.contains_key(ETAG));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_none_match_returns_304() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -355,6 +358,7 @@ mod tests {
 		assert_eq!(response.body.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_modified_since_returns_304() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -383,6 +387,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::NOT_MODIFIED);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_match_fails_returns_412() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -410,6 +415,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::PRECONDITION_FAILED);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_wont_overwrite_etag() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -438,6 +444,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_none_match_and_different_etag() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -465,6 +472,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_if_modified_since_and_last_modified_in_the_future() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -493,6 +501,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_etag_on_post_request() {
 		let middleware = ConditionalGetMiddleware::new();
@@ -517,6 +526,7 @@ mod tests {
 		assert!(!response.headers.contains_key(ETAG));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_without_etag_generation() {
 		let middleware = ConditionalGetMiddleware::without_etag();

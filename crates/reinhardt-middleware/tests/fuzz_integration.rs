@@ -17,6 +17,7 @@ mod fixtures;
 use fixtures::{ConfigurableTestHandler, create_request_with_headers, create_test_request};
 use proptest::prelude::*;
 use reinhardt_http::Middleware;
+use rstest::rstest;
 use std::sync::Arc;
 
 // =============================================================================
@@ -28,7 +29,7 @@ proptest! {
 
 	/// Fuzz CSRF middleware with random token-like strings.
 	/// The middleware should never panic on malformed tokens.
-	#[test]
+	#[rstest]
 	fn fuzz_csrf_random_tokens(token in "[a-zA-Z0-9!@#$%^&*()_+=\\[\\]{};':\",./<>?]{0,200}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -50,7 +51,7 @@ proptest! {
 	}
 
 	/// Fuzz CSRF with random cookie values.
-	#[test]
+	#[rstest]
 	fn fuzz_csrf_random_cookies(cookie in "[a-zA-Z0-9_=-]{0,100}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -84,7 +85,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Fuzz CORS middleware with malformed origin headers.
-	#[test]
+	#[rstest]
 	fn fuzz_cors_malformed_origins(origin in "[a-zA-Z0-9:/._-]{0,200}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -110,7 +111,7 @@ proptest! {
 	}
 
 	/// Fuzz CORS with injection attempts in origin.
-	#[test]
+	#[rstest]
 	fn fuzz_cors_injection_attempts(
 		protocol in "(https?|ftp|file|javascript|data)://",
 		host in "[a-zA-Z0-9.-]{1,50}",
@@ -150,7 +151,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Fuzz locale middleware with malformed Accept-Language headers.
-	#[test]
+	#[rstest]
 	fn fuzz_locale_malformed_language(lang in "[a-zA-Z0-9_,-;=.]{0,200}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -168,7 +169,7 @@ proptest! {
 	}
 
 	/// Fuzz locale with extremely long language values.
-	#[test]
+	#[rstest]
 	fn fuzz_locale_long_values(count in 1usize..100) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -197,7 +198,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Fuzz rate limit with malformed IP addresses.
-	#[test]
+	#[rstest]
 	fn fuzz_ratelimit_malformed_ips(ip in "[0-9.a-fA-F:]{0,100}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -224,7 +225,7 @@ proptest! {
 	}
 
 	/// Fuzz rate limit with IP injection attempts.
-	#[test]
+	#[rstest]
 	fn fuzz_ratelimit_ip_injection(
 		real_ip in "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",
 		injected in "[a-zA-Z0-9,; ]{0,50}"
@@ -263,7 +264,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Fuzz middleware with malformed cookie headers.
-	#[test]
+	#[rstest]
 	fn fuzz_cookie_malformed_values(cookie in "[a-zA-Z0-9=;, _-]{0,200}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -281,7 +282,7 @@ proptest! {
 	}
 
 	/// Fuzz with cookie injection attempts.
-	#[test]
+	#[rstest]
 	fn fuzz_cookie_injection(
 		name in "[a-zA-Z_]{1,20}",
 		value in "[a-zA-Z0-9+/=]{0,100}",
@@ -314,7 +315,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(50))]
 
 	/// Fuzz session middleware with random session IDs.
-	#[test]
+	#[rstest]
 	fn fuzz_session_random_ids(session_id in "[a-zA-Z0-9_=-]{0,100}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -334,7 +335,7 @@ proptest! {
 	}
 
 	/// Fuzz session with collision-prone IDs.
-	#[test]
+	#[rstest]
 	fn fuzz_session_collision_ids(base in "[0-9a-f]{32}", variant in 0u8..255) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -365,7 +366,7 @@ proptest! {
 	/// Fuzz with Unicode in header values.
 	/// Note: The generated Unicode value is currently not used in the test request.
 	/// Future improvement: use create_request_with_headers to test Unicode header handling.
-	#[test]
+	#[rstest]
 	fn fuzz_unicode_headers(_value in "\\PC{1,50}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -384,7 +385,7 @@ proptest! {
 	}
 
 	/// Fuzz request paths with special characters.
-	#[test]
+	#[rstest]
 	fn fuzz_special_paths(path in "/[a-zA-Z0-9%._~:/?#\\[\\]@!$&'()*+,;=-]{0,100}") {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {
@@ -413,7 +414,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(20))]
 
 	/// Fuzz timeout with various duration values.
-	#[test]
+	#[rstest]
 	fn fuzz_timeout_durations(ms in 1u64..10000) {
 		let rt = tokio::runtime::Runtime::new().unwrap();
 		rt.block_on(async {

@@ -60,8 +60,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_get_csp_nonce_exists() {
 		let request = Request::builder()
 			.method(Method::GET)
@@ -80,7 +81,7 @@ mod tests {
 		assert_eq!(nonce, Some("test-nonce-123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_csp_nonce_not_exists() {
 		let request = Request::builder()
 			.method(Method::GET)
@@ -95,7 +96,7 @@ mod tests {
 		assert_eq!(nonce, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_nonce_attr_exists() {
 		let request = Request::builder()
 			.method(Method::GET)
@@ -112,7 +113,7 @@ mod tests {
 		assert_eq!(attr, "nonce=\"abc123\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_nonce_attr_not_exists() {
 		let request = Request::builder()
 			.method(Method::GET)

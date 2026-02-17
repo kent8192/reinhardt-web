@@ -462,6 +462,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		status: StatusCode,
@@ -480,6 +481,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_tracing() {
 		let config = TracingConfig::new();
@@ -507,6 +509,7 @@ mod tests {
 		assert_eq!(spans[0].status, SpanStatus::Ok);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_propagate_trace_id() {
 		let config = TracingConfig::new();
@@ -535,6 +538,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_error_status() {
 		let config = TracingConfig::new();
@@ -558,6 +562,7 @@ mod tests {
 		assert_eq!(spans[0].status, SpanStatus::Error);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exclude_paths() {
 		let config = TracingConfig::new();
@@ -580,6 +585,7 @@ mod tests {
 		assert_eq!(middleware.store.get_completed_spans().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_tracing() {
 		let config = TracingConfig::new().disabled();
@@ -602,6 +608,7 @@ mod tests {
 		assert_eq!(middleware.store.get_completed_spans().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_span_metadata() {
 		let config = TracingConfig::new();
@@ -629,6 +636,7 @@ mod tests {
 		assert_eq!(span.tags.get("http.status_code").unwrap(), "200");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_span_duration() {
 		let config = TracingConfig::new();
@@ -654,6 +662,7 @@ mod tests {
 		assert!(span.duration_ms().unwrap() >= 0.0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_completed_spans() {
 		let config = TracingConfig::new();
@@ -681,6 +690,7 @@ mod tests {
 		assert_eq!(middleware.store.get_completed_spans().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sample_rate_zero() {
 		let config = TracingConfig::new().with_sample_rate(0.0);
@@ -702,6 +712,7 @@ mod tests {
 		assert!(!response.headers.contains_key(TRACE_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sample_rate_one() {
 		let config = TracingConfig::new().with_sample_rate(1.0);
@@ -723,6 +734,7 @@ mod tests {
 		assert!(response.headers.contains_key(TRACE_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_middleware() {
 		let middleware = TracingMiddleware::default();

@@ -6,11 +6,13 @@
 //! - User session lifecycle
 
 use reinhardt_middleware::session::{SessionConfig, SessionMiddleware};
+use rstest::rstest;
 use serial_test::serial;
 use std::time::Duration;
 
 /// Test session middleware creation with default config
 #[serial(session_auth)]
+#[rstest]
 #[tokio::test]
 async fn test_session_with_defaults() {
 	// Create session middleware with defaults
@@ -22,6 +24,7 @@ async fn test_session_with_defaults() {
 
 /// Test session middleware with custom config
 #[serial(session_auth)]
+#[rstest]
 #[tokio::test]
 async fn test_session_with_custom_config() {
 	// Create session config with custom settings
@@ -34,6 +37,7 @@ async fn test_session_with_custom_config() {
 
 /// Test session store operations
 #[serial(session_auth)]
+#[rstest]
 #[tokio::test]
 async fn test_session_store_operations() {
 	let config = SessionConfig::new("sessionid".to_string(), Duration::from_secs(3600));
@@ -46,6 +50,7 @@ async fn test_session_store_operations() {
 
 /// Test multiple session middleware instances
 #[serial(session_auth)]
+#[rstest]
 #[tokio::test]
 async fn test_multiple_session_instances() {
 	// Create multiple session middleware instances

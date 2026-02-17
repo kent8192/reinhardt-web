@@ -333,6 +333,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -343,6 +344,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_site_detection() {
 		let config = SiteConfig::new();
@@ -372,6 +374,7 @@ mod tests {
 		assert_eq!(response.headers.get(SITE_ID_HEADER).unwrap(), "1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_www_subdomain_handling() {
 		let config = SiteConfig::new();
@@ -400,6 +403,7 @@ mod tests {
 		assert_eq!(response.headers.get(SITE_ID_HEADER).unwrap(), "1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_site_fallback() {
 		let config = SiteConfig::new();
@@ -428,6 +432,7 @@ mod tests {
 		assert_eq!(response.headers.get(SITE_ID_HEADER).unwrap(), "99");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_fallback() {
 		let config = SiteConfig::new().without_fallback();
@@ -456,6 +461,7 @@ mod tests {
 		assert!(!response.headers.contains_key(SITE_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_sites() {
 		let config = SiteConfig::new();
@@ -500,6 +506,7 @@ mod tests {
 		assert_eq!(response2.headers.get(SITE_ID_HEADER).unwrap(), "2");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_middleware() {
 		let config = SiteConfig::new().disabled();
@@ -527,6 +534,7 @@ mod tests {
 		assert!(!response.headers.contains_key(SITE_ID_HEADER));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_port_handling() {
 		let config = SiteConfig::new();
@@ -554,6 +562,7 @@ mod tests {
 		assert_eq!(response.headers.get(SITE_ID_HEADER).unwrap(), "1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_no_host_header() {
 		let config = SiteConfig::new();
@@ -575,6 +584,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_all_sites() {
 		let registry = SiteRegistry::new();
@@ -586,6 +596,7 @@ mod tests {
 		assert_eq!(sites.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_registry() {
 		let registry = SiteRegistry::new();
@@ -603,6 +614,7 @@ mod tests {
 		assert!(registry.default_site.read().unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_default_middleware() {
 		let middleware = SiteMiddleware::default();

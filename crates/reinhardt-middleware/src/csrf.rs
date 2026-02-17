@@ -349,6 +349,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -359,6 +360,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_get_request_sets_cookie() {
 		let middleware = CsrfMiddleware::new();
@@ -388,6 +390,7 @@ mod tests {
 		assert!(cookie.contains("Path=/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_post_without_token_fails() {
 		let middleware = CsrfMiddleware::new();
@@ -406,6 +409,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_post_with_valid_token_succeeds() {
 		let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -444,6 +448,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_post_with_invalid_token_fails() {
 		let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -466,6 +471,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_exempt_paths() {
 		let mut config = CsrfMiddlewareConfig::default();
@@ -487,6 +493,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_safe_methods() {
 		let middleware = CsrfMiddleware::new();
@@ -507,6 +514,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_token_from_cookie() {
 		let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -545,6 +553,7 @@ mod tests {
 		assert_eq!(response.status, StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_production_config() {
 		let config = CsrfMiddlewareConfig::production(vec!["https://example.com".to_string()]);
@@ -573,6 +582,7 @@ mod tests {
 		assert!(cookie.contains("SameSite=Strict"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_build_set_cookie_header() {
 		let middleware = CsrfMiddleware::new();
@@ -584,6 +594,7 @@ mod tests {
 		assert!(cookie.contains("SameSite=Lax"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_token_from_header() {
 		let middleware = CsrfMiddleware::new();
@@ -604,6 +615,7 @@ mod tests {
 		assert_eq!(token, Some("my_token_value".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_extract_token_from_cookie() {
 		let middleware = CsrfMiddleware::new();
@@ -624,6 +636,7 @@ mod tests {
 		assert_eq!(token, Some("cookie_token_value".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_is_secure_request() {
 		let middleware = CsrfMiddleware::new();
@@ -649,6 +662,7 @@ mod tests {
 		assert!(middleware.is_secure_request(&request_https));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_referer_validation_success() {
 		let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -686,6 +700,7 @@ mod tests {
 		assert!(response.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_referer_validation_cross_origin_fails() {
 		let secret = "abcdefghijklmnopqrstuvwxyz012345";
@@ -723,6 +738,7 @@ mod tests {
 		assert!(response.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_token_empty_string() {
 		let middleware = CsrfMiddleware::new();
@@ -744,6 +760,7 @@ mod tests {
 		assert!(response.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_cookie_samesite_attribute() {
 		let middleware = CsrfMiddleware::new();
@@ -769,6 +786,7 @@ mod tests {
 		assert!(set_cookie.contains("SameSite="));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_multiple_exempt_paths() {
 		let mut config = CsrfMiddlewareConfig::default();
@@ -794,6 +812,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_middleware_config_add_exempt_path() {
 		let config = CsrfMiddlewareConfig::default()

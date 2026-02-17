@@ -222,6 +222,7 @@ async fn test_rate_limit_strategy_partitions(#[case] strategy: RateLimitStrategy
 
 /// Test that different strategies isolate rate limiting properly
 #[cfg(feature = "rate-limit")]
+#[rstest]
 #[tokio::test]
 async fn test_rate_limit_strategy_isolation() {
 	use reinhardt_middleware::Middleware;
@@ -797,6 +798,7 @@ async fn test_metrics_request_type_partitions(#[case] status_code: u16) {
 // =============================================================================
 
 /// RequestId middleware format partitions
+#[rstest]
 #[tokio::test]
 async fn test_request_id_format_partition() {
 	use reinhardt_middleware::Middleware;
