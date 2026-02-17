@@ -117,6 +117,7 @@ impl Handler for TimeoutHandler {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
 	struct FastHandler;
@@ -140,6 +141,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_timeout_handler_creation() {
 		let handler = Arc::new(FastHandler);
@@ -147,6 +149,7 @@ mod tests {
 		assert_eq!(timeout_handler.timeout_duration(), Duration::from_secs(5));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fast_request_completes() {
 		let handler = Arc::new(FastHandler);
@@ -165,6 +168,7 @@ mod tests {
 		assert_eq!(response.status, http::StatusCode::OK);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_slow_request_times_out() {
 		let handler = Arc::new(SlowHandler {
@@ -185,6 +189,7 @@ mod tests {
 		assert_eq!(response.status, http::StatusCode::REQUEST_TIMEOUT);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_just_within_timeout() {
 		let handler = Arc::new(SlowHandler {

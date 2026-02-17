@@ -349,6 +349,7 @@ pub async fn serve_http2_with_shutdown<H: Handler + 'static>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -359,6 +360,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http2_server_creation() {
 		let _server = Http2Server::new(TestHandler);

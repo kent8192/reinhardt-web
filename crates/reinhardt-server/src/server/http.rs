@@ -470,6 +470,7 @@ pub async fn serve_with_shutdown<H: Handler + 'static>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -480,12 +481,14 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_server_creation() {
 		let _server = HttpServer::new(TestHandler);
 		// Just verify server can be created without panicking
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_server_with_middleware() {
 		use reinhardt_http::Middleware;
@@ -516,6 +519,7 @@ mod tests {
 		assert_eq!(server.middlewares.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_server_multiple_middlewares() {
 		use reinhardt_http::Middleware;
@@ -549,6 +553,7 @@ mod tests {
 		assert_eq!(server.middlewares.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_execution() {
 		use bytes::Bytes;

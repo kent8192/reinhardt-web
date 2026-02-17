@@ -165,6 +165,7 @@ mod tests {
 	use async_graphql::Object;
 	use bytes::Bytes;
 	use http::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct QueryRoot;
 
@@ -188,11 +189,13 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_handler_creation() {
 		let _handler = GraphQLHandler::build(QueryRoot, MutationRoot);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_query() {
 		let handler = GraphQLHandler::build(QueryRoot, MutationRoot);
@@ -214,6 +217,7 @@ mod tests {
 		assert!(body_str.contains("Hello, GraphQL!"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_method_not_allowed() {
 		let handler = GraphQLHandler::build(QueryRoot, MutationRoot);

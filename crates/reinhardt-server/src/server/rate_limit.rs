@@ -244,6 +244,7 @@ impl Handler for RateLimitHandler {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -275,6 +276,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_config_creation() {
 		let config = RateLimitConfig::per_minute(60);
@@ -286,6 +288,7 @@ mod tests {
 		assert_eq!(config.window_duration, Duration::from_secs(3600));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_handler_creation() {
 		let handler = Arc::new(TestHandler);
@@ -293,6 +296,7 @@ mod tests {
 		let _rate_limit_handler = RateLimitHandler::new(handler, config);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_requests_within_limit() {
 		let handler = Arc::new(TestHandler);
@@ -314,6 +318,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_requests_exceed_limit() {
 		let handler = Arc::new(TestHandler);
@@ -349,6 +354,7 @@ mod tests {
 		assert_eq!(response.status, http::StatusCode::TOO_MANY_REQUESTS);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_window_reset() {
 		let handler = Arc::new(TestHandler);
@@ -396,7 +402,7 @@ mod tests {
 
 	// Client IP extraction tests
 
-	#[test]
+	#[rstest]
 	fn test_extract_client_ip_from_x_forwarded_for() {
 		let handler = Arc::new(TestHandler);
 		let config = RateLimitConfig::per_minute(10);
@@ -421,7 +427,7 @@ mod tests {
 		assert_eq!(ip, "192.168.1.100".parse::<IpAddr>().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_client_ip_from_x_real_ip() {
 		let handler = Arc::new(TestHandler);
 		let config = RateLimitConfig::per_minute(10);
@@ -443,7 +449,7 @@ mod tests {
 		assert_eq!(ip, "203.0.113.42".parse::<IpAddr>().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_client_ip_prefers_x_forwarded_for() {
 		let handler = Arc::new(TestHandler);
 		let config = RateLimitConfig::per_minute(10);
@@ -467,7 +473,7 @@ mod tests {
 		assert_eq!(ip, "198.51.100.1".parse::<IpAddr>().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_client_ip_fallback_to_localhost() {
 		let handler = Arc::new(TestHandler);
 		let config = RateLimitConfig::per_minute(10);
@@ -489,7 +495,7 @@ mod tests {
 		assert_eq!(ip, "127.0.0.1".parse::<IpAddr>().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_client_ip_with_invalid_header() {
 		let handler = Arc::new(TestHandler);
 		let config = RateLimitConfig::per_minute(10);

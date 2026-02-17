@@ -257,14 +257,17 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shutdown_coordinator_creation() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(30));
 		assert_eq!(coordinator.timeout_duration(), Duration::from_secs(30));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shutdown_signal_propagation() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -277,6 +280,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_subscribers() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -290,6 +294,7 @@ mod tests {
 		assert!(rx2.recv().await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shutdown_notification() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -304,6 +309,7 @@ mod tests {
 		coordinator.wait_for_shutdown().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_shutdown_timeout() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_millis(100));
@@ -318,6 +324,7 @@ mod tests {
 		assert!(elapsed < Duration::from_millis(200));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_shutdown_completes_normally() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));
@@ -329,6 +336,7 @@ mod tests {
 		assert_eq!(result, Some(42));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_shutdown_interrupted() {
 		let coordinator = ShutdownCoordinator::new(Duration::from_secs(1));

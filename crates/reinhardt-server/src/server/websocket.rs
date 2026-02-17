@@ -583,6 +583,7 @@ pub async fn serve_websocket<H: WebSocketHandler + 'static>(
 #[cfg(all(test, feature = "websocket"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct EchoHandler;
 
@@ -593,22 +594,26 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_websocket_server_creation() {
 		let _server = WebSocketServer::new(EchoHandler);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_websocket_server_with_broadcast() {
 		let _server = WebSocketServer::new(EchoHandler).with_broadcast(100);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcast_manager_creation() {
 		let manager = BroadcastManager::new(50);
 		assert_eq!(manager.client_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcast_manager_broadcast() {
 		let manager = BroadcastManager::new(50);
@@ -624,6 +629,7 @@ mod tests {
 		assert_eq!(received, "Hello!");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_broadcast_manager_multiple_subscribers() {
 		let manager = BroadcastManager::new(50);
