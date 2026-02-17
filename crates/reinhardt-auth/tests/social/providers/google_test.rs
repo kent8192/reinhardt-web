@@ -5,6 +5,7 @@ use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::GoogleProvider;
 use rstest::*;
 
+#[rstest]
 #[tokio::test]
 async fn test_google_provider_config() {
 	// Arrange
@@ -20,6 +21,7 @@ async fn test_google_provider_config() {
 	assert!(config.oauth2.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_google_provider_scopes() {
 	// Arrange
@@ -35,6 +37,7 @@ async fn test_google_provider_scopes() {
 	assert!(config.scopes.contains(&"profile".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_google_oidc_discovery_url() {
 	// Arrange
@@ -53,6 +56,7 @@ async fn test_google_oidc_discovery_url() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_google_provider_create_succeeds() {
 	// Arrange
@@ -75,6 +79,7 @@ async fn test_google_provider_create_succeeds() {
 	assert!(provider.is_oidc());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_google_provider_requires_oidc_config() {
 	// Arrange - Create config without OIDC
@@ -94,6 +99,7 @@ async fn test_google_provider_requires_oidc_config() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_google_is_oidc() {
 	// Arrange

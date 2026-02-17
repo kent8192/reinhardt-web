@@ -65,8 +65,9 @@ impl UserInfoClient {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_userinfo_client_creation() {
 		let client = OAuth2Client::new();
 		let userinfo_client = UserInfoClient::new(client);

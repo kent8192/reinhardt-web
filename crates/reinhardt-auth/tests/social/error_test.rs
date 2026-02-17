@@ -3,7 +3,7 @@
 use reinhardt_auth::social::core::SocialAuthError;
 use rstest::*;
 
-#[test]
+#[rstest]
 fn test_error_network() {
 	// Arrange & Act
 	let error = SocialAuthError::Network("Connection timeout".to_string());
@@ -12,7 +12,7 @@ fn test_error_network() {
 	assert_eq!(error.to_string(), "Network error: Connection timeout");
 }
 
-#[test]
+#[rstest]
 fn test_error_invalid_response() {
 	// Arrange & Act
 	let error = SocialAuthError::InvalidResponse("Malformed JSON".to_string());
@@ -21,7 +21,7 @@ fn test_error_invalid_response() {
 	assert_eq!(error.to_string(), "Invalid response: Malformed JSON");
 }
 
-#[test]
+#[rstest]
 fn test_error_token_validation() {
 	// Arrange & Act
 	let error = SocialAuthError::TokenValidation("Invalid signature".to_string());
@@ -33,7 +33,7 @@ fn test_error_token_validation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_jwks() {
 	// Arrange & Act
 	let error = SocialAuthError::Jwks("Key not found".to_string());
@@ -42,7 +42,7 @@ fn test_error_jwks() {
 	assert_eq!(error.to_string(), "JWKS error: Key not found");
 }
 
-#[test]
+#[rstest]
 fn test_error_discovery() {
 	// Arrange & Act
 	let error = SocialAuthError::Discovery("Discovery document not found".to_string());
@@ -54,7 +54,7 @@ fn test_error_discovery() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_state_validation() {
 	// Arrange & Act
 	let error = SocialAuthError::StateValidation("Invalid state parameter".to_string());
@@ -66,7 +66,7 @@ fn test_error_state_validation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_pkce_validation() {
 	// Arrange & Act
 	let error = SocialAuthError::PkceValidation("Invalid code verifier".to_string());
@@ -78,7 +78,7 @@ fn test_error_pkce_validation() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_provider() {
 	// Arrange & Act
 	let error = SocialAuthError::Provider("Provider unavailable".to_string());
@@ -87,7 +87,7 @@ fn test_error_provider() {
 	assert_eq!(error.to_string(), "Provider error: Provider unavailable");
 }
 
-#[test]
+#[rstest]
 fn test_error_configuration() {
 	// Arrange & Act
 	let error = SocialAuthError::Configuration("Missing client_id".to_string());
@@ -96,7 +96,7 @@ fn test_error_configuration() {
 	assert_eq!(error.to_string(), "Configuration error: Missing client_id");
 }
 
-#[test]
+#[rstest]
 fn test_error_invalid_state() {
 	// Arrange & Act
 	let error = SocialAuthError::InvalidState;
@@ -105,7 +105,7 @@ fn test_error_invalid_state() {
 	assert_eq!(error.to_string(), "Invalid state");
 }
 
-#[test]
+#[rstest]
 fn test_error_token_exchange_error() {
 	// Arrange & Act
 	let error = SocialAuthError::TokenExchangeError("Invalid authorization code".to_string());
@@ -117,7 +117,7 @@ fn test_error_token_exchange_error() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_token_refresh_error() {
 	// Arrange & Act
 	let error = SocialAuthError::TokenRefreshError("Refresh token expired".to_string());
@@ -129,7 +129,7 @@ fn test_error_token_refresh_error() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_invalid_jwk() {
 	// Arrange & Act
 	let error = SocialAuthError::InvalidJwk("Invalid key format".to_string());
@@ -138,7 +138,7 @@ fn test_error_invalid_jwk() {
 	assert_eq!(error.to_string(), "Invalid JWK: Invalid key format");
 }
 
-#[test]
+#[rstest]
 fn test_error_invalid_id_token() {
 	// Arrange & Act
 	let error = SocialAuthError::InvalidIdToken("Expired token".to_string());
@@ -147,7 +147,7 @@ fn test_error_invalid_id_token() {
 	assert_eq!(error.to_string(), "Invalid ID token: Expired token");
 }
 
-#[test]
+#[rstest]
 fn test_error_from_serde_json() {
 	// Arrange
 	let json_error = serde_json::from_str::<serde_json::Value>("{invalid json}").unwrap_err();
@@ -159,7 +159,7 @@ fn test_error_from_serde_json() {
 	assert!(matches!(social_error, SocialAuthError::InvalidResponse(_)));
 }
 
-#[test]
+#[rstest]
 fn test_error_to_authentication_error() {
 	// Arrange
 	let social_error = SocialAuthError::TokenValidation("Bad token".to_string());
@@ -174,7 +174,7 @@ fn test_error_to_authentication_error() {
 	));
 }
 
-#[test]
+#[rstest]
 fn test_error_serialization() {
 	// Arrange
 	let error = SocialAuthError::Configuration("Missing client_id".to_string());
@@ -187,7 +187,7 @@ fn test_error_serialization() {
 	assert!(display.contains("Missing client_id"));
 }
 
-#[test]
+#[rstest]
 fn test_error_unknown() {
 	// Arrange & Act
 	let error = SocialAuthError::Unknown("Unknown error occurred".to_string());
@@ -196,7 +196,7 @@ fn test_error_unknown() {
 	assert_eq!(error.to_string(), "Unknown error: Unknown error occurred");
 }
 
-#[test]
+#[rstest]
 fn test_error_not_supported() {
 	// Arrange & Act
 	let error = SocialAuthError::NotSupported("UserInfo endpoint not supported".to_string());
@@ -208,7 +208,7 @@ fn test_error_not_supported() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_error_user_mapping() {
 	// Arrange & Act
 	let error = SocialAuthError::UserMapping("Cannot map user".to_string());
@@ -217,7 +217,7 @@ fn test_error_user_mapping() {
 	assert_eq!(error.to_string(), "User mapping error: Cannot map user");
 }
 
-#[test]
+#[rstest]
 fn test_error_storage() {
 	// Arrange & Act
 	let error = SocialAuthError::Storage("Database error".to_string());
@@ -226,7 +226,7 @@ fn test_error_storage() {
 	assert_eq!(error.to_string(), "Storage error: Database error");
 }
 
-#[test]
+#[rstest]
 fn test_error_user_info() {
 	// Arrange & Act
 	let error = SocialAuthError::UserInfoError("UserInfo endpoint error".to_string());
@@ -235,7 +235,7 @@ fn test_error_user_info() {
 	assert_eq!(error.to_string(), "UserInfo error: UserInfo endpoint error");
 }
 
-#[test]
+#[rstest]
 fn test_error_invalid_configuration() {
 	// Arrange & Act
 	let error = SocialAuthError::InvalidConfiguration("Invalid redirect URI".to_string());

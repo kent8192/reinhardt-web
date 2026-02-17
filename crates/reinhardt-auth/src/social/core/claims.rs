@@ -117,8 +117,9 @@ impl From<IdToken> for StandardClaims {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_id_token_serde() {
 		let id_token = IdToken {
 			sub: "user123".to_string(),
@@ -147,7 +148,7 @@ mod tests {
 		assert_eq!(deserialized.email, Some("user@example.com".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_standard_claims_from_id_token() {
 		let id_token = IdToken {
 			sub: "user456".to_string(),
@@ -174,7 +175,7 @@ mod tests {
 		assert_eq!(claims.name, Some("Test User".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_additional_claims() {
 		let json = r#"{
 			"sub": "user789",

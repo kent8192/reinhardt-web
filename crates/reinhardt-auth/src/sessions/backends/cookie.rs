@@ -271,11 +271,13 @@ impl SessionBackend for CookieSessionBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
 	const TEST_ENCRYPTION_KEY: &[u8; 32] = b"test_encryption_key_32bytes_ok!!";
 	const TEST_SIGNING_SECRET: &[u8] = b"test_signing_secret_key";
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_backend_save_and_load() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -296,6 +298,7 @@ mod tests {
 		assert_eq!(loaded_data["is_admin"], true);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_backend_delete() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -313,6 +316,7 @@ mod tests {
 		assert!(loaded.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_encryption_and_decryption() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -327,6 +331,7 @@ mod tests {
 		assert_eq!(decrypted, original_data);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signature_verification() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -338,6 +343,7 @@ mod tests {
 		backend.verify_signature(data, &signature).unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tampered_signature_fails() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -355,6 +361,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_size_limitation() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -378,6 +385,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cookie_backend_exists() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -390,6 +398,7 @@ mod tests {
 		assert!(backend.exists("existing").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_encryption_keys_produce_different_results() {
 		let key1 = b"first_encryption_key_32_bytes_12";
@@ -413,6 +422,7 @@ mod tests {
 		assert!(backend2.verify_and_decrypt(&encrypted1).is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_session_data() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);
@@ -427,6 +437,7 @@ mod tests {
 		assert_eq!(loaded.unwrap().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_complex_nested_data() {
 		let backend = CookieSessionBackend::new(TEST_ENCRYPTION_KEY, TEST_SIGNING_SECRET);

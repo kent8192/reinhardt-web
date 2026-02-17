@@ -377,8 +377,9 @@ impl AutoTokenRotationManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_creation() {
 		let config = TokenRotationConfig::new();
 		assert_eq!(config.rotation_interval, 3600);
@@ -387,7 +388,7 @@ mod tests {
 		assert!(!config.rotate_on_use);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = TokenRotationConfig::new()
 			.rotation_interval(7200)
@@ -401,7 +402,7 @@ mod tests {
 		assert!(config.rotate_on_use);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rotation_record_creation() {
 		let record = TokenRotationRecord::new("old_token", "new_token", 1234567890);
 		assert_eq!(record.old_token(), "old_token");
@@ -410,13 +411,13 @@ mod tests {
 		assert_eq!(record.user_id(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rotation_record_with_user_id() {
 		let record = TokenRotationRecord::new("old", "new", 123).with_user_id(42);
 		assert_eq!(record.user_id(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grace_period_expired() {
 		let record = TokenRotationRecord::new("old", "new", 1000);
 
@@ -425,7 +426,7 @@ mod tests {
 		assert!(record.grace_period_expired(1301, 300)); // 301s elapsed, grace = 300s
 	}
 
-	#[test]
+	#[rstest]
 	fn test_manager_creation() {
 		let config = TokenRotationConfig::new();
 		let manager = AutoTokenRotationManager::new(config.clone());
@@ -433,7 +434,7 @@ mod tests {
 		assert_eq!(manager.rotation_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_rotate() {
 		let config = TokenRotationConfig::new().rotation_interval(3600);
 		let manager = AutoTokenRotationManager::new(config);
@@ -444,7 +445,7 @@ mod tests {
 		assert!(manager.should_rotate(5000, 10000)); // 5000s elapsed > 3600s
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_and_get_rotation() {
 		let config = TokenRotationConfig::new().grace_period(300);
 		let manager = AutoTokenRotationManager::new(config);
@@ -462,7 +463,7 @@ mod tests {
 		assert_eq!(manager.get_rotated_token("old_token", 2000), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cleanup_expired() {
 		let config = TokenRotationConfig::new().grace_period(300);
 		let manager = AutoTokenRotationManager::new(config);
@@ -482,7 +483,7 @@ mod tests {
 		assert_eq!(manager.rotation_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_rotations() {
 		let config = TokenRotationConfig::new().grace_period(300);
 		let manager = AutoTokenRotationManager::new(config);

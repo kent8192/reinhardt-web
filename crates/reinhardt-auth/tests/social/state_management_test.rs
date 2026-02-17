@@ -5,6 +5,7 @@ use reinhardt_auth::social::flow::{InMemoryStateStore, StateData, StateStore};
 use rstest::*;
 use std::sync::Arc;
 
+#[rstest]
 #[tokio::test]
 async fn test_state_store_and_retrieve() {
 	// Arrange
@@ -26,6 +27,7 @@ async fn test_state_store_and_retrieve() {
 	assert!(!retrieved.is_expired());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_reject_expired() {
 	// Arrange
@@ -45,6 +47,7 @@ async fn test_state_reject_expired() {
 	assert!(result.is_err(), "Expired state should be rejected");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_removed_after_use() {
 	// Arrange
@@ -64,6 +67,7 @@ async fn test_state_removed_after_use() {
 	assert!(result.is_err(), "State should be removed");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_cleanup_expired() {
 	// Arrange
@@ -96,6 +100,7 @@ async fn test_state_cleanup_expired() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_concurrent_operations() {
 	// Arrange
@@ -128,6 +133,7 @@ async fn test_state_concurrent_operations() {
 	}
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_custom_ttl() {
 	// Arrange
@@ -149,6 +155,7 @@ async fn test_state_custom_ttl() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_with_all_fields() {
 	// Arrange
@@ -170,6 +177,7 @@ async fn test_state_with_all_fields() {
 	assert!(!retrieved.is_expired());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_with_none_fields() {
 	// Arrange
@@ -186,6 +194,7 @@ async fn test_state_with_none_fields() {
 	assert!(retrieved.code_verifier.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_overwrite() {
 	// Arrange
@@ -211,6 +220,7 @@ async fn test_state_overwrite() {
 	assert_eq!(retrieved.code_verifier, Some("verifier2".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_retrieve_nonexistent() {
 	// Arrange
@@ -223,6 +233,7 @@ async fn test_state_retrieve_nonexistent() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_state_remove_nonexistent() {
 	// Arrange

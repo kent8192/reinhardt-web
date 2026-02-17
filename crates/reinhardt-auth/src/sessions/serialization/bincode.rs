@@ -89,6 +89,7 @@ impl Serializer for BincodeSerializer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -98,7 +99,7 @@ mod tests {
 		active: bool,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bincode_serializer() {
 		let serializer = BincodeSerializer;
 		let data = TestData {
@@ -113,7 +114,7 @@ mod tests {
 		assert_eq!(data, restored);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bincode_serializer_with_complex_types() {
 		#[derive(Serialize, Deserialize, PartialEq, Debug)]
 		struct Complex {
@@ -142,7 +143,7 @@ mod tests {
 		assert_eq!(data, restored);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bincode_serializer_with_option_types() {
 		#[derive(Serialize, Deserialize, PartialEq, Debug)]
 		struct WithOption {
@@ -171,7 +172,7 @@ mod tests {
 		assert_eq!(data_none, restored_none);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bincode_serializer_payload_size() {
 		#[derive(Serialize, Deserialize)]
 		struct Data {

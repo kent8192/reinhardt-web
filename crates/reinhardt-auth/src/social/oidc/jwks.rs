@@ -216,8 +216,9 @@ impl JwksCache {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_jwk_set_find_key() {
 		let jwks = JwkSet {
 			keys: vec![
@@ -251,7 +252,7 @@ mod tests {
 		assert!(jwks.find_key("key3").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cached_jwks_expiration() {
 		let jwks = JwkSet { keys: vec![] };
 
@@ -262,6 +263,7 @@ mod tests {
 		assert!(expired.is_expired());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_creation() {
 		let client = OAuth2Client::new();
@@ -269,6 +271,7 @@ mod tests {
 		assert!(cache.cache.read().await.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_with_custom_ttl() {
 		let client = OAuth2Client::new();
@@ -276,6 +279,7 @@ mod tests {
 		assert_eq!(cache.cache_ttl, Duration::minutes(30));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_cache() {
 		let client = OAuth2Client::new();

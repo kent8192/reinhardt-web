@@ -9,6 +9,7 @@ use rstest::*;
 #[path = "../../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_token_refresh_with_mock_server() {
 	// Arrange
@@ -35,6 +36,7 @@ async fn test_token_refresh_with_mock_server() {
 	assert_eq!(response.token_type, "Bearer");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_token_refresh_server_error() {
 	// Arrange

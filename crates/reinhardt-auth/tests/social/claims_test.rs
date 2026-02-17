@@ -5,7 +5,7 @@ use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
 
-#[test]
+#[rstest]
 fn test_id_token_serialize() {
 	// Arrange
 	let token = IdToken {
@@ -33,7 +33,7 @@ fn test_id_token_serialize() {
 	assert!(json.contains("\"iss\":\"https://accounts.google.com\""));
 }
 
-#[test]
+#[rstest]
 fn test_id_token_deserialize() {
 	// Arrange
 	let json = json!({
@@ -61,7 +61,7 @@ fn test_id_token_deserialize() {
 	assert_eq!(token.email_verified, Some(true));
 }
 
-#[test]
+#[rstest]
 fn test_id_token_to_standard_claims() {
 	// Arrange
 	let id_token = IdToken {
@@ -100,7 +100,7 @@ fn test_id_token_to_standard_claims() {
 	assert_eq!(standard.name, Some("Test User".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_standard_claims_optional_fields() {
 	// Arrange
 	let claims = StandardClaims {
@@ -125,7 +125,7 @@ fn test_standard_claims_optional_fields() {
 	assert!(!json.contains("\"name\""));
 }
 
-#[test]
+#[rstest]
 fn test_standard_claims_with_additional_claims() {
 	// Arrange
 	let mut additional = HashMap::new();
@@ -153,7 +153,7 @@ fn test_standard_claims_with_additional_claims() {
 	assert!(json.contains("\"custom_field\":\"custom_value\""));
 }
 
-#[test]
+#[rstest]
 fn test_id_token_validation_timestamps() {
 	// Arrange
 	let now = chrono::Utc::now().timestamp();
@@ -180,7 +180,7 @@ fn test_id_token_validation_timestamps() {
 	assert!(token.exp > now, "Token must not be expired");
 }
 
-#[test]
+#[rstest]
 fn test_standard_claims_parse_from_response() {
 	// Arrange
 	let json = json!({

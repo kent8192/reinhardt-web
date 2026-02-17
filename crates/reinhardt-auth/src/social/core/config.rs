@@ -166,8 +166,9 @@ impl ProviderConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_google_config() {
 		let config = ProviderConfig::google(
 			"client_id".to_string(),
@@ -181,7 +182,7 @@ mod tests {
 		assert_eq!(config.scopes, vec!["openid", "email", "profile"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_github_config() {
 		let config = ProviderConfig::github(
 			"client_id".to_string(),
@@ -195,7 +196,7 @@ mod tests {
 		assert_eq!(config.scopes, vec!["user", "user:email"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apple_config() {
 		let config = ProviderConfig::apple(
 			"client_id".to_string(),
@@ -209,7 +210,7 @@ mod tests {
 		assert_eq!(config.client_secret, "test_client_secret_jwt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_microsoft_config() {
 		let config = ProviderConfig::microsoft(
 			"client_id".to_string(),
@@ -224,7 +225,7 @@ mod tests {
 		assert!(config.oidc.unwrap().discovery_url.contains("common"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_serde() {
 		let config = ProviderConfig::google(
 			"test_client".to_string(),

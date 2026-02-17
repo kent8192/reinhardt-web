@@ -135,8 +135,9 @@ impl Compressor for BrotliCompressor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_brotli_compress_decompress() {
 		let compressor = BrotliCompressor::new();
 		let data = b"Hello, World! This is test data for Brotli compression.";
@@ -147,7 +148,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_compression_ratio() {
 		let compressor = BrotliCompressor::new();
 		let data = b"A".repeat(1000); // Highly compressible data
@@ -158,7 +159,7 @@ mod tests {
 		assert!(compressed.len() < data.len() / 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_with_level() {
 		let low_compression = BrotliCompressor::with_level(1);
 		let high_compression = BrotliCompressor::with_level(11);
@@ -176,7 +177,7 @@ mod tests {
 		assert_eq!(high_compression.decompress(&high_compressed).unwrap(), data);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_empty_data() {
 		let compressor = BrotliCompressor::new();
 		let data = b"";
@@ -187,7 +188,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_large_data() {
 		let compressor = BrotliCompressor::new();
 		let data = vec![b'X'; 100_000]; // 100KB of data
@@ -200,25 +201,25 @@ mod tests {
 		assert!(compressed.len() < 1000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_name() {
 		let compressor = BrotliCompressor::new();
 		assert_eq!(compressor.name(), "brotli");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_level_getter() {
 		let compressor = BrotliCompressor::with_level(9);
 		assert_eq!(compressor.level(), 9);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_default() {
 		let compressor = BrotliCompressor::default();
 		assert_eq!(compressor.level(), 6);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_fast_compression() {
 		let compressor = BrotliCompressor::with_level(0);
 		let data = b"Test data for fast compression";

@@ -221,21 +221,22 @@ pub const SESSION_KEY_USER_ID: &str = "_auth_user_id";
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_session_new() {
 		let session = Session::new();
 		assert!(session.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_set_get() {
 		let mut session = Session::new();
 		session.set("key", serde_json::json!("value"));
 		assert_eq!(session.get("key"), Some(&serde_json::json!("value")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_remove() {
 		let mut session = Session::new();
 		session.set("key", serde_json::json!("value"));
@@ -243,7 +244,7 @@ mod tests {
 		assert!(session.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_clear() {
 		let mut session = Session::new();
 		session.set("key1", serde_json::json!("value1"));
@@ -252,6 +253,7 @@ mod tests {
 		assert!(session.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_session_store() {
 		let store = InMemorySessionStore::new();
@@ -272,6 +274,7 @@ mod tests {
 		assert!(store.load(&session_id).await.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_store_create_session_id() {
 		let store = InMemorySessionStore::new();

@@ -81,8 +81,9 @@ impl TokenResponse {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_token_response_to_oauth_token() {
 		let response = TokenResponse {
 			access_token: "access_123".to_string(),
@@ -103,7 +104,7 @@ mod tests {
 		assert!(token.expires_at > Utc::now());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_response_default_expiration() {
 		let response = TokenResponse {
 			access_token: "access_123".to_string(),
@@ -122,7 +123,7 @@ mod tests {
 		assert!(token.expires_at <= expected_expiry + chrono::Duration::seconds(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_serde() {
 		let token = OAuthToken {
 			access_token: "test_access".to_string(),

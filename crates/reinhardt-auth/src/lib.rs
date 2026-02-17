@@ -196,9 +196,10 @@ pub trait AuthenticationBackend: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use uuid::Uuid;
 
-	#[test]
+	#[rstest]
 	#[cfg(feature = "jwt")]
 	fn test_auth_jwt_generate_unit() {
 		let jwt_auth = JwtAuth::new(b"test_secret_key");
@@ -210,6 +211,7 @@ mod tests {
 		assert!(!token.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_allow_any() {
 		use bytes::Bytes;
@@ -235,6 +237,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_authenticated_with_auth() {
 		use bytes::Bytes;
@@ -260,6 +263,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_authenticated_without_auth() {
 		use bytes::Bytes;
@@ -285,6 +289,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_admin_user() {
 		use bytes::Bytes;
@@ -320,6 +325,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_active_user() {
 		use bytes::Bytes;
@@ -355,6 +361,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_authenticated_or_read_only_get() {
 		use bytes::Bytes;
@@ -380,6 +387,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_is_authenticated_or_read_only_post() {
 		use bytes::Bytes;
@@ -415,7 +423,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_user_implementation() {
 		let user = SimpleUser {
 			id: Uuid::new_v4(),
@@ -434,7 +442,7 @@ mod tests {
 		assert!(!user.is_admin());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_anonymous_user() {
 		let user = AnonymousUser;
 

@@ -67,6 +67,7 @@ impl Serializer for JsonSerializer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -76,7 +77,7 @@ mod tests {
 		active: bool,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer() {
 		let serializer = JsonSerializer;
 		let data = TestData {
@@ -91,7 +92,7 @@ mod tests {
 		assert_eq!(data, restored);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer_with_value() {
 		let serializer = JsonSerializer;
 		let data = serde_json::json!({

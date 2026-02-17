@@ -88,6 +88,7 @@ impl Serializer for CborSerializer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -97,7 +98,7 @@ mod tests {
 		active: bool,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cbor_serializer() {
 		let serializer = CborSerializer;
 		let data = TestData {
@@ -112,7 +113,7 @@ mod tests {
 		assert_eq!(data, restored);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cbor_serializer_with_complex_types() {
 		#[derive(Serialize, Deserialize, PartialEq, Debug)]
 		struct Complex {
@@ -141,7 +142,7 @@ mod tests {
 		assert_eq!(data, restored);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cbor_serializer_with_option_types() {
 		#[derive(Serialize, Deserialize, PartialEq, Debug)]
 		struct WithOption {

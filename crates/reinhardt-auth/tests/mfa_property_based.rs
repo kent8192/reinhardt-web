@@ -86,7 +86,7 @@ fn generate_totp_for_secret(secret: &str, time_window: u64) -> Option<String> {
 
 proptest! {
 	/// Property: Generated TOTP codes are always exactly 6 digits
-	#[test]
+	#[rstest]
 	fn test_totp_code_always_6_digits(
 		secret in base32_secret_strategy(),
 		time_window in time_window_strategy(),
@@ -101,7 +101,7 @@ proptest! {
 	}
 
 	/// Property: TOTP codes are numeric strings from 000000 to 999999
-	#[test]
+	#[rstest]
 	fn test_totp_code_in_valid_range(
 		secret in base32_secret_strategy(),
 	) {
@@ -118,7 +118,7 @@ proptest! {
 
 proptest! {
 	/// Property: TOTP URL is always a valid otpauth URI format
-	#[test]
+	#[rstest]
 	fn test_totp_url_is_valid_format(
 		issuer in issuer_strategy(),
 		username in username_strategy(),
@@ -143,7 +143,7 @@ proptest! {
 	}
 
 	/// Property: TOTP URL contains the provided username
-	#[test]
+	#[rstest]
 	fn test_totp_url_contains_username(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -159,7 +159,7 @@ proptest! {
 	}
 
 	/// Property: TOTP URL contains the provided secret
-	#[test]
+	#[rstest]
 	fn test_totp_url_contains_secret(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -181,7 +181,7 @@ proptest! {
 
 proptest! {
 	/// Property: Get secret always returns exactly what was registered
-	#[test]
+	#[rstest]
 	fn test_registration_preserves_secret(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -200,7 +200,7 @@ proptest! {
 	}
 
 	/// Property: Registration is idempotent for same username/secret
-	#[test]
+	#[rstest]
 	fn test_registration_idempotent_same_secret(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -219,7 +219,7 @@ proptest! {
 	}
 
 	/// Property: Re-registration overwrites previous secret
-	#[test]
+	#[rstest]
 	fn test_reregistration_overwrites_secret(
 		username in username_strategy(),
 		secret1 in base32_secret_strategy(),
@@ -243,7 +243,7 @@ proptest! {
 	}
 
 	/// Property: Different usernames have independent secrets
-	#[test]
+	#[rstest]
 	fn test_usernames_have_independent_secrets(
 		username1 in username_strategy(),
 		username2 in username_strategy(),
@@ -270,7 +270,7 @@ proptest! {
 
 proptest! {
 	/// Property: Valid code verification returns Ok (not error)
-	#[test]
+	#[rstest]
 	fn test_verification_returns_ok_for_registered_user(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -289,7 +289,7 @@ proptest! {
 	}
 
 	/// Property: Verification fails with error for unregistered user
-	#[test]
+	#[rstest]
 	fn test_verification_errors_for_unregistered_user(
 		username in username_strategy(),
 		code in totp_code_strategy(),
@@ -306,7 +306,7 @@ proptest! {
 	}
 
 	/// Property: Self-generated code validates successfully
-	#[test]
+	#[rstest]
 	fn test_self_generated_code_validates(
 		username in username_strategy(),
 		secret in base32_secret_strategy(),
@@ -330,7 +330,7 @@ proptest! {
 	/// Property: Different secrets usually produce different codes at same time
 	///
 	/// Note: This is probabilistic - collisions are possible but rare
-	#[test]
+	#[rstest]
 	fn test_different_secrets_usually_different_codes(
 		secret1 in base32_secret_strategy(),
 		secret2 in base32_secret_strategy(),
@@ -359,7 +359,7 @@ proptest! {
 
 proptest! {
 	/// Property: Time window configuration is preserved
-	#[test]
+	#[rstest]
 	fn test_time_window_preserved(
 		time_window in time_window_strategy(),
 	) {

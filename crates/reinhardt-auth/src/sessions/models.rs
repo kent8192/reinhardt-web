@@ -342,9 +342,10 @@ impl Model for SessionModel {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_session_model_new() {
 		let session = SessionModel::new("test_key".to_string(), json!({"test": "data"}), 3600);
 
@@ -353,7 +354,7 @@ mod tests {
 		assert!(session.expire_date() > &Utc::now());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_with_expire_date() {
 		let expire_date = Utc::now() + Duration::hours(2);
 		let session = SessionModel::with_expire_date(
@@ -366,7 +367,7 @@ mod tests {
 		assert_eq!(session.expire_date(), &expire_date);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_getters() {
 		let data = json!({"user_id": 42});
 		let session = SessionModel::new("key_123".to_string(), data.clone(), 3600);
@@ -376,7 +377,7 @@ mod tests {
 		assert!(session.expire_date() > &Utc::now());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_set_session_data() {
 		let mut session = SessionModel::new("key".to_string(), json!({}), 3600);
 
@@ -386,7 +387,7 @@ mod tests {
 		assert_eq!(session.session_data(), &new_data);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_set_expire_date() {
 		let mut session = SessionModel::new("key".to_string(), json!({}), 3600);
 
@@ -396,7 +397,7 @@ mod tests {
 		assert_eq!(session.expire_date(), &new_expire);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_is_valid() {
 		let valid_session = SessionModel::new("valid".to_string(), json!({}), 3600);
 		assert!(valid_session.is_valid());
@@ -405,7 +406,7 @@ mod tests {
 		assert!(!expired_session.is_valid());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_is_expired() {
 		let active_session = SessionModel::new("active".to_string(), json!({}), 3600);
 		assert!(!active_session.is_expired());
@@ -414,7 +415,7 @@ mod tests {
 		assert!(expired_session.is_expired());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_extend() {
 		let mut session = SessionModel::new("key".to_string(), json!({}), 3600);
 		let original_expire = *session.expire_date();
@@ -425,7 +426,7 @@ mod tests {
 		assert_eq!(session.expire_date(), &expected_expire);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_refresh() {
 		let mut session = SessionModel::new("key".to_string(), json!({}), 3600);
 
@@ -444,7 +445,7 @@ mod tests {
 		assert!(diff < 2);
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(feature = "database")]
 	fn test_session_model_implements_model_trait() {
 		let session = SessionModel::new("model_key".to_string(), json!({}), 3600);
@@ -454,7 +455,7 @@ mod tests {
 		assert_eq!(session.primary_key(), Some("model_key".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(feature = "database")]
 	fn test_session_model_set_primary_key() {
 		let mut session = SessionModel::new("old_key".to_string(), json!({}), 3600);
@@ -464,7 +465,7 @@ mod tests {
 		assert_eq!(session.primary_key(), Some("new_key".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_serialization() {
 		let session =
 			SessionModel::new("serialize_test".to_string(), json!({"data": "value"}), 3600);
@@ -479,7 +480,7 @@ mod tests {
 		assert_eq!(deserialized.session_data(), &json!({"data": "value"}));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_model_edge_cases() {
 		// Very short TTL
 		let short_ttl = SessionModel::new("short".to_string(), json!({}), 1);

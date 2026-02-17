@@ -3,7 +3,7 @@
 use reinhardt_auth::social::flow::PkceFlow;
 use rstest::*;
 
-#[test]
+#[rstest]
 fn test_pkce_verifier_valid_length() {
 	// Act
 	let (verifier, _) = PkceFlow::generate();
@@ -22,7 +22,7 @@ fn test_pkce_verifier_valid_length() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_pkce_verifier_is_alphanumeric() {
 	// Arrange & Act
 	let (verifier, _) = PkceFlow::generate();
@@ -34,7 +34,7 @@ fn test_pkce_verifier_is_alphanumeric() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_pkce_calculate_s256_challenge_known_vector() {
 	// Arrange
 	// This is a known test vector from RFC 7636
@@ -53,7 +53,7 @@ fn test_pkce_calculate_s256_challenge_known_vector() {
 	assert_eq!(expected, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 }
 
-#[test]
+#[rstest]
 fn test_pkce_challenge_is_base64url_no_padding() {
 	// Arrange & Act
 	let (_, challenge) = PkceFlow::generate();
@@ -73,7 +73,7 @@ fn test_pkce_challenge_is_base64url_no_padding() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_pkce_pairs_are_unique() {
 	// Arrange & Act
 	let (verifier1, challenge1) = PkceFlow::generate();
@@ -92,7 +92,7 @@ fn test_pkce_pairs_are_unique() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_pkce_challenge_method() {
 	// Arrange & Act
 	let (_, challenge) = PkceFlow::generate();
@@ -103,7 +103,7 @@ fn test_pkce_challenge_method() {
 	assert_eq!(challenge.method().as_str(), "S256");
 }
 
-#[test]
+#[rstest]
 fn test_pkce_verifier_as_str() {
 	// Arrange & Act
 	let (verifier, _) = PkceFlow::generate();
@@ -113,7 +113,7 @@ fn test_pkce_verifier_as_str() {
 	assert!(verifier.as_str().len() >= 43);
 }
 
-#[test]
+#[rstest]
 fn test_pkce_challenge_as_str() {
 	// Arrange & Act
 	let (_, challenge) = PkceFlow::generate();

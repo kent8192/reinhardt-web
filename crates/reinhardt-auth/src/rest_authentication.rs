@@ -563,7 +563,9 @@ mod tests {
 	use crate::basic::BasicAuthentication;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(feature = "jwt")]
 	async fn test_composite_authentication() {
@@ -594,6 +596,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "user1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_authentication() {
 		let mut auth = TokenAuthentication::new();
@@ -617,6 +620,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "alice");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remote_user_authentication() {
 		let auth = RemoteUserAuthentication::new();
@@ -639,6 +643,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "bob");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_authentication() {
 		use crate::sessions::InMemorySessionBackend;
@@ -683,6 +688,7 @@ mod tests {
 		assert_eq!(user.get_username(), "testuser");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_token_config() {
 		let config = TokenAuthConfig {

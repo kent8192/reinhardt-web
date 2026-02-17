@@ -175,6 +175,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
+	use rstest::rstest;
 
 	fn create_request_with_auth(auth: &str) -> Request {
 		let mut headers = HeaderMap::new();
@@ -188,6 +189,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_auth_success() {
 		let mut backend = BasicAuthentication::new();
@@ -204,6 +206,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "testuser");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_auth_invalid_password() {
 		let mut backend = BasicAuthentication::new();
@@ -217,6 +220,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_auth_no_header() {
 		let backend = BasicAuthentication::new();
@@ -233,7 +237,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_auth_header() {
 		let backend = BasicAuthentication::new();
 
@@ -242,6 +246,7 @@ mod tests {
 		assert_eq!(pass, "pass");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_user() {
 		let mut backend = BasicAuthentication::new();

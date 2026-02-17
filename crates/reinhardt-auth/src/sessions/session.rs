@@ -756,7 +756,9 @@ impl<B: SessionBackend> Session<B> {
 mod tests {
 	use super::*;
 	use crate::sessions::InMemorySessionBackend;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_set_get() {
 		let backend = InMemorySessionBackend::new();
@@ -767,6 +769,7 @@ mod tests {
 		assert_eq!(user_id, 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_delete() {
 		let backend = InMemorySessionBackend::new();
@@ -779,6 +782,7 @@ mod tests {
 		assert!(!session.contains_key("key"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_flush() {
 		let backend = InMemorySessionBackend::new();
@@ -793,6 +797,7 @@ mod tests {
 		assert_ne!(session.get_or_create_key(), old_key);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_cycle_key() {
 		let backend = InMemorySessionBackend::new();
@@ -808,6 +813,7 @@ mod tests {
 		assert_ne!(session.get_or_create_key(), old_key);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_is_modified() {
 		let backend = InMemorySessionBackend::new();
@@ -819,6 +825,7 @@ mod tests {
 		assert!(session.is_modified());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_is_accessed() {
 		let backend = InMemorySessionBackend::new();
@@ -830,6 +837,7 @@ mod tests {
 		assert!(session.is_accessed());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_save() {
 		let backend = InMemorySessionBackend::new();
@@ -844,6 +852,7 @@ mod tests {
 		assert!(loaded.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_keys() {
 		let backend = InMemorySessionBackend::new();
@@ -860,6 +869,7 @@ mod tests {
 		assert!(keys.contains(&"role".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_keys_marks_accessed() {
 		let backend = InMemorySessionBackend::new();
@@ -875,6 +885,7 @@ mod tests {
 		assert!(session.is_accessed());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_values() {
 		let backend = InMemorySessionBackend::new();
@@ -893,6 +904,7 @@ mod tests {
 		assert!(has_test);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_values_marks_accessed() {
 		let backend = InMemorySessionBackend::new();
@@ -908,6 +920,7 @@ mod tests {
 		assert!(session.is_accessed());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_items() {
 		let backend = InMemorySessionBackend::new();
@@ -927,6 +940,7 @@ mod tests {
 		assert_eq!(role_item.1.as_str().unwrap(), "admin");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_items_marks_accessed() {
 		let backend = InMemorySessionBackend::new();
@@ -942,6 +956,7 @@ mod tests {
 		assert!(session.is_accessed());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_clear() {
 		let backend = InMemorySessionBackend::new();
@@ -960,6 +975,7 @@ mod tests {
 		assert!(session.is_accessed());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_clear_preserves_session_key() {
 		let backend = InMemorySessionBackend::new();
@@ -974,6 +990,7 @@ mod tests {
 		assert_eq!(session.get_or_create_key(), session_key);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_mark_modified() {
 		let backend = InMemorySessionBackend::new();
@@ -985,6 +1002,7 @@ mod tests {
 		assert!(session.is_modified());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_mark_unmodified() {
 		let backend = InMemorySessionBackend::new();
@@ -997,6 +1015,7 @@ mod tests {
 		assert!(!session.is_modified());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_mark_unmodified_prevents_save() {
 		let backend = InMemorySessionBackend::new();

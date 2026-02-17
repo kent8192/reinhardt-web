@@ -101,8 +101,9 @@ impl AuthorizationFlow {
 mod tests {
 	use super::*;
 	use crate::social::flow::pkce::PkceFlow;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_build_basic_oauth2_url() {
 		let config = ProviderConfig::github(
 			"test_client".to_string(),
@@ -122,7 +123,7 @@ mod tests {
 		assert!(url.contains("scope=user"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_oidc_url_with_nonce() {
 		let config = ProviderConfig::google(
 			"test_client".to_string(),
@@ -144,7 +145,7 @@ mod tests {
 		assert!(url.contains("scope=openid"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_url_with_pkce() {
 		let config = ProviderConfig::google(
 			"test_client".to_string(),
@@ -167,7 +168,7 @@ mod tests {
 		assert!(url.contains("code_challenge_method=S256"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_url_with_all_parameters() {
 		let config = ProviderConfig::google(
 			"test_client".to_string(),
@@ -195,7 +196,7 @@ mod tests {
 		assert!(url.contains("code_challenge_method=S256"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_scope_joining() {
 		let mut config = ProviderConfig::google(
 			"test_client".to_string(),
@@ -221,7 +222,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_endpoint_url() {
 		let config = ProviderConfig::google(
 			"test_client".to_string(),

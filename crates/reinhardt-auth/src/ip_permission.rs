@@ -421,8 +421,9 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cidr_range_from_str() {
 		let cidr = CidrRange::from_str("192.168.1.0/24").unwrap();
 		assert_eq!(cidr.prefix_len, 24);
@@ -431,14 +432,14 @@ mod tests {
 		assert_eq!(cidr6.prefix_len, 32);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cidr_range_invalid() {
 		assert!(CidrRange::from_str("192.168.1.0").is_err());
 		assert!(CidrRange::from_str("192.168.1.0/33").is_err());
 		assert!(CidrRange::from_str("invalid/24").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cidr_contains_ipv4() {
 		let cidr = CidrRange::from_str("192.168.1.0/24").unwrap();
 
@@ -451,7 +452,7 @@ mod tests {
 		assert!(!cidr.contains(&ip3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cidr_contains_ipv6() {
 		let cidr = CidrRange::from_str("2001:db8::/32").unwrap();
 
@@ -464,7 +465,7 @@ mod tests {
 		assert!(!cidr.contains(&ip3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitelist_permission_creation() {
 		let permission = IpWhitelistPermission::new();
 		assert_eq!(permission.allowed_ips.len(), 0);
@@ -472,7 +473,7 @@ mod tests {
 		assert!(permission.deny_on_error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitelist_add_ip() {
 		let permission = IpWhitelistPermission::new()
 			.add_ip("192.168.1.1")
@@ -481,7 +482,7 @@ mod tests {
 		assert_eq!(permission.allowed_ips.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitelist_add_cidr() {
 		let permission = IpWhitelistPermission::new()
 			.add_cidr("192.168.1.0/24")
@@ -490,7 +491,7 @@ mod tests {
 		assert_eq!(permission.allowed_cidrs.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitelist_is_allowed() {
 		let permission = IpWhitelistPermission::new()
 			.add_ip("192.168.1.1")
@@ -505,6 +506,7 @@ mod tests {
 		assert!(!permission.is_allowed(&ip3));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_whitelist_permission_with_header() {
 		let permission = IpWhitelistPermission::new().add_ip("192.168.1.1");
@@ -531,7 +533,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_blacklist_permission_creation() {
 		let permission = IpBlacklistPermission::new();
 		assert_eq!(permission.blocked_ips.len(), 0);
@@ -539,7 +541,7 @@ mod tests {
 		assert!(!permission.allow_on_error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_blacklist_add_ip() {
 		let permission = IpBlacklistPermission::new()
 			.add_ip("192.168.1.100")
@@ -548,7 +550,7 @@ mod tests {
 		assert_eq!(permission.blocked_ips.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_blacklist_is_blocked() {
 		let permission = IpBlacklistPermission::new()
 			.add_ip("192.168.1.100")
@@ -563,6 +565,7 @@ mod tests {
 		assert!(!permission.is_blocked(&ip3));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_blacklist_permission_with_header() {
 		let permission = IpBlacklistPermission::new().add_ip("192.168.1.100");

@@ -123,8 +123,9 @@ impl Compressor for ZstdCompressor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_zstd_compress_decompress() {
 		let compressor = ZstdCompressor::new();
 		let data = b"Hello, World! This is test data for Zstd compression.";
@@ -135,7 +136,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_compression_ratio() {
 		let compressor = ZstdCompressor::new();
 		let data = b"A".repeat(1000); // Highly compressible data
@@ -146,7 +147,7 @@ mod tests {
 		assert!(compressed.len() < data.len() / 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_with_level() {
 		let low_compression = ZstdCompressor::with_level(1);
 		let high_compression = ZstdCompressor::with_level(19);
@@ -164,7 +165,7 @@ mod tests {
 		assert_eq!(high_compression.decompress(&high_compressed).unwrap(), data);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_empty_data() {
 		let compressor = ZstdCompressor::new();
 		let data = b"";
@@ -175,7 +176,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_large_data() {
 		let compressor = ZstdCompressor::new();
 		let data = vec![b'X'; 100_000]; // 100KB of data
@@ -188,19 +189,19 @@ mod tests {
 		assert!(compressed.len() < 1000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_name() {
 		let compressor = ZstdCompressor::new();
 		assert_eq!(compressor.name(), "zstd");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_level_getter() {
 		let compressor = ZstdCompressor::with_level(9);
 		assert_eq!(compressor.level(), 9);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_zstd_default() {
 		let compressor = ZstdCompressor::default();
 		assert_eq!(compressor.level(), 3);

@@ -347,8 +347,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_migration_result_new() {
 		let result = MigrationResult::new();
 		assert_eq!(result.total, 0);
@@ -357,7 +358,7 @@ mod tests {
 		assert!(result.errors.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_result_is_successful() {
 		let mut result = MigrationResult::new();
 		result.total = 10;
@@ -368,7 +369,7 @@ mod tests {
 		assert!(!result.is_successful());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_result_success_rate() {
 		let mut result = MigrationResult::new();
 		result.total = 100;
@@ -378,13 +379,13 @@ mod tests {
 		assert_eq!(result.success_rate(), 95.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_result_success_rate_zero_total() {
 		let result = MigrationResult::new();
 		assert_eq!(result.success_rate(), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_migration_config_default() {
 		let config = MigrationConfig::default();
 		assert_eq!(config.batch_size, 1000);

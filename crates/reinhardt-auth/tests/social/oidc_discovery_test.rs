@@ -8,6 +8,7 @@ use rstest::*;
 #[path = "../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_fetch_from_mock_server() {
 	// Arrange
@@ -27,6 +28,7 @@ async fn test_discovery_fetch_from_mock_server() {
 	assert!(!discovery.jwks_uri.is_empty());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_caching() {
 	// Arrange
@@ -44,6 +46,7 @@ async fn test_discovery_caching() {
 	assert_eq!(result1.unwrap().issuer, result2.unwrap().issuer);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_server_error() {
 	// Arrange
@@ -59,6 +62,7 @@ async fn test_discovery_server_error() {
 	assert!(result.is_err(), "Discovery should fail on server error");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_oidc_disabled() {
 	// Arrange
@@ -76,6 +80,7 @@ async fn test_discovery_oidc_disabled() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_discovery_document_structure() {
 	// Arrange
@@ -105,7 +110,7 @@ async fn test_discovery_document_structure() {
 	assert!(discovery.scopes_supported.is_some());
 }
 
-#[test]
+#[rstest]
 fn test_discovery_serialization() {
 	// Arrange
 	let discovery = OIDCDiscovery {
@@ -134,7 +139,7 @@ fn test_discovery_serialization() {
 	assert!(json.contains("\"jwks_uri\":\"https://www.googleapis.com/oauth2/v3/certs\""));
 }
 
-#[test]
+#[rstest]
 fn test_discovery_deserialization() {
 	// Arrange
 	let json = r#"{

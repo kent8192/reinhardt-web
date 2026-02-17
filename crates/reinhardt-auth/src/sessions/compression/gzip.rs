@@ -134,8 +134,9 @@ impl Compressor for GzipCompressor {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compress_decompress() {
 		let compressor = GzipCompressor::new();
 		let data = b"Hello, World! This is test data for Gzip compression.";
@@ -146,7 +147,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compression_ratio() {
 		let compressor = GzipCompressor::new();
 		let data = b"A".repeat(1000); // Highly compressible data
@@ -157,7 +158,7 @@ mod tests {
 		assert!(compressed.len() < data.len() / 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_with_level() {
 		let low_compression = GzipCompressor::with_level(1);
 		let high_compression = GzipCompressor::with_level(9);
@@ -175,7 +176,7 @@ mod tests {
 		assert_eq!(high_compression.decompress(&high_compressed).unwrap(), data);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_empty_data() {
 		let compressor = GzipCompressor::new();
 		let data = b"";
@@ -186,7 +187,7 @@ mod tests {
 		assert_eq!(data, decompressed.as_slice());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_large_data() {
 		let compressor = GzipCompressor::new();
 		let data = vec![b'X'; 100_000]; // 100KB of data
@@ -199,25 +200,25 @@ mod tests {
 		assert!(compressed.len() < 1000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_name() {
 		let compressor = GzipCompressor::new();
 		assert_eq!(compressor.name(), "gzip");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_level_getter() {
 		let compressor = GzipCompressor::with_level(9);
 		assert_eq!(compressor.level(), 9);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_default() {
 		let compressor = GzipCompressor::default();
 		assert_eq!(compressor.level(), 6);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_no_compression() {
 		let compressor = GzipCompressor::with_level(0);
 		let data = b"Test data";

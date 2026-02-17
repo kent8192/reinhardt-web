@@ -439,7 +439,9 @@ impl AuthenticationBackend for OAuth2Authentication {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_oauth2_application() {
 		let app = OAuth2Application {
@@ -456,6 +458,7 @@ mod tests {
 		assert!(!auth.validate_client("test_client", "wrong_secret"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authorization_code_flow() {
 		let app = OAuth2Application {
@@ -492,6 +495,7 @@ mod tests {
 		assert!(token.refresh_token.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_store() {
 		let store = InMemoryOAuth2Store::new();
@@ -515,6 +519,7 @@ mod tests {
 		assert!(consumed.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_client_credentials() {
 		let app = OAuth2Application {
@@ -544,6 +549,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_user_repository() {
 		let repo = SimpleUserRepository;
@@ -558,6 +564,7 @@ mod tests {
 		assert!(user.is_active());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_oauth2_with_default_repository() {
 		let auth = OAuth2Authentication::new();
@@ -570,6 +577,7 @@ mod tests {
 		assert_eq!(user.get_username(), "user_456");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_oauth2_with_custom_repository() {
 		// Custom repository for testing
@@ -615,6 +623,7 @@ mod tests {
 		assert!(user.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_oauth2_with_store_and_repository() {
 		struct CustomRepository;

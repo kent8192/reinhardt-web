@@ -407,7 +407,9 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_and_permission_both_true() {
 		let permission = AndPermission::new(IsAuthenticated, IsAdminUser);
@@ -431,6 +433,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_and_permission_left_false() {
 		let permission = AndPermission::new(IsAuthenticated, IsAdminUser);
@@ -454,6 +457,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_and_permission_right_false() {
 		let permission = AndPermission::new(IsAuthenticated, IsAdminUser);
@@ -477,6 +481,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_or_permission_both_true() {
 		let permission = OrPermission::new(IsAuthenticated, AllowAny);
@@ -500,6 +505,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_or_permission_left_true() {
 		let permission = OrPermission::new(IsAuthenticated, IsAdminUser);
@@ -523,6 +529,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_or_permission_right_true() {
 		let permission = OrPermission::new(IsAuthenticated, AllowAny);
@@ -546,6 +553,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_or_permission_both_false() {
 		let permission = OrPermission::new(IsAuthenticated, IsAdminUser);
@@ -569,6 +577,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_not_permission_true() {
 		let permission = NotPermission::new(IsAuthenticated);
@@ -592,6 +601,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_not_permission_false() {
 		let permission = NotPermission::new(IsAuthenticated);
@@ -615,6 +625,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_complex_permission_combination() {
 		let permission =
@@ -642,6 +653,7 @@ mod tests {
 
 	// Tests for operator overloading
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_bitand_operator() {
 		let permission = IsAuthenticated & IsAdminUser;
@@ -676,6 +688,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_bitor_operator() {
 		let permission = IsAuthenticated | AllowAny;
@@ -700,6 +713,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_not_operator() {
 		let permission = !IsAuthenticated;
@@ -734,6 +748,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_complex_operator_combination() {
 		// (IsAuthenticated & IsAdminUser) | AllowAny

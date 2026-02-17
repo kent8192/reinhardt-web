@@ -120,8 +120,9 @@ impl PkceFlow {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_verifier_length() {
 		let (verifier, _) = PkceFlow::generate();
 		let len = verifier.as_str().len();
@@ -129,7 +130,7 @@ mod tests {
 		assert!(len <= 128, "verifier too long: {}", len);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_verifier_is_alphanumeric() {
 		let (verifier, _) = PkceFlow::generate();
 		assert!(
@@ -138,7 +139,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_challenge_calculation() {
 		// Known test vector
 		let verifier = CodeVerifier("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk".to_string());
@@ -156,7 +157,7 @@ mod tests {
 		assert_eq!(expected, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_different_verifiers_produce_different_challenges() {
 		let (verifier1, challenge1) = PkceFlow::generate();
 		let (verifier2, challenge2) = PkceFlow::generate();
@@ -165,7 +166,7 @@ mod tests {
 		assert_ne!(challenge1.as_str(), challenge2.as_str());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_challenge_method_str() {
 		assert_eq!(ChallengeMethod::S256.as_str(), "S256");
 	}

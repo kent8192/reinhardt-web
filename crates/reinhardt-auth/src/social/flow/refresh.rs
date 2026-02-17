@@ -73,8 +73,9 @@ impl RefreshFlow {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_refresh_flow_creation() {
 		let client = OAuth2Client::new();
 		let config = ProviderConfig::google(

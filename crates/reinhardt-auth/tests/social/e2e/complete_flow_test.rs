@@ -10,6 +10,7 @@ use rstest::*;
 #[path = "../../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_complete_github_oauth2_flow() {
 	// Arrange
@@ -62,6 +63,7 @@ async fn test_complete_github_oauth2_flow() {
 	assert_eq!(retrieved_state.state, state);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_complete_google_oidc_flow() {
 	// Arrange
@@ -129,6 +131,7 @@ async fn test_complete_google_oidc_flow() {
 	assert_eq!(retrieved_state.nonce, Some(nonce.to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_complete_flow_with_pkce_enabled() {
 	// Arrange
@@ -170,6 +173,7 @@ async fn test_complete_flow_with_pkce_enabled() {
 	assert_eq!(token_response.token_type, "Bearer");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_complete_flow_with_pkce_disabled() {
 	// Arrange

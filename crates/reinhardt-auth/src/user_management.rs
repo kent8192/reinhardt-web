@@ -516,7 +516,9 @@ impl<H: PasswordHasher> UserManager<H> {
 mod tests {
 	use super::*;
 	use crate::Argon2Hasher;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_user() {
 		let hasher = Argon2Hasher::new();
@@ -537,6 +539,7 @@ mod tests {
 		assert!(!user.is_admin);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_user_duplicate_username() {
 		let hasher = Argon2Hasher::new();
@@ -563,6 +566,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_user() {
 		let hasher = Argon2Hasher::new();
@@ -581,6 +585,7 @@ mod tests {
 		assert_eq!(retrieved.username, "charlie");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_user_by_username() {
 		let hasher = Argon2Hasher::new();
@@ -599,6 +604,7 @@ mod tests {
 		assert_eq!(retrieved.username, "diana");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_update_user() {
 		let hasher = Argon2Hasher::new();
@@ -629,6 +635,7 @@ mod tests {
 		assert!(updated.is_admin);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete_user() {
 		let hasher = Argon2Hasher::new();
@@ -648,6 +655,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_list_users() {
 		let hasher = Argon2Hasher::new();
@@ -676,6 +684,7 @@ mod tests {
 		assert_eq!(users.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_verify_password() {
 		let hasher = Argon2Hasher::new();

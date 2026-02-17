@@ -142,7 +142,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remote_user_with_header() {
 		let auth = RemoteUserAuthentication::new();
@@ -162,6 +164,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "testuser");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remote_user_without_header() {
 		let auth = RemoteUserAuthentication::new();
@@ -176,6 +179,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_header() {
 		let auth = RemoteUserAuthentication::new().with_header("X-Auth-User");
@@ -195,6 +199,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "alice");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_header() {
 		let auth = RemoteUserAuthentication::new();

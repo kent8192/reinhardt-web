@@ -337,7 +337,9 @@ impl TokenRotationManager {
 mod tests {
 	use super::*;
 	use chrono::Duration;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_blacklist_token() {
 		let blacklist = InMemoryTokenBlacklist::new();
@@ -352,6 +354,7 @@ mod tests {
 		assert!(blacklist.is_blacklisted(jti).await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_blacklist_cleanup() {
 		let blacklist = InMemoryTokenBlacklist::new();
@@ -380,6 +383,7 @@ mod tests {
 		assert!(blacklist.is_blacklisted(valid_jti).await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_blacklist_stats() {
 		let blacklist = InMemoryTokenBlacklist::new();
@@ -404,6 +408,7 @@ mod tests {
 		assert_eq!(stats.by_compromise, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_refresh_token_store() {
 		let store = InMemoryRefreshTokenStore::new();
@@ -427,6 +432,7 @@ mod tests {
 		assert!(used_token.is_used);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_rotation() {
 		let blacklist = Arc::new(InMemoryTokenBlacklist::new());

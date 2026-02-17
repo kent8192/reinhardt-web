@@ -5,6 +5,7 @@ use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::AppleProvider;
 use rstest::*;
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_provider_config() {
 	// Arrange
@@ -20,6 +21,7 @@ async fn test_apple_provider_config() {
 	assert!(config.oauth2.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_provider_scopes() {
 	// Arrange
@@ -35,6 +37,7 @@ async fn test_apple_provider_scopes() {
 	assert!(config.scopes.contains(&"name".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_oidc_discovery_url() {
 	// Arrange
@@ -53,6 +56,7 @@ async fn test_apple_oidc_discovery_url() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_provider_create_succeeds() {
 	// Arrange
@@ -75,6 +79,7 @@ async fn test_apple_provider_create_succeeds() {
 	assert!(provider.is_oidc());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_provider_rejects_empty_client_secret() {
 	// Arrange - Create config with empty client_secret
@@ -101,6 +106,7 @@ async fn test_apple_provider_rejects_empty_client_secret() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_no_userinfo_endpoint() {
 	// Arrange
@@ -118,6 +124,7 @@ async fn test_apple_no_userinfo_endpoint() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_apple_is_oidc() {
 	// Arrange

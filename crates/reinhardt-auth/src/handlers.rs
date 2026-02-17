@@ -204,6 +204,7 @@ mod tests {
 	use crate::session::InMemorySessionStore;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
+	use rstest::rstest;
 	use uuid::Uuid;
 
 	struct TestAuthBackend {
@@ -235,6 +236,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_login_handler_success() {
 		let session_store = Arc::new(InMemorySessionStore::new());
@@ -264,6 +266,7 @@ mod tests {
 		assert!(response.headers.contains_key("set-cookie"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_login_handler_failure() {
 		let session_store = Arc::new(InMemorySessionStore::new());
@@ -284,6 +287,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logout_handler() {
 		let session_store = Arc::new(InMemorySessionStore::new());
@@ -317,6 +321,7 @@ mod tests {
 		assert!(session_store.load(&session_id).await.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logout_handler_no_session() {
 		let session_store = Arc::new(InMemorySessionStore::new());

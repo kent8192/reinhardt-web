@@ -10,6 +10,7 @@ use std::collections::HashMap;
 #[path = "../../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_userinfo_retrieve_claims() {
 	// Arrange
@@ -34,6 +35,7 @@ async fn test_userinfo_retrieve_claims() {
 	assert_eq!(claims.family_name, Some("User".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_userinfo_with_custom_claims() {
 	// Arrange
@@ -73,6 +75,7 @@ async fn test_userinfo_with_custom_claims() {
 	assert_eq!(claims.locale, Some("ja".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_userinfo_handle_endpoint_errors() {
 	// Arrange
@@ -91,6 +94,7 @@ async fn test_userinfo_handle_endpoint_errors() {
 	assert!(result.is_err(), "UserInfo should fail on server error");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_userinfo_handle_not_found() {
 	// Arrange
@@ -111,7 +115,7 @@ async fn test_userinfo_handle_not_found() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_userinfo_parse_standard_claims() {
 	// Arrange
 	let json = r#"{
@@ -140,7 +144,7 @@ fn test_userinfo_parse_standard_claims() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_userinfo_extract_email_and_profile() {
 	// Arrange
 	let claims = StandardClaims {
@@ -165,7 +169,7 @@ fn test_userinfo_extract_email_and_profile() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_userinfo_minimal_claims() {
 	// Arrange
 	let json = r#"{"sub": "user123"}"#;
@@ -183,7 +187,7 @@ fn test_userinfo_minimal_claims() {
 	assert!(claims.locale.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_userinfo_serialization() {
 	// Arrange
 	let claims = StandardClaims {

@@ -57,8 +57,9 @@ impl UserMapper for DefaultUserMapper {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_mapper_full_claims() {
 		// Arrange
 		let claims = StandardClaims {
@@ -90,7 +91,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_mapper_minimal_claims() {
 		// Arrange
 		let claims = StandardClaims {
@@ -116,7 +117,7 @@ mod tests {
 		assert!(mapped.display_name.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_mapper_extra_data() {
 		// Arrange
 		let mut additional = HashMap::new();

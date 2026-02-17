@@ -156,8 +156,9 @@ impl DiscoveryClient {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cached_discovery_expiration() {
 		let document = OIDCDiscovery {
 			issuer: "https://example.com".to_string(),
@@ -180,6 +181,7 @@ mod tests {
 		assert!(expired.is_expired());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_client_creation() {
 		let client = OAuth2Client::new();
@@ -187,6 +189,7 @@ mod tests {
 		assert!(discovery_client.cache.read().await.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_client_with_custom_ttl() {
 		let client = OAuth2Client::new();
@@ -194,6 +197,7 @@ mod tests {
 		assert_eq!(discovery_client.cache_ttl, Duration::hours(1));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_cache() {
 		let client = OAuth2Client::new();

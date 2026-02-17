@@ -4,7 +4,7 @@ use reinhardt_auth::social::core::OAuth2Client;
 use reinhardt_auth::social::oidc::{Jwk, JwkSet, JwksCache};
 use rstest::*;
 
-#[test]
+#[rstest]
 fn test_jwk_set_structure() {
 	// Arrange
 	let jwk = Jwk {
@@ -28,7 +28,7 @@ fn test_jwk_set_structure() {
 	assert_eq!(jwks.keys[0].kid, Some("test_key_id".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_jwk_retrieve_by_kid() {
 	// Arrange
 	let jwk1 = Jwk {
@@ -67,7 +67,7 @@ fn test_jwk_retrieve_by_kid() {
 	assert_eq!(key.unwrap().kid, Some("key1".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_jwk_missing_key() {
 	// Arrange
 	let jwks = JwkSet { keys: vec![] };
@@ -79,6 +79,7 @@ fn test_jwk_missing_key() {
 	assert!(key.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_jwks_cache_creation() {
 	// Arrange
@@ -93,6 +94,7 @@ async fn test_jwks_cache_creation() {
 	assert!(std::mem::size_of_val(&cache) > 0);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_jwks_cache_clear() {
 	// Arrange
@@ -108,7 +110,7 @@ async fn test_jwks_cache_clear() {
 	assert!(std::mem::size_of_val(&cache) > 0);
 }
 
-#[test]
+#[rstest]
 fn test_jwk_rsa_key_support() {
 	// Arrange
 	let jwk = Jwk {
@@ -130,7 +132,7 @@ fn test_jwk_rsa_key_support() {
 	assert_eq!(jwk.alg, Some("RS256".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_jwk_ec_key_support() {
 	// Arrange
 	let jwk = Jwk {
@@ -152,7 +154,7 @@ fn test_jwk_ec_key_support() {
 	assert!(jwk.crv.is_some());
 }
 
-#[test]
+#[rstest]
 fn test_jwks_serialization() {
 	// Arrange
 	let jwk = Jwk {
@@ -177,7 +179,7 @@ fn test_jwks_serialization() {
 	assert!(json.contains("\"kid\":\"test_key\""));
 }
 
-#[test]
+#[rstest]
 fn test_jwks_deserialization() {
 	// Arrange
 	let json = r#"{

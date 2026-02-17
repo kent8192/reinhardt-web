@@ -349,8 +349,10 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::Method;
 	use reinhardt_http::Request;
+	use rstest::rstest;
 	use uuid::Uuid;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_manager_grant() {
 		let mut manager = ObjectPermissionManager::new();
@@ -388,6 +390,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_manager_revoke() {
 		let mut manager = ObjectPermissionManager::new();
@@ -424,6 +427,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_manager_revoke_all() {
 		let mut manager = ObjectPermissionManager::new();
@@ -458,6 +462,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_manager_list() {
 		let mut manager = ObjectPermissionManager::new();
@@ -474,6 +479,7 @@ mod tests {
 		assert!(perms.contains(&"change".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_manager_different_objects() {
 		let mut manager = ObjectPermissionManager::new();
@@ -516,6 +522,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_trait_authenticated() {
 		let mut manager = ObjectPermissionManager::new();
@@ -553,6 +560,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_trait_unauthenticated() {
 		let manager = ObjectPermissionManager::new();
@@ -576,6 +584,7 @@ mod tests {
 		assert!(!perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_trait_no_permission() {
 		let manager = ObjectPermissionManager::new();

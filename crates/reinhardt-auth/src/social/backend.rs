@@ -173,8 +173,9 @@ fn generate_random_string(length: usize) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_backend_creation() {
 		// Arrange & Act
 		let backend = SocialAuthBackend::new();
@@ -183,7 +184,7 @@ mod tests {
 		assert!(backend.provider_names().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_backend_default() {
 		// Arrange & Act
 		let backend = SocialAuthBackend::default();
@@ -192,7 +193,7 @@ mod tests {
 		assert!(backend.provider_names().is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_provider() {
 		// Arrange
 		let backend = SocialAuthBackend::new();

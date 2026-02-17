@@ -5,6 +5,7 @@ use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::GitHubProvider;
 use rstest::*;
 
+#[rstest]
 #[tokio::test]
 async fn test_authorization_url_generation_github() {
 	// Arrange
@@ -27,6 +28,7 @@ async fn test_authorization_url_generation_github() {
 	assert!(url.contains("state=test_state"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_authorization_url_with_pkce() {
 	// Arrange
@@ -49,6 +51,7 @@ async fn test_authorization_url_with_pkce() {
 	assert!(url.contains("code_challenge_method=S256"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_authorization_url_required_parameters() {
 	// Arrange

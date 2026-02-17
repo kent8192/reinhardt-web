@@ -123,8 +123,9 @@ impl From<SocialAuthError> for crate::AuthenticationError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_error_display() {
 		let error = SocialAuthError::Network("Connection timeout".to_string());
 		assert_eq!(error.to_string(), "Network error: Connection timeout");
@@ -143,7 +144,7 @@ mod tests {
 	// cannot be easily constructed in tests. The conversion implementation itself
 	// is trivial (a direct wrapper), so we skip this test.
 
-	#[test]
+	#[rstest]
 	fn test_error_from_serde_json() {
 		// Simulate a serde_json error
 		let json_error = serde_json::from_str::<serde_json::Value>("{invalid json}").unwrap_err();
@@ -152,7 +153,7 @@ mod tests {
 		assert!(matches!(social_error, SocialAuthError::InvalidResponse(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_to_authentication_error() {
 		let social_error = SocialAuthError::TokenValidation("Bad token".to_string());
 		let auth_error: crate::AuthenticationError = social_error.into();

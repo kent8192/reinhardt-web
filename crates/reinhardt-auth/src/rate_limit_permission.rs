@@ -333,6 +333,7 @@ mod tests {
 	use hyper::{HeaderMap, Method};
 	use reinhardt_http::Request;
 	use reinhardt_throttling::MemoryBackend;
+	use rstest::rstest;
 
 	fn create_test_request(headers: HeaderMap) -> Request {
 		Request::builder()
@@ -344,6 +345,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_ip_strategy() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -369,6 +371,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_user_strategy() {
 		use crate::SimpleUser;
@@ -407,6 +410,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_unauthenticated_user_strategy() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -426,6 +430,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_custom_strategy() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -450,12 +455,14 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_strategy_equality() {
 		assert_eq!(RateLimitStrategy::PerIp, RateLimitStrategy::PerIp);
 		assert_ne!(RateLimitStrategy::PerIp, RateLimitStrategy::PerUser);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_builder() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -470,6 +477,7 @@ mod tests {
 		// Successfully built
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_with_scope() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -493,6 +501,7 @@ mod tests {
 		assert!(!permission.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_permission_x_real_ip_header() {
 		let backend = Arc::new(MemoryBackend::new());

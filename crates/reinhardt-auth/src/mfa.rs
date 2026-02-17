@@ -197,8 +197,9 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_mfa_registration() {
 		let mfa = MFAAuthentication::new("TestApp");
 		mfa.register_user("alice", "JBSWY3DPEHPK3PXP");
@@ -207,7 +208,7 @@ mod tests {
 		assert!(secrets.contains_key("alice"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_totp_url() {
 		let mfa = MFAAuthentication::new("TestApp");
 		let url = mfa.generate_totp_url("alice", "SECRET");
@@ -218,7 +219,7 @@ mod tests {
 		assert!(url.contains("TestApp"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_verify_totp_valid_code() {
 		let mfa = MFAAuthentication::new("TestApp");
 		// Use a known base32 secret for testing
@@ -241,7 +242,7 @@ mod tests {
 		assert!(result.unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_verify_totp_invalid_code() {
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
@@ -253,7 +254,7 @@ mod tests {
 		assert!(!result.unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_verify_totp_unregistered_user() {
 		let mfa = MFAAuthentication::new("TestApp");
 
@@ -261,6 +262,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mfa_authentication_with_valid_code() {
 		let mfa = MFAAuthentication::new("TestApp");
@@ -295,6 +297,7 @@ mod tests {
 		assert_eq!(result.unwrap().get_username(), "alice");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mfa_authentication_without_headers() {
 		let mfa = MFAAuthentication::new("TestApp");
@@ -310,7 +313,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_window_configuration() {
 		let mfa = MFAAuthentication::new("TestApp").time_window(60);
 		assert_eq!(mfa.time_window, 60);

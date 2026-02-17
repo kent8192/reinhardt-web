@@ -272,7 +272,9 @@ where
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	#[cfg(feature = "compression-zstd")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_backend_above_threshold() {
 		use super::{CompressedSessionBackend, ZstdCompressor};
@@ -297,6 +299,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "compression-zstd")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_backend_below_threshold() {
 		use super::{CompressedSessionBackend, ZstdCompressor};
@@ -320,6 +323,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "compression-zstd")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_backend_delete() {
 		use super::{CompressedSessionBackend, ZstdCompressor};

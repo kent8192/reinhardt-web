@@ -194,6 +194,7 @@ mod tests {
 	use super::*;
 	use crate::PasswordHasher;
 	use chrono::{DateTime, Utc};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	/// Mock password hasher for testing
@@ -251,7 +252,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_authenticated_user() {
 		let user_id = Uuid::new_v4();
 		let user = TestUser {
@@ -267,7 +268,7 @@ mod tests {
 		assert_eq!(current_user.user().unwrap().get_username(), "testuser");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_anonymous_user() {
 		let current_user: CurrentUser<TestUser> = CurrentUser::anonymous();
 
@@ -276,7 +277,7 @@ mod tests {
 		assert!(current_user.user().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_user_authenticated() {
 		let user_id = Uuid::new_v4();
 		let user = TestUser {
@@ -291,7 +292,7 @@ mod tests {
 		assert_eq!(extracted.get_username(), "testuser");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_user_anonymous() {
 		let current_user: CurrentUser<TestUser> = CurrentUser::anonymous();
 		let result = current_user.into_user();

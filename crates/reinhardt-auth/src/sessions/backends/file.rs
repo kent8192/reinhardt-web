@@ -301,6 +301,7 @@ impl SessionBackend for FileSessionBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 	use std::sync::Arc;
 	use std::time::Duration;
@@ -343,6 +344,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_save_and_load() {
 		let _guard = TestDirGuard::new();
@@ -368,6 +370,7 @@ mod tests {
 		assert_eq!(loaded, Some(session_data));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_delete() {
 		let _guard = TestDirGuard::new();
@@ -401,6 +404,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_exists() {
 		let _guard = TestDirGuard::new();
@@ -428,6 +432,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_ttl_expiration() {
 		let _guard = TestDirGuard::new();
@@ -470,6 +475,7 @@ mod tests {
 		assert_eq!(loaded, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_concurrent_access() {
 		let _guard = TestDirGuard::new();
@@ -509,6 +515,7 @@ mod tests {
 		assert!(loaded.unwrap()["counter"].is_number());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_overwrite() {
 		let _guard = TestDirGuard::new();
@@ -540,6 +547,7 @@ mod tests {
 		assert_eq!(loaded, Some(data2));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_default_directory() {
 		let backend = FileSessionBackend::new(None).expect("Failed to create backend");
@@ -566,6 +574,7 @@ mod tests {
 			.expect("Failed to delete session");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_nonexistent_load() {
 		let _guard = TestDirGuard::new();
@@ -580,6 +589,7 @@ mod tests {
 		assert_eq!(loaded, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_backend_delete_nonexistent() {
 		let _guard = TestDirGuard::new();

@@ -71,6 +71,7 @@ impl Serializer for MessagePackSerializer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -80,7 +81,7 @@ mod tests {
 		active: bool,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messagepack_serializer() {
 		let serializer = MessagePackSerializer;
 		let data = TestData {

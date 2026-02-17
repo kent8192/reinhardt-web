@@ -298,6 +298,7 @@ mod tests {
 	use crate::sessions::InMemorySessionBackend;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode};
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	// Mock handler for testing
@@ -352,6 +353,7 @@ mod tests {
 			.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_samesite_as_str() {
 		assert_eq!(SameSite::Strict.as_str(), "Strict");
@@ -359,6 +361,7 @@ mod tests {
 		assert_eq!(SameSite::None.as_str(), "None");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_session_config_default() {
 		let config = HttpSessionConfig::default();
@@ -371,6 +374,7 @@ mod tests {
 		assert!(config.max_age.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_middleware_new() {
 		let backend = InMemorySessionBackend::new();
@@ -378,12 +382,14 @@ mod tests {
 		let _middleware = SessionMiddleware::new(backend, config);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_session_middleware_with_defaults() {
 		let backend = InMemorySessionBackend::new();
 		let _middleware = SessionMiddleware::with_defaults(backend);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_build_set_cookie_header_basic() {
 		let backend = InMemorySessionBackend::new();
@@ -399,6 +405,7 @@ mod tests {
 		assert!(!cookie.contains("Secure"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_build_set_cookie_header_with_all_options() {
 		let backend = InMemorySessionBackend::new();
@@ -424,6 +431,7 @@ mod tests {
 		assert!(cookie.contains("SameSite=Strict"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_creates_new_session_without_cookie() {
 		let backend = InMemorySessionBackend::new();
@@ -437,6 +445,7 @@ mod tests {
 		assert!(response.headers.get("set-cookie").is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_sets_cookie_on_session_modification() {
 		let backend = InMemorySessionBackend::new();
@@ -453,6 +462,7 @@ mod tests {
 		assert!(cookie_value.contains("Path=/"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_loads_existing_session() {
 		let backend = InMemorySessionBackend::new();

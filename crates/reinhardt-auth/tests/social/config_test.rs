@@ -41,7 +41,7 @@ fn test_provider_config_create(#[case] provider: &str) {
 	assert!(!config.scopes.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_google_config_is_oidc() {
 	// Act
 	let config = ProviderConfig::google(
@@ -59,7 +59,7 @@ fn test_google_config_is_oidc() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_github_config_is_oauth2() {
 	// Act
 	let config = ProviderConfig::github(
@@ -73,7 +73,7 @@ fn test_github_config_is_oauth2() {
 	assert!(config.oidc.is_none(), "GitHub should not use OIDC");
 }
 
-#[test]
+#[rstest]
 fn test_microsoft_config_is_oidc() {
 	// Act
 	let config = ProviderConfig::microsoft(
@@ -92,7 +92,7 @@ fn test_microsoft_config_is_oidc() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_apple_config_is_oidc() {
 	// Act
 	let config = ProviderConfig::apple(
@@ -106,7 +106,7 @@ fn test_apple_config_is_oidc() {
 	assert!(config.oauth2.is_none(), "Apple should not use OAuth2");
 }
 
-#[test]
+#[rstest]
 fn test_config_serialization() {
 	// Arrange
 	let config = ProviderConfig::google(
@@ -125,7 +125,7 @@ fn test_config_serialization() {
 	assert_eq!(deserialized.redirect_uri, config.redirect_uri);
 }
 
-#[test]
+#[rstest]
 fn test_config_scopes() {
 	// Arrange & Act
 	let google_config = ProviderConfig::google(
@@ -146,7 +146,7 @@ fn test_config_scopes() {
 	assert!(github_config.scopes.contains(&"user".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_oauth2_config_endpoints() {
 	// Arrange
 	let oauth2_config = OAuth2Config {
@@ -167,7 +167,7 @@ fn test_oauth2_config_endpoints() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_oidc_config_discovery_url() {
 	// Arrange
 	let oidc_config = OIDCConfig {

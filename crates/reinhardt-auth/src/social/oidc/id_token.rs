@@ -148,8 +148,9 @@ impl IdTokenValidator {
 mod tests {
 	use super::*;
 	use crate::social::core::OAuth2Client;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validation_config_creation() {
 		let config =
 			ValidationConfig::new("https://example.com".to_string(), "client_id".to_string());
@@ -159,7 +160,7 @@ mod tests {
 		assert_eq!(config.clock_skew, 60);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_config_with_clock_skew() {
 		let config =
 			ValidationConfig::new("https://example.com".to_string(), "client_id".to_string())
@@ -168,6 +169,7 @@ mod tests {
 		assert_eq!(config.clock_skew, 120);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validator_creation() {
 		let client = OAuth2Client::new();

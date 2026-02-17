@@ -419,8 +419,9 @@ mod tests {
 	use chrono::Timelike;
 	use hyper::Method;
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_time_window_creation() {
 		let start = NaiveTime::from_hms_opt(9, 0, 0).unwrap();
 		let end = NaiveTime::from_hms_opt(17, 0, 0).unwrap();
@@ -430,7 +431,7 @@ mod tests {
 		assert_eq!(window.end.hour(), 17);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_window_contains() {
 		let window = TimeWindow::new(
 			NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
@@ -446,7 +447,7 @@ mod tests {
 		assert!(!window.contains(&late));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_window_overnight() {
 		let window = TimeWindow::new(
 			NaiveTime::from_hms_opt(22, 0, 0).unwrap(),
@@ -464,7 +465,7 @@ mod tests {
 		assert!(!window.contains(&afternoon));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_creation() {
 		let start = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
 			.unwrap()
@@ -478,7 +479,7 @@ mod tests {
 		assert_eq!(range.end.year(), 2024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_contains() {
 		let start = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
 			.unwrap()
@@ -503,7 +504,7 @@ mod tests {
 		assert!(!range.contains(&after));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_creation() {
 		let permission = TimeBasedPermission::new();
 		assert_eq!(permission.time_windows.len(), 0);
@@ -513,14 +514,14 @@ mod tests {
 		assert!(!permission.allow_on_error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_add_time_window() {
 		let permission = TimeBasedPermission::new().add_time_window("09:00", "17:00");
 
 		assert_eq!(permission.time_windows.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_add_weekday() {
 		let permission = TimeBasedPermission::new()
 			.add_weekday(Weekday::Mon)
@@ -531,7 +532,7 @@ mod tests {
 		assert!(permission.allowed_weekdays.contains(&Weekday::Tue));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_business_days() {
 		let permission = TimeBasedPermission::new().business_days();
 
@@ -541,7 +542,7 @@ mod tests {
 		assert!(!permission.allowed_weekdays.contains(&Weekday::Sat));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_weekend_days() {
 		let permission = TimeBasedPermission::new().weekend_days();
 
@@ -550,21 +551,21 @@ mod tests {
 		assert!(permission.allowed_weekdays.contains(&Weekday::Sun));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_add_date_range() {
 		let permission = TimeBasedPermission::new().add_date_range("2024-01-01", "2024-12-31");
 
 		assert_eq!(permission.date_ranges.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_no_restrictions() {
 		let permission = TimeBasedPermission::new();
 		let now = Utc::now();
 		assert!(permission.is_allowed_at(&now));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_time_window_restriction() {
 		let permission = TimeBasedPermission::new().add_time_window("09:00", "17:00");
 
@@ -583,6 +584,7 @@ mod tests {
 		assert!(!permission.is_allowed_at(&night));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_has_permission() {
 		let permission = TimeBasedPermission::new().add_time_window("00:00", "23:59");
@@ -605,7 +607,7 @@ mod tests {
 		assert!(permission.has_permission(&context).await);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_weekday_restriction() {
 		let permission = TimeBasedPermission::new().add_weekday(Weekday::Mon);
 

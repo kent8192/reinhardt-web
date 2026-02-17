@@ -236,8 +236,9 @@ impl Default for SerializationFormat {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_serialization_format_name() {
 		assert_eq!(SerializationFormat::Json.name(), "json");
 
@@ -251,13 +252,13 @@ mod tests {
 		assert_eq!(SerializationFormat::Bincode.name(), "bincode");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialization_format_default() {
 		let format = SerializationFormat::default();
 		assert_eq!(format, SerializationFormat::Json);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialization_format_serialize_deserialize() {
 		let format = SerializationFormat::Json;
 

@@ -304,17 +304,18 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::Method;
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
 	#[derive(Debug)]
 	struct TestModel;
 
-	#[test]
+	#[rstest]
 	fn test_model_permission_creation() {
 		let perm = ModelPermission::<TestModel>::new("create");
 		assert_eq!(perm.operation(), "create");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_permission_operations() {
 		let create = ModelPermission::<TestModel>::new("create");
 		let read = ModelPermission::<TestModel>::new("read");
@@ -327,6 +328,7 @@ mod tests {
 		assert_eq!(delete.operation(), "delete");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_permission_authenticated() {
 		let perm = ModelPermission::<TestModel>::new("read");
@@ -348,6 +350,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_model_permission_unauthenticated() {
 		let perm = ModelPermission::<TestModel>::new("create");
@@ -375,6 +378,7 @@ mod tests {
 	#[derive(Debug)]
 	struct Comment;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_different_model_types() {
 		let article_perm = ModelPermission::<Article>::new("update");
@@ -399,12 +403,14 @@ mod tests {
 		assert!(comment_perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_creation() {
 		let perm = DjangoModelPermissions::new();
 		assert!(!perm.user_has_permission("alice", "blog.add_article").await);
 	}
 
+	#[rstest]
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_add_permission() {
 		let mut perm = DjangoModelPermissions::new();
@@ -423,6 +429,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test(flavor = "multi_thread")]
 	async fn test_django_model_permissions_different_users() {
 		let mut perm = DjangoModelPermissions::new();
@@ -435,6 +442,7 @@ mod tests {
 		assert!(!perm.user_has_permission("bob", "blog.add_article").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_trait_authenticated_admin() {
 		let perm = DjangoModelPermissions::new();
@@ -456,6 +464,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_trait_authenticated_not_admin() {
 		let perm = DjangoModelPermissions::new();
@@ -477,6 +486,7 @@ mod tests {
 		assert!(!perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_trait_unauthenticated() {
 		let perm = DjangoModelPermissions::new();
@@ -498,6 +508,7 @@ mod tests {
 		assert!(!perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_or_anon_read_only_get() {
 		let perm = DjangoModelPermissionsOrAnonReadOnly::new();
@@ -519,6 +530,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_or_anon_read_only_post() {
 		let perm = DjangoModelPermissionsOrAnonReadOnly::new();
@@ -540,6 +552,7 @@ mod tests {
 		assert!(!perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_django_model_permissions_or_anon_read_only_authenticated() {
 		let perm = DjangoModelPermissionsOrAnonReadOnly::new();

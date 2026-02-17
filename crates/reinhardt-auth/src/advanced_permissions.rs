@@ -180,21 +180,23 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::Method;
 	use reinhardt_http::Request;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_object_permission_creation() {
 		let perm = ObjectPermission::new("view", Some("article:123"));
 		assert_eq!(perm.permission(), "view");
 		assert_eq!(perm.object_id(), Some("article:123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_object_permission_without_object_id() {
 		let perm = ObjectPermission::new("create", None::<String>);
 		assert_eq!(perm.permission(), "create");
 		assert_eq!(perm.object_id(), None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_authenticated() {
 		let perm = ObjectPermission::new("view", None::<String>);
@@ -216,6 +218,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_object_permission_unauthenticated() {
 		let perm = ObjectPermission::new("edit", Some("post:42"));
@@ -237,13 +240,13 @@ mod tests {
 		assert!(!perm.has_permission(&context).await);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_based_permission_creation() {
 		let perm = RoleBasedPermission::new();
 		assert!(!perm.user_has_permission("alice", "read"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_based_permission_add_role() {
 		let mut perm = RoleBasedPermission::new();
 		perm.add_role("admin", vec!["read", "write", "delete"]);
@@ -254,7 +257,7 @@ mod tests {
 		assert!(perm.user_has_permission("alice", "delete"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_based_permission_different_roles() {
 		let mut perm = RoleBasedPermission::new();
 		perm.add_role("admin", vec!["read", "write", "delete"]);
@@ -268,12 +271,13 @@ mod tests {
 		assert!(!perm.user_has_permission("bob", "write"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_based_permission_no_role() {
 		let perm = RoleBasedPermission::new();
 		assert!(!perm.user_has_permission("charlie", "read"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_role_permission_trait_authenticated() {
 		let mut perm = RoleBasedPermission::new();
@@ -298,6 +302,7 @@ mod tests {
 		assert!(perm.has_permission(&context).await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_role_permission_trait_unauthenticated() {
 		let perm = RoleBasedPermission::new();

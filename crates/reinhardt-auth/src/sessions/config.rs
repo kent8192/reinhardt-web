@@ -546,20 +546,21 @@ impl Default for SessionConfigBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_samesite_as_str() {
 		assert_eq!(SameSite::Strict.as_str(), "Strict");
 		assert_eq!(SameSite::Lax.as_str(), "Lax");
 		assert_eq!(SameSite::None.as_str(), "None");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_samesite_default() {
 		assert_eq!(SameSite::default(), SameSite::Lax);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_default() {
 		let config = SessionConfig::default();
 
@@ -573,7 +574,7 @@ mod tests {
 		assert!(!config.save_every_request());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_basic() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("test_session")
@@ -583,7 +584,7 @@ mod tests {
 		assert_eq!(config.cookie_path(), "/"); // Default
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_all_fields() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("my_session")
@@ -606,7 +607,7 @@ mod tests {
 		assert!(config.save_every_request());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_partial() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("partial")
@@ -621,7 +622,7 @@ mod tests {
 		assert_eq!(config.cookie_samesite(), SameSite::Lax);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_default() {
 		let builder = SessionConfigBuilder::default();
 		let config = builder.build();
@@ -630,7 +631,7 @@ mod tests {
 		assert_eq!(config.cookie_path(), "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_from_config_builder() {
 		let config = SessionConfig::builder()
 			.cookie_name("from_builder")
@@ -641,7 +642,7 @@ mod tests {
 		assert_eq!(config.cookie_age(), Some(Duration::from_secs(3600)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_cookie_age_none() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("session_cookie")
@@ -650,13 +651,13 @@ mod tests {
 		assert_eq!(config.cookie_age(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_cookie_domain_none() {
 		let config = SessionConfigBuilder::new().build();
 		assert_eq!(config.cookie_domain(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_security_settings() {
 		let secure_config = SessionConfigBuilder::new()
 			.cookie_secure(true)
@@ -669,7 +670,7 @@ mod tests {
 		assert_eq!(secure_config.cookie_samesite(), SameSite::Strict);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_builder_fluent_api() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("fluent")
@@ -684,7 +685,7 @@ mod tests {
 		assert!(config.save_every_request());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_into_string() {
 		let config = SessionConfigBuilder::new()
 			.cookie_name("test")
@@ -697,7 +698,7 @@ mod tests {
 		assert_eq!(config.cookie_domain(), Some("test.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_config_multiple_builds() {
 		let builder = SessionConfigBuilder::new().cookie_name("shared");
 

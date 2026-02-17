@@ -1,10 +1,11 @@
 #![cfg(feature = "jwt")]
 
 use reinhardt_auth::JwtAuth;
+use rstest::rstest;
 
 // === JWT Token Tests ===
 
-#[test]
+#[rstest]
 fn test_auth_tokens_jwt_generate() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -17,7 +18,7 @@ fn test_auth_tokens_jwt_generate() {
 	assert_eq!(token.split('.').count(), 3);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_verify_valid_token() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -32,7 +33,7 @@ fn test_jwt_verify_valid_token() {
 	assert_eq!(claims.username, username);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_verify_invalid_token() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let invalid_token = "invalid.token.here";
@@ -40,7 +41,7 @@ fn test_jwt_verify_invalid_token() {
 	assert!(jwt_auth.verify_token(invalid_token).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_verify_token_with_wrong_secret() {
 	// A valid token can be created with a secret other than the original
 	// But verification with different secret should fail
@@ -55,7 +56,7 @@ fn test_jwt_verify_token_with_wrong_secret() {
 	assert!(jwt_auth2.verify_token(&token).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_token_with_different_secret() {
 	// Test that tokens generated with different secrets are different
 	let jwt_auth1 = JwtAuth::new(b"secret1");
@@ -71,7 +72,7 @@ fn test_jwt_token_with_different_secret() {
 	assert_ne!(token1, token2);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_multiple_tokens_same_user() {
 	// The token generated for a user created in the same request will work correctly
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
@@ -88,7 +89,7 @@ fn test_jwt_multiple_tokens_same_user() {
 	assert!(jwt_auth.verify_token(&token2).is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_claims_structure() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user456".to_string();
@@ -105,7 +106,7 @@ fn test_jwt_claims_structure() {
 	assert!(claims.exp > 0); // Expiration should be set
 }
 
-#[test]
+#[rstest]
 fn test_jwt_token_expiration_is_set() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -124,7 +125,7 @@ fn test_jwt_token_expiration_is_set() {
 	assert!(claims.exp > now);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_empty_secret_handling() {
 	// Test behavior with empty secret (should still work but not recommended)
 	let jwt_auth = JwtAuth::new(b"");
@@ -136,7 +137,7 @@ fn test_jwt_empty_secret_handling() {
 	assert!(token_result.is_ok());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_special_characters_in_username() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -151,7 +152,7 @@ fn test_jwt_special_characters_in_username() {
 	assert_eq!(claims.username, username);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_unicode_username() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -166,7 +167,7 @@ fn test_jwt_unicode_username() {
 	assert_eq!(claims.username, username);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_long_secret_key() {
 	// Test with a very long secret key
 	let long_secret = b"this_is_a_very_long_secret_key_that_should_still_work_correctly_with_jwt_authentication_system";
@@ -183,7 +184,7 @@ fn test_jwt_long_secret_key() {
 	assert_eq!(claims.username, username);
 }
 
-#[test]
+#[rstest]
 fn test_jwt_malformed_token_parts() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 
@@ -194,7 +195,7 @@ fn test_jwt_malformed_token_parts() {
 	assert!(jwt_auth.verify_token("").is_err());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_tampered_token() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 	let user_id = "user123".to_string();
@@ -212,7 +213,7 @@ fn test_jwt_tampered_token() {
 	assert!(jwt_auth.verify_token(&tampered).is_err());
 }
 
-#[test]
+#[rstest]
 fn test_jwt_token_reuse() {
 	// Test that the same token can be verified multiple times
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
@@ -229,7 +230,7 @@ fn test_jwt_token_reuse() {
 
 // === Token Security Tests ===
 
-#[test]
+#[rstest]
 fn test_jwt_different_users_different_tokens() {
 	let jwt_auth = JwtAuth::new(b"test_secret_key");
 
@@ -249,7 +250,7 @@ fn test_jwt_different_users_different_tokens() {
 	assert_eq!(claims2.sub, "user2");
 }
 
-#[test]
+#[rstest]
 fn test_jwt_secret_key_matters() {
 	// Tokens generated with one key should not verify with another
 	let jwt_auth1 = JwtAuth::new(b"secret_key_1");

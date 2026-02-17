@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use reinhardt_auth::social::core::claims::IdToken;
 use rstest::*;
 
-#[test]
+#[rstest]
 fn test_id_token_validate_signature() {
 	// This test documents the expected signature validation behavior
 	// In real scenarios, you would need a valid JWT signed by the provider
@@ -34,7 +34,7 @@ fn test_id_token_validate_signature() {
 	assert!(!token.aud.is_empty());
 }
 
-#[test]
+#[rstest]
 fn test_id_token_verify_issuer_claim() {
 	// Arrange
 	let expected_issuer = "https://accounts.google.com";
@@ -59,7 +59,7 @@ fn test_id_token_verify_issuer_claim() {
 	assert_eq!(token.iss, expected_issuer);
 }
 
-#[test]
+#[rstest]
 fn test_id_token_verify_audience_claim() {
 	// Arrange
 	let expected_audience = "test_client_id";
@@ -84,7 +84,7 @@ fn test_id_token_verify_audience_claim() {
 	assert_eq!(token.aud, expected_audience);
 }
 
-#[test]
+#[rstest]
 fn test_id_token_verify_expiration_claim() {
 	// Arrange
 	let token = IdToken {
@@ -109,7 +109,7 @@ fn test_id_token_verify_expiration_claim() {
 	assert!(token.exp > Utc::now().timestamp());
 }
 
-#[test]
+#[rstest]
 fn test_id_token_verify_nonce_claim() {
 	// Arrange
 	let expected_nonce = "test_nonce";
@@ -134,7 +134,7 @@ fn test_id_token_verify_nonce_claim() {
 	assert_eq!(token.nonce, Some(expected_nonce.to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_id_token_reject_expired() {
 	// Arrange
 	let token = IdToken {
@@ -161,7 +161,7 @@ fn test_id_token_reject_expired() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_id_token_reject_mismatched_nonce() {
 	// Arrange
 	let expected_nonce = "correct_nonce";

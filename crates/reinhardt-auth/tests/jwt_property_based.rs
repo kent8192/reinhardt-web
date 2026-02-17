@@ -47,7 +47,7 @@ proptest! {
 	///
 	/// For any valid user_id and username, generating a token and then
 	/// verifying it should return claims with the original user_id and username.
-	#[test]
+	#[rstest]
 	fn test_jwt_roundtrip_preserves_user_data(
 		secret in secret_strategy(),
 		user_id in user_id_strategy(),
@@ -68,7 +68,7 @@ proptest! {
 	}
 
 	/// Property: Decode after encode returns original claims data
-	#[test]
+	#[rstest]
 	fn test_jwt_encode_decode_roundtrip(
 		secret in secret_strategy(),
 		user_id in user_id_strategy(),
@@ -95,7 +95,7 @@ proptest! {
 	/// Property: Different secrets produce tokens that cannot be verified with each other
 	///
 	/// If we generate a token with secret A, it should fail verification with secret B.
-	#[test]
+	#[rstest]
 	fn test_different_secrets_fail_verification(
 		secret1 in secret_strategy(),
 		secret2 in secret_strategy(),
@@ -121,7 +121,7 @@ proptest! {
 	}
 
 	/// Property: Different user_ids produce different tokens
-	#[test]
+	#[rstest]
 	fn test_different_user_ids_produce_different_tokens(
 		secret in secret_strategy(),
 		user_id1 in user_id_strategy(),
@@ -151,7 +151,7 @@ proptest! {
 
 proptest! {
 	/// Property: JWT tokens always have exactly 3 parts separated by dots
-	#[test]
+	#[rstest]
 	fn test_jwt_token_has_three_parts(
 		secret in secret_strategy(),
 		user_id in user_id_strategy(),
@@ -182,7 +182,7 @@ proptest! {
 	}
 
 	/// Property: JWT tokens are valid Base64 URL-safe encoded
-	#[test]
+	#[rstest]
 	fn test_jwt_token_parts_are_base64_url_safe(
 		secret in secret_strategy(),
 		user_id in user_id_strategy(),
@@ -218,7 +218,7 @@ proptest! {
 
 proptest! {
 	/// Property: Generated claims expiration is always in the future
-	#[test]
+	#[rstest]
 	fn test_claims_exp_always_in_future(
 		user_id in user_id_strategy(),
 		username in username_strategy(),
@@ -242,7 +242,7 @@ proptest! {
 	}
 
 	/// Property: Issued-at time is always less than or equal to expiration
-	#[test]
+	#[rstest]
 	fn test_claims_iat_before_exp(
 		user_id in user_id_strategy(),
 		username in username_strategy(),
@@ -266,7 +266,7 @@ proptest! {
 
 proptest! {
 	/// Property: Empty user_id and username still produce valid tokens
-	#[test]
+	#[rstest]
 	fn test_empty_claims_produce_valid_tokens(
 		secret in secret_strategy(),
 	) {
@@ -285,7 +285,7 @@ proptest! {
 	}
 
 	/// Property: Unicode in claims is handled correctly
-	#[test]
+	#[rstest]
 	fn test_unicode_claims_roundtrip(
 		secret in secret_strategy(),
 		user_id in "[a-zA-Z0-9\u{4e00}-\u{9fa5}]{1,50}",
@@ -306,7 +306,7 @@ proptest! {
 	}
 
 	/// Property: Long claims produce valid tokens
-	#[test]
+	#[rstest]
 	fn test_long_claims_roundtrip(
 		secret in secret_strategy(),
 		user_id in "[a-zA-Z0-9]{100,500}",
@@ -333,7 +333,7 @@ proptest! {
 
 proptest! {
 	/// Property: Token tampering is detected
-	#[test]
+	#[rstest]
 	fn test_token_tampering_detected(
 		secret in secret_strategy(),
 		user_id in user_id_strategy(),
@@ -367,7 +367,7 @@ proptest! {
 	}
 
 	/// Property: Minimum secret length produces valid tokens
-	#[test]
+	#[rstest]
 	fn test_minimum_secret_length(
 		user_id in user_id_strategy(),
 		username in username_strategy(),

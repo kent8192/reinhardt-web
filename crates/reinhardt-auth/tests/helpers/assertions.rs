@@ -96,8 +96,9 @@ pub fn assert_authorization_url_valid(url: &str, expected_params: &[(&str, &str)
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_assert_token_response_valid() {
 		let response = TokenResponse {
 			access_token: "test_token".into(),
@@ -111,7 +112,7 @@ mod tests {
 		assert_token_response_valid(&response, &["openid", "email", "profile"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_pkce_challenge_valid() {
 		let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 		let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
@@ -119,7 +120,7 @@ mod tests {
 		assert_pkce_challenge_valid(verifier, challenge);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_assert_authorization_url_valid() {
 		let url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=test&response_type=code&state=test_state";
 

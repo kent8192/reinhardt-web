@@ -324,18 +324,22 @@ impl Default for CsrfSessionManager {
 mod tests {
 	use super::*;
 	use crate::sessions::InMemorySessionBackend;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_manager_new() {
 		let _csrf = CsrfSessionManager::new();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_manager_with_key() {
 		let csrf = CsrfSessionManager::with_key("custom_key".to_string());
 		assert_eq!(csrf.session_key, "custom_key");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_generate_token() {
 		let backend = InMemorySessionBackend::new();
@@ -347,6 +351,7 @@ mod tests {
 		assert!(!token.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_token() {
 		let backend = InMemorySessionBackend::new();
@@ -365,6 +370,7 @@ mod tests {
 		assert_eq!(stored, Some(generated));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_token() {
 		let backend = InMemorySessionBackend::new();
@@ -380,6 +386,7 @@ mod tests {
 		assert!(!csrf.validate_token(&mut session, "wrong_token").unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_token_no_token_in_session() {
 		let backend = InMemorySessionBackend::new();
@@ -391,6 +398,7 @@ mod tests {
 		assert!(!csrf.validate_token(&mut session, "any_token").unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rotate_token() {
 		let backend = InMemorySessionBackend::new();
@@ -410,6 +418,7 @@ mod tests {
 		assert!(csrf.validate_token(&mut session, &new_token).unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_clear_token() {
 		let backend = InMemorySessionBackend::new();
@@ -423,6 +432,7 @@ mod tests {
 		assert!(csrf.get_token(&mut session).unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_or_create_token() {
 		let backend = InMemorySessionBackend::new();
@@ -437,6 +447,7 @@ mod tests {
 		assert_eq!(token1, token2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_or_create_token_creates_if_missing() {
 		let backend = InMemorySessionBackend::new();

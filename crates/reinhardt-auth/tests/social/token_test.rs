@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use reinhardt_auth::social::core::token::{OAuthToken, TokenResponse};
 use rstest::*;
 
-#[test]
+#[rstest]
 fn test_token_response_from_response() {
 	// Arrange
 	let response = TokenResponse {
@@ -26,7 +26,7 @@ fn test_token_response_from_response() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_token_response_minimal() {
 	// Arrange
 	let response = TokenResponse {
@@ -44,7 +44,7 @@ fn test_token_response_minimal() {
 	assert!(response.expires_in.is_none());
 }
 
-#[test]
+#[rstest]
 fn test_token_response_serialization() {
 	// Arrange
 	let response = TokenResponse {
@@ -65,7 +65,7 @@ fn test_token_response_serialization() {
 	assert_eq!(parsed.token_type, response.token_type);
 }
 
-#[test]
+#[rstest]
 fn test_oauth_token_expiration_calculation() {
 	// Arrange
 	let response = TokenResponse {
@@ -89,7 +89,7 @@ fn test_oauth_token_expiration_calculation() {
 	assert!(time_diff.num_seconds() >= 3590 && time_diff.num_seconds() <= 3610);
 }
 
-#[test]
+#[rstest]
 fn test_oauth_token_from_response_with_id_token() {
 	// Arrange
 	let response = TokenResponse {
@@ -106,7 +106,7 @@ fn test_oauth_token_from_response_with_id_token() {
 	assert_eq!(response.id_token.unwrap(), "id_token_string");
 }
 
-#[test]
+#[rstest]
 fn test_token_response_parse_scopes() {
 	// Arrange
 	let response = TokenResponse {
@@ -133,7 +133,7 @@ fn test_token_response_parse_scopes() {
 	assert!(scopes.contains(&"profile"));
 }
 
-#[test]
+#[rstest]
 fn test_token_response_empty_scope() {
 	// Arrange
 	let response = TokenResponse {

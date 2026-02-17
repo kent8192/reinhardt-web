@@ -584,8 +584,9 @@ impl CleanupableBackend for DatabaseSessionBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_session_struct_fields() {
 		let now_ms = Utc::now().timestamp_millis();
 		let session = Session::new(
@@ -603,7 +604,7 @@ mod tests {
 		assert_eq!(session.last_accessed, Some(now_ms));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_struct_without_last_accessed() {
 		let now_ms = Utc::now().timestamp_millis();
 		let session = Session::new(
@@ -617,7 +618,7 @@ mod tests {
 		assert!(session.last_accessed.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_clone() {
 		let now_ms = Utc::now().timestamp_millis();
 		let session = Session::new(
@@ -637,7 +638,7 @@ mod tests {
 		assert_eq!(cloned.last_accessed, session.last_accessed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_debug() {
 		let now_ms = Utc::now().timestamp_millis();
 		let session = Session::new(
@@ -654,7 +655,7 @@ mod tests {
 		assert!(debug_str.contains("debug_key"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_serialize() {
 		let now_ms = Utc::now().timestamp_millis();
 		let session = Session::new(
@@ -672,7 +673,7 @@ mod tests {
 		assert!(json.contains(r#"{\"count\": 10}"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_deserialize() {
 		let now_ms = 1700000000000_i64; // Fixed timestamp for test
 		let json = format!(
@@ -697,7 +698,7 @@ mod tests {
 		assert_eq!(session.last_accessed, Some(now_ms));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_deserialize_without_last_accessed() {
 		let now_ms = 1700000000000_i64;
 		let json = format!(
@@ -718,7 +719,7 @@ mod tests {
 		assert!(session.last_accessed.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_session_backend_clone() {
 		// DatabaseSessionBackend implements Clone via Arc
 		// We can't test this without a real connection, but we can verify the trait is implemented

@@ -5,6 +5,7 @@ use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::MicrosoftProvider;
 use rstest::*;
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_provider_config() {
 	// Arrange
@@ -21,6 +22,7 @@ async fn test_microsoft_provider_config() {
 	assert!(config.oauth2.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_provider_scopes() {
 	// Arrange
@@ -37,6 +39,7 @@ async fn test_microsoft_provider_scopes() {
 	assert!(config.scopes.contains(&"profile".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_tenant_specific_discovery() {
 	// Arrange
@@ -53,6 +56,7 @@ async fn test_microsoft_tenant_specific_discovery() {
 	assert!(oidc.discovery_url.contains("login.microsoftonline.com"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_provider_create_succeeds() {
 	// Arrange
@@ -76,6 +80,7 @@ async fn test_microsoft_provider_create_succeeds() {
 	assert!(provider.is_oidc());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_provider_requires_oidc_config() {
 	// Arrange - Create config without OIDC
@@ -95,6 +100,7 @@ async fn test_microsoft_provider_requires_oidc_config() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_microsoft_is_oidc() {
 	// Arrange

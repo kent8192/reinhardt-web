@@ -10,6 +10,7 @@ use rstest::*;
 #[path = "../../helpers.rs"]
 mod helpers;
 
+#[rstest]
 #[tokio::test]
 async fn test_error_server_error_on_token_exchange() {
 	// Arrange
@@ -40,6 +41,7 @@ async fn test_error_server_error_on_token_exchange() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_error_invalid_json_response() {
 	// Arrange
@@ -70,6 +72,7 @@ async fn test_error_invalid_json_response() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_error_unauthorized_access() {
 	// Arrange
@@ -100,6 +103,7 @@ async fn test_error_unauthorized_access() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_error_server_error_on_userinfo() {
 	// Arrange - Start with success mode, exchange token, then switch to error
@@ -135,6 +139,7 @@ async fn test_error_server_error_on_userinfo() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_error_invalid_state_parameter() {
 	// Arrange
@@ -147,6 +152,7 @@ async fn test_error_invalid_state_parameter() {
 	assert!(result.is_err(), "Retrieving non-existent state should fail");
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_error_recovery_flow() {
 	// Arrange

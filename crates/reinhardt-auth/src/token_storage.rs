@@ -576,8 +576,9 @@ pub use database_storage::DatabaseTokenStorage;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_stored_token_creation() {
 		let token = StoredToken::new("abc123", 42);
 		assert_eq!(token.token(), "abc123");
@@ -585,20 +586,20 @@ mod tests {
 		assert_eq!(token.expires_at(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_stored_token_with_expiration() {
 		let token = StoredToken::new("abc123", 42).with_expiration(1234567890);
 		assert_eq!(token.expires_at(), Some(1234567890));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_stored_token_is_expired() {
 		let token = StoredToken::new("abc123", 42).with_expiration(1234567890);
 		assert!(!token.is_expired(1000000000));
 		assert!(token.is_expired(2000000000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_stored_token_metadata() {
 		let token = StoredToken::new("abc123", 42)
 			.with_metadata("device", "mobile")
@@ -609,6 +610,7 @@ mod tests {
 		assert_eq!(token.get_metadata("nonexistent"), None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_store_and_get() {
 		let storage = InMemoryTokenStorage::new();
@@ -621,6 +623,7 @@ mod tests {
 		assert_eq!(retrieved.user_id(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_get_nonexistent() {
 		let storage = InMemoryTokenStorage::new();
@@ -630,6 +633,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), TokenStorageError::NotFound));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_get_user_tokens() {
 		let storage = InMemoryTokenStorage::new();
@@ -645,6 +649,7 @@ mod tests {
 		assert_eq!(user2_tokens.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_delete() {
 		let storage = InMemoryTokenStorage::new();
@@ -657,6 +662,7 @@ mod tests {
 		assert!(storage.get("abc123").await.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_delete_user_tokens() {
 		let storage = InMemoryTokenStorage::new();
@@ -674,6 +680,7 @@ mod tests {
 		assert_eq!(user2_tokens.len(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_storage_cleanup_expired() {
 		let storage = InMemoryTokenStorage::new();
@@ -699,14 +706,14 @@ mod tests {
 		assert!(storage.get("token3").await.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_storage_len_and_is_empty() {
 		let storage = InMemoryTokenStorage::new();
 		assert_eq!(storage.len(), 0);
 		assert!(storage.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_in_memory_storage_clear() {
 		let storage = InMemoryTokenStorage::new();
 		storage.clear();

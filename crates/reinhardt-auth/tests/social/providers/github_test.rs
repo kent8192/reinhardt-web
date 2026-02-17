@@ -5,6 +5,7 @@ use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::providers::GitHubProvider;
 use rstest::*;
 
+#[rstest]
 #[tokio::test]
 async fn test_github_provider_config() {
 	// Arrange
@@ -20,6 +21,7 @@ async fn test_github_provider_config() {
 	assert!(config.oidc.is_none());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_github_provider_scopes() {
 	// Arrange
@@ -34,6 +36,7 @@ async fn test_github_provider_scopes() {
 	assert!(config.scopes.contains(&"user:email".to_string()));
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_github_oauth2_endpoints() {
 	// Arrange
@@ -59,6 +62,7 @@ async fn test_github_oauth2_endpoints() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_github_provider_create_succeeds() {
 	// Arrange
@@ -81,6 +85,7 @@ async fn test_github_provider_create_succeeds() {
 	assert!(!provider.is_oidc());
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_github_provider_requires_oauth2_config() {
 	// Arrange - Create config without OAuth2
@@ -100,6 +105,7 @@ async fn test_github_provider_requires_oauth2_config() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn test_github_is_oauth2_not_oidc() {
 	// Arrange

@@ -344,8 +344,10 @@ impl SessionBackend for JwtSessionBackend {
 mod tests {
 	use super::*;
 	use jsonwebtoken::{EncodingKey, Header, encode};
+	use rstest::rstest;
 	use serde_json::json;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_session_save_and_load() {
 		let config = JwtConfig::new("test-secret".to_string());
@@ -368,6 +370,7 @@ mod tests {
 		assert_eq!(loaded.unwrap()["user_id"], 123);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_session_expiration() {
 		let config = JwtConfig::new("test-secret".to_string());
@@ -401,6 +404,7 @@ mod tests {
 		assert!(loaded.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_session_delete() {
 		let config = JwtConfig::new("test-secret".to_string());
@@ -426,6 +430,7 @@ mod tests {
 		assert!(!backend.exists("delete_test").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_session_exists() {
 		let config = JwtConfig::new("test-secret".to_string());
@@ -448,6 +453,7 @@ mod tests {
 		assert!(backend.exists("exists_test").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_with_different_algorithms() {
 		let config = JwtConfig::new("test-secret".to_string()).with_algorithm(Algorithm::HS512);
@@ -468,6 +474,7 @@ mod tests {
 		assert_eq!(loaded.unwrap()["user_id"], 111);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_with_issuer_and_audience() {
 		let config = JwtConfig::new("test-secret".to_string())
@@ -490,6 +497,7 @@ mod tests {
 		assert_eq!(loaded.unwrap()["user_id"], 222);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_jwt_session_complex_data() {
 		let config = JwtConfig::new("test-secret".to_string());

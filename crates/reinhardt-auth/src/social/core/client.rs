@@ -39,15 +39,16 @@ impl Default for OAuth2Client {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_client_creation() {
 		let client = OAuth2Client::new();
 		// Verify that client() returns a valid reference
 		let _client_ref = client.client();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_client_default() {
 		let client = OAuth2Client::default();
 		// Verify that client() returns a valid reference

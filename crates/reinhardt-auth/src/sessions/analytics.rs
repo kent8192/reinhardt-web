@@ -313,7 +313,9 @@ where
 mod tests {
 	use super::*;
 	use crate::sessions::InMemorySessionBackend;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_instrumented_backend_save() {
 		let backend = InMemorySessionBackend::new();
@@ -331,6 +333,7 @@ mod tests {
 		assert_eq!(loaded.unwrap(), data);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_instrumented_backend_delete() {
 		let backend = InMemorySessionBackend::new();
@@ -346,6 +349,7 @@ mod tests {
 		assert!(!instrumented.exists("test_key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_analytics() {
 		let mut composite = CompositeAnalytics::new();

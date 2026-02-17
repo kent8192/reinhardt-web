@@ -642,7 +642,9 @@ impl Default for GroupManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_group() {
 		let mut manager = GroupManager::new();
@@ -657,6 +659,7 @@ mod tests {
 		assert_eq!(group.description, Some("Content editors".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_group() {
 		let mut manager = GroupManager::new();
@@ -671,6 +674,7 @@ mod tests {
 		assert_eq!(retrieved.name, "Moderators");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_group_by_name() {
 		let mut manager = GroupManager::new();
@@ -685,6 +689,7 @@ mod tests {
 		assert_eq!(retrieved.name, "Viewers");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete_group() {
 		let mut manager = GroupManager::new();
@@ -700,6 +705,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_group_permissions() {
 		let mut manager = GroupManager::new();
@@ -728,6 +734,7 @@ mod tests {
 		assert!(perms.contains(&"blog.change_article".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_groups() {
 		let mut manager = GroupManager::new();
@@ -757,6 +764,7 @@ mod tests {
 		assert_eq!(groups.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_permissions() {
 		let mut manager = GroupManager::new();
@@ -786,6 +794,7 @@ mod tests {
 		assert!(perms.contains(&"code.review".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remove_user_from_group() {
 		let mut manager = GroupManager::new();
@@ -809,6 +818,7 @@ mod tests {
 		assert_eq!(groups.len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_list_groups() {
 		let mut manager = GroupManager::new();
