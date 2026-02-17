@@ -18,7 +18,8 @@ async fn test_console_backend_basic() {
 		.to(vec!["console@example.com".to_string()])
 		.subject("Console Test")
 		.body("This should be printed to console")
-		.build();
+		.build()
+		.unwrap();
 
 	let result = backend.send_messages(&[message]).await;
 	assert!(result.is_ok(), "Console backend should send successfully");
@@ -38,6 +39,7 @@ async fn test_console_backend_multiple() {
 				.subject(format!("Console Test {}", i))
 				.body(format!("Message {}", i))
 				.build()
+				.unwrap()
 		})
 		.collect();
 
@@ -58,7 +60,8 @@ async fn test_file_backend_basic() {
 		.to(vec!["test@example.com".to_string()])
 		.subject("File Test")
 		.body("This should be saved to a file")
-		.build();
+		.build()
+		.unwrap();
 
 	let sent = backend
 		.send_messages(&[message])
@@ -98,7 +101,8 @@ async fn test_file_backend_directory_creation() {
 		.to(vec!["test@example.com".to_string()])
 		.subject("Directory Creation Test")
 		.body("Testing directory creation")
-		.build();
+		.build()
+		.unwrap();
 
 	let sent = backend
 		.send_messages(&[message])
@@ -134,6 +138,7 @@ async fn test_file_backend_multiple_messages() {
 				.subject(format!("Multi Test {}", i))
 				.body(format!("Message number {}", i))
 				.build()
+				.unwrap()
 		})
 		.collect();
 
@@ -169,7 +174,8 @@ async fn test_file_backend_concurrent_writes() {
 				.to(vec![format!("concurrent{}@example.com", i)])
 				.subject(format!("Concurrent Test {}", i))
 				.body(format!("Concurrent write {}", i))
-				.build();
+				.build()
+				.unwrap();
 
 			backend_clone.send_messages(&[message]).await
 		});
@@ -210,7 +216,8 @@ async fn test_file_backend_filename_uniqueness() {
 			.to(vec![format!("test{}@example.com", i)])
 			.subject(format!("Unique Test {}", i))
 			.body(format!("Testing uniqueness {}", i))
-			.build();
+			.build()
+			.unwrap();
 
 		backend
 			.send_messages(&[message])
@@ -268,7 +275,8 @@ async fn test_file_backend_html_content() {
 		.subject("HTML Email")
 		.body("Plain text body")
 		.html("<html><body><h1>HTML Content</h1></body></html>")
-		.build();
+		.build()
+		.unwrap();
 
 	let sent = backend
 		.send_messages(&[message])
@@ -303,7 +311,8 @@ async fn test_file_backend_utf8_content() {
 		.to(vec!["test@example.com".to_string()])
 		.subject("日本語の件名")
 		.body("メール本文に日本語が含まれています。")
-		.build();
+		.build()
+		.unwrap();
 
 	let sent = backend
 		.send_messages(&[message])

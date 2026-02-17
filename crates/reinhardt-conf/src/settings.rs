@@ -107,12 +107,6 @@ pub struct Settings {
 	/// List of installed applications
 	pub installed_apps: Vec<String>,
 
-	/// List of middleware classes
-	pub middleware: Vec<String>,
-
-	/// Root URL configuration module
-	pub root_urlconf: String,
-
 	/// Database configurations
 	pub databases: HashMap<String, DatabaseConfig>,
 
@@ -130,9 +124,6 @@ pub struct Settings {
 
 	/// Media files URL prefix
 	pub media_url: String,
-
-	/// Media files root directory
-	pub media_root: Option<PathBuf>,
 
 	/// Language code
 	pub language_code: String,
@@ -218,16 +209,6 @@ impl Settings {
 				"reinhardt.contrib.messages".to_string(),
 				"reinhardt.contrib.staticfiles".to_string(),
 			],
-			middleware: vec![
-				"reinhardt.middleware.security.SecurityMiddleware".to_string(),
-				"reinhardt.contrib.sessions.middleware.SessionMiddleware".to_string(),
-				"reinhardt.middleware.common.CommonMiddleware".to_string(),
-				"reinhardt.middleware.csrf.CsrfViewMiddleware".to_string(),
-				"reinhardt.contrib.auth.middleware.AuthenticationMiddleware".to_string(),
-				"reinhardt.contrib.messages.middleware.MessageMiddleware".to_string(),
-				"reinhardt.middleware.clickjacking.XFrameOptionsMiddleware".to_string(),
-			],
-			root_urlconf: String::new(),
 			databases: {
 				let mut dbs = HashMap::new();
 				dbs.insert("default".to_string(), DatabaseConfig::default());
@@ -238,7 +219,6 @@ impl Settings {
 			static_root: None,
 			staticfiles_dirs: vec![],
 			media_url: "/media/".to_string(),
-			media_root: None,
 			language_code: "en-us".to_string(),
 			time_zone: "UTC".to_string(),
 			use_i18n: true,
@@ -255,25 +235,6 @@ impl Settings {
 			admins: vec![],
 			managers: vec![],
 		}
-	}
-	/// Set the root URL configuration
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::settings::Settings;
-	/// use std::path::PathBuf;
-	///
-	/// let settings = Settings::new(
-	///     PathBuf::from("/app"),
-	///     "secret".to_string()
-	/// ).with_root_urlconf("myapp.urls");
-	///
-	/// assert_eq!(settings.root_urlconf, "myapp.urls");
-	/// ```
-	pub fn with_root_urlconf(mut self, root_urlconf: impl Into<String>) -> Self {
-		self.root_urlconf = root_urlconf.into();
-		self
 	}
 	/// Add an installed app
 	///
@@ -318,24 +279,6 @@ impl Settings {
 		self.installed_apps = app_provider();
 		self
 	}
-	/// Add middleware
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_conf::settings::Settings;
-	///
-	/// let mut settings = Settings::default();
-	/// let initial_count = settings.middleware.len();
-	/// settings.add_middleware("myapp.middleware.CustomMiddleware");
-	///
-	/// assert_eq!(settings.middleware.len(), initial_count + 1);
-	/// assert!(settings.middleware.contains(&"myapp.middleware.CustomMiddleware".to_string()));
-	/// ```
-	pub fn add_middleware(&mut self, middleware: impl Into<String>) {
-		self.middleware.push(middleware.into());
-	}
-
 	/// Add an administrator
 	///
 	/// # Examples

@@ -85,10 +85,10 @@ fn test_template_email_builder_basic() {
 		.build()
 		.expect("Failed to build email");
 
-	assert_eq!(message.subject, "Order 12345 Confirmation");
-	assert_eq!(message.body, "Hello Bob, your order 12345 is confirmed.");
-	assert_eq!(message.from_email, "orders@example.com");
-	assert_eq!(message.to, vec!["customer@example.com"]);
+	assert_eq!(message.subject(), "Order 12345 Confirmation");
+	assert_eq!(message.body(), "Hello Bob, your order 12345 is confirmed.");
+	assert_eq!(message.from_email(), "orders@example.com");
+	assert_eq!(message.to(), vec!["customer@example.com"]);
 }
 
 /// Test: TemplateEmailBuilder with HTML template
@@ -111,13 +111,13 @@ fn test_template_email_builder_html() {
 		.build()
 		.expect("Failed to build HTML email");
 
-	assert_eq!(message.subject, "Password Reset for Charlie");
+	assert_eq!(message.subject(), "Password Reset for Charlie");
 	assert_eq!(
-		message.body,
+		message.body(),
 		"Click the link to reset your password: https://example.com/reset/abc123"
 	);
-	assert!(message.html_body.is_some());
-	let html = message.html_body.unwrap();
+	assert!(message.html_body().is_some());
+	let html = message.html_body().unwrap();
 	assert!(html.contains("Hello Charlie"));
 	assert!(html.contains("https://example.com/reset/abc123"));
 }
@@ -135,8 +135,8 @@ fn test_template_email_builder_add_context() {
 		.build()
 		.expect("Failed to build");
 
-	assert_eq!(message.subject, "Welcome David");
-	assert_eq!(message.body, "Your account number is 987654");
+	assert_eq!(message.subject(), "Welcome David");
+	assert_eq!(message.body(), "Your account number is 987654");
 }
 
 /// Test: TemplateEmailBuilder with CC and BCC
@@ -157,9 +157,9 @@ fn test_template_email_builder_cc_bcc() {
 		.build()
 		.expect("Failed to build");
 
-	assert_eq!(message.cc, vec!["cc@example.com"]);
-	assert_eq!(message.bcc, vec!["bcc@example.com"]);
-	assert_eq!(message.reply_to, vec!["support@example.com"]);
+	assert_eq!(message.cc(), vec!["cc@example.com"]);
+	assert_eq!(message.bcc(), vec!["bcc@example.com"]);
+	assert_eq!(message.reply_to(), vec!["support@example.com"]);
 }
 
 /// Test: Template rendering with complex nested content
@@ -205,8 +205,8 @@ fn test_template_email_builder_empty_templates() {
 		.build()
 		.expect("Failed to build");
 
-	assert_eq!(message.subject, "");
-	assert_eq!(message.body, "");
+	assert_eq!(message.subject(), "");
+	assert_eq!(message.body(), "");
 }
 
 /// Test: TemplateEmailBuilder with multiple variables in one field
@@ -226,8 +226,8 @@ fn test_template_multiple_variables() {
 		.build()
 		.expect("Failed to build");
 
-	assert_eq!(message.subject, "Hello World Test");
-	assert_eq!(message.body, "Hello, World! This is a Test.");
+	assert_eq!(message.subject(), "Hello World Test");
+	assert_eq!(message.body(), "Hello, World! This is a Test.");
 }
 
 /// Test: Template rendering with special characters
@@ -253,8 +253,8 @@ fn test_template_email_builder_default() {
 	let builder = TemplateEmailBuilder::default();
 	let message = builder.build().expect("Failed to build default");
 
-	assert_eq!(message.subject, "");
-	assert_eq!(message.body, "");
-	assert_eq!(message.from_email, "");
-	assert!(message.to.is_empty());
+	assert_eq!(message.subject(), "");
+	assert_eq!(message.body(), "");
+	assert_eq!(message.from_email(), "");
+	assert!(message.to().is_empty());
 }
