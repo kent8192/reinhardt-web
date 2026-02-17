@@ -608,8 +608,9 @@ impl Default for PerformanceMetrics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_introspection_cache_basic() {
 		let cache = IntrospectionCache::new();
 		assert_eq!(cache.size(), 0);
@@ -622,7 +623,7 @@ mod tests {
 		assert!(cache.get("User").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_introspection_cache_clear() {
 		let cache = IntrospectionCache::new();
 		cache.set("User".to_string(), vec![]);
@@ -635,6 +636,7 @@ mod tests {
 		assert!(!cache.contains("User"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_batch_validator_unique_together() {
 		let mut validator = BatchValidator::new();
@@ -652,7 +654,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_cache_basic() {
 		let cache = QueryCache::new(Duration::from_secs(60));
 
@@ -664,13 +666,13 @@ mod tests {
 		assert_eq!(cached.unwrap(), data);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_cache_miss() {
 		let cache = QueryCache::new(Duration::from_secs(60));
 		assert!(cache.get("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_cache_invalidate() {
 		let cache = QueryCache::new(Duration::from_secs(60));
 
@@ -681,7 +683,7 @@ mod tests {
 		assert!(cache.get("user:123").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_cache_clear() {
 		let cache = QueryCache::new(Duration::from_secs(60));
 
@@ -694,7 +696,7 @@ mod tests {
 		assert_eq!(cache.size(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_performance_metrics_basic() {
 		let metrics = PerformanceMetrics::new();
 
@@ -711,7 +713,7 @@ mod tests {
 		assert_eq!(stats.avg_validation_ms, 20.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_performance_metrics_clear() {
 		let metrics = PerformanceMetrics::new();
 
@@ -729,7 +731,7 @@ mod tests {
 		assert_eq!(stats.total_validations, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_validator_default() {
 		let validator = BatchValidator::default();
 		assert_eq!(validator.pending_count(), 0);
@@ -853,8 +855,9 @@ impl Default for N1Detector {
 #[cfg(test)]
 mod n1_detector_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_n1_detector_basic() {
 		let mut detector = N1Detector::new();
 
@@ -870,7 +873,7 @@ mod n1_detector_tests {
 		assert!(warning.unwrap().contains("N+1 query detected"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_n1_detector_below_threshold() {
 		let mut detector = N1Detector::with_threshold(20);
 
@@ -883,7 +886,7 @@ mod n1_detector_tests {
 		assert!(warning.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_n1_detector_different_queries() {
 		let mut detector = N1Detector::new();
 
@@ -896,7 +899,7 @@ mod n1_detector_tests {
 		assert!(warning.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_n1_detector_clear() {
 		let mut detector = N1Detector::new();
 

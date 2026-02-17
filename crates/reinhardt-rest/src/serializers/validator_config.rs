@@ -282,6 +282,7 @@ mod tests {
 	use super::*;
 	use crate::serializers::validators::{UniqueTogetherValidator, UniqueValidator};
 	use reinhardt_db::orm::FieldSelector;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -320,7 +321,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_config_new() {
 		let config = ValidatorConfig::<TestUser>::new();
 		assert_eq!(config.unique_validators().len(), 0);
@@ -328,7 +329,7 @@ mod tests {
 		assert!(!config.has_validators());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_unique_validator() {
 		let mut config = ValidatorConfig::<TestUser>::new();
 		config.add_unique_validator(UniqueValidator::new("username"));
@@ -337,7 +338,7 @@ mod tests {
 		assert!(config.has_validators());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_unique_together_validator() {
 		let mut config = ValidatorConfig::<TestUser>::new();
 		config
@@ -347,7 +348,7 @@ mod tests {
 		assert!(config.has_validators());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_validators() {
 		let mut config = ValidatorConfig::<TestUser>::new();
 		config.add_unique_validator(UniqueValidator::new("username"));

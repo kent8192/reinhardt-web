@@ -132,8 +132,9 @@ fn default_version() -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = OpenApiConfig::default();
 		assert!(config.enabled);
@@ -145,7 +146,7 @@ mod tests {
 		assert_eq!(config.description, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_config() {
 		let config = OpenApiConfig {
 			title: "My API".to_string(),
@@ -158,7 +159,7 @@ mod tests {
 		assert_eq!(config.description, Some("Custom API".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serde_serialization() {
 		let config = OpenApiConfig::default();
 		let json = serde_json::to_string(&config).unwrap();
@@ -167,7 +168,7 @@ mod tests {
 		assert_eq!(config.json_path, deserialized.json_path);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serde_with_missing_fields() {
 		// JSON with missing optional fields should use defaults
 		let json = r#"{"title":"Test API"}"#;

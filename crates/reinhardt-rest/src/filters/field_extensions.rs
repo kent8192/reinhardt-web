@@ -93,6 +93,7 @@ impl<M: Model, T> FieldOrderingExt<M, T> for Field<M, T> {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::{FieldSelector, Model};
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestPost {
@@ -130,7 +131,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_asc_extension() {
 		let field = Field::<TestPost, String>::new(vec!["title"]);
 		let order = field.asc();
@@ -139,7 +140,7 @@ mod tests {
 		assert_eq!(order.direction(), OrderDirection::Asc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_desc_extension() {
 		let field = Field::<TestPost, String>::new(vec!["created_at"]);
 		let order = field.desc();
@@ -148,7 +149,7 @@ mod tests {
 		assert_eq!(order.direction(), OrderDirection::Desc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_ordering() {
 		let field = Field::<TestPost, String>::new(vec!["author", "username"]);
 		let order = field.asc();

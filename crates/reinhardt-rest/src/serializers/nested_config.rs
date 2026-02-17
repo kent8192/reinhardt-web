@@ -269,8 +269,9 @@ impl NestedSerializerConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_new() {
 		let config = NestedFieldConfig::new("author");
 		assert_eq!(config.field_name, "author");
@@ -280,46 +281,46 @@ mod tests {
 		assert!(!config.allow_update);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_depth() {
 		let config = NestedFieldConfig::new("author").depth(3);
 		assert_eq!(config.depth, 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_read_only() {
 		let config = NestedFieldConfig::new("author").read_only();
 		assert!(config.read_only);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_allow_create() {
 		let config = NestedFieldConfig::new("author").allow_create();
 		assert!(config.allow_create);
 		assert!(!config.allow_update);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_allow_update() {
 		let config = NestedFieldConfig::new("author").allow_update();
 		assert!(!config.allow_create);
 		assert!(config.allow_update);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_config_writable() {
 		let config = NestedFieldConfig::new("author").writable();
 		assert!(config.allow_create);
 		assert!(config.allow_update);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_serializer_config_new() {
 		let config = NestedSerializerConfig::new();
 		assert_eq!(config.nested_field_names().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_and_get_nested_field() {
 		let mut config = NestedSerializerConfig::new();
 		config.add_nested_field(NestedFieldConfig::new("author").depth(2));
@@ -332,7 +333,7 @@ mod tests {
 		assert_eq!(author_config.depth, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_nested_field() {
 		let mut config = NestedSerializerConfig::new();
 		config.add_nested_field(NestedFieldConfig::new("author"));
@@ -344,7 +345,7 @@ mod tests {
 		assert!(!config.is_nested_field("author"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_field_names() {
 		let mut config = NestedSerializerConfig::new();
 		config.add_nested_field(NestedFieldConfig::new("author"));
@@ -356,7 +357,7 @@ mod tests {
 		assert!(names.contains(&"category".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_depth() {
 		let mut config = NestedSerializerConfig::new();
 		config.add_nested_field(NestedFieldConfig::new("author").depth(3));

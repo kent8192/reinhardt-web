@@ -145,8 +145,10 @@ impl ThrottleBackend for RedisThrottleBackend {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_increment() {
 		let backend = MemoryBackend::new();
@@ -162,6 +164,7 @@ mod tests {
 		assert_eq!(count3, 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_get_count() {
 		let backend = MemoryBackend::new();
@@ -177,6 +180,7 @@ mod tests {
 		assert_eq!(count, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_increment_duration() {
 		let backend = MemoryBackend::new();
@@ -189,6 +193,7 @@ mod tests {
 		assert_eq!(count, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_separate_keys() {
 		let backend = MemoryBackend::new();
@@ -204,6 +209,7 @@ mod tests {
 		assert_eq!(count2, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_backend_default() {
 		let backend = MemoryBackend::default();

@@ -311,8 +311,9 @@ impl Default for EndpointInspector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_normalize_path() {
 		let inspector = EndpointInspector::new();
 
@@ -330,7 +331,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_django_type_to_openapi() {
 		let inspector = EndpointInspector::new();
 
@@ -347,7 +348,7 @@ mod tests {
 		assert!(str_format.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_tags() {
 		let inspector = EndpointInspector::new();
 
@@ -365,7 +366,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_request_body_for_post() {
 		let inspector = EndpointInspector::new();
 
@@ -391,7 +392,7 @@ mod tests {
 		assert!(rb.content.contains_key("application/json"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_request_body_for_get() {
 		let inspector = EndpointInspector::new();
 
@@ -409,7 +410,7 @@ mod tests {
 		assert!(request_body.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_request_body_for_form() {
 		let inspector = EndpointInspector::new();
 
@@ -430,7 +431,7 @@ mod tests {
 		assert!(rb.content.contains_key("application/x-www-form-urlencoded"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_metadata_method_to_http_method() {
 		let inspector = EndpointInspector::new();
 

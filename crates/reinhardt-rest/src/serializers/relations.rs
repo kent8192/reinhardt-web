@@ -222,6 +222,7 @@ pub type IdentityField<T> = RelationField<T>;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestRelated {
@@ -229,14 +230,14 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relation_field_serialization() {
 		let field = RelationField::<TestRelated>::new();
 		let json = serde_json::to_string(&field).unwrap();
 		assert!(!json.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_related_field_serialization() {
 		let field = ManyRelatedField::<TestRelated>::new();
 		let json = serde_json::to_string(&field).unwrap();

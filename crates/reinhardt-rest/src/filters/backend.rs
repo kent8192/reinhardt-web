@@ -447,7 +447,9 @@ impl FilterBackend for SimpleOrderingBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_filter_backend_empty() {
 		let backend = CustomFilterBackend::new();
@@ -459,6 +461,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_filter_backend_with_filters() {
 		let mut backend = CustomFilterBackend::new();
@@ -478,6 +481,7 @@ mod tests {
 		assert!(result.contains("name LIKE '%john%'"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_search_backend() {
 		let backend = SimpleSearchBackend::new("search")
@@ -497,6 +501,7 @@ mod tests {
 		assert!(result.contains("OR"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_search_backend_no_query() {
 		let backend = SimpleSearchBackend::new("search").with_field("title");
@@ -508,6 +513,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_search_backend_no_fields() {
 		let backend = SimpleSearchBackend::new("search");
@@ -521,6 +527,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_ordering_backend_asc() {
 		let backend = SimpleOrderingBackend::new("ordering")
@@ -537,6 +544,7 @@ mod tests {
 		assert!(result.contains("ORDER BY created_at ASC"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_ordering_backend_desc() {
 		let backend = SimpleOrderingBackend::new("ordering")
@@ -553,6 +561,7 @@ mod tests {
 		assert!(result.contains("ORDER BY created_at DESC"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_ordering_backend_invalid_field() {
 		let backend = SimpleOrderingBackend::new("ordering").allow_field("created_at");
@@ -566,6 +575,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_ordering_backend_no_query() {
 		let backend = SimpleOrderingBackend::new("ordering").allow_field("created_at");
@@ -577,6 +587,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_chained_filters() {
 		let mut backend = CustomFilterBackend::new();

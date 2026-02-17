@@ -288,6 +288,7 @@ impl<M> Default for FullTextSearchFilter<M> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Clone)]
 	#[allow(dead_code)]
@@ -297,12 +298,12 @@ mod tests {
 		content: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_search_mode_default() {
 		assert_eq!(FullTextSearchMode::default(), FullTextSearchMode::Natural);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_search_modes() {
 		let modes = vec![
 			FullTextSearchMode::Natural,
@@ -316,7 +317,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_creation() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new();
 		assert_eq!(filter.get_query(), "");
@@ -326,14 +327,14 @@ mod tests {
 		assert_eq!(filter.get_language(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_query() {
 		let filter: FullTextSearchFilter<Article> =
 			FullTextSearchFilter::new().query("rust programming");
 		assert_eq!(filter.get_query(), "rust programming");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_add_field() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
 			.add_field("title")
@@ -344,7 +345,7 @@ mod tests {
 		assert_eq!(filter.get_fields()[1], "content");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_add_field_with_boost() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
 			.add_field_with_boost("title", 2.0)
@@ -355,7 +356,7 @@ mod tests {
 		assert_eq!(filter.get_boost(1), Some(1.0));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_mode() {
 		let filter: FullTextSearchFilter<Article> =
 			FullTextSearchFilter::new().mode(FullTextSearchMode::Boolean);
@@ -366,13 +367,13 @@ mod tests {
 		assert_eq!(filter2.get_mode(), FullTextSearchMode::Phrase);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_min_score() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new().min_score(0.75);
 		assert_eq!(filter.get_min_score(), Some(0.75));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_language() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new().language("english");
 		assert_eq!(filter.get_language(), Some("english"));
@@ -382,7 +383,7 @@ mod tests {
 		assert_eq!(filter2.get_language(), Some("spanish"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_complex() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
 			.query("rust web framework")
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(filter.get_boost(1), Some(1.0));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_boosts() {
 		let filter: FullTextSearchFilter<Article> = FullTextSearchFilter::new()
 			.add_field("title")

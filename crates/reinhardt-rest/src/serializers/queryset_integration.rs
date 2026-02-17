@@ -302,6 +302,7 @@ impl SaveContext {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::{FieldSelector, Model};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -347,13 +348,13 @@ mod tests {
 		type Model = TestUser;
 	}
 
-	#[test]
+	#[rstest]
 	fn test_save_context_creation() {
 		let context = SaveContext::new();
 		assert!(context.extra.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_save_context_with_extra() {
 		let context = SaveContext::new()
 			.with_extra("key1".to_string(), serde_json::json!("value1"))
@@ -367,6 +368,7 @@ mod tests {
 		assert_eq!(context.extra.get("key2").unwrap(), &serde_json::json!(42));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_for_create_default() {
 		let data = serde_json::json!({
@@ -378,6 +380,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_validate_for_update_default() {
 		let data = serde_json::json!({"email": "newemail@example.com"});
@@ -476,8 +479,9 @@ impl Default for CacheAwareSaveContext {
 mod cache_aware_tests {
 	use super::*;
 	use crate::serializers::InvalidationStrategy;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cache_aware_save_context_without_invalidator() {
 		let context = CacheAwareSaveContext::new();
 		assert!(context.invalidator.is_none());
@@ -487,7 +491,7 @@ mod cache_aware_tests {
 		assert_eq!(keys.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_aware_save_context_with_invalidator() {
 		let invalidator =
 			crate::serializers::CacheInvalidator::new(InvalidationStrategy::Immediate);
@@ -504,14 +508,14 @@ mod cache_aware_tests {
 		assert_eq!(keys[0], "user:123:profile");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_aware_save_context_inner() {
 		let context = CacheAwareSaveContext::new();
 		let inner = context.inner();
 		assert!(inner.extra.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_aware_save_context_into_inner() {
 		let context = CacheAwareSaveContext::new();
 		let inner = context.into_inner();

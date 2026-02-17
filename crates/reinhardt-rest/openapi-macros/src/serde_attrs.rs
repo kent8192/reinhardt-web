@@ -183,14 +183,15 @@ pub(crate) fn extract_serde_variant_attrs(attrs: &[Attribute]) -> SerdeVariantAt
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_is_external() {
 		let attrs = SerdeEnumAttrs::default();
 		assert_eq!(attrs.tagging_strategy(), TaggingStrategy::External);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_untagged_strategy() {
 		let attrs = SerdeEnumAttrs {
 			untagged: true,
@@ -199,7 +200,7 @@ mod tests {
 		assert_eq!(attrs.tagging_strategy(), TaggingStrategy::Untagged);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_internal_tagging() {
 		let attrs = SerdeEnumAttrs {
 			tag: Some("type".to_string()),
@@ -213,7 +214,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_adjacent_tagging() {
 		let attrs = SerdeEnumAttrs {
 			tag: Some("t".to_string()),

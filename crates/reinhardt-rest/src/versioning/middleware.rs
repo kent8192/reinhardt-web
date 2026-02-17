@@ -159,6 +159,7 @@ mod tests {
 	use crate::versioning::{QueryParameterVersioning, URLPathVersioning};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
+	use rstest::rstest;
 
 	fn create_test_request(uri: &str) -> Request {
 		let uri = uri.parse::<Uri>().unwrap();
@@ -182,6 +183,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_url_path_versioning() {
 		let versioning = URLPathVersioning::new()
@@ -200,6 +202,7 @@ mod tests {
 		let _ = middleware.process(request, handler.clone()).await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_query_parameter_versioning() {
 		let versioning = QueryParameterVersioning::new()
@@ -218,6 +221,7 @@ mod tests {
 		let _ = middleware.process(request, handler.clone()).await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_version_extension() {
 		let versioning = URLPathVersioning::new()
@@ -231,6 +235,7 @@ mod tests {
 		let _ = middleware.process(request, handler.clone()).await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_version_extension_with_default() {
 		let request = create_test_request("/users/");
@@ -242,6 +247,7 @@ mod tests {
 		assert_eq!(request.version_or("fallback"), "fallback");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_invalid_version() {
 		let versioning = URLPathVersioning::new()
@@ -258,6 +264,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_api_version_methods() {
 		let version = ApiVersion("2.0".to_string());

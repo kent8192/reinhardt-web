@@ -537,6 +537,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::FieldSelector;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -575,13 +576,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_validator_new() {
 		let validator = UniqueValidator::<TestUser>::new("username");
 		assert_eq!(validator.field_name(), "username");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_validator_with_message() {
 		let validator =
 			UniqueValidator::<TestUser>::new("username").with_message("Custom error message");
@@ -589,7 +590,7 @@ mod tests {
 		assert!(validator.message.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_together_validator_new() {
 		let validator = UniqueTogetherValidator::<TestUser>::new(vec!["username", "email"]);
 		assert_eq!(validator.field_names().len(), 2);
@@ -597,7 +598,7 @@ mod tests {
 		assert_eq!(validator.field_names()[1], "email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unique_together_validator_with_message() {
 		let validator = UniqueTogetherValidator::<TestUser>::new(vec!["username", "email"])
 			.with_message("Custom combination message");

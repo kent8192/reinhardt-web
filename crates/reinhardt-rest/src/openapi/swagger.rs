@@ -251,6 +251,7 @@ impl RedocUI {
 mod tests {
 	use super::*;
 	use crate::Info;
+	use rstest::rstest;
 	use utoipa::openapi::PathsBuilder;
 
 	fn create_test_schema() -> OpenApiSchema {
@@ -259,7 +260,7 @@ mod tests {
 		OpenApiSchema::new(info, paths)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_swagger_ui_render() {
 		let schema = create_test_schema();
 		let ui = SwaggerUI::new(schema);
@@ -269,7 +270,7 @@ mod tests {
 		assert!(html.contains("Test API"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redoc_render() {
 		let schema = create_test_schema();
 		let ui = RedocUI::new(schema);
@@ -279,7 +280,7 @@ mod tests {
 		assert!(html.contains("Test API"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_json() {
 		let schema = create_test_schema();
 		let ui = SwaggerUI::new(schema);

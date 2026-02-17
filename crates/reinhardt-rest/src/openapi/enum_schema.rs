@@ -359,8 +359,9 @@ impl EnumSchemaBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_external_tagging() {
 		let schema = EnumSchemaBuilder::new("Message")
 			.variant("Text", Schema::string())
@@ -375,7 +376,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_internal_tagging() {
 		let schema = EnumSchemaBuilder::new("Message")
 			.tagging(EnumTagging::Internal {
@@ -401,7 +402,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_adjacent_tagging() {
 		let schema = EnumSchemaBuilder::new("Message")
 			.tagging(EnumTagging::Adjacent {
@@ -422,7 +423,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_untagged() {
 		let schema = EnumSchemaBuilder::new("Value")
 			.tagging(EnumTagging::Untagged)
@@ -438,7 +439,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_description() {
 		let schema = EnumSchemaBuilder::new("Status")
 			.description("User status")
@@ -453,7 +454,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_variants() {
 		let schema = EnumSchemaBuilder::new("Color")
 			.variant("Red", Schema::object())
@@ -469,7 +470,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_internal_tagging_preserves_variant_properties() {
 		let schema = EnumSchemaBuilder::new("Message")
 			.tagging(EnumTagging::Internal {

@@ -284,8 +284,9 @@ mod tests {
 	use super::*;
 	use crate::openapi::Schema;
 	use crate::openapi::SchemaExt;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_generator() {
 		let generator = SchemaGenerator::new();
 		assert_eq!(generator.version, "1.0.0");
@@ -293,7 +294,7 @@ mod tests {
 		assert!(generator.description.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_pattern() {
 		let generator = SchemaGenerator::new()
 			.title("Test API")
@@ -305,7 +306,7 @@ mod tests {
 		assert_eq!(generator.description, Some("Test description".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_basic_schema() {
 		let generator = SchemaGenerator::new()
 			.title("My API")
@@ -318,7 +319,7 @@ mod tests {
 		assert_eq!(schema.info.description, Some("Test API".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_integration() {
 		let mut generator = SchemaGenerator::new();
 
@@ -337,7 +338,7 @@ mod tests {
 		assert!(components.schemas.contains_key("Post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_json() {
 		let generator = SchemaGenerator::new().title("My API").version("1.0.0");
 
@@ -379,7 +380,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_yaml() {
 		let generator = SchemaGenerator::new().title("My API").version("1.0.0");
 
@@ -388,7 +389,7 @@ mod tests {
 		assert!(yaml.contains("version: 1.0.0"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_registry() {
 		let mut generator = SchemaGenerator::new();
 		generator.registry().register("User", Schema::object());
@@ -397,7 +398,7 @@ mod tests {
 		assert!(registry.contains("User"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_with_nested_schemas() {
 		let mut generator = SchemaGenerator::new();
 
@@ -438,7 +439,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_registry() {
 		let generator = SchemaGenerator::new().title("Empty API").version("1.0.0");
 
@@ -449,7 +450,7 @@ mod tests {
 		assert_eq!(components.schemas.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_json_with_schemas() {
 		let mut generator = SchemaGenerator::new()
 			.title("Test API")
@@ -528,7 +529,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_schema_validation() {
 		let mut generator = SchemaGenerator::new()
 			.title("Validation Test")

@@ -27,8 +27,9 @@ pub struct MetadataResponse {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_metadata_serialization() {
 		let response = MetadataResponse {
 			name: "Test View".to_string(),

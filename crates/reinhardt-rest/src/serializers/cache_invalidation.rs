@@ -265,10 +265,11 @@ impl Default for CacheInvalidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::thread;
 	use std::time::Duration;
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_basic() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 
@@ -286,7 +287,7 @@ mod tests {
 		assert_eq!(invalidator.dependency_count("User", "123"), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_remove_dependency() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 
@@ -304,7 +305,7 @@ mod tests {
 		assert_eq!(keys[0], "user:123:posts");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_model_level() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 
@@ -318,6 +319,7 @@ mod tests {
 		assert!(keys.contains(&"user:456:profile".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_invalidator_delayed_strategy() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::Delayed(1));
@@ -337,7 +339,7 @@ mod tests {
 		assert_eq!(invalidator.dependency_count("User", "123"), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_lazy_strategy() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::LazyInvalidation);
 
@@ -350,7 +352,7 @@ mod tests {
 		assert_eq!(invalidator.dependency_count("User", "123"), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_time_based() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::TimeBased(1));
 
@@ -366,7 +368,7 @@ mod tests {
 		assert!(invalidator.check_expired("user:123:profile"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_clear() {
 		let invalidator = CacheInvalidator::new(InvalidationStrategy::Immediate);
 
@@ -382,7 +384,7 @@ mod tests {
 		assert_eq!(invalidator.dependency_count("User", "456"), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_invalidator_default() {
 		let invalidator = CacheInvalidator::default();
 		assert_eq!(invalidator.strategy(), &InvalidationStrategy::Immediate);

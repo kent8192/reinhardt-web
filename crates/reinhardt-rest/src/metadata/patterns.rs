@@ -317,8 +317,9 @@ impl ValidationPattern {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_email_pattern() {
 		let pattern = ValidationPattern::email();
 
@@ -335,7 +336,7 @@ mod tests {
 		assert!(!pattern.is_valid("user@.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_pattern() {
 		let pattern = ValidationPattern::url();
 
@@ -351,7 +352,7 @@ mod tests {
 		assert!(!pattern.is_valid("example.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_pattern() {
 		let pattern = ValidationPattern::uuid();
 
@@ -365,7 +366,7 @@ mod tests {
 		assert!(!pattern.is_valid("123e4567e89b12d3a456426614174000"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alphanumeric_pattern() {
 		let pattern = ValidationPattern::alphanumeric();
 
@@ -382,7 +383,7 @@ mod tests {
 		assert!(!pattern.is_valid("user name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_pattern() {
 		let pattern = ValidationPattern::slug();
 
@@ -398,7 +399,7 @@ mod tests {
 		assert!(!pattern.is_valid("end-hyphen-"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_pattern() {
 		let pattern = ValidationPattern::phone();
 
@@ -413,7 +414,7 @@ mod tests {
 		assert!(!pattern.is_valid("1-234-567-8900")); // Missing +
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hex_color_pattern() {
 		let pattern = ValidationPattern::hex_color();
 
@@ -429,7 +430,7 @@ mod tests {
 		assert!(!pattern.is_valid("#FF57")); // Wrong length
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ipv4_pattern() {
 		let pattern = ValidationPattern::ipv4();
 
@@ -445,7 +446,7 @@ mod tests {
 		assert!(!pattern.is_valid("192.168.1.1.1")); // Too many octets
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_pattern() {
 		let pattern = ValidationPattern::date();
 
@@ -463,7 +464,7 @@ mod tests {
 		assert!(pattern.is_valid("2023-13-01")); // Invalid month, but valid format
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_pattern() {
 		let pattern = ValidationPattern::time();
 
@@ -480,7 +481,7 @@ mod tests {
 		assert!(!pattern.is_valid("14:30:60")); // Invalid second
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_pattern() {
 		let pattern = ValidationPattern::new(r"^\d{3}-\d{4}$", "Phone extension");
 
@@ -489,7 +490,7 @@ mod tests {
 		assert!(!pattern.is_valid("abc-defg"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_with_examples() {
 		let pattern = ValidationPattern::with_examples(
 			r"^\d{3}$",
@@ -507,7 +508,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_as_openapi_pattern() {
 		let pattern = ValidationPattern::email();
 		let openapi_pattern = pattern.as_openapi_pattern();
@@ -516,7 +517,7 @@ mod tests {
 		assert!(openapi_pattern.starts_with('^'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_serialization() {
 		let pattern = ValidationPattern::email();
 		let json = serde_json::to_string(&pattern).unwrap();

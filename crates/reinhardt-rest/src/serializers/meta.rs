@@ -212,8 +212,9 @@ impl MetaConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_meta() {
 		let all_fields = vec!["id".to_string(), "name".to_string(), "email".to_string()];
 		let effective = DefaultMeta::effective_fields(&all_fields);
@@ -224,7 +225,7 @@ mod tests {
 		assert!(effective.contains("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_meta_config_with_fields() {
 		let config = MetaConfig::new().with_fields(vec!["id".to_string(), "name".to_string()]);
 
@@ -233,7 +234,7 @@ mod tests {
 		assert!(!config.is_field_included("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_meta_config_with_exclude() {
 		let config = MetaConfig::new().with_exclude(vec!["password".to_string()]);
 
@@ -242,7 +243,7 @@ mod tests {
 		assert!(!config.is_field_included("password"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_meta_config_read_only() {
 		let config = MetaConfig::new().with_read_only_fields(vec!["id".to_string()]);
 
@@ -250,7 +251,7 @@ mod tests {
 		assert!(!config.is_read_only("name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_meta_config_write_only() {
 		let config = MetaConfig::new().with_write_only_fields(vec!["password".to_string()]);
 
@@ -258,7 +259,7 @@ mod tests {
 		assert!(!config.is_write_only("email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_meta_config_effective_fields() {
 		let all_fields = vec![
 			"id".to_string(),

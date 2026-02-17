@@ -47,16 +47,17 @@ pub struct ChoiceInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// DRF test: test_null_boolean_field_info_type
-	#[test]
+	#[rstest]
 	fn test_boolean_field_info_type() {
 		let field_type = FieldType::Boolean;
 		assert_eq!(field_type, FieldType::Boolean);
 	}
 
 	// DRF test: test_decimal_field_info_type
-	#[test]
+	#[rstest]
 	fn test_decimal_field_info_type() {
 		// Note: In DRF, max_digits and decimal_places are specific to DecimalField
 		// In Rust, we use the Decimal field type and could add custom fields if needed

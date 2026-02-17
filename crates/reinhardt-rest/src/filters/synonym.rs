@@ -506,15 +506,16 @@ impl FilterBackend for SynonymExpander {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_creation() {
 		let dict = SynonymDictionary::new();
 		assert!(dict.is_empty());
 		assert_eq!(dict.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_add_synonym() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("car", "automobile");
@@ -524,7 +525,7 @@ mod tests {
 		assert!(synonyms.contains(&"automobile".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_bidirectional() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("car", "automobile");
@@ -537,7 +538,7 @@ mod tests {
 		assert!(auto_synonyms.contains(&"car".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_unidirectional() {
 		let mut dict = SynonymDictionary::with_bidirectional(false);
 		dict.add_synonym("car", "automobile");
@@ -549,7 +550,7 @@ mod tests {
 		assert!(auto_synonyms.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_add_multiple() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonyms("big", vec!["large", "huge", "enormous"]);
@@ -561,7 +562,7 @@ mod tests {
 		assert!(synonyms.contains(&"enormous".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_from_groups() {
 		let groups = vec![
 			vec!["happy", "joyful", "glad"],
@@ -576,7 +577,7 @@ mod tests {
 		assert!(happy_synonyms.contains(&"glad".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_dictionary_case_insensitive() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("Car", "Automobile");
@@ -588,7 +589,7 @@ mod tests {
 		assert!(synonyms_upper.contains(&"automobile".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_creation() {
 		let expander = SynonymExpander::new();
 		assert!(expander.enabled);
@@ -596,7 +597,7 @@ mod tests {
 		assert_eq!(expander.expansion_limit, Some(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_with_dictionary() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("fast", "quick");
@@ -607,7 +608,7 @@ mod tests {
 		assert!(expanded.len() > 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_expand_query() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("fast", "quick");
@@ -622,7 +623,7 @@ mod tests {
 		assert!(expanded.contains(&"car".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_min_term_length() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonym("is", "exists");
@@ -637,7 +638,7 @@ mod tests {
 		assert_eq!(expanded[0], "is");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_expansion_limit() {
 		let mut dict = SynonymDictionary::new();
 		dict.add_synonyms(
@@ -654,12 +655,13 @@ mod tests {
 		assert!(expanded.len() <= 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_synonym_expander_disabled() {
 		let expander = SynonymExpander::new().set_enabled(false);
 		assert!(!expander.enabled);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_no_search_terms() {
 		let expander = SynonymExpander::new();
@@ -674,6 +676,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_disabled_passthrough() {
 		let expander = SynonymExpander::new().set_enabled(false);
@@ -690,6 +693,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_single_term_expansion() {
 		let mut dict = SynonymDictionary::new();
@@ -743,6 +747,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_multi_term_expansion() {
 		let mut dict = SynonymDictionary::new();
@@ -781,6 +786,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_existing_where_clause() {
 		let mut dict = SynonymDictionary::new();
@@ -833,6 +839,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_sql_injection_protection() {
 		let mut dict = SynonymDictionary::new();
@@ -883,6 +890,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_with_search_param() {
 		let mut dict = SynonymDictionary::new();
@@ -913,6 +921,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_synonym_expander_with_query_param() {
 		let mut dict = SynonymDictionary::new();

@@ -960,8 +960,10 @@ pub mod test_utils {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use test_utils::create_test_request;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_accept_header_versioning() {
 		let versioning = AcceptHeaderVersioning::new()
@@ -988,6 +990,7 @@ mod tests {
 		assert_eq!(version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_url_path_versioning() {
 		let versioning = URLPathVersioning::new()
@@ -1005,6 +1008,7 @@ mod tests {
 		assert_eq!(version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hostname_versioning() {
 		let versioning = HostNameVersioning::new()
@@ -1028,6 +1032,7 @@ mod tests {
 		assert_eq!(version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_parameter_versioning() {
 		let versioning = QueryParameterVersioning::new()
@@ -1045,6 +1050,7 @@ mod tests {
 		assert_eq!(version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_namespace_versioning() {
 		let versioning = NamespaceVersioning::new()
@@ -1072,6 +1078,7 @@ mod tests {
 		assert_eq!(version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_namespace_versioning_with_custom_pattern() {
 		let versioning = NamespaceVersioning::new()

@@ -442,8 +442,9 @@ impl RenameAll {
 mod tests {
 	use super::*;
 	use crate::openapi::SchemaExt;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_new() {
 		let metadata = FieldMetadata::new("user_id");
 		assert_eq!(metadata.name, "user_id");
@@ -451,25 +452,25 @@ mod tests {
 		assert!(metadata.should_include());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_rename() {
 		let metadata = FieldMetadata::new("user_id").with_rename("userId");
 		assert_eq!(metadata.effective_name(), "userId");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_skip() {
 		let metadata = FieldMetadata::new("secret").with_skip(true);
 		assert!(!metadata.should_include());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_metadata_default() {
 		let metadata = FieldMetadata::new("count").with_default("0");
 		assert!(!metadata.is_required());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_object_from_fields() {
 		let fields = vec![
 			(FieldMetadata::new("id"), Schema::integer()),
@@ -493,7 +494,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_object_with_renamed_fields() {
 		let fields = vec![
 			(
@@ -519,7 +520,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_object_with_optional_fields() {
 		let fields = vec![
 			(FieldMetadata::new("id"), Schema::integer()),
@@ -540,7 +541,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_object_with_flatten() {
 		let fields = vec![
 			(FieldMetadata::new("id"), Schema::integer()),
@@ -561,25 +562,25 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_all_camel_case() {
 		assert_eq!(RenameAll::CamelCase.transform("user_id"), "userId");
 		assert_eq!(RenameAll::CamelCase.transform("first_name"), "firstName");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_all_pascal_case() {
 		assert_eq!(RenameAll::PascalCase.transform("user_id"), "UserId");
 		assert_eq!(RenameAll::PascalCase.transform("first_name"), "FirstName");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_all_kebab_case() {
 		assert_eq!(RenameAll::KebabCase.transform("user_id"), "user-id");
 		assert_eq!(RenameAll::KebabCase.transform("first_name"), "first-name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apply_rename_all() {
 		let metadata = vec![
 			FieldMetadata::new("user_id"),
@@ -592,7 +593,7 @@ mod tests {
 		assert_eq!(renamed[1].effective_name(), "firstName");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apply_rename_all_preserves_explicit_rename() {
 		let metadata = vec![
 			FieldMetadata::new("user_id").with_rename("customName"),

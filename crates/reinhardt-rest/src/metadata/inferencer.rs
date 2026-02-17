@@ -174,8 +174,9 @@ impl SchemaInferencer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_infer_primitive_types() {
 		let inferencer = SchemaInferencer::new();
 
@@ -192,7 +193,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Float);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_all_integer_types() {
 		let inferencer = SchemaInferencer::new();
 
@@ -217,7 +218,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_datetime_types() {
 		let inferencer = SchemaInferencer::new();
 
@@ -234,7 +235,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Duration);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_uuid_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -242,7 +243,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Uuid);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_vec_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -254,7 +255,7 @@ mod tests {
 		assert_eq!(child.field_type, FieldType::String);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_nested_vec_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -270,7 +271,7 @@ mod tests {
 		assert_eq!(inner_child.field_type, FieldType::Integer);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_option_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -279,7 +280,7 @@ mod tests {
 		assert!(!field.required);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_option_vec_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -291,7 +292,7 @@ mod tests {
 		assert_eq!(child.field_type, FieldType::Integer);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_vec_option_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -304,7 +305,7 @@ mod tests {
 		assert!(!child.required); // Option<String> is not required
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_custom_type() {
 		let mut inferencer = SchemaInferencer::new();
 		inferencer.register_type("UserId", FieldType::Uuid);
@@ -317,7 +318,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Email);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_unknown_type() {
 		let inferencer = SchemaInferencer::new();
 
@@ -325,7 +326,7 @@ mod tests {
 		assert_eq!(field.field_type, FieldType::Field);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_openapi_schema_string() {
 		let inferencer = SchemaInferencer::new();
 		let schema = inferencer.infer_openapi_schema("String");
@@ -333,7 +334,7 @@ mod tests {
 		assert_eq!(schema.schema_type, Some("string".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_openapi_schema_integer() {
 		let inferencer = SchemaInferencer::new();
 		let schema = inferencer.infer_openapi_schema("i64");
@@ -342,7 +343,7 @@ mod tests {
 		assert_eq!(schema.format, Some("int64".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_openapi_schema_list() {
 		let inferencer = SchemaInferencer::new();
 		let schema = inferencer.infer_openapi_schema("Vec<String>");
@@ -354,7 +355,7 @@ mod tests {
 		assert_eq!(items.schema_type, Some("string".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_openapi_schema_datetime() {
 		let inferencer = SchemaInferencer::new();
 		let schema = inferencer.infer_openapi_schema("DateTime");
@@ -363,7 +364,7 @@ mod tests {
 		assert_eq!(schema.format, Some("date-time".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_openapi_schema_uuid() {
 		let inferencer = SchemaInferencer::new();
 		let schema = inferencer.infer_openapi_schema("Uuid");

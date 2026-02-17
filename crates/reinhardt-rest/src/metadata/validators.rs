@@ -53,8 +53,9 @@ impl FieldValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_options() {
 		let validator = FieldValidator {
 			validator_type: "range".to_string(),
@@ -70,7 +71,7 @@ mod tests {
 		assert_eq!(options["max"], 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_serialization() {
 		let validator = FieldValidator {
 			validator_type: "custom".to_string(),

@@ -404,43 +404,44 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_creation() {
 		let filter: RangeFilter<i32> = RangeFilter::new("age");
 		assert_eq!(filter.field_name(), "age");
 		assert!(!filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_gte() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").gte(100);
 		assert_eq!(filter.get_gte(), Some(&100));
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_gt() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").gt(100);
 		assert_eq!(filter.get_gt(), Some(&100));
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_lte() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").lte(500);
 		assert_eq!(filter.get_lte(), Some(&500));
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_lt() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").lt(500);
 		assert_eq!(filter.get_lt(), Some(&500));
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_between() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").between(100, 500);
 		assert_eq!(filter.get_gte(), Some(&100));
@@ -448,7 +449,7 @@ mod tests {
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_filter_complex() {
 		let filter: RangeFilter<i32> = RangeFilter::new("price").gt(100).lt(500);
 		assert_eq!(filter.get_gt(), Some(&100));
@@ -456,50 +457,50 @@ mod tests {
 		assert!(filter.has_bounds());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_filter_creation() {
 		let filter = DateRangeFilter::new("created_at");
 		assert_eq!(filter.field_name(), "created_at");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_filter_after() {
 		let filter = DateRangeFilter::new("created_at").after("2024-01-01");
 		assert_eq!(filter.inner().get_gte(), Some(&"2024-01-01".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_filter_before() {
 		let filter = DateRangeFilter::new("created_at").before("2024-12-31");
 		assert_eq!(filter.inner().get_lte(), Some(&"2024-12-31".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_range_filter_range() {
 		let filter = DateRangeFilter::new("created_at").range("2024-01-01", "2024-12-31");
 		assert_eq!(filter.inner().get_gte(), Some(&"2024-01-01".to_string()));
 		assert_eq!(filter.inner().get_lte(), Some(&"2024-12-31".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_range_filter_creation() {
 		let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("quantity");
 		assert_eq!(filter.field_name(), "quantity");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_range_filter_min() {
 		let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("quantity").min(10);
 		assert_eq!(filter.inner().get_gte(), Some(&10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_range_filter_max() {
 		let filter: NumericRangeFilter<i32> = NumericRangeFilter::new("quantity").max(100);
 		assert_eq!(filter.inner().get_lte(), Some(&100));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_range_filter_range() {
 		let filter: NumericRangeFilter<f64> = NumericRangeFilter::new("price").range(99.99, 999.99);
 		assert_eq!(filter.inner().get_gte(), Some(&99.99));

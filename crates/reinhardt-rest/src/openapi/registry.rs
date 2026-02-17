@@ -319,8 +319,9 @@ impl Default for SchemaRegistry {
 mod tests {
 	use super::*;
 	use crate::openapi::SchemaExt;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_register_and_get_schema() {
 		let registry = SchemaRegistry::new();
 		let schema = Schema::object();
@@ -331,7 +332,7 @@ mod tests {
 		assert!(retrieved.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_ref() {
 		let registry = SchemaRegistry::new();
 		registry.register("User", Schema::object());
@@ -347,14 +348,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_ref_nonexistent() {
 		let registry = SchemaRegistry::new();
 		let user_ref = registry.get_ref("User");
 		assert!(user_ref.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_contains() {
 		let registry = SchemaRegistry::new();
 		assert!(!registry.contains("User"));
@@ -363,7 +364,7 @@ mod tests {
 		assert!(registry.contains("User"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_len_and_is_empty() {
 		let registry = SchemaRegistry::new();
 		assert_eq!(registry.len(), 0);
@@ -374,7 +375,7 @@ mod tests {
 		assert!(!registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_reference_detection() {
 		let registry = SchemaRegistry::new();
 		registry.register("User", Schema::object());
@@ -388,7 +389,7 @@ mod tests {
 		assert!(circular.contains(&"User".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear() {
 		let registry = SchemaRegistry::new();
 		registry.register("User", Schema::object());
@@ -401,7 +402,7 @@ mod tests {
 		assert!(registry.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_components() {
 		let registry = SchemaRegistry::new();
 		registry.register("User", Schema::object());
@@ -413,7 +414,7 @@ mod tests {
 		assert!(components.schemas.contains_key("Post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merge() {
 		let registry1 = SchemaRegistry::new();
 		registry1.register("User", Schema::object());
@@ -427,7 +428,7 @@ mod tests {
 		assert!(registry1.contains("Post"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merge_overwrites() {
 		let registry1 = SchemaRegistry::new();
 		registry1.register("User", Schema::integer());
@@ -450,7 +451,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_replace_schema() {
 		let registry = SchemaRegistry::new();
 		registry.register("User", Schema::integer());
@@ -481,7 +482,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_components_json_structure() {
 		let registry = SchemaRegistry::new();
 
@@ -677,7 +678,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_registry_with_refs_json_validation() {
 		let registry = SchemaRegistry::new();
 
@@ -812,7 +813,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_registry_json_structure() {
 		let registry = SchemaRegistry::new();
 

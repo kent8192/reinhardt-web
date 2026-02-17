@@ -313,6 +313,7 @@ mod tests {
 	use super::*;
 	use crate::versioning::{AcceptHeaderVersioning, URLPathVersioning};
 	use bytes::Bytes;
+	use rstest::rstest;
 
 	// Test handler for testing
 	struct TestHandler {
@@ -326,6 +327,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_versioned_handler() {
 		let handler = SimpleVersionedHandler::new()
@@ -342,6 +344,7 @@ mod tests {
 		assert!(supported.contains(&"2.0".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_configurable_versioned_handler() {
 		let _v1_handler = Arc::new(TestHandler {
@@ -376,6 +379,7 @@ mod tests {
 		assert!(!handler.supports_version("3.0"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_versioned_handler_wrapper() {
 		let versioning = Arc::new(
@@ -403,6 +407,7 @@ mod tests {
 		assert!(body.contains("\"version\": \"2\""));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_version_response_builder() {
 		let response = VersionResponseBuilder::new("1.0")
@@ -425,6 +430,7 @@ mod tests {
 		assert!(!data["version_info"]["deprecated"].as_bool().unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_versioned_handler_builder() {
 		let versioning = Arc::new(

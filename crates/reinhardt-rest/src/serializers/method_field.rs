@@ -218,9 +218,10 @@ impl Default for MethodFieldRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_serializer_method_field_new() {
 		let field = SerializerMethodField::new("get_full_name");
 		assert_eq!(field.method_name, "get_full_name");
@@ -228,7 +229,7 @@ mod tests {
 		assert!(field.read_only);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serializer_method_field_custom_method_name() {
 		let field = SerializerMethodField::new("full_name").method_name("compute_full_name");
 
@@ -240,7 +241,7 @@ mod tests {
 		assert_eq!(field.get_method_name(), "compute_full_name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_value_success() {
 		let mut context = HashMap::new();
 		context.insert("full_name".to_string(), json!("John Doe"));
@@ -251,7 +252,7 @@ mod tests {
 		assert_eq!(value, json!("John Doe"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_value_with_custom_method() {
 		let mut context = HashMap::new();
 		context.insert("compute_name".to_string(), json!("Jane Smith"));
@@ -262,7 +263,7 @@ mod tests {
 		assert_eq!(value, json!("Jane Smith"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_value_method_not_found() {
 		let context = HashMap::new();
 		let field = SerializerMethodField::new("missing_method");
@@ -277,7 +278,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_method_field_registry() {
 		let mut registry = MethodFieldRegistry::new();
 
@@ -295,7 +296,7 @@ mod tests {
 		assert_eq!(retrieved.method_name, "full_name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_method_field_with_complex_value() {
 		let mut context = HashMap::new();
 		context.insert(

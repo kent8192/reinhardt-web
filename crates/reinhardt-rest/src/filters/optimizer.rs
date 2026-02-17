@@ -897,8 +897,9 @@ impl FilterBackend for QueryOptimizer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_optimization_hint_variants() {
 		let hints = vec![
 			OptimizationHint::PreferIndexScan,
@@ -915,28 +916,28 @@ mod tests {
 		assert_eq!(hints.len(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimization_hint_to_sql() {
 		let hint = OptimizationHint::PreferIndexScan;
 		let sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
 		assert!(sql.contains("enable_indexscan"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimization_hint_with_value() {
 		let hint = OptimizationHint::RandomPageCost(2.5);
 		let sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
 		assert!(sql.contains("2.5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_creation() {
 		let plan = QueryPlan::new("Seq Scan on users");
 		assert!(plan.raw_plan.contains("Seq Scan"));
 		assert!(plan.suggestions.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_analyze() {
 		let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)").analyze();
 		assert!(!plan.suggestions.is_empty());
@@ -947,7 +948,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_creation() {
 		let optimizer = QueryOptimizer::new();
 		assert!(optimizer.hints.is_empty());
@@ -955,7 +956,7 @@ mod tests {
 		assert!(!optimizer.enable_hints);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_with_hints() {
 		let optimizer = QueryOptimizer::new()
 			.with_hint(OptimizationHint::PreferIndexScan)
@@ -964,18 +965,19 @@ mod tests {
 		assert_eq!(optimizer.hints.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_enable_analysis() {
 		let optimizer = QueryOptimizer::new().enable_analysis(true);
 		assert!(optimizer.enable_analysis);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_enable_hints() {
 		let optimizer = QueryOptimizer::new().enable_hints(true);
 		assert!(optimizer.enable_hints);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_query_optimizer_passthrough() {
 		let optimizer = QueryOptimizer::new();
@@ -992,7 +994,7 @@ mod tests {
 
 	// Database-specific hint generation tests
 
-	#[test]
+	#[rstest]
 	fn test_postgresql_hint_generation() {
 		let hint = OptimizationHint::PreferIndexScan;
 		let sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
@@ -1007,7 +1009,7 @@ mod tests {
 		assert_eq!(sql, "SET random_page_cost = 2.5");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_hint_generation() {
 		let hint = OptimizationHint::PreferIndexScan;
 		let sql = hint.to_sql_hint(DatabaseType::MySQL);
@@ -1023,7 +1025,7 @@ mod tests {
 		assert_eq!(sql, "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqlite_hint_generation() {
 		let hint = OptimizationHint::EffectiveCacheSize("4GB".to_string());
 		let sql = hint.to_sql_hint(DatabaseType::SQLite);
@@ -1037,7 +1039,7 @@ mod tests {
 
 	// Query plan parsing tests
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_parsing_cost() {
 		let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
 		assert_eq!(plan.estimated_cost, Some(35.50));
@@ -1045,7 +1047,7 @@ mod tests {
 		assert!(!plan.uses_index);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_parsing_index_scan() {
 		let plan =
 			QueryPlan::new("Index Scan using users_email_idx on users (cost=0.29..8.30 rows=1)");
@@ -1054,21 +1056,21 @@ mod tests {
 		assert!(plan.uses_index);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_parsing_index_only_scan() {
 		let plan =
 			QueryPlan::new("Index Only Scan using users_id_idx on users (cost=0.15..4.17 rows=1)");
 		assert!(plan.uses_index);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_parsing_bitmap_index() {
 		let plan = QueryPlan::new("Bitmap Index Scan on users_email_idx (cost=0.00..4.27 rows=10)");
 		assert!(plan.uses_index);
 		assert_eq!(plan.estimated_rows, Some(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_parsing_no_cost() {
 		let plan = QueryPlan::new("Seq Scan on users");
 		assert_eq!(plan.estimated_cost, None);
@@ -1077,7 +1079,7 @@ mod tests {
 
 	// Query plan analysis tests
 
-	#[test]
+	#[rstest]
 	fn test_analyze_sequential_scan() {
 		let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)").analyze();
 		assert!(
@@ -1087,7 +1089,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_high_cost() {
 		let plan = QueryPlan::new("Seq Scan on orders (cost=0.00..1500.00 rows=50000)").analyze();
 		assert!(
@@ -1097,7 +1099,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_large_result_set() {
 		let plan = QueryPlan::new("Seq Scan on logs (cost=0.00..100.00 rows=15000)").analyze();
 		assert!(
@@ -1107,13 +1109,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_nested_loop() {
 		let plan = QueryPlan::new("Nested Loop (cost=0.00..50.00 rows=100)").analyze();
 		assert!(plan.suggestions.iter().any(|s| s.contains("Nested loop")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_large_hash_join() {
 		let plan = QueryPlan::new("Hash Join (cost=100.00..500.00 rows=150000)").analyze();
 		assert!(
@@ -1123,7 +1125,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_bitmap_heap_scan() {
 		let plan = QueryPlan::new("Bitmap Heap Scan on users (cost=4.29..8.30 rows=1)").analyze();
 		assert!(
@@ -1133,7 +1135,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_large_sort() {
 		let plan = QueryPlan::new("Sort (cost=100.00..150.00 rows=20000)").analyze();
 		assert!(
@@ -1145,7 +1147,7 @@ mod tests {
 
 	// Hint injection tests
 
-	#[test]
+	#[rstest]
 	fn test_postgresql_hint_injection() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL)
 			.with_hint(OptimizationHint::PreferIndexScan)
@@ -1160,7 +1162,7 @@ mod tests {
 		assert!(result.contains("SELECT * FROM users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_hint_injection() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::MySQL)
 			.with_hint(OptimizationHint::PreferIndexScan)
@@ -1175,7 +1177,7 @@ mod tests {
 		assert!(result.contains("SELECT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqlite_hint_injection() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::SQLite)
 			.with_hint(OptimizationHint::EffectiveCacheSize("4GB".to_string()))
@@ -1188,7 +1190,7 @@ mod tests {
 		assert!(result.contains("SELECT * FROM users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_hint_injection_when_disabled() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL)
 			.with_hint(OptimizationHint::PreferIndexScan)
@@ -1200,7 +1202,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_hint_injection_when_empty() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL).enable_hints(true);
 
@@ -1210,6 +1212,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_analyze_query_method() {
 		let optimizer = QueryOptimizer::new();
@@ -1221,7 +1224,7 @@ mod tests {
 		assert!(!plan.suggestions.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_type_for_optimizer() {
 		let pg_optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL);
 		assert_eq!(pg_optimizer.db_type, DatabaseType::PostgreSQL);
@@ -1233,6 +1236,7 @@ mod tests {
 		assert_eq!(sqlite_optimizer.db_type, DatabaseType::SQLite);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_filter_backend_with_hints() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL)
@@ -1249,7 +1253,7 @@ mod tests {
 
 	// Query analysis tests
 
-	#[test]
+	#[rstest]
 	fn test_query_complexity_from_cost() {
 		assert_eq!(QueryComplexity::from_cost(5.0), QueryComplexity::Simple);
 		assert_eq!(QueryComplexity::from_cost(50.0), QueryComplexity::Moderate);
@@ -1260,7 +1264,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_plan_table_name_extraction() {
 		let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)");
 		assert_eq!(plan.table_name, "users");
@@ -1269,7 +1273,7 @@ mod tests {
 		assert_eq!(plan2.table_name, "products");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_query_plan() {
 		let optimizer = QueryOptimizer::new();
 		let plan = QueryPlan::new("Seq Scan on users (cost=0.00..35.50 rows=2550)").analyze();
@@ -1282,7 +1286,7 @@ mod tests {
 		assert!(!analysis.suggestions.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_analyze_query_plan_with_index() {
 		let optimizer = QueryOptimizer::new();
 		let plan =
@@ -1295,6 +1299,7 @@ mod tests {
 		assert!(!analysis.has_full_table_scan);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_filter_backend_with_analysis_enabled() {
 		let optimizer = QueryOptimizer::new().enable_analysis(true);
@@ -1310,6 +1315,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_filter_backend_with_analysis_disabled() {
 		let optimizer = QueryOptimizer::new().enable_analysis(false);
@@ -1324,6 +1330,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_filter_backend_with_both_analysis_and_hints() {
 		let optimizer = QueryOptimizer::for_database(DatabaseType::PostgreSQL)
@@ -1340,7 +1347,7 @@ mod tests {
 		assert!(result.contains("SELECT * FROM users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rows_to_explain_output_postgresql() {
 		use reinhardt_db::backends::types::{QueryValue, Row};
 		use std::collections::HashMap;
@@ -1358,7 +1365,7 @@ mod tests {
 		assert!(output.contains("cost=0.00..35.50"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rows_to_explain_output_mysql() {
 		use reinhardt_db::backends::types::{QueryValue, Row};
 		use std::collections::HashMap;
@@ -1379,7 +1386,7 @@ mod tests {
 		assert!(output.contains("table: users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rows_to_explain_output_sqlite() {
 		use reinhardt_db::backends::types::{QueryValue, Row};
 		use std::collections::HashMap;
@@ -1396,7 +1403,7 @@ mod tests {
 		assert!(output.contains("SCAN TABLE users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rows_to_explain_output_empty() {
 		use Row;
 		use std::collections::HashMap;
@@ -1410,7 +1417,7 @@ mod tests {
 		assert_eq!(output, "No EXPLAIN output available");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_connection_builder() {
 		// Create a mock connection (in real scenarios, this would be a real connection)
 		// For this test, we just verify the builder pattern works

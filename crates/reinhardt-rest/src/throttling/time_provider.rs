@@ -66,10 +66,11 @@ impl TimeProvider for MockTimeProvider {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use std::time::Duration;
 
-	#[test]
+	#[rstest]
 	fn test_system_time_provider_returns_current_time() {
 		let provider = SystemTimeProvider::new();
 		let time1 = provider.now();
@@ -78,7 +79,7 @@ mod tests {
 		assert!(time2 > time1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_time_provider_allows_time_control() {
 		let start = Instant::now();
 		let provider = MockTimeProvider::new(start);
@@ -91,7 +92,7 @@ mod tests {
 		assert_eq!(time2, start + Duration::from_secs(60));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_time_provider_set_time() {
 		let provider = MockTimeProvider::new(Instant::now());
 		let new_time = Instant::now() + Duration::from_secs(100);

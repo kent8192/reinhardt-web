@@ -325,8 +325,9 @@ impl Default for BrowsableApiRenderer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_render_basic_context() {
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -352,7 +353,7 @@ mod tests {
 		assert!(html.contains("Bob"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_with_form() {
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -387,7 +388,7 @@ mod tests {
 		assert!(html.contains("Enter user name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_select_field() {
 		let renderer = BrowsableApiRenderer::new();
 		let context = ApiContext {
@@ -440,7 +441,7 @@ mod tests {
 		assert!(html.contains("value=\"art\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_select_with_initial_label() {
 		// Test: Select field with initial_label displays placeholder option
 		let renderer = BrowsableApiRenderer::new();

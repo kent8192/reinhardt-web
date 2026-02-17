@@ -432,10 +432,11 @@ fn convert_tags(tags: Vec<Tag>) -> Vec<utoipa::openapi::Tag> {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
 	use super::*;
 	use crate::openapi::{OpenApiSchema, Schema};
 
-	#[test]
+	#[rstest]
 	fn test_convert_minimal_schema() {
 		let schema = OpenApiSchema::new("Test API", "1.0.0");
 		let utoipa_spec = convert_to_utoipa_spec(schema);
@@ -444,7 +445,7 @@ mod tests {
 		assert_eq!(utoipa_spec.info.version, "1.0.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_schema_with_description() {
 		let mut schema = OpenApiSchema::new("Test API", "1.0.0");
 		schema.info.description = Some("Test description".to_string());
@@ -457,7 +458,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convert_schema_types() {
 		let string_schema = Schema::string();
 		let utoipa_schema = convert_schema(string_schema);

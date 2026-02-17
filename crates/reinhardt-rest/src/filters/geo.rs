@@ -363,8 +363,9 @@ impl<M> NearbyFilter<M> {
 mod tests {
 	use super::*;
 	use geo_types::coord;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_distance_unit_conversion() {
 		assert_eq!(DistanceUnit::Meters.to_meters(1000.0), 1000.0);
 		assert_eq!(DistanceUnit::Kilometers.to_meters(1.0), 1000.0);
@@ -377,7 +378,7 @@ mod tests {
 		assert!((DistanceUnit::Feet.from_meters(0.3048) - 1.0).abs() < 0.0001);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_filter_creation() {
 		let center = Point::new(0.0, 0.0);
 		let filter = DistanceFilter::<()>::new(center, 1000.0, DistanceUnit::Meters);
@@ -387,7 +388,7 @@ mod tests {
 		assert_eq!(filter.get_unit(), DistanceUnit::Meters);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_calculation() {
 		let center = Point::new(0.0, 0.0);
 		let filter = DistanceFilter::<()>::new(center, 1000.0, DistanceUnit::Kilometers);
@@ -402,7 +403,7 @@ mod tests {
 		assert!(distance > 110.0 && distance < 112.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distance_filter_contains() {
 		let center = Point::new(0.0, 0.0);
 		let filter = DistanceFilter::<()>::new(center, 100.0, DistanceUnit::Kilometers);
@@ -416,7 +417,7 @@ mod tests {
 		assert!(!filter.contains(far_point));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bounding_box_filter() {
 		let bbox = Rect::new(coord! { x: 0.0, y: 0.0 }, coord! { x: 10.0, y: 10.0 });
 		let filter = BoundingBoxFilter::<()>::new(bbox);
@@ -434,7 +435,7 @@ mod tests {
 		assert!(!filter.contains(Point::new(-1.0, 5.0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_filter_square() {
 		let polygon = Polygon::new(
 			vec![
@@ -458,7 +459,7 @@ mod tests {
 		assert!(!filter.contains(Point::new(-1.0, 5.0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_polygon_filter_triangle() {
 		let polygon = Polygon::new(
 			vec![
@@ -480,7 +481,7 @@ mod tests {
 		assert!(!filter.contains(Point::new(9.0, 9.0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nearby_filter_creation() {
 		let center = Point::new(37.7749, -122.4194);
 		let filter = NearbyFilter::<()>::new(center, 10);
@@ -489,7 +490,7 @@ mod tests {
 		assert_eq!(filter.get_limit(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nearby_filter_with_max_distance() {
 		let center = Point::new(0.0, 0.0);
 		let filter = NearbyFilter::<()>::new(center, 5).max_distance(1000.0, DistanceUnit::Meters);
@@ -499,7 +500,7 @@ mod tests {
 		assert_eq!(filter.unit, DistanceUnit::Meters);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_field_customization() {
 		let center = Point::new(0.0, 0.0);
 		let filter =

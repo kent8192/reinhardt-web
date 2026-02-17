@@ -146,8 +146,9 @@ impl<T: ToSchema> ParameterMetadata for CookieParam<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_path_parameter_metadata() {
 		let param = PathParam::<i64>::parameter_metadata("id", true);
 		let param = param.unwrap();
@@ -157,13 +158,13 @@ mod tests {
 		assert!(param.schema.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_parameter_hidden() {
 		let param = PathParam::<i64>::parameter_metadata("id", false);
 		assert!(param.is_none(), "Hidden parameter should return None");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_parameter_metadata() {
 		let param = QueryParam::<String>::parameter_metadata("search", true);
 		let param = param.unwrap();
@@ -172,13 +173,13 @@ mod tests {
 		assert!(matches!(param.required, Required::False));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_parameter_hidden() {
 		let param = QueryParam::<String>::parameter_metadata("search", false);
 		assert!(param.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_parameter_metadata() {
 		let param = HeaderParam::<String>::parameter_metadata("X-API-Key", true);
 		let param = param.unwrap();
@@ -187,13 +188,13 @@ mod tests {
 		assert!(matches!(param.required, Required::False));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_header_parameter_hidden() {
 		let param = HeaderParam::<String>::parameter_metadata("X-API-Key", false);
 		assert!(param.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_parameter_metadata() {
 		let param = CookieParam::<String>::parameter_metadata("session_id", true);
 		let param = param.unwrap();
@@ -202,13 +203,13 @@ mod tests {
 		assert!(matches!(param.required, Required::False));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_parameter_hidden() {
 		let param = CookieParam::<String>::parameter_metadata("session_id", false);
 		assert!(param.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_parameter_types() {
 		// Test that we can generate metadata for different types
 		let path_int = PathParam::<i64>::parameter_metadata("id", true).unwrap();

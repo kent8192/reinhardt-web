@@ -639,6 +639,7 @@ pub trait OptimizableRelationField {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::{FieldSelector, Model};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -678,20 +679,20 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_related_field_creation() {
 		let field = PrimaryKeyRelatedFieldORM::<TestUser>::new();
 		assert!(!field.allow_null);
 		assert!(field.queryset_filter.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_related_field_with_allow_null() {
 		let field = PrimaryKeyRelatedFieldORM::<TestUser>::new().with_allow_null(true);
 		assert!(field.allow_null);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pk_related_field_with_filter() {
 		let filter = Filter::new(
 			"is_active".to_string(),
@@ -702,7 +703,7 @@ mod tests {
 		assert!(field.queryset_filter.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_related_field_creation() {
 		let field = SlugRelatedFieldORM::<TestUser>::new("username");
 		assert_eq!(field.slug_field, "username");
@@ -710,20 +711,20 @@ mod tests {
 		assert!(field.queryset_filter.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_related_field_with_allow_null() {
 		let field = SlugRelatedFieldORM::<TestUser>::new("username").with_allow_null(true);
 		assert!(field.allow_null);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_creation() {
 		let optimizer = QueryOptimizer::new();
 		assert!(optimizer.select_related.is_empty());
 		assert!(optimizer.prefetch_related.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_with_select_related() {
 		let optimizer = QueryOptimizer::new()
 			.with_select_related(vec!["author".to_string(), "category".to_string()]);
@@ -733,7 +734,7 @@ mod tests {
 		assert!(optimizer.select_related.contains(&"category".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_with_prefetch_related() {
 		let optimizer = QueryOptimizer::new()
 			.with_prefetch_related(vec!["comments".to_string(), "tags".to_string()]);
@@ -743,7 +744,7 @@ mod tests {
 		assert!(optimizer.prefetch_related.contains(&"tags".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_query_optimizer_apply() {
 		let optimizer = QueryOptimizer::new()
 			.with_select_related(vec!["author".to_string()])

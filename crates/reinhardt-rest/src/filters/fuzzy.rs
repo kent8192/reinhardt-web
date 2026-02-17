@@ -874,6 +874,7 @@ impl<M> Default for FuzzySearchFilter<M> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Clone)]
 	#[allow(dead_code)]
@@ -882,12 +883,12 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fuzzy_algorithm_default() {
 		assert_eq!(FuzzyAlgorithm::default(), FuzzyAlgorithm::Levenshtein);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_creation() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		assert_eq!(filter.get_query(), "");
@@ -898,7 +899,7 @@ mod tests {
 		assert!(!filter.is_case_sensitive());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_builder() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
 			.query("Jon Doe")
@@ -918,7 +919,7 @@ mod tests {
 		assert_eq!(filter.get_prefix_length(), 6);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_threshold_clamping() {
 		let filter1: FuzzySearchFilter<User> = FuzzySearchFilter::new().threshold(1.5);
 		assert_eq!(filter1.get_threshold(), 1.0);
@@ -927,7 +928,7 @@ mod tests {
 		assert_eq!(filter2.get_threshold(), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_levenshtein_distance() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		assert_eq!(filter.levenshtein_distance("kitten", "sitting"), 3);
@@ -936,7 +937,7 @@ mod tests {
 		assert_eq!(filter.levenshtein_distance("abc", ""), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_levenshtein_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Levenshtein);
@@ -945,7 +946,7 @@ mod tests {
 		assert!(filter.calculate_similarity("kitten", "sitting") > 0.5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jaro_winkler_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::JaroWinkler);
@@ -955,7 +956,7 @@ mod tests {
 		assert!(filter.calculate_similarity("dixon", "dicksonx") > 0.7);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trigram_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Trigram);
@@ -966,7 +967,7 @@ mod tests {
 		assert!(filter.calculate_similarity("hello", "hellow") > 0.5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_soundex_code() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		assert_eq!(filter.soundex_code("Smith"), "S530");
@@ -975,7 +976,7 @@ mod tests {
 		assert_eq!(filter.soundex_code("Jonson"), "J525");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_soundex_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Soundex);
@@ -985,7 +986,7 @@ mod tests {
 		assert_eq!(filter.calculate_similarity("Smith", "Johnson"), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new()
 			.threshold(0.8)
@@ -996,7 +997,7 @@ mod tests {
 		assert!(!filter.matches("hello", "world"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_sensitivity() {
 		let sensitive: FuzzySearchFilter<User> = FuzzySearchFilter::new()
 			.case_sensitive(true)
@@ -1010,7 +1011,7 @@ mod tests {
 		assert_eq!(insensitive.calculate_similarity("Hello", "hello"), 1.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_trigrams() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		let trigrams = filter.get_trigrams("hello");
@@ -1020,7 +1021,7 @@ mod tests {
 		assert!(trigrams.contains(&"llo".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_common_prefix_length() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		assert_eq!(filter.common_prefix_length("hello", "help"), 3);
@@ -1028,7 +1029,7 @@ mod tests {
 		assert_eq!(filter.common_prefix_length("test", "test"), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_strings() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 		assert_eq!(filter.calculate_similarity("", ""), 1.0);
@@ -1036,7 +1037,7 @@ mod tests {
 		assert_eq!(filter.calculate_similarity("abc", ""), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_damerau_levenshtein_distance() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 
@@ -1069,7 +1070,7 @@ mod tests {
 		assert_eq!(filter.damerau_levenshtein_distance("recieve", "receive"), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_damerau_levenshtein_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::DamerauLevenshtein);
@@ -1100,7 +1101,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_metaphone_code() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 
@@ -1146,7 +1147,7 @@ mod tests {
 		assert_eq!(filter.metaphone_code("voice"), "FS"); // V -> F
 	}
 
-	#[test]
+	#[rstest]
 	fn test_metaphone_similarity() {
 		let filter: FuzzySearchFilter<User> =
 			FuzzySearchFilter::new().algorithm(FuzzyAlgorithm::Metaphone);
@@ -1178,7 +1179,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_metaphone_vs_soundex() {
 		let filter: FuzzySearchFilter<User> = FuzzySearchFilter::new();
 

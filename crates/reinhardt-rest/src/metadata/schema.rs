@@ -271,8 +271,9 @@ mod tests {
 	use crate::metadata::fields::FieldInfoBuilder;
 	use crate::metadata::types::ChoiceInfo;
 	use crate::metadata::validators::FieldValidator;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_string_schema() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.min_length(3)
@@ -285,7 +286,7 @@ mod tests {
 		assert_eq!(schema.max_length, Some(50));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_integer_schema() {
 		let field = FieldInfoBuilder::new(FieldType::Integer)
 			.min_value(1.0)
@@ -299,7 +300,7 @@ mod tests {
 		assert_eq!(schema.maximum, Some(100.0));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_email_schema() {
 		let field = FieldInfoBuilder::new(FieldType::Email).build();
 
@@ -308,7 +309,7 @@ mod tests {
 		assert_eq!(schema.format, Some("email".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_datetime_schema() {
 		let field = FieldInfoBuilder::new(FieldType::DateTime).build();
 
@@ -317,7 +318,7 @@ mod tests {
 		assert_eq!(schema.format, Some("date-time".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_choice_schema() {
 		let choices = vec![
 			ChoiceInfo {
@@ -342,7 +343,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_list_schema() {
 		let child = FieldInfoBuilder::new(FieldType::String)
 			.min_length(1)
@@ -359,7 +360,7 @@ mod tests {
 		assert_eq!(items.min_length, Some(1));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_nested_object_schema() {
 		let mut children = HashMap::new();
 		children.insert(
@@ -389,7 +390,7 @@ mod tests {
 		assert_eq!(schema.required, Some(vec!["name".to_string()]));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_schema_with_description() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.help_text("Enter your username")
@@ -399,7 +400,7 @@ mod tests {
 		assert_eq!(schema.description, Some("Enter your username".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_schema_with_label_fallback() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.label("Username")
@@ -409,7 +410,7 @@ mod tests {
 		assert_eq!(schema.description, Some("Username".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_schema_with_default_value() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.default_value(json!("default_text"))
@@ -419,7 +420,7 @@ mod tests {
 		assert_eq!(schema.default, Some(json!("default_text")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_schema_with_read_only() {
 		let field = FieldInfoBuilder::new(FieldType::Integer)
 			.read_only(true)
@@ -429,7 +430,7 @@ mod tests {
 		assert_eq!(schema.read_only, Some(true));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_schema_with_regex_pattern() {
 		let validator = FieldValidator {
 			validator_type: "regex".to_string(),
@@ -445,7 +446,7 @@ mod tests {
 		assert_eq!(schema.pattern, Some("^[a-zA-Z0-9_]+$".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_object_schema_basic() {
 		let mut fields = HashMap::new();
 		fields.insert(
@@ -478,7 +479,7 @@ mod tests {
 		assert!(required.contains(&"email".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_object_schema_empty() {
 		let fields = HashMap::new();
 		let schema = generate_object_schema(&fields);
@@ -489,7 +490,7 @@ mod tests {
 		assert!(schema.required.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_serialization() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.min_length(3)

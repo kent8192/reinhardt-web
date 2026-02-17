@@ -294,6 +294,7 @@ impl Default for VersioningManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::collections::HashMap;
 	use std::env;
@@ -313,7 +314,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioning_config_default() {
 		let config = VersioningConfig::default();
 		assert_eq!(config.default_version, "1.0");
@@ -322,7 +323,7 @@ mod tests {
 		assert!(config.strict_mode);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioning_config_builder() {
 		let config = VersioningConfig::new()
 			.with_default_version("2.0")
@@ -339,7 +340,7 @@ mod tests {
 		assert!(!config.strict_mode);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioning_strategy_serialization() {
 		let strategy = VersioningStrategy::QueryParameter {
 			param_name: Some("v".to_string()),
@@ -356,7 +357,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioning_manager_creation() {
 		let config = VersioningConfig::new()
 			.with_default_version("1.0")
@@ -366,6 +367,7 @@ mod tests {
 		assert_eq!(manager.config().default_version, "1.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hostname_patterns() {
 		let mut patterns = HashMap::new();
@@ -389,7 +391,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_default_values() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -405,7 +407,7 @@ mod tests {
 		assert!(config.strict_mode);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_custom_default_version() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -423,7 +425,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_allowed_versions_parsing() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -444,7 +446,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strategy_url_path() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -465,7 +467,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strategy_query_parameter() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -486,7 +488,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strategy_hostname() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -507,7 +509,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strategy_namespace() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -528,7 +530,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strict_mode_false() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -546,7 +548,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_strict_mode_true_explicit() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -564,7 +566,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_combined_settings() {
 		// SAFETY: This test runs serially with #[serial] attribute
@@ -592,7 +594,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(versioning_env)]
 	fn test_from_env_unknown_strategy_defaults_to_accept_header() {
 		// SAFETY: This test runs serially with #[serial] attribute

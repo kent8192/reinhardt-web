@@ -144,8 +144,9 @@ pub fn default_pool_config() -> PoolConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_pool_manager_not_initialized() {
 		// Clear any existing pool
 		ConnectionPoolManager::clear();
@@ -154,20 +155,20 @@ mod tests {
 		assert!(!ConnectionPoolManager::is_initialized());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_pool_config() {
 		let config = default_pool_config();
 		assert_eq!(config.max_connections, 10);
 		assert_eq!(config.min_connections, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pool_manager_creation() {
 		let manager = ConnectionPoolManager::new();
 		let _ = manager; // Use the manager to suppress warning
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pool_manager_default() {
 		let manager = ConnectionPoolManager::default();
 		let _ = manager;

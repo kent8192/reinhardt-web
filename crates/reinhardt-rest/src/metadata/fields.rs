@@ -419,7 +419,9 @@ impl FieldInfoBuilder {
 mod tests {
 	use super::*;
 	use crate::metadata::FieldValidator;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_field_info_builder() {
 		let field = FieldInfoBuilder::new(FieldType::String)
@@ -438,6 +440,7 @@ mod tests {
 		assert_eq!(field.max_length, Some(50));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_choice_field() {
 		let choices = vec![
@@ -463,7 +466,7 @@ mod tests {
 	}
 
 	// DRF test: test_list_serializer_metadata_returns_info_about_fields_of_child_serializer
-	#[test]
+	#[rstest]
 	fn test_list_field_with_child() {
 		let child_field = FieldInfoBuilder::new(FieldType::Integer)
 			.required(true)
@@ -485,7 +488,7 @@ mod tests {
 
 	// DRF test: test_dont_show_hidden_fields
 	// In Rust, we handle this by simply not adding hidden fields to the field map
-	#[test]
+	#[rstest]
 	fn test_hidden_fields_not_included() {
 		let mut fields = HashMap::new();
 
@@ -505,7 +508,7 @@ mod tests {
 		assert_eq!(fields.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_single_validator() {
 		let validator = FieldValidator {
 			validator_type: "email".to_string(),
@@ -528,7 +531,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_multiple_validators() {
 		let validators = vec![
 			FieldValidator {
@@ -560,7 +563,7 @@ mod tests {
 		assert_eq!(field_validators[2].validator_type, "regex");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_without_validators() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.required(true)
@@ -570,7 +573,7 @@ mod tests {
 		assert!(field.validators.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_default_value_string() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.required(false)
@@ -581,7 +584,7 @@ mod tests {
 		assert_eq!(field.default_value, Some(serde_json::json!("default text")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_default_value_number() {
 		let field = FieldInfoBuilder::new(FieldType::Integer)
 			.required(false)
@@ -592,7 +595,7 @@ mod tests {
 		assert_eq!(field.default_value, Some(serde_json::json!(42)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_default_value_boolean() {
 		let field = FieldInfoBuilder::new(FieldType::Boolean)
 			.required(false)
@@ -603,7 +606,7 @@ mod tests {
 		assert_eq!(field.default_value, Some(serde_json::json!(true)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_default_value_object() {
 		let default_obj = serde_json::json!({
 			"name": "John Doe",
@@ -619,7 +622,7 @@ mod tests {
 		assert_eq!(field.default_value, Some(default_obj));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_with_default_value_array() {
 		let default_array = serde_json::json!(["item1", "item2", "item3"]);
 
@@ -632,7 +635,7 @@ mod tests {
 		assert_eq!(field.default_value, Some(default_array));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_without_default_value() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.required(true)
@@ -642,7 +645,7 @@ mod tests {
 		assert!(field.default_value.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_value_serialization() {
 		let field = FieldInfoBuilder::new(FieldType::String)
 			.default_value(serde_json::json!("default"))
@@ -653,7 +656,7 @@ mod tests {
 		assert!(json.contains("default"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_value_not_serialized_when_none() {
 		let field = FieldInfoBuilder::new(FieldType::String).build();
 

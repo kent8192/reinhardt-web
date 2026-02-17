@@ -167,8 +167,9 @@ pub async fn openapi_json(_req: Request) -> Result<Response> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_openapi_schema_generation() {
 		// Force lazy initialization
 		let schema = &*OPENAPI_SCHEMA;
@@ -176,6 +177,7 @@ mod tests {
 		assert_eq!(schema.info.version, "1.0.0");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_swagger_docs_handler() {
 		let req = Request::builder().uri("/docs").build().unwrap();
@@ -186,6 +188,7 @@ mod tests {
 		assert!(body_str.contains("swagger-ui"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_redoc_docs_handler() {
 		let req = Request::builder().uri("/docs-redoc").build().unwrap();
@@ -196,6 +199,7 @@ mod tests {
 		assert!(body_str.contains("redoc"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_openapi_json_handler() {
 		let req = Request::builder().uri("/api/openapi.json").build().unwrap();

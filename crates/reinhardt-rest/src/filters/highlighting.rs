@@ -398,44 +398,45 @@ impl MultiFieldHighlighter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_basic() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight("The quick brown fox", "quick");
 		assert_eq!(result, "The <mark>quick</mark> brown fox");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_custom_tag() {
 		let highlighter = HtmlHighlighter::new().with_tag("strong");
 		let result = highlighter.highlight("Hello world", "world");
 		assert_eq!(result, "Hello <strong>world</strong>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_case_insensitive() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight("Hello World", "world");
 		assert_eq!(result, "Hello <mark>World</mark>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_case_sensitive() {
 		let highlighter = HtmlHighlighter::new().case_sensitive(true);
 		let result = highlighter.highlight("Hello World", "world");
 		assert_eq!(result, "Hello World");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_empty_query() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight("Hello world", "");
 		assert_eq!(result, "Hello world");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_highlighter_multiple_occurrences() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight("rust rust rust", "rust");
@@ -445,42 +446,42 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plain_text_highlighter_basic() {
 		let highlighter = PlainTextHighlighter::new();
 		let result = highlighter.highlight("The quick brown fox", "quick");
 		assert_eq!(result, "The **quick** brown fox");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plain_text_highlighter_custom_markers() {
 		let highlighter = PlainTextHighlighter::new().with_markers(">>", "<<");
 		let result = highlighter.highlight("Hello world", "world");
 		assert_eq!(result, "Hello >>world<<");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plain_text_highlighter_case_insensitive() {
 		let highlighter = PlainTextHighlighter::new();
 		let result = highlighter.highlight("Hello World", "world");
 		assert_eq!(result, "Hello **World**");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plain_text_highlighter_case_sensitive() {
 		let highlighter = PlainTextHighlighter::new().case_sensitive(true);
 		let result = highlighter.highlight("Hello World", "world");
 		assert_eq!(result, "Hello World");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_plain_text_highlighter_empty_query() {
 		let highlighter = PlainTextHighlighter::new();
 		let result = highlighter.highlight("Hello world", "");
 		assert_eq!(result, "Hello world");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlighted_result_creation() {
 		let result = HighlightedResult::new("title", "Hello world", "Hello <mark>world</mark>");
 
@@ -489,7 +490,7 @@ mod tests {
 		assert_eq!(result.highlighted, "Hello <mark>world</mark>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_field_highlighter() {
 		let highlighter = MultiFieldHighlighter::new(Box::new(HtmlHighlighter::new()));
 
@@ -510,7 +511,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_many() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight_many("The quick brown fox jumps", &["quick", "fox"]);
@@ -519,7 +520,7 @@ mod tests {
 		assert!(result.contains("<mark>fox</mark>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_highlight_with_special_characters() {
 		let highlighter = HtmlHighlighter::new();
 		let result = highlighter.highlight("Price: $100", "$100");

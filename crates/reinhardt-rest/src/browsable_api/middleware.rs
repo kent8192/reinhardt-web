@@ -193,6 +193,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler;
 
@@ -205,6 +206,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_with_html_accept() {
 		let middleware = BrowsableApiMiddleware::new();
@@ -239,6 +241,7 @@ mod tests {
 		assert!(body.contains("test"), "Missing 'test' in body");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_with_json_accept() {
 		let middleware = BrowsableApiMiddleware::new();
@@ -266,6 +269,7 @@ mod tests {
 		assert_eq!(body, r#"{"data":"test"}"#);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_disabled() {
 		let config = BrowsableApiConfig {
@@ -298,6 +302,7 @@ mod tests {
 		assert_eq!(body, r#"{"data":"test"}"#);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_default() {
 		let middleware = BrowsableApiMiddleware::default();
@@ -306,6 +311,7 @@ mod tests {
 		assert!(middleware.config.custom_css.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_with_custom_config() {
 		let config = BrowsableApiConfig {
@@ -325,6 +331,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prefers_html_with_html_accept() {
 		let mut headers = HeaderMap::new();
@@ -342,6 +349,7 @@ mod tests {
 		assert!(BrowsableApiMiddleware::prefers_html(&request));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prefers_html_with_json_accept() {
 		let mut headers = HeaderMap::new();
@@ -359,6 +367,7 @@ mod tests {
 		assert!(!BrowsableApiMiddleware::prefers_html(&request));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_prefers_html_without_accept_header() {
 		let request = Request::builder()

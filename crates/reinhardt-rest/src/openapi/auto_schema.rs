@@ -312,6 +312,7 @@ impl ToSchema for uuid::Uuid {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
 	/// Custom test struct for HashMap value testing
@@ -339,7 +340,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_with_primitive_values() {
 		let schema = <HashMap<String, i32>>::schema();
 
@@ -373,7 +374,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_schema_name() {
 		let schema_name = <HashMap<String, i32>>::schema_name();
 		assert_eq!(schema_name, Some("HashMap_String_Value".into()));
@@ -382,7 +383,7 @@ mod tests {
 		assert_eq!(schema_name_with_user, Some("HashMap_String_User".into()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_with_custom_struct() {
 		let schema = <HashMap<String, User>>::schema();
 
@@ -416,7 +417,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_hashmap() {
 		let schema = <HashMap<String, HashMap<String, String>>>::schema();
 
@@ -467,7 +468,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_with_option_values() {
 		let schema = <HashMap<String, Option<i32>>>::schema();
 
@@ -498,7 +499,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_with_vec_values() {
 		let schema = <HashMap<String, Vec<String>>>::schema();
 

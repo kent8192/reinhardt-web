@@ -258,8 +258,9 @@ macro_rules! versioned_url {
 mod tests {
 	use super::*;
 	use crate::versioning::{AcceptHeaderVersioning, QueryParameterVersioning, URLPathVersioning};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_builder_url_path() {
 		let versioning = Arc::new(
 			URLPathVersioning::new()
@@ -276,7 +277,7 @@ mod tests {
 		assert_eq!(url, "https://api.example.com/v2.0/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_builder_query_parameter() {
 		let versioning = Arc::new(
 			QueryParameterVersioning::new()
@@ -297,7 +298,7 @@ mod tests {
 		assert_eq!(url, "https://api.example.com/users/?version=2.0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_builder_accept_header() {
 		let versioning = Arc::new(
 			AcceptHeaderVersioning::new()
@@ -318,7 +319,7 @@ mod tests {
 		assert_eq!(url, "https://api.example.com/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_builder_all_versions() {
 		let versioning = Arc::new(
 			URLPathVersioning::new()
@@ -344,7 +345,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_reverse_manager() {
 		let versioning1 = Arc::new(URLPathVersioning::new().with_default_version("1.0"));
 		let versioning2 = Arc::new(QueryParameterVersioning::new().with_default_version("2.0"));
@@ -379,7 +380,7 @@ mod tests {
 		assert_eq!(default_url, "https://api.example.com/v1.0/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_api_doc_url_builder() {
 		let builder = ApiDocUrlBuilder::new("https://api.example.com", "1.0")
 			.with_format(ApiDocFormat::OpenApi);
@@ -396,7 +397,7 @@ mod tests {
 		assert_eq!(url, "https://api.example.com/v1.0/docs");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_macro() {
 		let versioning = Arc::new(URLPathVersioning::new().with_default_version("1.0"));
 		let builder = VersionedUrlBuilder::new(versioning, "https://api.example.com");

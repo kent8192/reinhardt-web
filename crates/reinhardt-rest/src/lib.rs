@@ -117,7 +117,8 @@ pub use crate::openapi::swagger::SwaggerUI;
 
 #[cfg(test)]
 mod tests {
-	#[test]
+	use rstest::rstest;
+	#[rstest]
 	fn test_serializers_module_available() {
 		#[cfg(feature = "serializers")]
 		{
@@ -133,7 +134,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parsers_module_available() {
 		#[cfg(feature = "parsers")]
 		{

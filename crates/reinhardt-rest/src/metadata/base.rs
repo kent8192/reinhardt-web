@@ -207,6 +207,7 @@ mod tests {
 	use crate::metadata::types::{ChoiceInfo, FieldType};
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
 	fn create_test_request() -> Request {
 		Request::builder()
@@ -221,6 +222,7 @@ mod tests {
 
 	// DRF test: test_determine_metadata_abstract_method_raises_proper_error
 	// BaseMetadata is a trait in Rust, so we test implementation requirements instead
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_metadata_trait_requires_implementation() {
 		// This test verifies that BaseMetadata trait requires determine_metadata implementation
@@ -235,6 +237,7 @@ mod tests {
 
 	// DRF test: test_metadata
 	// OPTIONS requests should return valid 200 response with metadata
+	#[rstest]
 	#[tokio::test]
 	async fn test_metadata_basic_response() {
 		let metadata = SimpleMetadata::new();
@@ -278,6 +281,7 @@ mod tests {
 
 	// DRF test: test_actions
 	// OPTIONS should return 'actions' key with field metadata for POST/PUT
+	#[rstest]
 	#[tokio::test]
 	async fn test_actions_with_fields() {
 		let metadata = SimpleMetadata::new();
@@ -401,6 +405,7 @@ mod tests {
 		assert!(children.contains_key("b"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_metadata() {
 		let metadata = SimpleMetadata::new();
@@ -427,6 +432,7 @@ mod tests {
 
 	// DRF test: test_metadata_with_serializer_inspection
 	// Test that serializer fields are properly inspected and converted to metadata
+	#[rstest]
 	#[tokio::test]
 	async fn test_metadata_with_serializer_inspection() {
 		use crate::metadata::options::SerializerFieldInfo;

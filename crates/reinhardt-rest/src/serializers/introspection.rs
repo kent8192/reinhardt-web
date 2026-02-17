@@ -228,8 +228,9 @@ impl TypeMapper {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_field_info_creation() {
 		let field = FieldInfo::new("username", "String");
 		assert_eq!(field.name, "username");
@@ -239,7 +240,7 @@ mod tests {
 		assert!(!field.is_primary_key);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_info_builders() {
 		let field = FieldInfo::new("id", "i64").optional().primary_key();
 
@@ -248,7 +249,7 @@ mod tests {
 		assert!(!field.is_collection);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_introspector_registration() {
 		let mut introspector = FieldIntrospector::new();
 
@@ -259,7 +260,7 @@ mod tests {
 		assert_eq!(introspector.field_names(), vec!["id", "username"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_introspector_get_field() {
 		let mut introspector = FieldIntrospector::new();
 		introspector.register_field(FieldInfo::new("username", "String"));
@@ -271,7 +272,7 @@ mod tests {
 		assert!(introspector.get_field("nonexistent").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_introspector_optional_fields() {
 		let mut introspector = FieldIntrospector::new();
 		introspector.register_field(FieldInfo::new("id", "i64").optional());
@@ -285,7 +286,7 @@ mod tests {
 		assert_eq!(required.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_introspector_primary_key() {
 		let mut introspector = FieldIntrospector::new();
 		introspector.register_field(FieldInfo::new("id", "i64").primary_key());
@@ -296,7 +297,7 @@ mod tests {
 		assert_eq!(pk.unwrap().name, "id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_string_types() {
 		assert!(TypeMapper::is_string_type("String"));
 		assert!(TypeMapper::is_string_type("&str"));
@@ -304,7 +305,7 @@ mod tests {
 		assert!(!TypeMapper::is_string_type("i64"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_integer_types() {
 		assert!(TypeMapper::is_integer_type("i32"));
 		assert!(TypeMapper::is_integer_type("i64"));
@@ -312,20 +313,20 @@ mod tests {
 		assert!(!TypeMapper::is_integer_type("String"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_float_types() {
 		assert!(TypeMapper::is_float_type("f32"));
 		assert!(TypeMapper::is_float_type("f64"));
 		assert!(!TypeMapper::is_float_type("i32"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_boolean_type() {
 		assert!(TypeMapper::is_boolean_type("bool"));
 		assert!(!TypeMapper::is_boolean_type("Boolean"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_extract_option_type() {
 		let inner = TypeMapper::extract_option_type("Option<String>");
 		assert_eq!(inner, Some("String".to_string()));
@@ -337,7 +338,7 @@ mod tests {
 		assert_eq!(inner, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_extract_vec_type() {
 		let inner = TypeMapper::extract_vec_type("Vec<String>");
 		assert_eq!(inner, Some("String".to_string()));
@@ -349,14 +350,14 @@ mod tests {
 		assert_eq!(inner, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_is_option_type() {
 		assert!(TypeMapper::is_option_type("Option<String>"));
 		assert!(TypeMapper::is_option_type("Option<i64>"));
 		assert!(!TypeMapper::is_option_type("String"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_type_mapper_is_vec_type() {
 		assert!(TypeMapper::is_vec_type("Vec<String>"));
 		assert!(TypeMapper::is_vec_type("Vec<User>"));

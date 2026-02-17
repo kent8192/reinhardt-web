@@ -475,8 +475,9 @@ impl FilterBackend for IndexHintFilter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_index_strategy_variants() {
 		let strategies = [
 			IndexStrategy::Use,
@@ -486,7 +487,7 @@ mod tests {
 		assert_eq!(strategies.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_creation() {
 		let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 		assert_eq!(hint.index_name, "idx_users_email");
@@ -494,7 +495,7 @@ mod tests {
 		assert!(hint.table_name.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_with_table() {
 		let hint = IndexHint::new("idx_email", IndexStrategy::Force).for_table("users");
 		assert_eq!(hint.index_name, "idx_email");
@@ -502,63 +503,63 @@ mod tests {
 		assert_eq!(hint.table_name, Some("users".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_mysql_use() {
 		let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 		let sql = hint.to_sql_hint(DatabaseType::MySQL);
 		assert_eq!(sql, "USE INDEX (idx_users_email)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_mysql_force() {
 		let hint = IndexHint::new("idx_users_created_at", IndexStrategy::Force);
 		let sql = hint.to_sql_hint(DatabaseType::MySQL);
 		assert_eq!(sql, "FORCE INDEX (idx_users_created_at)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_mysql_ignore() {
 		let hint = IndexHint::new("idx_users_status", IndexStrategy::Ignore);
 		let sql = hint.to_sql_hint(DatabaseType::MySQL);
 		assert_eq!(sql, "IGNORE INDEX (idx_users_status)");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_sqlite_use() {
 		let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 		let sql = hint.to_sql_hint(DatabaseType::SQLite);
 		assert_eq!(sql, "INDEXED BY idx_users_email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_sqlite_force() {
 		let hint = IndexHint::new("idx_users_created_at", IndexStrategy::Force);
 		let sql = hint.to_sql_hint(DatabaseType::SQLite);
 		assert_eq!(sql, "INDEXED BY idx_users_created_at");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_sqlite_ignore() {
 		let hint = IndexHint::new("idx_users_status", IndexStrategy::Ignore);
 		let sql = hint.to_sql_hint(DatabaseType::SQLite);
 		assert_eq!(sql, "NOT INDEXED");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_to_sql_postgresql() {
 		let hint = IndexHint::new("idx_users_email", IndexStrategy::Use);
 		let sql = hint.to_sql_hint(DatabaseType::PostgreSQL);
 		assert_eq!(sql, "/* USE INDEX: idx_users_email */");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_filter_creation() {
 		let filter = IndexHintFilter::new();
 		assert!(filter.hints.is_empty());
 		assert!(filter.enabled);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_filter_with_hints() {
 		let filter = IndexHintFilter::new()
 			.with_index("idx_users_email", IndexStrategy::Use)
@@ -569,7 +570,7 @@ mod tests {
 		assert_eq!(filter.hints[1].index_name, "idx_users_created_at");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_index_hint_filter_disable() {
 		let filter = IndexHintFilter::new()
 			.with_index("idx_users_email", IndexStrategy::Use)
@@ -578,6 +579,7 @@ mod tests {
 		assert!(!filter.enabled);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_index_hint_filter_disabled_passthrough() {
 		let filter = IndexHintFilter::new()
@@ -591,6 +593,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_index_hint_filter_no_hints_passthrough() {
 		let filter = IndexHintFilter::new();
@@ -604,6 +607,7 @@ mod tests {
 
 	// MySQL hint injection tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_use_index_hint_injection() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -616,6 +620,7 @@ mod tests {
 		assert!(result.contains("FROM users USE INDEX (idx_users_email)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_force_index_hint_injection() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -628,6 +633,7 @@ mod tests {
 		assert!(result.contains("FROM users FORCE INDEX (idx_users_id)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_ignore_index_hint_injection() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -640,6 +646,7 @@ mod tests {
 		assert!(result.contains("FROM users IGNORE INDEX (idx_users_status)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_multiple_hints() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -654,6 +661,7 @@ mod tests {
 		assert!(result.contains("JOIN orders FORCE INDEX (idx_orders_user_id)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_hint_with_table_name() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -670,6 +678,7 @@ mod tests {
 
 	// SQLite hint injection tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_indexed_by_hint() {
 		let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
@@ -682,6 +691,7 @@ mod tests {
 		assert!(result.contains("FROM users INDEXED BY idx_users_email"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_indexed_by_force() {
 		let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
@@ -694,6 +704,7 @@ mod tests {
 		assert!(result.contains("FROM users INDEXED BY idx_users_id"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_not_indexed_hint() {
 		let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
@@ -706,6 +717,7 @@ mod tests {
 		assert!(result.contains("FROM users NOT INDEXED"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_multiple_tables_with_hints() {
 		let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
@@ -722,6 +734,7 @@ mod tests {
 
 	// PostgreSQL hint injection tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_postgresql_comment_hint() {
 		let filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL)
@@ -735,6 +748,7 @@ mod tests {
 		assert!(result.contains("SELECT * FROM users"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_postgresql_multiple_hints() {
 		let filter = IndexHintFilter::for_database(DatabaseType::PostgreSQL)
@@ -751,6 +765,7 @@ mod tests {
 
 	// Complex query tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_join_with_multiple_hints() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -767,6 +782,7 @@ mod tests {
 		assert!(result.contains("JOIN orders FORCE INDEX (idx_user_id)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_mysql_case_insensitive_from_join() {
 		let filter = IndexHintFilter::for_database(DatabaseType::MySQL)
@@ -779,6 +795,7 @@ mod tests {
 		assert!(result.contains("from users USE INDEX (idx_users_email)"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_left_join_with_hint() {
 		let filter = IndexHintFilter::for_database(DatabaseType::SQLite)
@@ -791,7 +808,7 @@ mod tests {
 		assert!(result.contains("JOIN orders INDEXED BY idx_user_id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_for_database_constructor() {
 		let mysql_filter = IndexHintFilter::for_database(DatabaseType::MySQL);
 		assert_eq!(mysql_filter.db_type, DatabaseType::MySQL);

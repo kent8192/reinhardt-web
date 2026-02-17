@@ -498,8 +498,9 @@ impl FilterBackend for RelevanceScorer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_scoring_algorithm_variants() {
 		let algorithms = [
 			ScoringAlgorithm::TfIdf,
@@ -509,7 +510,7 @@ mod tests {
 		assert_eq!(algorithms.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_scoring_algorithm_default() {
 		let algo = ScoringAlgorithm::default();
 		match algo {
@@ -521,14 +522,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_boost_creation() {
 		let boost = FieldBoost::new("title", 2.0);
 		assert_eq!(boost.field_name, "title");
 		assert_eq!(boost.boost_factor, 2.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_scored_result_creation() {
 		let result = ScoredResult::new(42, 0.85);
 		assert_eq!(result.id, 42);
@@ -536,7 +537,7 @@ mod tests {
 		assert!(result.score_details.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_scored_result_with_details() {
 		let mut details = HashMap::new();
 		details.insert("title_score".to_string(), 0.5);
@@ -550,7 +551,7 @@ mod tests {
 		assert_eq!(details.get("content_score"), Some(&0.35));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_creation() {
 		let scorer = RelevanceScorer::new();
 		assert!(scorer.enabled);
@@ -558,7 +559,7 @@ mod tests {
 		assert!(scorer.min_score.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_with_algorithm() {
 		let scorer = RelevanceScorer::new().with_algorithm(ScoringAlgorithm::TfIdf);
 		match scorer.algorithm {
@@ -567,7 +568,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_with_boost_field() {
 		let scorer = RelevanceScorer::new()
 			.with_boost_field("title", 2.0)
@@ -578,7 +579,7 @@ mod tests {
 		assert_eq!(scorer.field_boosts[0].boost_factor, 2.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_with_boost_struct() {
 		let boost = FieldBoost::new("tags", 1.5);
 		let scorer = RelevanceScorer::new().with_boost(boost);
@@ -588,18 +589,19 @@ mod tests {
 		assert_eq!(scorer.field_boosts[0].boost_factor, 1.5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_min_score_setter() {
 		let scorer = RelevanceScorer::new().with_min_score(0.3);
 		assert_eq!(scorer.min_score, Some(0.3));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relevance_scorer_disabled() {
 		let scorer = RelevanceScorer::new().set_enabled(false);
 		assert!(!scorer.enabled);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_no_search_terms() {
 		let scorer = RelevanceScorer::new();
@@ -611,6 +613,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_disabled_passthrough() {
 		let scorer = RelevanceScorer::new().set_enabled(false);
@@ -624,6 +627,7 @@ mod tests {
 		assert_eq!(result, sql);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_tfidf_algorithm() {
 		let scorer = RelevanceScorer::new()
@@ -675,6 +679,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_bm25_algorithm() {
 		let scorer = RelevanceScorer::new()
@@ -716,6 +721,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_custom_algorithm() {
 		let scorer = RelevanceScorer::new()
@@ -743,6 +749,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_with_min_score() {
 		let scorer = RelevanceScorer::new()
@@ -767,6 +774,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_with_existing_where() {
 		let scorer = RelevanceScorer::new()
@@ -808,6 +816,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_with_existing_order_by() {
 		let scorer = RelevanceScorer::new()
@@ -841,6 +850,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_field_boost_application() {
 		let scorer = RelevanceScorer::new()
@@ -885,6 +895,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_multiple_fields() {
 		let scorer = RelevanceScorer::new()
@@ -940,6 +951,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_no_fields_error() {
 		let scorer = RelevanceScorer::new().with_algorithm(ScoringAlgorithm::TfIdf);
@@ -955,6 +967,7 @@ mod tests {
 		assert!(err.to_string().contains("No search fields"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_invalid_sql_no_from() {
 		let scorer = RelevanceScorer::new()
@@ -972,6 +985,7 @@ mod tests {
 		assert!(err.to_string().contains("No FROM clause"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_query_param_variants() {
 		let scorer = RelevanceScorer::new()
@@ -996,6 +1010,7 @@ mod tests {
 		assert!(result_query.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_relevance_scorer_sql_injection_protection() {
 		let scorer = RelevanceScorer::new()
@@ -1036,7 +1051,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_score_expression_tfidf() {
 		let scorer = RelevanceScorer::new()
 			.with_algorithm(ScoringAlgorithm::TfIdf)
@@ -1062,7 +1077,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_score_expression_bm25() {
 		let scorer = RelevanceScorer::new()
 			.with_algorithm(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 })
@@ -1083,7 +1098,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_score_expression_custom() {
 		let scorer = RelevanceScorer::new()
 			.with_algorithm(ScoringAlgorithm::Custom("custom_score".to_string()))
@@ -1099,7 +1114,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_score_expression_with_boost() {
 		let scorer = RelevanceScorer::new()
 			.with_algorithm(ScoringAlgorithm::TfIdf)
@@ -1115,7 +1130,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_score_expression_multiple_fields() {
 		let scorer = RelevanceScorer::new()
 			.with_algorithm(ScoringAlgorithm::TfIdf)

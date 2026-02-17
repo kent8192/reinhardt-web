@@ -267,8 +267,9 @@ mod tests {
 	use super::*;
 	use crate::filters::backend::SimpleSearchBackend;
 	use reinhardt_utils::cache::InMemoryCache;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_cache_key_consistent() {
 		let mut params1 = HashMap::new();
 		params1.insert("search".to_string(), "rust".to_string());
@@ -286,7 +287,7 @@ mod tests {
 		assert_eq!(key1, key2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_cache_key_different_params() {
 		let mut params1 = HashMap::new();
 		params1.insert("search".to_string(), "rust".to_string());
@@ -302,7 +303,7 @@ mod tests {
 		assert_ne!(key1, key2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_cache_key_different_sql() {
 		let mut params = HashMap::new();
 		params.insert("search".to_string(), "rust".to_string());
@@ -313,6 +314,7 @@ mod tests {
 		assert_ne!(key1, key2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cached_filter_backend_simple() {
 		let cache = InMemoryCache::new();
@@ -327,6 +329,7 @@ mod tests {
 		assert_eq!(result1, result2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cached_filter_backend_with_inner() {
 		let cache = InMemoryCache::new();
@@ -347,6 +350,7 @@ mod tests {
 		assert!(result1.contains("title LIKE '%rust%'"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cached_filter_backend_ttl() {
 		let cache = InMemoryCache::new();
@@ -355,7 +359,7 @@ mod tests {
 		assert_eq!(backend.get_ttl(), Duration::from_millis(100));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_stats_hit_rate() {
 		let stats = CacheStats {
 			hits: 75,
@@ -366,7 +370,7 @@ mod tests {
 		assert_eq!(stats.hit_rate(), 0.75);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_stats_hit_rate_zero() {
 		let stats = CacheStats {
 			hits: 0,
@@ -377,7 +381,7 @@ mod tests {
 		assert_eq!(stats.hit_rate(), 0.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_stats_hit_rate_perfect() {
 		let stats = CacheStats {
 			hits: 100,

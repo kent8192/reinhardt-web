@@ -373,8 +373,9 @@ impl ParameterExt for Parameter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_schema_helpers() {
 		// Test string schema
 		let string_schema = Schema::string();
@@ -470,7 +471,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_openapi_schema_new() {
 		let schema = <OpenApiSchema as OpenApiSchemaExt>::create("Test API", "1.0.0");
 
@@ -506,7 +507,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_operation_ext() {
 		let mut operation = <Operation as OperationExt>::create();
 		let param = ParameterBuilder::new()
@@ -557,7 +558,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_responses_ext() {
 		let response = ResponseBuilder::new().description("Success").build();
 
@@ -590,7 +591,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_openapi_schema_json_structure() {
 		let mut schema = <OpenApiSchema as OpenApiSchemaExt>::create("Test API", "1.0.0");
 
@@ -650,7 +651,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_with_components() {
 		// Create components with schemas
 		let mut components = ComponentsBuilder::new();
@@ -708,7 +709,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_json_structure() {
 		let param = Parameter::new_simple("id", ParameterIn::Path, Schema::integer(), true);
 
@@ -745,7 +746,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_operation_json_structure() {
 		let mut operation = <Operation as OperationExt>::create();
 
