@@ -5,6 +5,7 @@
 use reinhardt_i18n::{
 	MessageCatalog, TranslationContext, gettext_lazy, ngettext_lazy, set_active_translation,
 };
+use rstest::rstest;
 use serial_test::serial;
 use std::sync::Arc;
 
@@ -50,7 +51,7 @@ fn create_test_context(locale: &str) -> TranslationContext {
 	ctx
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_basic() {
 	let lazy_msg = gettext_lazy("Hello");
@@ -64,7 +65,7 @@ fn test_lazy_string_basic() {
 	assert_eq!(lazy_msg.to_string(), "Bonjour");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_locale_switching() {
 	let lazy_msg = gettext_lazy("Hello");
@@ -87,7 +88,7 @@ fn test_lazy_string_locale_switching() {
 	assert_eq!(lazy_msg.to_string(), "Hello");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_translation_string_display() {
 	let lazy_msg = gettext_lazy("Hello");
@@ -98,7 +99,7 @@ fn test_lazy_translation_string_display() {
 	assert_eq!(displayed, "Bonjour");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_interpolation() {
 	let lazy_msg = gettext_lazy("Add %(name)s");
@@ -131,7 +132,7 @@ fn test_lazy_string_interpolation() {
 	}
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_ngettext_lazy_basic() {
 	let lazy_msg = ngettext_lazy("%(count)d item", "%(count)d items", 1);
@@ -149,7 +150,7 @@ fn test_ngettext_lazy_basic() {
 	assert_eq!(result, "1 élément");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_ngettext_lazy_plural() {
 	let lazy_msg = ngettext_lazy("%(count)d item", "%(count)d items", 5);
@@ -167,7 +168,7 @@ fn test_ngettext_lazy_plural() {
 	assert_eq!(result, "5 éléments");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_clone() {
 	let lazy_msg1 = gettext_lazy("Hello");
@@ -179,7 +180,7 @@ fn test_lazy_string_clone() {
 	assert_eq!(lazy_msg2.to_string(), "Bonjour");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_untranslated() {
 	let lazy_msg = gettext_lazy("Untranslated message");
@@ -191,7 +192,7 @@ fn test_lazy_string_untranslated() {
 	assert_eq!(lazy_msg.to_string(), "Untranslated message");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_empty() {
 	let lazy_msg = gettext_lazy("");
@@ -202,7 +203,7 @@ fn test_lazy_string_empty() {
 	assert_eq!(lazy_msg.to_string(), "");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_evaluation_timing() {
 	// Create lazy string before activating locale
@@ -224,7 +225,7 @@ fn test_lazy_evaluation_timing() {
 	}
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_ngettext_lazy_zero() {
 	let lazy_msg = ngettext_lazy("%(count)d item", "%(count)d items", 0);
@@ -243,7 +244,7 @@ fn test_ngettext_lazy_zero() {
 	assert_eq!(result, "0 élément");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_lazy_string_debug() {
 	let lazy_msg = gettext_lazy("Test message");
@@ -253,7 +254,7 @@ fn test_lazy_string_debug() {
 	assert!(debug_str.contains("Test message") || debug_str.contains("LazyString"));
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_multiple_lazy_strings() {
 	let lazy1 = gettext_lazy("Hello");

@@ -163,9 +163,10 @@ pub fn get_locale() -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_locale_activation() {
 		let mut ctx = TranslationContext::new("pt", "en-US");
@@ -176,7 +177,7 @@ mod tests {
 		assert_eq!(get_locale(), "pt");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_deactivate() {
 		let mut ctx = TranslationContext::new("fr", "en-US");

@@ -89,10 +89,11 @@ impl From<LazyString> for String {
 mod tests {
 	use super::*;
 	use crate::{MessageCatalog, TranslationContext, set_active_translation};
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::sync::Arc;
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_lazy_string_basic() {
 		let lazy = LazyString::new("Hello".to_string(), None, false);
@@ -107,7 +108,7 @@ mod tests {
 		assert_eq!(lazy.to_string(), "你好");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_lazy_string_plural() {
 		let lazy = LazyString::new_plural("cat".to_string(), "cats".to_string(), 3, None);

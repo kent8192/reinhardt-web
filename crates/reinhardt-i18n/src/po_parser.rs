@@ -232,8 +232,9 @@ fn add_entry_to_catalog(catalog: &mut MessageCatalog, entry: &PoEntry) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_simple_translation() {
 		let po_content = r#"
 msgid "Hello"
@@ -248,7 +249,7 @@ msgstr "Au revoir"
 		assert_eq!(catalog.get("Goodbye"), Some(&"Au revoir".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_plural_translation() {
 		let po_content = r#"
 msgid "item"
@@ -262,7 +263,7 @@ msgstr[1] "articles"
 		assert_eq!(catalog.get_plural("item", 5), Some(&"articles".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_contextual_translation() {
 		let po_content = r#"
 msgctxt "menu"
@@ -285,7 +286,7 @@ msgstr "Classer"
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_multiline_string() {
 		let po_content = r#"
 msgid "This is a long "
@@ -303,7 +304,7 @@ msgstr "Ceci est un long "
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_escape_sequences() {
 		let po_content = r#"
 msgid "Line 1\nLine 2\tTabbed"
@@ -317,7 +318,7 @@ msgstr "Ligne 1\nLigne 2\tTabulée"
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_with_comments() {
 		let po_content = r#"
 # Translator comment
@@ -332,14 +333,14 @@ msgstr "Bonjour"
 		assert_eq!(catalog.get("Hello"), Some(&"Bonjour".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_empty_file() {
 		let po_content = "";
 		let catalog = parse_po_file(po_content.as_bytes(), "fr").unwrap();
 		assert_eq!(catalog.get("Hello"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unescape_string() {
 		assert_eq!(unescape_string("Hello\\nWorld"), "Hello\nWorld");
 		assert_eq!(unescape_string("Tab\\there"), "Tab\there");

@@ -214,14 +214,15 @@ pub fn ngettext_lazy(singular: &str, plural: &str, count: usize) -> LazyString {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_gettext_no_translation() {
 		let result = gettext("Untranslated message");
 		assert_eq!(result, "Untranslated message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ngettext_default_rules_unit() {
 		let result_singular = ngettext("There is {} item", "There are {} items", 1);
 		assert_eq!(result_singular, "There is {} item");
@@ -230,7 +231,7 @@ mod tests {
 		assert_eq!(result_plural, "There are {} items");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pgettext_no_translation() {
 		let result = pgettext("menu", "File");
 		assert_eq!(result, "File");

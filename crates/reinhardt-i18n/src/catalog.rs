@@ -174,8 +174,9 @@ impl MessageCatalog {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_message_catalog_basic() {
 		let mut catalog = MessageCatalog::new("es");
 		catalog.add_translation("Good morning", "Buenos días");
@@ -187,7 +188,7 @@ mod tests {
 		assert_eq!(catalog.get("Unknown"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_catalog_plural() {
 		let mut catalog = MessageCatalog::new("fr");
 		catalog.add_plural_str("car", "cars", vec!["voiture", "voitures"]);
@@ -196,7 +197,7 @@ mod tests {
 		assert_eq!(catalog.get_plural("car", 3), Some(&"voitures".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_catalog_context() {
 		let mut catalog = MessageCatalog::new("de");
 		catalog.add_context_str("menu", "File", "Datei");

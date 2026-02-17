@@ -3,12 +3,13 @@
 //! Tests based on Django's i18n catalog functionality
 
 use reinhardt_i18n::{CatalogLoader, I18nError, MessageCatalog};
+use rstest::rstest;
 use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
 use unic_langid::LanguageIdentifier;
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_simple_message_integration() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -19,7 +20,7 @@ fn test_catalog_simple_message_integration() {
 	assert_eq!(catalog.get("nonexistent"), None);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_plural_english() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -45,7 +46,7 @@ fn test_catalog_plural_english() {
 	);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_plural_french() {
 	let locale: LanguageIdentifier = "fr-FR".parse().unwrap();
@@ -63,7 +64,7 @@ fn test_catalog_plural_french() {
 	assert_eq!(catalog.get_plural("jour", 5), Some(&"jours".to_string()));
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_plural_japanese() {
 	let locale: LanguageIdentifier = "ja-JP".parse().unwrap();
@@ -80,7 +81,7 @@ fn test_catalog_plural_japanese() {
 	);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_context_integration() {
 	let locale: LanguageIdentifier = "ja-JP".parse().unwrap();
@@ -108,7 +109,7 @@ fn test_catalog_context_integration() {
 	assert_eq!(catalog.get_context("other", "File"), None);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_context_plural() {
 	let locale: LanguageIdentifier = "de-DE".parse().unwrap();
@@ -130,7 +131,7 @@ fn test_catalog_context_plural() {
 	);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_multiple_contexts() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -166,7 +167,7 @@ fn test_catalog_multiple_contexts() {
 	);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_empty_message() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -176,7 +177,7 @@ fn test_catalog_empty_message() {
 	assert_eq!(catalog.get(""), Some(&"".to_string()));
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_special_characters() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -200,7 +201,7 @@ fn test_catalog_special_characters() {
 	);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_locale() {
 	let locale: LanguageIdentifier = "fr-FR".parse().unwrap();
@@ -209,7 +210,7 @@ fn test_catalog_locale() {
 	assert_eq!(catalog.locale(), "fr-FR");
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_loader_loads_po_file() {
 	let temp_dir = TempDir::new().unwrap();
@@ -252,7 +253,7 @@ msgstr[1] "articles"
 	// Cleanup is automatic with TempDir
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_loader_loads_messages_po_file() {
 	let temp_dir = TempDir::new().unwrap();
@@ -284,7 +285,7 @@ msgstr "ありがとう"
 	// Cleanup is automatic with TempDir
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_loader_not_found_returns_error() {
 	let temp_dir = TempDir::new().unwrap();
@@ -303,7 +304,7 @@ fn test_catalog_loader_not_found_returns_error() {
 	// Cleanup is automatic with TempDir
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_loader_load_or_empty_returns_empty_catalog() {
 	let temp_dir = TempDir::new().unwrap();
@@ -322,7 +323,7 @@ fn test_catalog_loader_load_or_empty_returns_empty_catalog() {
 	// Cleanup is automatic with TempDir
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_loader_multiple_dirs() {
 	let temp_dir1 = TempDir::new().unwrap();
@@ -355,7 +356,7 @@ fn test_catalog_loader_multiple_dirs() {
 	// Cleanup is automatic with TempDir
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_plural_nonexistent() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -364,7 +365,7 @@ fn test_catalog_plural_nonexistent() {
 	assert_eq!(catalog.get_plural("nonexistent", 1), None);
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_overwrite() {
 	let locale: LanguageIdentifier = "en-US".parse().unwrap();
@@ -378,7 +379,7 @@ fn test_catalog_overwrite() {
 	assert_eq!(catalog.get("test"), Some(&"second".to_string()));
 }
 
-#[test]
+#[rstest]
 #[serial(i18n)]
 fn test_catalog_unicode_messages() {
 	let locale: LanguageIdentifier = "ja-JP".parse().unwrap();

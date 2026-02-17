@@ -54,15 +54,16 @@ pub fn format_number(number: f64, decimal_places: usize) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_format_number() {
 		assert_eq!(format_number(1234.56, 2), "1,234.56");
 		assert_eq!(format_number(1000000.0, 0), "1,000,000");
 		assert_eq!(format_number(42.0, 2), "42.00");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_date() {
 		let date = Utc::now();
 		let formatted = format_date(&date, "%Y-%m-%d");
