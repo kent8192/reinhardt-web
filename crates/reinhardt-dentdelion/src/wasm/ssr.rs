@@ -86,6 +86,10 @@ pub enum SsrError {
 	/// JavaScript evaluation failed
 	#[error("JavaScript evaluation failed: {0}")]
 	EvalFailed(String),
+
+	/// Permission denied due to insufficient trust level
+	#[error("Permission denied: {0}")]
+	PermissionDenied(String),
 }
 
 #[cfg(feature = "ts")]
@@ -665,6 +669,10 @@ mod tests {
 
 		let err = SsrError::RenderFailed("syntax error".to_string());
 		assert!(err.to_string().contains("syntax error"));
+
+		let err = SsrError::PermissionDenied("insufficient trust level".to_string());
+		assert!(err.to_string().contains("Permission denied"));
+		assert!(err.to_string().contains("insufficient trust level"));
 	}
 
 	#[test]

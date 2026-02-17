@@ -584,6 +584,14 @@ impl TrustLevel {
 	pub fn is_safe_for_third_party(&self) -> bool {
 		matches!(self, Self::Untrusted | Self::Verified)
 	}
+
+	/// Returns whether this trust level allows arbitrary JavaScript execution.
+	///
+	/// Only `Trusted` plugins can execute arbitrary JavaScript code via `eval_js`,
+	/// as this provides unrestricted access to the JavaScript runtime.
+	pub fn allows_js_execution(&self) -> bool {
+		matches!(self, Self::Trusted)
+	}
 }
 
 impl fmt::Display for TrustLevel {
@@ -894,5 +902,12 @@ mod tests {
 		assert!(all.contains(&TrustLevel::Untrusted));
 		assert!(all.contains(&TrustLevel::Verified));
 		assert!(all.contains(&TrustLevel::Trusted));
+	}
+
+	#[test]
+	fn test_trust_level_js_execution() {
+		assert!(!TrustLevel::Untrusted.allows_js_execution());
+		assert!(!TrustLevel::Verified.allows_js_execution());
+		assert!(TrustLevel::Trusted.allows_js_execution());
 	}
 }
