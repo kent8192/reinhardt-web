@@ -325,6 +325,12 @@ impl HostState {
 			return Err(WitPluginError::new(403, "Database access not permitted"));
 		}
 
+		// Validate SQL statement to prevent SQL injection
+		use super::sql_validator::validate_sql;
+		validate_sql(sql).map_err(|e| {
+			WitPluginError::with_details(403, "SQL validation failed", e.to_string())
+		})?;
+
 		let conn = self
 			.db_connection
 			.as_ref()
@@ -368,6 +374,12 @@ impl HostState {
 		if !self.has_db_capability() {
 			return Err(WitPluginError::new(403, "Database access not permitted"));
 		}
+
+		// Validate SQL statement to prevent SQL injection
+		use super::sql_validator::validate_sql;
+		validate_sql(sql).map_err(|e| {
+			WitPluginError::with_details(403, "SQL validation failed", e.to_string())
+		})?;
 
 		let conn = self
 			.db_connection
