@@ -46,6 +46,8 @@ pub mod update;
 // Server-side only modules
 #[cfg(not(target_arch = "wasm32"))]
 pub mod type_inference;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod validation;
 
 // Re-exports
 pub use create::*;

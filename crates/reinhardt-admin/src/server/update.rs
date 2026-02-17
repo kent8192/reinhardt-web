@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
+#[cfg(not(target_arch = "wasm32"))]
+use super::validation::validate_mutation_data;
 
 /// Update an existing model instance
 ///
@@ -46,6 +48,9 @@ pub async fn update_record(
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
+
+	// Validate input data before database operation
+	validate_mutation_data(&request.data, model_admin.as_ref(), true).map_server_fn_error()?;
 
 	let affected = db
 		.update::<AdminRecord>(table_name, pk_field, &id, request.data)
