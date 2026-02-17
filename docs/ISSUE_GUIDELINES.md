@@ -161,6 +161,7 @@ Issue titles MUST be:
 | `routing` | #ededed | URL routing, path matching |
 | `api` | #ededed | REST API, serializers, views |
 | `admin` | #ededed | Admin interface, admin panels |
+| `forms` | #ededed | Form handling, validation, rendering |
 | `graphql` | #ededed | GraphQL schema, resolvers |
 | `websockets` | #ededed | WebSocket connections, handlers |
 | `i18n` | #ededed | Internationalization, localization |

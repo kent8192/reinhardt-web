@@ -31,6 +31,10 @@
   color: ee0701
   description: Security vulnerabilities or concerns
 
+- name: test
+  color: 0e8a16
+  description: Test updates and additions
+
 # Priority Labels
 - name: critical
   color: b60205
@@ -72,6 +76,18 @@
 - name: needs more info
   color: fef2c0
   description: Awaiting additional information
+
+- name: automated
+  color: ededed
+  description: Automated PR (release-plz)
+
+- name: in-progress
+  color: fbca04
+  description: Being actively worked on
+
+- name: blocked
+  color: b60205
+  description: Awaiting dependency resolution
 
 # Dependency Labels
 - name: dependencies
