@@ -297,8 +297,10 @@ impl TaskLock for RedisTaskLock {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_lock_acquire() {
 		let lock = MemoryTaskLock::new();
@@ -311,6 +313,7 @@ mod tests {
 		assert!(acquired);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_lock_already_locked() {
 		let lock = MemoryTaskLock::new();
@@ -326,6 +329,7 @@ mod tests {
 		assert!(!acquired);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_lock_release() {
 		let lock = MemoryTaskLock::new();
@@ -340,6 +344,7 @@ mod tests {
 		assert!(!is_locked);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_lock_expiry() {
 		let lock = MemoryTaskLock::new();
@@ -353,6 +358,7 @@ mod tests {
 		assert!(!is_locked);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_lock_extend() {
 		let lock = MemoryTaskLock::new();

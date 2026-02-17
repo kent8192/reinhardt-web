@@ -316,6 +316,7 @@ impl Default for PriorityTaskQueue {
 mod tests {
 	use super::*;
 	use crate::TaskId;
+	use rstest::rstest;
 
 	#[derive(Debug)]
 	struct TestTask {
@@ -342,6 +343,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_priority_ordering() {
 		let queue = PriorityTaskQueue::new();
@@ -384,6 +386,7 @@ mod tests {
 		assert_eq!(queue.len().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_weighted_scheduling() {
 		let mut weights = HashMap::new();
@@ -460,6 +463,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fifo_within_priority() {
 		let queue = PriorityTaskQueue::new();
@@ -488,6 +492,7 @@ mod tests {
 		assert_eq!(task3.name(), "task3");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_concurrent_access() {
 		let queue = Arc::new(PriorityTaskQueue::new());
@@ -534,6 +539,7 @@ mod tests {
 		assert!(queue.is_empty().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_priority() {
 		let queue = PriorityTaskQueue::new();
@@ -564,6 +570,7 @@ mod tests {
 		assert!(queue.is_empty().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_queue() {
 		let queue = PriorityTaskQueue::new();
@@ -575,6 +582,7 @@ mod tests {
 		assert!(task.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_len_for_priority() {
 		let queue = PriorityTaskQueue::new();
@@ -597,7 +605,7 @@ mod tests {
 		assert_eq!(queue.len_for_priority(Priority::Low).await, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_priority_default_weights() {
 		assert_eq!(Priority::High.default_weight(), 100);
 		assert_eq!(Priority::Normal.default_weight(), 50);
@@ -605,7 +613,7 @@ mod tests {
 		assert_eq!(Priority::Custom(75).default_weight(), 75);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_priority_comparison() {
 		// BTreeMap orders by variant first, then by value
 		// So the order is: Low < Normal < High < Custom(any)
@@ -614,7 +622,7 @@ mod tests {
 		assert!(Priority::Custom(75) > Priority::High); // Custom is always after standard priorities
 	}
 
-	#[test]
+	#[rstest]
 	fn test_priority_default() {
 		assert_eq!(Priority::default(), Priority::Normal);
 	}

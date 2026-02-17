@@ -457,8 +457,9 @@ impl RetryState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_exponential_backoff_creation() {
 		let strategy = RetryStrategy::exponential_backoff();
 		assert_eq!(strategy.max_retries(), 3);
@@ -468,7 +469,7 @@ mod tests {
 		assert!(strategy.has_jitter());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fixed_delay_creation() {
 		let delay = Duration::from_secs(5);
 		let strategy = RetryStrategy::fixed_delay(delay);
@@ -478,13 +479,13 @@ mod tests {
 		assert!(!strategy.has_jitter());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_retry_creation() {
 		let strategy = RetryStrategy::no_retry();
 		assert_eq!(strategy.max_retries(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strategy_builder() {
 		let strategy = RetryStrategy::exponential_backoff()
 			.with_max_retries(5)
@@ -500,7 +501,7 @@ mod tests {
 		assert!(!strategy.has_jitter());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_calculate_delay_without_jitter() {
 		let strategy = RetryStrategy::exponential_backoff()
 			.with_initial_delay(Duration::from_secs(1))
@@ -516,7 +517,7 @@ mod tests {
 		assert_eq!(delay3, Duration::from_secs(4)); // 1 * 2^2
 	}
 
-	#[test]
+	#[rstest]
 	fn test_calculate_delay_with_max() {
 		let strategy = RetryStrategy::exponential_backoff()
 			.with_initial_delay(Duration::from_secs(1))
@@ -528,7 +529,7 @@ mod tests {
 		assert_eq!(delay5, Duration::from_secs(5)); // Capped at max
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_retry() {
 		let strategy = RetryStrategy::exponential_backoff().with_max_retries(3);
 
@@ -539,7 +540,7 @@ mod tests {
 		assert!(!strategy.should_retry(4));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_retry_state() {
 		let strategy = RetryStrategy::exponential_backoff().with_max_retries(2);
 		let mut state = RetryState::new(strategy);
@@ -556,7 +557,7 @@ mod tests {
 		assert!(!state.can_retry());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_retry_state_reset() {
 		let strategy = RetryStrategy::exponential_backoff();
 		let mut state = RetryState::new(strategy);
@@ -569,7 +570,7 @@ mod tests {
 		assert_eq!(state.attempts(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_next_delay() {
 		let strategy = RetryStrategy::exponential_backoff()
 			.with_initial_delay(Duration::from_secs(1))

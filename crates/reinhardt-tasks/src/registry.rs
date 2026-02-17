@@ -344,6 +344,7 @@ impl Default for TaskRegistry {
 mod tests {
 	use super::*;
 	use crate::{Task, TaskId, TaskPriority};
+	use rstest::rstest;
 
 	struct TestTask {
 		id: TaskId,
@@ -379,14 +380,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialized_task() {
 		let task = SerializedTask::new("test".to_string(), r#"{"key":"value"}"#.to_string());
 		assert_eq!(task.name(), "test");
 		assert_eq!(task.data(), r#"{"key":"value"}"#);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serialized_task_json() {
 		let task = SerializedTask::new("test".to_string(), "{}".to_string());
 		let json = task.to_json().unwrap();
@@ -394,6 +395,7 @@ mod tests {
 		assert_eq!(restored.name(), "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_register_and_has() {
 		let registry = TaskRegistry::new();
@@ -406,6 +408,7 @@ mod tests {
 		assert!(registry.has("test_task").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_unregister() {
 		let registry = TaskRegistry::new();
@@ -418,6 +421,7 @@ mod tests {
 		assert!(!registry.has("test_task").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_create() {
 		let registry = TaskRegistry::new();
@@ -429,6 +433,7 @@ mod tests {
 		assert!(executor.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_create_not_found() {
 		let registry = TaskRegistry::new();
@@ -437,6 +442,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_list() {
 		let registry = TaskRegistry::new();
@@ -453,6 +459,7 @@ mod tests {
 		assert!(names.contains(&"task2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_registry_clear() {
 		let registry = TaskRegistry::new();

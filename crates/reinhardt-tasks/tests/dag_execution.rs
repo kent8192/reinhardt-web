@@ -4,9 +4,10 @@
 //! failure handling, and cycle detection.
 
 use reinhardt_tasks::{TaskDAG, TaskId, TaskNodeStatus};
+use rstest::rstest;
 
 /// Test: Basic DAG creation and task addition
-#[test]
+#[rstest]
 fn test_dag_creation() {
 	let mut dag = TaskDAG::new();
 	assert_eq!(dag.task_count(), 0);
@@ -23,7 +24,7 @@ fn test_dag_creation() {
 }
 
 /// Test: Simple dependency chain (A → B → C)
-#[test]
+#[rstest]
 fn test_simple_dependency_chain() {
 	let mut dag = TaskDAG::new();
 
@@ -52,7 +53,7 @@ fn test_simple_dependency_chain() {
 }
 
 /// Test: Diamond dependency pattern (A → B, A → C, B → D, C → D)
-#[test]
+#[rstest]
 fn test_diamond_dependency() {
 	let mut dag = TaskDAG::new();
 
@@ -89,7 +90,7 @@ fn test_diamond_dependency() {
 }
 
 /// Test: Get ready tasks (tasks with satisfied dependencies)
-#[test]
+#[rstest]
 fn test_get_ready_tasks() {
 	let mut dag = TaskDAG::new();
 
@@ -129,7 +130,7 @@ fn test_get_ready_tasks() {
 }
 
 /// Test: Cycle detection (A → B → C → A)
-#[test]
+#[rstest]
 fn test_cycle_detection() {
 	let mut dag = TaskDAG::new();
 
@@ -155,7 +156,7 @@ fn test_cycle_detection() {
 }
 
 /// Test: Task status transitions
-#[test]
+#[rstest]
 fn test_task_status_transitions() {
 	let mut dag = TaskDAG::new();
 	let task_id = TaskId::new();
@@ -178,7 +179,7 @@ fn test_task_status_transitions() {
 }
 
 /// Test: Failure propagation (when a task fails, dependent tasks should not run)
-#[test]
+#[rstest]
 fn test_failure_handling() {
 	let mut dag = TaskDAG::new();
 
@@ -216,7 +217,7 @@ fn test_failure_handling() {
 }
 
 /// Test: Parallel execution readiness (multiple independent tasks)
-#[test]
+#[rstest]
 fn test_parallel_execution_readiness() {
 	let mut dag = TaskDAG::new();
 

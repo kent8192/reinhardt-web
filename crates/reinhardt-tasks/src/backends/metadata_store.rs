@@ -290,7 +290,9 @@ impl MetadataStore for InMemoryMetadataStore {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_store_basic_operations() {
 		let store = InMemoryMetadataStore::new();
@@ -321,6 +323,7 @@ mod tests {
 		assert!(store.get(task_id).await.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_store_update_nonexistent() {
 		let store = InMemoryMetadataStore::new();
@@ -330,6 +333,7 @@ mod tests {
 		assert!(matches!(result, Err(MetadataStoreError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_store_clear() {
 		let store = InMemoryMetadataStore::new();
@@ -344,6 +348,7 @@ mod tests {
 		assert!(store.is_empty().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_task_metadata_with_task_data() {
 		let task_id = TaskId::new();
@@ -355,7 +360,7 @@ mod tests {
 		assert_eq!(metadata.task_data.as_ref().unwrap().name(), "test_task");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_metadata_store_error_display() {
 		let task_id = TaskId::new();
 		let not_found = MetadataStoreError::NotFound(task_id);

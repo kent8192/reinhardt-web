@@ -7,6 +7,7 @@ use reinhardt_tasks::{
 	Task, TaskId, TaskStatus,
 	backend::{DummyBackend, TaskBackend, TaskExecutionError},
 };
+use rstest::rstest;
 use std::sync::{Arc, Mutex};
 
 /// Simple test task for testing TaskBackend implementations
@@ -35,6 +36,7 @@ impl Task for TestTask {
 }
 
 /// Test: DummyBackend enqueue returns valid TaskId
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_enqueue() {
 	let backend = DummyBackend::new();
@@ -48,6 +50,7 @@ async fn test_dummy_backend_enqueue() {
 }
 
 /// Test: DummyBackend dequeue always returns None
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_dequeue() {
 	let backend = DummyBackend::new();
@@ -58,6 +61,7 @@ async fn test_dummy_backend_dequeue() {
 }
 
 /// Test: DummyBackend get_status always returns Success
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_get_status() {
 	let backend = DummyBackend::new();
@@ -69,6 +73,7 @@ async fn test_dummy_backend_get_status() {
 }
 
 /// Test: DummyBackend update_status always succeeds
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_update_status() {
 	let backend = DummyBackend::new();
@@ -83,6 +88,7 @@ async fn test_dummy_backend_update_status() {
 }
 
 /// Test: DummyBackend get_task_data always returns None
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_get_task_data() {
 	let backend = DummyBackend::new();
@@ -94,6 +100,7 @@ async fn test_dummy_backend_get_task_data() {
 }
 
 /// Test: DummyBackend backend_name
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_name() {
 	let backend = DummyBackend::new();
@@ -101,6 +108,7 @@ async fn test_dummy_backend_name() {
 }
 
 /// Test: DummyBackend Default trait
+#[rstest]
 #[tokio::test]
 async fn test_dummy_backend_default() {
 	let backend = DummyBackend;
@@ -179,6 +187,7 @@ impl TaskBackend for InMemoryBackend {
 }
 
 /// Test: InMemoryBackend enqueue and dequeue
+#[rstest]
 #[tokio::test]
 async fn test_in_memory_backend_enqueue_dequeue() {
 	let backend = InMemoryBackend::new();
@@ -200,6 +209,7 @@ async fn test_in_memory_backend_enqueue_dequeue() {
 }
 
 /// Test: InMemoryBackend status management
+#[rstest]
 #[tokio::test]
 async fn test_in_memory_backend_status_management() {
 	let backend = InMemoryBackend::new();
@@ -229,6 +239,7 @@ async fn test_in_memory_backend_status_management() {
 }
 
 /// Test: InMemoryBackend NotFound error
+#[rstest]
 #[tokio::test]
 async fn test_in_memory_backend_not_found() {
 	let backend = InMemoryBackend::new();
@@ -254,6 +265,7 @@ async fn test_in_memory_backend_not_found() {
 }
 
 /// Test: InMemoryBackend backend_name
+#[rstest]
 #[tokio::test]
 async fn test_in_memory_backend_name() {
 	let backend = InMemoryBackend::new();

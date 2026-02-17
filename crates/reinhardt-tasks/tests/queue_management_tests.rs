@@ -7,6 +7,7 @@ use reinhardt_tasks::{
 	backend::DummyBackend,
 	queue::{QueueConfig, TaskQueue},
 };
+use rstest::rstest;
 
 /// Simple test task
 struct SimpleTask {
@@ -34,7 +35,7 @@ impl Task for SimpleTask {
 }
 
 /// Test: QueueConfig creation with name
-#[test]
+#[rstest]
 fn test_queue_config_new() {
 	let config = QueueConfig::new("test_queue".to_string());
 	assert_eq!(config.name, "test_queue");
@@ -42,7 +43,7 @@ fn test_queue_config_new() {
 }
 
 /// Test: QueueConfig default values
-#[test]
+#[rstest]
 fn test_queue_config_default() {
 	let config = QueueConfig::default();
 	assert_eq!(config.name, "default");
@@ -50,7 +51,7 @@ fn test_queue_config_default() {
 }
 
 /// Test: QueueConfig clone
-#[test]
+#[rstest]
 fn test_queue_config_clone() {
 	let config1 = QueueConfig::new("original".to_string());
 	let config2 = config1.clone();
@@ -60,7 +61,7 @@ fn test_queue_config_clone() {
 }
 
 /// Test: TaskQueue creation
-#[test]
+#[rstest]
 fn test_task_queue_new() {
 	let queue = TaskQueue::new();
 	// Queue creation should succeed (no panic)
@@ -68,7 +69,7 @@ fn test_task_queue_new() {
 }
 
 /// Test: TaskQueue with_config
-#[test]
+#[rstest]
 fn test_task_queue_with_config() {
 	let config = QueueConfig::new("custom_queue".to_string());
 	let queue = TaskQueue::with_config(config);
@@ -77,13 +78,14 @@ fn test_task_queue_with_config() {
 }
 
 /// Test: TaskQueue default
-#[test]
+#[rstest]
 fn test_task_queue_default() {
 	let queue = TaskQueue;
 	assert_eq!(std::mem::size_of_val(&queue), 0);
 }
 
 /// Test: TaskQueue enqueue returns valid TaskId
+#[rstest]
 #[tokio::test]
 async fn test_task_queue_enqueue() {
 	let queue = TaskQueue::new();
@@ -98,6 +100,7 @@ async fn test_task_queue_enqueue() {
 }
 
 /// Test: TaskQueue multiple enqueues
+#[rstest]
 #[tokio::test]
 async fn test_task_queue_multiple_enqueues() {
 	let queue = TaskQueue::new();
@@ -118,6 +121,7 @@ async fn test_task_queue_multiple_enqueues() {
 }
 
 /// Test: TaskQueue with different backends
+#[rstest]
 #[tokio::test]
 async fn test_task_queue_with_different_backends() {
 	let queue = TaskQueue::new();

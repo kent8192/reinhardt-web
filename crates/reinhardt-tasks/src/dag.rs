@@ -588,14 +588,15 @@ impl Default for TaskDAG {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_dag_creation() {
 		let dag = TaskDAG::new();
 		assert_eq!(dag.task_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_task() {
 		let mut dag = TaskDAG::new();
 		let task_id = TaskId::new();
@@ -605,7 +606,7 @@ mod tests {
 		assert!(dag.get_task(task_id).is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_duplicate_task() {
 		let mut dag = TaskDAG::new();
 		let task_id = TaskId::new();
@@ -615,7 +616,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_dependency() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -630,7 +631,7 @@ mod tests {
 		assert_eq!(node_b.dependencies()[0], task_a);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_dependency_nonexistent_task() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -641,7 +642,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cycle_detection() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -660,7 +661,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_topological_sort_simple() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -686,7 +687,7 @@ mod tests {
 		assert!(b_pos < c_pos);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_topological_sort_diamond() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -722,7 +723,7 @@ mod tests {
 		assert!(c_pos < d_pos);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_ready_tasks() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();
@@ -755,7 +756,7 @@ mod tests {
 		assert!(ready.contains(&task_c));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_status() {
 		let mut dag = TaskDAG::new();
 		let task_id = TaskId::new();
@@ -780,7 +781,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_failed() {
 		let mut dag = TaskDAG::new();
 		let task_id = TaskId::new();
@@ -794,7 +795,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_execution_detection() {
 		let mut dag = TaskDAG::new();
 		let task_a = TaskId::new();

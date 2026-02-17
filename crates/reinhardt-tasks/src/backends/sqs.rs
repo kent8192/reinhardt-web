@@ -448,8 +448,9 @@ impl ResultBackend for SqsResultBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_sqs_config_creation() {
 		let config = SqsConfig::new("https://sqs.us-east-1.amazonaws.com/123456789012/my-queue");
 		assert_eq!(
@@ -460,7 +461,7 @@ mod tests {
 		assert_eq!(config.max_messages, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqs_config_with_options() {
 		let config = SqsConfig::new("https://sqs.us-east-1.amazonaws.com/123456789012/my-queue")
 			.with_visibility_timeout(60)
@@ -472,7 +473,7 @@ mod tests {
 		assert_eq!(config.wait_time_seconds, 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sqs_config_max_messages_limit() {
 		let config = SqsConfig::new("https://sqs.us-east-1.amazonaws.com/123456789012/my-queue")
 			.with_max_messages(15); // Should be capped at 10
@@ -480,6 +481,7 @@ mod tests {
 		assert_eq!(config.max_messages, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqs_result_backend_store_and_retrieve() {
 		let backend = SqsResultBackend::new();
@@ -503,6 +505,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().result(), Some("Test result"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqs_result_backend_delete() {
 		let backend = SqsResultBackend::new();

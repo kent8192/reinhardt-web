@@ -357,8 +357,9 @@ impl ResultBackend for MemoryResultBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_task_output() {
 		let task_id = TaskId::new();
 		let output = TaskOutput::new(task_id, "test result".to_string());
@@ -366,7 +367,7 @@ mod tests {
 		assert_eq!(output.result(), "test result");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_task_result_metadata() {
 		let task_id = TaskId::new();
 		let metadata =
@@ -378,7 +379,7 @@ mod tests {
 		assert_eq!(metadata.error(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_task_result_metadata_with_error() {
 		let task_id = TaskId::new();
 		let metadata = TaskResultMetadata::with_error(task_id, "error occurred".to_string());
@@ -388,6 +389,7 @@ mod tests {
 		assert_eq!(metadata.result(), None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_result_backend() {
 		let backend = MemoryResultBackend::new();

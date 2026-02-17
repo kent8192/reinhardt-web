@@ -459,8 +459,9 @@ impl TaskBackend for RabbitMQBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_rabbitmq_config_new() {
 		let config = RabbitMQConfig::new("amqp://localhost:5672/%2f");
 		assert_eq!(config.url, "amqp://localhost:5672/%2f");
@@ -469,7 +470,7 @@ mod tests {
 		assert_eq!(config.routing_key, "reinhardt_tasks");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rabbitmq_config_with_queue_name() {
 		let config =
 			RabbitMQConfig::new("amqp://localhost:5672/%2f").with_queue_name("custom_queue");
@@ -477,26 +478,26 @@ mod tests {
 		assert_eq!(config.routing_key, "custom_queue");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rabbitmq_config_with_exchange() {
 		let config = RabbitMQConfig::new("amqp://localhost:5672/%2f").with_exchange("my_exchange");
 		assert_eq!(config.exchange_name, "my_exchange");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rabbitmq_config_with_routing_key() {
 		let config =
 			RabbitMQConfig::new("amqp://localhost:5672/%2f").with_routing_key("my_routing_key");
 		assert_eq!(config.routing_key, "my_routing_key");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rabbitmq_config_default() {
 		let config = RabbitMQConfig::default();
 		assert_eq!(config.url, "amqp://localhost:5672/%2f");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_queue_message_serialization() {
 		let message = QueueMessage {
 			id: TaskId::new(),

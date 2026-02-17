@@ -4,10 +4,11 @@
 //! maximum retry limits, and delay calculations.
 
 use reinhardt_tasks::{RetryState, RetryStrategy};
+use rstest::rstest;
 use std::time::Duration;
 
 /// Test: Exponential backoff retry strategy
-#[test]
+#[rstest]
 fn test_exponential_backoff_strategy() {
 	let strategy = RetryStrategy::exponential_backoff();
 
@@ -19,7 +20,7 @@ fn test_exponential_backoff_strategy() {
 }
 
 /// Test: Fixed delay retry strategy
-#[test]
+#[rstest]
 fn test_fixed_delay_strategy() {
 	let delay = Duration::from_secs(5);
 	let strategy = RetryStrategy::fixed_delay(delay);
@@ -32,7 +33,7 @@ fn test_fixed_delay_strategy() {
 }
 
 /// Test: No retry strategy
-#[test]
+#[rstest]
 fn test_no_retry_strategy() {
 	let strategy = RetryStrategy::no_retry();
 
@@ -44,7 +45,7 @@ fn test_no_retry_strategy() {
 }
 
 /// Test: Custom retry strategy configuration
-#[test]
+#[rstest]
 fn test_custom_retry_strategy() {
 	let strategy = RetryStrategy::exponential_backoff()
 		.with_max_retries(5)
@@ -61,7 +62,7 @@ fn test_custom_retry_strategy() {
 }
 
 /// Test: Should retry logic
-#[test]
+#[rstest]
 fn test_should_retry() {
 	let strategy = RetryStrategy::exponential_backoff().with_max_retries(3);
 
@@ -77,7 +78,7 @@ fn test_should_retry() {
 }
 
 /// Test: Exponential backoff delay calculation (without jitter)
-#[test]
+#[rstest]
 fn test_exponential_backoff_delays() {
 	let strategy = RetryStrategy::exponential_backoff()
 		.with_initial_delay(Duration::from_secs(1))
@@ -103,7 +104,7 @@ fn test_exponential_backoff_delays() {
 }
 
 /// Test: Fixed delay calculation
-#[test]
+#[rstest]
 fn test_fixed_delay_calculation() {
 	let delay = Duration::from_secs(5);
 	let strategy = RetryStrategy::fixed_delay(delay);
@@ -116,7 +117,7 @@ fn test_fixed_delay_calculation() {
 }
 
 /// Test: Maximum delay cap
-#[test]
+#[rstest]
 fn test_max_delay_cap() {
 	let strategy = RetryStrategy::exponential_backoff()
 		.with_initial_delay(Duration::from_secs(1))
@@ -139,7 +140,7 @@ fn test_max_delay_cap() {
 }
 
 /// Test: RetryState initialization and tracking
-#[test]
+#[rstest]
 fn test_retry_state() {
 	let strategy = RetryStrategy::exponential_backoff().with_max_retries(3);
 	let mut state = RetryState::new(strategy);
@@ -163,7 +164,7 @@ fn test_retry_state() {
 }
 
 /// Test: RetryState reset
-#[test]
+#[rstest]
 fn test_retry_state_reset() {
 	let strategy = RetryStrategy::exponential_backoff();
 	let mut state = RetryState::new(strategy);
@@ -180,7 +181,7 @@ fn test_retry_state_reset() {
 }
 
 /// Test: Jitter introduces randomness
-#[test]
+#[rstest]
 fn test_jitter_randomness() {
 	let strategy = RetryStrategy::exponential_backoff()
 		.with_jitter(true)

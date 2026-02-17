@@ -8,6 +8,7 @@ use reinhardt_tasks::{
 	Task, TaskExecutor, TaskId, TaskResult,
 	scheduler::{CronSchedule, Schedule, Scheduler},
 };
+use rstest::rstest;
 use std::sync::{Arc, Mutex};
 
 /// Simple test task executor
@@ -51,14 +52,14 @@ impl TaskExecutor for TestExecutor {
 }
 
 /// Test: CronSchedule creation
-#[test]
+#[rstest]
 fn test_cron_schedule_new() {
 	let schedule = CronSchedule::new("0 0 * * *".to_string());
 	assert_eq!(schedule.expression, "0 0 * * *");
 }
 
 /// Test: CronSchedule next_run with valid expression
-#[test]
+#[rstest]
 fn test_cron_schedule_next_run_valid() {
 	// Daily at midnight
 	let schedule = CronSchedule::new("0 0 * * * *".to_string());
@@ -72,7 +73,7 @@ fn test_cron_schedule_next_run_valid() {
 }
 
 /// Test: CronSchedule next_run with invalid expression
-#[test]
+#[rstest]
 fn test_cron_schedule_next_run_invalid() {
 	let schedule = CronSchedule::new("invalid cron".to_string());
 	let next = schedule.next_run();
@@ -80,7 +81,7 @@ fn test_cron_schedule_next_run_invalid() {
 }
 
 /// Test: CronSchedule clone
-#[test]
+#[rstest]
 fn test_cron_schedule_clone() {
 	let schedule1 = CronSchedule::new("0 0 * * *".to_string());
 	let schedule2 = schedule1.clone();
@@ -89,7 +90,7 @@ fn test_cron_schedule_clone() {
 }
 
 /// Test: CronSchedule as Schedule trait
-#[test]
+#[rstest]
 fn test_cron_schedule_as_trait() {
 	let schedule: Box<dyn Schedule> = Box::new(CronSchedule::new("0 0 * * * *".to_string()));
 	let next = schedule.next_run();
@@ -97,7 +98,7 @@ fn test_cron_schedule_as_trait() {
 }
 
 /// Test: Scheduler creation
-#[test]
+#[rstest]
 fn test_scheduler_new() {
 	let scheduler = Scheduler::new();
 	// Scheduler creation should succeed (no panic)
@@ -108,7 +109,7 @@ fn test_scheduler_new() {
 }
 
 /// Test: Scheduler add_task
-#[test]
+#[rstest]
 fn test_scheduler_add_task() {
 	let mut scheduler = Scheduler::new();
 	let executor = Box::new(TestExecutor::new("test_task"));
@@ -119,7 +120,7 @@ fn test_scheduler_add_task() {
 }
 
 /// Test: Scheduler with multiple tasks
-#[test]
+#[rstest]
 fn test_scheduler_multiple_tasks() {
 	let mut scheduler = Scheduler::new();
 
@@ -156,7 +157,7 @@ impl Schedule for FixedSchedule {
 }
 
 /// Test: Scheduler with custom Schedule implementation
-#[test]
+#[rstest]
 fn test_scheduler_with_custom_schedule() {
 	let mut scheduler = Scheduler::new();
 	let executor = Box::new(TestExecutor::new("custom_task"));
@@ -168,7 +169,7 @@ fn test_scheduler_with_custom_schedule() {
 }
 
 /// Test: CronSchedule common expressions
-#[test]
+#[rstest]
 fn test_cron_schedule_common_expressions() {
 	// Every minute
 	let schedule = CronSchedule::new("* * * * * *".to_string());
@@ -188,7 +189,7 @@ fn test_cron_schedule_common_expressions() {
 }
 
 /// Test: CronSchedule edge cases
-#[test]
+#[rstest]
 fn test_cron_schedule_edge_cases() {
 	// Empty string
 	let schedule = CronSchedule::new("".to_string());

@@ -541,6 +541,7 @@ impl Default for Worker {
 mod tests {
 	use super::*;
 	use crate::{DummyBackend, Task, TaskId, TaskPriority};
+	use rstest::rstest;
 	use std::time::Duration;
 	use tokio::time::sleep;
 
@@ -564,6 +565,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_creation() {
 		let config = WorkerConfig::new("test-worker".to_string());
@@ -571,6 +573,7 @@ mod tests {
 		assert_eq!(worker.config.name, "test-worker");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_config_builder() {
 		let config = WorkerConfig::new("test".to_string())
@@ -581,6 +584,7 @@ mod tests {
 		assert_eq!(config.poll_interval, Duration::from_millis(100));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_start_and_stop() {
 		let worker = Worker::new(WorkerConfig::default());
@@ -607,6 +611,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_registry() {
 		use crate::registry::TaskRegistry;
@@ -617,6 +622,7 @@ mod tests {
 		assert!(worker.registry.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_lock() {
 		use crate::locking::MemoryTaskLock;
@@ -627,6 +633,7 @@ mod tests {
 		assert!(worker.task_lock.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_result_backend() {
 		use crate::result::MemoryResultBackend;

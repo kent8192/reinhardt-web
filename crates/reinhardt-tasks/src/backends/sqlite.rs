@@ -386,6 +386,7 @@ mod tests {
 	use super::*;
 	use crate::backend::TaskBackend;
 	use crate::{TaskId, TaskPriority};
+	use rstest::rstest;
 
 	struct TestTask {
 		id: TaskId,
@@ -406,12 +407,14 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_creation() {
 		let backend = SqliteBackend::new("sqlite::memory:").await;
 		assert!(backend.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_enqueue() {
 		let backend = SqliteBackend::new("sqlite::memory:")
@@ -429,6 +432,7 @@ mod tests {
 		assert_eq!(result.unwrap(), task_id);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_get_status() {
 		let backend = SqliteBackend::new("sqlite::memory:")
@@ -450,6 +454,7 @@ mod tests {
 		assert_eq!(status, TaskStatus::Pending);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_not_found() {
 		let backend = SqliteBackend::new("sqlite::memory:")
@@ -461,6 +466,7 @@ mod tests {
 		assert!(matches!(result, Err(TaskExecutionError::NotFound(_))));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_result_backend_store_and_retrieve() {
 		let backend = SqliteResultBackend::new("sqlite::memory:")
@@ -489,6 +495,7 @@ mod tests {
 		assert_eq!(retrieved.unwrap().result(), Some("Test result"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_result_backend_delete() {
 		let backend = SqliteResultBackend::new("sqlite::memory:")
@@ -516,6 +523,7 @@ mod tests {
 		assert!(retrieved.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_get_task_data_after_enqueue() {
 		let backend = SqliteBackend::new("sqlite::memory:")
@@ -541,6 +549,7 @@ mod tests {
 		assert_eq!(serialized.data(), "{}");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_get_task_data_not_found() {
 		let backend = SqliteBackend::new("sqlite::memory:")
@@ -556,6 +565,7 @@ mod tests {
 		assert!(task_data.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_backend_task_data_persistence() {
 		use tempfile::tempdir;

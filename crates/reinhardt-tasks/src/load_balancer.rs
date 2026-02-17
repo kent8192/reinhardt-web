@@ -441,8 +441,10 @@ impl LoadBalancer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_info_creation() {
 		let worker = WorkerInfo::new("worker-1".to_string(), 2);
@@ -451,6 +453,7 @@ mod tests {
 		assert_eq!(worker.active_task_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_info_task_count() {
 		let worker = WorkerInfo::new("worker-1".to_string(), 1);
@@ -462,6 +465,7 @@ mod tests {
 		assert_eq!(worker.active_task_count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_metrics_creation() {
 		let metrics = WorkerMetrics::new();
@@ -470,6 +474,7 @@ mod tests {
 		assert_eq!(metrics.average_execution_time, Duration::from_secs(0));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_metrics_record_success() {
 		let mut metrics = WorkerMetrics::new();
@@ -482,6 +487,7 @@ mod tests {
 		assert_eq!(metrics.average_execution_time, Duration::from_millis(150));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_metrics_record_failure() {
 		let mut metrics = WorkerMetrics::new();
@@ -490,12 +496,14 @@ mod tests {
 		assert_eq!(metrics.average_execution_time, Duration::from_millis(50));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_balancer_creation() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
 		assert_eq!(balancer.worker_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_balancer_register_worker() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -506,6 +514,7 @@ mod tests {
 		assert_eq!(balancer.worker_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_load_balancer_unregister_worker() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -517,6 +526,7 @@ mod tests {
 		assert_eq!(balancer.worker_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_round_robin_strategy() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -538,6 +548,7 @@ mod tests {
 		assert_eq!(worker3, "worker-1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_least_connections_strategy() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::LeastConnections);
@@ -556,6 +567,7 @@ mod tests {
 		assert_eq!(selected, "worker-2");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_weighted_strategy() {
 		let mut weights = HashMap::new();
@@ -590,6 +602,7 @@ mod tests {
 		assert!(worker1_count > worker2_count);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_random_strategy() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::Random);
@@ -606,6 +619,7 @@ mod tests {
 		assert!(worker == "worker-1" || worker == "worker-2");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_select_worker_no_workers() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -613,6 +627,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_task_completed() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -633,6 +648,7 @@ mod tests {
 		assert_eq!(worker.active_task_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_update_metrics() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);
@@ -657,6 +673,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_worker_stats() {
 		let balancer = LoadBalancer::new(LoadBalancingStrategy::RoundRobin);

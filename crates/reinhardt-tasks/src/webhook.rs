@@ -468,9 +468,10 @@ impl WebhookSender for HttpWebhookSender {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
-	#[test]
+	#[rstest]
 	fn test_task_status_serialization() {
 		let status = TaskStatus::Success;
 		let json = serde_json::to_string(&status).unwrap();
@@ -480,7 +481,7 @@ mod tests {
 		assert_eq!(status, TaskStatus::Failed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_event_serialization() {
 		let now = Utc::now();
 		let event = WebhookEvent {
@@ -503,7 +504,7 @@ mod tests {
 		assert_eq!(deserialized.status, TaskStatus::Success);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_retry_config_default() {
 		let config = RetryConfig::default();
 		assert_eq!(config.max_retries, 3);
@@ -512,7 +513,7 @@ mod tests {
 		assert_eq!(config.backoff_multiplier, 2.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_config_default() {
 		let config = WebhookConfig::default();
 		assert_eq!(config.url, "");
@@ -521,7 +522,7 @@ mod tests {
 		assert!(config.headers.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_calculate_backoff() {
 		let config = WebhookConfig {
 			url: "https://example.com".to_string(),
@@ -553,7 +554,7 @@ mod tests {
 		assert!(backoff_large <= Duration::from_secs(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_error_display() {
 		let error = WebhookError::RequestFailed("Connection timeout".to_string());
 		assert_eq!(
@@ -571,6 +572,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_webhook_sender_creation() {
 		let config = WebhookConfig::default();
@@ -580,6 +582,7 @@ mod tests {
 		assert_eq!(sender.config.method, "POST");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_event_creation() {
 		let now = Utc::now();
@@ -603,6 +606,7 @@ mod tests {
 		assert_eq!(event.duration_ms, 5000);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_failed_event() {
 		let now = Utc::now();
@@ -627,6 +631,7 @@ mod tests {
 	}
 
 	// Integration test with mock HTTP server
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_success() {
 		let mut server = mockito::Server::new_async().await;
@@ -671,6 +676,7 @@ mod tests {
 		mock.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_retry_then_success() {
 		let mut server = mockito::Server::new_async().await;
@@ -732,6 +738,7 @@ mod tests {
 		mock3.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_max_retries_exceeded() {
 		let mut server = mockito::Server::new_async().await;
@@ -781,6 +788,7 @@ mod tests {
 		mock.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_custom_headers() {
 		let mut server = mockito::Server::new_async().await;

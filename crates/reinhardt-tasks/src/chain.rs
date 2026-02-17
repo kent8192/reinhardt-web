@@ -367,6 +367,7 @@ impl TaskChainBuilder {
 mod tests {
 	use super::*;
 	use crate::{DummyBackend, Task, TaskPriority};
+	use rstest::rstest;
 
 	struct TestTask {
 		id: TaskId,
@@ -386,7 +387,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_creation() {
 		let chain = TaskChain::new("test-chain");
 		assert_eq!(chain.name(), "test-chain");
@@ -394,7 +395,7 @@ mod tests {
 		assert_eq!(chain.status(), ChainStatus::Pending);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_add_task() {
 		let mut chain = TaskChain::new("test");
 		let task_id = TaskId::new();
@@ -403,7 +404,7 @@ mod tests {
 		assert_eq!(chain.current_task(), Some(task_id));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_advance() {
 		let mut chain = TaskChain::new("test");
 		chain.add_task(TaskId::new());
@@ -413,7 +414,7 @@ mod tests {
 		assert!(!chain.advance());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_builder() {
 		let task1 = TaskId::new();
 		let task2 = TaskId::new();
@@ -427,7 +428,7 @@ mod tests {
 		assert_eq!(chain.name(), "builder-test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_builder_multiple() {
 		let tasks = vec![TaskId::new(), TaskId::new(), TaskId::new()];
 		let chain = TaskChainBuilder::new("batch").add_tasks(tasks).build();
@@ -435,7 +436,7 @@ mod tests {
 		assert_eq!(chain.task_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_chain_status() {
 		let mut chain = TaskChain::new("test");
 		assert_eq!(chain.status(), ChainStatus::Pending);
@@ -447,6 +448,7 @@ mod tests {
 		assert!(chain.is_complete());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_chain_execution() {
 		let backend = Arc::new(DummyBackend::new());

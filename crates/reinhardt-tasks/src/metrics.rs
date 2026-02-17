@@ -449,7 +449,9 @@ impl Default for TaskMetrics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_task_start() {
 		let metrics = TaskMetrics::new();
@@ -462,6 +464,7 @@ mod tests {
 		assert_eq!(snapshot.task_counts.running, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_task_success() {
 		let metrics = TaskMetrics::new();
@@ -480,6 +483,7 @@ mod tests {
 		assert_eq!(snapshot.average_execution_time, Duration::from_millis(100));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_task_failure() {
 		let metrics = TaskMetrics::new();
@@ -497,6 +501,7 @@ mod tests {
 		assert_eq!(snapshot.task_counts.running, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_queue_depth() {
 		let metrics = TaskMetrics::new();
@@ -515,6 +520,7 @@ mod tests {
 		assert_eq!(snapshot.queue_depths.get("priority"), Some(&10));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_record_worker_stats() {
 		let metrics = TaskMetrics::new();
@@ -537,6 +543,7 @@ mod tests {
 		assert_eq!(worker.idle_time, Duration::from_secs(5));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_percentile_calculation() {
 		let metrics = TaskMetrics::new();
@@ -569,6 +576,7 @@ mod tests {
 		assert_eq!(snapshot.p99_execution_time, Duration::from_millis(99));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_reset() {
 		let metrics = TaskMetrics::new();
@@ -593,6 +601,7 @@ mod tests {
 		assert_eq!(snapshot.average_execution_time, Duration::ZERO);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_concurrent_access() {
 		let metrics = Arc::new(TaskMetrics::new());
@@ -620,6 +629,7 @@ mod tests {
 		assert_eq!(snapshot.task_counts.successful, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_empty_percentiles() {
 		let metrics = TaskMetrics::new();
@@ -631,6 +641,7 @@ mod tests {
 		assert_eq!(snapshot.p99_execution_time, Duration::ZERO);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_single_value_percentiles() {
 		let metrics = TaskMetrics::new();
