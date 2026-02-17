@@ -46,8 +46,9 @@ impl<T> MapServerFnError<T> for Result<T, AdminError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_model_not_registered_converts_to_404() {
 		let admin_err = AdminError::ModelNotRegistered("User".into());
 		let server_err = admin_err.into_server_fn_error();
@@ -61,7 +62,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_permission_denied_converts_to_403() {
 		let admin_err = AdminError::PermissionDenied("Access denied".into());
 		let server_err = admin_err.into_server_fn_error();
@@ -75,7 +76,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_converts_to_application() {
 		let admin_err = AdminError::ValidationError("Invalid input".into());
 		let server_err = admin_err.into_server_fn_error();
@@ -88,7 +89,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_database_error_hides_details() {
 		let admin_err = AdminError::DatabaseError("SQL syntax error at line 42".into());
 		let server_err = admin_err.into_server_fn_error();
@@ -105,7 +106,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_conversion() {
 		let result: Result<String, AdminError> = Err(AdminError::ModelNotRegistered("Post".into()));
 		let server_result = result.map_server_fn_error();

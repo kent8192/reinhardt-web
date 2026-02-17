@@ -125,15 +125,16 @@ impl AdminRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_admin_routes_creates_router() {
 		let router = admin_routes();
 		// Verify router is created with admin namespace
 		assert_eq!(router.namespace(), Some("admin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_admin_router_backward_compat() {
 		let site = Arc::new(AdminSite::new("Test Admin"));
 		let router_builder = AdminRouter::from_arc(site);

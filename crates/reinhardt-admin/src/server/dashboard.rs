@@ -52,7 +52,9 @@ pub async fn get_dashboard(
 mod tests {
 	use super::*;
 	use crate::types::ModelInfo;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dashboard_response_structure() {
 		// Create a mock AdminSite
@@ -68,7 +70,7 @@ mod tests {
 		assert_eq!(expected_url_prefix, "/admin");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_info_construction() {
 		let model_name = "User".to_string();
 		let list_url = format!("/admin/{}/", model_name.to_lowercase());

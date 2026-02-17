@@ -339,8 +339,9 @@ pub fn get_field_metadata(table_name: &str, field_name: &str) -> Option<FieldMet
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_integers() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Integer),
@@ -356,7 +357,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_strings() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::VarChar(255)),
@@ -376,7 +377,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_datetime() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Boolean),
@@ -392,7 +393,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_enum() {
 		let db_type = DbFieldType::Enum {
 			values: vec!["active".to_string(), "inactive".to_string()],
@@ -409,25 +410,25 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_default() {
 		let meta = FieldMetadata::new(DbFieldType::VarChar(255));
 		assert!(infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_null_true() {
 		let meta = FieldMetadata::new(DbFieldType::VarChar(255)).with_param("null", "true");
 		assert!(!infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_blank_true() {
 		let meta = FieldMetadata::new(DbFieldType::VarChar(255)).with_param("blank", "true");
 		assert!(!infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_both_false() {
 		let meta = FieldMetadata::new(DbFieldType::VarChar(255))
 			.with_param("null", "false")
@@ -435,7 +436,7 @@ mod tests {
 		assert!(infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_boolean() {
 		assert!(matches!(
 			infer_filter_type(&AdminFieldType::Boolean),
@@ -443,7 +444,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_date() {
 		let filter = infer_filter_type(&AdminFieldType::Date);
 		match filter {
@@ -455,7 +456,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_number() {
 		let filter = infer_filter_type(&AdminFieldType::Number);
 		match filter {
@@ -466,7 +467,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_select() {
 		let admin_type = AdminFieldType::Select {
 			choices: vec![
@@ -490,7 +491,7 @@ mod tests {
 	// Additional type inference tests
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_decimal() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Decimal {
@@ -501,7 +502,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_float_double_real() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Float),
@@ -517,7 +518,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_uuid() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Uuid),
@@ -525,7 +526,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_binary() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Binary),
@@ -553,7 +554,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_json() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Json),
@@ -565,7 +566,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_year() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Year),
@@ -573,7 +574,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_time() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Time),
@@ -585,7 +586,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_set() {
 		let db_type = DbFieldType::Set {
 			values: vec![
@@ -607,7 +608,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_relationship() {
 		use reinhardt_db::migrations::ForeignKeyAction;
 
@@ -628,7 +629,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_custom() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Custom("geometry".to_string())),
@@ -636,7 +637,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_text_variants() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::TinyText),
@@ -648,7 +649,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_integer_variants() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::TinyInt),
@@ -664,7 +665,7 @@ mod tests {
 	// Additional filter type tests
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_datetime() {
 		let filter = infer_filter_type(&AdminFieldType::DateTime);
 		match filter {
@@ -679,7 +680,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_text() {
 		let filter = infer_filter_type(&AdminFieldType::Text);
 		match filter {
@@ -693,7 +694,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_textarea() {
 		let filter = infer_filter_type(&AdminFieldType::TextArea);
 		match filter {
@@ -707,7 +708,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_file() {
 		let filter = infer_filter_type(&AdminFieldType::File);
 		match filter {
@@ -718,7 +719,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_hidden() {
 		let filter = infer_filter_type(&AdminFieldType::Hidden);
 		match filter {
@@ -729,7 +730,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_filter_type_number_ranges() {
 		let filter = infer_filter_type(&AdminFieldType::Number);
 		match filter {
@@ -755,19 +756,19 @@ mod tests {
 	// Required inference edge cases
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_null_false_explicit() {
 		let meta = FieldMetadata::new(DbFieldType::Integer).with_param("null", "false");
 		assert!(infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_blank_false_explicit() {
 		let meta = FieldMetadata::new(DbFieldType::Integer).with_param("blank", "false");
 		assert!(infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_null_true_blank_false() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
 			.with_param("null", "true")
@@ -775,7 +776,7 @@ mod tests {
 		assert!(!infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_null_false_blank_true() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
 			.with_param("null", "false")
@@ -783,7 +784,7 @@ mod tests {
 		assert!(!infer_required(&meta));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_required_both_true() {
 		let meta = FieldMetadata::new(DbFieldType::Integer)
 			.with_param("null", "true")
@@ -795,7 +796,7 @@ mod tests {
 	// PostgreSQL-specific field type tests
 	// ──────────────────────────────────────────────────────────────
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_array_string() {
 		// String array → MultiSelect
 		let db_type = DbFieldType::Array(Box::new(DbFieldType::VarChar(255)));
@@ -803,7 +804,7 @@ mod tests {
 		assert!(matches!(admin_type, AdminFieldType::MultiSelect { .. }));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_array_integer() {
 		// Integer array → TextArea (complex array)
 		let db_type = DbFieldType::Array(Box::new(DbFieldType::Integer));
@@ -811,7 +812,7 @@ mod tests {
 		assert_eq!(admin_type, AdminFieldType::TextArea);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_hstore() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::HStore),
@@ -819,7 +820,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_citext() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::CIText),
@@ -827,7 +828,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_ranges() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::Int4Range),
@@ -855,7 +856,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_infer_admin_field_type_postgres_fulltext() {
 		assert_eq!(
 			infer_admin_field_type(&DbFieldType::TsVector),

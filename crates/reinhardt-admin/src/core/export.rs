@@ -471,8 +471,9 @@ impl ExportBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_export_format_extension() {
 		assert_eq!(ExportFormat::CSV.extension(), "csv");
 		assert_eq!(ExportFormat::JSON.extension(), "json");
@@ -480,13 +481,13 @@ mod tests {
 		assert_eq!(ExportFormat::TSV.extension(), "tsv");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_format_mime_type() {
 		assert_eq!(ExportFormat::CSV.mime_type(), "text/csv");
 		assert_eq!(ExportFormat::JSON.mime_type(), "application/json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_config_new() {
 		let config = ExportConfig::new("User", ExportFormat::CSV);
 		assert_eq!(config.model_name(), "User");
@@ -494,7 +495,7 @@ mod tests {
 		assert!(config.include_headers());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_config_with_field() {
 		let config = ExportConfig::new("User", ExportFormat::CSV)
 			.with_field("id")
@@ -503,7 +504,7 @@ mod tests {
 		assert_eq!(config.field_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csv_exporter_basic() {
 		let fields = vec!["id".to_string(), "name".to_string()];
 		let mut row1 = HashMap::new();
@@ -524,7 +525,7 @@ mod tests {
 		assert!(output.contains("2,Bob"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csv_exporter_escape() {
 		let fields = vec!["id".to_string(), "name".to_string()];
 		let mut row = HashMap::new();
@@ -539,7 +540,7 @@ mod tests {
 		assert!(output.contains("\"Smith, John\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_exporter() {
 		let mut row1 = HashMap::new();
 		row1.insert("id".to_string(), "1".to_string());
@@ -554,7 +555,7 @@ mod tests {
 		assert!(output.contains("\"Alice\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_tsv_exporter() {
 		let fields = vec!["id".to_string(), "name".to_string()];
 		let mut row = HashMap::new();
@@ -570,7 +571,7 @@ mod tests {
 		assert!(output.contains("1\tAlice"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_builder() {
 		let mut row = HashMap::new();
 		row.insert("id".to_string(), "1".to_string());
@@ -588,7 +589,7 @@ mod tests {
 		assert!(export.filename.ends_with(".csv"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_result() {
 		let data = vec![1, 2, 3, 4, 5];
 		let result = ExportResult::new(data, "text/csv".to_string(), "test.csv".to_string(), 10);
@@ -598,7 +599,7 @@ mod tests {
 		assert!((result.size_kb() - 0.00488).abs() < 0.001);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_config_filters() {
 		let config = ExportConfig::new("User", ExportFormat::CSV)
 			.with_filter("status", "active")
@@ -608,7 +609,7 @@ mod tests {
 		assert_eq!(config.filters().get("status"), Some(&"active".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_export_config_ordering() {
 		let config = ExportConfig::new("User", ExportFormat::CSV)
 			.with_ordering(vec!["name".to_string(), "-created_at".to_string()]);

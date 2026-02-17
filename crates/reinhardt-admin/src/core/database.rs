@@ -933,10 +933,11 @@ mod tests {
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;
 	use reinhardt_db::orm::expressions::{F, OuterRef};
+	use rstest::rstest;
 
 	// ==================== build_composite_filter_condition tests ====================
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_single_condition() {
 		let filter = Filter::new(
 			"name".to_string(),
@@ -959,7 +960,7 @@ mod tests {
 		assert!(query.contains("'Alice'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_or_condition() {
 		let filter1 = Filter::new(
 			"name".to_string(),
@@ -992,7 +993,7 @@ mod tests {
 		assert!(query.contains("OR"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_and_condition() {
 		let filter1 = Filter::new(
 			"is_active".to_string(),
@@ -1025,7 +1026,7 @@ mod tests {
 		assert!(query.contains("AND"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_nested_condition() {
 		// Build: (name LIKE '%Alice%' OR email LIKE '%alice%') AND is_active = true
 		let filter_name = Filter::new(
@@ -1069,7 +1070,7 @@ mod tests {
 		assert!(query.contains("AND"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_empty_or() {
 		let condition = FilterCondition::Or(vec![]);
 
@@ -1079,7 +1080,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_composite_empty_and() {
 		let condition = FilterCondition::And(vec![]);
 
@@ -1091,7 +1092,7 @@ mod tests {
 
 	// ==================== FieldRef/OuterRef/Expression filter tests ====================
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_field_ref_eq() {
 		let filter = Filter::new(
 			"price".to_string(),
@@ -1110,7 +1111,7 @@ mod tests {
 		assert!(query.contains("\"discount_price\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_field_ref_gt() {
 		let filter = Filter::new(
 			"price".to_string(),
@@ -1121,7 +1122,7 @@ mod tests {
 		assert!(result.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_field_ref_all_operators() {
 		let operators = [
 			FilterOperator::Eq,
@@ -1147,7 +1148,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_outer_ref() {
 		let filter = Filter::new(
 			"author_id".to_string(),
@@ -1166,7 +1167,7 @@ mod tests {
 		assert!(query.contains("authors.id"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_outer_ref_all_operators() {
 		let operators = [
 			FilterOperator::Eq,
@@ -1192,7 +1193,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_expression() {
 		use reinhardt_db::orm::annotation::{AnnotationValue, Value};
 
@@ -1210,7 +1211,7 @@ mod tests {
 		assert!(result.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_single_filter_expr_expression_all_operators() {
 		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
 
@@ -1242,7 +1243,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_value_to_sea_value_field_ref_fallback() {
 		let value = FilterValue::FieldRef(F::new("test_field"));
 		let sea_value = filter_value_to_sea_value(&value);
@@ -1254,7 +1255,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_value_to_sea_value_outer_ref_fallback() {
 		let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
 		let sea_value = filter_value_to_sea_value(&value);
@@ -1266,7 +1267,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_value_to_sea_value_expression_fallback() {
 		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
 

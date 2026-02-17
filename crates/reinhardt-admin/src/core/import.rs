@@ -650,8 +650,9 @@ impl ImportBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_import_format_from_filename() {
 		assert_eq!(
 			ImportFormat::from_filename("data.csv"),
@@ -668,7 +669,7 @@ mod tests {
 		assert_eq!(ImportFormat::from_filename("data.txt"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_config_new() {
 		let config = ImportConfig::new("User", ImportFormat::CSV);
 		assert_eq!(config.model_name(), "User");
@@ -677,7 +678,7 @@ mod tests {
 		assert!(config.should_validate());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_config_field_mapping() {
 		let config =
 			ImportConfig::new("User", ImportFormat::CSV).with_field_mapping("username", "login");
@@ -686,7 +687,7 @@ mod tests {
 		assert_eq!(config.map_field("email"), "email");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csv_importer_basic() {
 		let csv_data = b"id,name\n1,Alice\n2,Bob";
 		let result = CsvImporter::import(csv_data, true);
@@ -697,7 +698,7 @@ mod tests {
 		assert_eq!(records[0].get("name"), Some(&"Alice".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csv_importer_quoted() {
 		let csv_data = b"id,name\n1,\"Smith, John\"\n2,\"Doe, Jane\"";
 		let result = CsvImporter::import(csv_data, true);
@@ -707,7 +708,7 @@ mod tests {
 		assert_eq!(records[0].get("name"), Some(&"Smith, John".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_importer() {
 		let json_data = br#"[{"id":"1","name":"Alice"},{"id":"2","name":"Bob"}]"#;
 		let result = JsonImporter::import(json_data);
@@ -718,7 +719,7 @@ mod tests {
 		assert_eq!(records[0].get("name"), Some(&"Alice".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_tsv_importer() {
 		let tsv_data = b"id\tname\n1\tAlice\n2\tBob";
 		let result = TsvImporter::import(tsv_data, true);
@@ -729,7 +730,7 @@ mod tests {
 		assert_eq!(records[0].get("name"), Some(&"Alice".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_builder() {
 		let csv_data = b"id,name\n1,Alice\n2,Bob";
 
@@ -741,7 +742,7 @@ mod tests {
 		assert_eq!(records.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_builder_with_mapping() {
 		let csv_data = b"id,username\n1,alice\n2,bob";
 
@@ -755,7 +756,7 @@ mod tests {
 		assert_eq!(records[0].get("username"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_builder_max_records() {
 		let csv_data = b"id,name\n1,Alice\n2,Bob\n3,Charlie";
 
@@ -768,7 +769,7 @@ mod tests {
 		assert_eq!(records.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_import_result() {
 		let mut result = ImportResult::new();
 		assert_eq!(result.total_processed(), 0);
@@ -787,7 +788,7 @@ mod tests {
 
 	// ==================== from_content_type tests ====================
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_json() {
 		assert_eq!(
 			ImportFormat::from_content_type("application/json"),
@@ -795,7 +796,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_csv() {
 		assert_eq!(
 			ImportFormat::from_content_type("text/csv"),
@@ -803,7 +804,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_tsv() {
 		assert_eq!(
 			ImportFormat::from_content_type("text/tab-separated-values"),
@@ -811,7 +812,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_with_charset() {
 		// Content-Type with charset parameter should still be parsed correctly
 		assert_eq!(
@@ -828,19 +829,19 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_unknown() {
 		assert_eq!(ImportFormat::from_content_type("text/html"), None);
 		assert_eq!(ImportFormat::from_content_type("application/xml"), None);
 		assert_eq!(ImportFormat::from_content_type("image/png"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_empty() {
 		assert_eq!(ImportFormat::from_content_type(""), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_case_insensitive() {
 		// Content-Type header values should be case-insensitive per RFC
 		assert_eq!(
@@ -857,7 +858,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_text_json() {
 		// text/json is an alternative MIME type for JSON
 		assert_eq!(
@@ -866,7 +867,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_application_csv() {
 		// application/csv is an alternative MIME type for CSV
 		assert_eq!(
@@ -875,7 +876,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_text_tsv() {
 		// text/tsv is an alternative MIME type for TSV
 		assert_eq!(
@@ -884,7 +885,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_with_extra_parameters() {
 		// Content-Type with multiple parameters
 		assert_eq!(
@@ -893,7 +894,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_content_type_whitespace() {
 		// Content-Type with whitespace variations
 		assert_eq!(

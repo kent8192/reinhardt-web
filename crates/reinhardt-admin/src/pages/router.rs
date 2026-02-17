@@ -553,8 +553,9 @@ pub fn init_router() -> Router {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_admin_route_enum() {
 		let route = AdminRoute::Dashboard;
 		assert_eq!(route, AdminRoute::Dashboard);
@@ -565,7 +566,7 @@ mod tests {
 		assert!(matches!(route, AdminRoute::List { .. }));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_init_router_creates_routes() {
 		let router = init_router();
 		assert_eq!(router.route_count(), 5); // dashboard + list + detail + create + edit
@@ -576,7 +577,7 @@ mod tests {
 		assert!(router.has_route("edit"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dashboard_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/");
@@ -586,7 +587,7 @@ mod tests {
 		assert_eq!(route_match.route.name(), Some("dashboard"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/users/");
@@ -597,7 +598,7 @@ mod tests {
 		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detail_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/users/42/");
@@ -609,7 +610,7 @@ mod tests {
 		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/users/add/");
@@ -620,7 +621,7 @@ mod tests {
 		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_edit_route_match() {
 		let router = init_router();
 		let route_match = router.match_path("/admin/users/42/change/");
@@ -632,21 +633,21 @@ mod tests {
 		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_url_dashboard() {
 		let router = init_router();
 		let url = router.reverse("dashboard", &[]).unwrap();
 		assert_eq!(url, "/admin/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_url_list() {
 		let router = init_router();
 		let url = router.reverse("list", &[("model", "users")]).unwrap();
 		assert_eq!(url, "/admin/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_url_detail() {
 		let router = init_router();
 		let url = router
@@ -655,7 +656,7 @@ mod tests {
 		assert_eq!(url, "/admin/users/42/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_init_global_router() {
 		init_global_router();
 
@@ -669,7 +670,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_router_access() {
 		init_global_router();
 
@@ -680,7 +681,7 @@ mod tests {
 		assert!(has_dashboard);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Router not initialized")]
 	fn test_with_router_panics_when_not_initialized() {
 		// Clear ROUTER (this operation is actually dangerous, but for test purposes)
@@ -689,7 +690,7 @@ mod tests {
 		with_router(|_| {});
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_view_with_model_name() {
 		let view = list_view_component("users".to_string());
 		// Verify basic rendering succeeds
@@ -697,7 +698,7 @@ mod tests {
 		assert!(html.contains("users") || html.contains("List"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detail_view_with_params() {
 		let view = detail_view_component("users".to_string(), "42".to_string());
 		// Verify basic rendering succeeds
