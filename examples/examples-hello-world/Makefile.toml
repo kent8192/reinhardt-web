@@ -50,13 +50,13 @@ args = ["nextest", "run", "--test", "*", "--all-features"]
 
 [tasks.fmt-check]
 description = "Check code formatting (rustfmt + page! DSL)"
-command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", ".", "--check"]
+command = "reinhardt-admin"
+args = ["fmt", ".", "--check"]
 
 [tasks.fmt-fix]
 description = "Fix code formatting (rustfmt + page! DSL)"
-command = "cargo"
-args = ["run", "-p", "reinhardt-admin-cli", "--", "fmt", "."]
+command = "reinhardt-admin"
+args = ["fmt", "."]
 
 [tasks.clippy-check]
 description = "Check linting rules"

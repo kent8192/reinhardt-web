@@ -66,6 +66,9 @@ jobs:
         with:
           tool: cargo-make
 
+      - name: Install reinhardt-admin
+        run: cargo install --path crates/reinhardt-admin-cli
+
       - name: Setup local development config
         run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
 
