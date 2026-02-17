@@ -127,15 +127,16 @@ fn validate_parameter_name(name: &str, position: usize) -> Result<(), PathValida
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_valid_simple_path() {
 		assert!(validate_path_syntax("/users/").is_ok());
 		assert!(validate_path_syntax("/items/").is_ok());
 		assert!(validate_path_syntax("/api/v1/users/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_path_with_parameters() {
 		assert!(validate_path_syntax("/users/{id}/").is_ok());
 		assert!(validate_path_syntax("/users/{user_id}/").is_ok());
@@ -143,13 +144,13 @@ mod tests {
 		assert!(validate_path_syntax("/items/{item_id}/details/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_must_start_with_slash() {
 		let result = validate_path_syntax("users/");
 		assert_eq!(result, Err(PathValidationError::MustStartWithSlash));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unmatched_open_brace() {
 		let result = validate_path_syntax("/users/{id/");
 		assert!(matches!(
@@ -158,7 +159,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unmatched_close_brace() {
 		let result = validate_path_syntax("/users/id}/");
 		assert!(matches!(
@@ -167,7 +168,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_parameter_name() {
 		let result = validate_path_syntax("/users/{}/");
 		assert!(matches!(
@@ -176,7 +177,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_parameter_name_uppercase() {
 		let result = validate_path_syntax("/users/{userId}/");
 		assert!(matches!(
@@ -185,7 +186,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_parameter_name_hyphen() {
 		let result = validate_path_syntax("/users/{user-id}/");
 		assert!(matches!(
@@ -194,13 +195,13 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_double_slash() {
 		let result = validate_path_syntax("/users//posts/");
 		assert!(matches!(result, Err(PathValidationError::DoubleSlash(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_parameters() {
 		let result = validate_path_syntax("/users/{{id}}/");
 		assert!(matches!(
@@ -209,20 +210,20 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_parameter_with_underscore() {
 		assert!(validate_path_syntax("/users/{_id}/").is_ok());
 		assert!(validate_path_syntax("/users/{_}/").is_ok());
 		assert!(validate_path_syntax("/users/{user_id_123}/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_path_with_hyphens() {
 		assert!(validate_path_syntax("/user-profiles/").is_ok());
 		assert!(validate_path_syntax("/api-v1/user-data/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_path_with_dots() {
 		assert!(validate_path_syntax("/files/document.pdf").is_ok());
 		assert!(validate_path_syntax("/api/v1.0/users/").is_ok());

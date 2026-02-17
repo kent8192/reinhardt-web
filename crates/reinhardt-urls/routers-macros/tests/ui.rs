@@ -2,7 +2,8 @@
 //!
 //! These tests verify that the macro correctly rejects invalid paths at compile time.
 
-#[test]
+use rstest::rstest;
+#[rstest]
 fn test_compile_failures() {
 	let t = trybuild::TestCases::new();
 
@@ -10,7 +11,7 @@ fn test_compile_failures() {
 	t.compile_fail("tests/ui/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_compile_success() {
 	let t = trybuild::TestCases::new();
 

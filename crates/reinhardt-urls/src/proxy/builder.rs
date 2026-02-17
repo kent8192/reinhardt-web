@@ -428,8 +428,9 @@ pub fn association_proxy<T, U>(relationship: &str, attribute: &str) -> Associati
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_proxy_builder_basic_unit() {
 		let proxy: AssociationProxy<(), ()> = ProxyBuilder::new()
 			.relationship("rel")

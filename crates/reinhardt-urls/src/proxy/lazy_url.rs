@@ -168,6 +168,7 @@ impl std::fmt::Display for LazyUrl {
 mod tests {
 	use super::*;
 	use crate::proxy::url_pattern::UrlPattern;
+	use rstest::rstest;
 
 	fn setup_resolver() -> Arc<UrlResolver> {
 		let mut resolver = UrlResolver::new();
@@ -177,14 +178,14 @@ mod tests {
 		Arc::new(resolver)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_creation() {
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
 		assert!(!home_url.is_resolved());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_resolve() {
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
@@ -192,7 +193,7 @@ mod tests {
 		assert!(home_url.is_resolved());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_with_kwargs() {
 		let resolver = setup_resolver();
 		let mut kwargs = HashMap::new();
@@ -202,7 +203,7 @@ mod tests {
 		assert_eq!(user_url.resolve(), "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_caching() {
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
@@ -216,14 +217,14 @@ mod tests {
 		assert_eq!(url1, url2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_display() {
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
 		assert_eq!(format!("{}", home_url), "/");
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Failed to resolve URL")]
 	fn test_lazy_url_pattern_not_found() {
 		let resolver = setup_resolver();
@@ -231,7 +232,7 @@ mod tests {
 		invalid_url.resolve();
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Failed to resolve URL")]
 	fn test_lazy_url_missing_parameter() {
 		let resolver = setup_resolver();

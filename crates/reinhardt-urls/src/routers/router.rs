@@ -628,6 +628,7 @@ mod tests {
 	use crate::routers_macros::path as path_macro;
 	use async_trait::async_trait;
 	use reinhardt_http::{Request, Response, Result};
+	use rstest::rstest;
 
 	struct DummyHandler;
 
@@ -638,7 +639,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_version_from_path() {
 		let router = DefaultRouter::new();
 
@@ -660,7 +661,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_routes_by_namespace_pattern() {
 		let mut router = DefaultRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
@@ -676,7 +677,7 @@ mod tests {
 		assert_eq!(no_version_routes.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_available_versions() {
 		let mut router = DefaultRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);

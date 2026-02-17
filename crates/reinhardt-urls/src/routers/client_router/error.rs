@@ -94,8 +94,9 @@ impl std::error::Error for RouterError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_path_error_display() {
 		let err = PathError::ParseError {
 			param_index: Some(0),
@@ -108,7 +109,7 @@ mod tests {
 		assert!(err.to_string().contains("i32"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_error_count_mismatch() {
 		let err = PathError::CountMismatch {
 			expected: 2,
@@ -118,7 +119,7 @@ mod tests {
 		assert!(err.to_string().contains("got 1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_error_display() {
 		assert_eq!(
 			RouterError::NotFound("/test/".to_string()).to_string(),

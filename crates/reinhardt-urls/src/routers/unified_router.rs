@@ -442,15 +442,16 @@ mod tests {
 	use super::*;
 	#[cfg(feature = "client-router")]
 	use reinhardt_core::page::Page;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_unified_router_new() {
 		let router = UnifiedRouter::new();
 		// Should have default server router
 		assert_eq!(router.server_ref().prefix(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unified_router_server_closure() {
 		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api").with_namespace("v1"));
 
@@ -458,7 +459,7 @@ mod tests {
 		assert_eq!(router.server_ref().namespace(), Some("v1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unified_router_convenience_methods() {
 		let router = UnifiedRouter::new()
 			.with_prefix("/api")
@@ -469,7 +470,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "client-router")]
-	#[test]
+	#[rstest]
 	fn test_unified_router_client_closure() {
 		let router = UnifiedRouter::new().client(|c| c.route("/", || Page::Empty));
 
@@ -477,7 +478,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "client-router")]
-	#[test]
+	#[rstest]
 	fn test_unified_router_into_parts() {
 		let router = UnifiedRouter::new()
 			.server(|s| s.with_prefix("/api"))
@@ -489,7 +490,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "client-router")]
-	#[test]
+	#[rstest]
 	fn test_unified_router_into_server() {
 		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api"));
 
@@ -498,7 +499,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "client-router")]
-	#[test]
+	#[rstest]
 	fn test_unified_router_into_client() {
 		let router = UnifiedRouter::new().client(|c| c.route("/", || Page::Empty));
 

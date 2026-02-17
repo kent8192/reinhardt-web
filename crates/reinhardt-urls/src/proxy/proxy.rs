@@ -466,8 +466,9 @@ impl ScalarValue {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_proxy_scalar_conversions_unit() {
 		let s = ScalarValue::String("test".to_string());
 		assert_eq!(s.as_string().unwrap(), "test");
@@ -482,7 +483,7 @@ mod tests {
 		assert!(b.as_boolean().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_proxy_scalar_type_mismatch_unit() {
 		let s = ScalarValue::String("test".to_string());
 		assert!(s.as_integer().is_err());

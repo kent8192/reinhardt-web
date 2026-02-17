@@ -194,8 +194,9 @@ impl std::fmt::Display for ClientPathPattern {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_exact_pattern() {
 		let pattern = ClientPathPattern::new("/users/");
 		assert!(pattern.is_exact());
@@ -203,7 +204,7 @@ mod tests {
 		assert!(!pattern.is_match("/users/123/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_param() {
 		let pattern = ClientPathPattern::new("/users/{id}/");
 		assert!(!pattern.is_exact());
@@ -216,7 +217,7 @@ mod tests {
 		assert_eq!(param_values, vec!["42".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_params() {
 		let pattern = ClientPathPattern::new("/users/{user_id}/posts/{post_id}/");
 		let (params, param_values) = pattern.matches("/users/42/posts/123/").unwrap();
@@ -226,7 +227,7 @@ mod tests {
 		assert_eq!(param_values, vec!["42".to_string(), "123".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wildcard_param() {
 		let pattern = ClientPathPattern::new("/static/{path:*}");
 		let (params, param_values) = pattern.matches("/static/css/styles/main.css").unwrap();
@@ -235,7 +236,7 @@ mod tests {
 		assert_eq!(param_values, vec!["css/styles/main.css".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_simple() {
 		let pattern = ClientPathPattern::new("/users/{id}/");
 		let mut params = HashMap::new();
@@ -244,7 +245,7 @@ mod tests {
 		assert_eq!(pattern.reverse(&params), Some("/users/42/".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_multiple_params() {
 		let pattern = ClientPathPattern::new("/users/{user_id}/posts/{post_id}/");
 		let mut params = HashMap::new();
@@ -257,7 +258,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_missing_param() {
 		let pattern = ClientPathPattern::new("/users/{id}/");
 		let params = HashMap::new();
@@ -265,26 +266,26 @@ mod tests {
 		assert_eq!(pattern.reverse(&params), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_param_names() {
 		let pattern = ClientPathPattern::new("/a/{x}/b/{y}/c/{z}/");
 		assert_eq!(pattern.param_names(), &["x", "y", "z"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_special_chars_escaped() {
 		let pattern = ClientPathPattern::new("/api/v1.0/");
 		assert!(pattern.is_match("/api/v1.0/"));
 		assert!(!pattern.is_match("/api/v1X0/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_display() {
 		let pattern = ClientPathPattern::new("/users/{id}/");
 		assert_eq!(format!("{}", pattern), "/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_equality() {
 		let p1 = ClientPathPattern::new("/users/{id}/");
 		let p2 = ClientPathPattern::new("/users/{id}/");

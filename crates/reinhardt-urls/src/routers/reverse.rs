@@ -585,6 +585,7 @@ mod tests {
 	use crate::routers_macros::path;
 	use async_trait::async_trait;
 	use reinhardt_http::{Handler, Request, Response, Result as CoreResult};
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	// Simple test handler
@@ -597,7 +598,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_simple_path() {
 		let mut reverser = UrlReverser::new();
 
@@ -609,7 +610,7 @@ mod tests {
 		assert_eq!(url, path!("/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_with_parameters() {
 		let mut reverser = UrlReverser::new();
 
@@ -625,7 +626,7 @@ mod tests {
 		assert_eq!(url, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_with_namespace() {
 		let mut reverser = UrlReverser::new();
 
@@ -642,7 +643,7 @@ mod tests {
 		assert_eq!(url, "/users/456/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_missing_parameter() {
 		let mut reverser = UrlReverser::new();
 
@@ -656,7 +657,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), ReverseError::Validation(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_not_found() {
 		let reverser = UrlReverser::new();
 
@@ -665,7 +666,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), ReverseError::NotFound(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_with_helper() {
 		let mut reverser = UrlReverser::new();
 
@@ -681,7 +682,7 @@ mod tests {
 		assert_eq!(url, "/users/123/posts/456/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_route() {
 		let mut reverser = UrlReverser::new();
 
@@ -725,19 +726,19 @@ mod tests {
 		const PARAMS: &'static [&'static str] = &["user_id", "post_id"];
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_reverse_simple() {
 		let url = reverse_typed::<HomeUrl>();
 		assert_eq!(url, path!("/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_reverse_user_list() {
 		let url = reverse_typed::<UserListUrl>();
 		assert_eq!(url, path!("/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_reverse_with_params() {
 		let mut params = HashMap::new();
 		params.insert("id", "123");
@@ -746,7 +747,7 @@ mod tests {
 		assert_eq!(url, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_reverse_with_multiple_params() {
 		let mut params = HashMap::new();
 		params.insert("user_id", "42");
@@ -756,7 +757,7 @@ mod tests {
 		assert_eq!(url, "/users/42/posts/100/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_reverse_missing_param() {
 		let params = HashMap::new();
 
@@ -768,7 +769,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_params_builder() {
 		let url = UrlParams::<UserDetailUrl>::new()
 			.param("id", "456")
@@ -778,7 +779,7 @@ mod tests {
 		assert_eq!(url, "/users/456/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_params_builder_multiple() {
 		let url = UrlParams::<PostDetailUrl>::new()
 			.param("user_id", "42")
@@ -789,7 +790,7 @@ mod tests {
 		assert_eq!(url, "/users/42/posts/100/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_params_builder_missing() {
 		let result = UrlParams::<UserDetailUrl>::new().build();
 
@@ -801,7 +802,7 @@ mod tests {
 	}
 
 	// Single-pass algorithm tests
-	#[test]
+	#[rstest]
 	fn test_single_pass_basic() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "123".to_string());
@@ -810,7 +811,7 @@ mod tests {
 		assert_eq!(result, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_multiple_params() {
 		let mut params = HashMap::new();
 		params.insert("user_id".to_string(), "42".to_string());
@@ -820,7 +821,7 @@ mod tests {
 		assert_eq!(result, "/users/42/posts/100/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_many_params() {
 		// Test with 10+ parameters to demonstrate performance improvement
 		let mut params = HashMap::new();
@@ -840,7 +841,7 @@ mod tests {
 		assert_eq!(result, "/api/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_missing_param() {
 		let params = HashMap::new();
 
@@ -849,7 +850,7 @@ mod tests {
 		assert_eq!(result, "/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_no_params() {
 		let params = HashMap::new();
 
@@ -857,7 +858,7 @@ mod tests {
 		assert_eq!(result, "/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_empty_pattern() {
 		let params = HashMap::new();
 
@@ -865,7 +866,7 @@ mod tests {
 		assert_eq!(result, "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_consecutive_params() {
 		let mut params = HashMap::new();
 		params.insert("a".to_string(), "1".to_string());
@@ -875,7 +876,7 @@ mod tests {
 		assert_eq!(result, "/12/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_special_chars_in_values() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "foo-bar_123".to_string());
@@ -884,7 +885,7 @@ mod tests {
 		assert_eq!(result, "/items/foo-bar_123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_numeric_values() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "12345".to_string());
@@ -893,7 +894,7 @@ mod tests {
 		assert_eq!(result, "/items/12345/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_empty_value() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "".to_string());
@@ -902,7 +903,7 @@ mod tests {
 		assert_eq!(result, "/items//");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_pattern_with_no_placeholder() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "123".to_string());
@@ -911,7 +912,7 @@ mod tests {
 		assert_eq!(result, "/static/path/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_mixed_content() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "123".to_string());
@@ -921,7 +922,7 @@ mod tests {
 		assert_eq!(result, "/items/123/actions/edit/execute");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_param_at_start() {
 		let mut params = HashMap::new();
 		params.insert("lang".to_string(), "ja".to_string());
@@ -930,7 +931,7 @@ mod tests {
 		assert_eq!(result, "ja/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_param_at_end() {
 		let mut params = HashMap::new();
 		params.insert("format".to_string(), "json".to_string());
@@ -939,7 +940,7 @@ mod tests {
 		assert_eq!(result, "/api/data.json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_unicode_values() {
 		let mut params = HashMap::new();
 		params.insert("name".to_string(), "ユーザー".to_string());
@@ -948,7 +949,7 @@ mod tests {
 		assert_eq!(result, "/users/ユーザー/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_single_pass_long_value() {
 		let mut params = HashMap::new();
 		let long_id = "a".repeat(1000);
@@ -959,7 +960,7 @@ mod tests {
 	}
 
 	// Aho-Corasick algorithm tests
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_basic() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "123".to_string());
@@ -968,7 +969,7 @@ mod tests {
 		assert_eq!(result, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_multiple_params() {
 		let mut params = HashMap::new();
 		params.insert("user_id".to_string(), "42".to_string());
@@ -978,7 +979,7 @@ mod tests {
 		assert_eq!(result, "/users/42/posts/100/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_many_params() {
 		let mut params = HashMap::new();
 		for i in 1..=10 {
@@ -990,7 +991,7 @@ mod tests {
 		assert_eq!(result, "/api/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_missing_param() {
 		let params = HashMap::new();
 
@@ -999,7 +1000,7 @@ mod tests {
 		assert_eq!(result, "/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_no_params() {
 		let params = HashMap::new();
 
@@ -1007,7 +1008,7 @@ mod tests {
 		assert_eq!(result, "/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_empty_pattern() {
 		let params = HashMap::new();
 
@@ -1015,7 +1016,7 @@ mod tests {
 		assert_eq!(result, "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_consecutive_params() {
 		let mut params = HashMap::new();
 		params.insert("a".to_string(), "1".to_string());
@@ -1025,7 +1026,7 @@ mod tests {
 		assert_eq!(result, "/12/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_special_chars_in_values() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "foo-bar_123".to_string());
@@ -1034,7 +1035,7 @@ mod tests {
 		assert_eq!(result, "/items/foo-bar_123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_unicode() {
 		let mut params = HashMap::new();
 		params.insert("name".to_string(), "ユーザー".to_string());
@@ -1043,31 +1044,31 @@ mod tests {
 		assert_eq!(result, "/users/ユーザー/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_param_names_basic() {
 		let names = extract_param_names("/users/{id}/");
 		assert_eq!(names, vec!["id"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_param_names_multiple() {
 		let names = extract_param_names("/users/{user_id}/posts/{post_id}/");
 		assert_eq!(names, vec!["user_id", "post_id"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_param_names_no_params() {
 		let names = extract_param_names("/users/");
 		assert!(names.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_param_names_consecutive() {
 		let names = extract_param_names("/{a}{b}/");
 		assert_eq!(names, vec!["a", "b"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_vs_single_pass_consistency() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "123".to_string());
@@ -1084,7 +1085,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aho_corasick_complex_pattern() {
 		let mut params = HashMap::new();
 		params.insert("org".to_string(), "myorg".to_string());
@@ -1097,7 +1098,7 @@ mod tests {
 		assert_eq!(result, "/repos/myorg/myrepo/contents/README.md?ref=main");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_performance_comparison_many_params() {
 		use std::time::Instant;
 
@@ -1150,7 +1151,7 @@ mod tests {
 		// Actual performance may vary based on pattern complexity and parameter count
 	}
 
-	#[test]
+	#[rstest]
 	fn test_performance_few_params() {
 		use std::time::Instant;
 

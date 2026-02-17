@@ -302,8 +302,9 @@ pub fn include_routes(prefix: impl Into<String>, routes: Vec<Route>) -> Included
 mod tests {
 	use super::*;
 	use crate::routers_macros::path;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_convert_regex_to_pattern() {
 		// Simple regex
 		assert_eq!(convert_regex_to_pattern(r"^users/$"), "users/");
@@ -369,7 +370,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_included_router_namespace() {
 		let routes = vec![];
 		let included = IncludedRouter::new(path!("/api"), routes).with_namespace("api");

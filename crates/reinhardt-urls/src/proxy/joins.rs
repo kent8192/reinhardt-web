@@ -488,9 +488,10 @@ pub fn traverse_relationships(path: &RelationshipPath) -> Vec<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test basic path construction without cycles
-	#[test]
+	#[rstest]
 	fn test_relationship_path_no_cycle() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -506,7 +507,7 @@ mod tests {
 	}
 
 	/// Test simple cycle detection: A -> B -> A
-	#[test]
+	#[rstest]
 	fn test_simple_cycle_detection() {
 		let path = RelationshipPath::new().through("posts").through("author");
 
@@ -520,7 +521,7 @@ mod tests {
 	}
 
 	/// Test complex cycle detection: A -> B -> C -> A
-	#[test]
+	#[rstest]
 	fn test_complex_cycle_detection() {
 		let path = RelationshipPath::new()
 			.through("user")
@@ -537,7 +538,7 @@ mod tests {
 	}
 
 	/// Test that different relationships don't trigger cycle detection
-	#[test]
+	#[rstest]
 	fn test_no_false_positive_cycle() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -549,7 +550,7 @@ mod tests {
 	}
 
 	/// Test contains method for cycle detection
-	#[test]
+	#[rstest]
 	fn test_contains_relationship() {
 		let path = RelationshipPath::new().through("posts").through("comments");
 
@@ -559,7 +560,7 @@ mod tests {
 	}
 
 	/// Test path with filters
-	#[test]
+	#[rstest]
 	fn test_path_with_filters() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -576,7 +577,7 @@ mod tests {
 	}
 
 	/// Test path with transforms
-	#[test]
+	#[rstest]
 	fn test_path_with_transforms() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -589,7 +590,7 @@ mod tests {
 	}
 
 	/// Test multiple filters on different relationships
-	#[test]
+	#[rstest]
 	fn test_multiple_filters() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -603,7 +604,7 @@ mod tests {
 	}
 
 	/// Test error message formatting
-	#[test]
+	#[rstest]
 	fn test_error_message_format() {
 		let path = RelationshipPath::new().through("posts").through("author");
 
@@ -618,7 +619,7 @@ mod tests {
 	}
 
 	/// Test default implementation
-	#[test]
+	#[rstest]
 	fn test_default_path() {
 		let path = RelationshipPath::default();
 		assert_eq!(path.path().len(), 0);
@@ -627,7 +628,7 @@ mod tests {
 	}
 
 	/// Test empty path display in error
-	#[test]
+	#[rstest]
 	fn test_empty_path_error() {
 		let err = CircularReferenceError {
 			relationship: "posts".to_string(),
@@ -638,7 +639,7 @@ mod tests {
 	}
 
 	/// Test clone functionality
-	#[test]
+	#[rstest]
 	fn test_path_clone() {
 		let path1 = RelationshipPath::new()
 			.through("posts")
@@ -652,7 +653,7 @@ mod tests {
 	}
 
 	/// Test using through() method (non-checked version)
-	#[test]
+	#[rstest]
 	fn test_through_allows_cycles() {
 		// through() method doesn't check for cycles - it just adds to the path
 		// This is by design for backwards compatibility
@@ -667,7 +668,7 @@ mod tests {
 	}
 
 	/// Test validate method
-	#[test]
+	#[rstest]
 	fn test_validate_method() {
 		let path = RelationshipPath::new()
 			.through("posts")
@@ -679,7 +680,7 @@ mod tests {
 	}
 
 	/// Test path with only attribute (no relationships)
-	#[test]
+	#[rstest]
 	fn test_attribute_only_path() {
 		let path = RelationshipPath::new().attribute("name");
 
@@ -688,7 +689,7 @@ mod tests {
 	}
 
 	/// Test filter on empty path (edge case)
-	#[test]
+	#[rstest]
 	fn test_filter_on_empty_path() {
 		let path = RelationshipPath::new().with_filter("field", "value");
 

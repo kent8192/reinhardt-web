@@ -526,8 +526,9 @@ impl OpenApiSpec {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_openapi_builder_basic() {
 		let mut builder = OpenApiBuilder::new("Test API", "1.0.0");
 		builder.description("A test API");
@@ -538,7 +539,7 @@ mod tests {
 		assert_eq!(spec.info.description, Some("A test API".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_openapi_builder_with_server() {
 		let mut builder = OpenApiBuilder::new("Test API", "1.0.0");
 		builder.add_server(
@@ -551,7 +552,7 @@ mod tests {
 		assert_eq!(spec.servers[0].url, "https://api.example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_item_builder() {
 		let path_item = PathItem::new()
 			.with_method(Method::GET, "Get user", Some("users:detail"))
@@ -562,7 +563,7 @@ mod tests {
 		assert_eq!(path_item_obj.parameters.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_openapi_builder_from_inspector() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
@@ -580,7 +581,7 @@ mod tests {
 		assert!(spec.paths.contains_key("/users/{id}/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_openapi_spec_to_json() {
 		let spec = OpenApiBuilder::new("Test API", "1.0.0").build();
 		let json = spec.to_json().unwrap();

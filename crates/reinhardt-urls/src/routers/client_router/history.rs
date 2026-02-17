@@ -318,14 +318,15 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_navigation_type() {
 		assert_ne!(NavigationType::Push, NavigationType::Replace);
 		assert_eq!(NavigationType::Pop, NavigationType::Pop);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_history_state_new() {
 		let state = HistoryState::new("/users/42/");
 		assert_eq!(state.path, "/users/42/");
@@ -333,7 +334,7 @@ mod tests {
 		assert!(state.route_name.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_history_state_builder() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "42".to_string());
@@ -351,7 +352,7 @@ mod tests {
 		assert_eq!(state.scroll_position, Some((0, 500)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_history_state_json_roundtrip() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "42".to_string());
@@ -368,26 +369,26 @@ mod tests {
 		assert_eq!(restored.route_name, state.route_name);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_push_state_non_wasm() {
 		let state = HistoryState::new("/test/");
 		assert!(push_state(&state).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_replace_state_non_wasm() {
 		let state = HistoryState::new("/test/");
 		assert!(replace_state(&state).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_navigation_functions_non_wasm() {
 		assert!(go_back().is_ok());
 		assert!(go_forward().is_ok());
 		assert!(go(-1).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_current_location_non_wasm() {
 		assert_eq!(current_path().unwrap(), "/");
 		assert_eq!(current_search().unwrap(), "");

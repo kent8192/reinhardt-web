@@ -615,15 +615,16 @@ impl Default for NamespaceResolver {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_namespace_creation() {
 		let ns = Namespace::new("api:v1:users");
 		assert_eq!(ns.full_path(), "api:v1:users");
 		assert_eq!(ns.components(), &["api", "v1", "users"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_root() {
 		let ns = Namespace::new("api:v1:users");
 		assert_eq!(ns.root(), Some("api"));
@@ -632,7 +633,7 @@ mod tests {
 		assert_eq!(empty.root(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_parent() {
 		let ns = Namespace::new("api:v1:users");
 		let parent = ns.parent().unwrap();
@@ -642,13 +643,13 @@ mod tests {
 		assert!(root.parent().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_leaf() {
 		let ns = Namespace::new("api:v1:users");
 		assert_eq!(ns.leaf(), Some("users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_is_parent_of() {
 		let parent = Namespace::new("api:v1");
 		let child = Namespace::new("api:v1:users");
@@ -659,21 +660,21 @@ mod tests {
 		assert!(!child.is_parent_of(&parent));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_append() {
 		let parent = Namespace::new("api:v1");
 		let child = parent.append("users");
 		assert_eq!(child.full_path(), "api:v1:users");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_depth() {
 		assert_eq!(Namespace::new("api").depth(), 1);
 		assert_eq!(Namespace::new("api:v1").depth(), 2);
 		assert_eq!(Namespace::new("api:v1:users").depth(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_param_names() {
 		let params = extract_param_names("/users/{id}/posts/{post_id}/");
 		assert_eq!(params, vec!["id", "post_id"]);
@@ -682,7 +683,7 @@ mod tests {
 		assert!(no_params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespaced_route_creation() {
 		let route = NamespacedRoute::new("api:v1:users:detail", "/api/v1/users/{id}/");
 		assert_eq!(route.namespace.full_path(), "api:v1:users");
@@ -691,14 +692,14 @@ mod tests {
 		assert_eq!(route.param_names, vec!["id"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespaced_route_resolve() {
 		let route = NamespacedRoute::new("api:v1:users:detail", "/api/v1/users/{id}/");
 		let url = route.resolve(&[("id", "123")]).unwrap();
 		assert_eq!(url, "/api/v1/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_resolver_register_and_resolve() {
 		let mut resolver = NamespaceResolver::new();
 		resolver.register("api:v1:users:detail", "/api/v1/users/{id}/");
@@ -709,7 +710,7 @@ mod tests {
 		assert_eq!(url, "/api/v1/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_resolver_list_routes() {
 		let mut resolver = NamespaceResolver::new();
 		resolver.register("api:v1:users:list", "/api/v1/users/");
@@ -720,7 +721,7 @@ mod tests {
 		assert_eq!(routes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_resolver_list_child_namespaces() {
 		let mut resolver = NamespaceResolver::new();
 		resolver.register("api:v1:users:list", "/api/v1/users/");
@@ -733,7 +734,7 @@ mod tests {
 		assert!(children.contains(&"posts".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_resolver_has_route() {
 		let mut resolver = NamespaceResolver::new();
 		resolver.register("api:v1:users:list", "/api/v1/users/");

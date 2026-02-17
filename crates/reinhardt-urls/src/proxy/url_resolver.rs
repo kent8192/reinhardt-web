@@ -143,22 +143,23 @@ impl Default for UrlResolver {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_resolver_creation() {
 		let resolver = UrlResolver::new();
 		assert_eq!(resolver.patterns.len(), 0);
 		assert_eq!(resolver.namespaces.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_pattern() {
 		let mut resolver = UrlResolver::new();
 		resolver.add_pattern(UrlPattern::new("home", "/", None));
 		assert_eq!(resolver.patterns.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_namespace() {
 		let mut resolver = UrlResolver::new();
 		let ns = UrlNamespace::new("admin", "/admin/");
@@ -166,7 +167,7 @@ mod tests {
 		assert_eq!(resolver.namespaces.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_simple() {
 		let mut resolver = UrlResolver::new();
 		resolver.add_pattern(UrlPattern::new("home", "/", None));
@@ -175,7 +176,7 @@ mod tests {
 		assert_eq!(url, "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_with_kwargs() {
 		let mut resolver = UrlResolver::new();
 		resolver.add_pattern(UrlPattern::new("user-detail", "/users/<id>/", None));
@@ -187,7 +188,7 @@ mod tests {
 		assert_eq!(url, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_pattern_not_found() {
 		let resolver = UrlResolver::new();
 		let result = resolver.reverse("nonexistent", HashMap::new());
@@ -195,7 +196,7 @@ mod tests {
 		assert_eq!(result.unwrap_err(), "URL pattern 'nonexistent' not found");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_missing_parameter() {
 		let mut resolver = UrlResolver::new();
 		resolver.add_pattern(UrlPattern::new("user-detail", "/users/<id>/", None));

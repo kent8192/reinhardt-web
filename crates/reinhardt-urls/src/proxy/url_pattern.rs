@@ -175,8 +175,9 @@ impl UrlPattern {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_url_pattern_creation() {
 		let pattern = UrlPattern::new("home", "/", None);
 		assert_eq!(pattern.name(), "home");
@@ -184,28 +185,28 @@ mod tests {
 		assert_eq!(pattern.namespace(), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_pattern_with_namespace() {
 		let pattern = UrlPattern::new("admin:index", "/admin/", Some("admin"));
 		assert_eq!(pattern.name(), "admin:index");
 		assert_eq!(pattern.namespace(), Some("admin"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_parameters() {
 		let pattern = UrlPattern::new("article", "/articles/<year>/<month>/<slug>/", None);
 		let params = pattern.extract_parameters();
 		assert_eq!(params, vec!["year", "month", "slug"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_no_parameters() {
 		let pattern = UrlPattern::new("home", "/", None);
 		let params = pattern.extract_parameters();
 		assert!(params.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_url() {
 		let pattern = UrlPattern::new("user-detail", "/users/<id>/", None);
 		let mut kwargs = HashMap::new();
@@ -215,7 +216,7 @@ mod tests {
 		assert_eq!(url, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_url_multiple_params() {
 		let pattern = UrlPattern::new("article", "/articles/<year>/<month>/<slug>/", None);
 		let mut kwargs = HashMap::new();
@@ -227,7 +228,7 @@ mod tests {
 		assert_eq!(url, "/articles/2024/12/hello-world/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_url_missing_param() {
 		let pattern = UrlPattern::new("user-detail", "/users/<id>/", None);
 		let kwargs = HashMap::new();
@@ -237,7 +238,7 @@ mod tests {
 		assert_eq!(result.unwrap_err(), "Missing required parameter: id");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches() {
 		let pattern = UrlPattern::new("user-detail", "/users/<id>/", None);
 		assert!(pattern.matches("/users/123/"));
@@ -247,7 +248,7 @@ mod tests {
 		assert!(!pattern.matches("/users/123/edit/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_static_url() {
 		let pattern = UrlPattern::new("home", "/", None);
 		assert!(pattern.matches("/"));

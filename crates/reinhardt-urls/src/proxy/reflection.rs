@@ -266,6 +266,7 @@ pub fn extract_collection_values<T>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Clone, PartialEq)]
 	struct TestModel {
@@ -314,7 +315,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reflectable_get_attribute() {
 		let model = TestModel {
 			id: 42,
@@ -330,7 +331,7 @@ mod tests {
 		assert_eq!(name.unwrap().as_string().unwrap(), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reflectable_set_attribute() {
 		let mut model = TestModel {
 			id: 42,
@@ -348,7 +349,7 @@ mod tests {
 		assert_eq!(model.id, 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reflectable_has_attribute() {
 		let model = TestModel {
 			id: 42,
@@ -360,7 +361,7 @@ mod tests {
 		assert!(!model.has_attribute("nonexistent"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_proxy_collection_vec() {
 		use super::ProxyCollection;
 
@@ -380,7 +381,7 @@ mod tests {
 		assert!(ProxyCollection::is_empty(&vec));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_collection_values() {
 		let models = vec![
 			TestModel {

@@ -4,12 +4,14 @@
 //! using trybuild for compile-fail tests and standard tests for success cases.
 
 use reinhardt_routers_macros::path;
+use rstest::rstest;
 
 /// Basic path validation tests
 mod basic_path_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_simple_static_paths() {
 		// Simple static paths without parameters
 		let path1 = path!("/");
@@ -25,7 +27,7 @@ mod basic_path_tests {
 		assert_eq!(path4, "/articles/latest/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_paths_with_hyphens() {
 		// Paths containing hyphens
 		let path1 = path!("/user-profiles/");
@@ -38,7 +40,7 @@ mod basic_path_tests {
 		assert_eq!(path3, "/contact-us/send-message/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_paths_with_underscores() {
 		// Paths containing underscores
 		let path1 = path!("/user_profiles/");
@@ -48,7 +50,7 @@ mod basic_path_tests {
 		assert_eq!(path2, "/api_v1/user_data/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_paths_with_dots() {
 		// Paths containing dots (for file extensions or versioning)
 		let path1 = path!("/files/document.pdf");
@@ -61,7 +63,7 @@ mod basic_path_tests {
 		assert_eq!(path3, "/downloads/report.2024.xlsx");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_paths_with_numbers() {
 		// Paths containing numeric segments
 		let path1 = path!("/api/v1/");
@@ -74,7 +76,7 @@ mod basic_path_tests {
 		assert_eq!(path3, "/year/2024/month/12/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_paths_without_trailing_slash() {
 		// Paths without trailing slash
 		let path1 = path!("/users");
@@ -88,8 +90,9 @@ mod basic_path_tests {
 /// Path parameter validation tests
 mod path_parameter_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_single_parameter_paths() {
 		// Paths with a single parameter
 		let path1 = path!("/users/{id}/");
@@ -102,7 +105,7 @@ mod path_parameter_tests {
 		assert_eq!(path3, "/items/{item_id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_parameter_paths() {
 		// Paths with multiple parameters
 		let path1 = path!("/users/{user_id}/posts/{post_id}/");
@@ -118,7 +121,7 @@ mod path_parameter_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_with_leading_underscore() {
 		// Parameters starting with underscore
 		let path1 = path!("/users/{_id}/");
@@ -132,7 +135,7 @@ mod path_parameter_tests {
 		assert_eq!(path3, "/data/{_}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_with_numbers() {
 		// Parameters containing numbers
 		let path1 = path!("/users/{user_id_123}/");
@@ -145,7 +148,7 @@ mod path_parameter_tests {
 		assert_eq!(path3, "/data/{param_1_2_3}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_consecutive_parameters() {
 		// Multiple parameters without separating static segments
 		let path1 = path!("/{year}/{month}/");
@@ -155,7 +158,7 @@ mod path_parameter_tests {
 		assert_eq!(path2, "/{category}/{subcategory}/{item}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_at_end_without_slash() {
 		// Parameter at the end without trailing slash
 		let path1 = path!("/users/{id}");
@@ -165,7 +168,7 @@ mod path_parameter_tests {
 		assert_eq!(path2, "/api/v1/items/{item_id}");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_static_and_parameter_segments() {
 		// Complex paths mixing static segments and parameters
 		let path1 = path!("/api/v1/users/{user_id}/profile/edit/");
@@ -182,8 +185,9 @@ mod path_parameter_tests {
 /// Wildcard and special pattern tests
 mod wildcard_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_paths_with_wildcards() {
 		// Paths containing wildcard characters
 		let path1 = path!("/static/*");
@@ -193,7 +197,7 @@ mod wildcard_tests {
 		assert_eq!(path2, "/files/*/download");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wildcard_with_parameters() {
 		// Combining wildcards with parameters
 		let path1 = path!("/users/{id}/*");
@@ -207,15 +211,16 @@ mod wildcard_tests {
 /// Edge case tests
 mod edge_case_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_root_path() {
 		// Root path only
 		let path = path!("/");
 		assert_eq!(path, "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_very_long_path() {
 		// Very long path with many segments
 		let path = path!(
@@ -227,14 +232,14 @@ mod edge_case_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_with_many_parameters() {
 		// Path with many parameters
 		let path = path!("/{a}/{b}/{c}/{d}/{e}/{f}/{g}/{h}/");
 		assert_eq!(path, "/{a}/{b}/{c}/{d}/{e}/{f}/{g}/{h}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_with_long_name() {
 		// Parameter with very long name
 		let path =
@@ -245,7 +250,7 @@ mod edge_case_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_case_in_static_segments() {
 		// Static segments with mixed case letters
 		let path1 = path!("/Users/");
@@ -259,8 +264,9 @@ mod edge_case_tests {
 /// Integration tests combining path macro with expected use cases
 mod integration_scenarios {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_restful_api_paths() {
 		// RESTful API route patterns
 		let list_path = path!("/api/users/");
@@ -276,7 +282,7 @@ mod integration_scenarios {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_api_paths() {
 		// API versioning patterns
 		let v1_path = path!("/api/v1/users/");
@@ -289,7 +295,7 @@ mod integration_scenarios {
 		assert_eq!(v1_2_path, "/api/v1.2/items/{item_id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_admin_panel_paths() {
 		// Admin panel route patterns
 		let dashboard = path!("/admin/dashboard/");
@@ -302,7 +308,7 @@ mod integration_scenarios {
 		assert_eq!(settings, "/admin/settings/general/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_serving_paths() {
 		// File serving patterns
 		let static_file = path!("/static/css/main.css");
@@ -315,7 +321,7 @@ mod integration_scenarios {
 		assert_eq!(wildcard_static, "/static/*");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_auth_paths() {
 		// Authentication route patterns
 		let login = path!("/auth/login/");
@@ -328,7 +334,7 @@ mod integration_scenarios {
 		assert_eq!(password_reset, "/auth/password-reset/{token}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_tenant_paths() {
 		// Multi-tenant route patterns
 		let tenant_home = path!("/tenant/{tenant_id}/");
@@ -341,7 +347,7 @@ mod integration_scenarios {
 		assert_eq!(tenant_settings, "/tenant/{tenant_id}/settings/billing/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_based_paths() {
 		// Date-based route patterns
 		let year_archive = path!("/archive/{year}/");
@@ -354,7 +360,7 @@ mod integration_scenarios {
 		assert_eq!(day_archive, "/archive/{year}/{month}/{day}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slugified_paths() {
 		// Slug-based route patterns
 		let article_by_slug = path!("/articles/{slug}/");
@@ -367,7 +373,7 @@ mod integration_scenarios {
 		assert_eq!(nested_slug, "/blog/{year}/{month}/{slug}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_action_based_paths() {
 		// Action-based route patterns
 		let create = path!("/users/create/");
@@ -387,8 +393,9 @@ mod integration_scenarios {
 /// Unicode and international character tests
 mod unicode_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_ascii_only_paths() {
 		// Ensure basic ASCII paths work correctly
 		let path1 = path!("/hello/world/");
@@ -406,8 +413,9 @@ mod unicode_tests {
 /// Macro expansion tests
 mod macro_behavior_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_macro_returns_string_literal() {
 		// Verify that the macro returns the input string literal
 		let path = path!("/users/{id}/");
@@ -419,7 +427,7 @@ mod macro_behavior_tests {
 		assert_eq!(path, "/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_macro_in_const_context() {
 		// Verify that the macro can be used in const context
 		const USER_PATH: &str = path!("/users/");
@@ -429,7 +437,7 @@ mod macro_behavior_tests {
 		assert_eq!(ITEM_PATH, "/items/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_macro_in_static_context() {
 		// Verify that the macro can be used in static context
 		static API_USERS: &str = path!("/api/users/");
@@ -439,7 +447,7 @@ mod macro_behavior_tests {
 		assert_eq!(API_USER_DETAIL, "/api/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_macro_invocations() {
 		// Multiple macro invocations in the same scope
 		let path1 = path!("/path1/");
@@ -455,8 +463,9 @@ mod macro_behavior_tests {
 /// Performance and scalability tests
 mod performance_tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_deeply_nested_path() {
 		// Test path with many nested segments
 		let path = path!("/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/");
@@ -466,14 +475,14 @@ mod performance_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_many_parameters_in_path() {
 		// Test path with many parameters
 		let path = path!("/{p1}/{p2}/{p3}/{p4}/{p5}/{p6}/{p7}/{p8}/{p9}/{p10}/");
 		assert_eq!(path, "/{p1}/{p2}/{p3}/{p4}/{p5}/{p6}/{p7}/{p8}/{p9}/{p10}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_long_static_segment() {
 		// Test path with very long static segment
 		let path = path!("/this_is_a_very_long_static_segment_name_that_contains_many_characters/");
@@ -483,7 +492,7 @@ mod performance_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_long_parameter_name() {
 		// Test path with very long parameter name
 		let path = path!(

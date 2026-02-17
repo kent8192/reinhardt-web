@@ -296,8 +296,9 @@ impl LruCache {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_new() {
 		let cache = RouteCache::new(100);
 		assert_eq!(cache.capacity(), 100);
@@ -305,7 +306,7 @@ mod tests {
 		assert!(cache.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_put_and_get() {
 		let cache = RouteCache::new(100);
 
@@ -322,13 +323,13 @@ mod tests {
 		assert_eq!(cached_params.get("id"), Some(&"123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_miss() {
 		let cache = RouteCache::new(100);
 		assert!(cache.get("/nonexistent/").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_clear() {
 		let cache = RouteCache::new(100);
 
@@ -340,7 +341,7 @@ mod tests {
 		assert!(cache.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_lru_eviction() {
 		let cache = RouteCache::new(2);
 
@@ -357,7 +358,7 @@ mod tests {
 		assert!(cache.get("/route3/").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_lru_access_order() {
 		let cache = RouteCache::new(2);
 
@@ -375,7 +376,7 @@ mod tests {
 		assert!(cache.get("/route3/").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_update_existing() {
 		let cache = RouteCache::new(2);
 
@@ -392,7 +393,7 @@ mod tests {
 		assert!(cache.get("/posts/").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_cache_thread_safety() {
 		use std::thread;
 

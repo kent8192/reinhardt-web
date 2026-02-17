@@ -602,6 +602,7 @@ impl ClientRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn test_page() -> Page {
 		Page::Empty
@@ -623,25 +624,25 @@ mod tests {
 		page_with_text("NotFound")
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_new() {
 		let route = ClientRoute::new("/", test_page);
 		assert!(route.name().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_named() {
 		let route = ClientRoute::named("home", "/", test_page);
 		assert_eq!(route.name(), Some("home"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_new() {
 		let router = ClientRouter::new();
 		assert_eq!(router.route_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_add_route() {
 		let router = ClientRouter::new()
 			.route("/", home_page)
@@ -650,7 +651,7 @@ mod tests {
 		assert_eq!(router.route_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_named_route() {
 		let router = ClientRouter::new()
 			.named_route("home", "/", home_page)
@@ -661,7 +662,7 @@ mod tests {
 		assert!(!router.has_route("nonexistent"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_match_exact() {
 		let router = ClientRouter::new()
 			.route("/", home_page)
@@ -672,7 +673,7 @@ mod tests {
 		assert!(router.match_path("/nonexistent/").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_match_params() {
 		let router = ClientRouter::new().route("/users/{id}/", user_page);
 
@@ -683,7 +684,7 @@ mod tests {
 		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_reverse() {
 		let router = ClientRouter::new()
 			.named_route("home", "/", home_page)
@@ -696,14 +697,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_reverse_invalid_name() {
 		let router = ClientRouter::new();
 		let result = router.reverse("nonexistent", &[]);
 		assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_not_found() {
 		let router = ClientRouter::new().not_found(not_found_page);
 
@@ -711,7 +712,7 @@ mod tests {
 		assert!(view.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_with_guard() {
 		let router = ClientRouter::new()
 			.guarded_route("/admin/", test_page, |_| false)
@@ -723,7 +724,7 @@ mod tests {
 		assert!(router.match_path("/public/").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_error_display() {
 		assert_eq!(
 			RouterError::NotFound("/test/".to_string()).to_string(),
@@ -735,7 +736,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_push_non_wasm() {
 		let router = ClientRouter::new()
 			.route("/", home_page)
@@ -745,7 +746,7 @@ mod tests {
 		assert!(router.push("/users/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_router_replace_non_wasm() {
 		let router = ClientRouter::new().route("/", home_page);
 
@@ -757,7 +758,7 @@ mod tests {
 	// route_path* tests
 	// ============================================================================
 
-	#[test]
+	#[rstest]
 	fn test_route_path_single() {
 		let router = ClientRouter::new().route_path("/users/{id}/", |Path(_id): Path<i64>| {
 			page_with_text("User")
@@ -773,7 +774,7 @@ mod tests {
 		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_path2_two_params() {
 		let router = ClientRouter::new().route_path2(
 			"/users/{user_id}/posts/{post_id}/",
@@ -790,7 +791,7 @@ mod tests {
 		assert_eq!(route_match.params.get("post_id"), Some(&"456".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_path3_three_params() {
 		let router = ClientRouter::new().route_path3(
 			"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
@@ -813,7 +814,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_named_route_path() {
 		let router = ClientRouter::new().named_route_path(
 			"user_detail",
@@ -828,7 +829,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_named_route_path2() {
 		let router = ClientRouter::new().named_route_path2(
 			"user_post",
@@ -845,7 +846,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_named_route_path3() {
 		let router = ClientRouter::new().named_route_path3(
 			"org_team_member",
@@ -867,7 +868,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_path_with_string_param() {
 		let router = ClientRouter::new()
 			.route_path("/posts/{slug}/", |Path(_slug): Path<String>| {

@@ -249,8 +249,9 @@ impl_from_path_for_tuple!(0 => A, 1 => B, 2 => C, 3 => D, 4 => E, 5 => F);
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_param_context_new() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "42".to_string());
@@ -264,7 +265,7 @@ mod tests {
 		assert!(!ctx.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_param_context_empty() {
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
 
@@ -272,19 +273,19 @@ mod tests {
 		assert!(ctx.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_deref() {
 		let params = Path(42i64);
 		assert_eq!(*params, 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_into_inner() {
 		let params = Path("hello".to_string());
 		assert_eq!(params.into_inner(), "hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_as_ref() {
 		let params = Path(42i64);
 		let value: &i64 = params.as_ref();
@@ -292,7 +293,7 @@ mod tests {
 	}
 
 	// FromPath implementation tests
-	#[test]
+	#[rstest]
 	fn test_from_path_i32() {
 		let mut params = HashMap::new();
 		params.insert("id".to_string(), "42".to_string());
@@ -303,7 +304,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_i64() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["9223372036854775807".to_string()]);
 
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 9223372036854775807);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_u32() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
@@ -321,7 +322,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_u64() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["18446744073709551615".to_string()]);
 
@@ -330,7 +331,7 @@ mod tests {
 		assert_eq!(result.unwrap(), 18446744073709551615);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_bool() {
 		let ctx_true = ParamContext::new(HashMap::new(), vec!["true".to_string()]);
 		let result = bool::from_path(&ctx_true);
@@ -343,7 +344,7 @@ mod tests {
 		assert!(!result.unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_string() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["hello".to_string()]);
 
@@ -352,7 +353,7 @@ mod tests {
 		assert_eq!(result.unwrap(), "hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_parse_error() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["not_a_number".to_string()]);
 
@@ -374,7 +375,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_count_mismatch() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string(), "43".to_string()]);
 
@@ -390,7 +391,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_from_path() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
@@ -400,7 +401,7 @@ mod tests {
 	}
 
 	// Tuple FromPath implementation tests
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_2() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string(), "hello".to_string()]);
 
@@ -411,7 +412,7 @@ mod tests {
 		assert_eq!(b, "hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_3() {
 		let ctx = ParamContext::new(
 			HashMap::new(),
@@ -426,7 +427,7 @@ mod tests {
 		assert_eq!(c, 100);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_mixed_types() {
 		let ctx = ParamContext::new(
 			HashMap::new(),
@@ -447,7 +448,7 @@ mod tests {
 		assert!(d);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_count_mismatch() {
 		let ctx = ParamContext::new(HashMap::new(), vec!["42".to_string()]);
 
@@ -463,7 +464,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_parse_error() {
 		let ctx = ParamContext::new(
 			HashMap::new(),
@@ -486,7 +487,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_path_tuple_6_elements() {
 		let ctx = ParamContext::new(
 			HashMap::new(),

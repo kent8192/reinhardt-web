@@ -288,6 +288,7 @@ where
 mod tests {
 	use super::*;
 	use crate::routers::client_router::error::PathError;
+	use rstest::rstest;
 	use std::collections::HashMap;
 
 	fn test_page() -> Page {
@@ -298,7 +299,7 @@ mod tests {
 		Page::Text(s.to_string().into())
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_params_handler() {
 		let handler = NoParamsHandler::new(test_page);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
@@ -307,7 +308,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler() {
 		let handler =
 			WithParamsHandler::new(|Path(id): Path<i32>| page_with_text(&format!("ID: {}", id)));
@@ -318,7 +319,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler_error() {
 		let handler = WithParamsHandler::new(|Path(_id): Path<i32>| Page::Empty);
 
@@ -333,7 +334,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_handler_ok() {
 		let handler = ResultHandler::new(|Path(id): Path<i32>| {
 			if id > 0 {
@@ -349,7 +350,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_handler_err() {
 		let handler = ResultHandler::new(|Path(id): Path<i32>| {
 			if id > 0 {
@@ -370,7 +371,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_params_handler_tuple() {
 		let handler = WithParamsHandler::new(|Path((user_id, post_id)): Path<(i64, i64)>| {
 			page_with_text(&format!("User: {}, Post: {}", user_id, post_id))
@@ -382,7 +383,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_no_params_handler() {
 		let handler: Arc<dyn RouteHandler> = no_params_handler(test_page);
 		let ctx = ParamContext::new(HashMap::new(), Vec::new());
@@ -391,7 +392,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_with_params_handler() {
 		let handler: Arc<dyn RouteHandler> =
 			with_params_handler(|Path(id): Path<i32>| page_with_text(&format!("ID: {}", id)));
@@ -402,7 +403,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_helper_result_handler() {
 		let handler: Arc<dyn RouteHandler> = result_handler(|Path(id): Path<i32>| {
 			if id > 0 {

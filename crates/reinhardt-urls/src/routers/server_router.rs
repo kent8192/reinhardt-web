@@ -1674,8 +1674,9 @@ impl reinhardt_views::viewsets::RegisterViewSet for ServerRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_router() {
 		let router = ServerRouter::new();
 		assert_eq!(router.prefix(), "");
@@ -1683,26 +1684,26 @@ mod tests {
 		assert_eq!(router.children_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_prefix() {
 		let router = ServerRouter::new().with_prefix("/api/v1");
 		assert_eq!(router.prefix(), "/api/v1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_namespace() {
 		let router = ServerRouter::new().with_namespace("v1");
 		assert_eq!(router.namespace(), Some("v1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mount() {
 		let child = ServerRouter::new();
 		let router = ServerRouter::new().mount("/users/", child);
 		assert_eq!(router.children_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mount_inherits_di_context() {
 		let di_ctx = Arc::new(
 			InjectionContext::builder(Arc::new(reinhardt_di::SingletonScope::new())).build(),
@@ -1717,7 +1718,7 @@ mod tests {
 		assert_eq!(router.children_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group() {
 		let users = ServerRouter::new().with_prefix("/users");
 		let posts = ServerRouter::new().with_prefix("/posts");
@@ -1726,7 +1727,7 @@ mod tests {
 		assert_eq!(router.children_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_all_routes() {
 		let router = ServerRouter::new()
 			.with_prefix("/api")
@@ -1736,13 +1737,13 @@ mod tests {
 		assert_eq!(routes.len(), 0); // No routes added yet
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_full_namespace_no_parent() {
 		let router = ServerRouter::new().with_namespace("users");
 		assert_eq!(router.get_full_namespace(None), Some("users".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_full_namespace_with_parent() {
 		let router = ServerRouter::new().with_namespace("users");
 		assert_eq!(
@@ -1751,7 +1752,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_full_namespace_no_namespace() {
 		let router = ServerRouter::new();
 		assert_eq!(
@@ -1761,7 +1762,7 @@ mod tests {
 		assert_eq!(router.get_full_namespace(None), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hierarchical_namespace() {
 		let child = ServerRouter::new().with_namespace("users");
 		let parent = ServerRouter::new()
@@ -1773,7 +1774,7 @@ mod tests {
 		assert_eq!(parent.children_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_all_routes_with_namespace() {
 		use hyper::Method;
 
@@ -1796,7 +1797,7 @@ mod tests {
 		assert_eq!(url.unwrap(), "/health");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_namespace_registration() {
 		use hyper::Method;
 
@@ -1824,7 +1825,7 @@ mod tests {
 		assert_eq!(url.unwrap(), "/list");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mount_prefix_inheritance() {
 		let child = ServerRouter::new();
 		let parent = ServerRouter::new().with_prefix("/api").mount("/v1/", child);
@@ -1833,7 +1834,7 @@ mod tests {
 		// Child should inherit the mount path as its prefix
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_child_routers() {
 		let users = ServerRouter::new().with_namespace("users");
 		let posts = ServerRouter::new().with_namespace("posts");
@@ -1847,7 +1848,7 @@ mod tests {
 		assert_eq!(router.children_count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deep_nesting() {
 		let resource = ServerRouter::new().with_namespace("resource");
 		let v2 = ServerRouter::new()
@@ -1860,6 +1861,7 @@ mod tests {
 		assert_eq!(api.children_count(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_route_matching_performance_many_routes() {
 		use hyper::Method;
@@ -1900,6 +1902,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_route_matching_correctness() {
 		use hyper::Method;
@@ -1941,6 +1944,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_route_matching_different_methods() {
 		use hyper::Method;

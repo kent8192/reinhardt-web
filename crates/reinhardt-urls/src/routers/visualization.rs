@@ -362,8 +362,9 @@ struct NamespaceNode {
 mod tests {
 	use super::*;
 	use hyper::Method;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_tree_format() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("api:users:list"), None);
@@ -382,7 +383,7 @@ mod tests {
 		assert!(tree.contains("GET"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_markdown_format() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
@@ -395,7 +396,7 @@ mod tests {
 		assert!(markdown.contains("GET"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_list_format() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
@@ -407,7 +408,7 @@ mod tests {
 		assert!(list.contains("[GET]"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_dot_format() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("api:users:list"), None);
@@ -420,7 +421,7 @@ mod tests {
 		assert!(dot.contains("/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_visualizer_empty() {
 		let inspector = RouteInspector::new();
 		let visualizer = RouteVisualizer::from_inspector(&inspector);
@@ -429,7 +430,7 @@ mod tests {
 		assert!(tree.contains("(no routes)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_tree_building() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route(

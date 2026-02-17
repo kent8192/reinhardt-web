@@ -335,6 +335,7 @@ mod tests {
 	use super::*;
 	use async_trait::async_trait;
 	use reinhardt_http::{Request, Response, Result};
+	use rstest::rstest;
 
 	struct DummyHandler;
 
@@ -345,7 +346,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_namespace_pattern() {
 		let handler = std::sync::Arc::new(DummyHandler);
 		let route = Route::new("/v1/users/", handler).with_namespace("v1");
@@ -355,7 +356,7 @@ mod tests {
 		assert!(!route.matches_namespace_pattern("/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_version_from_pattern() {
 		let handler = std::sync::Arc::new(DummyHandler);
 		let route = Route::new("/v1/users/", handler).with_namespace("v1");
@@ -368,7 +369,7 @@ mod tests {
 		assert_eq!(route.extract_version_from_pattern("/users/"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extract_version_with_custom_pattern() {
 		let handler = std::sync::Arc::new(DummyHandler);
 		let route = Route::new("/api/v2/users/", handler).with_namespace("v2");

@@ -465,47 +465,48 @@ mod tests {
 	use hyper::Method;
 	use reinhardt_http::{Request, Response, Result};
 	use reinhardt_middleware::LoggingMiddleware;
+	use rstest::rstest;
 
 	async fn test_handler(_req: Request) -> Result<Response> {
 		Ok(Response::ok())
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_new() {
 		let group = RouteGroup::new();
 		let router = group.build();
 		assert_eq!(router.prefix(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_with_prefix() {
 		let group = RouteGroup::new().with_prefix("/api/v1");
 		let router = group.build();
 		assert_eq!(router.prefix(), "/api/v1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_with_namespace() {
 		let group = RouteGroup::new().with_namespace("v1");
 		let router = group.build();
 		assert_eq!(router.namespace(), Some("v1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_with_middleware() {
 		let group = RouteGroup::new().with_middleware(LoggingMiddleware::new());
 		let _router = group.build();
 		// Middleware is correctly added, verified in integration tests
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_function() {
 		let group = RouteGroup::new().function("/health", Method::GET, test_handler);
 		let _router = group.build();
 		// Routes are correctly added, verified in integration tests
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_nested() {
 		let auth_group =
 			RouteGroup::new()
@@ -518,7 +519,7 @@ mod tests {
 		assert_eq!(router.children_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_group_multiple_middleware() {
 		let group = RouteGroup::new()
 			.with_middleware(LoggingMiddleware::new())

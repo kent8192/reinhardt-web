@@ -50,22 +50,23 @@ impl UrlNamespace {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_namespace_creation() {
 		let ns = UrlNamespace::new("admin", "/admin/");
 		assert_eq!(ns.name(), "admin");
 		assert_eq!(ns.prefix(), "/admin/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_with_nested_prefix() {
 		let ns = UrlNamespace::new("api", "/api/v1/");
 		assert_eq!(ns.name(), "api");
 		assert_eq!(ns.prefix(), "/api/v1/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_namespace_clone() {
 		let ns = UrlNamespace::new("admin", "/admin/");
 		let cloned = ns.clone();

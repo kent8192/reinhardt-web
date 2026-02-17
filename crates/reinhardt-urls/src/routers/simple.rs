@@ -220,6 +220,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Uri, Version};
 	use reinhardt_http::{Request, Response, Result};
+	use rstest::rstest;
 
 	struct DummyHandler;
 
@@ -230,13 +231,13 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_router_new() {
 		let router = SimpleRouter::new();
 		assert_eq!(router.get_routes().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_router_add_route() {
 		let mut router = SimpleRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
@@ -249,7 +250,7 @@ mod tests {
 		assert_eq!(router.get_routes()[1].path, "/users/{id}/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_simple_router_mount() {
 		let mut router = SimpleRouter::new();
 		let handler = std::sync::Arc::new(DummyHandler);
@@ -263,6 +264,7 @@ mod tests {
 		assert_eq!(router.get_routes()[1].path, "/users/{id}/");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_router_route() {
 		let mut router = SimpleRouter::new();
@@ -285,6 +287,7 @@ mod tests {
 		assert_eq!(response.status, 200);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_router_route_with_params() {
 		let mut router = SimpleRouter::new();
@@ -306,6 +309,7 @@ mod tests {
 		assert_eq!(response.status, 200);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_simple_router_not_found() {
 		let router = SimpleRouter::new();

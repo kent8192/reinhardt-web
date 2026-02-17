@@ -678,15 +678,16 @@ impl Default for RadixRouter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_simple_pattern() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap();
 		assert!(pattern.regex.is_match("/users/"));
 		assert!(!pattern.regex.is_match("/users/123/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parameter_pattern() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap();
 		assert_eq!(pattern.param_names(), &["id"]);
@@ -694,7 +695,7 @@ mod tests {
 		assert!(!pattern.regex.is_match("/users/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pattern_multiple_parameters() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!(
 			"/users/{user_id}/posts/{post_id}/"
@@ -704,7 +705,7 @@ mod tests {
 		assert!(pattern.regex.is_match("/users/123/posts/456/"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_matcher() {
 		let mut matcher = PathMatcher::new();
 		matcher.add_pattern(
@@ -727,7 +728,7 @@ mod tests {
 	// URL Reversal Tests with Aho-Corasick
 	// ===================================================================
 
-	#[test]
+	#[rstest]
 	fn test_reverse_simple_pattern_no_params() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/")).unwrap();
 		let params = HashMap::new();
@@ -736,7 +737,7 @@ mod tests {
 		assert_eq!(result, "/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_single_parameter() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap();
 		let mut params = HashMap::new();
@@ -746,7 +747,7 @@ mod tests {
 		assert_eq!(result, "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_multiple_parameters() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!(
 			"/users/{user_id}/posts/{post_id}/"
@@ -760,7 +761,7 @@ mod tests {
 		assert_eq!(result, "/users/42/posts/100/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_many_parameters() {
 		// Test with 10+ parameters to demonstrate Aho-Corasick performance
 		let pattern = PathPattern::new(
@@ -786,7 +787,7 @@ mod tests {
 		assert_eq!(result, "/api/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10/v11/v12/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_consecutive_placeholders() {
 		let pattern = PathPattern::new("/{a}{b}/").unwrap();
 		let mut params = HashMap::new();
@@ -797,7 +798,7 @@ mod tests {
 		assert_eq!(result, "/12/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_missing_parameter() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap();
 		let params = HashMap::new();
@@ -811,7 +812,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_partial_parameters() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!(
 			"/users/{user_id}/posts/{post_id}/"
@@ -826,7 +827,7 @@ mod tests {
 		assert!(result.unwrap_err().contains("Missing required parameter"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_special_chars_in_values() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap();
 		let mut params = HashMap::new();
@@ -836,7 +837,7 @@ mod tests {
 		assert_eq!(result, "/items/foo-bar_123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_numeric_values() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap();
 		let mut params = HashMap::new();
@@ -846,7 +847,7 @@ mod tests {
 		assert_eq!(result, "/items/12345/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_unicode_values() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/{name}/")).unwrap();
 		let mut params = HashMap::new();
@@ -856,7 +857,7 @@ mod tests {
 		assert_eq!(result, "/users/ユーザー/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_param_at_start() {
 		let pattern = PathPattern::new("{lang}/users/").unwrap();
 		let mut params = HashMap::new();
@@ -866,7 +867,7 @@ mod tests {
 		assert_eq!(result, "ja/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_param_at_end() {
 		let pattern = PathPattern::new("/api/data.{format}").unwrap();
 		let mut params = HashMap::new();
@@ -876,7 +877,7 @@ mod tests {
 		assert_eq!(result, "/api/data.json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_complex_mixed_content() {
 		let pattern = PathPattern::new("/items/{id}/actions/{action}/execute").unwrap();
 		let mut params = HashMap::new();
@@ -887,7 +888,7 @@ mod tests {
 		assert_eq!(result, "/items/123/actions/edit/execute");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_long_value() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap();
 		let mut params = HashMap::new();
@@ -898,7 +899,7 @@ mod tests {
 		assert_eq!(result, format!("/items/{}/", long_id));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_empty_value() {
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/items/{id}/")).unwrap();
 		let mut params = HashMap::new();
@@ -908,7 +909,7 @@ mod tests {
 		assert_eq!(result, "/items//");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reverse_extra_parameters() {
 		// Extra parameters should be ignored
 		let pattern = PathPattern::new(reinhardt_routers_macros::path!("/users/{id}/")).unwrap();
@@ -924,7 +925,7 @@ mod tests {
 	// RadixRouter Tests
 	// ===================================================================
 
-	#[test]
+	#[rstest]
 	fn test_radix_router_basic_matching() {
 		let mut router = RadixRouter::new();
 		router
@@ -949,7 +950,7 @@ mod tests {
 		assert_eq!(params.get("id"), Some(&"123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_radix_router_multiple_parameters() {
 		let mut router = RadixRouter::new();
 		router
@@ -964,7 +965,7 @@ mod tests {
 		assert_eq!(params.get("post_id"), Some(&"456".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_radix_router_wildcard() {
 		let mut router = RadixRouter::new();
 		router
@@ -978,7 +979,7 @@ mod tests {
 		assert_eq!(params.get("path"), Some(&"images/logo.png".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_radix_router_no_match() {
 		let mut router = RadixRouter::new();
 		router
@@ -989,7 +990,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_matcher_radix_tree_mode() {
 		let mut matcher = PathMatcher::with_mode(MatchingMode::RadixTree);
 		matcher.add_pattern(
@@ -1010,7 +1011,7 @@ mod tests {
 		assert_eq!(params.get("id"), Some(&"123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_matcher_enable_radix_tree() {
 		let mut matcher = PathMatcher::new();
 		matcher.add_pattern(
@@ -1030,7 +1031,7 @@ mod tests {
 		assert!(result.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_matcher_linear_vs_radix() {
 		// Create two matchers with same routes
 		let mut linear_matcher = PathMatcher::new();

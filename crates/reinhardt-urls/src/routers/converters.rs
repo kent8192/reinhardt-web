@@ -562,8 +562,9 @@ impl Converter for FloatConverter {
 mod tests {
 	use super::*;
 	use chrono::Datelike;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_integer_converter_basic() {
 		let conv = IntegerConverter::new();
 
@@ -578,7 +579,7 @@ mod tests {
 		assert!(!conv.validate(""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_converter_with_range() {
 		let conv = IntegerConverter::with_range(1, 100);
 
@@ -593,7 +594,7 @@ mod tests {
 		assert!(!conv.validate("-10"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_converter_convert() {
 		let conv = IntegerConverter::new();
 
@@ -602,7 +603,7 @@ mod tests {
 		assert!(conv.convert("abc").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_converter_convert_with_range() {
 		let conv = IntegerConverter::with_range(1, 100);
 
@@ -611,7 +612,7 @@ mod tests {
 		assert!(conv.convert("101").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_converter() {
 		let conv = UuidConverter;
 
@@ -626,7 +627,7 @@ mod tests {
 		assert!(!conv.validate("550E8400-E29B-41D4-A716-446655440000")); // Uppercase
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_converter_convert() {
 		let conv = UuidConverter;
 
@@ -635,7 +636,7 @@ mod tests {
 		assert!(conv.convert("not-a-uuid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_converter() {
 		let conv = SlugConverter;
 
@@ -654,7 +655,7 @@ mod tests {
 		assert!(!conv.validate("double--hyphens"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_converter_convert() {
 		let conv = SlugConverter;
 
@@ -662,7 +663,7 @@ mod tests {
 		assert!(conv.convert("Invalid Slug!").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_converter_patterns() {
 		let int_conv = IntegerConverter::new();
 		let uuid_conv = UuidConverter;
@@ -676,7 +677,7 @@ mod tests {
 		assert_eq!(slug_conv.pattern(), r"[a-z0-9]+(-[a-z0-9]+)*");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_converter_validation() {
 		let conv = DateConverter;
 
@@ -695,7 +696,7 @@ mod tests {
 		assert!(!conv.validate(""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_converter_convert() {
 		let conv = DateConverter;
 
@@ -716,7 +717,7 @@ mod tests {
 		assert!(conv.convert("not-a-date").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_converter_validation() {
 		let conv = PathConverter;
 
@@ -742,7 +743,7 @@ mod tests {
 		assert!(!conv.validate("path\0/file"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_path_converter_convert() {
 		let conv = PathConverter;
 
@@ -759,7 +760,7 @@ mod tests {
 		assert!(conv.convert("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_float_converter_basic() {
 		let conv = FloatConverter::new();
 
@@ -779,7 +780,7 @@ mod tests {
 		assert!(!conv.validate("nan"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_float_converter_with_range() {
 		let conv = FloatConverter::with_range(0.0, 100.0);
 
@@ -797,7 +798,7 @@ mod tests {
 		assert!(!conv.validate("-0.001"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_float_converter_convert() {
 		let conv = FloatConverter::new();
 
@@ -816,7 +817,7 @@ mod tests {
 		assert!(conv.convert("inf").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_float_converter_convert_with_range() {
 		let conv = FloatConverter::with_range(0.0, 100.0);
 
@@ -830,7 +831,7 @@ mod tests {
 		assert!(conv.convert("-10.0").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_new_converter_patterns() {
 		let date_conv = DateConverter;
 		let path_conv = PathConverter;

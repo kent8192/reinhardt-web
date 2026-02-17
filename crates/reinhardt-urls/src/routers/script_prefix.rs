@@ -89,15 +89,16 @@ pub fn clear_script_prefix() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_script_prefix() {
 		// Clear any previous state
 		clear_script_prefix();
 		assert_eq!(get_script_prefix(), "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_and_get_script_prefix() {
 		set_script_prefix("/myapp/");
 		assert_eq!(get_script_prefix(), "/myapp/");
@@ -106,7 +107,7 @@ mod tests {
 		clear_script_prefix();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_script_prefix() {
 		set_script_prefix("/test/");
 		assert_eq!(get_script_prefix(), "/test/");
@@ -115,7 +116,7 @@ mod tests {
 		assert_eq!(get_script_prefix(), "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_set_operations() {
 		set_script_prefix("/app1/");
 		assert_eq!(get_script_prefix(), "/app1/");
@@ -130,7 +131,7 @@ mod tests {
 		clear_script_prefix();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_prefix() {
 		set_script_prefix("");
 		assert_eq!(get_script_prefix(), "");
@@ -139,7 +140,7 @@ mod tests {
 		clear_script_prefix();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prefix_without_trailing_slash() {
 		set_script_prefix("/myapp");
 		assert_eq!(get_script_prefix(), "/myapp");

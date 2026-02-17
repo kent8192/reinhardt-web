@@ -294,7 +294,9 @@ impl Default for RelationshipCache {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_lazy_loaded() {
 		let lazy = LazyLoaded::new(|| Box::pin(async { Ok(vec![1, 2, 3]) }));
@@ -308,6 +310,7 @@ mod tests {
 		assert_eq!(data, &vec![1, 2, 3]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_lazy_loaded_preloaded() {
 		let lazy = LazyLoaded::preloaded(vec![1, 2, 3], || Box::pin(async { Ok(vec![4, 5, 6]) }));
@@ -318,7 +321,7 @@ mod tests {
 		assert_eq!(data, &vec![1, 2, 3]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_eager_load_config() {
 		let config = EagerLoadConfig::new()
 			.with_relationship("posts")
@@ -329,7 +332,7 @@ mod tests {
 		assert_eq!(config.relationships, vec!["posts", "comments"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relationship_cache() {
 		let cache = RelationshipCache::new();
 

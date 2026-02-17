@@ -315,15 +315,16 @@ impl ScalarComparison {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_scalar_proxy_creation() {
 		let proxy = ScalarProxy::new("profile", "bio");
 		assert_eq!(proxy.relationship, "profile");
 		assert_eq!(proxy.attribute, "bio");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_proxy_scalar_comparison_unit() {
 		let eq = ScalarComparison::eq("test");
 		assert!(matches!(eq, ScalarComparison::Eq(_)));

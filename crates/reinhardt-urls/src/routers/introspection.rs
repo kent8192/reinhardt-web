@@ -568,8 +568,9 @@ pub struct RouteStatistics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_route_info_creation() {
 		let info = RouteInfo::new("/users/{id}/", vec![Method::GET], Some("users:detail"));
 
@@ -580,7 +581,7 @@ mod tests {
 		assert_eq!(info.route_name, Some("detail".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_info_supports_method() {
 		let info = RouteInfo::new("/users/", vec![Method::GET, Method::POST], None::<String>);
 
@@ -589,7 +590,7 @@ mod tests {
 		assert!(!info.supports_method(&Method::DELETE));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_info_metadata() {
 		let mut info = RouteInfo::new("/users/", vec![Method::GET], None::<String>);
 		info.add_metadata("description", "List users");
@@ -600,7 +601,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_add_and_count() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route(
@@ -619,7 +620,7 @@ mod tests {
 		assert_eq!(inspector.route_count(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_find_by_path() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
@@ -628,7 +629,7 @@ mod tests {
 		assert_eq!(route.name, Some("users:list".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_find_by_name() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
@@ -637,7 +638,7 @@ mod tests {
 		assert_eq!(route.path, "/users/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_find_by_prefix() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route(
@@ -663,7 +664,7 @@ mod tests {
 		assert_eq!(routes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_find_by_namespace() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route(
@@ -689,7 +690,7 @@ mod tests {
 		assert_eq!(routes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_all_namespaces() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route(
@@ -715,7 +716,7 @@ mod tests {
 		assert!(namespaces.contains(&"api:v2:posts".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_statistics() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("api:users:list"), None);
@@ -732,7 +733,7 @@ mod tests {
 		assert_eq!(stats.routes_with_names, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_route_inspector_to_json() {
 		let mut inspector = RouteInspector::new();
 		inspector.add_route("/users/", vec![Method::GET], Some("users:list"), None);
