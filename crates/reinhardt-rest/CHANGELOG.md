@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.15...reinhardt-rest@v0.1.0-alpha.16) - 2026-02-17
+
+### Fixed
+
+- *(rest)* use parameterized queries in SimpleSearchBackend
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.14...reinhardt-rest@v0.1.0-alpha.15) - 2026-02-16
 
 ### Maintenance

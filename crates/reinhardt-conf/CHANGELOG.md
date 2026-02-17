@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.12...reinhardt-conf@v0.1.0-alpha.13) - 2026-02-17
+
+### Fixed
+
+- *(conf)* prevent secret exposure in serialization
+
+### Maintenance
+
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in env.rs
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in testing.rs
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in env_loader.rs
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in profile.rs
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in sources.rs
+- *(reinhardt-conf)* add SAFETY comments to unsafe blocks in secrets/providers/env.rs
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.0-alpha.11...reinhardt-conf@v0.1.0-alpha.12) - 2026-02-15
 
 ### Maintenance

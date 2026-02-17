@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.1.0-alpha.1...reinhardt-manouche@v0.1.0-alpha.2) - 2026-02-17
+
+### Maintenance
+
+- *(manouche)* convert TODO comments to todo!() macros in IR lowering
+
 ## [0.1.0-alpha.1](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-manouche@v0.1.0-alpha.1) - 2026-02-05
 
 ### Added
