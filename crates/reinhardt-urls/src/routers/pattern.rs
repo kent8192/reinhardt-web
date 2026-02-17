@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use matchit::Router as MatchitRouter;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Convert a type specifier to its corresponding regex pattern
 ///
@@ -19,7 +19,7 @@ use std::collections::HashMap;
 /// | `str` | `[^/]+` | Any non-slash characters (default) |
 /// | `uuid` | UUID regex | UUID format |
 /// | `slug` | `[a-z0-9]+(?:-[a-z0-9]+)*` | Lowercase slug |
-/// | `path` | `.+` | Any characters including slashes |
+/// | `path` | `.+` | Any characters including slashes (excludes `..` segments) |
 /// | `bool` | `true\|false\|1\|0` | Boolean literals |
 /// | `email` | Email regex | Email format |
 /// | `date` | `[0-9]{4}-[0-9]{2}-[0-9]{2}` | ISO 8601 date |
@@ -30,6 +30,9 @@ fn type_spec_to_regex(type_spec: &str) -> &'static str {
 		"str" => r"[^/]+",
 		"uuid" => r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
 		"slug" => r"[a-z0-9]+(?:-[a-z0-9]+)*",
+		// Matches any characters including slashes.
+		// Directory traversal (`..` segments) is rejected by post-match
+		// validation in extract_params() and match_path_linear().
 		"path" => r".+",
 		// Signed integers
 		"i8" | "i16" | "i32" | "i64" => r"-?[0-9]+",
@@ -46,6 +49,30 @@ fn type_spec_to_regex(type_spec: &str) -> &'static str {
 	}
 }
 
+/// Validate that a matched path value does not contain directory traversal sequences.
+///
+/// This provides defense-in-depth for `path` type parameters by checking
+/// extracted values for `..` segments that could enable path traversal.
+fn validate_path_param(value: &str) -> bool {
+	// Check for `..` as a complete path segment
+	for segment in value.split('/') {
+		if segment == ".." {
+			return false;
+		}
+	}
+	// Also reject backslash-separated `..` segments
+	for segment in value.split('\\') {
+		if segment == ".." {
+			return false;
+		}
+	}
+	// Reject null bytes
+	if value.contains('\0') {
+		return false;
+	}
+	true
+}
+
 /// Path pattern for URL matching
 /// Similar to Django's URL patterns but using composition
 #[derive(Clone)]
@@ -56,6 +83,9 @@ pub struct PathPattern {
 	normalized_pattern: String,
 	regex: Regex,
 	param_names: Vec<String>,
+	/// Parameter names that use the `path` type specifier.
+	/// These require post-match validation to reject directory traversal.
+	path_type_params: HashSet<String>,
 	/// Pre-built Aho-Corasick automaton for efficient URL reversal
 	/// This is constructed once during pattern creation for O(n+m+z) reversal
 	aho_corasick: Option<AhoCorasick>,
@@ -65,6 +95,8 @@ pub struct PathPattern {
 struct ParsePatternResult {
 	regex_str: String,
 	param_names: Vec<String>,
+	/// Parameter names that use the `path` type specifier
+	path_type_params: HashSet<String>,
 	/// Pattern normalized to `{name}` format for URL reversal
 	/// e.g., "/users/{<int:id>}/" -> "/users/{id}/"
 	normalized_pattern: String,
@@ -112,6 +144,7 @@ impl PathPattern {
 			normalized_pattern: parse_result.normalized_pattern,
 			regex,
 			param_names: parse_result.param_names,
+			path_type_params: parse_result.path_type_params,
 			aho_corasick,
 		})
 	}
@@ -119,6 +152,7 @@ impl PathPattern {
 	fn parse_pattern(pattern: &str) -> Result<ParsePatternResult, String> {
 		let mut regex_str = String::from("^");
 		let mut param_names = Vec::new();
+		let mut path_type_params = HashSet::new();
 		let mut normalized_pattern = String::new();
 		let mut chars = pattern.chars().peekable();
 
@@ -153,6 +187,9 @@ impl PathPattern {
 										type_spec
 									));
 								}
+								if type_spec == "path" {
+									path_type_params.insert(name.to_string());
+								}
 								(name.to_string(), type_spec_to_regex(type_spec))
 							} else {
 								return Err(format!(
@@ -186,6 +223,7 @@ impl PathPattern {
 		Ok(ParsePatternResult {
 			regex_str,
 			param_names,
+			path_type_params,
 			normalized_pattern,
 		})
 	}
@@ -243,14 +281,19 @@ impl PathPattern {
 	/// assert_eq!(params.get("id"), Some(&"123".to_string()));
 	/// ```
 	pub fn extract_params(&self, path: &str) -> Option<HashMap<String, String>> {
-		self.regex.captures(path).map(|captures| {
+		self.regex.captures(path).and_then(|captures| {
 			let mut params = HashMap::new();
 			for name in self.param_names() {
 				if let Some(value) = captures.name(name) {
-					params.insert(name.clone(), value.as_str().to_string());
+					let val = value.as_str();
+					// Validate path-type parameters against directory traversal
+					if self.path_type_params.contains(name) && !validate_path_param(val) {
+						return None;
+					}
+					params.insert(name.clone(), val.to_string());
 				}
 			}
-			params
+			Some(params)
 		})
 	}
 
@@ -502,13 +545,18 @@ impl PathMatcher {
 
 	/// Linear pattern matching (O(n))
 	fn match_path_linear(&self, path: &str) -> Option<(String, HashMap<String, String>)> {
-		for (pattern, handler_id) in &self.patterns {
+		'outer: for (pattern, handler_id) in &self.patterns {
 			if let Some(captures) = pattern.regex.captures(path) {
 				let mut params = HashMap::new();
 
 				for name in pattern.param_names() {
 					if let Some(value) = captures.name(name) {
-						params.insert(name.clone(), value.as_str().to_string());
+						let val = value.as_str();
+						// Validate path-type parameters against directory traversal
+						if pattern.path_type_params.contains(name) && !validate_path_param(val) {
+							continue 'outer;
+						}
+						params.insert(name.clone(), val.to_string());
 					}
 				}
 
@@ -1051,5 +1099,91 @@ mod tests {
 			assert_eq!(linear_result, radix_result);
 			assert!(linear_result.is_some());
 		}
+	}
+
+	// ===================================================================
+	// Path traversal prevention tests (Issue #425)
+	// ===================================================================
+
+	#[test]
+	fn test_path_type_rejects_traversal() {
+		// Arrange
+		let pattern = PathPattern::new("/files/{<path:filepath>}").unwrap();
+
+		// Act & Assert - should reject `..` segments
+		assert!(
+			pattern.extract_params("/files/../../../etc/passwd").is_none(),
+			"Path type should reject directory traversal"
+		);
+		assert!(
+			pattern.extract_params("/files/foo/../../etc/passwd").is_none(),
+			"Path type should reject embedded directory traversal"
+		);
+	}
+
+	#[test]
+	fn test_path_type_allows_valid_paths() {
+		// Arrange
+		let pattern = PathPattern::new("/files/{<path:filepath>}").unwrap();
+
+		// Act
+		let result = pattern.extract_params("/files/images/logo.png");
+
+		// Assert
+		assert!(result.is_some());
+		let params = result.unwrap();
+		assert_eq!(params.get("filepath"), Some(&"images/logo.png".to_string()));
+	}
+
+	#[test]
+	fn test_path_type_allows_dotfiles() {
+		// Arrange
+		let pattern = PathPattern::new("/files/{<path:filepath>}").unwrap();
+
+		// Act
+		let result = pattern.extract_params("/files/.gitignore");
+
+		// Assert
+		assert!(result.is_some());
+		let params = result.unwrap();
+		assert_eq!(params.get("filepath"), Some(&".gitignore".to_string()));
+	}
+
+	#[test]
+	fn test_path_type_matcher_rejects_traversal() {
+		// Arrange
+		let mut matcher = PathMatcher::new();
+		matcher.add_pattern(
+			PathPattern::new("/files/{<path:filepath>}").unwrap(),
+			"serve_file".to_string(),
+		);
+
+		// Act & Assert
+		assert!(
+			matcher.match_path("/files/../../../etc/passwd").is_none(),
+			"PathMatcher should reject directory traversal in path params"
+		);
+
+		// Valid path should work
+		let result = matcher.match_path("/files/css/style.css");
+		assert!(result.is_some());
+	}
+
+	#[test]
+	fn test_validate_path_param_function() {
+		// Normal paths should pass
+		assert!(validate_path_param("images/logo.png"));
+		assert!(validate_path_param("css/style.css"));
+		assert!(validate_path_param(".gitignore"));
+		assert!(validate_path_param("dir/.hidden"));
+
+		// Traversal attacks should fail
+		assert!(!validate_path_param("../etc/passwd"));
+		assert!(!validate_path_param("foo/../../bar"));
+		assert!(!validate_path_param(".."));
+		assert!(!validate_path_param("foo/.."));
+
+		// Null bytes should fail
+		assert!(!validate_path_param("foo\0bar"));
 	}
 }
