@@ -325,6 +325,7 @@ pub struct RedisChannelLayer;
 mod tests {
 	use super::*;
 	use crate::connection::Message;
+	use rstest::rstest;
 	use std::collections::HashMap;
 	use std::sync::{Arc, Mutex};
 
@@ -466,7 +467,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redis_config_default() {
 		let config = RedisConfig::default();
 		assert_eq!(config.url, "redis://127.0.0.1:6379");
@@ -475,7 +476,7 @@ mod tests {
 		assert_eq!(config.message_expiry, 60);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redis_config_builder() {
 		let config = RedisConfig::new("redis://localhost:6379".to_string())
 			.with_channel_prefix("custom:channel:".to_string())
@@ -488,21 +489,21 @@ mod tests {
 		assert_eq!(config.message_expiry, 120);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_channel_key_generation() {
 		let config = RedisConfig::default();
 		let layer = MockRedisChannelLayer::new(config);
 		assert_eq!(layer.channel_key("test"), "ws:channel:test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_key_generation() {
 		let config = RedisConfig::default();
 		let layer = MockRedisChannelLayer::new(config);
 		assert_eq!(layer.group_key("test_group"), "ws:group:test_group");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_serialization() {
 		let config = RedisConfig::default();
 		let layer = MockRedisChannelLayer::new(config);
@@ -515,6 +516,7 @@ mod tests {
 		assert_eq!(msg.sender(), deserialized.sender());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_send_message_to_channel() {
 		let config = RedisConfig::default();
@@ -539,6 +541,7 @@ mod tests {
 		assert_eq!(deserialized.sender(), msg.sender());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_receive_message_from_channel() {
 		let config = RedisConfig::default();
@@ -566,6 +569,7 @@ mod tests {
 		assert!(result2.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_group_add_and_discard() {
 		let config = RedisConfig::default();
@@ -597,6 +601,7 @@ mod tests {
 		assert!(members.contains(&"channel_2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_group_send() {
 		let config = RedisConfig::default();
@@ -632,6 +637,7 @@ mod tests {
 		assert_eq!(deserialized2.sender(), msg.sender());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_group_send_to_empty_group() {
 		let config = RedisConfig::default();

@@ -357,8 +357,9 @@ impl ReconnectionStrategy {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = ReconnectionConfig::default();
 		assert_eq!(config.max_attempts, Some(10));
@@ -368,7 +369,7 @@ mod tests {
 		assert_eq!(config.jitter_factor, 0.1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = ReconnectionConfig::default()
 			.with_max_attempts(5)
@@ -384,13 +385,13 @@ mod tests {
 		assert_eq!(config.jitter_factor, 0.2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unlimited_attempts() {
 		let config = ReconnectionConfig::default().with_unlimited_attempts();
 		assert_eq!(config.max_attempts, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reconnection_strategy() {
 		let config = ReconnectionConfig::default()
 			.with_max_attempts(3)
@@ -425,7 +426,7 @@ mod tests {
 		assert!(!strategy.can_reconnect());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exponential_backoff() {
 		let config = ReconnectionConfig::default()
 			.with_unlimited_attempts()
@@ -448,7 +449,7 @@ mod tests {
 		assert!(delay3.as_secs() >= 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_delay_cap() {
 		let config = ReconnectionConfig::default()
 			.with_unlimited_attempts()
@@ -467,7 +468,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reset() {
 		let config = ReconnectionConfig::default().with_max_attempts(5);
 		let mut strategy = ReconnectionStrategy::new(config);
@@ -481,7 +482,7 @@ mod tests {
 		assert!(strategy.can_reconnect());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jitter_applied() {
 		let config = ReconnectionConfig::default()
 			.with_initial_delay(Duration::from_secs(1))

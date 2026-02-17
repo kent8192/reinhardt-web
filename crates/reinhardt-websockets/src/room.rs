@@ -904,8 +904,10 @@ impl Default for RoomManager {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tokio::sync::mpsc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_new() {
 		let room = Room::new("test_room".to_string());
@@ -914,6 +916,7 @@ mod tests {
 		assert!(room.is_empty().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_join_client() {
 		let room = Room::new("join_test".to_string());
@@ -925,6 +928,7 @@ mod tests {
 		assert!(room.has_client("client1").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_join_duplicate_client() {
 		let room = Room::new("duplicate_test".to_string());
@@ -944,6 +948,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_leave_client() {
 		let room = Room::new("leave_test".to_string());
@@ -958,6 +963,7 @@ mod tests {
 		assert_eq!(room.client_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_leave_nonexistent_client() {
 		let room = Room::new("leave_error_test".to_string());
@@ -967,6 +973,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), RoomError::ClientNotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_broadcast() {
 		let room = Room::new("broadcast_test".to_string());
@@ -991,6 +998,7 @@ mod tests {
 		assert!(matches!(rx3.try_recv(), Ok(Message::Text { .. })));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_send_to_specific_client() {
 		let room = Room::new("private_msg_test".to_string());
@@ -1011,6 +1019,7 @@ mod tests {
 		assert!(rx2.try_recv().is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_send_to_nonexistent_client() {
 		let room = Room::new("send_error_test".to_string());
@@ -1021,6 +1030,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), RoomError::ClientNotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_client_ids() {
 		let room = Room::new("ids_test".to_string());
@@ -1040,6 +1050,7 @@ mod tests {
 		assert!(ids.contains(&"beta".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_metadata_set_and_get() {
 		use serde_json::json;
@@ -1058,6 +1069,7 @@ mod tests {
 		assert_eq!(topic, "General Chat");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_metadata_get_nonexistent() {
 		let room = Room::new("metadata_missing_test".to_string());
@@ -1065,6 +1077,7 @@ mod tests {
 		assert!(result.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_metadata_remove() {
 		use serde_json::json;
@@ -1078,6 +1091,7 @@ mod tests {
 		assert!(room.get_metadata::<String>("temp").await.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_metadata_clear() {
 		use serde_json::json;
@@ -1093,6 +1107,7 @@ mod tests {
 		assert!(room.get_metadata::<String>("key2").await.unwrap().is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_is_empty() {
 		let room = Room::new("empty_test".to_string());
@@ -1108,12 +1123,14 @@ mod tests {
 		assert!(room.is_empty().await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_new() {
 		let manager = RoomManager::new();
 		assert_eq!(manager.room_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_create_room() {
 		let manager = RoomManager::new();
@@ -1123,6 +1140,7 @@ mod tests {
 		assert_eq!(manager.room_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_get_room() {
 		let manager = RoomManager::new();
@@ -1136,6 +1154,7 @@ mod tests {
 		assert!(missing.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_get_or_create_room() {
 		let manager = RoomManager::new();
@@ -1149,6 +1168,7 @@ mod tests {
 		assert_eq!(room1.id(), room2.id());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_delete_room() {
 		let manager = RoomManager::new();
@@ -1160,6 +1180,7 @@ mod tests {
 		assert!(!manager.has_room("to_delete").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_delete_nonexistent_room() {
 		let manager = RoomManager::new();
@@ -1169,6 +1190,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), RoomError::RoomNotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_room_ids() {
 		let manager = RoomManager::new();
@@ -1184,6 +1206,7 @@ mod tests {
 		assert!(ids.contains(&"room3".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_has_room() {
 		let manager = RoomManager::new();
@@ -1193,6 +1216,7 @@ mod tests {
 		assert!(!manager.has_room("missing").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_room_manager_cleanup_empty_rooms() {
 		let manager = RoomManager::new();

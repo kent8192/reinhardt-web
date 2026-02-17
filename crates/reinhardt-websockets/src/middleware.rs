@@ -409,8 +409,10 @@ impl Default for MiddlewareChain {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tokio::sync::mpsc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_context() {
 		let context = ConnectionContext::new("192.168.1.1".to_string())
@@ -422,6 +424,7 @@ mod tests {
 		assert_eq!(context.metadata.get("session_id").unwrap(), "abc123");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logging_middleware_connect() {
 		let middleware = LoggingMiddleware::new("Test".to_string());
@@ -430,6 +433,7 @@ mod tests {
 		assert!(middleware.on_connect(&mut context).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logging_middleware_message() {
 		let middleware = LoggingMiddleware::new("Test".to_string());
@@ -441,6 +445,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_whitelist_allowed() {
 		let middleware = IpFilterMiddleware::whitelist(vec!["192.168.1.1".to_string()]);
@@ -449,6 +454,7 @@ mod tests {
 		assert!(middleware.on_connect(&mut context).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_whitelist_blocked() {
 		let middleware = IpFilterMiddleware::whitelist(vec!["192.168.1.1".to_string()]);
@@ -462,6 +468,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_blacklist_allowed() {
 		let middleware = IpFilterMiddleware::blacklist(vec!["10.0.0.1".to_string()]);
@@ -470,6 +477,7 @@ mod tests {
 		assert!(middleware.on_connect(&mut context).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_blacklist_blocked() {
 		let middleware = IpFilterMiddleware::blacklist(vec!["10.0.0.1".to_string()]);
@@ -479,6 +487,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_size_limit_within_limit() {
 		let middleware = MessageSizeLimitMiddleware::new(100);
@@ -489,6 +498,7 @@ mod tests {
 		assert!(middleware.on_message(&conn, msg).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_size_limit_exceeds_limit() {
 		let middleware = MessageSizeLimitMiddleware::new(10);
@@ -504,6 +514,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_connect() {
 		let mut chain = MiddlewareChain::new();
@@ -513,6 +524,7 @@ mod tests {
 		assert!(chain.process_connect(&mut context).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_message() {
 		let mut chain = MiddlewareChain::new();
@@ -525,6 +537,7 @@ mod tests {
 		assert!(chain.process_message(&conn, msg).await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_rejection() {
 		let mut chain = MiddlewareChain::new();

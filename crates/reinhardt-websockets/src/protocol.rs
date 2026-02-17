@@ -20,9 +20,10 @@ pub fn default_websocket_config() -> TungsteniteConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test: Default WebSocketConfig
-	#[test]
+	#[rstest]
 	fn test_default_websocket_config() {
 		let _config = default_websocket_config();
 		// Default config should be created successfully

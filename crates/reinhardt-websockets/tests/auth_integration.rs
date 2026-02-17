@@ -7,6 +7,7 @@ use reinhardt_websockets::auth::{
 	PermissionBasedPolicy, SimpleAuthUser, TokenAuthenticator, WebSocketAuthenticator,
 };
 use reinhardt_websockets::{Message, WebSocketConnection};
+use rstest::rstest;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -50,6 +51,7 @@ impl MockAuthenticator {
 }
 
 /// Test: Token-based authentication - valid token
+#[rstest]
 #[tokio::test]
 async fn test_token_authentication_valid() {
 	let user = SimpleAuthUser::new(
@@ -69,6 +71,7 @@ async fn test_token_authentication_valid() {
 }
 
 /// Test: Token-based authentication - invalid token
+#[rstest]
 #[tokio::test]
 async fn test_token_authentication_invalid() {
 	let authenticator = TokenAuthenticator::new(vec![]);
@@ -82,6 +85,7 @@ async fn test_token_authentication_invalid() {
 }
 
 /// Test: Token-based authentication - multiple users
+#[rstest]
 #[tokio::test]
 async fn test_token_authentication_multiple_users() {
 	let user1 = SimpleAuthUser::new(
@@ -122,6 +126,7 @@ async fn test_token_authentication_multiple_users() {
 }
 
 /// Test: Permission-based authorization - authorized action
+#[rstest]
 #[tokio::test]
 async fn test_authorization_policy_authorized() {
 	let policy =
@@ -138,6 +143,7 @@ async fn test_authorization_policy_authorized() {
 }
 
 /// Test: Permission-based authorization - denied action
+#[rstest]
 #[tokio::test]
 async fn test_authorization_policy_denied() {
 	let policy = PermissionBasedPolicy::new(vec![(
@@ -160,6 +166,7 @@ async fn test_authorization_policy_denied() {
 }
 
 /// Test: Permission-based authorization - unknown action
+#[rstest]
 #[tokio::test]
 async fn test_authorization_policy_unknown_action() {
 	let policy = PermissionBasedPolicy::new(vec![]);
@@ -179,6 +186,7 @@ async fn test_authorization_policy_unknown_action() {
 }
 
 /// Test: AuthenticatedConnection - send with authorization
+#[rstest]
 #[tokio::test]
 async fn test_authenticated_connection_send_with_auth_success() {
 	let policy =
@@ -205,6 +213,7 @@ async fn test_authenticated_connection_send_with_auth_success() {
 }
 
 /// Test: AuthenticatedConnection - send with authorization denied
+#[rstest]
 #[tokio::test]
 async fn test_authenticated_connection_send_with_auth_denied() {
 	let policy =
@@ -227,6 +236,7 @@ async fn test_authenticated_connection_send_with_auth_denied() {
 }
 
 /// Test: Mock authenticator - valid token
+#[rstest]
 #[tokio::test]
 async fn test_mock_authenticator_valid_token() {
 	let mock_auth = MockAuthenticator::new();
@@ -239,6 +249,7 @@ async fn test_mock_authenticator_valid_token() {
 }
 
 /// Test: Mock authenticator - admin token
+#[rstest]
 #[tokio::test]
 async fn test_mock_authenticator_admin_token() {
 	let mock_auth = MockAuthenticator::new();
@@ -249,6 +260,7 @@ async fn test_mock_authenticator_admin_token() {
 }
 
 /// Test: Mock authenticator - invalid token
+#[rstest]
 #[tokio::test]
 async fn test_mock_authenticator_invalid_token() {
 	let mock_auth = MockAuthenticator::new();
@@ -259,6 +271,7 @@ async fn test_mock_authenticator_invalid_token() {
 }
 
 /// Test: User permission checks
+#[rstest]
 #[tokio::test]
 async fn test_user_permission_checks() {
 	let user = SimpleAuthUser::new(
@@ -275,6 +288,7 @@ async fn test_user_permission_checks() {
 }
 
 /// Test: Multiple permission levels
+#[rstest]
 #[tokio::test]
 async fn test_multiple_permission_levels() {
 	let policy = PermissionBasedPolicy::new(vec![
@@ -341,6 +355,7 @@ async fn test_multiple_permission_levels() {
 }
 
 /// Test: AuthenticatedConnection - multiple messages with authorization
+#[rstest]
 #[tokio::test]
 async fn test_authenticated_connection_multiple_messages() {
 	let policy =
@@ -373,6 +388,7 @@ async fn test_authenticated_connection_multiple_messages() {
 }
 
 /// Test: User without authentication flag
+#[rstest]
 #[tokio::test]
 async fn test_unauthenticated_user() {
 	// User with empty ID is considered unauthenticated

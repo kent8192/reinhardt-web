@@ -346,15 +346,16 @@ impl CombinedThrottler {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_rate_limit_config() {
 		let config = RateLimitConfig::new(100, Duration::from_secs(60));
 		assert_eq!(config.max_requests(), 100);
 		assert_eq!(config.window(), Duration::from_secs(60));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rate_limit_config_presets() {
 		let permissive = RateLimitConfig::permissive();
 		assert_eq!(permissive.max_requests(), 10000);
@@ -363,6 +364,7 @@ mod tests {
 		assert_eq!(strict.max_requests(), 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limiter_within_limit() {
 		let config = RateLimitConfig::new(5, Duration::from_secs(10));
@@ -373,6 +375,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limiter_exceeds_limit() {
 		let config = RateLimitConfig::new(3, Duration::from_secs(10));
@@ -390,6 +393,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limiter_reset() {
 		let config = RateLimitConfig::new(2, Duration::from_secs(10));
@@ -406,6 +410,7 @@ mod tests {
 		assert!(limiter.check_rate_limit("user_1").await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limiter_get_count() {
 		let config = RateLimitConfig::new(10, Duration::from_secs(10));
@@ -419,6 +424,7 @@ mod tests {
 		assert_eq!(limiter.get_count("user_1").await, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_throttler_within_limit() {
 		let throttler = ConnectionThrottler::new(3);
@@ -428,6 +434,7 @@ mod tests {
 		assert!(throttler.acquire_connection("192.168.1.1").await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_throttler_exceeds_limit() {
 		let throttler = ConnectionThrottler::new(2);
@@ -443,6 +450,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_throttler_release() {
 		let throttler = ConnectionThrottler::new(2);
@@ -458,6 +466,7 @@ mod tests {
 		assert!(throttler.acquire_connection("192.168.1.1").await.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_throttler_get_count() {
 		let throttler = ConnectionThrottler::new(10);
@@ -470,6 +479,7 @@ mod tests {
 		assert_eq!(throttler.get_connection_count("192.168.1.1").await, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_combined_throttler() {
 		let config = RateLimitConfig::new(10, Duration::from_secs(10));

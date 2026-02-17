@@ -410,8 +410,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_metrics_creation() {
 		let metrics = WebSocketMetrics::new();
 		let snapshot = metrics.snapshot();
@@ -422,7 +423,7 @@ mod tests {
 		assert_eq!(snapshot.messages_received, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_connection() {
 		let metrics = WebSocketMetrics::new();
 
@@ -434,7 +435,7 @@ mod tests {
 		assert_eq!(snapshot.total_connections, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_disconnection() {
 		let metrics = WebSocketMetrics::new();
 
@@ -448,7 +449,7 @@ mod tests {
 		assert_eq!(snapshot.total_connections, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_messages() {
 		let metrics = WebSocketMetrics::new();
 
@@ -461,7 +462,7 @@ mod tests {
 		assert_eq!(snapshot.messages_received, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_bytes() {
 		let metrics = WebSocketMetrics::new();
 
@@ -474,7 +475,7 @@ mod tests {
 		assert_eq!(snapshot.bytes_received, 200);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_record_error() {
 		let metrics = WebSocketMetrics::new();
 
@@ -485,7 +486,7 @@ mod tests {
 		assert_eq!(snapshot.errors, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reset() {
 		let metrics = WebSocketMetrics::new();
 
@@ -501,7 +502,7 @@ mod tests {
 		assert_eq!(snapshot.errors, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_snapshot_summary() {
 		let snapshot = MetricsSnapshot {
 			active_connections: 10,
@@ -522,7 +523,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "metrics")]
-	#[test]
+	#[rstest]
 	fn test_prometheus_export() {
 		let snapshot = MetricsSnapshot {
 			active_connections: 10,
@@ -539,7 +540,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "metrics")]
-	#[test]
+	#[rstest]
 	fn test_json_export() {
 		let snapshot = MetricsSnapshot {
 			active_connections: 10,

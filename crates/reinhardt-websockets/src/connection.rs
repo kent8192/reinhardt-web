@@ -384,8 +384,9 @@ impl WebSocketConnection {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_message_text() {
 		let msg = Message::text("Hello".to_string());
 		match msg {
@@ -394,7 +395,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_json() {
 		#[derive(serde::Serialize)]
 		struct TestData {
@@ -410,6 +411,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_send() {
 		let (tx, mut rx) = mpsc::unbounded_channel();

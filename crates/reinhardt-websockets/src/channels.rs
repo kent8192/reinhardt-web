@@ -295,14 +295,15 @@ impl ChannelLayerWrapper {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_channel_message_creation() {
 		let msg = ChannelMessage::new("user_1".to_string(), Message::text("Hello".to_string()));
 		assert_eq!(msg.sender(), "user_1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_channel_message_metadata() {
 		let msg = ChannelMessage::new("user_1".to_string(), Message::text("Hello".to_string()))
 			.with_metadata("priority".to_string(), "high".to_string());
@@ -310,6 +311,7 @@ mod tests {
 		assert_eq!(msg.metadata("priority").unwrap(), "high");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_channel_layer_send_receive() {
 		let layer = InMemoryChannelLayer::new();
@@ -322,6 +324,7 @@ mod tests {
 		assert_eq!(received.unwrap().sender(), "user_1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_channel_layer_group_add() {
 		let layer = InMemoryChannelLayer::new();
@@ -332,6 +335,7 @@ mod tests {
 		assert_eq!(layer.group_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_channel_layer_group_discard() {
 		let layer = InMemoryChannelLayer::new();
@@ -344,6 +348,7 @@ mod tests {
 		assert_eq!(layer.group_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_channel_layer_group_send() {
 		let layer = InMemoryChannelLayer::new();
@@ -362,6 +367,7 @@ mod tests {
 		assert!(received2.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_channel_layer_clear() {
 		let layer = InMemoryChannelLayer::new();
@@ -379,6 +385,7 @@ mod tests {
 		assert_eq!(layer.group_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_channel_layer_wrapper() {
 		let layer = InMemoryChannelLayer::new();

@@ -593,8 +593,10 @@ impl WebSocketConsumer for ConsumerChain {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tokio::sync::mpsc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_consumer_context_creation() {
 		let (tx, _rx) = mpsc::unbounded_channel();
@@ -604,6 +606,7 @@ mod tests {
 		assert_eq!(context.connection.id(), "test");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_consumer_context_metadata() {
 		let (tx, _rx) = mpsc::unbounded_channel();
@@ -614,6 +617,7 @@ mod tests {
 		assert_eq!(context.get_metadata("user_id").unwrap(), "123");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_echo_consumer_connect() {
 		let consumer = EchoConsumer::new();
@@ -630,6 +634,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_echo_consumer_message() {
 		let consumer = EchoConsumer::new();
@@ -647,6 +652,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_consumer_connect() {
 		let consumer = JsonConsumer::new();
@@ -666,6 +672,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_consumer_chain() {
 		let mut chain = ConsumerChain::new();

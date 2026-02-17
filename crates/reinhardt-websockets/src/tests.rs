@@ -2,11 +2,13 @@
 
 use crate::connection::{Message, WebSocketConnection, WebSocketError};
 use crate::room::RoomManager;
+use rstest::rstest;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
 
 /// Test: Basic WebSocket message sending and receiving
+#[rstest]
 #[tokio::test]
 async fn test_basic_websocket_communication() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -31,6 +33,7 @@ async fn test_basic_websocket_communication() {
 }
 
 /// Test: WebSocket connection with dependency management (after yield pattern)
+#[rstest]
 #[tokio::test]
 async fn test_websocket_dependency_after_yield() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -64,6 +67,7 @@ async fn test_websocket_dependency_after_yield() {
 }
 
 /// Test: WebSocket dependency error handling (broken dependency)
+#[rstest]
 #[tokio::test]
 async fn test_websocket_dependency_after_yield_broken() {
 	let (tx, _rx) = mpsc::unbounded_channel();
@@ -79,6 +83,7 @@ async fn test_websocket_dependency_after_yield_broken() {
 }
 
 /// Test: WebSocket with cookie-based authentication simulation
+#[rstest]
 #[tokio::test]
 async fn test_websocket_with_cookie_auth() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -114,6 +119,7 @@ async fn test_websocket_with_cookie_auth() {
 }
 
 /// Test: WebSocket with query parameter token authentication
+#[rstest]
 #[tokio::test]
 async fn test_websocket_with_query_token() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -149,6 +155,7 @@ async fn test_websocket_with_query_token() {
 }
 
 /// Test: WebSocket with combined token and query parameters
+#[rstest]
 #[tokio::test]
 async fn test_websocket_with_token_and_query() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -176,6 +183,7 @@ async fn test_websocket_with_token_and_query() {
 }
 
 /// Test: WebSocket connection rejection (no credentials)
+#[rstest]
 #[tokio::test]
 async fn test_websocket_no_credentials() {
 	let (tx, _rx) = mpsc::unbounded_channel();
@@ -188,6 +196,7 @@ async fn test_websocket_no_credentials() {
 }
 
 /// Test: WebSocket connection rejection (invalid data)
+#[rstest]
 #[tokio::test]
 async fn test_websocket_invalid_data() {
 	let (tx, _rx) = mpsc::unbounded_channel();
@@ -203,6 +212,7 @@ async fn test_websocket_invalid_data() {
 }
 
 /// Test: Multiple WebSocket clients with room management
+#[rstest]
 #[tokio::test]
 async fn test_websocket_multiple_clients_with_room() {
 	let manager = RoomManager::new();
@@ -244,6 +254,7 @@ async fn test_websocket_multiple_clients_with_room() {
 }
 
 /// Test: WebSocket client disconnection handling
+#[rstest]
 #[tokio::test]
 async fn test_websocket_handle_disconnection() {
 	let manager = RoomManager::new();
@@ -283,6 +294,7 @@ async fn test_websocket_handle_disconnection() {
 }
 
 /// Test: WebSocket binary message support
+#[rstest]
 #[tokio::test]
 async fn test_websocket_binary_messages() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -299,6 +311,7 @@ async fn test_websocket_binary_messages() {
 }
 
 /// Test: WebSocket JSON message serialization
+#[rstest]
 #[tokio::test]
 async fn test_websocket_json_messages() {
 	#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
@@ -323,6 +336,7 @@ async fn test_websocket_json_messages() {
 }
 
 /// Test: WebSocket ping/pong mechanism
+#[rstest]
 #[tokio::test]
 async fn test_websocket_ping_pong() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -335,6 +349,7 @@ async fn test_websocket_ping_pong() {
 }
 
 /// Test: WebSocket close with custom code and reason
+#[rstest]
 #[tokio::test]
 async fn test_websocket_close_with_reason() {
 	let (tx, mut rx) = mpsc::unbounded_channel();
@@ -355,6 +370,7 @@ async fn test_websocket_close_with_reason() {
 }
 
 /// Test: Broadcast to all rooms
+#[rstest]
 #[tokio::test]
 async fn test_broadcast_to_all_rooms() {
 	let manager = RoomManager::new();
@@ -395,6 +411,7 @@ async fn test_broadcast_to_all_rooms() {
 }
 
 /// Test: Get all rooms
+#[rstest]
 #[tokio::test]
 async fn test_get_all_rooms() {
 	let manager = RoomManager::new();

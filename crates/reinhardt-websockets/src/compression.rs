@@ -276,9 +276,10 @@ pub fn decompress_message(
 #[cfg(all(test, feature = "compression"))]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::str::FromStr;
 
-	#[test]
+	#[rstest]
 	fn test_compression_codec_from_str() {
 		assert_eq!(
 			CompressionCodec::from_str("gzip").unwrap(),
@@ -299,14 +300,14 @@ mod tests {
 		assert!(CompressionCodec::from_str("unknown").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compression_codec_as_str() {
 		assert_eq!(CompressionCodec::Gzip.as_str(), "gzip");
 		assert_eq!(CompressionCodec::Deflate.as_str(), "deflate");
 		assert_eq!(CompressionCodec::Brotli.as_str(), "br");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compression_text_message() {
 		let text = "Hello, World!".to_string();
 		let message = Message::text(text.clone());
@@ -322,7 +323,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deflate_compression_text_message() {
 		let text = "Hello, World!".to_string();
 		let message = Message::text(text.clone());
@@ -337,7 +338,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_compression_text_message() {
 		let text = "Hello, World!".to_string();
 		let message = Message::text(text.clone());
@@ -352,7 +353,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compression_binary_message() {
 		let data = vec![1, 2, 3, 4, 5];
 		let message = Message::binary(data.clone());
@@ -369,7 +370,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compression_reduces_size() {
 		// Long repeated text has high compression efficiency
 		let long_text = "Hello, World! ".repeat(100);
@@ -385,14 +386,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compress_non_data_message_fails() {
 		let message = Message::Ping;
 		let result = compress_message(&message, CompressionCodec::Gzip);
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_text_message_fails() {
 		let message = Message::text("Not compressed".to_string());
 		let result = decompress_message(&message, CompressionCodec::Gzip);

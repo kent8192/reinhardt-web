@@ -330,9 +330,10 @@ impl AuthenticatedConnection {
 mod tests {
 	use super::*;
 	use crate::connection::Message;
+	use rstest::rstest;
 	use tokio::sync::mpsc;
 
-	#[test]
+	#[rstest]
 	fn test_simple_auth_user() {
 		let user = SimpleAuthUser::new(
 			"user_123".to_string(),
@@ -348,6 +349,7 @@ mod tests {
 		assert!(!user.has_permission("admin"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_authenticator_valid() {
 		let user = SimpleAuthUser::new(
@@ -365,6 +367,7 @@ mod tests {
 		assert_eq!(auth_user.username(), "alice");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_authenticator_invalid() {
 		let authenticator = TokenAuthenticator::new(vec![]);
@@ -377,6 +380,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), AuthError::InvalidCredentials));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_based_policy_authorized() {
 		let policy = PermissionBasedPolicy::new(vec![(
@@ -394,6 +398,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_permission_based_policy_denied() {
 		let policy = PermissionBasedPolicy::new(vec![(
@@ -415,6 +420,7 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authenticated_connection_send_with_auth() {
 		let policy = PermissionBasedPolicy::new(vec![(
@@ -438,6 +444,7 @@ mod tests {
 		assert!(matches!(rx.try_recv(), Ok(Message::Text { .. })));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authenticated_connection_send_with_auth_denied() {
 		let policy = PermissionBasedPolicy::new(vec![(

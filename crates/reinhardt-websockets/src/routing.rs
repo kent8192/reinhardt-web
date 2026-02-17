@@ -263,15 +263,16 @@ pub async fn reverse_websocket_url(router: &WebSocketRouter, name: &str) -> Opti
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_websocket_route_creation() {
 		let route = WebSocketRoute::new("/ws/test".to_string(), Some("test".to_string()));
 		assert_eq!(route.path(), "/ws/test");
 		assert_eq!(route.name(), Some("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_route_metadata() {
 		let route = WebSocketRoute::new("/ws/test".to_string(), None)
 			.with_metadata("auth".to_string(), "required".to_string());
@@ -279,6 +280,7 @@ mod tests {
 		assert_eq!(route.get_metadata("auth").unwrap(), "required");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_register_route() {
 		let mut router = WebSocketRouter::new();
@@ -288,6 +290,7 @@ mod tests {
 		assert_eq!(router.route_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_register_duplicate_route() {
 		let mut router = WebSocketRouter::new();
@@ -301,6 +304,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), RouteError::AlreadyExists(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_find_route() {
 		let mut router = WebSocketRouter::new();
@@ -313,6 +317,7 @@ mod tests {
 		assert_eq!(found.unwrap().name(), Some("chat"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_find_route_by_name() {
 		let mut router = WebSocketRouter::new();
@@ -325,6 +330,7 @@ mod tests {
 		assert_eq!(found.unwrap().path(), "/ws/chat");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_remove_route() {
 		let mut router = WebSocketRouter::new();
@@ -337,6 +343,7 @@ mod tests {
 		assert_eq!(router.route_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_all_routes() {
 		let mut router = WebSocketRouter::new();
@@ -350,6 +357,7 @@ mod tests {
 		assert_eq!(routes.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_has_route() {
 		let mut router = WebSocketRouter::new();
@@ -361,6 +369,7 @@ mod tests {
 		assert!(!router.has_route("/ws/notif").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_clear() {
 		let mut router = WebSocketRouter::new();
@@ -373,6 +382,7 @@ mod tests {
 		assert_eq!(router.route_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_reverse_websocket_url() {
 		let mut router = WebSocketRouter::new();
@@ -384,6 +394,7 @@ mod tests {
 		assert_eq!(url, Some("/ws/chat".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_global_router_registration() {
 		let router = WebSocketRouter::new();

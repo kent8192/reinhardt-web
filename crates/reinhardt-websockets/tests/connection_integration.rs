@@ -4,6 +4,7 @@
 //! disconnection/reconnection scenarios, and multiple concurrent clients.
 
 use futures::{SinkExt, StreamExt};
+use rstest::rstest;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
@@ -41,6 +42,7 @@ async fn spawn_echo_server() -> (tokio::task::JoinHandle<()>, String) {
 }
 
 /// Test: E2E WebSocket connection establishment (HTTP handshake → WebSocket)
+#[rstest]
 #[tokio::test]
 async fn test_connection_establishment() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -63,6 +65,7 @@ async fn test_connection_establishment() {
 }
 
 /// Test: Ping/Pong heartbeat mechanism
+#[rstest]
 #[tokio::test]
 async fn test_ping_pong_heartbeat() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -80,6 +83,7 @@ async fn test_ping_pong_heartbeat() {
 }
 
 /// Test: Connection close and cleanup
+#[rstest]
 #[tokio::test]
 async fn test_connection_close() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -103,6 +107,7 @@ async fn test_connection_close() {
 }
 
 /// Test: Multiple concurrent client connections
+#[rstest]
 #[tokio::test]
 async fn test_multiple_concurrent_clients() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -136,6 +141,7 @@ async fn test_multiple_concurrent_clients() {
 }
 
 /// Test: Binary message transmission
+#[rstest]
 #[tokio::test]
 async fn test_binary_message_transmission() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -155,6 +161,7 @@ async fn test_binary_message_transmission() {
 }
 
 /// Test: Large message transmission (stress test)
+#[rstest]
 #[tokio::test]
 async fn test_large_message_transmission() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -178,6 +185,7 @@ async fn test_large_message_transmission() {
 }
 
 /// Test: Reconnection after connection drop
+#[rstest]
 #[tokio::test]
 async fn test_reconnection_after_drop() {
 	let (_handle, url) = spawn_echo_server().await;
@@ -209,6 +217,7 @@ async fn test_reconnection_after_drop() {
 }
 
 /// Test: WebSocket connection using Reinhardt's WebSocketConnection type
+#[rstest]
 #[tokio::test]
 async fn test_reinhardt_websocket_connection() {
 	use reinhardt_websockets::{Message as ReinhardtMessage, WebSocketConnection};
@@ -245,6 +254,7 @@ async fn test_reinhardt_websocket_connection() {
 }
 
 /// Test: WebSocket connection with JSON messages
+#[rstest]
 #[tokio::test]
 async fn test_json_message_serialization() {
 	use reinhardt_websockets::WebSocketConnection;
