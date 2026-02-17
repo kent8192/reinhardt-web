@@ -119,7 +119,6 @@ pub struct Settings {
 	/// Root URL configuration module
 	pub root_urlconf: String,
 
-
 	/// Database configurations
 	pub databases: HashMap<String, DatabaseConfig>,
 
