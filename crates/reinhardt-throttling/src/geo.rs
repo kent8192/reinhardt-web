@@ -224,7 +224,9 @@ impl<B: ThrottleBackend> Throttle for GeoRateThrottle<B> {
 mod tests {
 	use super::*;
 	use crate::backend::MemoryBackend;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_geo_rate_throttle_without_geoip() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -240,6 +242,7 @@ mod tests {
 		assert!(!throttle.allow_request("test_key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_geo_rate_config_add_country() {
 		let mut config = GeoRateConfig::new(HashMap::new(), (50, 60));
@@ -251,6 +254,7 @@ mod tests {
 		assert_eq!(config.get_rate("UK"), (50, 60)); // Default
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_geo_rate_throttle_extract_ip() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -265,6 +269,7 @@ mod tests {
 		assert!(no_ip.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_geo_rate_config_get_rate() {
 		let mut country_rates = HashMap::new();
@@ -278,6 +283,7 @@ mod tests {
 		assert_eq!(config.get_rate("UK"), (50, 60));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_geo_rate_throttle_get_rate() {
 		let backend = Arc::new(MemoryBackend::new());

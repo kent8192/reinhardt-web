@@ -122,7 +122,9 @@ impl<B: ThrottleBackend> Throttle for ScopedRateThrottle<B> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_scoped_throttle() {
 		let throttle = ScopedRateThrottle::new()
@@ -135,6 +137,7 @@ mod tests {
 		assert!(throttle.allow_request("api:user1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_scoped_rate_throttle() {
 		let throttle = ScopedRateThrottle::new()
@@ -158,6 +161,7 @@ mod tests {
 		assert!(throttle.allow_request("y:req2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_scoped_rate_throttle_with_time() {
 		use crate::backend::MemoryBackend;
@@ -189,6 +193,7 @@ mod tests {
 		assert!(!throttle.allow_request("api:user1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unscoped_view_not_throttled() {
 		let throttle = ScopedRateThrottle::new().add_scope("x", 3, 60);
@@ -204,6 +209,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_cache_key_returns_correct_key() {
 		let throttle = ScopedRateThrottle::new().add_scope("user", 10, 60);

@@ -320,8 +320,9 @@ mod tests {
 	use super::*;
 	use crate::backend::MemoryBackend;
 	use crate::time_provider::MockTimeProvider;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_load_metrics_calculate_stress() {
 		let metrics = LoadMetrics::new(0.1, 500.0, 0.5);
 		let stress = metrics.calculate_stress();
@@ -330,7 +331,7 @@ mod tests {
 		assert!(stress > 0.0 && stress < 1.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_load_metrics_high_stress() {
 		let metrics = LoadMetrics::new(0.9, 1500.0, 0.9);
 		let stress = metrics.calculate_stress();
@@ -339,6 +340,7 @@ mod tests {
 		assert!(stress > 0.7);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_adaptive_throttle_basic() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -356,6 +358,7 @@ mod tests {
 		assert!(!throttle.allow_request("test_key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_adaptive_throttle_metrics_update() {
 		use tokio::time::Instant;
@@ -382,6 +385,7 @@ mod tests {
 		assert!(new_rate.0 < 50);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_adaptive_throttle_rate_increase() {
 		use tokio::time::Instant;
@@ -405,6 +409,7 @@ mod tests {
 		assert!(new_rate.0 > 50);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_adaptive_throttle_rate_bounds() {
 		use tokio::time::Instant;
@@ -425,6 +430,7 @@ mod tests {
 		assert!(rate.0 >= 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_adaptive_throttle_average_stress() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -446,7 +452,7 @@ mod tests {
 		assert!(avg > 0.0 && avg < 1.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_adaptive_config_default() {
 		let config = AdaptiveConfig::default();
 		assert_eq!(config.min_rate, (10, 60));

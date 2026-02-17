@@ -95,7 +95,9 @@ impl<B: ThrottleBackend> Throttle for AnonRateThrottle<B> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_anon_throttle() {
 		let throttle = AnonRateThrottle::new(5, 60);
@@ -105,6 +107,7 @@ mod tests {
 		assert!(!throttle.allow_request("192.168.1.1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_authenticated_user_not_affected() {
 		// In the context of anon throttle, we test that different IPs are tracked separately
@@ -120,6 +123,7 @@ mod tests {
 		assert!(throttle.allow_request("192.168.1.2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_cache_key_returns_correct_value() {
 		let throttle = AnonRateThrottle::new(10, 60);
@@ -138,12 +142,14 @@ mod tests {
 		assert!(throttle.allow_request(ip2).await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_accepts_request_under_limit() {
 		let throttle = AnonRateThrottle::new(1, 86400); // 1 per day
 		assert!(throttle.allow_request("3.3.3.3").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_denies_request_over_limit() {
 		let throttle = AnonRateThrottle::new(1, 86400); // 1 per day

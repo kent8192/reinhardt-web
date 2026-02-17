@@ -239,7 +239,9 @@ mod tests {
 	use super::*;
 	use crate::backend::MemoryBackend;
 	use crate::time_provider::MockTimeProvider;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_basic() {
 		use tokio::time::Instant;
@@ -262,6 +264,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_leak() {
 		use tokio::time::Instant;
@@ -290,6 +293,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_smoothing() {
 		use tokio::time::Instant;
@@ -320,6 +324,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_level() {
 		use tokio::time::Instant;
@@ -347,6 +352,7 @@ mod tests {
 		assert_eq!(throttle.level().await, 3.0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_reset() {
 		use tokio::time::Instant;
@@ -371,6 +377,7 @@ mod tests {
 		assert_eq!(throttle.level().await, 0.0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_leaky_bucket_wait_time() {
 		use tokio::time::Instant;
@@ -395,14 +402,14 @@ mod tests {
 		assert!(wait.unwrap() > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_leaky_bucket_config_per_second() {
 		let config = LeakyBucketConfig::per_second(10.0, 20);
 		assert_eq!(config.leak_rate, 10.0);
 		assert_eq!(config.capacity, 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_leaky_bucket_config_per_minute() {
 		let config = LeakyBucketConfig::per_minute(60.0, 100);
 		assert_eq!(config.leak_rate, 1.0);

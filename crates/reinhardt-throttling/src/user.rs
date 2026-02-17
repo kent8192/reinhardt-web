@@ -95,7 +95,9 @@ impl<B: ThrottleBackend> Throttle for UserRateThrottle<B> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_user_throttle() {
 		let throttle = UserRateThrottle::new(10, 60);
@@ -105,6 +107,7 @@ mod tests {
 		assert!(!throttle.allow_request("user123").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_requests_are_throttled() {
 		// Ensure request rate is limited
@@ -116,6 +119,7 @@ mod tests {
 		assert!(!throttle.allow_request("user1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_throttling_expires() {
 		use crate::backend::MemoryBackend;
@@ -145,6 +149,7 @@ mod tests {
 		assert!(!throttle.allow_request("user1").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_throttling_is_per_user() {
 		// Ensure request rate is only limited per user
@@ -158,6 +163,7 @@ mod tests {
 		assert!(throttle.allow_request("user_b").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_wait_returns_correct_waiting_time() {
 		let throttle = UserRateThrottle::new(1, 60);
@@ -169,6 +175,7 @@ mod tests {
 		assert_eq!(wait_time, Some(60));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_wait_returns_none_when_under_limit() {
 		let throttle = UserRateThrottle::new(10, 60);
@@ -177,6 +184,7 @@ mod tests {
 		assert_eq!(wait_time, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_rate() {
 		let throttle = UserRateThrottle::new(100, 3600);

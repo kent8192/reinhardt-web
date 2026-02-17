@@ -229,9 +229,10 @@ mod tests {
 	use super::*;
 	use crate::backend::MemoryBackend;
 	use crate::time_provider::MockTimeProvider;
+	use rstest::rstest;
 	use tokio::time::Instant;
 
-	#[test]
+	#[rstest]
 	fn test_time_range_normal() {
 		let range = TimeRange::new(9, 17); // 9 AM to 5 PM
 
@@ -242,7 +243,7 @@ mod tests {
 		assert!(!range.contains(18));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_range_wrapping() {
 		let range = TimeRange::new(22, 2); // 10 PM to 2 AM
 
@@ -255,7 +256,7 @@ mod tests {
 		assert!(!range.contains(21));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_of_day_config_get_rate() {
 		let config = TimeOfDayConfig::new(TimeRange::new(9, 17), (50, 60), (100, 60));
 
@@ -270,6 +271,7 @@ mod tests {
 		assert_eq!(config.get_rate(0), (100, 60));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_time_of_day_throttle_basic() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -289,6 +291,7 @@ mod tests {
 		assert!(!throttle.allow_request("test_key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_time_of_day_throttle_with_mock_time() {
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
@@ -306,6 +309,7 @@ mod tests {
 		assert!(!throttle.allow_request("test_key").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_time_of_day_throttle_get_rate() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -316,13 +320,13 @@ mod tests {
 		assert_eq!(throttle.get_rate(), (50, 60));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "start_hour must be 0-23")]
 	fn test_time_range_invalid_start() {
 		TimeRange::new(24, 10);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "end_hour must be 0-23")]
 	fn test_time_range_invalid_end() {
 		TimeRange::new(10, 24);

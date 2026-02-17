@@ -359,7 +359,9 @@ mod tests {
 	use super::*;
 	use crate::backend::MemoryBackend;
 	use crate::time_provider::MockTimeProvider;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_basic() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -375,6 +377,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_refill() {
 		use tokio::time::Instant;
@@ -404,6 +407,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_burst() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -419,6 +423,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_tokens_per_request() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -434,6 +439,7 @@ mod tests {
 		assert!(!throttle.allow_request("user").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_get_tokens() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -450,6 +456,7 @@ mod tests {
 		assert_eq!(throttle.tokens().await, 7);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_reset() {
 		let backend = Arc::new(MemoryBackend::new());
@@ -467,6 +474,7 @@ mod tests {
 		assert_eq!(throttle.tokens().await, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_wait_time() {
 		use tokio::time::Instant;
@@ -491,7 +499,7 @@ mod tests {
 		assert!(wait.unwrap() > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_builder() {
 		let config = TokenBucketConfig::builder()
 			.capacity(100)
@@ -506,7 +514,7 @@ mod tests {
 		assert_eq!(config.tokens_per_request, 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_second() {
 		let config = TokenBucketConfig::per_second(10, 20);
 		assert_eq!(config.refill_rate, 10);
@@ -514,7 +522,7 @@ mod tests {
 		assert_eq!(config.refill_interval, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_minute() {
 		let config = TokenBucketConfig::per_minute(100, 150);
 		assert_eq!(config.refill_rate, 100);
@@ -522,7 +530,7 @@ mod tests {
 		assert_eq!(config.refill_interval, 60);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_token_bucket_config_per_hour() {
 		let config = TokenBucketConfig::per_hour(1000, 1500);
 		assert_eq!(config.refill_rate, 1000);

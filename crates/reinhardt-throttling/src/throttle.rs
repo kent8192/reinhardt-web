@@ -25,6 +25,7 @@ pub trait Throttle: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct MockThrottle;
 
@@ -43,6 +44,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_allow_request_raises_not_implemented_error() {
 		// Test that base throttle behavior can return error
