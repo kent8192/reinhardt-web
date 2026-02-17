@@ -340,8 +340,9 @@ impl Processor for AdvancedJsMinifier {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_creation() {
 		let config = AdvancedMinifyConfig::new();
 		assert!(config.mangle);
@@ -349,7 +350,7 @@ mod tests {
 		assert!(!config.drop_console);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = AdvancedMinifyConfig::new()
 			.with_mangle(true)
@@ -361,7 +362,7 @@ mod tests {
 		assert!(config.drop_console);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_production_config() {
 		let config = AdvancedMinifyConfig::production();
 		assert!(config.mangle);
@@ -370,7 +371,7 @@ mod tests {
 		assert!(config.drop_debugger);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_development_config() {
 		let config = AdvancedMinifyConfig::development();
 		assert!(!config.mangle);
@@ -379,53 +380,53 @@ mod tests {
 		assert!(config.keep_fnames);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_minifier_creation() {
 		let minifier = AdvancedJsMinifier::new();
 		assert!(minifier.config.mangle);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_minifier_with_config() {
 		let config = AdvancedMinifyConfig::production();
 		let minifier = AdvancedJsMinifier::with_config(config);
 		assert!(minifier.config.drop_console);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_minifier_production() {
 		let minifier = AdvancedJsMinifier::production();
 		assert!(minifier.config.mangle);
 		assert!(minifier.config.compress);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_minifier_development() {
 		let minifier = AdvancedJsMinifier::development();
 		assert!(!minifier.config.mangle);
 		assert!(!minifier.config.compress);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_js() {
 		let minifier = AdvancedJsMinifier::new();
 		assert!(minifier.can_process(&std::path::PathBuf::from("app.js")));
 		assert!(minifier.can_process(&std::path::PathBuf::from("app.JS")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_mjs() {
 		let minifier = AdvancedJsMinifier::new();
 		assert!(minifier.can_process(&std::path::PathBuf::from("module.mjs")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_cjs() {
 		let minifier = AdvancedJsMinifier::new();
 		assert!(minifier.can_process(&std::path::PathBuf::from("common.cjs")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_process_other() {
 		let minifier = AdvancedJsMinifier::new();
 		assert!(!minifier.can_process(&std::path::PathBuf::from("style.css")));
@@ -434,6 +435,7 @@ mod tests {
 
 	// Advanced minification tests (feature-gated)
 	#[cfg(feature = "advanced-minification")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_minify_simple_code() {
 		let minifier = AdvancedJsMinifier::new();
@@ -453,6 +455,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "advanced-minification")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_minify_with_console() {
 		let minifier =
@@ -469,6 +472,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "advanced-minification")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_minify_with_debugger() {
 		let minifier =
@@ -485,6 +489,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "advanced-minification")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_minify_production() {
 		let minifier = AdvancedJsMinifier::production();
@@ -504,6 +509,7 @@ mod tests {
 	}
 
 	#[cfg(not(feature = "advanced-minification"))]
+	#[rstest]
 	#[tokio::test]
 	async fn test_minify_without_feature() {
 		let minifier = AdvancedJsMinifier::new();

@@ -318,8 +318,9 @@ impl CdnPurgeHelper {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cdn_config_creation() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -332,7 +333,7 @@ mod tests {
 		assert!(config.use_https);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cdn_url_generation() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -344,7 +345,7 @@ mod tests {
 		assert_eq!(url, "https://d1234567890.cloudfront.net/css/style.css");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cdn_url_generation_with_prefix() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -361,7 +362,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cdn_url_generation_without_https() {
 		let config =
 			CdnConfig::new(CdnProvider::Fastly, "example.fastly.net".to_string()).without_https();
@@ -372,7 +373,7 @@ mod tests {
 		assert_eq!(url, "http://example.fastly.net/image.png");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_versioned_url_generation() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -387,7 +388,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_urls_generation() {
 		let config = CdnConfig::new(CdnProvider::Cloudflare, "cdn.example.com".to_string());
 		let generator = CdnUrlGenerator::new(config);
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(urls[2], "https://cdn.example.com/img/logo.png");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_disabled_cdn_returns_original_path() {
 		let config = CdnConfig::disabled();
 		let generator = CdnUrlGenerator::new(config);
@@ -410,7 +411,7 @@ mod tests {
 		assert_eq!(url, "/css/style.css");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalidation_request_creation() {
 		let request = CdnInvalidationRequest::new(vec![
 			"/css/style.css".to_string(),
@@ -421,7 +422,7 @@ mod tests {
 		assert!(request.caller_reference.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalidation_request_with_caller_reference() {
 		let request = CdnInvalidationRequest::new(vec!["/css/style.css".to_string()])
 			.with_caller_reference("unique-id-123".to_string());
@@ -429,7 +430,7 @@ mod tests {
 		assert_eq!(request.caller_reference, Some("unique-id-123".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_paths_to_invalidation_request() {
 		let mut request = CdnInvalidationRequest::new(vec!["/css/style.css".to_string()]);
 		request.add_path("/js/app.js".to_string());
@@ -441,7 +442,7 @@ mod tests {
 		assert_eq!(request.paths.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_purge_helper_creates_request() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -457,7 +458,7 @@ mod tests {
 		assert_eq!(request.paths.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wildcard_invalidation() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,
@@ -469,7 +470,7 @@ mod tests {
 		assert_eq!(request.paths, vec!["/css/*"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_purge_endpoints() {
 		// Test CloudFront endpoint
 		let config = CdnConfig::new(CdnProvider::CloudFront, "example.com".to_string());
@@ -502,7 +503,7 @@ mod tests {
 		assert!(endpoint.contains("custom://mycdn/purge"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_provider() {
 		let config = CdnConfig::new(
 			CdnProvider::Custom("my-cdn".to_string()),
@@ -512,7 +513,7 @@ mod tests {
 		assert_eq!(config.provider, CdnProvider::Custom("my-cdn".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_headers() {
 		let config = CdnConfig::new(
 			CdnProvider::CloudFront,

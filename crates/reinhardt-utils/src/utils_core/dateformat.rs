@@ -300,8 +300,9 @@ pub mod shortcuts {
 mod tests {
 	use super::*;
 	use chrono::TimeZone;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_year_formats() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 
@@ -309,7 +310,7 @@ mod tests {
 		assert_eq!(format(&dt, "y"), "25");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_month_formats() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 
@@ -319,7 +320,7 @@ mod tests {
 		assert_eq!(format(&dt, "M"), "Jan");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_day_formats() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 5, 14, 30, 45).unwrap();
 
@@ -327,7 +328,7 @@ mod tests {
 		assert_eq!(format(&dt, "j"), "5");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_time_formats() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 5, 9).unwrap();
 
@@ -335,7 +336,7 @@ mod tests {
 		assert_eq!(format(&dt, "g:i:s A"), "2:05:09 PM");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shortcuts() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 
@@ -345,7 +346,7 @@ mod tests {
 		assert_eq!(shortcuts::eu_date(&dt), "15/01/2025");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_character() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 
@@ -353,7 +354,7 @@ mod tests {
 		assert_eq!(format(&dt, "\\d\\a\\y"), "day");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_12_hour_formats() {
 		let dt_afternoon = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 		let dt_midnight = Utc.with_ymd_and_hms(2025, 1, 15, 0, 30, 45).unwrap();
@@ -375,7 +376,7 @@ mod tests {
 		assert_eq!(format(&dt_noon, "G"), "12");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_weekday_formats() {
 		let monday = Utc.with_ymd_and_hms(2025, 1, 13, 14, 30, 45).unwrap(); // Monday
 		let friday = Utc.with_ymd_and_hms(2025, 1, 17, 14, 30, 45).unwrap(); // Friday
@@ -392,7 +393,7 @@ mod tests {
 		assert_eq!(format(&sunday, "D"), "Sun");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_month_names() {
 		for month in 1..=12 {
 			let dt = Utc.with_ymd_and_hms(2025, month, 15, 14, 30, 45).unwrap();
@@ -407,7 +408,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_weekday_names() {
 		// Test a full week (Jan 13-19, 2025 is Mon-Sun)
 		for day in 13..=19 {
@@ -421,7 +422,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_am_pm_formats() {
 		let morning = Utc.with_ymd_and_hms(2025, 1, 15, 9, 30, 45).unwrap();
 		let evening = Utc.with_ymd_and_hms(2025, 1, 15, 21, 30, 45).unwrap();
@@ -435,7 +436,7 @@ mod tests {
 		assert_eq!(format(&evening, "a"), "pm");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shortcuts_full_date() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 		let full = shortcuts::full_date(&dt);
@@ -445,7 +446,7 @@ mod tests {
 		assert!(full.contains("2025"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shortcuts_short_date() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 		let short = shortcuts::short_date(&dt);
@@ -454,7 +455,7 @@ mod tests {
 		assert!(short.contains("2025"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_shortcuts_time_formats() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 
@@ -462,7 +463,7 @@ mod tests {
 		assert_eq!(shortcuts::time_12(&dt), "2:30:45 PM");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_combined_format() {
 		let dt = Utc.with_ymd_and_hms(2025, 1, 15, 14, 30, 45).unwrap();
 		let result = format(&dt, "l, F j, Y - g:i A");
@@ -480,9 +481,10 @@ mod proptests {
 	use super::*;
 	use chrono::TimeZone;
 	use proptest::prelude::*;
+	use rstest::rstest;
 
 	proptest! {
-		#[test]
+	#[rstest]
 		fn prop_year_format_4_digits(year in 1000i32..9999i32, month in 1u32..=12, day in 1u32..=28) {
 			let dt = Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap();
 			let result = format(&dt, "Y");
@@ -491,7 +493,7 @@ mod proptests {
 			assert_eq!(result.parse::<i32>().unwrap(), year);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_month_format_range(year in 2000i32..2100, month in 1u32..=12, day in 1u32..=28) {
 			let dt = Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap();
 		let result = format(&dt, "m");
@@ -501,7 +503,7 @@ mod proptests {
 		assert_eq!(month_val, month);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_day_format_range(year in 2000i32..2100, month in 1u32..=12, day in 1u32..=28) {
 			let dt = Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap();
 		let result = format(&dt, "d");
@@ -511,7 +513,7 @@ mod proptests {
 		assert_eq!(day_val, day);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_hour_format_range(year in 2000i32..2100, hour in 0u32..=23) {
 			let dt = Utc.with_ymd_and_hms(year, 1, 1, hour, 0, 0).unwrap();
 			let result = format(&dt, "H");
@@ -521,7 +523,7 @@ mod proptests {
 			assert_eq!(hour_val, hour);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_minute_format_range(year in 2000i32..2100, minute in 0u32..=59) {
 			let dt = Utc.with_ymd_and_hms(year, 1, 1, 12, minute, 0).unwrap();
 			let result = format(&dt, "i");
@@ -531,7 +533,7 @@ mod proptests {
 			assert_eq!(minute_val, minute);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_second_format_range(year in 2000i32..2100, second in 0u32..=59) {
 			let dt = Utc.with_ymd_and_hms(year, 1, 1, 12, 0, second).unwrap();
 			let result = format(&dt, "s");
@@ -541,7 +543,7 @@ mod proptests {
 			assert_eq!(second_val, second);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_escape_character(year in 2000i32..2100, c in "\\PC") {
 			let dt = Utc.with_ymd_and_hms(year, 1, 1, 12, 0, 0).unwrap();
 			let format_str = format!("\\{}", c);
@@ -549,7 +551,7 @@ mod proptests {
 			assert_eq!(result, c.to_string());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_shortcuts_valid_lengths(year in 2000i32..2100, month in 1u32..=12, day in 1u32..=28, hour in 0u32..=23, minute in 0u32..=59, second in 0u32..=59) {
 			let dt = Utc.with_ymd_and_hms(year, month, day, hour, minute, second).unwrap();
 

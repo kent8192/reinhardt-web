@@ -239,6 +239,7 @@ impl Storage for LocalStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tempfile::TempDir;
 
 	async fn create_test_storage() -> (LocalStorage, TempDir) {
@@ -248,12 +249,14 @@ mod tests {
 		(storage, temp_dir)
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_local_storage_path() {
 		let storage = LocalStorage::new("/tmp/storage", "http://localhost/media");
 		assert_eq!(storage.url("test.txt"), "http://localhost/media/test.txt");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_access_options() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -277,6 +280,7 @@ mod tests {
 		assert!(!storage.exists("storage_test").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_save_with_path() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -297,6 +301,7 @@ mod tests {
 		storage.delete("path/to/test.file").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_size() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -308,6 +313,7 @@ mod tests {
 		storage.delete("file.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -318,6 +324,7 @@ mod tests {
 		storage.delete("dir/subdir/file.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -338,6 +345,7 @@ mod tests {
 		assert!(!storage.exists("dir/subdir/file.txt").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_delete_missing_file() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -348,6 +356,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_url() {
 		let storage = LocalStorage::new("/tmp/storage", "http://localhost/media");
@@ -362,6 +371,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_base_url() {
 		// Test with no trailing slash in base_url
@@ -372,6 +382,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_listdir() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -407,6 +418,7 @@ mod tests {
 		storage.delete("dir/file_c.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_open_missing_file() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -416,6 +428,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_large_file_saving() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -433,6 +446,7 @@ mod tests {
 		storage.delete("large_file.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_checksum() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -448,6 +462,7 @@ mod tests {
 		storage.delete("file2.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_get_accessed_time() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -468,6 +483,7 @@ mod tests {
 		storage.delete("test.file").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_get_created_time() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -488,6 +504,7 @@ mod tests {
 		storage.delete("test.file").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_get_modified_time() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -508,6 +525,7 @@ mod tests {
 		storage.delete("test.file").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_modified_time_changes() {
 		use tokio::time::{Duration, sleep};
@@ -532,6 +550,7 @@ mod tests {
 		storage.delete("file.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_storage_prevents_directory_traversal() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -547,6 +566,7 @@ mod tests {
 		assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_storage_dangerous_paths() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -568,6 +588,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_path_with_dots_in_filename() {
 		let (storage, _temp_dir) = create_test_storage().await;
@@ -579,6 +600,7 @@ mod tests {
 		storage.delete("my.dir/test.file.txt").await.unwrap();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_url_encoding() {
 		let storage = LocalStorage::new("/tmp/storage", "http://localhost/media");

@@ -293,15 +293,16 @@ impl CompressionConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compressor_creation() {
 		let compressor = GzipCompressor::new();
 		assert_eq!(compressor.level, 6);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_compressor_with_level() {
 		let compressor = GzipCompressor::with_level(9);
 		assert_eq!(compressor.level, 9);
@@ -310,7 +311,7 @@ mod tests {
 		assert_eq!(compressor2.level, 9); // Clamped to max
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gzip_can_process() {
 		let compressor = GzipCompressor::new();
 		assert!(compressor.can_process(&PathBuf::from("file.txt")));
@@ -318,6 +319,7 @@ mod tests {
 		assert!(!compressor.can_process(&PathBuf::from("noext")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_gzip_compress() {
 		let compressor = GzipCompressor::new();
@@ -331,34 +333,35 @@ mod tests {
 		assert!(!result.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_compressor_creation() {
 		let compressor = BrotliCompressor::new();
 		assert_eq!(compressor.quality, 11);
 		assert_eq!(compressor.window_size, 22);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_compressor_with_settings() {
 		let compressor = BrotliCompressor::with_settings(9, 20);
 		assert_eq!(compressor.quality, 9);
 		assert_eq!(compressor.window_size, 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_quality_clamping() {
 		let compressor = BrotliCompressor::with_settings(20, 30);
 		assert_eq!(compressor.quality, 11);
 		assert_eq!(compressor.window_size, 24);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_brotli_can_process() {
 		let compressor = BrotliCompressor::new();
 		assert!(compressor.can_process(&PathBuf::from("file.txt")));
 		assert!(compressor.can_process(&PathBuf::from("style.css")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_brotli_compress() {
 		let compressor = BrotliCompressor::new();
@@ -371,7 +374,7 @@ mod tests {
 		assert!(!result.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compression_config_default() {
 		let config = CompressionConfig::default();
 		assert!(config.gzip);
@@ -381,7 +384,7 @@ mod tests {
 		assert_eq!(config.min_size, 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compression_config_builder() {
 		let config = CompressionConfig::new()
 			.with_gzip(true)
@@ -397,7 +400,7 @@ mod tests {
 		assert!(config.extensions.contains(&"txt".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_should_compress() {
 		let config = CompressionConfig::new();
 
@@ -414,7 +417,7 @@ mod tests {
 		assert!(config.should_compress(&PathBuf::from("style.css"), 2000));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_clamping() {
 		let config = CompressionConfig::new()
 			.with_gzip_level(20)

@@ -156,15 +156,16 @@ impl Default for DependencyGraph {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_graph() {
 		let graph = DependencyGraph::new();
 		assert!(graph.is_empty());
 		assert_eq!(graph.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_file() {
 		let mut graph = DependencyGraph::new();
 		graph.add_file("test.js".to_string());
@@ -172,14 +173,14 @@ mod tests {
 		assert!(!graph.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_dependency() {
 		let mut graph = DependencyGraph::new();
 		graph.add_dependency("main.js".to_string(), "utils.js".to_string());
 		assert_eq!(graph.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_order_no_dependencies() {
 		let mut graph = DependencyGraph::new();
 		graph.add_file("a.js".to_string());
@@ -190,7 +191,7 @@ mod tests {
 		assert_eq!(order.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_order_with_dependencies() {
 		let mut graph = DependencyGraph::new();
 		graph.add_dependency("main.js".to_string(), "utils.js".to_string());
@@ -206,7 +207,7 @@ mod tests {
 		assert!(config_idx < main_idx);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_order_chain() {
 		let mut graph = DependencyGraph::new();
 		graph.add_dependency("a.js".to_string(), "b.js".to_string());
@@ -222,7 +223,7 @@ mod tests {
 		assert!(b_idx < a_idx);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_order_multiple_roots() {
 		let mut graph = DependencyGraph::new();
 		graph.add_file("root1.js".to_string());
@@ -240,7 +241,7 @@ mod tests {
 		assert!(shared_idx < root2_idx);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let graph = DependencyGraph::default();
 		assert!(graph.is_empty());

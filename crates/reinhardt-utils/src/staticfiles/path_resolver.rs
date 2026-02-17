@@ -92,15 +92,16 @@ impl PathResolver {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_absolute_path_unchanged() {
 		let absolute = "/tmp/static";
 		let resolved = PathResolver::resolve_static_dir(absolute);
 		assert_eq!(resolved, PathBuf::from(absolute));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relative_path_resolution() {
 		// Results may vary depending on test environment, but verify it doesn't panic
 		let resolved = PathResolver::resolve_static_dir("dist");

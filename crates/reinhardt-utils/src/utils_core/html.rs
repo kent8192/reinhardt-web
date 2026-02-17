@@ -335,8 +335,9 @@ pub fn truncate_html_words(html: &str, num_words: usize) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape() {
 		assert_eq!(escape("Hello, World!"), "Hello, World!");
 		assert_eq!(
@@ -347,7 +348,7 @@ mod tests {
 		assert_eq!(escape("\"quoted\""), "&quot;quoted&quot;");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unescape() {
 		assert_eq!(unescape("&lt;div&gt;"), "<div>");
 		assert_eq!(unescape("&amp;"), "&");
@@ -356,7 +357,7 @@ mod tests {
 		assert_eq!(unescape("&#39;"), "'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strip_tags() {
 		assert_eq!(strip_tags("<p>Hello <b>World</b></p>"), "Hello World");
 		assert_eq!(strip_tags("<div><span>Test</span></div>"), "Test");
@@ -364,7 +365,7 @@ mod tests {
 		assert_eq!(strip_tags("<a href=\"#\">Link</a>"), "Link");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strip_spaces_between_tags() {
 		assert_eq!(
 			strip_spaces_between_tags("<div>  <span>Test</span>  </div>"),
@@ -372,7 +373,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_attr() {
 		assert_eq!(escape_attr("value"), "value");
 		assert_eq!(
@@ -383,7 +384,7 @@ mod tests {
 		assert_eq!(escape_attr("tab\there"), "tab&#9;here");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_html() {
 		let template = "<div class=\"{class}\">{content}</div>";
 		let args = [("class", "container"), ("content", "Hello")];
@@ -393,19 +394,19 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_conditional_escape() {
 		assert_eq!(conditional_escape("<script>", true), "&lt;script&gt;");
 		assert_eq!(conditional_escape("<script>", false), "<script>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safe_string() {
 		let safe = SafeString::new("<b>Bold</b>");
 		assert_eq!(safe.as_str(), "<b>Bold</b>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_html_words() {
 		let html = "<p>This is a <b>test</b> sentence with many words.</p>";
 		let truncated = truncate_html_words(html, 5);
@@ -414,7 +415,7 @@ mod tests {
 		assert!(truncated.contains("..."));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_html_preserves_tags() {
 		let html = "<div>Hello <strong>world</strong> test</div>";
 		let truncated = truncate_html_words(html, 2);
@@ -422,30 +423,30 @@ mod tests {
 		assert!(truncated.contains("<strong>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safe_string_from_string() {
 		let s = String::from("<b>Bold</b>");
 		let safe = SafeString::from(s);
 		assert_eq!(safe.as_str(), "<b>Bold</b>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safe_string_from_str() {
 		let safe = SafeString::from("<i>Italic</i>");
 		assert_eq!(safe.as_str(), "<i>Italic</i>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_empty_string() {
 		assert_eq!(escape(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_multibyte() {
 		assert_eq!(escape("こんにちは<>&"), "こんにちは&lt;&gt;&amp;");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unescape_incomplete_entity() {
 		// Incomplete entities without semicolon are treated as entity with empty name
 		// which results in "&;" pattern
@@ -453,22 +454,22 @@ mod tests {
 		assert_eq!(unescape("&"), "&;");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unescape_unknown_entity() {
 		assert_eq!(unescape("&unknown;"), "&unknown;");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strip_tags_nested() {
 		assert_eq!(strip_tags("<div><p><span>Test</span></p></div>"), "Test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strip_tags_empty() {
 		assert_eq!(strip_tags(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strip_spaces_between_tags_multiple_spaces() {
 		assert_eq!(
 			strip_spaces_between_tags("<div>   \n\t   <span>Test</span>   \n\t   </div>"),
@@ -476,12 +477,12 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_attr_carriage_return() {
 		assert_eq!(escape_attr("test\rvalue"), "test&#13;value");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_html_multiple_replacements() {
 		let template = "<div id=\"{id}\" class=\"{class}\">{content}</div>";
 		let args = [("id", "main"), ("class", "container"), ("content", "Hello")];
@@ -491,14 +492,14 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_html_no_replacements() {
 		let template = "<div>Static content</div>";
 		let args: [(&str, &str); 0] = [];
 		assert_eq!(format_html(template, &args), "<div>Static content</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_html_words_exact_count() {
 		let html = "<p>One two three</p>";
 		let truncated = truncate_html_words(html, 3);
@@ -507,7 +508,7 @@ mod tests {
 		assert!(truncated.contains("..."));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_html_words_empty() {
 		let html = "";
 		let truncated = truncate_html_words(html, 5);
@@ -519,9 +520,10 @@ mod tests {
 mod proptests {
 	use super::*;
 	use proptest::prelude::*;
+	use rstest::rstest;
 
 	proptest! {
-		#[test]
+	#[rstest]
 		fn prop_escape_no_special_chars(s in "[^<>&\"']*") {
 			let escaped = escape(&s);
 			assert!(!escaped.contains('<'));
@@ -531,20 +533,20 @@ mod proptests {
 			assert!(!escaped.contains('\''));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_strip_tags_no_angle_brackets(s in "\\PC*") {
 			let stripped = strip_tags(&s);
 			assert!(!stripped.contains('<'));
 			assert!(!stripped.contains('>'));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_strip_tags_length_decrease(s in "\\PC*") {
 			let stripped = strip_tags(&s);
 			assert!(stripped.len() <= s.len());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_truncate_html_words_respects_limit(html in "\\PC*", n in 1usize..20) {
 			let truncated = truncate_html_words(&html, n);
 			let word_count = truncated
@@ -557,7 +559,7 @@ mod proptests {
 			assert!(word_count <= n + 5);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_escape_attr_no_newlines(s in "\\PC*") {
 			let escaped = escape_attr(&s);
 			assert!(!escaped.contains('\n'));
@@ -565,33 +567,33 @@ mod proptests {
 			assert!(!escaped.contains('\t'));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_conditional_escape_when_true(s in "\\PC*") {
 			let escaped_cond = conditional_escape(&s, true);
 			let escaped_direct = escape(&s);
 			assert_eq!(escaped_cond, escaped_direct);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_conditional_escape_when_false(s in "\\PC*") {
 			let escaped = conditional_escape(&s, false);
 			assert_eq!(escaped, s);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_safe_string_roundtrip(s in "\\PC*") {
 			let safe = SafeString::from(s.clone());
 			assert_eq!(safe.as_str(), &s);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_format_html_preserves_non_placeholders(template in "\\PC*") {
 			let args: [(&str, &str); 0] = [];
 			let result = format_html(&template, &args);
 			assert_eq!(result, template);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_strip_spaces_reduces_whitespace(s in "\\PC*") {
 			let stripped = strip_spaces_between_tags(&s);
 			// Result should not have more characters than original

@@ -469,6 +469,7 @@ impl Default for LayeredCacheStore {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -491,6 +492,7 @@ mod tests {
 		Err(format!("Timeout after {:?} waiting for condition", timeout))
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_passive_expiration() {
 		let store = LayeredCacheStore::new();
@@ -520,6 +522,7 @@ mod tests {
 		assert!(!store.has_key("key1").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_active_sampling_basic() {
 		let store = LayeredCacheStore::with_sampler(10, 0.25);
@@ -557,6 +560,7 @@ mod tests {
 		assert_eq!(store.len().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_active_sampling_threshold() {
 		let store = LayeredCacheStore::with_sampler(20, 0.25);
@@ -597,6 +601,7 @@ mod tests {
 		assert!(store.get("expired0").await.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ttl_index_cleanup() {
 		let store = LayeredCacheStore::new();
@@ -631,6 +636,7 @@ mod tests {
 		assert_eq!(store.len().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ttl_index_partial_cleanup() {
 		let store = LayeredCacheStore::new();
@@ -668,6 +674,7 @@ mod tests {
 		assert!(store.get("long0").await.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_combined_cleanup() {
 		let store = LayeredCacheStore::new();
@@ -697,6 +704,7 @@ mod tests {
 		assert!(store.get("key99").await.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_vs_naive_performance() {
 		// This test demonstrates the performance difference
@@ -730,6 +738,7 @@ mod tests {
 		// The layered approach should be significantly faster
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_operations() {
 		let store = LayeredCacheStore::new();
@@ -755,6 +764,7 @@ mod tests {
 		assert_eq!(store.len().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_keys_listing() {
 		let store = LayeredCacheStore::new();

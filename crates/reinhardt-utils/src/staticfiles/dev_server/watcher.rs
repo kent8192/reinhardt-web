@@ -169,11 +169,12 @@ impl Default for FileWatcherBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::fs;
 	use tempfile::TempDir;
 
-	#[test]
+	#[rstest]
 	fn test_watch_event_variants() {
 		let event = WatchEvent::Created(PathBuf::from("test.txt"));
 		assert!(matches!(event, WatchEvent::Created(_)));
@@ -188,6 +189,7 @@ mod tests {
 		assert!(matches!(event, WatchEvent::Error(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(file_watcher)]
 	async fn test_file_watcher_creation() {
@@ -203,6 +205,7 @@ mod tests {
 		// Give background thread time to clean up
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(file_watcher)]
 	async fn test_file_watcher_detects_changes() {
@@ -228,6 +231,7 @@ mod tests {
 		// Give background thread time to clean up
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial(file_watcher)]
 	async fn test_file_watcher_try_next() {
@@ -246,13 +250,13 @@ mod tests {
 		// Give background thread time to clean up
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_new() {
 		let builder = FileWatcherBuilder::new();
 		assert_eq!(builder.paths.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_watch_path() {
 		let builder = FileWatcherBuilder::new()
 			.watch_path(PathBuf::from("./static"))
@@ -261,7 +265,7 @@ mod tests {
 		assert_eq!(builder.paths.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_default() {
 		let builder = FileWatcherBuilder::default();
 		assert_eq!(builder.paths.len(), 0);

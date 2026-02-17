@@ -233,8 +233,9 @@ impl Middleware for StaticFilesMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_defaults() {
 		let config = StaticFilesConfig::default();
 		assert_eq!(config.root_dir, PathBuf::from("dist"));
@@ -243,7 +244,7 @@ mod tests {
 		assert_eq!(config.index_files, vec!["index.html".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = StaticFilesConfig::new("public")
 			.url_prefix("/static/")
@@ -256,7 +257,7 @@ mod tests {
 		assert_eq!(config.index_files.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_prefix() {
 		let config = StaticFilesConfig::new("dist").url_prefix("/static/");
 		let middleware = StaticFilesMiddleware::new(config);
@@ -266,7 +267,7 @@ mod tests {
 		assert!(!middleware.matches_prefix("/api/users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches_prefix_root() {
 		let config = StaticFilesConfig::new("dist").url_prefix("/");
 		let middleware = StaticFilesMiddleware::new(config);
@@ -275,7 +276,7 @@ mod tests {
 		assert!(middleware.matches_prefix("/api/users"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_file_path() {
 		let config = StaticFilesConfig::new("dist").url_prefix("/static/");
 		let middleware = StaticFilesMiddleware::new(config);
@@ -287,7 +288,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_extension_allowed_empty() {
 		let config = StaticFilesConfig::new("dist");
 		let middleware = StaticFilesMiddleware::new(config);
@@ -297,7 +298,7 @@ mod tests {
 		assert!(middleware.is_extension_allowed("file.wasm"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_extension_allowed_restricted() {
 		let config = StaticFilesConfig::new("dist").allowed_extensions(vec![
 			"js".to_string(),

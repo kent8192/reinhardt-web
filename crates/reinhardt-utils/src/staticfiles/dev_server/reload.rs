@@ -189,15 +189,16 @@ impl Default for AutoReloadBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_auto_reload_new() {
 		let reload = AutoReload::new();
 		assert_eq!(tokio_test::block_on(reload.client_count()), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trigger_reload() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -208,7 +209,7 @@ mod tests {
 		assert!(matches!(event, ReloadEvent::Reload));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trigger_file_reload() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -224,7 +225,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_trigger_cache_clear() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -235,6 +236,7 @@ mod tests {
 		assert!(matches!(event, ReloadEvent::ClearCache));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_client_count() {
 		let reload = AutoReload::new();
@@ -254,6 +256,7 @@ mod tests {
 		assert_eq!(reload.client_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_remove_client_at_zero() {
 		let reload = AutoReload::new();
@@ -262,7 +265,7 @@ mod tests {
 		assert_eq!(reload.client_count().await, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_handle_css_modification() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -274,7 +277,7 @@ mod tests {
 		assert!(matches!(reload_event, ReloadEvent::ReloadFile(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_handle_js_modification() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -286,7 +289,7 @@ mod tests {
 		assert!(matches!(reload_event, ReloadEvent::Reload));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_handle_file_deletion() {
 		let reload = AutoReload::new();
 		let mut rx = reload.subscribe();
@@ -302,7 +305,7 @@ mod tests {
 		assert!(matches!(event2, ReloadEvent::ClearCache) || matches!(event2, ReloadEvent::Reload));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_subscribers() {
 		let reload = AutoReload::new();
 		let mut rx1 = reload.subscribe();
@@ -317,14 +320,14 @@ mod tests {
 		assert!(matches!(event2, ReloadEvent::Reload));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder() {
 		let builder = AutoReloadBuilder::new();
 		let reload = builder.build();
 		assert_eq!(tokio_test::block_on(reload.client_count()), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let reload = AutoReload::default();
 		assert_eq!(tokio_test::block_on(reload.client_count()), 0);

@@ -77,7 +77,9 @@ impl CacheStatistics {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_statistics_hit_miss_rate_zero_requests() {
 		let stats = CacheStatistics::default();

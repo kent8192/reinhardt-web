@@ -6,8 +6,9 @@
 use chrono::{Duration, Utc};
 use regex::Regex;
 use reinhardt_utils::humanize;
+use rstest::rstest;
 
-#[test]
+#[rstest]
 fn test_contrib_humanize_intcomma() {
 	assert_eq!(humanize::intcomma(100), "100");
 	assert_eq!(humanize::intcomma(1000), "1,000");
@@ -20,7 +21,7 @@ fn test_contrib_humanize_intcomma() {
 	assert_eq!(humanize::intcomma(-1234567), "-1,234,567");
 }
 
-#[test]
+#[rstest]
 fn test_intword() {
 	assert_eq!(humanize::intword(100), "100");
 	assert_eq!(humanize::intword(1000), "1 thousand");
@@ -33,7 +34,7 @@ fn test_intword() {
 	assert_eq!(humanize::intword(-1200000), "-1.2 million");
 }
 
-#[test]
+#[rstest]
 fn test_contrib_humanize_ordinal() {
 	assert_eq!(humanize::ordinal(1), "1st");
 	assert_eq!(humanize::ordinal(2), "2nd");
@@ -51,7 +52,7 @@ fn test_contrib_humanize_ordinal() {
 	assert_eq!(humanize::ordinal(111), "111th");
 }
 
-#[test]
+#[rstest]
 fn test_contrib_humanize_filesize() {
 	assert_eq!(humanize::filesizeformat(0), "0 bytes");
 	assert_eq!(humanize::filesizeformat(50), "50 bytes");
@@ -62,28 +63,28 @@ fn test_contrib_humanize_filesize() {
 	assert_eq!(humanize::filesizeformat(1024 * 1024 * 1024), "1.0 GB");
 }
 
-#[test]
+#[rstest]
 fn test_naturalday_today() {
 	let now = Utc::now();
 	let result = humanize::naturalday(&now);
 	assert_eq!(result, "today");
 }
 
-#[test]
+#[rstest]
 fn test_naturalday_yesterday() {
 	let yesterday = Utc::now() - Duration::days(1);
 	let result = humanize::naturalday(&yesterday);
 	assert_eq!(result, "yesterday");
 }
 
-#[test]
+#[rstest]
 fn test_naturalday_tomorrow() {
 	let tomorrow = Utc::now() + Duration::days(1);
 	let result = humanize::naturalday(&tomorrow);
 	assert_eq!(result, "tomorrow");
 }
 
-#[test]
+#[rstest]
 fn test_naturaltime_seconds() {
 	let now = Utc::now();
 	let few_seconds_ago = now - Duration::seconds(3);
@@ -91,7 +92,7 @@ fn test_naturaltime_seconds() {
 	assert_eq!(result, "a few seconds ago");
 }
 
-#[test]
+#[rstest]
 fn test_naturaltime_minutes() {
 	let now = Utc::now();
 	let minutes_ago = now - Duration::minutes(5);
@@ -99,7 +100,7 @@ fn test_naturaltime_minutes() {
 	assert_eq!(result, "5 minutes ago");
 }
 
-#[test]
+#[rstest]
 fn test_naturaltime_hours() {
 	let now = Utc::now();
 	let hours_ago = now - Duration::hours(2);
@@ -107,7 +108,7 @@ fn test_naturaltime_hours() {
 	assert_eq!(result, "2 hours ago");
 }
 
-#[test]
+#[rstest]
 fn test_naturaltime_days() {
 	let now = Utc::now();
 	let days_ago = now - Duration::days(3);
@@ -115,7 +116,7 @@ fn test_naturaltime_days() {
 	assert_eq!(result, "3 days ago");
 }
 
-#[test]
+#[rstest]
 fn test_naturaltime_future() {
 	let now = Utc::now();
 	let future = now + Duration::minutes(10);
@@ -128,7 +129,7 @@ fn test_naturaltime_future() {
 	);
 }
 
-#[test]
+#[rstest]
 fn test_timesince_minutes() {
 	let now = Utc::now();
 	let past = now - Duration::minutes(30);
@@ -136,7 +137,7 @@ fn test_timesince_minutes() {
 	assert_eq!(result, "30 minutes");
 }
 
-#[test]
+#[rstest]
 fn test_timesince_hours() {
 	let now = Utc::now();
 	let past = now - Duration::hours(3);
@@ -144,7 +145,7 @@ fn test_timesince_hours() {
 	assert_eq!(result, "3 hours");
 }
 
-#[test]
+#[rstest]
 fn test_negative_numbers() {
 	assert_eq!(humanize::intcomma(-5000), "-5,000");
 	assert_eq!(humanize::intword(-2000000), "-2 million");

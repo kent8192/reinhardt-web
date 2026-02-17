@@ -407,9 +407,10 @@ impl Default for SourceMapMerger {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_source_map_creation() {
 		let map = SourceMap::new("app.min.js".to_string());
 		assert_eq!(map.version, 3);
@@ -419,7 +420,7 @@ mod tests {
 		assert_eq!(map.mappings, "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_source() {
 		let mut map = SourceMap::new("app.min.js".to_string());
 		map.add_source("src/app.js".to_string());
@@ -427,7 +428,7 @@ mod tests {
 		assert_eq!(map.sources[0], "src/app.js");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_source_content() {
 		let mut map = SourceMap::new("app.min.js".to_string());
 		map.add_source("src/app.js".to_string());
@@ -436,7 +437,7 @@ mod tests {
 		assert_eq!(map.sources_content.as_ref().unwrap().len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_json() {
 		let map = SourceMap::new("app.min.js".to_string());
 		let json = map.to_json().unwrap();
@@ -444,7 +445,7 @@ mod tests {
 		assert!(json.contains("\"file\":\"app.min.js\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_json() {
 		let json = r#"{"version":3,"file":"app.min.js","sources":["src/app.js"],"names":[],"mappings":"AAAA"}"#;
 		let map = SourceMap::from_json(json).unwrap();
@@ -453,14 +454,14 @@ mod tests {
 		assert_eq!(map.sources.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generator_creation() {
 		let generator = SourceMapGenerator::new();
 		assert!(generator.inline_sources);
 		assert!(generator.source_root.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generator_with_settings() {
 		let generator = SourceMapGenerator::new()
 			.with_inline_sources(false)
@@ -469,7 +470,7 @@ mod tests {
 		assert_eq!(generator.source_root.unwrap(), "/src");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_for_file() {
 		let generator = SourceMapGenerator::new();
 		let map = generator.generate_for_file(
@@ -482,20 +483,20 @@ mod tests {
 		assert!(map.sources_content.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_comment() {
 		let generator = SourceMapGenerator::new();
 		let comment = generator.generate_comment("app.min.js.map");
 		assert_eq!(comment, "//# sourceMappingURL=app.min.js.map");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merger_creation() {
 		let merger = SourceMapMerger::new();
 		assert_eq!(merger.maps.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merger_add_map() {
 		let mut merger = SourceMapMerger::new();
 		let map = SourceMap::new("app.min.js".to_string());
@@ -503,7 +504,7 @@ mod tests {
 		assert_eq!(merger.maps.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merger_merge() {
 		let mut merger = SourceMapMerger::new();
 

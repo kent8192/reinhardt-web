@@ -260,7 +260,9 @@ impl<C: Cache> TaggedCache for TaggedCacheWrapper<C> {
 mod tests {
 	use super::*;
 	use crate::cache::InMemoryCache;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_basic() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -289,6 +291,7 @@ mod tests {
 		assert_eq!(value2, Some("value2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_invalidate_tag() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -322,6 +325,7 @@ mod tests {
 		assert_eq!(post1, Some("Hello".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_get_keys_for_tag() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -357,6 +361,7 @@ mod tests {
 		assert!(electronics.contains(&"product:2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_invalidate_multiple_tags() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -390,6 +395,7 @@ mod tests {
 		assert_eq!(item3, Some("C".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_delete() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -416,6 +422,7 @@ mod tests {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_tagged_cache_overlapping_tags() {
 		let cache = Arc::new(InMemoryCache::new());

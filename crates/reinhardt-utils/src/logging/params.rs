@@ -161,9 +161,10 @@ pub fn truncate_param(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_large_list_of_dict() {
 		let params: Vec<Value> = (0..100).map(|i| json!({"data": i.to_string()})).collect();
 
@@ -198,7 +199,7 @@ mod tests {
 		assert!(result.starts_with('[') && result.ends_with(']'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_positional_array() {
 		let params = json!([[1, 2, 3], 5]);
 
@@ -216,7 +217,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_unknown_list() {
 		let large_array: Vec<i32> = (0..300).collect();
 		let params = json!([large_array, 5]);
@@ -248,7 +249,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_named_dict() {
 		let mut params = serde_json::Map::new();
 		for i in 0..10 {
@@ -285,7 +286,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_huge_named_dict() {
 		let mut params = serde_json::Map::new();
 		for i in 0..800 {
@@ -319,7 +320,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr_params_ismulti_named_dict() {
 		let param: serde_json::Map<String, Value> =
 			(0..10).map(|i| (format!("key_{}", i), json!(i))).collect();
@@ -347,7 +348,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_param() {
 		let large_param = "a".repeat(5000);
 		let result = truncate_param(&large_param, 298);
@@ -387,7 +388,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_param_small() {
 		let small_param = "small";
 		let result = truncate_param(small_param, 100);

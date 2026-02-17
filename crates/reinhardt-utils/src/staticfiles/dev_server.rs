@@ -91,8 +91,9 @@ impl Default for DevServerConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_config_defaults() {
 		let config = DevServerConfig::new();
 		assert!(config.watch_files);
@@ -102,7 +103,7 @@ mod tests {
 		assert!(config.watch_paths.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_config_builder() {
 		let config = DevServerConfig::new()
 			.with_watch_files(false)
@@ -118,7 +119,7 @@ mod tests {
 		assert_eq!(config.watch_paths.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_watch_paths() {
 		let config = DevServerConfig::new()
 			.with_watch_path(PathBuf::from("./static"))

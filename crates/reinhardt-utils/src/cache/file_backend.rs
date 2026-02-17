@@ -292,6 +292,7 @@ impl Cache for FileCache {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -325,6 +326,7 @@ mod tests {
 		FileCache::new(temp_dir).await.unwrap()
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_cache_basic() {
 		let cache = create_test_cache("basic").await;
@@ -344,6 +346,7 @@ mod tests {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_cache_ttl() {
 		let cache = create_test_cache("ttl").await;
@@ -371,6 +374,7 @@ mod tests {
 		.expect("Key should expire within 200ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_cache_cleanup_expired() {
 		let cache = create_test_cache("cleanup").await;
@@ -402,6 +406,7 @@ mod tests {
 		assert!(cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_cache_persistence() {
 		let temp_dir = get_test_dir("persistence");
@@ -427,6 +432,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_cache_clear() {
 		let cache = create_test_cache("clear").await;

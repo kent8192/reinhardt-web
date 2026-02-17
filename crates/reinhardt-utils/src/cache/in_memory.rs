@@ -623,6 +623,7 @@ impl Cache for InMemoryCache {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Polls a condition until it returns true or timeout is reached.
 	async fn poll_until<F, Fut>(
@@ -644,6 +645,7 @@ mod tests {
 		Err(format!("Timeout after {:?} waiting for condition", timeout))
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_cache_basic() {
 		let cache = InMemoryCache::new();
@@ -663,6 +665,7 @@ mod tests {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_cache_ttl() {
 		let cache = InMemoryCache::new();
@@ -690,6 +693,7 @@ mod tests {
 		.expect("Key should expire within 200ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_cache_many() {
 		let cache = InMemoryCache::new();
@@ -713,6 +717,7 @@ mod tests {
 		assert!(!cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_cache_incr_decr() {
 		let cache = InMemoryCache::new();
@@ -730,6 +735,7 @@ mod tests {
 		assert_eq!(value, 6);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_cache_clear() {
 		let cache = InMemoryCache::new();
@@ -743,6 +749,7 @@ mod tests {
 		assert!(!cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_cleanup_expired() {
 		let cache = InMemoryCache::new();
@@ -774,6 +781,7 @@ mod tests {
 		assert!(cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_statistics_basic() {
 		let cache = InMemoryCache::new();
@@ -813,6 +821,7 @@ mod tests {
 		assert_eq!(stats.total_requests, 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_statistics_hit_miss_rate() {
 		let cache = InMemoryCache::new();
@@ -832,6 +841,7 @@ mod tests {
 		assert_eq!(stats.miss_rate(), 1.0 / 3.0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_statistics_expired_counts_as_miss() {
 		let cache = InMemoryCache::new();
@@ -855,6 +865,7 @@ mod tests {
 		assert_eq!(stats.misses, 1, "Expected 1 miss, got {}", stats.misses);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_statistics_memory_usage() {
 		let cache = InMemoryCache::new();
@@ -878,6 +889,7 @@ mod tests {
 		assert!(stats.memory_usage > initial_usage);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_list_keys() {
 		let cache = InMemoryCache::new();
@@ -907,6 +919,7 @@ mod tests {
 		assert!(keys.contains(&"key3".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_list_keys_includes_expired() {
 		let cache = InMemoryCache::new();
@@ -946,6 +959,7 @@ mod tests {
 		assert!(keys.contains(&"valid_key".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inspect_entry_basic() {
 		let cache = InMemoryCache::new();
@@ -965,6 +979,7 @@ mod tests {
 		assert!(info.size > 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inspect_entry_with_ttl() {
 		let cache = InMemoryCache::new();
@@ -987,6 +1002,7 @@ mod tests {
 		assert!(ttl > 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inspect_entry_size() {
 		let cache = InMemoryCache::new();
@@ -1001,6 +1017,7 @@ mod tests {
 		assert!(large_info.size > small_info.size);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inspect_entry_expired() {
 		let cache = InMemoryCache::new();
@@ -1040,6 +1057,7 @@ mod tests {
 		assert!(info.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_start_auto_cleanup() {
 		let cache = InMemoryCache::new();
@@ -1077,6 +1095,7 @@ mod tests {
 		assert!(!cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_with_auto_cleanup() {
 		let cache = InMemoryCache::new().with_auto_cleanup(Duration::from_millis(30));
@@ -1107,6 +1126,7 @@ mod tests {
 		.expect("Keys should be auto-cleaned within 200ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_cleanup_preserves_non_expired() {
 		let cache = InMemoryCache::new();
@@ -1140,6 +1160,7 @@ mod tests {
 
 	// Layered cleanup strategy tests
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_cache_basic() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1159,6 +1180,7 @@ mod tests {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_cache_ttl() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1186,6 +1208,7 @@ mod tests {
 		.expect("Key should expire within 200ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_cleanup_expired() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1208,6 +1231,7 @@ mod tests {
 		assert!(cache.has_key("key2").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_cache_statistics() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1235,6 +1259,7 @@ mod tests {
 		assert_eq!(stats.misses, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_list_keys() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1255,6 +1280,7 @@ mod tests {
 		assert!(keys.contains(&"key3".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_inspect_entry() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1277,6 +1303,7 @@ mod tests {
 		assert!(info.ttl_seconds.unwrap() <= 300);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_layered_large_dataset() {
 		let cache = InMemoryCache::with_layered_cleanup();
@@ -1309,6 +1336,7 @@ mod tests {
 		assert_eq!(stats.entry_count, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_layered_cleanup() {
 		// Create cache with custom sampler (sample 50 keys, 30% threshold)

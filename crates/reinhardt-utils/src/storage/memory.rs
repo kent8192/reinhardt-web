@@ -334,7 +334,9 @@ impl Storage for InMemoryStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_write_and_read() {
 		let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
@@ -350,6 +352,7 @@ mod tests {
 		assert_eq!(file.content, b"hello");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_str_bytes_conversion() {
 		let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
@@ -364,6 +367,7 @@ mod tests {
 		assert_eq!(file.content, b"hello");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_url_generation() {
 		let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
@@ -374,12 +378,14 @@ mod tests {
 		assert_eq!(storage2.url("test.txt"), "http://localhost/media/test.txt");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_url_with_none_filename() {
 		let storage = InMemoryStorage::new("memory_root", "/test_media_url/");
 		assert_eq!(storage.url(""), "/test_media_url/");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_deconstruction() {
 		let storage = InMemoryStorage::new("memory_root", "http://localhost/media");
@@ -401,6 +407,7 @@ mod tests {
 		assert_eq!(kwargs.get("directory_permissions_mode").unwrap(), "0o600");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_inmemory_settings_changed() {
 		// Properties using settings values as defaults should be updated

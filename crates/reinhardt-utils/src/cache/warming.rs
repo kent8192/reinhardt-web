@@ -292,6 +292,7 @@ impl<C: Cache> CacheWarmer<C> for ParallelWarmer<C> {
 mod tests {
 	use super::*;
 	use crate::cache::InMemoryCache;
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	struct TestWarmer {
@@ -306,6 +307,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_basic_warmer() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -320,6 +322,7 @@ mod tests {
 		assert_eq!(value, Some("test_value".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_function_warmer() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -337,6 +340,7 @@ mod tests {
 		assert_eq!(value, Some("func_value".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_batch_warmer() {
 		let cache = Arc::new(InMemoryCache::new());
@@ -362,6 +366,7 @@ mod tests {
 		assert_eq!(value2, Some("value2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parallel_warmer() {
 		let cache = Arc::new(InMemoryCache::new());

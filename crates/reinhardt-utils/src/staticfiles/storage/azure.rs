@@ -211,8 +211,9 @@ impl Storage for AzureBlobStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_azure_config_creation() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string());
 
@@ -224,7 +225,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_azure_config_with_account_key() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_account_key("ACCOUNT_KEY".to_string());
@@ -232,7 +233,7 @@ mod tests {
 		assert_eq!(config.account_key, Some("ACCOUNT_KEY".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_azure_config_with_sas_token() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_sas_token("?sv=2021-01-01&sig=...".to_string());
@@ -240,7 +241,7 @@ mod tests {
 		assert_eq!(config.sas_token, Some("?sv=2021-01-01&sig=...".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_azure_config_with_prefix() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_prefix("static".to_string());
@@ -248,7 +249,7 @@ mod tests {
 		assert_eq!(config.prefix, Some("static".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_azure_config_with_base_url() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_base_url("https://cdn.example.com".to_string());
@@ -256,7 +257,7 @@ mod tests {
 		assert_eq!(config.base_url, "https://cdn.example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_blob_name_generation() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string());
 
@@ -274,7 +275,7 @@ mod tests {
 		assert_eq!(storage.get_full_blob_name("/file.txt"), "file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_blob_name_with_prefix() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_prefix("static".to_string());
@@ -292,7 +293,7 @@ mod tests {
 		assert_eq!(storage.get_full_blob_name("/file.txt"), "static/file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string());
 
@@ -311,7 +312,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_prefix() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_prefix("static".to_string());
@@ -331,7 +332,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_custom_base() {
 		let config = AzureBlobConfig::new("teststorage".to_string(), "testcontainer".to_string())
 			.with_base_url("https://cdn.example.com".to_string());

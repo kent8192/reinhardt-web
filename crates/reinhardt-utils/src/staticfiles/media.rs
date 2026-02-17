@@ -210,8 +210,9 @@ pub trait HasMedia {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_add_css() {
 		let mut media = Media::new();
 		media.add_css("all", "css/style.css");
@@ -221,7 +222,7 @@ mod tests {
 		assert_eq!(media.css.get("print").unwrap()[0], "css/print.css");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_js() {
 		let mut media = Media::new();
 		media.add_js("js/script1.js");
@@ -231,7 +232,7 @@ mod tests {
 		assert_eq!(media.js[1], "js/script2.js");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merge_media() {
 		let mut media1 = Media::new();
 		media1.add_css("all", "css/base.css");
@@ -247,7 +248,7 @@ mod tests {
 		assert_eq!(media1.js.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_merge_avoids_duplicates() {
 		let mut media1 = Media::new();
 		media1.add_css("all", "css/common.css");
@@ -264,7 +265,7 @@ mod tests {
 		assert_eq!(media1.js.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_css() {
 		let mut media = Media::new();
 		media.add_css("all", "/static/css/style.css");
@@ -279,7 +280,7 @@ mod tests {
 		assert!(html.contains("media=\"print\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_js() {
 		let mut media = Media::new();
 		media.add_js("/static/js/app.js");
@@ -291,7 +292,7 @@ mod tests {
 		assert!(html.contains("<script src=\"/static/js/widgets.js\"></script>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_has_media_trait() {
 		struct TestWidget;
 
@@ -311,7 +312,7 @@ mod tests {
 		assert_eq!(media.js[0], "widget.js");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_css_files() {
 		let mut media = Media::new();
 		media.add_css("all", "css/a.css");
@@ -321,7 +322,7 @@ mod tests {
 		assert_eq!(files.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_js_files() {
 		let mut media = Media::new();
 		media.add_js("js/a.js");

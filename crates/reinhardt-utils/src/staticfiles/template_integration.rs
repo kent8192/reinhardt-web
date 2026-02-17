@@ -197,8 +197,9 @@ impl TemplateStaticConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_template_static_config_new() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(config.static_url, "/static/");
@@ -206,7 +207,7 @@ mod tests {
 		assert!(config.manifest.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_static_config_with_manifest() {
 		let mut manifest = HashMap::new();
 		manifest.insert(
@@ -226,7 +227,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_static_config_from_static_files_config() {
 		let static_config = StaticFilesConfig {
 			static_root: std::path::PathBuf::from("/var/www/static"),
@@ -241,6 +242,7 @@ mod tests {
 		assert!(template_config.manifest.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_from_storage() {
 		use tempfile::tempdir;
@@ -272,13 +274,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_basic() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(config.resolve_url("css/style.css"), "/static/css/style.css");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_with_leading_slash() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(
@@ -287,7 +289,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_with_manifest() {
 		let mut manifest = HashMap::new();
 		manifest.insert(
@@ -303,7 +305,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_manifest_fallback() {
 		let mut manifest = HashMap::new();
 		manifest.insert(
@@ -317,13 +319,13 @@ mod tests {
 		assert_eq!(config.resolve_url("js/app.js"), "/static/js/app.js");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_with_query_string() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(config.resolve_url("test.css?v=1"), "/static/test.css?v=1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_with_fragment() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(
@@ -332,7 +334,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_with_query_and_fragment() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(
@@ -341,7 +343,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_manifest_with_query_string() {
 		let mut manifest = HashMap::new();
 		manifest.insert(
@@ -358,7 +360,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_different_base_urls() {
 		let config1 = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(config1.resolve_url("test.txt"), "/static/test.txt");
@@ -370,13 +372,13 @@ mod tests {
 		assert_eq!(config3.resolve_url("test.txt"), "static/test.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_empty_path() {
 		let config = TemplateStaticConfig::new("/static/".to_string());
 		assert_eq!(config.resolve_url(""), "/static/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_resolve_url_cdn_url() {
 		let config = TemplateStaticConfig::new("https://cdn.example.com/static/".to_string());
 		assert_eq!(

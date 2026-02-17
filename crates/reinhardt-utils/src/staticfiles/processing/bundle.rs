@@ -233,15 +233,16 @@ impl BundleConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_bundler_creation() {
 		let bundler = AssetBundler::new();
 		assert!(bundler.is_empty());
 		assert_eq!(bundler.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_add_file() {
 		let mut bundler = AssetBundler::new();
 		bundler.add_file(PathBuf::from("test.js"), b"const x = 1;".to_vec());
@@ -249,7 +250,7 @@ mod tests {
 		assert!(!bundler.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_simple_bundle() {
 		let mut bundler = AssetBundler::new();
 		bundler.add_file(PathBuf::from("a.js"), b"const a = 1;".to_vec());
@@ -262,7 +263,7 @@ mod tests {
 		assert!(output.contains("const b = 2;"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_with_dependencies() {
 		let mut bundler = AssetBundler::new();
 		bundler.add_file(PathBuf::from("main.js"), b"// main".to_vec());
@@ -278,7 +279,7 @@ mod tests {
 		assert!(utils_pos < main_pos);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_bundle_files_custom_order() {
 		let mut bundler = AssetBundler::new();
 		bundler.add_file(PathBuf::from("a.js"), b"const a = 1;".to_vec());
@@ -295,7 +296,7 @@ mod tests {
 		assert!(b_pos < a_pos);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_includes_separators() {
 		let mut bundler = AssetBundler::new();
 		bundler.add_file(PathBuf::from("test.js"), b"code".to_vec());
@@ -306,7 +307,7 @@ mod tests {
 		assert!(output.contains("/* test.js */"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundle_config_creation() {
 		let config = BundleConfig::new(PathBuf::from("bundle.js"));
 		assert_eq!(config.output, PathBuf::from("bundle.js"));
@@ -315,7 +316,7 @@ mod tests {
 		assert!(!config.source_map);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundle_config_add_file() {
 		let mut config = BundleConfig::new(PathBuf::from("bundle.js"));
 		config.add_file(PathBuf::from("a.js"));
@@ -323,7 +324,7 @@ mod tests {
 		assert_eq!(config.files.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundle_config_builder() {
 		let config = BundleConfig::new(PathBuf::from("bundle.js"))
 			.with_minify(true)
@@ -332,7 +333,7 @@ mod tests {
 		assert!(config.source_map);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_multiple_files() {
 		let mut bundler = AssetBundler::new();
 		for i in 0..5 {
@@ -347,7 +348,7 @@ mod tests {
 		assert!(!result.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bundler_empty_bundle() {
 		let bundler = AssetBundler::new();
 		let result = bundler.bundle().unwrap();

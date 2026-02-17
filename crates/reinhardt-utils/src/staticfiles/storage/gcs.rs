@@ -251,8 +251,9 @@ impl Storage for GcsStorage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_gcs_config_creation() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string());
 
@@ -264,7 +265,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gcs_config_with_service_account_key() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_service_account_key("{\"type\": \"service_account\"}".to_string());
@@ -275,7 +276,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gcs_config_with_prefix() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_prefix("static".to_string());
@@ -283,7 +284,7 @@ mod tests {
 		assert_eq!(config.prefix, Some("static".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_gcs_config_with_base_url() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_base_url("https://cdn.example.com".to_string());
@@ -291,7 +292,7 @@ mod tests {
 		assert_eq!(config.base_url, "https://cdn.example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_object_name_generation() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string());
 		let client = Client::default();
@@ -305,7 +306,7 @@ mod tests {
 		assert_eq!(storage.get_full_object_name("/file.txt"), "file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_object_name_with_prefix() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_prefix("static".to_string());
@@ -320,7 +321,7 @@ mod tests {
 		assert_eq!(storage.get_full_object_name("/file.txt"), "static/file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string());
 		let client = Client::default();
@@ -336,7 +337,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_prefix() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_prefix("static".to_string());
@@ -353,7 +354,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_custom_base() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_base_url("https://cdn.example.com".to_string());
@@ -367,7 +368,7 @@ mod tests {
 		assert_eq!(storage.url("file.txt"), "https://cdn.example.com/file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_prefix_trimming() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
 			.with_prefix("/static/".to_string());
@@ -375,6 +376,7 @@ mod tests {
 		assert_eq!(config.prefix, Some("static".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_client_with_invalid_service_account_key() {
 		let config = GcsConfig::new("test-bucket".to_string(), "test-project".to_string())
@@ -396,6 +398,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_client_with_valid_service_account_key_structure() {
 		// Valid JSON structure (even if not a real service account key)
@@ -426,6 +429,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_create_client_without_service_account_key() {
 		// Test default authentication (will use ADC if available)
@@ -439,7 +443,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_service_account_key_validation() {
 		// Test that JSON validation works correctly
 		let valid_json = r#"{"type": "service_account"}"#;

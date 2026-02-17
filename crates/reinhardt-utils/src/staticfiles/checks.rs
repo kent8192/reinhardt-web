@@ -292,10 +292,11 @@ fn check_media_url_conflict(config: &StaticFilesConfig) -> Vec<CheckMessage> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 	use tempfile::TempDir;
 
-	#[test]
+	#[rstest]
 	fn test_check_static_root_not_set() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from(""),
@@ -310,7 +311,7 @@ mod tests {
 		assert_eq!(messages[0].level, CheckLevel::Error);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_static_root_in_staticfiles_dirs() {
 		let root = PathBuf::from("/var/www/static");
 		let config = StaticFilesConfig {
@@ -324,7 +325,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.E002"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_static_root_subdirectory() {
 		let temp_dir = TempDir::new().unwrap();
 		let parent = temp_dir.path().to_path_buf();
@@ -341,7 +342,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W001"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_static_url_empty() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -354,7 +355,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.E003"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_static_url_no_leading_slash() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -367,7 +368,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W002"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_static_url_no_trailing_slash() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -380,7 +381,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W003"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_staticfiles_dirs_empty() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -393,7 +394,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W004"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_staticfiles_dirs_not_exist() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -406,7 +407,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W005"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_staticfiles_dirs_duplicate() {
 		let dir = PathBuf::from("/app/static");
 		let config = StaticFilesConfig {
@@ -420,7 +421,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W006"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_configuration() {
 		let temp_dir = TempDir::new().unwrap();
 		let source_dir = temp_dir.path().join("source");
@@ -442,7 +443,7 @@ mod tests {
 		assert_eq!(errors.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_same_as_static_url() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -455,7 +456,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.E004"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_no_leading_slash() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -468,7 +469,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W007"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_no_trailing_slash() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -481,7 +482,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W008"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_prefix_conflict() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -494,7 +495,7 @@ mod tests {
 		assert!(messages.iter().any(|m| m.id == "static.W009"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_valid() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),
@@ -507,7 +508,7 @@ mod tests {
 		assert_eq!(messages.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_url_none() {
 		let config = StaticFilesConfig {
 			static_root: PathBuf::from("/var/www/static"),

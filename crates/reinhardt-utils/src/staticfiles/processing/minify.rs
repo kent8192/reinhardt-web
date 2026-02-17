@@ -272,9 +272,10 @@ impl Processor for JsMinifier {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_css_minifier_can_process() {
 		let minifier = CssMinifier::new();
 		assert!(minifier.can_process(&PathBuf::from("style.css")));
@@ -282,6 +283,7 @@ mod tests {
 		assert!(!minifier.can_process(&PathBuf::from("script.js")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_css_minifier_basic() {
 		let minifier = CssMinifier::new();
@@ -294,6 +296,7 @@ mod tests {
 		assert!(output.len() <= input.len());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_css_minifier_removes_comments() {
 		let minifier = CssMinifier::new();
@@ -306,6 +309,7 @@ mod tests {
 		assert!(!output.contains("comment"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_css_minifier_removes_whitespace() {
 		let minifier = CssMinifier::new();
@@ -319,6 +323,7 @@ mod tests {
 		assert!(!output.contains('\n'));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_css_minifier_level_0() {
 		let minifier = CssMinifier::with_level(0);
@@ -330,7 +335,7 @@ mod tests {
 		assert_eq!(result, input);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_js_minifier_can_process() {
 		let minifier = JsMinifier::new();
 		assert!(minifier.can_process(&PathBuf::from("app.js")));
@@ -338,6 +343,7 @@ mod tests {
 		assert!(!minifier.can_process(&PathBuf::from("style.css")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_minifier_basic() {
 		let minifier = JsMinifier::new();
@@ -350,6 +356,7 @@ mod tests {
 		assert!(output.len() <= input.len());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_minifier_removes_single_line_comments() {
 		let minifier = JsMinifier::new();
@@ -362,6 +369,7 @@ mod tests {
 		assert!(!output.contains("comment"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_minifier_removes_multi_line_comments() {
 		let minifier = JsMinifier::new();
@@ -374,6 +382,7 @@ mod tests {
 		assert!(!output.contains("comment"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_minifier_preserves_strings() {
 		let minifier = JsMinifier::new();
@@ -386,6 +395,7 @@ mod tests {
 		assert!(output.contains("// not a comment"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_minifier_preserves_newlines() {
 		let minifier = JsMinifier::new();

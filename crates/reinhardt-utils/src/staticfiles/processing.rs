@@ -268,8 +268,9 @@ impl ProcessingPipeline {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_processing_config_default() {
 		let config = ProcessingConfig::default();
 		assert!(config.minify);
@@ -279,7 +280,7 @@ mod tests {
 		assert_eq!(config.image_quality, 85);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_processing_config_builder() {
 		let config = ProcessingConfig::new(PathBuf::from("dist"))
 			.with_minification(false)
@@ -293,7 +294,7 @@ mod tests {
 		assert_eq!(config.image_quality, 90);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_quality_clamping() {
 		let config1 = ProcessingConfig::default().with_image_quality(150);
 		assert_eq!(config1.image_quality, 100);
@@ -302,13 +303,14 @@ mod tests {
 		assert_eq!(config2.image_quality, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pipeline_creation() {
 		let config = ProcessingConfig::new(PathBuf::from("dist"));
 		let pipeline = ProcessingPipeline::new(config);
 		assert!(pipeline.config().minify);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_pipeline_process_empty() {
 		let config = ProcessingConfig::new(PathBuf::from("dist"));

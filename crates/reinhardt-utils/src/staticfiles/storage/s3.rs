@@ -261,6 +261,7 @@ impl Storage for S3Storage {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Test helper struct that only tests URL/key generation logic
 	/// without requiring actual S3 client initialization (which needs TLS certs)
@@ -294,7 +295,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_s3_config_creation() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string());
 
@@ -303,7 +304,7 @@ mod tests {
 		assert_eq!(config.base_url, "https://test-bucket.s3.amazonaws.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_s3_config_with_credentials() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_credentials("ACCESS_KEY".to_string(), "SECRET_KEY".to_string());
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(config.secret_access_key, Some("SECRET_KEY".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_s3_config_with_custom_endpoint() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_endpoint("http://localhost:9000".to_string());
@@ -324,7 +325,7 @@ mod tests {
 		assert!(config.path_style);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_s3_config_with_prefix() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_prefix("static".to_string());
@@ -332,7 +333,7 @@ mod tests {
 		assert_eq!(config.prefix, Some("static".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_s3_config_with_base_url() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_base_url("https://cdn.example.com".to_string());
@@ -340,7 +341,7 @@ mod tests {
 		assert_eq!(config.base_url, "https://cdn.example.com");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_key_generation() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string());
 		let testable = TestableS3Config::new(config);
@@ -349,7 +350,7 @@ mod tests {
 		assert_eq!(testable.get_full_key("/file.txt"), "file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_key_with_prefix() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_prefix("static".to_string());
@@ -359,7 +360,7 @@ mod tests {
 		assert_eq!(testable.get_full_key("/file.txt"), "static/file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string());
 		let testable = TestableS3Config::new(config);
@@ -370,7 +371,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_prefix() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_prefix("static".to_string());
@@ -382,7 +383,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_generation_with_custom_base() {
 		let config = S3Config::new("test-bucket".to_string(), "us-east-1".to_string())
 			.with_base_url("https://cdn.example.com".to_string());

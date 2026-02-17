@@ -279,22 +279,23 @@ pub fn humanize_field_name(field_name: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_capfirst() {
 		assert_eq!(capfirst("hello world"), "Hello World");
 		assert_eq!(capfirst("HELLO"), "HELLO");
 		assert_eq!(capfirst("test"), "Test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_title() {
 		assert_eq!(title("hello world"), "Hello World");
 		assert_eq!(title("HELLO WORLD"), "Hello World");
 		assert_eq!(title("test case"), "Test Case");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_utils_text_pluralize() {
 		assert_eq!(pluralize(1, "apple", None), "apple");
 		assert_eq!(pluralize(2, "apple", None), "apples");
@@ -303,7 +304,7 @@ mod tests {
 		assert_eq!(pluralize(1, "person", Some("people")), "person");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_utils_text_ordinal() {
 		assert_eq!(ordinal(1), "1st");
 		assert_eq!(ordinal(2), "2nd");
@@ -315,7 +316,7 @@ mod tests {
 		assert_eq!(ordinal(23), "23rd");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_utils_text_intcomma() {
 		assert_eq!(intcomma(1000), "1,000");
 		assert_eq!(intcomma(1000000), "1,000,000");
@@ -323,34 +324,34 @@ mod tests {
 		assert_eq!(intcomma(-1000), "-1,000");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatcomma() {
 		assert_eq!(floatcomma(1000.5, 2), "1,000.50");
 		assert_eq!(floatcomma(1234567.89, 2), "1,234,567.89");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ljust() {
 		assert_eq!(ljust("test", 10, ' '), "test      ");
 		assert_eq!(ljust("test", 10, '-'), "test------");
 		assert_eq!(ljust("test", 3, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rjust() {
 		assert_eq!(rjust("test", 10, ' '), "      test");
 		assert_eq!(rjust("test", 10, '-'), "------test");
 		assert_eq!(rjust("test", 3, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_center() {
 		assert_eq!(center("test", 10, ' '), "   test   ");
 		assert_eq!(center("test", 10, '-'), "---test---");
 		assert_eq!(center("test", 3, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_format() {
 		assert_eq!(phone_format("1234567890"), "(123) 456-7890");
 		assert_eq!(phone_format("11234567890"), "+1 (123) 456-7890");
@@ -358,45 +359,45 @@ mod tests {
 		assert_eq!(phone_format("123"), "123");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capfirst_empty() {
 		assert_eq!(capfirst(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capfirst_unicode() {
 		assert_eq!(capfirst("こんにちは 世界"), "こんにちは 世界");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_title_empty() {
 		assert_eq!(title(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_title_single_word() {
 		assert_eq!(title("hello"), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pluralize_negative() {
 		assert_eq!(pluralize(-1, "apple", None), "apples");
 		assert_eq!(pluralize(-2, "apple", None), "apples");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pluralize_zero() {
 		assert_eq!(pluralize(0, "item", None), "items");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ordinal_teens() {
 		assert_eq!(ordinal(11), "11th");
 		assert_eq!(ordinal(12), "12th");
 		assert_eq!(ordinal(13), "13th");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ordinal_hundreds() {
 		assert_eq!(ordinal(101), "101st");
 		assert_eq!(ordinal(102), "102nd");
@@ -404,78 +405,78 @@ mod tests {
 		assert_eq!(ordinal(111), "111th");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_intcomma_zero() {
 		assert_eq!(intcomma(0), "0");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_intcomma_large_numbers() {
 		assert_eq!(intcomma(1_000_000_000), "1,000,000,000");
 		assert_eq!(intcomma(-1_000_000_000), "-1,000,000,000");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatcomma_zero() {
 		assert_eq!(floatcomma(0.0, 2), "0.00");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatcomma_negative() {
 		assert_eq!(floatcomma(-1234.56, 2), "-1,234.56");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_floatcomma_no_decimals() {
 		assert_eq!(floatcomma(1234.0, 0), "1,234");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ljust_exact_width() {
 		assert_eq!(ljust("test", 4, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ljust_unicode() {
 		assert_eq!(ljust("こんにちは", 10, ' '), "こんにちは     ");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rjust_exact_width() {
 		assert_eq!(rjust("test", 4, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rjust_unicode() {
 		assert_eq!(rjust("こんにちは", 10, ' '), "     こんにちは");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_center_exact_width() {
 		assert_eq!(center("test", 4, ' '), "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_center_odd_padding() {
 		assert_eq!(center("test", 9, ' '), "  test   ");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_center_unicode() {
 		assert_eq!(center("こんにちは", 10, '-'), "--こんにちは---");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_format_empty() {
 		assert_eq!(phone_format(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_format_with_dashes() {
 		assert_eq!(phone_format("123-456-7890"), "(123) 456-7890");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ordinal_negative() {
 		// Negative numbers: the modulo operation in Rust gives negative results
 		// -1 % 10 = -1, -1 % 100 = -1, neither matches the patterns, so "th"
@@ -484,39 +485,39 @@ mod tests {
 		assert_eq!(ordinal(-11), "-11th");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_capfirst_numbers() {
 		assert_eq!(capfirst("123 test"), "123 Test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_title_mixed_case() {
 		assert_eq!(title("hElLo WoRlD"), "Hello World");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_humanize_field_name() {
 		assert_eq!(humanize_field_name("created_at"), "Created At");
 		assert_eq!(humanize_field_name("user_id"), "User Id");
 		assert_eq!(humanize_field_name("is_active"), "Is Active");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_humanize_field_name_single_word() {
 		assert_eq!(humanize_field_name("name"), "Name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_humanize_field_name_no_underscores() {
 		assert_eq!(humanize_field_name("username"), "Username");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_humanize_field_name_multiple_underscores() {
 		assert_eq!(humanize_field_name("user_full_name"), "User Full Name");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_humanize_field_name_empty() {
 		assert_eq!(humanize_field_name(""), "");
 	}
@@ -526,39 +527,40 @@ mod tests {
 mod proptests {
 	use super::*;
 	use proptest::prelude::*;
+	use rstest::rstest;
 
 	proptest! {
-		#[test]
+	#[rstest]
 		fn prop_pluralize_one(s in "\\w+") {
 			assert_eq!(pluralize(1, &s, None), s);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_pluralize_not_one(n in 2i64..100, s in "\\w+") {
 			let result = pluralize(n, &s, None);
 			assert_ne!(result, s);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_ordinal_format(n in 1i64..1000) {
 			let ord = ordinal(n);
 			assert!(ord.starts_with(&n.to_string()));
 			assert!(ord.ends_with("st") || ord.ends_with("nd") || ord.ends_with("rd") || ord.ends_with("th"));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_ljust_min_length(s in "\\w+", width in 5usize..50) {
 			let padded = ljust(&s, width, ' ');
 			assert!(padded.chars().count() >= s.chars().count());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_rjust_min_length(s in "\\w+", width in 5usize..50) {
 			let padded = rjust(&s, width, ' ');
 			assert!(padded.chars().count() >= s.chars().count());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_center_min_length(s in "\\w+", width in 5usize..50) {
 			let centered = center(&s, width, ' ');
 			assert!(centered.chars().count() >= s.chars().count());

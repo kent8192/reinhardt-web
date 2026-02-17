@@ -163,15 +163,16 @@ impl Default for StorageRegistry {
 mod tests {
 	use super::*;
 	use crate::staticfiles::{FileSystemStorage, MemoryStorage};
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_registry_creation() {
 		let registry = StorageRegistry::new();
 		assert_eq!(registry.list().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_storage_backend() {
 		let mut registry = StorageRegistry::new();
 
@@ -184,7 +185,7 @@ mod tests {
 		assert!(registry.contains("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_duplicate_fails() {
 		let mut registry = StorageRegistry::new();
 
@@ -204,7 +205,7 @@ mod tests {
 		assert_eq!(result.unwrap_err().kind(), io::ErrorKind::AlreadyExists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_storage_backend() {
 		let mut registry = StorageRegistry::new();
 
@@ -223,14 +224,14 @@ mod tests {
 		assert_eq!(url, "/static/test.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_backend() {
 		let registry = StorageRegistry::new();
 		let storage = registry.get("nonexistent");
 		assert!(storage.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unregister_storage_backend() {
 		let mut registry = StorageRegistry::new();
 
@@ -248,7 +249,7 @@ mod tests {
 		assert!(!registry.contains("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unregister_nonexistent_fails() {
 		let mut registry = StorageRegistry::new();
 		let result = registry.unregister("nonexistent");
@@ -257,7 +258,7 @@ mod tests {
 		assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_list_storage_backends() {
 		let mut registry = StorageRegistry::new();
 
@@ -286,7 +287,7 @@ mod tests {
 		assert!(backends.contains(&"filesystem".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_registry() {
 		let mut registry = StorageRegistry::new();
 
@@ -311,7 +312,7 @@ mod tests {
 		assert_eq!(registry.list().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_gets_create_different_instances() {
 		let mut registry = StorageRegistry::new();
 

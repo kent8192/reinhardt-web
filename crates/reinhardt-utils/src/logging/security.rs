@@ -216,7 +216,9 @@ mod tests {
 	use super::*;
 	use crate::logging::LogLevel;
 	use crate::logging::handlers::MemoryHandler;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_security_error_display() {
 		let errors = vec![
@@ -247,6 +249,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auth_event_success_logged_at_info() {
 		let logger = Arc::new(Logger::new("security".to_string()));
@@ -271,6 +274,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auth_event_failure_logged_at_warning() {
 		let logger = Arc::new(Logger::new("security".to_string()));
@@ -295,6 +299,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_rate_limit_logged_at_warning() {
 		let logger = Arc::new(Logger::new("security".to_string()));
@@ -316,6 +321,7 @@ mod tests {
 		assert!(records[0].message.contains("100"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_csrf_violation_logged_at_error() {
 		let logger = Arc::new(Logger::new("security".to_string()));

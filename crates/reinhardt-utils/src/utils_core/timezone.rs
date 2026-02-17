@@ -233,15 +233,16 @@ pub fn format_datetime(dt: &DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::str::FromStr;
 
-	#[test]
+	#[rstest]
 	fn test_utils_timezone_now() {
 		let dt = now();
 		assert_eq!(dt.timezone(), Utc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_local_and_back() {
 		let utc_now = now();
 		let local = to_local(utc_now);
@@ -251,7 +252,7 @@ mod tests {
 		assert_eq!(utc_now.timestamp(), back_to_utc.timestamp());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_make_aware() {
 		let naive = NaiveDateTime::from_str("2025-01-01T12:00:00").unwrap();
 		let aware = make_aware_utc(naive);
@@ -259,7 +260,7 @@ mod tests {
 		assert!(is_aware(&aware));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_and_format() {
 		let dt_str = "2025-01-01T12:00:00Z";
 		let dt = parse_datetime(dt_str).unwrap();
@@ -269,26 +270,26 @@ mod tests {
 		assert!(formatted.contains("12:00:00"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localtime() {
 		let local_dt = localtime();
 		// Just verify it returns a DateTime<Local> by checking the type compiles
 		let _: DateTime<Local> = local_dt;
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_aware_utc() {
 		let utc_dt = now();
 		assert!(is_aware(&utc_dt));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_aware_local() {
 		let local_dt = localtime();
 		assert!(is_aware(&local_dt));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_make_aware_local() {
 		let naive = NaiveDateTime::from_str("2025-01-01T12:00:00").unwrap();
 		let aware = make_aware_local(naive);
@@ -298,7 +299,7 @@ mod tests {
 		assert_eq!(aware.naive_local(), naive);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_timezone_utc() {
 		let dt = now();
 		let result = to_timezone(dt, "UTC");
@@ -307,7 +308,7 @@ mod tests {
 		assert_eq!(result.unwrap(), dt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_timezone_america_new_york() {
 		let dt = now();
 		let result = to_timezone(dt, "America/New_York");
@@ -317,7 +318,7 @@ mod tests {
 		assert_eq!(dt.timestamp(), ny_dt.timestamp());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_timezone_asia_tokyo() {
 		let dt = now();
 		let result = to_timezone(dt, "Asia/Tokyo");
@@ -327,7 +328,7 @@ mod tests {
 		assert_eq!(dt.timestamp(), tokyo_dt.timestamp());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_timezone_invalid() {
 		let dt = now();
 		let result = to_timezone(dt, "Invalid/Timezone");
@@ -336,7 +337,7 @@ mod tests {
 		assert!(result.unwrap_err().contains("Invalid timezone"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_timezone_name_utc() {
 		let dt = now();
 		let tz_name = get_timezone_name_utc(&dt);
@@ -344,7 +345,7 @@ mod tests {
 		assert_eq!(tz_name, "UTC");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_timezone_name_local() {
 		let dt = localtime();
 		let tz_name = get_timezone_name_local(&dt);
@@ -355,7 +356,7 @@ mod tests {
 		assert!(tz_name == "Local" || !tz_name.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_datetime_with_offset() {
 		let dt_str = "2025-01-01T12:00:00+09:00";
 		let dt = parse_datetime(dt_str);
@@ -364,7 +365,7 @@ mod tests {
 		assert_eq!(parsed.timezone(), Utc);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_datetime_invalid() {
 		let dt_str = "invalid datetime";
 		let result = parse_datetime(dt_str);
@@ -372,7 +373,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_datetime_roundtrip() {
 		let original = now();
 		let formatted = format_datetime(&original);
@@ -387,16 +388,17 @@ mod tests {
 mod proptests {
 	use super::*;
 	use proptest::prelude::*;
+	use rstest::rstest;
 
 	proptest! {
-		#[test]
+	#[rstest]
 		fn prop_to_local_preserves_timestamp(timestamp in 0i64..2147483647) {
 			let utc_dt = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap();
 			let local = to_local(utc_dt);
 			assert_eq!(utc_dt.timestamp(), local.timestamp());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_to_utc_preserves_timestamp(timestamp in 0i64..2147483647) {
 			// Create a local datetime via UTC conversion
 			let utc_dt = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap();
@@ -405,7 +407,7 @@ mod proptests {
 			assert_eq!(local.timestamp(), back_to_utc.timestamp());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_make_aware_utc_roundtrip(timestamp in 0i64..2147483647) {
 			let utc_dt = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap();
 			let naive = utc_dt.naive_utc();
@@ -413,7 +415,7 @@ mod proptests {
 			assert_eq!(aware.timestamp(), utc_dt.timestamp());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_format_parse_roundtrip(timestamp in 0i64..2147483647) {
 			let original = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap();
 			let formatted = format_datetime(&original);
@@ -422,7 +424,7 @@ mod proptests {
 			assert_eq!(original.timestamp(), parsed.unwrap().timestamp());
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_is_aware_always_true(timestamp in 0i64..2147483647) {
 			let utc_dt = DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap();
 			let local_dt = to_local(utc_dt);

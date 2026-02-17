@@ -341,6 +341,7 @@ impl Default for CheckRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestCheck {
 		tags: Vec<String>,
@@ -357,7 +358,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_message_levels() {
 		let debug = CheckMessage::debug("test.D001", "Debug");
 		assert!(matches!(debug.level, CheckLevel::Debug));
@@ -375,20 +376,20 @@ mod tests {
 		assert!(matches!(critical.level, CheckLevel::Critical));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_message_with_hint() {
 		let msg = CheckMessage::error("test.E001", "Error occurred").with_hint("Try this fix");
 
 		assert_eq!(msg.hint, Some("Try this fix".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_registry_new() {
 		let registry = CheckRegistry::new();
 		assert_eq!(registry.checks.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_registry_register() {
 		let mut registry = CheckRegistry::new();
 
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(registry.checks.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_registry_run_all_checks() {
 		let mut registry = CheckRegistry::new();
 
@@ -422,7 +423,7 @@ mod tests {
 		assert_eq!(messages.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_registry_run_filtered_checks() {
 		let mut registry = CheckRegistry::new();
 
@@ -444,7 +445,7 @@ mod tests {
 		assert_eq!(messages[0].id, "test.I001");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_registry_multiple_tags() {
 		let mut registry = CheckRegistry::new();
 

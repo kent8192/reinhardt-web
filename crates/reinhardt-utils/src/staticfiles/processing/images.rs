@@ -223,23 +223,24 @@ enum ImageFormat {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::path::PathBuf;
 
-	#[test]
+	#[rstest]
 	fn test_optimizer_creation() {
 		let optimizer = ImageOptimizer::new(85);
 		assert_eq!(optimizer.quality, 85);
 		assert!(optimizer.lossy);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimizer_with_settings() {
 		let optimizer = ImageOptimizer::with_settings(90, false);
 		assert_eq!(optimizer.quality, 90);
 		assert!(!optimizer.lossy);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_quality_clamping() {
 		let optimizer1 = ImageOptimizer::new(150);
 		assert_eq!(optimizer1.quality, 100);
@@ -248,14 +249,14 @@ mod tests {
 		assert_eq!(optimizer2.quality, 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_png() {
 		let optimizer = ImageOptimizer::new(85);
 		assert!(optimizer.can_process(&PathBuf::from("image.png")));
 		assert!(optimizer.can_process(&PathBuf::from("image.PNG")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_jpeg() {
 		let optimizer = ImageOptimizer::new(85);
 		assert!(optimizer.can_process(&PathBuf::from("photo.jpg")));
@@ -263,14 +264,14 @@ mod tests {
 		assert!(optimizer.can_process(&PathBuf::from("photo.JPEG")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_can_process_webp() {
 		let optimizer = ImageOptimizer::new(85);
 		assert!(optimizer.can_process(&PathBuf::from("image.webp")));
 		assert!(optimizer.can_process(&PathBuf::from("image.WEBP")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cannot_process_other_formats() {
 		let optimizer = ImageOptimizer::new(85);
 		assert!(!optimizer.can_process(&PathBuf::from("style.css")));
@@ -278,6 +279,7 @@ mod tests {
 		assert!(!optimizer.can_process(&PathBuf::from("image.gif")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(not(feature = "image-optimization"))]
 	async fn test_optimize_png_basic_without_feature() {
@@ -291,6 +293,7 @@ mod tests {
 		assert_eq!(result, input);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(feature = "image-optimization")]
 	async fn test_optimize_png_basic_with_feature() {
@@ -301,6 +304,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(not(feature = "image-optimization"))]
 	async fn test_optimize_jpeg_basic_without_feature() {
@@ -314,6 +318,7 @@ mod tests {
 		assert_eq!(result, input);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(feature = "image-optimization")]
 	async fn test_optimize_jpeg_basic_with_feature() {
@@ -324,6 +329,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(not(feature = "image-optimization"))]
 	async fn test_optimize_webp_basic_without_feature() {
@@ -337,6 +343,7 @@ mod tests {
 		assert_eq!(result, input);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[cfg(feature = "image-optimization")]
 	async fn test_optimize_webp_basic_with_feature() {
@@ -347,6 +354,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unsupported_format() {
 		let optimizer = ImageOptimizer::new(85);
@@ -355,7 +363,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let optimizer = ImageOptimizer::default();
 		assert_eq!(optimizer.quality, 85);

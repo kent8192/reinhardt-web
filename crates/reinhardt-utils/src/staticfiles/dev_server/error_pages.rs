@@ -292,9 +292,10 @@ impl Error for DevServerError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::io;
 
-	#[test]
+	#[rstest]
 	fn test_new_handler() {
 		let handler = DevelopmentErrorHandler::new();
 		assert!(
@@ -312,7 +313,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_handler_builder() {
 		let handler = DevelopmentErrorHandler::new()
 			.with_stack_trace(false)
@@ -336,7 +337,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_error_html() {
 		let handler = DevelopmentErrorHandler::new();
 		let error = io::Error::new(io::ErrorKind::NotFound, "File not found");
@@ -392,7 +393,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_error_text() {
 		let handler = DevelopmentErrorHandler::new();
 		let error = io::Error::new(io::ErrorKind::NotFound, "File not found");
@@ -419,7 +420,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_with_disabled_stack_trace() {
 		let handler = DevelopmentErrorHandler::new().with_stack_trace(false);
 		let error = io::Error::new(io::ErrorKind::NotFound, "File not found");
@@ -443,7 +444,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dev_server_error_new() {
 		let error = DevServerError::new("Test error");
 		assert_eq!(
@@ -458,7 +459,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dev_server_error_with_source() {
 		let source = io::Error::new(io::ErrorKind::NotFound, "File not found");
 		let error = DevServerError::with_source("Failed to load file", source);
@@ -475,7 +476,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_page_styles() {
 		let handler = DevelopmentErrorHandler::new();
 		let styles = handler.error_page_styles();
@@ -548,7 +549,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let handler = DevelopmentErrorHandler::default();
 		assert!(

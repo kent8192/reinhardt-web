@@ -281,7 +281,9 @@ where
 mod tests {
 	use super::*;
 	use crate::cache::InMemoryCache;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_l1_hit() {
 		let l1 = InMemoryCache::new();
@@ -296,6 +298,7 @@ mod tests {
 		assert_eq!(value, Some("value1".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_l2_hit_promotion() {
 		let l1 = InMemoryCache::new();
@@ -314,6 +317,7 @@ mod tests {
 		assert_eq!(l1_value, Some("value1".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_miss() {
 		let l1 = InMemoryCache::new();
@@ -325,6 +329,7 @@ mod tests {
 		assert_eq!(value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_write_through() {
 		let l1 = InMemoryCache::new();
@@ -341,6 +346,7 @@ mod tests {
 		assert_eq!(l2_value, Some("value1".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_delete_both() {
 		let l1 = InMemoryCache::new();
@@ -360,6 +366,7 @@ mod tests {
 		assert_eq!(l2_value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_has_key() {
 		let l1 = InMemoryCache::new();
@@ -374,6 +381,7 @@ mod tests {
 		assert!(!cache.has_key("nonexistent").await.unwrap());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_clear_both() {
 		let l1 = InMemoryCache::new();
@@ -394,6 +402,7 @@ mod tests {
 		assert_eq!(l2_value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_get_many_l1_hit() {
 		let l1 = InMemoryCache::new();
@@ -413,6 +422,7 @@ mod tests {
 		assert_eq!(results.get("key2"), Some(&"value2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_get_many_l2_promotion() {
 		let l1 = InMemoryCache::new();
@@ -435,6 +445,7 @@ mod tests {
 		assert_eq!(l1_value, Some("value2".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_set_many() {
 		let l1 = InMemoryCache::new();
@@ -454,6 +465,7 @@ mod tests {
 		assert_eq!(l2_value, Some("value1".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_delete_many() {
 		let l1 = InMemoryCache::new();
@@ -474,6 +486,7 @@ mod tests {
 		assert_eq!(l2_value, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_incr() {
 		let l1 = InMemoryCache::new();
@@ -491,6 +504,7 @@ mod tests {
 		assert_eq!(l2_value, Some(5));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_decr() {
 		let l1 = InMemoryCache::new();
@@ -511,6 +525,7 @@ mod tests {
 		assert_eq!(l2_value, Some(7));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_hybrid_cache_l1_l2_access() {
 		let l1 = InMemoryCache::new();

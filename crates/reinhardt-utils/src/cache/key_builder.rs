@@ -77,7 +77,9 @@ impl Default for CacheKeyBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_key_builder() {
 		let builder = CacheKeyBuilder::new("myapp").with_version(2);

@@ -383,6 +383,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, StatusCode, Version};
+	use rstest::rstest;
 
 	struct TestHandler {
 		status: StatusCode,
@@ -409,6 +410,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_policy_long_term() {
 		let policy = CachePolicy::long_term();
@@ -417,6 +419,7 @@ mod tests {
 		assert_eq!(header_value, "public, immutable, max-age=31536000");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_policy_short_term() {
 		let policy = CachePolicy::short_term();
@@ -425,6 +428,7 @@ mod tests {
 		assert_eq!(header_value, "public, must-revalidate, max-age=300");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_cache_policy_no_cache() {
 		let policy = CachePolicy::no_cache();
@@ -433,6 +437,7 @@ mod tests {
 		assert_eq!(header_value, "no-cache, no-store, must-revalidate");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_css_file_gets_long_term_cache() {
 		let config = CacheControlConfig::new();
@@ -459,6 +464,7 @@ mod tests {
 		assert_eq!(cache_control, "public, immutable, max-age=31536000");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_js_file_gets_long_term_cache() {
 		let config = CacheControlConfig::new();
@@ -485,6 +491,7 @@ mod tests {
 		assert_eq!(cache_control, "public, immutable, max-age=31536000");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_html_file_gets_short_term_cache() {
 		let config = CacheControlConfig::new();
@@ -511,6 +518,7 @@ mod tests {
 		assert_eq!(cache_control, "public, must-revalidate, max-age=300");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_image_files_get_long_term_cache() {
 		let config = CacheControlConfig::new();
@@ -543,6 +551,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_font_files_get_long_term_cache() {
 		let config = CacheControlConfig::new();
@@ -575,6 +584,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unknown_extension_gets_default_policy() {
 		let config = CacheControlConfig::new();
@@ -602,6 +612,7 @@ mod tests {
 		assert_eq!(cache_control, "public, must-revalidate, max-age=300");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_custom_type_policy() {
 		let config =
@@ -629,6 +640,7 @@ mod tests {
 		assert_eq!(cache_control, "no-cache, no-store, must-revalidate");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_disabled_middleware() {
 		let config = CacheControlConfig::disabled();
@@ -650,6 +662,7 @@ mod tests {
 		assert!(!response.headers.contains_key("cache-control"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_non_success_response_not_cached() {
 		let config = CacheControlConfig::new();
@@ -671,6 +684,7 @@ mod tests {
 		assert!(!response.headers.contains_key("cache-control"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_vary_header() {
 		let policy = CachePolicy::short_term().with_vary("Accept-Encoding".to_string());
@@ -696,6 +710,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_s_maxage() {
 		let policy = CachePolicy::new()
@@ -707,6 +722,7 @@ mod tests {
 		assert_eq!(header_value, "public, max-age=300, s-maxage=3600");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multiple_directives() {
 		let policy = CachePolicy::new()

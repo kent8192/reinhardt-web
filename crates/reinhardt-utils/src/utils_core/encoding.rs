@@ -291,22 +291,23 @@ pub fn linebreaksbr(text: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_urlencode() {
 		assert_eq!(urlencode("hello world"), "hello+world");
 		assert_eq!(urlencode("hello@world.com"), "hello%40world.com");
 		assert_eq!(urlencode("test&value=1"), "test%26value%3D1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urldecode() {
 		assert_eq!(urldecode("hello+world").unwrap(), "hello world");
 		assert_eq!(urldecode("hello%40world.com").unwrap(), "hello@world.com");
 		assert_eq!(urldecode("test%26value%3D1").unwrap(), "test&value=1");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urlencode_urldecode_roundtrip() {
 		let original = "Hello, World! 123 @#$%";
 		let encoded = urlencode(original);
@@ -314,7 +315,7 @@ mod tests {
 		assert_eq!(decoded, original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escapejs() {
 		assert_eq!(escapejs("Hello"), "Hello");
 		assert_eq!(escapejs("It's \"quoted\""), "It\\'s \\\"quoted\\\"");
@@ -322,7 +323,7 @@ mod tests {
 		assert_eq!(escapejs("<script>"), "\\u003Cscript\\u003E");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slugify() {
 		assert_eq!(slugify("Hello World"), "hello-world");
 		assert_eq!(slugify("Hello  World"), "hello-world");
@@ -331,21 +332,21 @@ mod tests {
 		assert_eq!(slugify("Special!@#Characters"), "special-characters");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_chars() {
 		assert_eq!(truncate_chars("Hello World", 20), "Hello World");
 		assert_eq!(truncate_chars("Hello World", 8), "Hello...");
 		assert_eq!(truncate_chars("Test", 10), "Test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_words() {
 		assert_eq!(truncate_words("Hello World Test", 2), "Hello World...");
 		assert_eq!(truncate_words("One", 5), "One");
 		assert_eq!(truncate_words("A B C D E", 3), "A B C...");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wrap_text() {
 		let text = "This is a long line that needs to be wrapped";
 		let wrapped = wrap_text(text, 20);
@@ -353,13 +354,13 @@ mod tests {
 		assert!(wrapped.iter().all(|line| line.chars().count() <= 20));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linebreaksbr() {
 		assert_eq!(linebreaksbr("Line 1\nLine 2"), "Line 1<br>\nLine 2");
 		assert_eq!(linebreaksbr("Single"), "Single");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_force_str() {
 		let bytes = b"Hello, World!";
 		assert_eq!(force_str(bytes), "Hello, World!");
@@ -370,13 +371,13 @@ mod tests {
 		assert!(result.contains("World"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_force_bytes() {
 		let text = "Hello, World!";
 		assert_eq!(force_bytes(text), b"Hello, World!");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linebreaks() {
 		assert_eq!(
 			linebreaks("Line 1\nLine 2\n\nLine 3"),
@@ -384,12 +385,12 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linebreaks_single_line() {
 		assert_eq!(linebreaks("Single line"), "Single line");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_linebreaks_empty_lines() {
 		assert_eq!(
 			linebreaks("Line 1\n\nLine 2"),
@@ -397,64 +398,64 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urldecode_invalid_hex() {
 		assert!(urldecode("%ZZ").is_err());
 		assert!(urldecode("%1").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urldecode_invalid_utf8() {
 		// This should handle invalid UTF-8 sequences gracefully
 		let result = urldecode("%FF%FE");
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_urlencode_special_chars() {
 		assert_eq!(urlencode("a-b_c.d~e"), "a-b_c.d~e");
 		assert_eq!(urlencode("!@#$%^&*()"), "%21%40%23%24%25%5E%26%2A%28%29");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escapejs_control_chars() {
 		assert_eq!(escapejs("\x08"), "\\b");
 		assert_eq!(escapejs("\x0C"), "\\f");
 		assert_eq!(escapejs("\x01"), "\\u0001");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slugify_empty() {
 		assert_eq!(slugify(""), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slugify_unicode() {
 		// Unicode characters are converted to dashes, then consecutive dashes are collapsed
 		assert_eq!(slugify("Hello 世界"), "hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slugify_multiple_dashes() {
 		assert_eq!(slugify("hello---world"), "hello-world");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_chars_exact_length() {
 		assert_eq!(truncate_chars("Hello", 5), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_chars_unicode() {
 		assert_eq!(truncate_chars("こんにちは世界", 5), "こん...");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_words_empty() {
 		assert_eq!(truncate_words("", 5), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wrap_text_single_word_exceeds_width() {
 		let text = "VeryLongWordThatExceedsWidth";
 		let wrapped = wrap_text(text, 10);
@@ -462,13 +463,13 @@ mod tests {
 		assert_eq!(wrapped[0], "VeryLongWordThatExceedsWidth");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_wrap_text_empty() {
 		let wrapped = wrap_text("", 10);
 		assert_eq!(wrapped.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_force_str_empty() {
 		assert_eq!(force_str(b""), "");
 	}
@@ -478,9 +479,10 @@ mod tests {
 mod proptests {
 	use super::*;
 	use proptest::prelude::*;
+	use rstest::rstest;
 
 	proptest! {
-		#[test]
+	#[rstest]
 		fn prop_slugify_format(s in "[a-zA-Z0-9 -]+") {
 			let slug = slugify(&s);
 			// Slug should only contain lowercase letters, numbers, and hyphens
@@ -489,27 +491,27 @@ mod proptests {
 			assert!(!slug.contains("--"));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_truncate_chars_length(s in "\\PC*", n in 5usize..100) {
 			let truncated = truncate_chars(&s, n);
 			assert!(truncated.chars().count() <= n);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_truncate_words_count(s in "\\w+(\\s+\\w+)*", n in 1usize..20) {
 			let truncated = truncate_words(&s, n);
 			let word_count = truncated.split_whitespace().filter(|w| *w != "...").count();
 			assert!(word_count <= n);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_urlencode_ascii_safe(s in "[a-zA-Z0-9._~-]+") {
 			let encoded = urlencode(&s);
 			// These characters should not be encoded
 			assert_eq!(encoded, s);
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_escapejs_no_newlines(s in "\\PC*") {
 			let escaped = escapejs(&s);
 			assert!(!escaped.contains('\n'));
@@ -517,7 +519,7 @@ mod proptests {
 			assert!(!escaped.contains('\t'));
 		}
 
-		#[test]
+	#[rstest]
 		fn prop_wrap_text_line_width(s in "[a-zA-Z0-9 ]+", width in 10usize..50) {
 			let lines = wrap_text(&s, width);
 			for line in lines {
