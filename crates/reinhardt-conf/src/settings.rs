@@ -116,7 +116,11 @@ pub struct Settings {
 	/// Database configurations
 	pub databases: HashMap<String, DatabaseConfig>,
 
-	/// Template configurations
+	/// Template engine configurations.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// template engine integration. Setting this value has no effect on framework
+	/// behavior.
 	pub templates: Vec<TemplateConfig>,
 
 	/// Static files URL prefix
@@ -134,19 +138,37 @@ pub struct Settings {
 	/// Media files root directory
 	pub media_root: Option<PathBuf>,
 
-	/// Language code
+	/// Language code for internationalization.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// i18n implementation. Setting this value has no effect on framework behavior.
 	pub language_code: String,
 
-	/// Time zone
+	/// Time zone for datetime handling.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// timezone support implementation. Setting this value has no effect on
+	/// framework behavior.
 	pub time_zone: String,
 
-	/// Enable internationalization
+	/// Enable internationalization.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// i18n implementation. Setting this value has no effect on framework behavior.
 	pub use_i18n: bool,
 
-	/// Use timezone-aware datetimes
+	/// Use timezone-aware datetimes.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// timezone support implementation. Setting this value has no effect on
+	/// framework behavior.
 	pub use_tz: bool,
 
-	/// Default auto field for models
+	/// Default auto field type for models.
+	///
+	/// **Note:** Currently not consumed by the framework. Reserved for future
+	/// auto field configuration. Setting this value has no effect on framework
+	/// behavior.
 	pub default_auto_field: String,
 
 	/// HTTPS/Security settings
