@@ -131,9 +131,6 @@ pub struct Settings {
 	/// Media files URL prefix
 	pub media_url: String,
 
-	/// Media files root directory
-	pub media_root: Option<PathBuf>,
-
 	/// Language code
 	pub language_code: String,
 
@@ -238,7 +235,6 @@ impl Settings {
 			static_root: None,
 			staticfiles_dirs: vec![],
 			media_url: "/media/".to_string(),
-			media_root: None,
 			language_code: "en-us".to_string(),
 			time_zone: "UTC".to_string(),
 			use_i18n: true,
