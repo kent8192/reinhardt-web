@@ -189,15 +189,16 @@ impl DropUserStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_new() {
 		let stmt = DropUserStatement::new();
 		assert!(stmt.user_names.is_empty());
 		assert!(!stmt.if_exists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_basic() {
 		let stmt = DropUserStatement::new().user("app_user");
 		assert_eq!(stmt.user_names.len(), 1);
@@ -205,19 +206,19 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_multiple() {
 		let stmt = DropUserStatement::new().user("user1").user("user2");
 		assert_eq!(stmt.user_names.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_if_exists() {
 		let stmt = DropUserStatement::new().user("app_user").if_exists(true);
 		assert!(stmt.if_exists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_validation_empty() {
 		let stmt = DropUserStatement::new();
 		assert!(stmt.validate().is_err());

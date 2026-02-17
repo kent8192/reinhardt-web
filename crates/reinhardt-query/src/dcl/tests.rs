@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod privilege_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_privilege_as_sql() {
 		assert_eq!(Privilege::Select.as_sql(), "SELECT");
 		assert_eq!(Privilege::Insert.as_sql(), "INSERT");
@@ -24,7 +25,7 @@ mod privilege_tests {
 		assert_eq!(Privilege::AlterSystem.as_sql(), "ALTER SYSTEM");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_is_postgres_only() {
 		// Common privileges
 		assert!(!Privilege::Select.is_postgres_only());
@@ -47,7 +48,7 @@ mod privilege_tests {
 		assert!(Privilege::AlterSystem.is_postgres_only());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_table() {
 		assert!(Privilege::Select.is_valid_for_object(ObjectType::Table));
 		assert!(Privilege::Insert.is_valid_for_object(ObjectType::Table));
@@ -64,7 +65,7 @@ mod privilege_tests {
 		assert!(!Privilege::Temporary.is_valid_for_object(ObjectType::Table));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_database() {
 		assert!(Privilege::Create.is_valid_for_object(ObjectType::Database));
 		assert!(Privilege::Connect.is_valid_for_object(ObjectType::Database));
@@ -77,7 +78,7 @@ mod privilege_tests {
 		assert!(!Privilege::Truncate.is_valid_for_object(ObjectType::Database));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_schema() {
 		assert!(Privilege::Create.is_valid_for_object(ObjectType::Schema));
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Schema));
@@ -89,7 +90,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Schema));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_sequence() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Sequence));
 		assert!(Privilege::Select.is_valid_for_object(ObjectType::Sequence));
@@ -102,7 +103,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Sequence));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_function() {
 		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Function));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Function));
@@ -113,7 +114,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Function));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_procedure() {
 		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Procedure));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Procedure));
@@ -124,7 +125,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Procedure));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_routine() {
 		assert!(Privilege::Execute.is_valid_for_object(ObjectType::Routine));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Routine));
@@ -135,7 +136,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Routine));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_type() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Type));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Type));
@@ -146,7 +147,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Type));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_domain() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Domain));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Domain));
@@ -157,7 +158,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Domain));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_foreign_data_wrapper() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::ForeignDataWrapper));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::ForeignDataWrapper));
@@ -168,7 +169,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::ForeignDataWrapper));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_foreign_server() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::ForeignServer));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::ForeignServer));
@@ -179,7 +180,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::ForeignServer));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_language() {
 		assert!(Privilege::Usage.is_valid_for_object(ObjectType::Language));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Language));
@@ -190,7 +191,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Language));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_large_object() {
 		assert!(Privilege::Select.is_valid_for_object(ObjectType::LargeObject));
 		assert!(Privilege::Update.is_valid_for_object(ObjectType::LargeObject));
@@ -203,7 +204,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::LargeObject));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_tablespace() {
 		assert!(Privilege::Create.is_valid_for_object(ObjectType::Tablespace));
 		assert!(Privilege::All.is_valid_for_object(ObjectType::Tablespace));
@@ -215,7 +216,7 @@ mod privilege_tests {
 		assert!(!Privilege::Connect.is_valid_for_object(ObjectType::Tablespace));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_privilege_valid_for_parameter() {
 		assert!(Privilege::Set.is_valid_for_object(ObjectType::Parameter));
 		assert!(Privilege::AlterSystem.is_valid_for_object(ObjectType::Parameter));
@@ -232,8 +233,9 @@ mod privilege_tests {
 #[cfg(test)]
 mod object_type_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_object_type_as_sql() {
 		assert_eq!(ObjectType::Table.as_sql(), "TABLE");
 		assert_eq!(ObjectType::Database.as_sql(), "DATABASE");
@@ -255,7 +257,7 @@ mod object_type_tests {
 		assert_eq!(ObjectType::Parameter.as_sql(), "PARAMETER");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_object_type_is_postgres_only() {
 		// Common object types
 		assert!(!ObjectType::Table.is_postgres_only());
@@ -281,8 +283,9 @@ mod object_type_tests {
 #[cfg(test)]
 mod grantee_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_grantee_role_constructor() {
 		let grantee = Grantee::role("app_user");
 		match grantee {
@@ -291,7 +294,7 @@ mod grantee_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grantee_user_constructor() {
 		let grantee = Grantee::user("app_user", "localhost");
 		match grantee {
@@ -303,7 +306,7 @@ mod grantee_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grantee_is_postgres_only() {
 		// Common grantees
 		assert!(!Grantee::role("app_user").is_postgres_only());
@@ -315,7 +318,7 @@ mod grantee_tests {
 		assert!(Grantee::SessionUser.is_postgres_only());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grantee_is_mysql_specific() {
 		// MySQL-specific grantees
 		assert!(Grantee::user("app_user", "localhost").is_mysql_specific());
@@ -332,8 +335,9 @@ mod grantee_tests {
 #[cfg(test)]
 mod grant_statement_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_new() {
 		let stmt = GrantStatement::new();
 		assert!(stmt.privileges.is_empty());
@@ -343,7 +347,7 @@ mod grant_statement_tests {
 		assert!(stmt.granted_by.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_builder() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -359,7 +363,7 @@ mod grant_statement_tests {
 		assert!(stmt.with_grant_option);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_privileges_method() {
 		let stmt = GrantStatement::new()
 			.privileges(vec![
@@ -373,7 +377,7 @@ mod grant_statement_tests {
 		assert_eq!(stmt.privileges.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_on_database() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Create)
@@ -384,7 +388,7 @@ mod grant_statement_tests {
 		assert_eq!(stmt.objects.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_on_schema() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Usage)
@@ -395,7 +399,7 @@ mod grant_statement_tests {
 		assert_eq!(stmt.objects.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_multiple_grantees() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -406,7 +410,7 @@ mod grant_statement_tests {
 		assert_eq!(stmt.grantees.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_granted_by() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -417,14 +421,14 @@ mod grant_statement_tests {
 		assert!(stmt.granted_by.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_validate_missing_privileges() {
 		let stmt = GrantStatement::new().on_table("users").to("app_user");
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_validate_missing_objects() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -433,7 +437,7 @@ mod grant_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_validate_missing_grantees() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -442,7 +446,7 @@ mod grant_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_validate_invalid_privilege_object() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Connect)  // Invalid for TABLE
@@ -452,7 +456,7 @@ mod grant_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_statement_validate_valid() {
 		let stmt = GrantStatement::new()
 			.privilege(Privilege::Select)
@@ -467,8 +471,9 @@ mod grant_statement_tests {
 mod revoke_statement_tests {
 	use crate::dcl::DropBehavior;
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_new() {
 		let stmt = RevokeStatement::new();
 		assert!(stmt.privileges.is_empty());
@@ -478,7 +483,7 @@ mod revoke_statement_tests {
 		assert!(!stmt.grant_option_for);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_builder() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Insert)
@@ -491,7 +496,7 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.grantees.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_cascade() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::All)
@@ -502,7 +507,7 @@ mod revoke_statement_tests {
 		assert!(stmt.cascade);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_grant_option_for() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Select)
@@ -513,7 +518,7 @@ mod revoke_statement_tests {
 		assert!(stmt.grant_option_for);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_from_database() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Create)
@@ -524,7 +529,7 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.objects.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_from_schema() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Usage)
@@ -535,14 +540,14 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.objects.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_validate_missing_privileges() {
 		let stmt = RevokeStatement::new().from_table("users").from("app_user");
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_validate_missing_objects() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Insert)
@@ -551,7 +556,7 @@ mod revoke_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_validate_missing_grantees() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Insert)
@@ -560,7 +565,7 @@ mod revoke_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_validate_invalid_privilege_object() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Connect)  // Invalid for TABLE
@@ -570,7 +575,7 @@ mod revoke_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_statement_validate_valid() {
 		let stmt = RevokeStatement::new()
 			.privilege(Privilege::Insert)
@@ -584,7 +589,7 @@ mod revoke_statement_tests {
 	// GrantRoleStatement Tests
 	// ========================================
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_new() {
 		let stmt = GrantRoleStatement::new();
 		assert_eq!(stmt.roles.len(), 0);
@@ -593,7 +598,7 @@ mod revoke_statement_tests {
 		assert!(stmt.granted_by.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_builder() {
 		let stmt = GrantRoleStatement::new()
 			.role("developer")
@@ -603,7 +608,7 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.grantees.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_with_admin_option() {
 		let stmt = GrantRoleStatement::new()
 			.role("developer")
@@ -613,7 +618,7 @@ mod revoke_statement_tests {
 		assert!(stmt.with_admin_option);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_granted_by() {
 		let stmt = GrantRoleStatement::new()
 			.role("developer")
@@ -623,14 +628,14 @@ mod revoke_statement_tests {
 		assert!(stmt.granted_by.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_validate_missing_roles() {
 		let stmt = GrantRoleStatement::new().to(RoleSpecification::new("alice"));
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_validate_empty_role() {
 		let stmt = GrantRoleStatement::new()
 			.role("")
@@ -639,14 +644,14 @@ mod revoke_statement_tests {
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_validate_missing_grantees() {
 		let stmt = GrantRoleStatement::new().role("developer");
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_role_validate_valid() {
 		let stmt = GrantRoleStatement::new()
 			.role("developer")
@@ -659,7 +664,7 @@ mod revoke_statement_tests {
 	// RevokeRoleStatement Tests
 	// ========================================
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_new() {
 		let stmt = RevokeRoleStatement::new();
 		assert_eq!(stmt.roles.len(), 0);
@@ -669,7 +674,7 @@ mod revoke_statement_tests {
 		assert!(stmt.drop_behavior.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_builder() {
 		let stmt = RevokeRoleStatement::new()
 			.role("developer")
@@ -679,7 +684,7 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.grantees.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_admin_option_for() {
 		let stmt = RevokeRoleStatement::new()
 			.role("developer")
@@ -689,7 +694,7 @@ mod revoke_statement_tests {
 		assert!(stmt.admin_option_for);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_cascade() {
 		let stmt = RevokeRoleStatement::new()
 			.role("developer")
@@ -699,7 +704,7 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.drop_behavior, Some(DropBehavior::Cascade));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_restrict() {
 		let stmt = RevokeRoleStatement::new()
 			.role("developer")
@@ -709,21 +714,21 @@ mod revoke_statement_tests {
 		assert_eq!(stmt.drop_behavior, Some(DropBehavior::Restrict));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_validate_missing_roles() {
 		let stmt = RevokeRoleStatement::new().from(RoleSpecification::new("alice"));
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_validate_missing_grantees() {
 		let stmt = RevokeRoleStatement::new().role("developer");
 
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_role_validate_valid() {
 		let stmt = RevokeRoleStatement::new()
 			.role("developer")
@@ -736,7 +741,7 @@ mod revoke_statement_tests {
 	// PostgreSQL SQL Generation Tests
 	// ========================================
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_role_basic() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -750,7 +755,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_role_multiple() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -766,7 +771,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_role_with_admin() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -782,7 +787,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_role_granted_by() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -798,7 +803,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_role_current_role() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -812,7 +817,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_role_basic() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -826,7 +831,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_role_admin_option_for() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -841,7 +846,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_role_cascade() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -857,7 +862,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_role_restrict() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -873,7 +878,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_role_granted_by() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -891,7 +896,7 @@ mod revoke_statement_tests {
 
 	// Extended object types tests
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_function() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -909,7 +914,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_procedure() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -927,7 +932,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_routine() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -945,7 +950,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_type() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -960,7 +965,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_domain() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -975,7 +980,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_foreign_data_wrapper() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -993,7 +998,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_foreign_server() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1011,7 +1016,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_language() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1026,7 +1031,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_large_object() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1041,7 +1046,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_tablespace() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1059,7 +1064,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_grant_on_parameter() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1074,7 +1079,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_function() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1092,7 +1097,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_procedure() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1110,7 +1115,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_routine() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1128,7 +1133,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_type() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1143,7 +1148,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_domain() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1161,7 +1166,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_foreign_data_wrapper() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1179,7 +1184,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_foreign_server() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1197,7 +1202,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_language() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1212,7 +1217,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_large_object() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1230,7 +1235,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_tablespace() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1248,7 +1253,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgres_revoke_from_parameter() {
 		use crate::backend::{PostgresQueryBuilder, QueryBuilder};
 
@@ -1267,7 +1272,7 @@ mod revoke_statement_tests {
 	// MySQL SQL Generation Tests
 	// ========================================
 
-	#[test]
+	#[rstest]
 	fn test_mysql_grant_role_basic() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1281,7 +1286,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_grant_role_multiple() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1297,7 +1302,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_grant_role_with_admin() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1313,7 +1318,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_revoke_role_basic() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1327,7 +1332,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_revoke_role_admin_option_for() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1342,7 +1347,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_grant_role_user_host() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1356,7 +1361,7 @@ mod revoke_statement_tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mysql_revoke_role_user_host() {
 		use crate::backend::{MySqlQueryBuilder, QueryBuilder};
 
@@ -1374,7 +1379,7 @@ mod revoke_statement_tests {
 	// SQLite Error Tests
 	// ========================================
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DCL (GRANT role)")]
 	fn test_sqlite_grant_role_panics() {
 		use crate::backend::{QueryBuilder, SqliteQueryBuilder};
@@ -1387,7 +1392,7 @@ mod revoke_statement_tests {
 		builder.build_grant_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DCL (REVOKE role)")]
 	fn test_sqlite_revoke_role_panics() {
 		use crate::backend::{QueryBuilder, SqliteQueryBuilder};
@@ -1404,8 +1409,9 @@ mod revoke_statement_tests {
 #[cfg(test)]
 mod role_attribute_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_variants() {
 		// Test basic privilege attributes
 		let superuser = RoleAttribute::SuperUser;
@@ -1418,20 +1424,20 @@ mod role_attribute_tests {
 		assert_ne!(createdb, no_createdb);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_connection_limit() {
 		let limit = RoleAttribute::ConnectionLimit(10);
 		assert_eq!(limit, RoleAttribute::ConnectionLimit(10));
 		assert_ne!(limit, RoleAttribute::ConnectionLimit(5));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_password() {
 		let password = RoleAttribute::Password("secret".to_string());
 		assert_eq!(password, RoleAttribute::Password("secret".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_in_role() {
 		let in_role = RoleAttribute::InRole(vec!["role1".to_string(), "role2".to_string()]);
 		assert_eq!(
@@ -1440,14 +1446,14 @@ mod role_attribute_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_clone() {
 		let attr = RoleAttribute::SuperUser;
 		let cloned = attr.clone();
 		assert_eq!(attr, cloned);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_role_attribute_debug() {
 		let attr = RoleAttribute::SuperUser;
 		let debug_str = format!("{:?}", attr);
@@ -1458,14 +1464,15 @@ mod role_attribute_tests {
 #[cfg(test)]
 mod user_option_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_user_option_password() {
 		let opt = UserOption::Password("secret".to_string());
 		assert_eq!(opt, UserOption::Password("secret".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_auth_plugin() {
 		let opt = UserOption::AuthPlugin {
 			plugin: "mysql_native_password".to_string(),
@@ -1483,14 +1490,14 @@ mod user_option_tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_account_lock() {
 		let lock = UserOption::AccountLock;
 		let unlock = UserOption::AccountUnlock;
 		assert_ne!(lock, unlock);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_password_expire() {
 		let expire = UserOption::PasswordExpire;
 		let never = UserOption::PasswordExpireNever;
@@ -1501,27 +1508,27 @@ mod user_option_tests {
 		assert_eq!(interval, UserOption::PasswordExpireInterval(90));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_failed_login_attempts() {
 		let opt = UserOption::FailedLoginAttempts(3);
 		assert_eq!(opt, UserOption::FailedLoginAttempts(3));
 		assert_ne!(opt, UserOption::FailedLoginAttempts(5));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_comment() {
 		let opt = UserOption::Comment("Application user".to_string());
 		assert_eq!(opt, UserOption::Comment("Application user".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_clone() {
 		let opt = UserOption::AccountLock;
 		let cloned = opt.clone();
 		assert_eq!(opt, cloned);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_user_option_debug() {
 		let opt = UserOption::AccountLock;
 		let debug_str = format!("{:?}", opt);
@@ -1532,8 +1539,9 @@ mod user_option_tests {
 #[cfg(test)]
 mod create_role_statement_tests {
 	use crate::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_create_role_new() {
 		let stmt = CreateRoleStatement::new();
 		assert!(stmt.role_name.is_empty());
@@ -1542,7 +1550,7 @@ mod create_role_statement_tests {
 		assert!(stmt.options.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_builder() {
 		let stmt = CreateRoleStatement::new()
 			.role("developer")
@@ -1553,7 +1561,7 @@ mod create_role_statement_tests {
 		assert_eq!(stmt.attributes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_if_not_exists() {
 		let stmt = CreateRoleStatement::new()
 			.role("app_role")
@@ -1562,13 +1570,13 @@ mod create_role_statement_tests {
 		assert!(stmt.if_not_exists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_validate_success() {
 		let stmt = CreateRoleStatement::new().role("developer");
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_validate_empty_name() {
 		let stmt = CreateRoleStatement::new();
 		assert!(stmt.validate().is_err());
@@ -1578,7 +1586,7 @@ mod create_role_statement_tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_with_attributes() {
 		let stmt = CreateRoleStatement::new().role("app_user").attributes(vec![
 			RoleAttribute::Login,
@@ -1589,7 +1597,7 @@ mod create_role_statement_tests {
 		assert_eq!(stmt.attributes.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_with_options() {
 		let stmt = CreateRoleStatement::new().role("app_role").options(vec![
 			UserOption::Comment("App role".to_string()),

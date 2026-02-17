@@ -312,9 +312,10 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 mod tests {
 	use super::*;
 	use crate::query::Query;
+	use rstest::rstest;
 
 	// FUNCTION tests - verify CockroachDB delegates to PostgreSQL
-	#[test]
+	#[rstest]
 	fn test_create_function_delegates_to_postgres() {
 		use crate::types::function::FunctionLanguage;
 
@@ -334,7 +335,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_delegates_to_postgres() {
 		let builder = CockroachDBQueryBuilder::new();
 		let mut stmt = Query::alter_function();
@@ -346,7 +347,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_delegates_to_postgres() {
 		let builder = CockroachDBQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -359,7 +360,7 @@ mod tests {
 	}
 
 	// TYPE tests - verify CockroachDB delegates to PostgreSQL
-	#[test]
+	#[rstest]
 	fn test_create_type_enum_delegates_to_postgres() {
 		let builder = CockroachDBQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -372,7 +373,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_delegates_to_postgres() {
 		let builder = CockroachDBQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -384,7 +385,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_type_delegates_to_postgres() {
 		let builder = CockroachDBQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -397,7 +398,7 @@ mod tests {
 	}
 
 	// MySQL-specific maintenance command panic tests
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "CockroachDB automatically optimizes tables")]
 	fn test_optimize_table_panics() {
 		let builder = CockroachDBQueryBuilder::new();
@@ -407,7 +408,7 @@ mod tests {
 		let _ = builder.build_optimize_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in CockroachDB")]
 	fn test_repair_table_panics() {
 		let builder = CockroachDBQueryBuilder::new();
@@ -417,7 +418,7 @@ mod tests {
 		let _ = builder.build_repair_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in CockroachDB")]
 	fn test_check_table_panics() {
 		let builder = CockroachDBQueryBuilder::new();

@@ -277,8 +277,9 @@ impl CreateUserStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_create_user_new() {
 		let stmt = CreateUserStatement::new();
 		assert!(stmt.user_name.is_empty());
@@ -288,14 +289,14 @@ mod tests {
 		assert!(stmt.options.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_basic() {
 		let stmt = CreateUserStatement::new().user("app_user");
 		assert_eq!(stmt.user_name, "app_user");
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_if_not_exists() {
 		let stmt = CreateUserStatement::new()
 			.user("app_user")
@@ -303,7 +304,7 @@ mod tests {
 		assert!(stmt.if_not_exists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_attributes() {
 		let stmt = CreateUserStatement::new()
 			.user("app_user")
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(stmt.attributes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_default_role() {
 		let stmt = CreateUserStatement::new()
 			.user("app_user@localhost")
@@ -320,7 +321,7 @@ mod tests {
 		assert_eq!(stmt.default_roles.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_options() {
 		let stmt = CreateUserStatement::new()
 			.user("app_user")
@@ -328,7 +329,7 @@ mod tests {
 		assert_eq!(stmt.options.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_validation_empty_name() {
 		let stmt = CreateUserStatement::new();
 		assert!(stmt.validate().is_err());

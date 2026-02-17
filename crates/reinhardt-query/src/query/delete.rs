@@ -176,8 +176,9 @@ impl QueryStatementWriter for DeleteStatement {}
 mod tests {
 	use super::*;
 	use crate::expr::{Expr, ExprTrait};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_delete_basic() {
 		let mut query = DeleteStatement::new();
 		query.from_table("users");
@@ -185,7 +186,7 @@ mod tests {
 		assert!(query.table.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_where() {
 		let mut query = DeleteStatement::new();
 		query
@@ -196,7 +197,7 @@ mod tests {
 		assert!(!query.r#where.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_multiple_conditions() {
 		let mut query = DeleteStatement::new();
 		query
@@ -207,7 +208,7 @@ mod tests {
 		assert!(!query.r#where.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_returning() {
 		let mut query = DeleteStatement::new();
 		query
@@ -220,7 +221,7 @@ mod tests {
 		assert!(!returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_returning_all() {
 		let mut query = DeleteStatement::new();
 		query
@@ -233,7 +234,7 @@ mod tests {
 		assert!(returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_take() {
 		let mut query = DeleteStatement::new();
 		query.from_table("users");

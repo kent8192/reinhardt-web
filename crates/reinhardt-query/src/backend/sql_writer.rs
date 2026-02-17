@@ -218,8 +218,9 @@ impl Default for SqlWriter {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_basic() {
 		let mut writer = SqlWriter::new();
 		writer.push("SELECT");
@@ -229,7 +230,7 @@ mod tests {
 		assert_eq!(writer.sql(), "SELECT *");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_identifier() {
 		let mut writer = SqlWriter::new();
 		writer.push_identifier("user", |s| format!("\"{}\"", s));
@@ -237,7 +238,7 @@ mod tests {
 		assert_eq!(writer.sql(), "\"user\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_value_postgres() {
 		let mut writer = SqlWriter::new();
 		writer.push_value(Value::Int(Some(42)), |i| format!("${}", i));
@@ -250,7 +251,7 @@ mod tests {
 		assert_eq!(writer.values().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_value_mysql() {
 		let mut writer = SqlWriter::new();
 		writer.push_value(Value::Int(Some(42)), |_| "?".to_string());
@@ -263,7 +264,7 @@ mod tests {
 		assert_eq!(writer.values().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_keyword() {
 		let mut writer = SqlWriter::new();
 		writer.push("SELECT");
@@ -273,7 +274,7 @@ mod tests {
 		assert_eq!(writer.sql(), "SELECT FROM WHERE");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_list() {
 		let mut writer = SqlWriter::new();
 		writer.push_list(vec!["a", "b", "c"], ", ", |w, item| {
@@ -283,7 +284,7 @@ mod tests {
 		assert_eq!(writer.sql(), "\"a\", \"b\", \"c\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_comma() {
 		let mut writer = SqlWriter::new();
 		writer.push("a");
@@ -293,7 +294,7 @@ mod tests {
 		assert_eq!(writer.sql(), "a, b");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sql_writer_finish() {
 		let mut writer = SqlWriter::new();
 		writer.push("SELECT");

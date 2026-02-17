@@ -75,13 +75,14 @@ impl ResetRoleStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_reset_role_new() {
 		let _stmt = ResetRoleStatement::new();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reset_role_validation() {
 		let stmt = ResetRoleStatement::new();
 		assert!(stmt.validate().is_ok());

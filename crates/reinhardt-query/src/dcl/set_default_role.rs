@@ -216,15 +216,16 @@ impl SetDefaultRoleStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_new() {
 		let stmt = SetDefaultRoleStatement::new();
 		assert!(stmt.role_spec.is_none());
 		assert!(stmt.user_names.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_basic() {
 		let stmt = SetDefaultRoleStatement::new()
 			.roles(DefaultRoleSpec::All)
@@ -234,7 +235,7 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_role_list() {
 		let stmt = SetDefaultRoleStatement::new()
 			.roles(DefaultRoleSpec::RoleList(vec!["role1".to_string()]))
@@ -243,7 +244,7 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_none() {
 		let stmt = SetDefaultRoleStatement::new()
 			.roles(DefaultRoleSpec::None)
@@ -252,7 +253,7 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_multiple_users() {
 		let stmt = SetDefaultRoleStatement::new()
 			.roles(DefaultRoleSpec::All)
@@ -261,19 +262,19 @@ mod tests {
 		assert_eq!(stmt.user_names.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_validation_no_spec() {
 		let stmt = SetDefaultRoleStatement::new().user("app_user");
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_validation_no_users() {
 		let stmt = SetDefaultRoleStatement::new().roles(DefaultRoleSpec::All);
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_validation_empty_role_list() {
 		let stmt = SetDefaultRoleStatement::new()
 			.roles(DefaultRoleSpec::RoleList(vec![]))

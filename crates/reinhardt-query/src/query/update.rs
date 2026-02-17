@@ -254,8 +254,9 @@ impl QueryStatementWriter for UpdateStatement {}
 mod tests {
 	use super::*;
 	use crate::expr::{Expr, ExprTrait};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_update_basic() {
 		let mut query = UpdateStatement::new();
 		query
@@ -267,7 +268,7 @@ mod tests {
 		assert_eq!(query.values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_where() {
 		let mut query = UpdateStatement::new();
 		query
@@ -280,7 +281,7 @@ mod tests {
 		assert!(!query.r#where.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_multiple_values() {
 		let mut query = UpdateStatement::new();
 		query
@@ -290,7 +291,7 @@ mod tests {
 		assert_eq!(query.values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_returning() {
 		let mut query = UpdateStatement::new();
 		query
@@ -303,7 +304,7 @@ mod tests {
 		assert!(!returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_returning_all() {
 		let mut query = UpdateStatement::new();
 		query.table("users").value("active", false).returning_all();
@@ -313,7 +314,7 @@ mod tests {
 		assert!(returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_take() {
 		let mut query = UpdateStatement::new();
 		query.table("users").value("active", false);

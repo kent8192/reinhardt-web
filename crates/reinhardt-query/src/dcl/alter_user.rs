@@ -275,8 +275,9 @@ impl AlterUserStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_new() {
 		let stmt = AlterUserStatement::new();
 		assert!(stmt.user_name.is_empty());
@@ -286,7 +287,7 @@ mod tests {
 		assert!(stmt.options.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_basic() {
 		let stmt = AlterUserStatement::new()
 			.user("app_user")
@@ -295,13 +296,13 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_if_exists() {
 		let stmt = AlterUserStatement::new().user("app_user").if_exists(true);
 		assert!(stmt.if_exists);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_with_attributes() {
 		let stmt = AlterUserStatement::new()
 			.user("app_user")
@@ -310,7 +311,7 @@ mod tests {
 		assert_eq!(stmt.attributes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_with_default_role() {
 		let stmt = AlterUserStatement::new()
 			.user("app_user@localhost")
@@ -318,7 +319,7 @@ mod tests {
 		assert_eq!(stmt.default_roles.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_with_options() {
 		let stmt = AlterUserStatement::new()
 			.user("app_user")
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(stmt.options.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_validation_empty_name() {
 		let stmt = AlterUserStatement::new();
 		assert!(stmt.validate().is_err());

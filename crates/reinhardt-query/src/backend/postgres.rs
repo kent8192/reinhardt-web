@@ -4195,21 +4195,22 @@ mod tests {
 		query::Query,
 		types::IntoIden,
 	};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier() {
 		let builder = PostgresQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user"), "\"user\"");
 		assert_eq!(builder.escape_identifier("table_name"), "\"table_name\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier_with_quotes() {
 		let builder = PostgresQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user\"name"), "\"user\"\"name\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_placeholder() {
 		let builder = PostgresQueryBuilder::new();
 		assert_eq!(builder.format_placeholder(1), "$1");
@@ -4217,7 +4218,7 @@ mod tests {
 		assert_eq!(builder.format_placeholder(10), "$10");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4228,7 +4229,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_asterisk() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4239,7 +4240,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_where() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4254,7 +4255,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_limit_offset() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4268,7 +4269,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -4284,7 +4285,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_multiple_rows() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -4301,7 +4302,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_returning() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -4319,7 +4320,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_returning_all() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -4333,7 +4334,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -4346,7 +4347,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_where() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -4361,7 +4362,7 @@ mod tests {
 		assert_eq!(values.len(), 2); // false + 1
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_returning() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -4378,7 +4379,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -4392,7 +4393,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // false
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_no_where() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -4403,7 +4404,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_returning() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -4419,7 +4420,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_returning_all() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -4434,7 +4435,7 @@ mod tests {
 
 	// JOIN tests
 
-	#[test]
+	#[rstest]
 	fn test_inner_join_simple() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4452,7 +4453,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_left_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4469,7 +4470,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"profiles\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_right_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4486,7 +4487,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_outer_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4503,7 +4504,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cross_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4517,7 +4518,7 @@ mod tests {
 		assert!(!sql.contains("ON"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_joins() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4541,7 +4542,7 @@ mod tests {
 		assert!(sql.contains("\"orders\".\"product_id\" = \"products\".\"id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_complex_condition() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4566,7 +4567,7 @@ mod tests {
 
 	// GROUP BY / HAVING tests
 
-	#[test]
+	#[rstest]
 	fn test_group_by_single_column() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4578,7 +4579,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_multiple_columns() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4592,7 +4593,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\", \"brand\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_with_count() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -4612,7 +4613,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_having_simple() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -4642,7 +4643,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_having_with_sum() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -4671,7 +4672,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_distinct() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4683,7 +4684,7 @@ mod tests {
 		assert!(sql.contains("FROM \"products\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_distinct_on() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4700,7 +4701,7 @@ mod tests {
 		assert!(sql.contains("ORDER BY \"category\" ASC"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "PostgreSQL does not support DISTINCT ROW")]
 	fn test_select_distinct_row_panics() {
 		use crate::query::SelectDistinct;
@@ -4713,7 +4714,7 @@ mod tests {
 		let _ = builder.build_select(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -4729,7 +4730,7 @@ mod tests {
 		assert!(sql.contains("UNION SELECT \"id\" FROM \"customers\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union_all() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -4745,7 +4746,7 @@ mod tests {
 		assert!(sql.contains("UNION ALL SELECT \"name\" FROM \"archived_products\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_intersect() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -4761,7 +4762,7 @@ mod tests {
 		assert!(sql.contains("INTERSECT SELECT \"email\" FROM \"customers\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_except() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -4777,7 +4778,7 @@ mod tests {
 		assert!(sql.contains("EXCEPT SELECT \"id\" FROM \"banned_users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_multiple_unions() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -4798,7 +4799,7 @@ mod tests {
 		assert!(sql.contains("UNION ALL SELECT \"id\" FROM \"table3\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_exists_subquery() {
 		use crate::expr::Expr;
 
@@ -4825,7 +4826,7 @@ mod tests {
 		assert!(sql.contains("SELECT \"id\" FROM \"orders\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_in_subquery() {
 		use crate::expr::Expr;
 
@@ -4850,7 +4851,7 @@ mod tests {
 		assert!(sql.contains("SELECT \"user_id\" FROM \"premium_users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_not_exists_subquery() {
 		use crate::expr::Expr;
 
@@ -4879,7 +4880,7 @@ mod tests {
 
 	// --- Phase 5: Subquery Edge Case Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_not_in_subquery() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -4901,7 +4902,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_in_select_list() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -4922,7 +4923,7 @@ mod tests {
 		assert!(sql.contains("\"order_counts\".\"user_id\" = \"users\".\"id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_exists_conditions() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -4947,7 +4948,7 @@ mod tests {
 		assert!(sql.contains("EXISTS (SELECT \"id\" FROM \"reviews\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_subquery() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -4975,7 +4976,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_with_complex_where() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -5005,7 +5006,7 @@ mod tests {
 
 	// --- Phase 5: NULL Handling Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_where_is_null() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5019,7 +5020,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_is_not_null() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5033,7 +5034,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_combined_with_other_conditions() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5050,7 +5051,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_with_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5069,7 +5070,7 @@ mod tests {
 	}
 
 	// --- Phase 5: Complex WHERE Clause Tests ---
-	#[test]
+	#[rstest]
 	fn test_where_or_condition() {
 		use crate::expr::Condition;
 
@@ -5087,7 +5088,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_between() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5101,7 +5102,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_not_between() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5115,7 +5116,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_like() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5128,7 +5129,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_in_values() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5141,7 +5142,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_null_value() {
 		use crate::value::Value;
 
@@ -5166,7 +5167,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_single_cte() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -5192,7 +5193,7 @@ mod tests {
 		assert!(sql.contains("SELECT \"name\" FROM \"eng_employees\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_multiple_ctes() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -5227,7 +5228,7 @@ mod tests {
 		assert!(sql.contains("\"sales_emp\" AS"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_recursive_cte() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -5255,7 +5256,7 @@ mod tests {
 
 	// Window function tests
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_with_partition_and_order() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5283,7 +5284,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_order_only() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5309,7 +5310,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5337,7 +5338,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5365,7 +5366,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5393,7 +5394,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5421,7 +5422,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_four_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5449,7 +5450,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_custom_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5477,7 +5478,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5506,7 +5507,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5542,7 +5543,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5571,7 +5572,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5607,7 +5608,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_first_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5635,7 +5636,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_last_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5663,7 +5664,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_nth_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5691,7 +5692,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // The "2" parameter
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_multiple_partition_columns() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5722,7 +5723,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5750,7 +5751,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_with_offset_no_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5778,7 +5779,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_different_offset() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5807,7 +5808,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_multiple_functions_in_query() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5852,7 +5853,7 @@ mod tests {
 
 	// JOIN enhancement tests
 
-	#[test]
+	#[rstest]
 	fn test_join_three_tables() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5876,7 +5877,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_self_join() {
 		use crate::types::TableRef;
 
@@ -5896,7 +5897,7 @@ mod tests {
 		assert!(sql.contains(r#"ON "e1"."manager_id" = "e2"."id""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_complex_conditions() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5919,7 +5920,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // true value
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_subquery_in_condition() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -5941,7 +5942,7 @@ mod tests {
 		assert!(sql.contains("SELECT \"max_id\" FROM \"user_stats\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_left_joins() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5969,7 +5970,7 @@ mod tests {
 		assert!(sql.contains("LEFT JOIN \"phone_numbers\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_join_types() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5994,7 +5995,7 @@ mod tests {
 		assert!(sql.contains("RIGHT JOIN \"refunds\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_group_by() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -6028,7 +6029,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_window_function() {
 		use crate::types::{IntoIden, Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -6059,7 +6060,7 @@ mod tests {
 		assert!(sql.contains(r#"PARTITION BY "departments"."name""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_four_table_join() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -6088,7 +6089,7 @@ mod tests {
 		assert!(sql.contains("INNER JOIN \"categories\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_cte() {
 		use crate::types::TableRef;
 
@@ -6116,7 +6117,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // 1000
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_where_and_params() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6142,7 +6143,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_used_in_join() {
 		use crate::types::TableRef;
 
@@ -6173,7 +6174,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_aggregation() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -6208,7 +6209,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_subquery() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6238,7 +6239,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_recursive_and_regular_ctes() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6276,7 +6277,7 @@ mod tests {
 
 	// CASE expression tests
 
-	#[test]
+	#[rstest]
 	fn test_case_simple_when_else() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6298,7 +6299,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_multiple_when_clauses() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6324,7 +6325,7 @@ mod tests {
 		assert_eq!(values.len(), 7);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_without_else() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6345,7 +6346,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_where_clause() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6364,7 +6365,7 @@ mod tests {
 		assert!(values.len() >= 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_order_by() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6390,7 +6391,7 @@ mod tests {
 
 	// ORDER BY / LIMIT edge case tests
 
-	#[test]
+	#[rstest]
 	fn test_order_by_multiple_columns_mixed() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6410,7 +6411,7 @@ mod tests {
 		assert!(sql.contains(r#""score" ASC"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_order_by_nulls_first() {
 		use crate::types::{IntoColumnRef, NullOrdering, OrderExpr, OrderExprKind};
 
@@ -6430,7 +6431,7 @@ mod tests {
 		assert!(sql.contains("NULLS FIRST"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_order_by_nulls_last() {
 		use crate::types::{IntoColumnRef, NullOrdering, OrderExpr, OrderExprKind};
 
@@ -6450,7 +6451,7 @@ mod tests {
 		assert!(sql.contains("NULLS LAST"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_limit_without_offset() {
 		let builder = PostgresQueryBuilder::new();
 
@@ -6465,7 +6466,7 @@ mod tests {
 
 	// Arithmetic / string operation tests
 
-	#[test]
+	#[rstest]
 	fn test_arithmetic_add_sub() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -6478,7 +6479,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arithmetic_mul_div_mod() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -6495,7 +6496,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_like_ilike_pattern() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -6507,7 +6508,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pg_concat_operator() {
 		use crate::types::{BinOper, IntoColumnRef, PgBinOper};
 		let builder = PostgresQueryBuilder::new();
@@ -6525,7 +6526,7 @@ mod tests {
 
 	// DDL Tests
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -6536,7 +6537,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -6547,7 +6548,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -6558,7 +6559,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_restrict() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -6569,7 +6570,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_multiple() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -6580,7 +6581,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -6591,7 +6592,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -6602,7 +6603,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -6613,7 +6614,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_restrict() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -6626,7 +6627,7 @@ mod tests {
 
 	// CREATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_create_table_basic() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6663,7 +6664,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_if_not_exists() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6688,7 +6689,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_primary_key() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6713,7 +6714,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_not_null() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6737,7 +6738,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_unique() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6761,7 +6762,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_default() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6785,7 +6786,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_check() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -6811,7 +6812,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_table_constraint() {
 		use crate::types::{ColumnDef, ColumnType, TableConstraint};
 
@@ -6850,7 +6851,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_foreign_key() {
 		use crate::types::{
 			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
@@ -6898,7 +6899,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_basic() {
 		use crate::query::IndexColumn;
 
@@ -6919,7 +6920,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_unique() {
 		use crate::query::IndexColumn;
 
@@ -6941,7 +6942,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_if_not_exists() {
 		use crate::query::IndexColumn;
 
@@ -6963,7 +6964,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_order() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -6985,7 +6986,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_multiple_columns() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -7011,7 +7012,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_using_btree() {
 		use crate::query::{IndexColumn, IndexMethod};
 
@@ -7033,7 +7034,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_using_gin() {
 		use crate::query::{IndexColumn, IndexMethod};
 
@@ -7055,7 +7056,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_partial_with_where() {
 		use crate::query::IndexColumn;
 
@@ -7077,7 +7078,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_add_column() {
 		use crate::query::AlterTableOperation;
 		use crate::types::{ColumnDef, ColumnType};
@@ -7103,7 +7104,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_column() {
 		use crate::query::AlterTableOperation;
 
@@ -7120,7 +7121,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_column_if_exists() {
 		use crate::query::AlterTableOperation;
 
@@ -7137,7 +7138,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_column() {
 		use crate::query::AlterTableOperation;
 
@@ -7157,7 +7158,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_modify_column_type() {
 		use crate::query::AlterTableOperation;
 		use crate::types::{ColumnDef, ColumnType};
@@ -7183,7 +7184,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_add_constraint() {
 		use crate::query::AlterTableOperation;
 		use crate::types::TableConstraint;
@@ -7206,7 +7207,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_constraint() {
 		use crate::query::AlterTableOperation;
 
@@ -7223,7 +7224,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_table() {
 		use crate::query::AlterTableOperation;
 
@@ -7240,7 +7241,7 @@ mod tests {
 
 	// TRUNCATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7251,7 +7252,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_multiple() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7262,7 +7263,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_restart_identity() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7273,7 +7274,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7284,7 +7285,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_restrict() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7295,7 +7296,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_restart_identity_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -7306,7 +7307,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_basic() {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -7327,7 +7328,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_before_update() {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -7348,7 +7349,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_delete_for_statement() {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -7369,7 +7370,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -7380,7 +7381,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -7391,7 +7392,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -7403,7 +7404,7 @@ mod tests {
 	}
 
 	// CREATE FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_create_function_basic() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7422,7 +7423,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_or_replace() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7442,7 +7443,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_with_parameters() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7463,7 +7464,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_with_behavior() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage};
 
@@ -7483,7 +7484,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_with_security() {
 		use crate::types::function::{FunctionLanguage, FunctionSecurity};
 
@@ -7503,7 +7504,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_plpgsql() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7523,7 +7524,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_all_options() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
 
@@ -7548,7 +7549,7 @@ mod tests {
 	}
 
 	// ALTER FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_alter_function_rename_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_function();
@@ -7559,7 +7560,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_owner_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_function();
@@ -7570,7 +7571,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_set_schema() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_function();
@@ -7581,7 +7582,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_set_behavior_immutable() {
 		use crate::types::function::FunctionBehavior;
 
@@ -7595,7 +7596,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_set_security_definer() {
 		use crate::types::function::FunctionSecurity;
 
@@ -7608,7 +7609,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_with_parameters() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_function();
@@ -7626,7 +7627,7 @@ mod tests {
 	}
 
 	// DROP FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_drop_function_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -7637,7 +7638,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -7648,7 +7649,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -7659,7 +7660,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_with_parameters() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -7672,7 +7673,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_all_options() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -7687,7 +7688,7 @@ mod tests {
 	}
 
 	// Procedure tests
-	#[test]
+	#[rstest]
 	fn test_create_procedure_basic() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7705,7 +7706,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_or_replace() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7724,7 +7725,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_parameters() {
 		use crate::types::function::FunctionLanguage;
 
@@ -7744,7 +7745,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_behavior() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage};
 
@@ -7763,7 +7764,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_security() {
 		use crate::types::function::{FunctionLanguage, FunctionSecurity};
 
@@ -7782,7 +7783,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_all_options() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
 
@@ -7805,7 +7806,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_rename_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_procedure();
@@ -7816,7 +7817,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_owner_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_procedure();
@@ -7827,7 +7828,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_set_schema() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_procedure();
@@ -7838,7 +7839,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_with_signature() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_procedure();
@@ -7854,7 +7855,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -7865,7 +7866,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -7876,7 +7877,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -7887,7 +7888,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_with_signature() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -7898,7 +7899,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_all_options() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -7916,7 +7917,7 @@ mod tests {
 	}
 
 	// CREATE TYPE tests
-	#[test]
+	#[rstest]
 	fn test_create_type_enum() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7928,7 +7929,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_enum_with_single_quote() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7939,7 +7940,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_composite() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7956,7 +7957,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_domain_minimal() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7967,7 +7968,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_domain_with_constraint() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7986,7 +7987,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_domain_with_default() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -7999,7 +8000,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_domain_not_null() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -8012,7 +8013,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_domain_full() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -8033,7 +8034,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_range_minimal() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -8047,7 +8048,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_range_with_subtype_diff() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -8063,7 +8064,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_type_range_full() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::create_type();
@@ -8081,7 +8082,7 @@ mod tests {
 	}
 
 	// ALTER TYPE tests
-	#[test]
+	#[rstest]
 	fn test_alter_type_rename_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8092,7 +8093,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_owner_to() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8103,7 +8104,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_set_schema() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8114,7 +8115,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_add_value() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8125,7 +8126,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_add_value_before() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8139,7 +8140,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_rename_value() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8150,7 +8151,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_add_constraint() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8165,7 +8166,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_drop_constraint() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8180,7 +8181,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_drop_constraint_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8195,7 +8196,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_set_default() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8206,7 +8207,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_drop_default() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8217,7 +8218,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_set_not_null() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8228,7 +8229,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_type_drop_not_null() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::alter_type();
@@ -8240,7 +8241,7 @@ mod tests {
 	}
 
 	// DROP TYPE tests
-	#[test]
+	#[rstest]
 	fn test_drop_type_basic() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -8251,7 +8252,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_type_if_exists() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -8262,7 +8263,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_type_cascade() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -8273,7 +8274,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_type_restrict() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -8284,7 +8285,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_type_all_options() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::drop_type();
@@ -8296,7 +8297,7 @@ mod tests {
 	}
 
 	// MySQL-specific maintenance command panic tests
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "PostgreSQL users should use VACUUM ANALYZE")]
 	fn test_optimize_table_panics() {
 		let builder = PostgresQueryBuilder::new();
@@ -8306,7 +8307,7 @@ mod tests {
 		let _ = builder.build_optimize_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in PostgreSQL")]
 	fn test_repair_table_panics() {
 		let builder = PostgresQueryBuilder::new();
@@ -8316,7 +8317,7 @@ mod tests {
 		let _ = builder.build_repair_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in PostgreSQL")]
 	fn test_check_table_panics() {
 		let builder = PostgresQueryBuilder::new();
@@ -8328,7 +8329,7 @@ mod tests {
 
 	// DCL (Data Control Language) Tests
 
-	#[test]
+	#[rstest]
 	fn test_grant_single_privilege_on_table() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8343,7 +8344,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_multiple_privileges() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8365,7 +8366,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_multiple_objects() {
 		use crate::dcl::{GrantStatement, ObjectType, Privilege};
 
@@ -8385,7 +8386,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_multiple_grantees() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -8404,7 +8405,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_with_grant_option() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8423,7 +8424,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_with_granted_by() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -8442,7 +8443,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_on_database() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8457,7 +8458,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_on_schema() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8472,7 +8473,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_on_sequence() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8490,7 +8491,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_all_privileges() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -8505,7 +8506,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_to_public() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -8520,7 +8521,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_to_current_user() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -8535,7 +8536,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_complex() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -8564,7 +8565,7 @@ mod tests {
 
 	// REVOKE tests
 
-	#[test]
+	#[rstest]
 	fn test_revoke_single_privilege() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8579,7 +8580,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_multiple_privileges() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8601,7 +8602,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_with_cascade() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8620,7 +8621,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_grant_option_for() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8639,7 +8640,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_database() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8654,7 +8655,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_schema() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8669,7 +8670,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_sequence() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -8687,7 +8688,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_public() {
 		use crate::dcl::{Grantee, Privilege, RevokeStatement};
 
@@ -8702,7 +8703,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_current_user() {
 		use crate::dcl::{Grantee, Privilege, RevokeStatement};
 
@@ -8717,7 +8718,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_complex() {
 		use crate::dcl::{Grantee, Privilege, RevokeStatement};
 
@@ -8738,7 +8739,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_simple() {
 		use crate::dcl::CreateRoleStatement;
 
@@ -8750,7 +8751,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_with_login() {
 		use crate::dcl::{CreateRoleStatement, RoleAttribute};
 		use crate::value::Value;
@@ -8770,7 +8771,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_with_multiple_attributes() {
 		use crate::dcl::{CreateRoleStatement, RoleAttribute};
 
@@ -8790,7 +8791,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_simple() {
 		use crate::dcl::DropRoleStatement;
 
@@ -8802,7 +8803,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_if_exists() {
 		use crate::dcl::DropRoleStatement;
 
@@ -8814,7 +8815,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_multiple() {
 		use crate::dcl::DropRoleStatement;
 
@@ -8829,7 +8830,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_role_with_attributes() {
 		use crate::dcl::{AlterRoleStatement, RoleAttribute};
 
@@ -8847,7 +8848,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_role_rename_to() {
 		use crate::dcl::AlterRoleStatement;
 
@@ -8862,7 +8863,7 @@ mod tests {
 	}
 
 	// CREATE USER tests
-	#[test]
+	#[rstest]
 	fn test_create_user_basic() {
 		use crate::dcl::CreateUserStatement;
 
@@ -8874,7 +8875,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_password() {
 		use crate::dcl::{CreateUserStatement, RoleAttribute};
 		use crate::value::Value;
@@ -8894,7 +8895,7 @@ mod tests {
 	}
 
 	// DROP USER tests
-	#[test]
+	#[rstest]
 	fn test_drop_user_basic() {
 		use crate::dcl::DropUserStatement;
 
@@ -8906,7 +8907,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_if_exists() {
 		use crate::dcl::DropUserStatement;
 
@@ -8919,7 +8920,7 @@ mod tests {
 	}
 
 	// ALTER USER tests
-	#[test]
+	#[rstest]
 	fn test_alter_user_basic() {
 		use crate::dcl::{AlterUserStatement, RoleAttribute};
 		use crate::value::Value;
@@ -8939,7 +8940,7 @@ mod tests {
 	}
 
 	// RENAME USER panic test
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "RENAME USER is not supported by PostgreSQL")]
 	fn test_rename_user_panics() {
 		use crate::dcl::RenameUserStatement;
@@ -8951,7 +8952,7 @@ mod tests {
 	}
 
 	// SET ROLE tests
-	#[test]
+	#[rstest]
 	fn test_set_role_named() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -8963,7 +8964,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_none() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -8975,7 +8976,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SET ROLE ALL is not supported by PostgreSQL")]
 	fn test_set_role_all_panics() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
@@ -8987,7 +8988,7 @@ mod tests {
 	}
 
 	// RESET ROLE test
-	#[test]
+	#[rstest]
 	fn test_reset_role() {
 		use crate::dcl::ResetRoleStatement;
 
@@ -9000,7 +9001,7 @@ mod tests {
 	}
 
 	// SET DEFAULT ROLE panic test
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SET DEFAULT ROLE is not supported by PostgreSQL")]
 	fn test_set_default_role_panics() {
 		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};

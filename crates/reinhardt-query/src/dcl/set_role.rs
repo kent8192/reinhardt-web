@@ -218,35 +218,36 @@ impl SetRoleStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_set_role_new() {
 		let stmt = SetRoleStatement::new();
 		assert!(stmt.target.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_named() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::Named("admin".to_string()));
 		assert!(matches!(stmt.target, Some(RoleTarget::Named(_))));
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_none() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::None);
 		assert!(matches!(stmt.target, Some(RoleTarget::None)));
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_all() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::All);
 		assert!(matches!(stmt.target, Some(RoleTarget::All)));
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_all_except() {
 		let stmt =
 			SetRoleStatement::new().role(RoleTarget::AllExcept(vec!["restricted".to_string()]));
@@ -254,26 +255,26 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_default() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::Default);
 		assert!(matches!(stmt.target, Some(RoleTarget::Default)));
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_validation_no_target() {
 		let stmt = SetRoleStatement::new();
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_validation_empty_name() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::Named("".to_string()));
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_validation_empty_except_list() {
 		let stmt = SetRoleStatement::new().role(RoleTarget::AllExcept(vec![]));
 		assert!(stmt.validate().is_err());

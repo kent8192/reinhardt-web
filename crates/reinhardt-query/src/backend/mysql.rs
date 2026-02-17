@@ -3364,21 +3364,22 @@ mod tests {
 		query::Query,
 		types::IntoIden,
 	};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier() {
 		let builder = MySqlQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user"), "`user`");
 		assert_eq!(builder.escape_identifier("table_name"), "`table_name`");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier_with_backticks() {
 		let builder = MySqlQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user`name"), "`user``name`");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_placeholder() {
 		let builder = MySqlQueryBuilder::new();
 		assert_eq!(builder.format_placeholder(1), "?");
@@ -3386,7 +3387,7 @@ mod tests {
 		assert_eq!(builder.format_placeholder(10), "?");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3397,7 +3398,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_asterisk() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3408,7 +3409,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_where() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3423,7 +3424,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_limit_offset() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3437,7 +3438,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -3450,7 +3451,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_multiple_rows() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -3467,7 +3468,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support RETURNING clause")]
 	fn test_insert_with_returning_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3480,7 +3481,7 @@ mod tests {
 		let _ = builder.build_insert(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -3493,7 +3494,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_where() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -3508,7 +3509,7 @@ mod tests {
 		assert_eq!(values.len(), 2); // false + 1
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support RETURNING clause")]
 	fn test_update_with_returning_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3521,7 +3522,7 @@ mod tests {
 		let _ = builder.build_update(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -3535,7 +3536,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // false
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_no_where() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -3546,7 +3547,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support RETURNING clause")]
 	fn test_delete_with_returning_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3560,7 +3561,7 @@ mod tests {
 
 	// JOIN tests
 
-	#[test]
+	#[rstest]
 	fn test_inner_join_simple() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3578,7 +3579,7 @@ mod tests {
 		assert!(sql.contains("ON `users`.`id` = `orders`.`user_id`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_left_join() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3595,7 +3596,7 @@ mod tests {
 		assert!(sql.contains("ON `users`.`id` = `profiles`.`user_id`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_right_join() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3612,7 +3613,7 @@ mod tests {
 		assert!(sql.contains("ON `users`.`id` = `orders`.`user_id`"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support FULL OUTER JOIN")]
 	fn test_full_outer_join_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3628,7 +3629,7 @@ mod tests {
 		let _ = builder.build_select(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cross_join() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3642,7 +3643,7 @@ mod tests {
 		assert!(!sql.contains("ON"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_joins() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3666,7 +3667,7 @@ mod tests {
 		assert!(sql.contains("`orders`.`product_id` = `products`.`id`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_complex_condition() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3691,7 +3692,7 @@ mod tests {
 
 	// GROUP BY / HAVING tests
 
-	#[test]
+	#[rstest]
 	fn test_group_by_single_column() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3703,7 +3704,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY `category`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_multiple_columns() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3717,7 +3718,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY `category`, `brand`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_with_count() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -3737,7 +3738,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY `category`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_having_simple() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, IntoIden};
@@ -3767,7 +3768,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_having_with_sum() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -3796,7 +3797,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_distinct() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3808,7 +3809,7 @@ mod tests {
 		assert!(sql.contains("FROM `products`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_distinctrow() {
 		use crate::query::SelectDistinct;
 
@@ -3823,7 +3824,7 @@ mod tests {
 		assert!(sql.contains("`name`"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support DISTINCT ON")]
 	fn test_select_distinct_on_panics() {
 		use crate::query::SelectDistinct;
@@ -3839,7 +3840,7 @@ mod tests {
 		let _ = builder.build_select(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -3855,7 +3856,7 @@ mod tests {
 		assert!(sql.contains("UNION SELECT `id` FROM `customers`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union_all() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -3871,7 +3872,7 @@ mod tests {
 		assert!(sql.contains("UNION ALL SELECT `name` FROM `archived_products`"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support INTERSECT")]
 	fn test_select_intersect_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3886,7 +3887,7 @@ mod tests {
 		let _ = builder.build_select(&stmt1);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support EXCEPT")]
 	fn test_select_except_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -3903,7 +3904,7 @@ mod tests {
 
 	// --- Phase 5: Subquery Edge Case Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_not_in_subquery() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3925,7 +3926,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_in_select_list() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3946,7 +3947,7 @@ mod tests {
 		assert!(sql.contains("`order_counts`.`user_id` = `users`.`id`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_exists_conditions() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3971,7 +3972,7 @@ mod tests {
 		assert!(sql.contains("EXISTS (SELECT `id` FROM `reviews`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_subquery() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3999,7 +4000,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_with_complex_where() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -4029,7 +4030,7 @@ mod tests {
 
 	// --- Phase 5: NULL Handling Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_where_is_null() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4043,7 +4044,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_is_not_null() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4057,7 +4058,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_combined_with_other_conditions() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4074,7 +4075,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_with_join() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4093,7 +4094,7 @@ mod tests {
 	}
 
 	// --- Phase 5: Complex WHERE Clause Tests ---
-	#[test]
+	#[rstest]
 	fn test_where_or_condition() {
 		use crate::expr::Condition;
 
@@ -4111,7 +4112,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_between() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4125,7 +4126,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_not_between() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4139,7 +4140,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_like() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4152,7 +4153,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_in_values() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4165,7 +4166,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_null_value() {
 		use crate::value::Value;
 
@@ -4190,7 +4191,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_single_cte() {
 		// Note: CTE (WITH clause) is supported in MySQL 8.0+
 		let builder = MySqlQueryBuilder::new();
@@ -4217,7 +4218,7 @@ mod tests {
 		assert!(sql.contains("SELECT `name` FROM `eng_employees`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_multiple_ctes() {
 		// Note: CTE (WITH clause) is supported in MySQL 8.0+
 		let builder = MySqlQueryBuilder::new();
@@ -4253,7 +4254,7 @@ mod tests {
 		assert!(sql.contains("`sales_emp` AS"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_recursive_cte() {
 		// Note: Recursive CTE is supported in MySQL 8.0+
 		let builder = MySqlQueryBuilder::new();
@@ -4282,7 +4283,7 @@ mod tests {
 
 	// Window function tests
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_with_partition_and_order() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4310,7 +4311,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4338,7 +4339,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4366,7 +4367,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_four_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4394,7 +4395,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4423,7 +4424,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4459,7 +4460,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_first_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4487,7 +4488,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_last_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4515,7 +4516,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_nth_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4543,7 +4544,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_order_only() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4569,7 +4570,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_order_only() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4597,7 +4598,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4625,7 +4626,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4653,7 +4654,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_custom_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4681,7 +4682,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4717,7 +4718,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4746,7 +4747,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_different_offset() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4782,7 +4783,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_first_value_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4810,7 +4811,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_last_value_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -4840,7 +4841,7 @@ mod tests {
 
 	// --- Phase 5: JOIN Enhancement Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_join_three_tables() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4864,7 +4865,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_self_join() {
 		use crate::types::TableRef;
 
@@ -4884,7 +4885,7 @@ mod tests {
 		assert!(sql.contains("ON `e1`.`manager_id` = `e2`.`id`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_complex_conditions() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4907,7 +4908,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_subquery_in_condition() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -4929,7 +4930,7 @@ mod tests {
 		assert!(sql.contains("SELECT `max_id` FROM `user_stats`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_left_joins() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4957,7 +4958,7 @@ mod tests {
 		assert!(sql.contains("LEFT JOIN `phone_numbers`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_join_types() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4982,7 +4983,7 @@ mod tests {
 		assert!(sql.contains("RIGHT JOIN `refunds`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_group_by() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -5016,7 +5017,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_window_function() {
 		use crate::types::{IntoIden, Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -5047,7 +5048,7 @@ mod tests {
 		assert!(sql.contains("PARTITION BY `departments`.`name`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_four_table_join() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5076,7 +5077,7 @@ mod tests {
 		assert!(sql.contains("INNER JOIN `categories`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_cte() {
 		use crate::types::TableRef;
 
@@ -5104,7 +5105,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_where_and_params() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5130,7 +5131,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_used_in_join() {
 		use crate::types::TableRef;
 
@@ -5161,7 +5162,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_aggregation() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -5196,7 +5197,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_subquery() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5226,7 +5227,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_recursive_and_regular_ctes() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5264,7 +5265,7 @@ mod tests {
 
 	// CASE expression tests
 
-	#[test]
+	#[rstest]
 	fn test_case_simple_when_else() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5286,7 +5287,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_multiple_when_clauses() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5310,7 +5311,7 @@ mod tests {
 		assert_eq!(values.len(), 7);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_without_else() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5331,7 +5332,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_where_clause() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5350,7 +5351,7 @@ mod tests {
 		assert!(values.len() >= 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_order_by() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5376,7 +5377,7 @@ mod tests {
 
 	// ORDER BY / LIMIT edge case tests
 
-	#[test]
+	#[rstest]
 	fn test_order_by_desc_multiple() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5393,7 +5394,7 @@ mod tests {
 		assert!(sql.contains("`name` ASC"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_limit_zero() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5405,7 +5406,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_combined_where_order_limit_offset() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -5430,7 +5431,7 @@ mod tests {
 
 	// Arithmetic / string operation tests
 
-	#[test]
+	#[rstest]
 	fn test_arithmetic_in_where() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5443,7 +5444,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_like_not_like() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5457,7 +5458,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_between_values() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -5471,7 +5472,7 @@ mod tests {
 
 	// DDL Tests
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -5482,7 +5483,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_if_exists() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -5493,7 +5494,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_multiple() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -5504,7 +5505,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -5515,7 +5516,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_if_exists_not_supported() {
 		// Note: MySQL supports IF EXISTS for DROP INDEX, but showing it works
 		let builder = MySqlQueryBuilder::new();
@@ -5530,7 +5531,7 @@ mod tests {
 
 	// CREATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_create_table_basic() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -5567,7 +5568,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_auto_increment() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -5591,7 +5592,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_foreign_key() {
 		use crate::types::{
 			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
@@ -5639,7 +5640,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_basic() {
 		use crate::query::IndexColumn;
 
@@ -5657,7 +5658,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_unique() {
 		use crate::query::IndexColumn;
 
@@ -5679,7 +5680,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_if_not_exists() {
 		use crate::query::IndexColumn;
 
@@ -5699,7 +5700,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_order() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -5721,7 +5722,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_multiple_columns() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -5747,7 +5748,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_using_btree() {
 		use crate::query::{IndexColumn, IndexMethod};
 
@@ -5769,7 +5770,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_using_fulltext() {
 		use crate::query::{IndexColumn, IndexMethod};
 
@@ -5791,7 +5792,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_add_column() {
 		use crate::query::AlterTableOperation;
 		use crate::types::{ColumnDef, ColumnType};
@@ -5817,7 +5818,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_column() {
 		use crate::query::AlterTableOperation;
 
@@ -5834,7 +5835,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_column() {
 		use crate::query::AlterTableOperation;
 
@@ -5854,7 +5855,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_modify_column_type() {
 		use crate::query::AlterTableOperation;
 		use crate::types::{ColumnDef, ColumnType};
@@ -5880,7 +5881,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_add_constraint() {
 		use crate::query::AlterTableOperation;
 		use crate::types::TableConstraint;
@@ -5903,7 +5904,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_constraint() {
 		use crate::query::AlterTableOperation;
 
@@ -5920,7 +5921,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_table() {
 		use crate::query::AlterTableOperation;
 
@@ -5937,7 +5938,7 @@ mod tests {
 
 	// VIEW tests
 
-	#[test]
+	#[rstest]
 	fn test_create_view_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -5953,7 +5954,7 @@ mod tests {
 		assert!(sql.contains("SELECT `id`, `name` FROM `users`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_view_or_replace() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -5967,7 +5968,7 @@ mod tests {
 		assert!(sql.contains("`user_view`"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_view_if_not_exists() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -5981,7 +5982,7 @@ mod tests {
 		assert!(sql.contains("`user_view`"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
 	fn test_create_view_materialized_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -5994,7 +5995,7 @@ mod tests {
 		let _ = builder.build_create_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_view_with_columns() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -6008,7 +6009,7 @@ mod tests {
 		assert!(sql.contains("`user_view` (`user_id`, `user_name`)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_view_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_view();
@@ -6019,7 +6020,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_view_if_exists() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_view();
@@ -6030,7 +6031,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP VIEW")]
 	fn test_drop_view_cascade_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6040,7 +6041,7 @@ mod tests {
 		let _ = builder.build_drop_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support MATERIALIZED views")]
 	fn test_drop_view_materialized_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6050,7 +6051,7 @@ mod tests {
 		let _ = builder.build_drop_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_view_multiple() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_view();
@@ -6067,7 +6068,7 @@ mod tests {
 
 	// TRUNCATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -6078,7 +6079,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(
 		expected = "MySQL does not support truncating multiple tables in a single TRUNCATE statement"
 	)]
@@ -6090,7 +6091,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support RESTART IDENTITY for TRUNCATE TABLE")]
 	fn test_truncate_table_restart_identity_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6100,7 +6101,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support CASCADE for TRUNCATE TABLE")]
 	fn test_truncate_table_cascade_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6110,7 +6111,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_basic() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -6131,7 +6132,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support multiple events in a single trigger")]
 	fn test_create_trigger_multiple_events_panics() {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
@@ -6149,7 +6150,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support INSTEAD OF triggers")]
 	fn test_create_trigger_instead_of_panics() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
@@ -6168,7 +6169,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL only supports FOR EACH ROW triggers")]
 	fn test_create_trigger_for_statement_panics() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
@@ -6185,7 +6186,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -6196,7 +6197,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL requires table name (ON table) for DROP TRIGGER")]
 	fn test_drop_trigger_no_table_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6206,7 +6207,7 @@ mod tests {
 		let _ = builder.build_drop_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support CASCADE/RESTRICT for DROP TRIGGER")]
 	fn test_drop_trigger_cascade_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6217,7 +6218,7 @@ mod tests {
 	}
 
 	// CREATE FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_create_function_basic() {
 		use crate::types::function::FunctionLanguage;
 
@@ -6236,7 +6237,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_with_parameters() {
 		use crate::types::function::FunctionLanguage;
 
@@ -6257,7 +6258,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_deterministic() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage};
 
@@ -6277,7 +6278,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_not_deterministic() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage};
 
@@ -6297,7 +6298,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_sql_security_definer() {
 		use crate::types::function::{FunctionLanguage, FunctionSecurity};
 
@@ -6317,7 +6318,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_function_all_options() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
 
@@ -6340,7 +6341,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL only supports SQL language for user-defined functions")]
 	fn test_create_function_plpgsql_panics() {
 		use crate::types::function::FunctionLanguage;
@@ -6356,7 +6357,7 @@ mod tests {
 	}
 
 	// ALTER FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_alter_function_set_behavior_deterministic() {
 		use crate::types::function::FunctionBehavior;
 
@@ -6370,7 +6371,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_function_set_security_definer() {
 		use crate::types::function::FunctionSecurity;
 
@@ -6383,7 +6384,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support RENAME TO for functions")]
 	fn test_alter_function_rename_to_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6393,7 +6394,7 @@ mod tests {
 		let _ = builder.build_alter_function(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support OWNER TO for functions")]
 	fn test_alter_function_owner_to_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6403,7 +6404,7 @@ mod tests {
 		let _ = builder.build_alter_function(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support SET SCHEMA for functions")]
 	fn test_alter_function_set_schema_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6414,7 +6415,7 @@ mod tests {
 	}
 
 	// DROP FUNCTION tests
-	#[test]
+	#[rstest]
 	fn test_drop_function_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -6425,7 +6426,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_function_if_exists() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_function();
@@ -6436,7 +6437,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support CASCADE for DROP FUNCTION")]
 	fn test_drop_function_cascade_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6446,7 +6447,7 @@ mod tests {
 		let _ = builder.build_drop_function(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(
 		expected = "MySQL does not support function overloading or parameters in DROP FUNCTION"
 	)]
@@ -6459,7 +6460,7 @@ mod tests {
 	}
 
 	// Procedure tests
-	#[test]
+	#[rstest]
 	fn test_create_procedure_basic() {
 		use crate::types::function::FunctionLanguage;
 
@@ -6474,7 +6475,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_parameters() {
 		use crate::types::function::FunctionLanguage;
 
@@ -6494,7 +6495,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_behavior() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage};
 
@@ -6513,7 +6514,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_with_security() {
 		use crate::types::function::{FunctionLanguage, FunctionSecurity};
 
@@ -6532,7 +6533,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_procedure_all_options() {
 		use crate::types::function::{FunctionBehavior, FunctionLanguage, FunctionSecurity};
 
@@ -6554,7 +6555,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_set_behavior() {
 		use crate::types::function::FunctionBehavior;
 
@@ -6568,7 +6569,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_procedure_set_security() {
 		use crate::types::function::FunctionSecurity;
 
@@ -6581,7 +6582,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(
 		expected = "MySQL does not support RENAME TO for procedures. Use DROP + CREATE instead."
 	)]
@@ -6593,7 +6594,7 @@ mod tests {
 		let _ = builder.build_alter_procedure(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -6604,7 +6605,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_procedure_if_exists() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::drop_procedure();
@@ -6615,7 +6616,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "MySQL does not support CASCADE for DROP PROCEDURE")]
 	fn test_drop_procedure_cascade_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6625,7 +6626,7 @@ mod tests {
 		let _ = builder.build_drop_procedure(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(
 		expected = "MySQL does not support procedure overloading or parameters in DROP PROCEDURE"
 	)]
@@ -6638,7 +6639,7 @@ mod tests {
 	}
 
 	// TYPE tests - verify MySQL panics
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "CREATE TYPE not supported. Use ENUM column type.")]
 	fn test_create_type_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6649,7 +6650,7 @@ mod tests {
 		let _ = builder.build_create_type(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "ALTER TYPE not supported. Use ENUM column type.")]
 	fn test_alter_type_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6659,7 +6660,7 @@ mod tests {
 		let _ = builder.build_alter_type(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "DROP TYPE not supported. Use ENUM column type.")]
 	fn test_drop_type_panics() {
 		let builder = MySqlQueryBuilder::new();
@@ -6670,7 +6671,7 @@ mod tests {
 	}
 
 	// OPTIMIZE TABLE tests
-	#[test]
+	#[rstest]
 	fn test_optimize_table_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::optimize_table();
@@ -6681,7 +6682,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_table_multiple_tables() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::optimize_table();
@@ -6692,7 +6693,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_table_no_write_to_binlog() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::optimize_table();
@@ -6703,7 +6704,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optimize_table_local() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::optimize_table();
@@ -6715,7 +6716,7 @@ mod tests {
 	}
 
 	// REPAIR TABLE tests
-	#[test]
+	#[rstest]
 	fn test_repair_table_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6726,7 +6727,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_multiple_tables() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6737,7 +6738,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_quick() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6748,7 +6749,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_extended() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6759,7 +6760,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_use_frm() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6770,7 +6771,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_no_write_to_binlog() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6781,7 +6782,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_local() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6792,7 +6793,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repair_table_combined_options() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::repair_table();
@@ -6804,7 +6805,7 @@ mod tests {
 	}
 
 	// CHECK TABLE tests
-	#[test]
+	#[rstest]
 	fn test_check_table_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::check_table();
@@ -6815,7 +6816,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_multiple_tables() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::check_table();
@@ -6826,7 +6827,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_quick() {
 		use crate::types::CheckTableOption;
 
@@ -6839,7 +6840,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_fast() {
 		use crate::types::CheckTableOption;
 
@@ -6852,7 +6853,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_extended() {
 		use crate::types::CheckTableOption;
 
@@ -6865,7 +6866,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_changed() {
 		use crate::types::CheckTableOption;
 
@@ -6878,7 +6879,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_table_for_upgrade() {
 		use crate::types::CheckTableOption;
 
@@ -6893,7 +6894,7 @@ mod tests {
 
 	// DCL (Data Control Language) Tests
 
-	#[test]
+	#[rstest]
 	fn test_grant_single_privilege() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -6908,7 +6909,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_to_user_with_host() {
 		use crate::dcl::{GrantStatement, Grantee, Privilege};
 
@@ -6926,7 +6927,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_with_grant_option() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -6945,7 +6946,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_multiple_privileges() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -6967,7 +6968,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_grant_on_database() {
 		use crate::dcl::{GrantStatement, Privilege};
 
@@ -6982,7 +6983,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_single_privilege() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -6997,7 +6998,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_from_user_with_host() {
 		use crate::dcl::{Grantee, Privilege, RevokeStatement};
 
@@ -7015,7 +7016,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_grant_option_for() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -7034,7 +7035,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_revoke_multiple_privileges() {
 		use crate::dcl::{Privilege, RevokeStatement};
 
@@ -7056,7 +7057,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_simple() {
 		use crate::dcl::CreateRoleStatement;
 
@@ -7068,7 +7069,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_if_not_exists() {
 		use crate::dcl::CreateRoleStatement;
 
@@ -7082,7 +7083,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_role_with_options() {
 		use crate::dcl::{CreateRoleStatement, UserOption};
 		use crate::value::Value;
@@ -7106,7 +7107,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_simple() {
 		use crate::dcl::DropRoleStatement;
 
@@ -7118,7 +7119,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_if_exists() {
 		use crate::dcl::DropRoleStatement;
 
@@ -7130,7 +7131,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_role_multiple() {
 		use crate::dcl::DropRoleStatement;
 
@@ -7145,7 +7146,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_role_with_options() {
 		use crate::dcl::{AlterRoleStatement, UserOption};
 
@@ -7164,7 +7165,7 @@ mod tests {
 	}
 
 	// CREATE USER tests
-	#[test]
+	#[rstest]
 	fn test_create_user_basic() {
 		use crate::dcl::CreateUserStatement;
 
@@ -7176,7 +7177,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_if_not_exists() {
 		use crate::dcl::CreateUserStatement;
 
@@ -7190,7 +7191,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_password() {
 		use crate::dcl::{CreateUserStatement, UserOption};
 		use crate::value::Value;
@@ -7209,7 +7210,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_user_with_default_role() {
 		use crate::dcl::CreateUserStatement;
 
@@ -7224,7 +7225,7 @@ mod tests {
 	}
 
 	// DROP USER tests
-	#[test]
+	#[rstest]
 	fn test_drop_user_basic() {
 		use crate::dcl::DropUserStatement;
 
@@ -7236,7 +7237,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_user_if_exists() {
 		use crate::dcl::DropUserStatement;
 
@@ -7249,7 +7250,7 @@ mod tests {
 	}
 
 	// ALTER USER tests
-	#[test]
+	#[rstest]
 	fn test_alter_user_basic() {
 		use crate::dcl::{AlterUserStatement, UserOption};
 
@@ -7263,7 +7264,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_user_with_default_role() {
 		use crate::dcl::AlterUserStatement;
 
@@ -7278,7 +7279,7 @@ mod tests {
 	}
 
 	// RENAME USER tests
-	#[test]
+	#[rstest]
 	fn test_rename_user_basic() {
 		use crate::dcl::RenameUserStatement;
 
@@ -7293,7 +7294,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_multiple() {
 		use crate::dcl::RenameUserStatement;
 
@@ -7311,7 +7312,7 @@ mod tests {
 	}
 
 	// SET ROLE tests
-	#[test]
+	#[rstest]
 	fn test_set_role_named() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -7323,7 +7324,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_all() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -7335,7 +7336,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_all_except() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -7348,7 +7349,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_role_default() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
 
@@ -7361,7 +7362,7 @@ mod tests {
 	}
 
 	// RESET ROLE panic test
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "RESET ROLE is not supported by MySQL")]
 	fn test_reset_role_panics() {
 		use crate::dcl::ResetRoleStatement;
@@ -7373,7 +7374,7 @@ mod tests {
 	}
 
 	// SET DEFAULT ROLE tests
-	#[test]
+	#[rstest]
 	fn test_set_default_role_all() {
 		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
 
@@ -7387,7 +7388,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_none() {
 		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
 
@@ -7401,7 +7402,7 @@ mod tests {
 		assert!(values.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_default_role_list() {
 		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};
 

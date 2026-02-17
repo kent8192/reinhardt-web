@@ -92,8 +92,9 @@ impl OnConflict {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_column_do_nothing() {
 		// Arrange & Act
 		let on_conflict = OnConflict::column("id").do_nothing();
@@ -103,7 +104,7 @@ mod tests {
 		assert!(matches!(on_conflict.action, OnConflictAction::DoNothing));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_column_update_columns() {
 		// Arrange & Act
 		let on_conflict = OnConflict::column("id").update_columns(["name", "email"]);
@@ -118,7 +119,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_columns_do_nothing() {
 		// Arrange & Act
 		let on_conflict = OnConflict::columns(["id", "tenant_id"]).do_nothing();
@@ -133,7 +134,7 @@ mod tests {
 		assert!(matches!(on_conflict.action, OnConflictAction::DoNothing));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_columns_update_columns() {
 		// Arrange & Act
 		let on_conflict =
@@ -154,7 +155,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_to_owned() {
 		// Arrange & Act
 		let on_conflict = OnConflict::column("id").do_nothing().to_owned();
@@ -164,7 +165,7 @@ mod tests {
 		assert!(matches!(on_conflict.action, OnConflictAction::DoNothing));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_default_action_is_do_nothing() {
 		// Arrange & Act
 		let on_conflict = OnConflict::column("id");

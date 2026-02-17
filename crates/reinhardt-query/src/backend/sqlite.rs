@@ -1914,21 +1914,22 @@ mod tests {
 		query::Query,
 		types::IntoIden,
 	};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier() {
 		let builder = SqliteQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user"), "\"user\"");
 		assert_eq!(builder.escape_identifier("table_name"), "\"table_name\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_identifier_with_quotes() {
 		let builder = SqliteQueryBuilder::new();
 		assert_eq!(builder.escape_identifier("user\"name"), "\"user\"\"name\"");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_format_placeholder() {
 		let builder = SqliteQueryBuilder::new();
 		assert_eq!(builder.format_placeholder(1), "?");
@@ -1936,7 +1937,7 @@ mod tests {
 		assert_eq!(builder.format_placeholder(10), "?");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -1947,7 +1948,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_asterisk() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -1958,7 +1959,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_where() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -1973,7 +1974,7 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_limit_offset() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -1987,7 +1988,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -2003,7 +2004,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_multiple_rows() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -2020,7 +2021,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_returning() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -2038,7 +2039,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_returning_all() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -2052,7 +2053,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -2065,7 +2066,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_where() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -2080,7 +2081,7 @@ mod tests {
 		assert_eq!(values.len(), 2); // false + 1
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_with_returning() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::update();
@@ -2097,7 +2098,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -2111,7 +2112,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // false
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_no_where() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -2122,7 +2123,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_returning() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -2138,7 +2139,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_with_returning_all() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -2153,7 +2154,7 @@ mod tests {
 
 	// JOIN tests
 
-	#[test]
+	#[rstest]
 	fn test_inner_join_simple() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2171,7 +2172,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_left_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2188,7 +2189,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"profiles\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_right_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2205,7 +2206,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_full_outer_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2222,7 +2223,7 @@ mod tests {
 		assert!(sql.contains("ON \"users\".\"id\" = \"orders\".\"user_id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cross_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2236,7 +2237,7 @@ mod tests {
 		assert!(!sql.contains("ON"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_joins() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2260,7 +2261,7 @@ mod tests {
 		assert!(sql.contains("\"orders\".\"product_id\" = \"products\".\"id\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_complex_condition() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2285,7 +2286,7 @@ mod tests {
 
 	// GROUP BY / HAVING tests
 
-	#[test]
+	#[rstest]
 	fn test_group_by_single_column() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2297,7 +2298,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_multiple_columns() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2311,7 +2312,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\", \"brand\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_with_count() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -2331,7 +2332,7 @@ mod tests {
 		assert!(sql.contains("GROUP BY \"category\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_having_simple() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, IntoIden};
@@ -2361,7 +2362,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_group_by_having_with_sum() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -2390,7 +2391,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_distinct() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2402,7 +2403,7 @@ mod tests {
 		assert!(sql.contains("FROM \"products\""));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DISTINCT ROW")]
 	fn test_select_distinct_row_panics() {
 		use crate::query::SelectDistinct;
@@ -2415,7 +2416,7 @@ mod tests {
 		let _ = builder.build_select(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DISTINCT ON")]
 	fn test_select_distinct_on_panics() {
 		use crate::query::SelectDistinct;
@@ -2431,7 +2432,7 @@ mod tests {
 		let _ = builder.build_select(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -2447,7 +2448,7 @@ mod tests {
 		assert!(sql.contains("UNION SELECT \"id\" FROM \"customers\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_union_all() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -2463,7 +2464,7 @@ mod tests {
 		assert!(sql.contains("UNION ALL SELECT \"name\" FROM \"archived_products\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_intersect() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -2479,7 +2480,7 @@ mod tests {
 		assert!(sql.contains("INTERSECT SELECT \"email\" FROM \"customers\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_except() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -2495,7 +2496,7 @@ mod tests {
 		assert!(sql.contains("EXCEPT SELECT \"id\" FROM \"banned_users\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_multiple_unions() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt1 = Query::select();
@@ -2518,7 +2519,7 @@ mod tests {
 
 	// --- Phase 5: Subquery Edge Case Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_not_in_subquery() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -2540,7 +2541,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_in_select_list() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -2561,7 +2562,7 @@ mod tests {
 		assert!(sql.contains(r#""order_counts"."user_id" = "users"."id""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_exists_conditions() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -2586,7 +2587,7 @@ mod tests {
 		assert!(sql.contains(r#"EXISTS (SELECT "id" FROM "reviews""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_subquery() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -2614,7 +2615,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subquery_with_complex_where() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -2644,7 +2645,7 @@ mod tests {
 
 	// --- Phase 5: NULL Handling Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_where_is_null() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2658,7 +2659,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_is_not_null() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2672,7 +2673,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_combined_with_other_conditions() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2689,7 +2690,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_null_with_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2708,7 +2709,7 @@ mod tests {
 	}
 
 	// --- Phase 5: Complex WHERE Clause Tests ---
-	#[test]
+	#[rstest]
 	fn test_where_or_condition() {
 		use crate::expr::Condition;
 
@@ -2726,7 +2727,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_between() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2740,7 +2741,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_not_between() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2754,7 +2755,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_like() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2767,7 +2768,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_where_in_values() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -2780,7 +2781,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_with_null_value() {
 		use crate::value::Value;
 
@@ -2805,7 +2806,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_single_cte() {
 		// Note: CTE (WITH clause) is supported in SQLite 3.8.3+
 		let builder = SqliteQueryBuilder::new();
@@ -2832,7 +2833,7 @@ mod tests {
 		assert!(sql.contains("SELECT \"name\" FROM \"eng_employees\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_multiple_ctes() {
 		// Note: CTE (WITH clause) is supported in SQLite 3.8.3+
 		let builder = SqliteQueryBuilder::new();
@@ -2868,7 +2869,7 @@ mod tests {
 		assert!(sql.contains("\"sales_emp\" AS"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_with_recursive_cte() {
 		// Note: Recursive CTE is supported in SQLite 3.8.3+
 		let builder = SqliteQueryBuilder::new();
@@ -2897,7 +2898,7 @@ mod tests {
 
 	// Window function tests
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_with_partition_and_order() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -2925,7 +2926,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -2953,7 +2954,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -2981,7 +2982,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_four_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3009,7 +3010,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3038,7 +3039,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3074,7 +3075,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_first_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3102,7 +3103,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_last_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3130,7 +3131,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_nth_value() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3158,7 +3159,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_row_number_order_only() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3184,7 +3185,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_order_only() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3212,7 +3213,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_rank_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3240,7 +3241,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_dense_rank_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3268,7 +3269,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_ntile_custom_buckets() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3296,7 +3297,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lead_with_offset_and_default() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3332,7 +3333,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_basic() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3361,7 +3362,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_lag_with_different_offset() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3397,7 +3398,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_first_value_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3425,7 +3426,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_window_last_value_with_partition() {
 		use crate::types::{Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3455,7 +3456,7 @@ mod tests {
 
 	// --- Phase 5: JOIN Enhancement Tests ---
 
-	#[test]
+	#[rstest]
 	fn test_join_three_tables() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3479,7 +3480,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_self_join() {
 		use crate::types::TableRef;
 
@@ -3499,7 +3500,7 @@ mod tests {
 		assert!(sql.contains(r#"ON "e1"."manager_id" = "e2"."id""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_complex_conditions() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3522,7 +3523,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_subquery_in_condition() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3544,7 +3545,7 @@ mod tests {
 		assert!(sql.contains(r#"SELECT "max_id" FROM "user_stats""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_left_joins() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3572,7 +3573,7 @@ mod tests {
 		assert!(sql.contains(r#"LEFT JOIN "phone_numbers""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mixed_join_types() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3597,7 +3598,7 @@ mod tests {
 		assert!(sql.contains(r#"RIGHT JOIN "refunds""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_group_by() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{BinOper, ColumnRef, IntoIden};
@@ -3631,7 +3632,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_window_function() {
 		use crate::types::{IntoIden, Order, OrderExpr, OrderExprKind, WindowStatement};
 
@@ -3662,7 +3663,7 @@ mod tests {
 		assert!(sql.contains(r#"PARTITION BY "departments"."name""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_four_table_join() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -3691,7 +3692,7 @@ mod tests {
 		assert!(sql.contains(r#"INNER JOIN "categories""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_join_with_cte() {
 		use crate::types::TableRef;
 
@@ -3719,7 +3720,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_where_and_params() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3745,7 +3746,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_used_in_join() {
 		use crate::types::TableRef;
 
@@ -3776,7 +3777,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_aggregation() {
 		use crate::expr::SimpleExpr;
 		use crate::types::{ColumnRef, IntoIden};
@@ -3811,7 +3812,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cte_with_subquery() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3841,7 +3842,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_recursive_and_regular_ctes() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3879,7 +3880,7 @@ mod tests {
 
 	// CASE expression tests
 
-	#[test]
+	#[rstest]
 	fn test_case_simple_when_else() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3901,7 +3902,7 @@ mod tests {
 		assert_eq!(values.len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_multiple_when_clauses() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3925,7 +3926,7 @@ mod tests {
 		assert_eq!(values.len(), 7);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_without_else() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3946,7 +3947,7 @@ mod tests {
 		assert_eq!(values.len(), 4);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_where_clause() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3965,7 +3966,7 @@ mod tests {
 		assert!(values.len() >= 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_in_order_by() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -3991,7 +3992,7 @@ mod tests {
 
 	// ORDER BY / LIMIT edge case tests
 
-	#[test]
+	#[rstest]
 	fn test_order_by_expression_function() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -4009,7 +4010,7 @@ mod tests {
 		assert!(sql.contains(r#""name" ASC"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_large_limit_offset_values() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -4025,7 +4026,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_order_by_with_limit_offset() {
 		let builder = SqliteQueryBuilder::new();
 
@@ -4050,7 +4051,7 @@ mod tests {
 
 	// Arithmetic / string operation tests
 
-	#[test]
+	#[rstest]
 	fn test_arithmetic_in_select() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4062,7 +4063,7 @@ mod tests {
 		assert!(sql.contains(r#"FROM "order_items""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_modulo_operator() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4075,7 +4076,7 @@ mod tests {
 		assert_eq!(values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_arithmetic_where() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::select();
@@ -4097,7 +4098,7 @@ mod tests {
 
 	// DDL Tests
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -4108,7 +4109,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_if_exists() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -4119,7 +4120,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_table_multiple() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_table();
@@ -4130,7 +4131,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -4141,7 +4142,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_index_if_exists() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_index();
@@ -4154,7 +4155,7 @@ mod tests {
 
 	// CREATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_create_table_basic() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -4191,7 +4192,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_autoincrement() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -4215,7 +4216,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_foreign_key() {
 		use crate::types::{
 			ColumnDef, ColumnType, ForeignKeyAction, IntoTableRef, TableConstraint,
@@ -4263,7 +4264,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_basic() {
 		use crate::query::IndexColumn;
 
@@ -4284,7 +4285,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_unique() {
 		use crate::query::IndexColumn;
 
@@ -4306,7 +4307,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_if_not_exists() {
 		use crate::query::IndexColumn;
 
@@ -4328,7 +4329,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_with_order() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -4350,7 +4351,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_multiple_columns() {
 		use crate::query::IndexColumn;
 		use crate::types::Order;
@@ -4376,7 +4377,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_index_partial_with_where() {
 		use crate::query::IndexColumn;
 
@@ -4398,7 +4399,7 @@ mod tests {
 		assert_eq!(values.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_add_column() {
 		use crate::query::AlterTableOperation;
 		use crate::types::{ColumnDef, ColumnType};
@@ -4424,7 +4425,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_drop_column() {
 		use crate::query::AlterTableOperation;
 
@@ -4441,7 +4442,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_column() {
 		use crate::query::AlterTableOperation;
 
@@ -4461,7 +4462,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alter_table_rename_table() {
 		use crate::query::AlterTableOperation;
 
@@ -4476,7 +4477,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support MODIFY COLUMN")]
 	fn test_alter_table_modify_column_panics() {
 		use crate::query::AlterTableOperation;
@@ -4501,7 +4502,7 @@ mod tests {
 		let _ = builder.build_alter_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support ADD CONSTRAINT")]
 	fn test_alter_table_add_constraint_panics() {
 		use crate::query::AlterTableOperation;
@@ -4520,7 +4521,7 @@ mod tests {
 		let _ = builder.build_alter_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_table_with_boolean_type() {
 		use crate::types::{ColumnDef, ColumnType};
 
@@ -4547,7 +4548,7 @@ mod tests {
 
 	// VIEW tests
 
-	#[test]
+	#[rstest]
 	fn test_create_view_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -4563,7 +4564,7 @@ mod tests {
 		assert!(sql.contains(r#"SELECT "id", "name" FROM "users""#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_view_if_not_exists() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -4577,7 +4578,7 @@ mod tests {
 		assert!(sql.contains(r#""user_view""#));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support OR REPLACE for CREATE VIEW")]
 	fn test_create_view_or_replace_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4590,7 +4591,7 @@ mod tests {
 		let _ = builder.build_create_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support MATERIALIZED views")]
 	fn test_create_view_materialized_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4603,7 +4604,7 @@ mod tests {
 		let _ = builder.build_create_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_view_with_columns() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::create_view();
@@ -4617,7 +4618,7 @@ mod tests {
 		assert!(sql.contains(r#""user_view" ("user_id", "user_name")"#));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_view_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_view();
@@ -4628,7 +4629,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_view_if_exists() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_view();
@@ -4639,7 +4640,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite only supports dropping one view at a time")]
 	fn test_drop_view_multiple_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4649,7 +4650,7 @@ mod tests {
 		let _ = builder.build_drop_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CASCADE/RESTRICT for DROP VIEW")]
 	fn test_drop_view_cascade_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4659,7 +4660,7 @@ mod tests {
 		let _ = builder.build_drop_view(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support MATERIALIZED views")]
 	fn test_drop_view_materialized_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4671,7 +4672,7 @@ mod tests {
 
 	// TRUNCATE TABLE tests
 
-	#[test]
+	#[rstest]
 	fn test_truncate_table_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::truncate_table();
@@ -4682,7 +4683,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite only supports truncating one table at a time")]
 	fn test_truncate_table_multiple_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4692,7 +4693,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support RESTART IDENTITY for TRUNCATE TABLE")]
 	fn test_truncate_table_restart_identity_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4702,7 +4703,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CASCADE for TRUNCATE TABLE")]
 	fn test_truncate_table_cascade_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4712,7 +4713,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support RESTRICT for TRUNCATE TABLE")]
 	fn test_truncate_table_restrict_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4722,7 +4723,7 @@ mod tests {
 		let _ = builder.build_truncate_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_basic() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -4745,7 +4746,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_instead_of() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -4768,7 +4769,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_with_when() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -4791,7 +4792,7 @@ mod tests {
 		assert_eq!(values.len(), 1); // "active" value
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_update_of_columns() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -4813,7 +4814,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_create_trigger_multiple_statements() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
 
@@ -4837,7 +4838,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_basic() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -4848,7 +4849,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_drop_trigger_if_exists() {
 		let builder = SqliteQueryBuilder::new();
 		let mut stmt = Query::drop_trigger();
@@ -4859,7 +4860,7 @@ mod tests {
 		assert_eq!(values.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support multiple events in a single trigger")]
 	fn test_create_trigger_multiple_events_panics() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
@@ -4877,7 +4878,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite only supports FOR EACH ROW triggers")]
 	fn test_create_trigger_for_each_statement_panics() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerScope, TriggerTiming};
@@ -4894,7 +4895,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support FOLLOWS/PRECEDES syntax")]
 	fn test_create_trigger_follows_panics() {
 		use crate::types::{TriggerBody, TriggerEvent, TriggerOrder, TriggerScope, TriggerTiming};
@@ -4912,7 +4913,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support EXECUTE FUNCTION syntax")]
 	fn test_create_trigger_postgres_function_panics() {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
@@ -4929,7 +4930,7 @@ mod tests {
 		let _ = builder.build_create_trigger(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CASCADE/RESTRICT for DROP TRIGGER")]
 	fn test_drop_trigger_cascade_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4940,7 +4941,7 @@ mod tests {
 	}
 
 	// FUNCTION tests - SQLite does not support DDL for functions
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CREATE FUNCTION")]
 	fn test_create_function_panics() {
 		use crate::types::function::FunctionLanguage;
@@ -4955,7 +4956,7 @@ mod tests {
 		let _ = builder.build_create_function(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support ALTER FUNCTION")]
 	fn test_alter_function_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4965,7 +4966,7 @@ mod tests {
 		let _ = builder.build_alter_function(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DROP FUNCTION")]
 	fn test_drop_function_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4976,7 +4977,7 @@ mod tests {
 	}
 
 	// TYPE tests - SQLite does not support custom types
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "CREATE TYPE not supported.")]
 	fn test_create_type_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4987,7 +4988,7 @@ mod tests {
 		let _ = builder.build_create_type(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "ALTER TYPE not supported.")]
 	fn test_alter_type_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -4997,7 +4998,7 @@ mod tests {
 		let _ = builder.build_alter_type(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "DROP TYPE not supported.")]
 	fn test_drop_type_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -5008,7 +5009,7 @@ mod tests {
 	}
 
 	// MySQL-specific maintenance command panic tests
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite users should use VACUUM or ANALYZE")]
 	fn test_optimize_table_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -5018,7 +5019,7 @@ mod tests {
 		let _ = builder.build_optimize_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in SQLite")]
 	fn test_repair_table_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -5028,7 +5029,7 @@ mod tests {
 		let _ = builder.build_repair_table(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "not supported in SQLite")]
 	fn test_check_table_panics() {
 		let builder = SqliteQueryBuilder::new();
@@ -5041,7 +5042,7 @@ mod tests {
 	// DCL (Data Control Language) Tests
 	// SQLite does not support DCL - these tests verify panic behavior
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DCL")]
 	fn test_grant_panics() {
 		use crate::dcl::{GrantStatement, Privilege};
@@ -5056,7 +5057,7 @@ mod tests {
 		let _ = builder.build_grant(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DCL")]
 	fn test_revoke_panics() {
 		use crate::dcl::{Privilege, RevokeStatement};
@@ -5071,7 +5072,7 @@ mod tests {
 		let _ = builder.build_revoke(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CREATE ROLE statement")]
 	fn test_create_role_panics() {
 		use crate::dcl::CreateRoleStatement;
@@ -5083,7 +5084,7 @@ mod tests {
 		let _ = builder.build_create_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DROP ROLE statement")]
 	fn test_drop_role_panics() {
 		use crate::dcl::DropRoleStatement;
@@ -5095,7 +5096,7 @@ mod tests {
 		let _ = builder.build_drop_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support ALTER ROLE statement")]
 	fn test_alter_role_panics() {
 		use crate::dcl::AlterRoleStatement;
@@ -5107,7 +5108,7 @@ mod tests {
 		let _ = builder.build_alter_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support CREATE USER statement")]
 	fn test_create_user_panics() {
 		use crate::dcl::CreateUserStatement;
@@ -5118,7 +5119,7 @@ mod tests {
 		let _ = builder.build_create_user(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support DROP USER statement")]
 	fn test_drop_user_panics() {
 		use crate::dcl::DropUserStatement;
@@ -5129,7 +5130,7 @@ mod tests {
 		let _ = builder.build_drop_user(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support ALTER USER statement")]
 	fn test_alter_user_panics() {
 		use crate::dcl::AlterUserStatement;
@@ -5140,7 +5141,7 @@ mod tests {
 		let _ = builder.build_alter_user(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support RENAME USER statement")]
 	fn test_rename_user_panics() {
 		use crate::dcl::RenameUserStatement;
@@ -5151,7 +5152,7 @@ mod tests {
 		let _ = builder.build_rename_user(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support SET ROLE statement")]
 	fn test_set_role_panics() {
 		use crate::dcl::{RoleTarget, SetRoleStatement};
@@ -5162,7 +5163,7 @@ mod tests {
 		let _ = builder.build_set_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support RESET ROLE statement")]
 	fn test_reset_role_panics() {
 		use crate::dcl::ResetRoleStatement;
@@ -5173,7 +5174,7 @@ mod tests {
 		let _ = builder.build_reset_role(&stmt);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "SQLite does not support SET DEFAULT ROLE statement")]
 	fn test_set_default_role_panics() {
 		use crate::dcl::{DefaultRoleSpec, SetDefaultRoleStatement};

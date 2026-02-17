@@ -157,14 +157,15 @@ impl RenameUserStatement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_new() {
 		let stmt = RenameUserStatement::new();
 		assert!(stmt.renames.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_basic() {
 		let stmt = RenameUserStatement::new().rename("old_user", "new_user");
 		assert_eq!(stmt.renames.len(), 1);
@@ -173,7 +174,7 @@ mod tests {
 		assert!(stmt.validate().is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_multiple() {
 		let stmt = RenameUserStatement::new()
 			.rename("user1", "renamed1")
@@ -181,19 +182,19 @@ mod tests {
 		assert_eq!(stmt.renames.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_validation_empty() {
 		let stmt = RenameUserStatement::new();
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_validation_empty_old_name() {
 		let stmt = RenameUserStatement::new().rename("", "new_user");
 		assert!(stmt.validate().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rename_user_validation_empty_new_name() {
 		let stmt = RenameUserStatement::new().rename("old_user", "");
 		assert!(stmt.validate().is_err());

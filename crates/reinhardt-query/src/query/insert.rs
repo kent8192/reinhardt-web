@@ -298,8 +298,9 @@ impl QueryStatementWriter for InsertStatement {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_insert_basic() {
 		let mut query = InsertStatement::new();
 		query
@@ -313,7 +314,7 @@ mod tests {
 		assert_eq!(query.values[0].len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_multiple_rows() {
 		let mut query = InsertStatement::new();
 		query
@@ -325,7 +326,7 @@ mod tests {
 		assert_eq!(query.values.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Number of values")]
 	fn test_insert_values_mismatch() {
 		let mut query = InsertStatement::new();
@@ -335,7 +336,7 @@ mod tests {
 			.values_panic(["Alice"]); // Should panic: 1 value, 2 columns
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_returning() {
 		let mut query = InsertStatement::new();
 		query
@@ -349,7 +350,7 @@ mod tests {
 		assert!(!returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_returning_all() {
 		let mut query = InsertStatement::new();
 		query
@@ -363,7 +364,7 @@ mod tests {
 		assert!(returning.is_all());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_take() {
 		let mut query = InsertStatement::new();
 		query

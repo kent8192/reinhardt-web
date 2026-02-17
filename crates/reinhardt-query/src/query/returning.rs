@@ -105,15 +105,16 @@ impl ReturningClause {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_returning_all() {
 		let returning = ReturningClause::all();
 		assert!(returning.is_all());
 		assert!(returning.get_columns().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_returning_columns() {
 		let returning = ReturningClause::columns(["id", "name"]);
 		assert!(!returning.is_all());
@@ -121,7 +122,7 @@ mod tests {
 		assert_eq!(cols.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_column() {
 		let mut returning = ReturningClause::all();
 		returning.add_column("id");
@@ -130,7 +131,7 @@ mod tests {
 		assert_eq!(cols.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let returning = ReturningClause::default();
 		assert!(returning.is_all());

@@ -6,6 +6,7 @@ use rstest::rstest;
 mod value_tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_value_is_null() {
@@ -47,6 +48,7 @@ mod value_tests {
 mod into_value_tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
+	use rstest::rstest;
 
 	#[rstest]
 	#[case::bool_true(true, Value::Bool(Some(true)))]
@@ -161,6 +163,7 @@ mod into_value_tests {
 mod value_tuple_tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_value_tuple_len() {
@@ -251,6 +254,7 @@ mod value_tuple_tests {
 mod values_tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_values_new() {
@@ -329,6 +333,7 @@ mod values_tests {
 mod array_type_tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_array_type_clone() {
@@ -359,6 +364,7 @@ mod array_type_tests {
 
 mod value_size_tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[rstest]
 	fn test_value_size_is_reasonable() {

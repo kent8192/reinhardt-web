@@ -87,7 +87,7 @@ proptest! {
 	#![proptest_config(ProptestConfig::with_cases(100))]
 
 	/// Property: Valid identifiers produce parseable SQL
-	#[test]
+	#[rstest]
 	fn prop_valid_identifier_produces_sql(name in valid_table_name()) {
 		let stmt = create_table_stmt(&name);
 		let builder = PostgresQueryBuilder::new();
@@ -98,7 +98,7 @@ proptest! {
 	}
 
 	/// Property: VARCHAR length is preserved in SQL
-	#[test]
+	#[rstest]
 	fn prop_varchar_length_preserved(length in varchar_length()) {
 		let mut stmt = Query::create_table();
 		stmt.table("test_varchar")
@@ -117,7 +117,7 @@ proptest! {
 	}
 
 	/// Property: DECIMAL precision is preserved in SQL
-	#[test]
+	#[rstest]
 	fn prop_decimal_precision_preserved((precision, scale) in decimal_precision()) {
 		let mut stmt = Query::create_table();
 		stmt.table("test_decimal")
@@ -136,7 +136,7 @@ proptest! {
 	}
 
 	/// Property: Column order is preserved
-	#[test]
+	#[rstest]
 	fn prop_column_order_preserved(
 		col1 in valid_column_name(),
 		col2 in valid_column_name(),
@@ -168,7 +168,7 @@ proptest! {
 	}
 
 	/// Property: Identifiers are properly quoted
-	#[test]
+	#[rstest]
 	fn prop_identifiers_quoted(name in valid_table_name()) {
 		let stmt = create_table_stmt(&name);
 		let builder = PostgresQueryBuilder::new();
@@ -179,7 +179,7 @@ proptest! {
 	}
 
 	/// Property: IF NOT EXISTS generates correct SQL
-	#[test]
+	#[rstest]
 	fn prop_if_not_exists_syntax(name in valid_table_name()) {
 		let mut stmt = Query::create_table();
 		stmt.table(name.clone())
@@ -194,7 +194,7 @@ proptest! {
 	}
 
 	/// Property: DROP IF EXISTS generates correct SQL
-	#[test]
+	#[rstest]
 	fn prop_drop_if_exists_syntax(name in valid_table_name()) {
 		let mut stmt = Query::drop_table();
 		stmt.table(name.clone()).if_exists();
@@ -207,7 +207,7 @@ proptest! {
 	}
 
 	/// Property: Multiple column definitions don't corrupt each other
-	#[test]
+	#[rstest]
 	fn prop_multiple_columns_independent(
 		name1 in valid_column_name(),
 		name2 in valid_column_name(),
