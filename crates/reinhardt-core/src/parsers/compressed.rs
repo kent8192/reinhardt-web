@@ -218,9 +218,10 @@ mod tests {
 	use crate::parsers::json::JSONParser;
 	use flate2::Compression;
 	use flate2::write::{DeflateEncoder, GzEncoder};
+	use rstest::rstest;
 	use std::io::Write;
 
-	#[test]
+	#[rstest]
 	fn test_compression_encoding_from_header() {
 		assert_eq!(
 			CompressionEncoding::from_header("gzip"),
@@ -241,6 +242,7 @@ mod tests {
 		assert_eq!(CompressionEncoding::from_header("unknown"), None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_parser_gzip() {
 		use http::HeaderMap;
@@ -271,6 +273,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_parser_deflate() {
 		use http::HeaderMap;
@@ -301,6 +304,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_parser_brotli() {
 		use http::HeaderMap;
@@ -338,6 +342,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_compressed_parser_uncompressed() {
 		use http::HeaderMap;
@@ -361,7 +366,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_compressed_parser_media_types() {
 		let parser = CompressedParser::new(Arc::new(JSONParser::new()));
 		let media_types = parser.media_types();
@@ -369,6 +374,7 @@ mod tests {
 		assert!(media_types.contains(&"application/json".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_gzip_decompression() {
 		let original = b"Hello, World!";
@@ -382,6 +388,7 @@ mod tests {
 		assert_eq!(decompressed, original);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_deflate_decompression() {
 		let original = b"Test data for deflate";
@@ -397,6 +404,7 @@ mod tests {
 		assert_eq!(decompressed, original);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_brotli_decompression() {
 		let original = b"Brotli compressed content";
@@ -412,6 +420,7 @@ mod tests {
 		assert_eq!(decompressed, original);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_gzip_data() {
 		let invalid_data = b"not gzip data";
@@ -419,6 +428,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_invalid_brotli_data() {
 		let invalid_data = b"not brotli data";
@@ -426,7 +436,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_gzip() {
 		let original = b"Hello, World!";
 
@@ -443,7 +453,7 @@ mod tests {
 		assert_eq!(result.as_ref(), original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_deflate() {
 		let original = b"Test data for deflate";
 
@@ -460,7 +470,7 @@ mod tests {
 		assert_eq!(result.as_ref(), original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_brotli() {
 		let original = b"Brotli compressed content";
 
@@ -479,7 +489,7 @@ mod tests {
 		assert_eq!(result.as_ref(), original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_no_encoding() {
 		let original = b"Uncompressed data";
 
@@ -491,7 +501,7 @@ mod tests {
 		assert_eq!(result.as_ref(), original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_unknown_encoding() {
 		let original = b"Unknown encoding";
 
@@ -504,7 +514,7 @@ mod tests {
 		assert_eq!(result.as_ref(), original);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_decompress_if_needed_case_insensitive() {
 		let original = b"Case test";
 

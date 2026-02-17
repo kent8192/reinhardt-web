@@ -403,9 +403,10 @@ impl std::fmt::Display for ConstraintName {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// TableName tests
-	#[test]
+	#[rstest]
 	fn test_table_name_valid() {
 		assert!(TableName::new("user").is_ok());
 		assert!(TableName::new("user_profile").is_ok());
@@ -413,7 +414,7 @@ mod tests {
 		assert!(TableName::new("table_123").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_table_name_invalid_uppercase() {
 		assert!(matches!(
 			TableName::new("User"),
@@ -425,7 +426,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_table_name_reserved_word() {
 		assert!(matches!(
 			TableName::new("select"),
@@ -437,7 +438,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_table_name_empty() {
 		assert!(matches!(
 			TableName::new(""),
@@ -446,7 +447,7 @@ mod tests {
 	}
 
 	// FieldName tests
-	#[test]
+	#[rstest]
 	fn test_field_name_valid() {
 		assert!(FieldName::new("id").is_ok());
 		assert!(FieldName::new("username").is_ok());
@@ -454,7 +455,7 @@ mod tests {
 		assert!(FieldName::new("_private").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_field_name_invalid() {
 		assert!(matches!(
 			FieldName::new("userName"),
@@ -467,14 +468,14 @@ mod tests {
 	}
 
 	// ConstraintName tests
-	#[test]
+	#[rstest]
 	fn test_constraint_name_valid() {
 		assert!(ConstraintName::new("pk_user").is_ok());
 		assert!(ConstraintName::new("fk_user_profile").is_ok());
 		assert!(ConstraintName::new("uq_username").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_constraint_name_invalid() {
 		assert!(matches!(
 			ConstraintName::new("PK_User"),
@@ -483,7 +484,7 @@ mod tests {
 	}
 
 	// Const tests
-	#[test]
+	#[rstest]
 	fn test_const_creation() {
 		const TABLE: TableName = TableName::new_const("user");
 		const FIELD: FieldName = FieldName::new_const("username");

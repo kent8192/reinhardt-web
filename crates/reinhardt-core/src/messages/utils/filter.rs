@@ -155,8 +155,9 @@ pub fn filter_by_tag(messages: &[Message], tag: &str) -> Vec<Message> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_filter_by_min_level() {
 		let messages = vec![
 			Message::debug("Debug"),
@@ -175,7 +176,7 @@ mod tests {
 		assert!(filtered.iter().all(|m| m.level >= Level::Warning));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_by_level() {
 		let messages = vec![
 			Message::debug("Debug"),
@@ -189,7 +190,7 @@ mod tests {
 		assert!(filtered.iter().all(|m| m.level == Level::Info));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_by_max_level() {
 		let messages = vec![
 			Message::debug("Debug"),
@@ -208,7 +209,7 @@ mod tests {
 		assert!(filtered.iter().all(|m| m.level <= Level::Warning));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_by_level_range() {
 		let messages = vec![
 			Message::debug("Debug"),
@@ -227,7 +228,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_by_tag() {
 		let messages = vec![
 			Message::info("Normal"),
@@ -247,7 +248,7 @@ mod tests {
 		assert_eq!(filtered.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_empty_messages() {
 		let messages: Vec<Message> = vec![];
 
@@ -267,7 +268,7 @@ mod tests {
 		assert_eq!(filtered.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_all_messages_excluded() {
 		let messages = vec![
 			Message::debug("Debug 1"),
@@ -285,7 +286,7 @@ mod tests {
 		assert_eq!(filtered.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_all_messages_included() {
 		let messages = vec![
 			Message::info("Info 1"),

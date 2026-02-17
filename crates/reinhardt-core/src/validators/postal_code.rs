@@ -231,23 +231,24 @@ impl Validator<String> for PostalCodeValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// US postal code tests
-	#[test]
+	#[rstest]
 	fn test_us_zip_code() {
 		let validator = PostalCodeValidator::for_country(Country::US);
 		assert!(validator.validate("12345").is_ok());
 		assert!(validator.validate("90210").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_us_zip_plus_4() {
 		let validator = PostalCodeValidator::for_country(Country::US);
 		assert!(validator.validate("12345-6789").is_ok());
 		assert!(validator.validate("90210-1234").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_us_invalid_format() {
 		let validator = PostalCodeValidator::for_country(Country::US);
 		assert!(validator.validate("1234").is_err()); // Too short
@@ -256,14 +257,14 @@ mod tests {
 	}
 
 	// Japan postal code tests
-	#[test]
+	#[rstest]
 	fn test_jp_postal_code() {
 		let validator = PostalCodeValidator::for_country(Country::JP);
 		assert!(validator.validate("123-4567").is_ok());
 		assert!(validator.validate("100-0001").is_ok()); // Tokyo
 	}
 
-	#[test]
+	#[rstest]
 	fn test_jp_invalid_format() {
 		let validator = PostalCodeValidator::for_country(Country::JP);
 		assert!(validator.validate("1234567").is_err()); // Missing hyphen
@@ -272,7 +273,7 @@ mod tests {
 	}
 
 	// UK postal code tests
-	#[test]
+	#[rstest]
 	fn test_uk_postal_code() {
 		let validator = PostalCodeValidator::for_country(Country::UK);
 		assert!(validator.validate("SW1A 1AA").is_ok());
@@ -282,7 +283,7 @@ mod tests {
 		assert!(validator.validate("DN55 1PT").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uk_postal_code_without_space() {
 		let validator = PostalCodeValidator::for_country(Country::UK);
 		// UK postcodes can be written without space
@@ -291,20 +292,20 @@ mod tests {
 	}
 
 	// Canada postal code tests
-	#[test]
+	#[rstest]
 	fn test_ca_postal_code() {
 		let validator = PostalCodeValidator::for_country(Country::CA);
 		assert!(validator.validate("K1A 0B1").is_ok());
 		assert!(validator.validate("M5W 1E6").is_ok()); // Toronto
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ca_postal_code_without_space() {
 		let validator = PostalCodeValidator::for_country(Country::CA);
 		assert!(validator.validate("K1A0B1").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ca_invalid_format() {
 		let validator = PostalCodeValidator::for_country(Country::CA);
 		assert!(validator.validate("K1A 0B").is_err()); // Too short
@@ -312,7 +313,7 @@ mod tests {
 	}
 
 	// Germany postal code tests
-	#[test]
+	#[rstest]
 	fn test_de_postal_code() {
 		let validator = PostalCodeValidator::for_country(Country::DE);
 		assert!(validator.validate("12345").is_ok());
@@ -320,7 +321,7 @@ mod tests {
 		assert!(validator.validate("80331").is_ok()); // Munich
 	}
 
-	#[test]
+	#[rstest]
 	fn test_de_invalid_format() {
 		let validator = PostalCodeValidator::for_country(Country::DE);
 		assert!(validator.validate("1234").is_err()); // Too short
@@ -329,7 +330,7 @@ mod tests {
 	}
 
 	// Multi-country validation tests
-	#[test]
+	#[rstest]
 	fn test_multiple_countries() {
 		let validator = PostalCodeValidator::with_countries(vec![Country::US, Country::JP]);
 
@@ -338,7 +339,7 @@ mod tests {
 		assert!(validator.validate("SW1A 1AA").is_err()); // UK not allowed
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_countries() {
 		let validator = PostalCodeValidator::new();
 
@@ -350,7 +351,7 @@ mod tests {
 	}
 
 	// validate_with_country tests
-	#[test]
+	#[rstest]
 	fn test_validate_with_country_detection() {
 		let validator = PostalCodeValidator::new();
 
@@ -381,7 +382,7 @@ mod tests {
 		assert!(result == Country::US || result == Country::DE);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_country_restriction() {
 		let validator = PostalCodeValidator::with_countries(vec![Country::US, Country::JP]);
 
@@ -398,7 +399,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_postal_code() {
 		let validator = PostalCodeValidator::new();
 
@@ -411,7 +412,7 @@ mod tests {
 	}
 
 	// Case insensitivity tests
-	#[test]
+	#[rstest]
 	fn test_case_insensitive() {
 		let validator = PostalCodeValidator::new();
 
@@ -421,7 +422,7 @@ mod tests {
 	}
 
 	// Whitespace trimming tests
-	#[test]
+	#[rstest]
 	fn test_whitespace_trimming() {
 		let validator = PostalCodeValidator::new();
 

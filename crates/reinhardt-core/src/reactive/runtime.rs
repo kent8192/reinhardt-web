@@ -406,9 +406,10 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_node_id_uniqueness() {
 		let id1 = NodeId::new();
@@ -420,7 +421,7 @@ mod tests {
 		assert_ne!(id1, id3);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_runtime_observer_stack() {
 		let runtime = Runtime::new();
@@ -456,7 +457,7 @@ mod tests {
 		assert!(runtime.current_observer().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_dependency_tracking() {
 		let runtime = Runtime::new();
@@ -484,7 +485,7 @@ mod tests {
 		assert!(effect_node.dependencies.contains(&signal_id));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_notify_signal_change() {
 		let runtime = Runtime::new();
@@ -510,7 +511,7 @@ mod tests {
 		assert!(pending.contains(&effect_id));
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_clear_dependencies() {
 		let runtime = Runtime::new();

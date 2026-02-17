@@ -87,20 +87,21 @@ impl AsRef<str> for SafeData {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_safedata_creation() {
 		let safe = SafeData::new("<b>Bold</b>");
 		assert_eq!(safe.as_str(), "<b>Bold</b>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata_display() {
 		let safe = SafeData::new("<i>Italic</i>");
 		assert_eq!(format!("{}", safe), "<i>Italic</i>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata_serialization() {
 		let safe = SafeData::new("<p>Test</p>");
 		let json = serde_json::to_string(&safe).unwrap();
@@ -108,14 +109,14 @@ mod tests {
 		assert_eq!(safe, deserialized);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata_from_string() {
 		let s = String::from("<div>Content</div>");
 		let safe: SafeData = s.into();
 		assert_eq!(safe.as_str(), "<div>Content</div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_safedata_from_str() {
 		let safe: SafeData = "<span>Text</span>".into();
 		assert_eq!(safe.as_str(), "<span>Text</span>");

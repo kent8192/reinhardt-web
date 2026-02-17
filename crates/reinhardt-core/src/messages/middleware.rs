@@ -117,8 +117,9 @@ impl MessagesContainer {
 mod tests {
 	use super::*;
 	use crate::messages::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_messages_container_new() {
 		let messages = vec![Message::info("Test message")];
 		let container = MessagesContainer::new(messages);
@@ -127,7 +128,7 @@ mod tests {
 		assert_eq!(loaded_messages[0].text, "Test message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_container_add() {
 		let container = MessagesContainer::new(vec![]);
 		container.add(Message::success("Success"));
@@ -139,7 +140,7 @@ mod tests {
 		assert_eq!(messages[1].text, "Error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_container_clear() {
 		let container = MessagesContainer::new(vec![Message::info("Test")]);
 		assert_eq!(container.get_messages().len(), 1);
@@ -148,7 +149,7 @@ mod tests {
 		assert_eq!(container.get_messages().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_container_with_different_levels() {
 		let container = MessagesContainer::new(vec![]);
 		container.add(Message::debug("Debug message"));

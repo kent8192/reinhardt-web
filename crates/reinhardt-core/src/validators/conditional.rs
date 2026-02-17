@@ -131,9 +131,10 @@ where
 mod tests {
 	use super::*;
 	use crate::validators::{EmailValidator, MaxLengthValidator, MinLengthValidator};
+	use rstest::rstest;
 
 	// Tests for ConditionalValidator::when
-	#[test]
+	#[rstest]
 	fn test_when_condition_true_and_valid() {
 		let validator = ConditionalValidator::when(
 			|value: &str| value.starts_with("admin_"),
@@ -144,7 +145,7 @@ mod tests {
 		assert!(validator.validate("admin_john_doe").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_when_condition_true_and_invalid() {
 		let validator = ConditionalValidator::when(
 			|value: &str| value.starts_with("admin_"),
@@ -155,7 +156,7 @@ mod tests {
 		assert!(validator.validate("admin_joe").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_when_condition_false() {
 		let validator = ConditionalValidator::when(
 			|value: &str| value.starts_with("admin_"),
@@ -168,7 +169,7 @@ mod tests {
 	}
 
 	// Tests for ConditionalValidator::unless
-	#[test]
+	#[rstest]
 	fn test_unless_condition_false_and_valid() {
 		let validator = ConditionalValidator::unless(
 			|value: &str| value.starts_with("system:"),
@@ -179,7 +180,7 @@ mod tests {
 		assert!(validator.validate("user@example.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unless_condition_false_and_invalid() {
 		let validator = ConditionalValidator::unless(
 			|value: &str| value.starts_with("system:"),
@@ -190,7 +191,7 @@ mod tests {
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unless_condition_true() {
 		let validator = ConditionalValidator::unless(
 			|value: &str| value.starts_with("system:"),
@@ -203,7 +204,7 @@ mod tests {
 	}
 
 	// Complex condition tests
-	#[test]
+	#[rstest]
 	fn test_complex_condition() {
 		let validator = ConditionalValidator::when(
 			|value: &str| value.len() > 5 && value.contains("@"),
@@ -220,7 +221,7 @@ mod tests {
 	}
 
 	// Numeric validator tests
-	#[test]
+	#[rstest]
 	fn test_when_with_numeric_validator() {
 		use crate::validators::RangeValidator;
 
@@ -238,7 +239,7 @@ mod tests {
 	}
 
 	// Nested conditional validators
-	#[test]
+	#[rstest]
 	fn test_nested_conditional() {
 		let inner_validator = ConditionalValidator::when(
 			|value: &str| value.len() > 10,
@@ -271,7 +272,7 @@ mod tests {
 	}
 
 	// Edge cases
-	#[test]
+	#[rstest]
 	fn test_always_true_condition() {
 		let validator =
 			ConditionalValidator::when(|_: &str| true, Box::new(MinLengthValidator::new(5)));
@@ -281,7 +282,7 @@ mod tests {
 		assert!(validator.validate("hi").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_always_false_condition() {
 		let validator =
 			ConditionalValidator::when(|_: &str| false, Box::new(MinLengthValidator::new(5)));
@@ -292,7 +293,7 @@ mod tests {
 	}
 
 	// Real-world scenario tests
-	#[test]
+	#[rstest]
 	fn test_password_strength_for_admin() {
 		let validator = ConditionalValidator::when(
 			|username: &str| username.starts_with("admin_") || username.starts_with("root_"),
@@ -307,7 +308,7 @@ mod tests {
 		assert!(validator.validate("user_short").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validation_for_external_users() {
 		let validator = ConditionalValidator::unless(
 			|email: &str| email.ends_with("@internal.company.com"),

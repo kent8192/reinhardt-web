@@ -397,10 +397,11 @@ pub fn is_valid_json(schema: &Value, instance: &Value) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 	use std::error::Error;
 
-	#[test]
+	#[rstest]
 	fn test_basic_validation() {
 		let schema = json!({"type": "string"});
 		let validator = SchemaValidator::new(&schema).unwrap();
@@ -409,7 +410,7 @@ mod tests {
 		assert!(validator.validate(&json!(123)).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_object_validation() {
 		let schema = json!({
 			"type": "object",
@@ -450,7 +451,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_validation() {
 		let schema = json!({
 			"type": "array",
@@ -467,7 +468,7 @@ mod tests {
 		assert!(validator.validate(&json!([1, "two", 3])).is_err()); // wrong type
 	}
 
-	#[test]
+	#[rstest]
 	fn test_draft_specific_validation() {
 		let schema = json!({
 			"type": "string",
@@ -488,7 +489,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_draft_enum() {
 		assert_eq!(SchemaDraft::default(), SchemaDraft::Draft7);
 
@@ -505,7 +506,7 @@ mod tests {
 		assert_eq!(SchemaDraft::Draft201909.name(), "Draft 2019-09");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_validation() {
 		let schema = json!({"type": "number", "minimum": 0});
 		let validator = SchemaValidator::new(&schema).unwrap();
@@ -520,7 +521,7 @@ mod tests {
 		assert!(validator.validate("not json").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_all_errors() {
 		let schema = json!({
 			"type": "object",
@@ -541,7 +542,7 @@ mod tests {
 		assert!(errors.len() >= 2); // At least two errors: wrong type and missing field
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_message() {
 		let schema = json!({"type": "string"});
 		let validator = SchemaValidator::new(&schema)
@@ -555,7 +556,7 @@ mod tests {
 		assert!(error.to_string().contains("Value must be a valid string"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_pattern() {
 		let validator = SchemaValidatorBuilder::new()
 			.schema(json!({"type": "integer"}))
@@ -569,13 +570,13 @@ mod tests {
 		assert_eq!(validator.draft(), Some(SchemaDraft::Draft202012));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_no_schema_error() {
 		let result = SchemaValidatorBuilder::new().build();
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convenience_functions() {
 		let schema = json!({"type": "boolean"});
 
@@ -588,7 +589,7 @@ mod tests {
 		assert!(!is_valid_json(&schema, &json!(0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_valid_method() {
 		let schema = json!({"type": "null"});
 		let validator = SchemaValidator::new(&schema).unwrap();
@@ -597,7 +598,7 @@ mod tests {
 		assert!(!validator.is_valid(&json!("null")));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_accessor() {
 		let schema = json!({"type": "string", "maxLength": 10});
 		let validator = SchemaValidator::new(&schema).unwrap();
@@ -605,7 +606,7 @@ mod tests {
 		assert_eq!(validator.schema(), &schema);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clone() {
 		let schema = json!({"type": "number"});
 		let validator = SchemaValidator::new(&schema)
@@ -619,7 +620,7 @@ mod tests {
 		assert!(cloned.validate(&json!("hello")).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clone_with_draft() {
 		let schema = json!({"type": "boolean"});
 		let validator = SchemaValidator::with_draft(&schema, SchemaDraft::Draft201909).unwrap();
@@ -630,7 +631,7 @@ mod tests {
 		assert!(cloned.validate(&json!(true)).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_schema() {
 		let invalid_schema = json!({
 			"type": "invalid_type"
@@ -645,7 +646,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_schema() {
 		let schema = json!({
 			"type": "object",
@@ -693,7 +694,7 @@ mod tests {
 		assert!(validator.validate(&invalid_id).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_str_method() {
 		let schema = json!({"type": "array", "items": {"type": "number"}});
 		let validator = SchemaValidator::new(&schema).unwrap();
@@ -703,7 +704,7 @@ mod tests {
 		assert!(validator.validate_str("invalid json").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_error_display() {
 		let invalid_json_err =
 			SchemaError::JsonParseError(serde_json::from_str::<Value>("invalid").unwrap_err());
@@ -720,7 +721,7 @@ mod tests {
 		assert!(display.contains("error2"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_schema_error_source() {
 		let json_err = serde_json::from_str::<Value>("invalid").unwrap_err();
 		let schema_err = SchemaError::JsonParseError(json_err);
@@ -733,7 +734,7 @@ mod tests {
 		assert!(validation_err.source().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_debug_impl() {
 		let schema = json!({"type": "string"});
 		let validator = SchemaValidator::new(&schema).unwrap();

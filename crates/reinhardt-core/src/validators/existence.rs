@@ -101,9 +101,11 @@ impl ExistsValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashSet;
 	use std::sync::{Arc, Mutex};
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists_validator_value_exists() {
 		let existing_ids = Arc::new(Mutex::new(HashSet::from([1, 2, 3])));
@@ -145,6 +147,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists_validator_empty_database() {
 		let validator = ExistsValidator::new(
@@ -167,6 +170,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_exists_validator_invalid_value() {
 		let validator = ExistsValidator::new(

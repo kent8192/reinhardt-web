@@ -105,8 +105,9 @@ impl MessagesContext {
 mod tests {
 	use super::*;
 	use crate::messages::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_new() {
 		let messages = vec![Message::info("Test 1"), Message::success("Test 2")];
 		let context = MessagesContext::new(messages);
@@ -115,14 +116,14 @@ mod tests {
 		assert_eq!(context.messages[1].text, "Test 2");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_empty() {
 		let context = MessagesContext::empty();
 		assert_eq!(context.messages.len(), 0);
 		assert!(!context.has_messages());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_has_messages() {
 		let empty_context = MessagesContext::empty();
 		assert!(!empty_context.has_messages());
@@ -131,7 +132,7 @@ mod tests {
 		assert!(context.has_messages());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_count() {
 		let context = MessagesContext::new(vec![
 			Message::info("One"),
@@ -141,7 +142,7 @@ mod tests {
 		assert_eq!(context.count(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_serialization() {
 		let messages = vec![
 			Message::info("Info message"),
@@ -155,7 +156,7 @@ mod tests {
 		assert!(json.contains("Success message"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_context_with_all_levels() {
 		let messages = vec![
 			Message::debug("Debug"),

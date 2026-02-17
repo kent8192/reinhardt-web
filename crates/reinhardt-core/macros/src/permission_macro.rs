@@ -159,8 +159,9 @@ pub(crate) fn parse_and_validate(permission: &str) -> std::result::Result<Permis
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_valid_simple_permission() {
 		let result = parse_and_validate("auth.view_user");
 		let ast = result.unwrap();
@@ -168,7 +169,7 @@ mod tests {
 		assert_eq!(ast.permission_codename, "view_user");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_permission_with_underscores() {
 		let result = parse_and_validate("my_app.add_blog_post");
 		let ast = result.unwrap();
@@ -176,7 +177,7 @@ mod tests {
 		assert_eq!(ast.permission_codename, "add_blog_post");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_permission_starting_with_underscore() {
 		let result = parse_and_validate("_app._permission");
 		let ast = result.unwrap();
@@ -184,14 +185,14 @@ mod tests {
 		assert_eq!(ast.permission_codename, "_permission");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_empty_string() {
 		let result = parse_and_validate("");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("cannot be empty"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_no_dot() {
 		let result = parse_and_validate("authviewuser");
 		assert!(result.is_err());
@@ -202,21 +203,21 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_multiple_dots() {
 		let result = parse_and_validate("auth.contrib.view_user");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("exactly one dot"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_empty_app_label() {
 		let result = parse_and_validate(".view_user");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("App label cannot be empty"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_empty_permission() {
 		let result = parse_and_validate("auth.");
 		assert!(result.is_err());
@@ -227,34 +228,34 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_starts_with_number() {
 		let result = parse_and_validate("123app.view_user");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("cannot start with a number"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_contains_space() {
 		let result = parse_and_validate("auth.view user");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("cannot contain spaces"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_special_characters() {
 		let result = parse_and_validate("auth.view-user");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("invalid characters"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_all_lowercase() {
 		let result = parse_and_validate("contenttypes.delete_contenttype");
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_mixed_case() {
 		let result = parse_and_validate("MyApp.ViewMyModel");
 		let ast = result.unwrap();

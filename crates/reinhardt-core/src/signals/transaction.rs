@@ -366,10 +366,11 @@ pub fn on_savepoint_release() -> Signal<TransactionContext> {
 mod tests {
 	use super::*;
 	use parking_lot::Mutex;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
-	#[test]
+	#[rstest]
 	fn test_transaction_context_creation() {
 		let ctx = TransactionContext::new("tx_1");
 		assert_eq!(ctx.transaction_id, "tx_1");
@@ -378,7 +379,7 @@ mod tests {
 		assert!(!ctx.is_nested);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_context_nested() {
 		let ctx = TransactionContext::nested("tx_1", 2, "sp_2");
 		assert_eq!(ctx.transaction_id, "tx_1");
@@ -387,7 +388,7 @@ mod tests {
 		assert!(ctx.is_nested);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_context_enter_savepoint() {
 		let mut ctx = TransactionContext::new("tx_1");
 		ctx.enter_savepoint("checkpoint_1");
@@ -396,7 +397,7 @@ mod tests {
 		assert!(ctx.is_nested);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_transaction_context_exit_savepoint() {
 		let mut ctx = TransactionContext::nested("tx_1", 2, "sp_2");
 		ctx.exit_savepoint();
@@ -408,6 +409,7 @@ mod tests {
 		assert!(!ctx.is_nested);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_on_commit_signal() {
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -427,6 +429,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_on_rollback_signal() {
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -446,6 +449,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_transaction_signals_flow() {
@@ -487,6 +491,7 @@ mod tests {
 		on_commit().disconnect_all();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_savepoint_signals() {
@@ -525,6 +530,7 @@ mod tests {
 		on_savepoint_release().disconnect_all();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_nested_transaction_signals() {

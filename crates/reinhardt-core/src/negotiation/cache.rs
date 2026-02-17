@@ -325,14 +325,15 @@ where
 mod tests {
 	use super::*;
 	use crate::negotiation::MediaType;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cache_key_new() {
 		let key = CacheKey::new("application/json");
 		assert_eq!(key.accept_header, "application/json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_key_from_headers() {
 		let key =
 			CacheKey::from_headers(&[("Accept", "application/json"), ("Accept-Language", "en-US")]);
@@ -340,7 +341,7 @@ mod tests {
 		assert!(key.accept_header.contains("Accept-Language:en-US"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_get_set() {
 		let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 		let key = CacheKey::new("application/json");
@@ -353,7 +354,7 @@ mod tests {
 		assert_eq!(result.unwrap().subtype, "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_get_or_compute() {
 		let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 		let key = CacheKey::new("application/json");
@@ -371,7 +372,7 @@ mod tests {
 		assert_eq!(result2.subtype, "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_expiration() {
 		let mut cache: NegotiationCache<MediaType> =
 			NegotiationCache::with_ttl(Duration::from_millis(10));
@@ -390,7 +391,7 @@ mod tests {
 		assert!(cache.get(&key).is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_clear() {
 		let mut cache: NegotiationCache<MediaType> = NegotiationCache::new();
 		let key = CacheKey::new("application/json");
@@ -401,7 +402,7 @@ mod tests {
 		assert_eq!(cache.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cache_max_entries() {
 		let mut cache: NegotiationCache<MediaType> = NegotiationCache::with_config(
 			Duration::from_secs(300),

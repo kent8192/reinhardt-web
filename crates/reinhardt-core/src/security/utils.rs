@@ -27,14 +27,15 @@ pub fn hash_sha256(input: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_token() {
 		let token = generate_token(32);
 		assert_eq!(token.len(), 32);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hash_sha256() {
 		let hash = hash_sha256("test");
 		assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters

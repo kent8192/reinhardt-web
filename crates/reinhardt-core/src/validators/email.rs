@@ -129,8 +129,9 @@ impl Validator<str> for EmailValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_valid_emails() {
 		let validator = EmailValidator::new();
 		let valid_emails = vec![
@@ -154,7 +155,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_emails() {
 		let validator = EmailValidator::new();
 		let invalid_emails = vec![
@@ -184,7 +185,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_length_constraints() {
 		let validator = EmailValidator::new();
 
@@ -209,7 +210,7 @@ mod tests {
 		assert!(validator.validate(&max_local).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_insensitivity() {
 		let validator = EmailValidator::new();
 		assert!(validator.validate("Test@Example.COM").is_ok());
@@ -217,7 +218,7 @@ mod tests {
 	}
 
 	// Additional tests based on Django validators/tests.py - TestValidatorEquality::test_email_equality
-	#[test]
+	#[rstest]
 	fn test_email_validator_with_numbers() {
 		let validator = EmailValidator::new();
 		assert!(validator.validate("123@example.com").is_ok());
@@ -225,7 +226,7 @@ mod tests {
 		assert!(validator.validate("123user@example123.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_with_special_characters() {
 		let validator = EmailValidator::new();
 		// Valid special characters
@@ -236,7 +237,7 @@ mod tests {
 		assert!(validator.validate("user%test@example.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_subdomains() {
 		let validator = EmailValidator::new();
 		assert!(validator.validate("user@mail.example.com").is_ok());
@@ -244,7 +245,7 @@ mod tests {
 		assert!(validator.validate("user@a.b.c.d.example.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_tld_variations() {
 		let validator = EmailValidator::new();
 		assert!(validator.validate("user@example.co").is_ok());
@@ -255,7 +256,7 @@ mod tests {
 		assert!(validator.validate("user@example.museum").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_edge_cases() {
 		let validator = EmailValidator::new();
 		// Single character local and domain parts
@@ -266,7 +267,7 @@ mod tests {
 		assert!(validator.validate("user@example123.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_invalid_formats() {
 		let validator = EmailValidator::new();
 		// Multiple @ symbols
@@ -283,7 +284,7 @@ mod tests {
 		assert!(validator.validate("user@example,com").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_dot_rules() {
 		let validator = EmailValidator::new();
 		// Consecutive dots in local part
@@ -299,7 +300,7 @@ mod tests {
 		assert!(validator.validate("user.name.test@example.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_hyphen_rules() {
 		let validator = EmailValidator::new();
 		// Hyphens in domain are allowed in middle
@@ -313,7 +314,7 @@ mod tests {
 		assert!(validator.validate("user@invalid.com-").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_returns_correct_error() {
 		let validator = EmailValidator::new();
 		let invalid_email = "invalid";
@@ -325,7 +326,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_with_string_type() {
 		let validator = EmailValidator::new();
 		let email = String::from("test@example.com");

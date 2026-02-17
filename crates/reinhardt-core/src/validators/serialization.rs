@@ -434,8 +434,9 @@ impl EmailValidatorConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_string_config_serialization() {
 		let config = ValidatorConfig::String(StringValidatorConfig {
 			min_length: Some(3),
@@ -457,7 +458,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_config_serialization() {
 		let config = ValidatorConfig::Numeric(NumericValidatorConfig {
 			min: Some(0.0),
@@ -477,7 +478,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_config_serialization() {
 		let config = ValidatorConfig::Email(EmailValidatorConfig {
 			min_length: Some(5),
@@ -498,7 +499,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ip_address_config_defaults() {
 		let json = r#"{"type":"ip_address"}"#;
 		let config: ValidatorConfig = serde_json::from_str(json).unwrap();
@@ -512,7 +513,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_number_config_serialization() {
 		let config = ValidatorConfig::PhoneNumber(PhoneNumberValidatorConfig {
 			country_codes: Some(vec!["1".into(), "81".into(), "44".into()]),
@@ -532,7 +533,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_config_serialization() {
 		let config = ValidatorConfig::Color(ColorValidatorConfig {
 			allowed_formats: Some(vec![ColorFormatConfig::Hex, ColorFormatConfig::Rgb]),
@@ -555,7 +556,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_type_config_serialization() {
 		let config = ValidatorConfig::FileType(FileTypeValidatorConfig {
 			allowed_extensions: Some(vec!["jpg".into(), "png".into()]),
@@ -575,7 +576,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_image_dimension_config_serialization() {
 		let config = ValidatorConfig::ImageDimension(ImageDimensionValidatorConfig {
 			min_width: Some(100),
@@ -599,7 +600,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_pattern() {
 		let config = ValidatorConfig::string()
 			.min_length(1)
@@ -619,7 +620,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_numeric_builder() {
 		let config = ValidatorConfig::numeric()
 			.min(0.0)
@@ -637,7 +638,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_builder() {
 		let config = ValidatorConfig::email()
 			.min_length(5)
@@ -655,7 +656,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_skip_serializing_none_fields() {
 		let config = ValidatorConfig::String(StringValidatorConfig {
 			min_length: Some(1),
@@ -673,7 +674,7 @@ mod tests {
 		assert!(!json.contains("\"pattern_message\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_deserialize_minimal_config() {
 		// Minimal config with only type and required fields
 		let json = r#"{"type":"string"}"#;
@@ -689,7 +690,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_config() {
 		let config = ValidatorConfig::Slug(SlugValidatorConfig {
 			allow_unicode: true,
@@ -708,7 +709,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_config() {
 		let config = ValidatorConfig::Uuid(UuidValidatorConfig {
 			message: Some("Invalid UUID format".into()),
@@ -725,7 +726,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_config() {
 		let config = ValidatorConfig::FileSize(FileSizeValidatorConfig {
 			max_size: Some(10 * 1024 * 1024), // 10 MB
@@ -745,7 +746,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_config() {
 		let config = ValidatorConfig::Url(UrlValidatorConfig {
 			message: Some("Invalid URL".into()),

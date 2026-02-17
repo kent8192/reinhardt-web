@@ -451,15 +451,16 @@ impl Validator<u64> for FileSizeValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_new_accepts_all() {
 		let validator = FileTypeValidator::new();
 		assert!(validator.validate_filename("any.file").is_ok());
 		assert!(validator.validate_mime_type("any/type").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_extensions() {
 		let validator =
 			FileTypeValidator::with_extensions(vec!["jpg".to_string(), "png".to_string()]);
@@ -469,7 +470,7 @@ mod tests {
 		assert!(validator.validate_filename("document.pdf").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_extensions_case_insensitive() {
 		let validator = FileTypeValidator::with_extensions(vec!["jpg".to_string()]);
 
@@ -478,7 +479,7 @@ mod tests {
 		assert!(validator.validate_filename("photo.Jpg").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_extensions_no_extension() {
 		let validator = FileTypeValidator::with_extensions(vec!["jpg".to_string()]);
 
@@ -490,7 +491,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_mime_types() {
 		let validator = FileTypeValidator::with_mime_types(vec![
 			"image/jpeg".to_string(),
@@ -502,7 +503,7 @@ mod tests {
 		assert!(validator.validate_mime_type("application/pdf").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_mime_types_case_insensitive() {
 		let validator = FileTypeValidator::with_mime_types(vec!["image/jpeg".to_string()]);
 
@@ -511,7 +512,7 @@ mod tests {
 		assert!(validator.validate_mime_type("Image/Jpeg").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mime_type_format_validation() {
 		let validator = FileTypeValidator::new();
 		assert!(validator.validate_mime_type("image/jpeg").is_ok());
@@ -520,7 +521,7 @@ mod tests {
 		assert!(validator.validate_mime_type("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_images_only_extensions() {
 		let validator = FileTypeValidator::images_only();
 
@@ -538,7 +539,7 @@ mod tests {
 		assert!(validator.validate_filename("data.xlsx").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_images_only_mime_types() {
 		let validator = FileTypeValidator::images_only();
 
@@ -554,7 +555,7 @@ mod tests {
 		assert!(validator.validate_mime_type("text/plain").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_documents_only_extensions() {
 		let validator = FileTypeValidator::documents_only();
 
@@ -571,7 +572,7 @@ mod tests {
 		assert!(validator.validate_filename("archive.zip").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_documents_only_mime_types() {
 		let validator = FileTypeValidator::documents_only();
 
@@ -614,7 +615,7 @@ mod tests {
 		assert!(validator.validate_mime_type("application/zip").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_messages() {
 		let validator = FileTypeValidator::with_extensions(vec!["jpg".to_string()]);
 
@@ -630,7 +631,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mime_type_error_messages() {
 		let validator = FileTypeValidator::with_mime_types(vec!["image/jpeg".to_string()]);
 
@@ -646,21 +647,21 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_implementation() {
 		let validator = FileTypeValidator::default();
 		assert!(validator.validate_filename("any.file").is_ok());
 		assert!(validator.validate_mime_type("any/type").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_dots_in_filename() {
 		let validator = FileTypeValidator::with_extensions(vec!["gz".to_string()]);
 		assert!(validator.validate_filename("archive.tar.gz").is_ok());
 		assert!(validator.validate_filename("file.backup.txt").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mime_type_with_parameters() {
 		let validator = FileTypeValidator::new();
 		// MIME types can have parameters like "text/html; charset=utf-8"
@@ -672,7 +673,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_common_mime_type_constants() {
 		// Verify that constants are defined correctly
 		assert_eq!(FileTypeValidator::MIME_JPEG, "image/jpeg");
@@ -681,7 +682,7 @@ mod tests {
 		assert_eq!(FileTypeValidator::MIME_JSON, "application/json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filename_with_path() {
 		let validator = FileTypeValidator::with_extensions(vec!["jpg".to_string()]);
 		// Should work with full paths
@@ -690,7 +691,7 @@ mod tests {
 		assert!(validator.validate_filename("../relative/photo.jpg").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_allowed_lists() {
 		let validator = FileTypeValidator {
 			allowed_extensions: Some(vec![]),
@@ -703,7 +704,7 @@ mod tests {
 	}
 
 	// FileSizeValidator tests
-	#[test]
+	#[rstest]
 	fn test_file_size_min_validator() {
 		let validator = FileSizeValidator::min(1024); // 1 KB minimum
 		assert!(validator.validate(&2048).is_ok()); // 2 KB
@@ -711,7 +712,7 @@ mod tests {
 		assert!(validator.validate(&512).is_err()); // 512 bytes
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_max_validator() {
 		let validator = FileSizeValidator::max(1024 * 1024); // 1 MB maximum
 		assert!(validator.validate(&(1024 * 512)).is_ok()); // 512 KB
@@ -719,7 +720,7 @@ mod tests {
 		assert!(validator.validate(&(1024 * 1024 * 2)).is_err()); // 2 MB
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_range_validator() {
 		let validator = FileSizeValidator::range(1024, 1024 * 1024); // 1 KB to 1 MB
 		assert!(validator.validate(&(1024 * 512)).is_ok()); // 512 KB
@@ -729,38 +730,38 @@ mod tests {
 		assert!(validator.validate(&(1024 * 1024 * 2)).is_err()); // Too large
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_helper_kb() {
 		assert_eq!(FileSizeValidator::from_kb(1), 1024);
 		assert_eq!(FileSizeValidator::from_kb(100), 102400);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_helper_mb() {
 		assert_eq!(FileSizeValidator::from_mb(1), 1024 * 1024);
 		assert_eq!(FileSizeValidator::from_mb(10), 10 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_helper_gb() {
 		assert_eq!(FileSizeValidator::from_gb(1), 1024 * 1024 * 1024);
 		assert_eq!(FileSizeValidator::from_gb(2), 2 * 1024 * 1024 * 1024);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_zero_bytes() {
 		let validator = FileSizeValidator::min(1);
 		assert!(validator.validate(&0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_u64_max() {
 		let validator = FileSizeValidator::max(u64::MAX);
 		assert!(validator.validate(&u64::MAX).is_ok());
 		assert!(validator.validate(&(u64::MAX - 1)).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_error_messages() {
 		let validator = FileSizeValidator::min(1024);
 		match validator.validate(&512) {
@@ -787,7 +788,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_size_boundary_values() {
 		let validator = FileSizeValidator::range(100, 200);
 		// Boundary tests

@@ -151,8 +151,9 @@ impl Default for HstsMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_hsts_config() {
 		let config = HstsConfig::default();
 		assert_eq!(config.max_age, 31536000);
@@ -160,28 +161,28 @@ mod tests {
 		assert!(!config.preload);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_basic_hsts_header() {
 		let config = HstsConfig::new(3600);
 		let header = config.build_header();
 		assert_eq!(header, "max-age=3600");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_hsts_header_with_subdomains() {
 		let config = HstsConfig::new(3600).with_subdomains(true);
 		let header = config.build_header();
 		assert_eq!(header, "max-age=3600; includeSubDomains");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_hsts_header_with_preload() {
 		let config = HstsConfig::new(63072000).with_preload(true);
 		let header = config.build_header();
 		assert_eq!(header, "max-age=63072000; preload");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_build_full_hsts_header() {
 		let config = HstsConfig::new(63072000)
 			.with_subdomains(true)
@@ -190,7 +191,7 @@ mod tests {
 		assert_eq!(header, "max-age=63072000; includeSubDomains; preload");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsts_config_builder_pattern() {
 		let config = HstsConfig::new(31536000)
 			.with_subdomains(true)
@@ -200,14 +201,14 @@ mod tests {
 		assert!(!config.preload);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsts_middleware_creation() {
 		let config = HstsConfig::new(3600);
 		let middleware = HstsMiddleware::new(config);
 		assert_eq!(middleware.config().max_age, 3600);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsts_middleware_default() {
 		let middleware = HstsMiddleware::default();
 		assert_eq!(middleware.config().max_age, 31536000);
@@ -215,7 +216,7 @@ mod tests {
 		assert!(!middleware.config().preload);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsts_middleware_get_header_value() {
 		let config = HstsConfig::new(3600)
 			.with_subdomains(true)

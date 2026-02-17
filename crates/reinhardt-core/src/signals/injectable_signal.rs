@@ -89,6 +89,7 @@ impl<T: Send + Sync + 'static> InjectableSignal<T> for Signal<T> {
 mod tests {
 	use super::*;
 	use crate::signals::SignalName;
+	use rstest::rstest;
 
 	#[allow(dead_code)]
 	#[derive(Debug, Clone)]
@@ -97,6 +98,7 @@ mod tests {
 		name: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connect_with_context() {
 		let signal = Signal::new(SignalName::custom("test_context"));

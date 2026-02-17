@@ -229,6 +229,7 @@ impl Default for ImageDimensionValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Helper function to create a test image in memory
 	fn create_test_image(width: u32, height: u32) -> Vec<u8> {
@@ -245,14 +246,14 @@ mod tests {
 	}
 
 	// Width validation tests
-	#[test]
+	#[rstest]
 	fn test_min_width_pass() {
 		let validator = ImageDimensionValidator::new().with_min_width(800);
 		let image_data = create_test_image(1024, 768);
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_width_fail() {
 		let validator = ImageDimensionValidator::new().with_min_width(1920);
 		let image_data = create_test_image(1024, 768);
@@ -265,14 +266,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_width_pass() {
 		let validator = ImageDimensionValidator::new().with_max_width(2048);
 		let image_data = create_test_image(1024, 768);
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_width_fail() {
 		let validator = ImageDimensionValidator::new().with_max_width(800);
 		let image_data = create_test_image(1024, 768);
@@ -285,7 +286,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_width_range_pass() {
 		let validator = ImageDimensionValidator::new().with_width_range(800, 2048);
 		let image_data = create_test_image(1024, 768);
@@ -293,14 +294,14 @@ mod tests {
 	}
 
 	// Height validation tests
-	#[test]
+	#[rstest]
 	fn test_min_height_pass() {
 		let validator = ImageDimensionValidator::new().with_min_height(600);
 		let image_data = create_test_image(1024, 768);
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_height_fail() {
 		let validator = ImageDimensionValidator::new().with_min_height(1080);
 		let image_data = create_test_image(1024, 768);
@@ -313,14 +314,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_height_pass() {
 		let validator = ImageDimensionValidator::new().with_max_height(1080);
 		let image_data = create_test_image(1024, 768);
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_height_fail() {
 		let validator = ImageDimensionValidator::new().with_max_height(600);
 		let image_data = create_test_image(1024, 768);
@@ -333,7 +334,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_height_range_pass() {
 		let validator = ImageDimensionValidator::new().with_height_range(600, 1080);
 		let image_data = create_test_image(1024, 768);
@@ -341,14 +342,14 @@ mod tests {
 	}
 
 	// Aspect ratio tests
-	#[test]
+	#[rstest]
 	fn test_aspect_ratio_exact_match() {
 		let validator = ImageDimensionValidator::new().with_aspect_ratio(4, 3);
 		let image_data = create_test_image(1024, 768); // 4:3
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aspect_ratio_mismatch() {
 		let validator = ImageDimensionValidator::new().with_aspect_ratio(16, 9);
 		let image_data = create_test_image(1024, 768); // 4:3
@@ -368,7 +369,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_aspect_ratio_with_tolerance() {
 		// 16:9 = 1.7777...
 		// 1920x1080 = 1.7777... (exact)
@@ -382,7 +383,7 @@ mod tests {
 	}
 
 	// Combined constraints tests
-	#[test]
+	#[rstest]
 	fn test_combined_constraints_pass() {
 		let validator = ImageDimensionValidator::new()
 			.with_width_range(800, 2048)
@@ -393,7 +394,7 @@ mod tests {
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_combined_constraints_fail_width() {
 		let validator = ImageDimensionValidator::new()
 			.with_width_range(1200, 2048)
@@ -404,7 +405,7 @@ mod tests {
 	}
 
 	// Invalid image data test
-	#[test]
+	#[rstest]
 	fn test_invalid_image_data() {
 		let validator = ImageDimensionValidator::new();
 		let invalid_data = vec![0u8; 100]; // Not a valid image
@@ -415,14 +416,14 @@ mod tests {
 	}
 
 	// Edge cases
-	#[test]
+	#[rstest]
 	fn test_no_constraints() {
 		let validator = ImageDimensionValidator::new();
 		let image_data = create_test_image(100, 100);
 		assert!(validator.validate_bytes(&image_data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exact_boundary() {
 		let validator = ImageDimensionValidator::new()
 			.with_min_width(1024)

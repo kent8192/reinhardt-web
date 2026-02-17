@@ -618,8 +618,9 @@ where
 mod tests {
 	use super::*;
 	use crate::validators::string::MinLengthValidator;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_result_new() {
 		let result: ParallelValidationResult<String> = ParallelValidationResult::new();
 		assert!(result.valid.is_empty());
@@ -629,7 +630,7 @@ mod tests {
 		assert!(result.all_invalid());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_result_counts() {
 		let mut result: ParallelValidationResult<String> = ParallelValidationResult::new();
 		result.valid.push("hello".to_string());
@@ -647,7 +648,7 @@ mod tests {
 		assert!(!result.all_invalid());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_result_success_rate() {
 		let mut result: ParallelValidationResult<String> = ParallelValidationResult::new();
 		result.valid.push("hello".to_string());
@@ -661,13 +662,13 @@ mod tests {
 		assert!((rate - 0.6666).abs() < 0.01);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_result_empty_success_rate() {
 		let result: ParallelValidationResult<String> = ParallelValidationResult::new();
 		assert_eq!(result.success_rate(), 1.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_result_errors() {
 		let mut result: ParallelValidationResult<String> = ParallelValidationResult::new();
 		result.invalid.push((
@@ -684,7 +685,7 @@ mod tests {
 		assert!(result.first_error().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_validator_result_new() {
 		let result = MultiValidatorResult::new();
 		assert!(result.passed.is_empty());
@@ -694,7 +695,7 @@ mod tests {
 		assert!(result.all_failed());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_validator_result_counts() {
 		let mut result = MultiValidatorResult::new();
 		result.passed.push(0);
@@ -710,7 +711,7 @@ mod tests {
 		assert!(!result.all_failed());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multi_validator_result_to_result() {
 		let mut result = MultiValidatorResult::new();
 		result.passed.push(0);
@@ -722,7 +723,7 @@ mod tests {
 		assert!(result.to_result().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parallel_validation_options_builder() {
 		let options = ParallelValidationOptions::new()
 			.min_batch_size(100)
@@ -732,7 +733,7 @@ mod tests {
 		assert!(options.fail_fast);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_all_parallel_small() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi", "world"]
@@ -745,7 +746,7 @@ mod tests {
 		assert_eq!(result.invalid_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_all_parallel_large() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = (0..100)
@@ -763,7 +764,7 @@ mod tests {
 		assert_eq!(result.invalid_count(), 50);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_valid_parallel() {
 		let validator = MinLengthValidator::new(3);
 
@@ -780,7 +781,7 @@ mod tests {
 		assert!(!all_valid_parallel(&validator, &mixed_values));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_any_valid_parallel() {
 		let validator = MinLengthValidator::new(3);
 
@@ -794,7 +795,7 @@ mod tests {
 		assert!(!any_valid_parallel(&validator, &all_invalid));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_first_error_parallel() {
 		let validator = MinLengthValidator::new(3);
 
@@ -811,7 +812,7 @@ mod tests {
 		assert!(find_first_error_parallel(&validator, &mixed).is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_count_valid_parallel() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -822,7 +823,7 @@ mod tests {
 		assert_eq!(count_valid_parallel(&validator, &values), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_multiple() {
 		let validators: Vec<MinLengthValidator> =
 			vec![MinLengthValidator::new(3), MinLengthValidator::new(5)];
@@ -838,7 +839,7 @@ mod tests {
 		assert_eq!(result3.failed_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_valid_parallel() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -852,7 +853,7 @@ mod tests {
 		assert!(valid.contains(&"world".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_filter_invalid_parallel() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -864,7 +865,7 @@ mod tests {
 		assert_eq!(invalid.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_partition_parallel() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi", "world", "a"]
@@ -877,7 +878,7 @@ mod tests {
 		assert_eq!(invalid.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_options() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "hi"].into_iter().map(String::from).collect();
@@ -888,7 +889,7 @@ mod tests {
 		assert_eq!(result.invalid_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_valid_parallel_with_options() {
 		let validator = MinLengthValidator::new(3);
 		let values: Vec<String> = vec!["hello", "world"]

@@ -491,6 +491,7 @@ impl<T: Send + Sync + 'static> SignalMiddleware<T> for SignalProfiler<T> {
 mod tests {
 	use super::*;
 	use crate::signals::{SignalName, signal::Signal};
+	use rstest::rstest;
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]
@@ -498,6 +499,7 @@ mod tests {
 		value: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_profiler_tracks_execution_time() {
 		let profiler = SignalProfiler::new();
@@ -524,6 +526,7 @@ mod tests {
 		assert!(stats.avg_send_duration > Duration::ZERO);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_profiler_tracks_receiver_performance() {
 		let profiler = SignalProfiler::new();
@@ -551,6 +554,7 @@ mod tests {
 		assert!(profile.avg_duration > Duration::ZERO);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_profiler_report() {
 		let profiler = SignalProfiler::new();
@@ -570,6 +574,7 @@ mod tests {
 		assert!(report.contains("Total sends: 1"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_profiler_reset() {
 		let profiler = SignalProfiler::new();
@@ -592,6 +597,7 @@ mod tests {
 		assert_eq!(profiler.all_receiver_profiles().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_slowest_receivers() {
 		let profiler = SignalProfiler::new();

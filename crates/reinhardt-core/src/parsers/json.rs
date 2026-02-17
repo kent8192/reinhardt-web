@@ -157,7 +157,9 @@ impl JSONParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_parser_valid() {
 		let parser = JSONParser::new();
@@ -178,6 +180,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_parser_invalid() {
 		let parser = JSONParser::new();
@@ -188,6 +191,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_parser_empty_not_allowed() {
 		let parser = JSONParser::new();
@@ -198,6 +202,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_parser_empty_allowed() {
 		let parser = JSONParser::new().allow_empty(true);
@@ -215,7 +220,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_parser_media_types() {
 		let parser = JSONParser::new();
 		let media_types = parser.media_types();
@@ -226,6 +231,7 @@ mod tests {
 
 	// Tests from Django REST Framework
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_float_strictness() {
 		// DRF test: Test Infinity, -Infinity, NaN handling with strict mode
@@ -255,6 +261,7 @@ mod tests {
 		assert!(result.is_ok(), "Valid JSON should parse in non-strict mode");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_edge_case_large_numbers() {
 		// Test extremely large numbers near floating-point limits
@@ -276,6 +283,7 @@ mod tests {
 		assert!(result.is_ok(), "Should parse very large negative numbers");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_edge_case_small_numbers() {
 		// Test extremely small numbers near zero
@@ -297,6 +305,7 @@ mod tests {
 		assert!(result.is_ok(), "Should parse very small negative numbers");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_scientific_notation() {
 		// Test various scientific notation formats
@@ -322,6 +331,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_nested_float_validation() {
 		// Test strict validation in nested structures
@@ -347,6 +357,7 @@ mod tests {
 		assert!(result.is_ok(), "Valid nested floats should be accepted");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_json_array_float_validation() {
 		// Test strict validation in arrays

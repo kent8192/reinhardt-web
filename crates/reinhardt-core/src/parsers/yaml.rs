@@ -96,7 +96,9 @@ impl Parser for YamlParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_simple() {
 		let parser = YamlParser::new();
@@ -118,6 +120,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_nested() {
 		let parser = YamlParser::new();
@@ -139,6 +142,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_array() {
 		let parser = YamlParser::new();
@@ -163,6 +167,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_invalid() {
 		let parser = YamlParser::new();
@@ -174,6 +179,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_empty_not_allowed() {
 		let parser = YamlParser::new();
@@ -185,6 +191,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_empty_allowed() {
 		let parser = YamlParser::new().allow_empty(true);
@@ -203,7 +210,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_yaml_parser_media_types() {
 		let parser = YamlParser::new();
 		let media_types = parser.media_types();
@@ -212,6 +219,7 @@ mod tests {
 		assert!(media_types.contains(&"application/x-yaml".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_can_parse() {
 		let parser = YamlParser::new();
@@ -222,6 +230,7 @@ mod tests {
 		assert!(!parser.can_parse(None));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_boolean_values() {
 		let parser = YamlParser::new();
@@ -243,6 +252,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_number_types() {
 		let parser = YamlParser::new();
@@ -264,6 +274,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_null_value() {
 		let parser = YamlParser::new();
@@ -284,6 +295,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_multiline_string() {
 		let parser = YamlParser::new();
@@ -306,6 +318,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_yaml_parser_complex_structure() {
 		let parser = YamlParser::new();

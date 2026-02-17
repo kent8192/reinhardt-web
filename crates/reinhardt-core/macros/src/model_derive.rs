@@ -3833,8 +3833,9 @@ fn generate_field_selector_struct(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_fields_are_private() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test")]
@@ -3854,7 +3855,7 @@ mod tests {
 		assert!(!output_str.contains("pub name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_getter_methods_generated() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test")]
@@ -3874,7 +3875,7 @@ mod tests {
 		assert!(output_str.contains("pub fn name"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_setter_methods_exclude_auto_fields() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test")]

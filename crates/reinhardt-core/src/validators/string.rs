@@ -759,9 +759,10 @@ impl Validator<str> for JSONValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Tests based on Django validators/tests.py
-	#[test]
+	#[rstest]
 	fn test_min_length_validator_valid() {
 		let validator = MinLengthValidator::new(5);
 		assert!(validator.validate("hello").is_ok());
@@ -769,7 +770,7 @@ mod tests {
 		assert!(validator.validate("12345").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_length_validator_invalid() {
 		let validator = MinLengthValidator::new(5);
 		let result = validator.validate("hi");
@@ -783,7 +784,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_length_validator_edge_cases() {
 		let validator = MinLengthValidator::new(0);
 		assert!(validator.validate("").is_ok());
@@ -793,7 +794,7 @@ mod tests {
 		assert!(validator.validate("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_length_validator_unicode() {
 		let validator = MinLengthValidator::new(3);
 		// Unicode characters count as single characters in byte length
@@ -801,7 +802,7 @@ mod tests {
 		assert!(validator.validate("日本語").is_ok()); // 9 bytes, 3 chars
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_validator_valid() {
 		let validator = MaxLengthValidator::new(10);
 		assert!(validator.validate("hello").is_ok());
@@ -809,7 +810,7 @@ mod tests {
 		assert!(validator.validate("").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_validator_invalid() {
 		let validator = MaxLengthValidator::new(10);
 		let result = validator.validate("hello world");
@@ -823,7 +824,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_validator_edge_cases() {
 		let validator = MaxLengthValidator::new(0);
 		assert!(validator.validate("").is_ok());
@@ -835,14 +836,14 @@ mod tests {
 	}
 
 	// Based on Django test_regex_validator_flags
-	#[test]
+	#[rstest]
 	fn test_regex_validator_basic() {
 		let validator = RegexValidator::new(r"^\d{3}-\d{4}$").unwrap();
 		assert!(validator.validate("123-4567").is_ok());
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_pattern_matching() {
 		// URL-like pattern
 		let validator = RegexValidator::new(r"^(?:[a-z0-9.-]*)://").unwrap();
@@ -852,7 +853,7 @@ mod tests {
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_with_custom_message() {
 		let validator = RegexValidator::new(r"^\d+$")
 			.unwrap()
@@ -870,7 +871,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_email_pattern() {
 		let validator =
 			RegexValidator::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
@@ -881,7 +882,7 @@ mod tests {
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_slug_pattern() {
 		let validator = RegexValidator::new(r"^[-a-zA-Z0-9_]+$").unwrap();
 		assert!(validator.validate("valid-slug").is_ok());
@@ -890,14 +891,14 @@ mod tests {
 		assert!(validator.validate("invalid@slug").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_empty_string() {
 		let validator = RegexValidator::new(r"^.*$").unwrap();
 		assert!(validator.validate("").is_ok());
 		assert!(validator.validate("anything").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_special_characters() {
 		// Test escaping special regex characters
 		let validator = RegexValidator::new(r"^\d+\.\d+$").unwrap();
@@ -907,7 +908,7 @@ mod tests {
 	}
 
 	// Test both String and str implementations
-	#[test]
+	#[rstest]
 	fn test_validators_work_with_string_types() {
 		let min_validator = MinLengthValidator::new(3);
 		let max_validator = MaxLengthValidator::new(10);
@@ -923,7 +924,7 @@ mod tests {
 	}
 
 	// Based on Django test_max_length_validator_message
-	#[test]
+	#[rstest]
 	fn test_min_length_error_contains_correct_values() {
 		let validator = MinLengthValidator::new(16);
 		match validator.validate("short") {
@@ -935,7 +936,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_error_contains_correct_values() {
 		let validator = MaxLengthValidator::new(5);
 		match validator.validate("toolong") {

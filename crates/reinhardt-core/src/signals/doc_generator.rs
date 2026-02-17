@@ -441,8 +441,9 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_generate_markdown() {
 		let mut generator = SignalDocGenerator::new();
 
@@ -465,7 +466,7 @@ mod tests {
 		assert!(markdown.contains("send_email"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_generate_html() {
 		let mut generator = SignalDocGenerator::new();
 
@@ -481,7 +482,7 @@ mod tests {
 		assert!(html.contains("test_signal"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_export_import() {
 		let mut generator = SignalDocGenerator::new();
 
@@ -501,7 +502,7 @@ mod tests {
 		assert!(new_generator.get_signal_doc("test").is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_receiver_to_signal() {
 		let mut generator = SignalDocGenerator::new();
 
@@ -527,7 +528,7 @@ mod tests {
 		assert_eq!(doc.receivers.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape() {
 		let input = "<script>alert('XSS')</script>";
 		let escaped = html_escape(input);

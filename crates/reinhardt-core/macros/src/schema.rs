@@ -299,9 +299,10 @@ fn extract_serde_attrs(attrs: &[Attribute]) -> syn::Result<SerdeFieldAttrs> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_simple_struct() {
 		let input: DeriveInput = parse_quote! {
 			struct User {
@@ -315,7 +316,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_enum() {
 		let input: DeriveInput = parse_quote! {
 			enum Status {

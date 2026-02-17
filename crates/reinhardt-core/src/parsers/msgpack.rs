@@ -84,8 +84,10 @@ impl Parser for MessagePackParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_media_types() {
 		let parser = MessagePackParser::new();
@@ -96,6 +98,7 @@ mod tests {
 		assert!(media_types.contains(&"application/x-msgpack".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_can_parse() {
 		let parser = MessagePackParser::new();
@@ -106,6 +109,7 @@ mod tests {
 		assert!(!parser.can_parse(None));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_simple_object() {
 		let parser = MessagePackParser::new();
@@ -129,6 +133,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_nested_object() {
 		let parser = MessagePackParser::new();
@@ -160,6 +165,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_array() {
 		let parser = MessagePackParser::new();
@@ -186,6 +192,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_invalid_data() {
 		let parser = MessagePackParser::new();
@@ -200,6 +207,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_empty_body() {
 		let parser = MessagePackParser::new();
@@ -212,6 +220,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_msgpack_parser_with_x_msgpack_content_type() {
 		let parser = MessagePackParser::new();

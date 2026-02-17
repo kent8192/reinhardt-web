@@ -186,40 +186,41 @@ impl OrderingStrategy for IdOrdering {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_created_at_ordering_default() {
 		let ordering = CreatedAtOrdering::new();
 		assert_eq!(ordering.fields(), vec!["-created_at", "id"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_created_at_ordering_custom_fields() {
 		let ordering = CreatedAtOrdering::new().with_fields("created", "pk");
 		assert_eq!(ordering.fields(), vec!["-created", "pk"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_id_ordering_ascending() {
 		let ordering = IdOrdering::new();
 		assert_eq!(ordering.fields(), vec!["id"]);
 		assert!(ordering.ascending);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_id_ordering_descending() {
 		let ordering = IdOrdering::descending();
 		assert_eq!(ordering.fields(), vec!["-id"]);
 		assert!(!ordering.ascending);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_id_ordering_custom_field() {
 		let ordering = IdOrdering::new().with_field("pk");
 		assert_eq!(ordering.fields(), vec!["pk"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ordering_description() {
 		let ordering = CreatedAtOrdering::new();
 		assert_eq!(ordering.description(), "Ordering by: -created_at, id");

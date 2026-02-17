@@ -291,9 +291,10 @@ impl super::runtime::Runtime {
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_runs_immediately() {
 		let run_count = Rc::new(RefCell::new(0));
@@ -306,7 +307,7 @@ mod tests {
 		assert_eq!(*run_count.borrow(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_tracks_dependency() {
 		let signal = Signal::new(0);
@@ -330,7 +331,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_reruns_on_signal_change() {
 		let signal = Signal::new(0);
@@ -356,7 +357,7 @@ mod tests {
 		assert_eq!(*values.borrow(), alloc::vec![0, 10, 20]);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_with_multiple_signals() {
 		let signal1 = Signal::new(1);
@@ -384,7 +385,7 @@ mod tests {
 		assert_eq!(*sum.borrow(), 30);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_dispose() {
 		let signal = Signal::new(0);
@@ -408,7 +409,7 @@ mod tests {
 		assert_eq!(*run_count.borrow(), 1); // Still 1, not 2
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_effect_drop_cleans_up() {
 		let signal = Signal::new(0);

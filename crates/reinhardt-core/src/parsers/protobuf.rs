@@ -291,7 +291,9 @@ pub trait ProtobufMessage: Sized {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_media_types() {
 		let parser = ProtobufParser::new();
@@ -302,6 +304,7 @@ mod tests {
 		assert!(media_types.contains(&"application/x-protobuf".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_can_parse() {
 		let parser = ProtobufParser::new();
@@ -312,6 +315,7 @@ mod tests {
 		assert!(!parser.can_parse(None));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_with_data() {
 		let parser = ProtobufParser::new();
@@ -336,6 +340,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_empty_data() {
 		let parser = ProtobufParser::new();
@@ -348,6 +353,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_with_x_protobuf_content_type() {
 		let parser = ProtobufParser::new();
@@ -360,6 +366,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_with_schema_registry() {
 		let mut schemas = HashMap::new();
@@ -373,6 +380,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_larger_message() {
 		let parser = ProtobufParser::new();
@@ -401,6 +409,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_64bit_field() {
 		let parser = ProtobufParser::new();
@@ -425,6 +434,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_32bit_field() {
 		let parser = ProtobufParser::new();
@@ -450,6 +460,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_nested_message() {
 		let parser = ProtobufParser::new();
@@ -478,6 +489,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_repeated_field() {
 		let parser = ProtobufParser::new();
@@ -509,6 +521,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_bytes_field() {
 		let parser = ProtobufParser::new();
@@ -535,6 +548,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_unknown_wire_type() {
 		let parser = ProtobufParser::new();
@@ -550,6 +564,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_deprecated_group() {
 		let parser = ProtobufParser::new();
@@ -565,6 +580,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_incomplete_varint() {
 		let parser = ProtobufParser::new();
@@ -580,6 +596,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_insufficient_64bit_data() {
 		let parser = ProtobufParser::new();
@@ -598,6 +615,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_insufficient_32bit_data() {
 		let parser = ProtobufParser::new();
@@ -616,6 +634,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_insufficient_length_delimited_data() {
 		let parser = ProtobufParser::new();
@@ -634,6 +653,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_varint_too_long() {
 		let parser = ProtobufParser::new();
@@ -652,6 +672,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_protobuf_parser_complex_message() {
 		let parser = ProtobufParser::new();

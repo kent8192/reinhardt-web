@@ -329,8 +329,9 @@ impl std::fmt::Debug for RelayPagination {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_forward() {
 		let items: Vec<i32> = (1..=100).collect();
 		let paginator = RelayPagination::new().default_page_size(10);
@@ -347,7 +348,7 @@ mod tests {
 		assert_eq!(connection.total_count, Some(100));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_forward_with_after() {
 		let items: Vec<i32> = (1..=100).collect();
 		let paginator = RelayPagination::new();
@@ -370,7 +371,7 @@ mod tests {
 		assert!(page2.page_info.has_next_page);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_backward() {
 		let items: Vec<i32> = (1..=100).collect();
 		let paginator = RelayPagination::new();
@@ -386,7 +387,7 @@ mod tests {
 		assert!(connection.page_info.has_previous_page);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_edge_structure() {
 		let items = vec!["a", "b", "c"];
 		let paginator = RelayPagination::new();
@@ -402,7 +403,7 @@ mod tests {
 		assert!(!connection.edges[1].cursor.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_page_info() {
 		let items: Vec<i32> = (1..=5).collect();
 		let paginator = RelayPagination::new();
@@ -417,7 +418,7 @@ mod tests {
 		assert!(!connection.page_info.has_previous_page);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_max_page_size() {
 		let items: Vec<i32> = (1..=100).collect();
 		let paginator = RelayPagination::new().max_page_size(20);
@@ -430,7 +431,7 @@ mod tests {
 		assert_eq!(connection.edges.len(), 20);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_without_total_count() {
 		let items: Vec<i32> = (1..=100).collect();
 		let paginator = RelayPagination::new().include_total_count(false);
@@ -442,7 +443,7 @@ mod tests {
 		assert_eq!(connection.total_count, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_relay_pagination_empty_list() {
 		let items: Vec<i32> = vec![];
 		let paginator = RelayPagination::new();

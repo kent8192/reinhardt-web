@@ -230,15 +230,16 @@ impl Default for MessageConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_messages_creation_unit() {
 		let msg = Message::success("Operation completed");
 		assert_eq!(msg.level, Level::Success);
 		assert_eq!(msg.text, "Operation completed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_tags() {
 		let msg = Message::info("Test").with_tags(vec!["custom".to_string()]);
 		let tags = msg.tags();
@@ -247,7 +248,7 @@ mod tests {
 	}
 
 	// Tests from Django messages_tests/tests.py - MessageTests
-	#[test]
+	#[rstest]
 	fn test_eq() {
 		let msg_1 = Message::new(Level::Info, "Test message 1");
 		let msg_2 = Message::new(Level::Info, "Test message 2");
@@ -263,7 +264,7 @@ mod tests {
 		assert_ne!(msg_2.text, msg_3.text);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_repr() {
 		let tests = vec![
 			(Level::Info, "thing", vec![], "thing"),
@@ -288,7 +289,7 @@ mod tests {
 	}
 
 	// Tests from Django messages_tests/base.py - BaseTests
-	#[test]
+	#[rstest]
 	fn test_add() {
 		let msg1 = Message::new(Level::Info, "Test message 1");
 		let msg2 = Message::new(Level::Info, "Test message 2").with_tags(vec!["tag".to_string()]);
@@ -298,7 +299,7 @@ mod tests {
 		assert!(msg2.extra_tags.contains(&"tag".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_tags() {
 		let msg = Message::new(Level::Info, "A generic info message");
 		let tags = msg.tags();
@@ -311,7 +312,7 @@ mod tests {
 		assert!(tags.contains(&"extra-tag".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_tag() {
 		let msg_info = Message::new(Level::Info, "test");
 		let msg_debug = Message::new(Level::Debug, "test");
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(msg_success.level.as_str(), "success");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extra_tags() {
 		// Test with empty tags
 		let msg_empty = Message::new(Level::Info, "message");
@@ -341,7 +342,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_level_shortcuts() {
 		let debug_msg = Message::debug("Debug message");
 		assert_eq!(debug_msg.level, Level::Debug);
@@ -364,7 +365,7 @@ mod tests {
 		assert_eq!(error_msg.text, "Error message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_config() {
 		let config = MessageConfig::new();
 		assert_eq!(config.get_tag(Level::Info), Some("info"));
@@ -372,7 +373,7 @@ mod tests {
 		assert_eq!(config.get_tag(Level::Custom(99)), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_config_custom_tags() {
 		let mut config = MessageConfig::new();
 		config.set_tag(42, "custom".to_string());
@@ -383,7 +384,7 @@ mod tests {
 		assert_eq!(config.get_tag(Level::Custom(99)), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_message_config_default() {
 		let config = MessageConfig::default();
 		assert_eq!(config.get_tag(Level::Info), Some("info"));

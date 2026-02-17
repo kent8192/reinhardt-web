@@ -222,8 +222,9 @@ impl IpFilterMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_whitelist_mode() {
 		let mut config = IpFilterConfig::whitelist();
 		config.add_allowed_ip("192.168.1.0/24").unwrap();
@@ -239,7 +240,7 @@ mod tests {
 		assert!(!config.is_allowed(&blocked_ip));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_blacklist_mode() {
 		let mut config = IpFilterConfig::blacklist();
 		config.add_blocked_ip("192.168.1.100").unwrap();
@@ -255,7 +256,7 @@ mod tests {
 		assert!(config.is_allowed(&allowed_ip));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_blacklist_overrides_whitelist() {
 		let mut config = IpFilterConfig::whitelist();
 		config.add_allowed_ip("192.168.1.0/24").unwrap();
@@ -268,7 +269,7 @@ mod tests {
 		assert!(!config.is_allowed(&blocked_ip));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ipv6_filtering() {
 		let mut config = IpFilterConfig::whitelist();
 		config.add_allowed_ip("2001:db8::/32").unwrap();
@@ -280,14 +281,14 @@ mod tests {
 		assert!(!config.is_allowed(&blocked_ip));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_creation() {
 		let config = IpFilterConfig::whitelist();
 		let middleware = IpFilterMiddleware::new(config);
 		assert_eq!(middleware.config().mode, IpFilterMode::Whitelist);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_middleware_is_allowed() {
 		let mut config = IpFilterConfig::blacklist();
 		config.add_blocked_ip("192.168.1.100").unwrap();
@@ -300,7 +301,7 @@ mod tests {
 		assert!(!middleware.is_allowed(&blocked_ip));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_ip_format() {
 		let mut config = IpFilterConfig::whitelist();
 		let result = config.add_allowed_ip("invalid-ip");

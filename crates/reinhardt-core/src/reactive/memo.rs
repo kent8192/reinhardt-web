@@ -363,16 +363,17 @@ impl<T: Clone + 'static> Drop for Memo<T> {
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_creation() {
 		let memo = Memo::new(|| 42);
 		assert_eq!(memo.get(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_caching() {
 		let compute_count = Rc::new(RefCell::new(0));
@@ -392,7 +393,7 @@ mod tests {
 		assert_eq!(*compute_count.borrow(), 1); // Still 1, not 2
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_with_signal_dependency() {
 		let signal = Signal::new(5);
@@ -411,7 +412,7 @@ mod tests {
 		assert_eq!(memo.get(), 20);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_clone() {
 		let memo1 = Memo::new(|| 42);
@@ -421,7 +422,7 @@ mod tests {
 		assert_eq!(memo2.get(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_dependency_tracking() {
 		let signal = Signal::new(1);
@@ -456,7 +457,7 @@ mod tests {
 	// with TLS. In production code, memo chains work correctly during normal execution;
 	// the issue only manifests during test cleanup.
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_memo_get_untracked() {
 		let signal = Signal::new(5);

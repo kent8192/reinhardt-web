@@ -21,61 +21,62 @@
 //! This approach ensures macro error messages are correct without creating
 //! circular dependencies, while runtime behavior is tested in `tests/integration/`.
 
-#[test]
+use rstest::rstest;
+#[rstest]
 fn test_compile_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_compile_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_path_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/path/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_path_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/path/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_permission_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/permissions/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_permission_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/permissions/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_routes_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/routes/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_action_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/action/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_action_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/action/fail/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_validation_edge_cases_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/validation_edge_cases/multiple_invalid_methods.rs");
@@ -83,7 +84,7 @@ fn test_validation_edge_cases_fail() {
 	t.compile_fail("tests/ui/validation_edge_cases/action_url_path_no_slash.rs");
 }
 
-#[test]
+#[rstest]
 fn test_validation_edge_cases_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/validation_edge_cases/case_sensitive_method.rs");
@@ -91,13 +92,13 @@ fn test_validation_edge_cases_pass() {
 }
 
 // api_view macro tests
-#[test]
+#[rstest]
 fn test_api_view_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/api_view/pass/*.rs");
 }
 
-#[test]
+#[rstest]
 fn test_api_view_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/api_view/fail/*.rs");
@@ -105,7 +106,7 @@ fn test_api_view_macro_fail() {
 
 // ===== Injectable =====
 
-#[test]
+#[rstest]
 fn test_injectable_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/injectable/fail/*.rs");
@@ -113,7 +114,7 @@ fn test_injectable_macro_fail() {
 
 // ===== Admin =====
 
-#[test]
+#[rstest]
 fn test_admin_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/admin/fail/*.rs");
@@ -121,7 +122,7 @@ fn test_admin_fail() {
 
 // ===== AppConfig =====
 
-#[test]
+#[rstest]
 fn test_app_config_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/app_config/fail/*.rs");

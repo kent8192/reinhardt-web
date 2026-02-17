@@ -287,8 +287,9 @@ impl Default for EncodingNegotiator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_encoding_parse() {
 		assert_eq!(Encoding::parse("gzip"), Some(Encoding::Gzip));
 		assert_eq!(Encoding::parse("br"), Some(Encoding::Brotli));
@@ -296,14 +297,14 @@ mod tests {
 		assert_eq!(Encoding::parse("identity"), Some(Encoding::Identity));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_encoding_quality_parse() {
 		let enc = EncodingQuality::parse("gzip;q=0.9").unwrap();
 		assert_eq!(enc.encoding, Encoding::Gzip);
 		assert_eq!(enc.quality, 0.9);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_negotiate() {
 		let negotiator = EncodingNegotiator::new();
 		let available = vec![Encoding::Gzip, Encoding::Identity];
@@ -312,7 +313,7 @@ mod tests {
 		assert_eq!(result, Encoding::Gzip);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_negotiate_quality() {
 		let negotiator = EncodingNegotiator::new();
 		let available = vec![Encoding::Gzip, Encoding::Identity];
@@ -321,7 +322,7 @@ mod tests {
 		assert_eq!(result, Encoding::Identity);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_negotiate_fallback() {
 		let negotiator = EncodingNegotiator::new();
 		let available = vec![Encoding::Identity];

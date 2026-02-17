@@ -257,8 +257,10 @@ impl ParserValidator for CompositeValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_size_limit_validator_within_limit() {
 		let validator = SizeLimitValidator::new(100);
@@ -268,6 +270,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_size_limit_validator_exceeds_limit() {
 		let validator = SizeLimitValidator::new(10);
@@ -277,6 +280,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_size_limit_validator_after_parse() {
 		let validator = SizeLimitValidator::new(100);
@@ -286,6 +290,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_validator_allowed() {
 		let validator = ContentTypeValidator::new(vec!["application/json".to_string()]);
@@ -297,6 +302,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_validator_not_allowed() {
 		let validator = ContentTypeValidator::new(vec!["application/json".to_string()]);
@@ -306,6 +312,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_validator_missing() {
 		let validator = ContentTypeValidator::new(vec!["application/json".to_string()]);
@@ -315,6 +322,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_content_type_validator_with_charset() {
 		let validator = ContentTypeValidator::new(vec!["application/json".to_string()]);
@@ -326,6 +334,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_validator_all_pass() {
 		let validator = CompositeValidator::new()
@@ -341,6 +350,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_validator_first_fails() {
 		let validator = CompositeValidator::new()
@@ -356,6 +366,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_validator_second_fails() {
 		let validator = CompositeValidator::new()
@@ -369,6 +380,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_validator_after_parse() {
 		let validator = CompositeValidator::new()
@@ -382,6 +394,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_composite_validator_empty() {
 		let validator = CompositeValidator::new();

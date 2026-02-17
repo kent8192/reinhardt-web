@@ -187,6 +187,7 @@ macro_rules! connect_receiver {
 mod tests {
 	use super::*;
 	use parking_lot::Mutex;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -197,6 +198,7 @@ mod tests {
 		name: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_connect_and_send() {
 		let signal = Signal::new(SignalName::custom("test"));
@@ -221,6 +223,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signals_multiple_receivers() {
 		let signal = Signal::new(SignalName::custom("test"));
@@ -248,6 +251,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signals_pre_post_save() {
 		let pre_counter = Arc::new(AtomicUsize::new(0));
@@ -287,6 +291,7 @@ mod tests {
 		assert_eq!(post_counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signals_global_registry() {
 		let signal1 = get_signal::<TestModel>(SignalName::custom("custom_signal"));
@@ -314,6 +319,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_spy() {
 		let signal = Signal::new(SignalName::custom("test"));
@@ -337,6 +343,7 @@ mod tests {
 		assert!(!spy.has_errors());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_chain() {
 		let signal_a = Signal::new(SignalName::custom("signal_a"));
@@ -382,6 +389,7 @@ mod tests {
 		assert_eq!(results[1], "signal_b: 1");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_filter() {
 		let signal = Signal::new(SignalName::custom("user_signal"));
@@ -435,7 +443,7 @@ mod tests {
 		assert_eq!(all_results.len(), 2); // Both
 	}
 
-	#[test]
+	#[rstest]
 	fn test_signal_name_validation() {
 		// Valid names
 		assert!(SignalName::custom_validated("my_custom_signal").is_ok());
@@ -451,6 +459,7 @@ mod tests {
 		assert!(SignalName::custom_validated("pre_save").is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_all_signal_types_accessible() {
 		// Model signals

@@ -176,8 +176,9 @@ pub fn is_sql_reserved_word(word: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_common_reserved_words() {
 		assert!(is_sql_reserved_word("select"));
 		assert!(is_sql_reserved_word("from"));
@@ -187,7 +188,7 @@ mod tests {
 		assert!(is_sql_reserved_word("drop"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_data_types() {
 		assert!(is_sql_reserved_word("integer"));
 		assert!(is_sql_reserved_word("varchar"));
@@ -195,14 +196,14 @@ mod tests {
 		assert!(is_sql_reserved_word("boolean"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_postgresql_keywords() {
 		assert!(is_sql_reserved_word("serial"));
 		assert!(is_sql_reserved_word("jsonb"));
 		assert!(is_sql_reserved_word("returning"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_not_reserved() {
 		assert!(!is_sql_reserved_word("user"));
 		assert!(!is_sql_reserved_word("profile"));

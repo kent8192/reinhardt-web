@@ -384,6 +384,7 @@ pub trait Deserializer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Serialize, Deserialize, PartialEq, Debug)]
 	struct TestUser {
@@ -391,7 +392,7 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer_roundtrip() {
 		let user = TestUser {
 			id: 1,
@@ -406,7 +407,7 @@ mod tests {
 		assert_eq!(user.name, deserialized.name);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer_serialize() {
 		let user = TestUser {
 			id: 1,
@@ -419,7 +420,7 @@ mod tests {
 		assert!(json.contains("\"id\":1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer_deserialize() {
 		let json = r#"{"id":1,"name":"Alice"}"#.to_string();
 		let serializer = JsonSerializer::<TestUser>::new();
@@ -429,7 +430,7 @@ mod tests {
 		assert_eq!(user.name, "Alice");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_serializer_deserialize_error() {
 		let invalid_json = r#"{"invalid"}"#.to_string();
 		let serializer = JsonSerializer::<TestUser>::new();
@@ -438,7 +439,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_error_display() {
 		let err = ValidatorError::UniqueViolation {
 			field_name: "email".to_string(),
@@ -449,7 +450,7 @@ mod tests {
 		assert!(err.to_string().contains("test@example.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_serializer_error_from_validator_error() {
 		let validator_err = ValidatorError::Custom {
 			message: "test error".to_string(),

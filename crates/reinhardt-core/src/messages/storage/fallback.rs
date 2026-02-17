@@ -163,8 +163,9 @@ impl MessageStorage for FallbackStorage {
 mod tests {
 	use super::*;
 	use crate::messages::levels::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_fallback_storage_basic() {
 		let mut storage = FallbackStorage::new();
 
@@ -176,7 +177,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fallback_storage_custom_names() {
 		let storage = FallbackStorage::new()
 			.with_cookie_name("custom_messages")
@@ -186,7 +187,7 @@ mod tests {
 		assert_eq!(storage.session_storage.session_key(), "custom_session_key");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fallback_storage_size_limit() {
 		let mut storage = FallbackStorage::new().with_max_cookie_size(100);
 
@@ -203,7 +204,7 @@ mod tests {
 		assert!(!all_messages.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fallback_clear() {
 		let mut storage = FallbackStorage::new();
 

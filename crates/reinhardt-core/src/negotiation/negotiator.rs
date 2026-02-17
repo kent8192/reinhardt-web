@@ -265,8 +265,9 @@ impl BaseContentNegotiation for BaseNegotiator {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_negotiate() {
 		let negotiator = ContentNegotiator::new();
 		let available = vec![
@@ -278,7 +279,7 @@ mod tests {
 		assert_eq!(result.subtype, "html");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_select_by_format() {
 		let negotiator = ContentNegotiator::new();
 		let available = vec![

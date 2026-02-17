@@ -352,8 +352,9 @@ fn parse_bool_value(meta: &syn::meta::ParseNestedMeta<'_>) -> syn::Result<bool> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_relationship_type_from_ident() {
 		let ident = Ident::new("foreign_key", Span::call_site());
 		assert_eq!(
@@ -371,7 +372,7 @@ mod tests {
 		assert_eq!(RelationType::from_ident(&ident), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cascade_action_from_ident() {
 		let ident = Ident::new("Cascade", Span::call_site());
 		assert_eq!(

@@ -50,7 +50,9 @@ impl Parser for FormParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_form_parser_valid() {
 		let parser = FormParser::new();
@@ -72,6 +74,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_form_parser_empty() {
 		let parser = FormParser::new();
@@ -91,6 +94,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_form_parser_url_encoded() {
 		let parser = FormParser::new();
@@ -111,7 +115,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_form_parser_media_types() {
 		let parser = FormParser::new();
 		let media_types = parser.media_types();
@@ -121,6 +125,7 @@ mod tests {
 
 	// Tests from Django REST Framework
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_form_parse_drf() {
 		// DRF test: Make sure the form parsing works correctly

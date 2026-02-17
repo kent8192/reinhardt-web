@@ -355,15 +355,16 @@ pub struct CursorPaginatedResponse<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cursor_new() {
 		let cursor = Cursor::new(42, 1234567890);
 		assert_eq!(cursor.id, 42);
 		assert_eq!(cursor.timestamp, 1234567890);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_encode_decode() {
 		let cursor = Cursor::new(100, 9876543210);
 		let encoded = cursor.encode();
@@ -376,7 +377,7 @@ mod tests {
 		assert_eq!(decoded, cursor);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_decode_invalid_base64() {
 		let result = Cursor::decode("not-valid-base64!!!");
 		assert!(result.is_err());
@@ -392,7 +393,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_decode_invalid_json() {
 		// Valid base64 but invalid JSON
 		let invalid = STANDARD.encode(b"not json");
@@ -410,7 +411,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_decode_malformed_json() {
 		// Valid JSON but wrong structure
 		let invalid_json = serde_json::json!({"wrong": "structure"});
@@ -419,7 +420,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_roundtrip_edge_cases() {
 		// Test with edge case values
 		let test_cases = vec![
@@ -436,14 +437,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_direction() {
 		assert_eq!(Direction::Forward, Direction::Forward);
 		assert_eq!(Direction::Backward, Direction::Backward);
 		assert_ne!(Direction::Forward, Direction::Backward);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pagination_error_display() {
 		let err1 = PaginationError::InvalidCursor("bad cursor".to_string());
 		assert_eq!(format!("{}", err1), "Invalid cursor: bad cursor");
@@ -452,7 +453,7 @@ mod tests {
 		assert_eq!(format!("{}", err2), "Database error: connection failed");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_opaque() {
 		// Ensure cursor is not easily human-readable
 		let cursor = Cursor::new(42, 1234567890);
@@ -463,7 +464,7 @@ mod tests {
 		assert!(!encoded.contains("1234567890"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginated_response() {
 		let response: CursorPaginatedResponse<i32> = CursorPaginatedResponse {
 			results: vec![1, 2, 3, 4, 5],
@@ -511,7 +512,7 @@ mod tests {
 			.collect()
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_first_page() {
 		let items = create_test_items(25);
 		let paginator = CursorPaginator::new(10);
@@ -527,7 +528,7 @@ mod tests {
 		assert!(page.prev_cursor.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_navigation() {
 		let items = create_test_items(25);
 		let paginator = CursorPaginator::new(10);
@@ -555,7 +556,7 @@ mod tests {
 		assert!(page3.has_prev);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_empty_list() {
 		let items: Vec<TestItem> = vec![];
 		let paginator = CursorPaginator::new(10);
@@ -569,7 +570,7 @@ mod tests {
 		assert!(page.prev_cursor.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_single_page() {
 		let items = create_test_items(5);
 		let paginator = CursorPaginator::new(10);
@@ -582,7 +583,7 @@ mod tests {
 		assert!(page.next_cursor.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_exact_page_size() {
 		let items = create_test_items(10);
 		let paginator = CursorPaginator::new(10);
@@ -594,7 +595,7 @@ mod tests {
 		assert!(!page.has_prev);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_one_more_than_page_size() {
 		let items = create_test_items(11);
 		let paginator = CursorPaginator::new(10);
@@ -609,7 +610,7 @@ mod tests {
 		assert!(!page2.has_next);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_invalid_cursor() {
 		let items = create_test_items(25);
 		let paginator = CursorPaginator::new(10);
@@ -618,7 +619,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_tie_breaker() {
 		// Test items with same id but different timestamps
 		let items = vec![
@@ -653,7 +654,7 @@ mod tests {
 		assert_eq!(page2.results[0].timestamp, 2000);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_stability() {
 		// Verify cursor is stable and reproducible
 		let items = create_test_items(10);
@@ -673,7 +674,7 @@ mod tests {
 		assert_eq!(page2_a.results, page2_b.results);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cursor_paginator_performance_vs_offset() {
 		// This test demonstrates the theoretical performance difference
 		// In practice, database indexes make the difference more pronounced

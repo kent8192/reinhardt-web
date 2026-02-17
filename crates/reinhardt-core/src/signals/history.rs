@@ -535,6 +535,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for SignalHistory<T> {
 mod tests {
 	use super::*;
 	use crate::signals::SignalName;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -543,7 +544,7 @@ mod tests {
 		message: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_history_config() {
 		let config = HistoryConfig::new()
 			.with_max_entries(500)
@@ -555,7 +556,7 @@ mod tests {
 		assert!(config.errors_only());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_history_entry() {
 		let entry = HistoryEntry::new(
 			TestEvent {
@@ -570,6 +571,7 @@ mod tests {
 		assert!(entry.age() < Duration::from_secs(1));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_history_basic() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_history"));
@@ -609,6 +611,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_history_max_entries() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_max"));
@@ -634,6 +637,7 @@ mod tests {
 		assert_eq!(all[2].payload.id, 4);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_history_errors_only() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_errors"));
@@ -659,6 +663,7 @@ mod tests {
 		assert_eq!(stats.error_count(), 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_history_get_recent() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_recent"));
@@ -683,6 +688,7 @@ mod tests {
 		assert_eq!(recent[2].payload.id, 7);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_history_get_errors() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_get_errors"));
@@ -718,6 +724,7 @@ mod tests {
 		assert!(errors.iter().all(|e| !e.success));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_history_clear() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_clear"));

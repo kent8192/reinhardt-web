@@ -395,7 +395,9 @@ impl Parser for XMLParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_simple() {
 		let parser = XMLParser::new();
@@ -417,6 +419,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_with_attributes() {
 		let parser = XMLParser::new();
@@ -434,6 +437,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_with_cdata() {
 		let parser = XMLParser::new();
@@ -455,6 +459,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_with_numbers() {
 		let config = XmlParserConfig::builder().parse_numbers(true).build();
@@ -478,6 +483,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_with_booleans() {
 		let config = XmlParserConfig::builder().parse_booleans(true).build();
@@ -501,6 +507,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_repeated_elements() {
 		let parser = XMLParser::new();
@@ -523,6 +530,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_empty_elements() {
 		let parser = XMLParser::new();
@@ -544,6 +552,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_nested_structure() {
 		let parser = XMLParser::new();
@@ -569,7 +578,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xml_parser_config_builder() {
 		let config = XmlParserConfig::builder()
 			.include_attributes(false)
@@ -590,6 +599,7 @@ mod tests {
 		assert!(config.parse_booleans);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_media_types() {
 		let parser = XMLParser::new();
@@ -600,6 +610,7 @@ mod tests {
 		assert!(media_types.contains(&"text/xml".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_can_parse() {
 		let parser = XMLParser::new();
@@ -610,6 +621,7 @@ mod tests {
 		assert!(!parser.can_parse(None));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_xml_parser_invalid_xml() {
 		let parser = XMLParser::new();

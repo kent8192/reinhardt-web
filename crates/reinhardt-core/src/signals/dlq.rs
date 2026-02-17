@@ -521,6 +521,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for DeadLetterQueue<T> {
 mod tests {
 	use super::*;
 	use crate::signals::SignalName;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -549,7 +550,7 @@ mod tests {
 		message: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_dlq_config() {
 		let config = DlqConfig::new()
 			.with_max_retries(5)
@@ -570,7 +571,7 @@ mod tests {
 		assert!(config.persist_failed());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_retry_strategy_delays() {
 		// Immediate
 		let immediate = RetryStrategy::Immediate;
@@ -596,6 +597,7 @@ mod tests {
 		assert!(exponential.calculate_delay(10) <= Duration::from_secs(10));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dlq_basic() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_dlq"));
@@ -660,6 +662,7 @@ mod tests {
 		assert_eq!(stats.total_recovered(), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dlq_max_retries() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_max_retries"));
@@ -714,6 +717,7 @@ mod tests {
 		assert_eq!(stats.total_recovered(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dlq_queue_size_limit() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_queue_limit"));
@@ -744,6 +748,7 @@ mod tests {
 		assert!(stats.queue_size() <= 3);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dlq_clear() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_clear"));

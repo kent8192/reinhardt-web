@@ -475,8 +475,9 @@ impl From<validator::ValidationErrors> for Error {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_error_kind_mapping() {
 		// HTTP errors
 		assert_eq!(Error::Http("test".to_string()).kind(), ErrorKind::Http);
@@ -575,7 +576,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_serde_json_error() {
 		let json_error = serde_json::from_str::<i32>("invalid").unwrap_err();
 		let error: Error = json_error.into();
@@ -585,7 +586,7 @@ mod tests {
 		assert!(error.to_string().contains("Serialization error"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_from_io_error() {
 		let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
 		let error: Error = io_error.into();
@@ -595,7 +596,7 @@ mod tests {
 		assert!(error.to_string().contains("IO error"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_status_codes_comprehensive() {
 		// 400 errors
 		assert_eq!(Error::Http("test".to_string()).status_code(), 400);
@@ -641,7 +642,7 @@ mod tests {
 		assert_eq!(Error::Other(anyhow::anyhow!("test")).status_code(), 500);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_template_not_found_error() {
 		let error = Error::TemplateNotFound("index.html".to_string());
 		assert_eq!(error.status_code(), 404);
@@ -650,7 +651,7 @@ mod tests {
 		assert!(error.to_string().contains("index.html"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pagination_errors() {
 		let page_error = Error::InvalidPage("page must be positive".to_string());
 		assert_eq!(page_error.status_code(), 400);
@@ -665,7 +666,7 @@ mod tests {
 		assert_eq!(limit_error.kind(), ErrorKind::Validation);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_missing_parameter_error() {
 		let error = Error::MissingParameter("user_id".to_string());
 		assert_eq!(error.status_code(), 400);

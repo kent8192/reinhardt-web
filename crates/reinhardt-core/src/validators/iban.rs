@@ -346,9 +346,10 @@ impl Validator<str> for IBANValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Valid IBAN test cases from various countries
-	#[test]
+	#[rstest]
 	fn test_valid_ibans() {
 		let validator = IBANValidator::new();
 
@@ -375,7 +376,7 @@ mod tests {
 	}
 
 	// Test IBANs with spaces (should be handled correctly)
-	#[test]
+	#[rstest]
 	fn test_ibans_with_spaces() {
 		let validator = IBANValidator::new();
 
@@ -389,7 +390,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_ibans() {
 		let validator = IBANValidator::new();
 
@@ -415,7 +416,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mod97_algorithm() {
 		// Test the MOD-97 algorithm directly
 		assert!(IBANValidator::mod97_check("DE89370400440532013000"));
@@ -427,7 +428,7 @@ mod tests {
 		assert!(!IBANValidator::mod97_check("GB82WEST12345698765433"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_allowed_countries() {
 		let validator = IBANValidator::with_countries(vec!["DE".to_string(), "FR".to_string()]);
 
@@ -453,7 +454,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_country_code_validation() {
 		let validator = IBANValidator::new();
 
@@ -463,7 +464,7 @@ mod tests {
 		assert!(validator.validate("1A234567890123456789012345").is_err()); // Number in country code
 	}
 
-	#[test]
+	#[rstest]
 	fn test_check_digit_validation() {
 		let validator = IBANValidator::new();
 
@@ -473,7 +474,7 @@ mod tests {
 		assert!(validator.validate("DEA9370400440532013000").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_case_insensitivity() {
 		let validator = IBANValidator::new();
 
@@ -486,7 +487,7 @@ mod tests {
 		assert!(validator.validate("GB82west12345698765432").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_specific_country_lengths() {
 		let validator = IBANValidator::new();
 
@@ -501,7 +502,7 @@ mod tests {
 		assert!(validator.validate_format(maltese_length_test).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_characters() {
 		let validator = IBANValidator::new();
 
@@ -511,7 +512,7 @@ mod tests {
 		assert!(validator.validate("DE89/3704/0044/0532/0130/00").is_err()); // Slashes
 	}
 
-	#[test]
+	#[rstest]
 	fn test_string_type_validation() {
 		let validator = IBANValidator::new();
 
@@ -522,7 +523,7 @@ mod tests {
 		assert!(validator.validate(&invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_with_countries_builder() {
 		let validator = IBANValidator::with_countries(vec!["DE".to_string()]);
 
@@ -531,7 +532,7 @@ mod tests {
 	}
 
 	// Additional edge cases
-	#[test]
+	#[rstest]
 	fn test_numeric_string_conversion_in_mod97() {
 		// This tests that the MOD-97 algorithm correctly handles
 		// the conversion of letters to numbers
@@ -541,7 +542,7 @@ mod tests {
 		assert!(IBANValidator::mod97_check("DE89370400440532013000"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_all_supported_countries() {
 		let validator = IBANValidator::new();
 

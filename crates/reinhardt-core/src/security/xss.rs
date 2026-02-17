@@ -184,8 +184,9 @@ pub fn is_safe_url(url: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_escape_html() {
 		assert_eq!(
 			escape_html("<script>alert('xss')</script>"),
@@ -193,7 +194,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_html_attr() {
 		let attr = r#"value" onload="alert('xss')"#;
 		let escaped = escape_html_attr(attr);
@@ -201,7 +202,7 @@ mod tests {
 		assert!(escaped.contains("&#x27;"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_javascript() {
 		let script = "'; alert('xss'); var x='";
 		let escaped = escape_javascript(script);
@@ -213,14 +214,14 @@ mod tests {
 		assert_eq!(escaped, "\\'; alert(\\'xss\\'); var x=\\'");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_escape_url() {
 		let url = "javascript:alert('xss')";
 		let escaped = escape_url(url);
 		assert!(escaped.contains("%3A"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_xss_patterns() {
 		assert!(detect_xss_patterns("<script>alert(1)</script>"));
 		assert!(detect_xss_patterns(r#"<img src=x onerror="alert(1)">"#));
@@ -230,7 +231,7 @@ mod tests {
 		assert!(!detect_xss_patterns("Normal <b>HTML</b>"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_safe_url() {
 		assert!(is_safe_url("https://example.com"));
 		assert!(is_safe_url("http://example.com"));
@@ -243,7 +244,7 @@ mod tests {
 		assert!(!is_safe_url("vbscript:alert(1)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_sanitize_html() {
 		let dangerous = "<script>alert('XSS')</script><b>Bold text</b>";
 		let sanitized = sanitize_html(dangerous);

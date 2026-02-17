@@ -299,6 +299,7 @@ fn handle_many_to_many_type(segment: &syn::PathSegment, orm_crate: &TokenStream)
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
 	// Helper function to get a mock orm_crate for testing
@@ -306,7 +307,7 @@ mod tests {
 		quote! { ::reinhardt_orm }
 	}
 
-	#[test]
+	#[rstest]
 	fn test_derive_query_fields() {
 		let input: DeriveInput = parse_quote! {
 			struct User {
@@ -327,7 +328,7 @@ mod tests {
 		assert!(output_str.contains("pub fn created_at"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_primitive_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -352,7 +353,7 @@ mod tests {
 		assert_eq!(result.to_string(), "bool");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_option_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -370,7 +371,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Option < Option < String > >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_vec_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -388,7 +389,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Vec < Option < String > >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashmap_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -407,7 +408,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hashset_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -426,7 +427,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_btreemap_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -438,7 +439,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_btreeset_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -450,7 +451,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_result_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -463,7 +464,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Result < Vec < String > , String >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_pointer_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -480,7 +481,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Vec < String >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -506,7 +507,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reference_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -523,7 +524,7 @@ mod tests {
 		assert_eq!(result.to_string(), "i64");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_array_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -536,7 +537,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Vec < String >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slice_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -549,7 +550,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Vec < String >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_nested_types() {
 		let orm_crate = mock_orm_crate();
 
@@ -575,7 +576,7 @@ mod tests {
 		assert_eq!(result.to_string(), "Option < Vec < String > >");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_type_mapping() {
 		let orm_crate = mock_orm_crate();
 
@@ -595,7 +596,7 @@ mod tests {
 		assert_eq!(result.to_string(), "crate :: models :: User");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_type_normalization() {
 		let orm_crate = mock_orm_crate();
 

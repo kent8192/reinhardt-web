@@ -279,12 +279,13 @@ impl<T: Clone + 'static> Drop for ContextGuard<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn setup() {
 		clear_all_contexts();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_creation() {
 		let ctx1: Context<i32> = Context::new();
 		let ctx2: Context<i32> = Context::new();
@@ -293,7 +294,7 @@ mod tests {
 		assert_ne!(ctx1.id(), ctx2.id());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_provide_and_get_context() {
 		setup();
 
@@ -305,7 +306,7 @@ mod tests {
 		assert_eq!(get_context(&ctx), Some(42));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_contexts() {
 		setup();
 
@@ -333,7 +334,7 @@ mod tests {
 		assert_eq!(get_context(&ctx), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_contexts() {
 		setup();
 
@@ -350,7 +351,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_guard() {
 		setup();
 
@@ -365,7 +366,7 @@ mod tests {
 		assert_eq!(get_context(&ctx), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_clone() {
 		let ctx1: Context<i32> = Context::new();
 		let ctx2 = ctx1.clone();
@@ -373,7 +374,7 @@ mod tests {
 		assert_eq!(ctx1.id(), ctx2.id());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_debug() {
 		let ctx: Context<i32> = Context::new();
 		let debug_str = alloc::format!("{:?}", ctx);

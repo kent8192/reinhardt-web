@@ -61,20 +61,21 @@ impl std::fmt::Debug for ReceiverContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_receiver_context_new() {
 		let ctx = ReceiverContext::new();
 		assert!(!ctx.has_di_context());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_receiver_context_default() {
 		let ctx = ReceiverContext::default();
 		assert!(!ctx.has_di_context());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_receiver_context_debug() {
 		let ctx = ReceiverContext::new();
 		let debug_str = format!("{:?}", ctx);

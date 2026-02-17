@@ -258,8 +258,9 @@ impl MessageStorage for CookieStorage {
 mod tests {
 	use super::*;
 	use crate::messages::levels::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_basic() {
 		let mut storage = CookieStorage::new();
 
@@ -271,19 +272,19 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_custom_name() {
 		let storage = CookieStorage::new().with_cookie_name("custom_messages");
 		assert_eq!(storage.cookie_name(), "custom_messages");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_max_size() {
 		let storage = CookieStorage::new().with_max_size(8192);
 		assert_eq!(storage.max_cookie_size(), 8192);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_serialize() {
 		let mut storage = CookieStorage::new();
 		storage.add(Message::new(Level::Info, "Test"));
@@ -292,7 +293,7 @@ mod tests {
 		assert!(serialized.contains("Test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_cookie_storage_deserialize() {
 		let mut storage = CookieStorage::new();
 		storage.add(Message::new(Level::Info, "Test"));

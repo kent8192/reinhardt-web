@@ -128,9 +128,10 @@ impl<T: ?Sized> Validator<T> for OrValidator<T> {
 mod tests {
 	use super::*;
 	use crate::validators::{MaxLengthValidator, MinLengthValidator};
+	use rstest::rstest;
 
 	// AND validator tests
-	#[test]
+	#[rstest]
 	fn test_and_validator_all_pass() {
 		let validator = AndValidator::new(vec![
 			Box::new(MinLengthValidator::new(3)),
@@ -141,7 +142,7 @@ mod tests {
 		assert!(validator.validate("test").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_and_validator_first_fails() {
 		let validator = AndValidator::new(vec![
 			Box::new(MinLengthValidator::new(5)),
@@ -151,7 +152,7 @@ mod tests {
 		assert!(validator.validate("hi").is_err()); // Too short
 	}
 
-	#[test]
+	#[rstest]
 	fn test_and_validator_second_fails() {
 		let validator = AndValidator::new(vec![
 			Box::new(MinLengthValidator::new(3)),
@@ -161,7 +162,7 @@ mod tests {
 		assert!(validator.validate("toolong").is_err()); // Too long
 	}
 
-	#[test]
+	#[rstest]
 	fn test_and_validator_all_fail() {
 		let validator = AndValidator::new(vec![
 			Box::new(MinLengthValidator::new(10)),
@@ -172,13 +173,13 @@ mod tests {
 		assert!(validator.validate("test").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_and_validator_empty() {
 		let validator: AndValidator<str> = AndValidator::new(vec![]);
 		assert!(validator.validate("anything").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_and_validator_add_method() {
 		let validator = AndValidator::new(vec![Box::new(MinLengthValidator::new(3))])
 			.with_validator(Box::new(MaxLengthValidator::new(10)));
@@ -189,7 +190,7 @@ mod tests {
 	}
 
 	// OR validator tests
-	#[test]
+	#[rstest]
 	fn test_or_validator_first_passes() {
 		let validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(3)),
@@ -199,7 +200,7 @@ mod tests {
 		assert!(validator.validate("hello").is_ok()); // Both pass, but first is enough
 	}
 
-	#[test]
+	#[rstest]
 	fn test_or_validator_second_passes() {
 		let validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(10)), // Fails
@@ -209,7 +210,7 @@ mod tests {
 		assert!(validator.validate("short").is_ok()); // Second validator passes
 	}
 
-	#[test]
+	#[rstest]
 	fn test_or_validator_all_fail() {
 		let validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(10)),
@@ -219,13 +220,13 @@ mod tests {
 		assert!(validator.validate("short").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_or_validator_empty() {
 		let validator: OrValidator<str> = OrValidator::new(vec![]);
 		assert!(validator.validate("anything").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_or_validator_with_error_collection() {
 		let validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(10)),
@@ -242,7 +243,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_or_validator_without_error_collection() {
 		let validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(10)),
@@ -256,7 +257,7 @@ mod tests {
 	}
 
 	// Nested composition tests
-	#[test]
+	#[rstest]
 	fn test_nested_and_in_or() {
 		let and_validator = AndValidator::new(vec![
 			Box::new(MinLengthValidator::new(3)),
@@ -277,7 +278,7 @@ mod tests {
 		assert!(or_validator.validate("hi").is_err()); // Fails both (too short for both)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_or_in_and() {
 		let or_validator = OrValidator::new(vec![
 			Box::new(MinLengthValidator::new(3)),

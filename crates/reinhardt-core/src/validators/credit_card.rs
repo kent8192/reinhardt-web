@@ -338,8 +338,9 @@ impl Validator<str> for CreditCardValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_luhn_algorithm_valid() {
 		// Valid credit card numbers (using Luhn algorithm)
 		assert!(CreditCardValidator::luhn_check("4532015112830366")); // Visa
@@ -349,7 +350,7 @@ mod tests {
 		assert!(CreditCardValidator::luhn_check("3530111333300000")); // JCB
 	}
 
-	#[test]
+	#[rstest]
 	fn test_luhn_algorithm_invalid() {
 		// Invalid credit card numbers (failing Luhn check)
 		assert!(!CreditCardValidator::luhn_check("4532015112830367")); // Last digit wrong
@@ -358,13 +359,13 @@ mod tests {
 		assert!(!CreditCardValidator::luhn_check("9999999999999999")); // All nines (invalid)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_visa() {
 		let card_type = CreditCardValidator::detect_card_type("4532015112830366");
 		assert_eq!(card_type, Some(CardType::Visa));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_mastercard() {
 		// Old MasterCard range (51-55)
 		assert_eq!(
@@ -383,7 +384,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_amex() {
 		assert_eq!(
 			CreditCardValidator::detect_card_type("374245455400126"),
@@ -395,7 +396,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_discover() {
 		// 6011 prefix
 		assert_eq!(
@@ -416,7 +417,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_jcb() {
 		assert_eq!(
 			CreditCardValidator::detect_card_type("3530111333300000"),
@@ -428,7 +429,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_detection_diners_club() {
 		// 300-305 prefix
 		assert_eq!(
@@ -453,7 +454,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_valid_cards() {
 		let validator = CreditCardValidator::new();
 
@@ -465,7 +466,7 @@ mod tests {
 		assert!(validator.validate("3530111333300000").is_ok()); // JCB
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_formatted_cards() {
 		let validator = CreditCardValidator::new();
 
@@ -479,7 +480,7 @@ mod tests {
 		assert!(validator.validate("4532 0151-1283 0366").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_invalid_cards() {
 		let validator = CreditCardValidator::new();
 
@@ -494,7 +495,7 @@ mod tests {
 		assert!(validator.validate("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_allowed_types() {
 		let validator =
 			CreditCardValidator::new().allow_types(vec![CardType::Visa, CardType::MasterCard]);
@@ -512,7 +513,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_returns_card_type() {
 		let validator = CreditCardValidator::new();
 
@@ -530,7 +531,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_custom_message() {
 		let validator = CreditCardValidator::new().with_message("Custom error message");
 
@@ -542,7 +543,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_implementation() {
 		let validator = CreditCardValidator::new();
 
@@ -558,7 +559,7 @@ mod tests {
 		assert!(Validator::<String>::validate(&validator, &invalid_string).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_display() {
 		assert_eq!(CardType::Visa.to_string(), "Visa");
 		assert_eq!(CardType::MasterCard.to_string(), "MasterCard");
@@ -568,26 +569,26 @@ mod tests {
 		assert_eq!(CardType::DinersClub.to_string(), "Diners Club");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_as_str() {
 		assert_eq!(CardType::Visa.as_str(), "Visa");
 		assert_eq!(CardType::MasterCard.as_str(), "MasterCard");
 		assert_eq!(CardType::AmericanExpress.as_str(), "American Express");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_validator() {
 		let validator = CreditCardValidator::default();
 		assert!(validator.validate("4532015112830366").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_card_type_equality() {
 		assert_eq!(CardType::Visa, CardType::Visa);
 		assert_ne!(CardType::Visa, CardType::MasterCard);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_messages() {
 		let validator = CreditCardValidator::new();
 
@@ -614,7 +615,7 @@ mod tests {
 	}
 
 	// Edge cases
-	#[test]
+	#[rstest]
 	fn test_edge_cases() {
 		let validator = CreditCardValidator::new();
 
@@ -628,7 +629,7 @@ mod tests {
 		assert!(validator.validate("---   ").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_builder_pattern() {
 		let validator = CreditCardValidator::new()
 			.allow_types(vec![CardType::Visa])

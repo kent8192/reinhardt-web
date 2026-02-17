@@ -423,9 +423,10 @@ pub(crate) fn path_impl(input: TokenStream) -> Result<TokenStream> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// AST parsing tests
-	#[test]
+	#[rstest]
 	fn test_parse_simple_literal() {
 		let result = parse_and_validate("polls/");
 		let ast = result.unwrap();
@@ -433,7 +434,7 @@ mod tests {
 		assert!(matches!(ast.segments[0], Segment::Literal(_)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_simple_parameter() {
 		let result = parse_and_validate("polls/{id}/");
 		let ast = result.unwrap();
@@ -448,7 +449,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_typed_parameter() {
 		let result = parse_and_validate("polls/{<int:question_id>}/");
 		let ast = result.unwrap();
@@ -467,7 +468,7 @@ mod tests {
 		assert_eq!(param.type_spec, Some(TypeSpec::Int));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_parse_multiple_parameters() {
 		let result = parse_and_validate("users/{user_id}/posts/{post_id}/");
 		let ast = result.unwrap();
@@ -487,21 +488,21 @@ mod tests {
 	}
 
 	// Error case tests
-	#[test]
+	#[rstest]
 	fn test_invalid_unclosed_brace() {
 		let result = parse_and_validate("polls/{id");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("Unclosed brace"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_unmatched_closing_brace() {
 		let result = parse_and_validate("polls/id}/");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("closing brace"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_empty_param() {
 		let result = parse_and_validate("polls/{}/");
 		assert!(result.is_err());
@@ -510,20 +511,20 @@ mod tests {
 		assert!(err.contains("Empty parameter"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_nested_braces() {
 		let result = parse_and_validate("polls/{{id}}/");
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("Nested braces"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_param_starting_with_number() {
 		let result = parse_and_validate("polls/{1id}/");
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_type_specifier() {
 		let result = parse_and_validate("polls/{<invalid:id>}/");
 		assert!(result.is_err());
@@ -532,7 +533,7 @@ mod tests {
 		assert!(err.contains("Invalid type specifier") || err.contains("Parse error"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reinhardt_style_outside_braces() {
 		let result = parse_and_validate("polls/<int:id>/");
 		assert!(result.is_err());
@@ -540,7 +541,7 @@ mod tests {
 	}
 
 	// All type specifiers
-	#[test]
+	#[rstest]
 	fn test_all_type_specifiers() {
 		let patterns = vec![
 			("polls/{<int:id>}/", TypeSpec::Int),

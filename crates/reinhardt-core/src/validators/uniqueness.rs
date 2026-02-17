@@ -101,9 +101,11 @@ impl UniqueValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::collections::HashSet;
 	use std::sync::{Arc, Mutex};
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unique_validator_new_value() {
 		let existing_values = Arc::new(Mutex::new(HashSet::from(["existinguser".to_string()])));
@@ -139,6 +141,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unique_validator_excludes_instance() {
 		// Simulate a database with users: id=1 -> "user1", id=2 -> "user2"
@@ -174,6 +177,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_unique_validator_empty_database() {
 		let validator = UniqueValidator::new(

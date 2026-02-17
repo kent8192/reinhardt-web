@@ -247,8 +247,9 @@ impl Validator<str> for CustomRegexValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_custom_regex_validator_basic() {
 		let validator = CustomRegexValidator::new(r"^\d{3}-\d{4}$").unwrap();
 		assert!(validator.validate("123-4567").is_ok());
@@ -258,7 +259,7 @@ mod tests {
 		assert!(validator.validate("1234-5678").is_err()); // Wrong format
 	}
 
-	#[test]
+	#[rstest]
 	fn test_alphanumeric_preset() {
 		let validator = CustomRegexValidator::alphanumeric();
 		assert!(validator.validate("abc123").is_ok());
@@ -271,7 +272,7 @@ mod tests {
 		assert!(validator.validate("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_preset() {
 		let validator = CustomRegexValidator::slug();
 		assert!(validator.validate("my-valid-slug").is_ok());
@@ -284,7 +285,7 @@ mod tests {
 		assert!(validator.validate("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_username_preset() {
 		let validator = CustomRegexValidator::username();
 		assert!(validator.validate("john_doe").is_ok());
@@ -299,7 +300,7 @@ mod tests {
 		assert!(validator.validate("user@name").is_err()); // Special character
 	}
 
-	#[test]
+	#[rstest]
 	fn test_inverse_match() {
 		// Reject strings containing special characters
 		let validator = CustomRegexValidator::new(r"[!@#$%^&*()]")
@@ -313,7 +314,7 @@ mod tests {
 		assert!(validator.validate("test#123").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_message() {
 		let validator = CustomRegexValidator::new(r"^\d+$")
 			.unwrap()
@@ -329,7 +330,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_captures() {
 		let validator = CustomRegexValidator::new(r"^(\d{3})-(\d{4})$").unwrap();
 
@@ -344,7 +345,7 @@ mod tests {
 		assert!(validator.validate_with_captures("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_captures_email_pattern() {
 		let validator = CustomRegexValidator::new(r"^([a-z0-9]+)@([a-z0-9]+)\.([a-z]+)$").unwrap();
 
@@ -358,7 +359,7 @@ mod tests {
 		assert_eq!(captures[3], "com"); // TLD
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_captures_no_groups() {
 		let validator = CustomRegexValidator::new(r"^\d{3}$").unwrap();
 
@@ -367,7 +368,7 @@ mod tests {
 		assert_eq!(captures[0], "123"); // Only full match
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_with_captures_inverse_match() {
 		let validator = CustomRegexValidator::new(r"[!@#]").unwrap().inverse_match();
 
@@ -380,7 +381,7 @@ mod tests {
 		assert!(validator.validate_with_captures("hello!").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_regex_pattern() {
 		let result = CustomRegexValidator::new(r"[invalid(");
 		assert!(result.is_err());
@@ -392,7 +393,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_preset_custom_message() {
 		let validator =
 			CustomRegexValidator::alphanumeric().with_message("Only letters and numbers allowed");
@@ -405,7 +406,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_string() {
 		let validator = CustomRegexValidator::new(r"^\d+$").unwrap();
 		let value = String::from("12345");
@@ -415,14 +416,14 @@ mod tests {
 		assert!(Validator::<String>::validate(&validator, &invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_str() {
 		let validator = CustomRegexValidator::new(r"^\d+$").unwrap();
 		assert!(Validator::<str>::validate(&validator, "12345").is_ok());
 		assert!(Validator::<str>::validate(&validator, "abc").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_complex_pattern_with_multiple_groups() {
 		// URL pattern: protocol://domain:port/path
 		let validator = CustomRegexValidator::new(r"^(https?)://([a-z.]+):(\d+)(/.*)?$").unwrap();
@@ -438,7 +439,7 @@ mod tests {
 		assert_eq!(captures[4], "/path/to/resource");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_optional_capture_groups() {
 		// Pattern with optional group
 		let validator = CustomRegexValidator::new(r"^(\d{3})(-(\d{4}))?$").unwrap();

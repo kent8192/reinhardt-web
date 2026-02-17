@@ -114,19 +114,20 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn string_serializer(items: &[String]) -> Vec<u8> {
 		serde_json::to_vec(items).unwrap()
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left_all_fit() {
 		let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 		let count = bisect_keep_left(&items, 1000, string_serializer);
 		assert_eq!(count, 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left_partial() {
 		let items = vec![
 			"message1".to_string(),
@@ -140,28 +141,28 @@ mod tests {
 		assert!(count > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left_none_fit() {
 		let items = vec!["very_long_message_that_exceeds_limit".to_string()];
 		let count = bisect_keep_left(&items, 5, string_serializer);
 		assert_eq!(count, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left_empty() {
 		let items: Vec<String> = vec![];
 		let count = bisect_keep_left(&items, 100, string_serializer);
 		assert_eq!(count, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_right_all_fit() {
 		let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 		let count = bisect_keep_right(&items, 1000, string_serializer);
 		assert_eq!(count, 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_right_partial() {
 		let items = vec![
 			"message1".to_string(),
@@ -175,21 +176,21 @@ mod tests {
 		assert!(count > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_right_none_fit() {
 		let items = vec!["very_long_message_that_exceeds_limit".to_string()];
 		let count = bisect_keep_right(&items, 5, string_serializer);
 		assert_eq!(count, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_right_empty() {
 		let items: Vec<String> = vec![];
 		let count = bisect_keep_right(&items, 100, string_serializer);
 		assert_eq!(count, 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_bisect_keep_left_vs_right() {
 		let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 		let size_limit = 20;

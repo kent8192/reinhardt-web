@@ -186,8 +186,9 @@ impl fmt::Display for MediaType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_media_type() {
 		let mt = MediaType::parse("application/json; q=0.8").unwrap();
 		assert_eq!(mt.type_, "application");
@@ -195,7 +196,7 @@ mod tests {
 		assert_eq!(mt.quality, 0.8);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_matches() {
 		let json = MediaType::new("application", "json");
 		let wildcard = MediaType::new("*", "*");

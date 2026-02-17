@@ -217,9 +217,10 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use syn::parse_quote;
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_simple() {
 		let input: ItemFn = parse_quote! {
 			fn create_service(
@@ -240,7 +241,7 @@ mod tests {
 		assert!(output.contains("__func_ptr"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_async() {
 		let input: ItemFn = parse_quote! {
 			async fn get_config() -> Config {
@@ -255,7 +256,7 @@ mod tests {
 		assert!(output.contains("await"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_no_return_type_error() {
 		let input: ItemFn = parse_quote! {
 			fn bad_function() {
@@ -269,7 +270,7 @@ mod tests {
 		assert!(err.to_string().contains("return type"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_non_inject_param_error() {
 		let input: ItemFn = parse_quote! {
 			fn bad_function(regular_param: String) -> MyService {
@@ -283,7 +284,7 @@ mod tests {
 		assert!(err.to_string().contains("#[inject]"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_with_scope_singleton() {
 		let input: ItemFn = parse_quote! {
 			fn create_service(
@@ -299,7 +300,7 @@ mod tests {
 		assert!(output.contains("singleton_scope"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_injectable_fn_with_cache_and_scope() {
 		let input: ItemFn = parse_quote! {
 			fn create_service(

@@ -179,7 +179,9 @@ impl Parser for FileUploadParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_upload_parser_valid() {
 		let parser = FileUploadParser::new("upload");
@@ -205,6 +207,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_upload_parser_max_size() {
 		let parser = FileUploadParser::new("upload").max_file_size(10);
@@ -217,6 +220,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_upload_parser_no_content_type() {
 		let parser = FileUploadParser::new("upload");
@@ -235,7 +239,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_file_upload_parser_media_types() {
 		let parser = FileUploadParser::new("upload");
 		let media_types = parser.media_types();
@@ -246,6 +250,7 @@ mod tests {
 
 	// Tests from Django REST Framework
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_file_parse_drf() {
 		// DRF test: Parse raw file upload
@@ -270,6 +275,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_missing_filename() {
 		// DRF test: Parse raw file upload when filename is missing
@@ -283,6 +289,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_missing_filename_none() {
 		// DRF test: Parse when Content-Disposition header is None
@@ -296,7 +303,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_filename() {
 		// DRF test: Get filename from Content-Disposition header
 		let parser = FileUploadParser::new("file");
@@ -306,7 +313,7 @@ mod tests {
 		assert_eq!(filename, "file.txt");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_encoded_filename() {
 		// DRF test: Get RFC2231 encoded filename
 		let parser = FileUploadParser::new("file");

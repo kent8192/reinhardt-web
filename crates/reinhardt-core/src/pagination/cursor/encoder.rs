@@ -159,8 +159,9 @@ impl CursorEncoder for Base64CursorEncoder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_base64_encoder_encode_decode() {
 		let encoder = Base64CursorEncoder::new();
 		let position = 42;
@@ -171,7 +172,7 @@ mod tests {
 		assert_eq!(decoded, position);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_base64_encoder_invalid_cursor() {
 		let encoder = Base64CursorEncoder::new();
 
@@ -179,7 +180,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_base64_encoder_tampered_cursor() {
 		let encoder = Base64CursorEncoder::new();
 		let cursor = encoder.encode(42).unwrap();
@@ -192,7 +193,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_base64_encoder_custom_expiry() {
 		let encoder = Base64CursorEncoder::new().expiry_seconds(1);
 		let cursor = encoder.encode(42).unwrap();

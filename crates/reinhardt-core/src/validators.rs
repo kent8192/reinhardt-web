@@ -138,37 +138,38 @@ pub trait SettingsValidator: Send + Sync {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Integration tests for validator trait - based on Django validators/tests.py
-	#[test]
+	#[rstest]
 	fn test_min_length_validator_trait() {
 		let validator = MinLengthValidator::new(5);
 		assert!(validator.validate("hello").is_ok());
 		assert!(validator.validate("hi").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_length_validator_trait() {
 		let validator = MaxLengthValidator::new(10);
 		assert!(validator.validate("hello").is_ok());
 		assert!(validator.validate("hello world!").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_value_validator_trait() {
 		let validator = MinValueValidator::new(10);
 		assert!(validator.validate(&15).is_ok());
 		assert!(validator.validate(&5).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_value_validator_trait() {
 		let validator = MaxValueValidator::new(100);
 		assert!(validator.validate(&50).is_ok());
 		assert!(validator.validate(&150).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_trait() {
 		let validator = RangeValidator::new(10, 20);
 		assert!(validator.validate(&15).is_ok());
@@ -176,21 +177,21 @@ mod tests {
 		assert!(validator.validate(&25).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_trait() {
 		let validator = EmailValidator::new();
 		assert!(validator.validate("test@example.com").is_ok());
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_trait() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example.com").is_ok());
 		assert!(validator.validate("invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_regex_validator_trait() {
 		let validator = RegexValidator::new(r"^\d+$").unwrap();
 		assert!(validator.validate("12345").is_ok());
@@ -198,7 +199,7 @@ mod tests {
 	}
 
 	// Test combining validators
-	#[test]
+	#[rstest]
 	fn test_multiple_validators() {
 		let min_validator = MinLengthValidator::new(3);
 		let max_validator = MaxLengthValidator::new(10);
@@ -217,7 +218,7 @@ mod tests {
 	}
 
 	// Test prelude exports
-	#[test]
+	#[rstest]
 	fn test_prelude_exports() {
 		use crate::validators::*;
 

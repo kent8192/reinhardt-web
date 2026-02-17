@@ -84,13 +84,14 @@ pub fn is_boolean_attr_truthy(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_html_escape_no_special_chars() {
 		assert_eq!(html_escape("Hello World"), Cow::Borrowed("Hello World"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape_ampersand() {
 		assert_eq!(
 			html_escape("a & b"),
@@ -98,7 +99,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape_angle_brackets() {
 		assert_eq!(
 			html_escape("<div>"),
@@ -106,7 +107,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape_quotes() {
 		assert_eq!(
 			html_escape("\"test\" 'value'"),
@@ -114,7 +115,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_is_boolean_attr_truthy() {
 		// Truthy values
 		assert!(is_boolean_attr_truthy("true"));

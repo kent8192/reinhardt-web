@@ -81,9 +81,10 @@ impl Validator<str> for UrlValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	/// Tests based on Django validators/tests.py URL validation tests
-	#[test]
+	#[rstest]
 	fn test_url_validator_valid_urls() {
 		let validator = UrlValidator::new();
 
@@ -109,7 +110,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_invalid_urls() {
 		let validator = UrlValidator::new();
 
@@ -137,7 +138,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_ports() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example.com:8080/").is_ok());
@@ -146,7 +147,7 @@ mod tests {
 		assert!(validator.validate("http://localhost:3000/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_paths() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example.com/").is_ok());
@@ -163,7 +164,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_query_strings() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example.com?query=value").is_ok());
@@ -179,7 +180,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_fragments() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example.com#section").is_ok());
@@ -196,7 +197,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_subdomains() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://subdomain.example.com/").is_ok());
@@ -208,7 +209,7 @@ mod tests {
 		assert!(validator.validate("http://a.b.c.example.com/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_https() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("https://example.com/").is_ok());
@@ -220,7 +221,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_hyphens() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://valid-domain.com/").is_ok());
@@ -236,7 +237,7 @@ mod tests {
 		assert!(validator.validate("http://invalid-.com/").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_numbers() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://example123.com/").is_ok());
@@ -244,7 +245,7 @@ mod tests {
 		assert!(validator.validate("http://123.com/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_localhost() {
 		let validator = UrlValidator::new();
 		assert!(validator.validate("http://localhost/").is_ok());
@@ -252,7 +253,7 @@ mod tests {
 		assert!(validator.validate("http://localhost/path").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_case_sensitivity() {
 		let validator = UrlValidator::new();
 		// URLs are case-sensitive in path/query, but not in domain
@@ -261,7 +262,7 @@ mod tests {
 		assert!(validator.validate("http://example.com/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_returns_correct_error() {
 		let validator = UrlValidator::new();
 		let invalid_url = "not-a-url";
@@ -273,7 +274,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_with_string_type() {
 		let validator = UrlValidator::new();
 		let url = String::from("http://example.com/");
@@ -283,7 +284,7 @@ mod tests {
 		assert!(validator.validate(&invalid).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_validator_special_characters_in_path() {
 		let validator = UrlValidator::new();
 		assert!(

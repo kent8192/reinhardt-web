@@ -149,8 +149,9 @@ pub(crate) static COLOR_HSLA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_email_regex() {
 		assert!(EMAIL_REGEX.is_match("test@example.com"));
 		assert!(EMAIL_REGEX.is_match("user.name@sub.example.co.uk"));
@@ -158,7 +159,7 @@ mod tests {
 		assert!(!EMAIL_REGEX.is_match("@example.com"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_regex() {
 		assert!(URL_REGEX.is_match("http://example.com"));
 		assert!(URL_REGEX.is_match("https://example.com:8080/path?query=value#section"));
@@ -166,7 +167,7 @@ mod tests {
 		assert!(!URL_REGEX.is_match("invalid"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_e164_regex() {
 		assert!(PHONE_E164_REGEX.is_match("+1234567890"));
 		assert!(PHONE_E164_REGEX.is_match("+81-90-1234-5678"));
@@ -174,7 +175,7 @@ mod tests {
 		assert!(!PHONE_E164_REGEX.is_match("+0123456789"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_phone_extension_regex() {
 		let caps = PHONE_EXTENSION_REGEX
 			.captures("+1234567890 ext. 123")
@@ -183,7 +184,7 @@ mod tests {
 		assert_eq!(caps.get(2).map(|m| m.as_str()), Some("123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_ascii_regex() {
 		assert!(SLUG_ASCII_REGEX.is_match("valid-slug"));
 		assert!(SLUG_ASCII_REGEX.is_match("valid_slug_123"));
@@ -191,20 +192,20 @@ mod tests {
 		assert!(!SLUG_ASCII_REGEX.is_match("日本語"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_slug_unicode_regex() {
 		assert!(SLUG_UNICODE_REGEX.is_match("valid-slug"));
 		assert!(SLUG_UNICODE_REGEX.is_match("日本語-slug"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_uuid_regex() {
 		assert!(UUID_REGEX.is_match("550e8400-e29b-41d4-a716-446655440000"));
 		assert!(!UUID_REGEX.is_match("invalid-uuid"));
 		assert!(!UUID_REGEX.is_match("550E8400-E29B-41D4-A716-446655440000")); // uppercase
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_hex_regex() {
 		assert!(COLOR_HEX_REGEX.is_match("#FFF"));
 		assert!(COLOR_HEX_REGEX.is_match("#FF0000"));
@@ -212,28 +213,28 @@ mod tests {
 		assert!(!COLOR_HEX_REGEX.is_match("FF0000"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_rgb_regex() {
 		assert!(COLOR_RGB_REGEX.is_match("rgb(255, 0, 0)"));
 		assert!(COLOR_RGB_REGEX.is_match("rgb(0,0,0)"));
 		assert!(!COLOR_RGB_REGEX.is_match("rgb(256, 0, 0)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_rgba_regex() {
 		assert!(COLOR_RGBA_REGEX.is_match("rgba(255, 0, 0, 1)"));
 		assert!(COLOR_RGBA_REGEX.is_match("rgba(255, 0, 0, 0.5)"));
 		assert!(!COLOR_RGBA_REGEX.is_match("rgba(255, 0, 0)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_hsl_regex() {
 		assert!(COLOR_HSL_REGEX.is_match("hsl(0, 100%, 50%)"));
 		assert!(COLOR_HSL_REGEX.is_match("hsl(360, 0%, 0%)"));
 		assert!(!COLOR_HSL_REGEX.is_match("hsl(361, 100%, 50%)"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_color_hsla_regex() {
 		assert!(COLOR_HSLA_REGEX.is_match("hsla(0, 100%, 50%, 1)"));
 		assert!(COLOR_HSLA_REGEX.is_match("hsla(0, 100%, 50%, 0.5)"));

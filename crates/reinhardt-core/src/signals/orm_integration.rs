@@ -245,6 +245,7 @@ pub fn get_orm_signals<T: Send + Sync + 'static>() -> Vec<Signal<T>> {
 mod tests {
 	use super::*;
 	use parking_lot::Mutex;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -255,12 +256,14 @@ mod tests {
 		name: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_orm_signal_adapter_creation() {
 		let _adapter = OrmSignalAdapter::<TestModel>::new();
 		// Adapter creation test - verifies compilation and instantiation
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_dispatch_pre_save() {
@@ -290,6 +293,7 @@ mod tests {
 		pre_save::<TestModel>().disconnect_all();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dispatch_post_save() {
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -312,6 +316,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_dispatch_pre_delete() {
@@ -341,6 +346,7 @@ mod tests {
 		pre_delete::<TestModel>().disconnect_all();
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dispatch_post_delete() {
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -363,6 +369,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connect_orm_signals() {
 		connect_orm_signals::<TestModel>().await;
@@ -376,6 +383,7 @@ mod tests {
 		assert!(adapter.signal_count() > initial_count);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_get_orm_signals() {
 		let signals = get_orm_signals::<TestModel>();
@@ -386,6 +394,7 @@ mod tests {
 		assert_eq!(names.len(), 4);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_orm_signal_flow() {

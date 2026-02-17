@@ -561,8 +561,9 @@ pub fn localize_ja<V>(validator: V) -> Result<LocalizedValidator<V>, I18nError> 
 mod tests {
 	use super::*;
 	use crate::validators::string::MinLengthValidator;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_language_from_code() {
 		assert_eq!(Language::from_code("en").unwrap(), Language::English);
 		assert_eq!(Language::from_code("EN").unwrap(), Language::English);
@@ -572,13 +573,13 @@ mod tests {
 		assert!(Language::from_code("fr").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_language_code() {
 		assert_eq!(Language::English.code(), "en");
 		assert_eq!(Language::Japanese.code(), "ja");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_language_all() {
 		let all = Language::all();
 		assert_eq!(all.len(), 2);
@@ -586,7 +587,7 @@ mod tests {
 		assert!(all.contains(&Language::Japanese));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_messages_new() {
 		let messages = ValidationMessages::new("en").unwrap();
 		assert_eq!(messages.language(), Language::English);
@@ -595,7 +596,7 @@ mod tests {
 		assert_eq!(messages.language(), Language::Japanese);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_messages_format() {
 		let messages = ValidationMessages::new("en").unwrap();
 		let result = messages
@@ -604,7 +605,7 @@ mod tests {
 		assert!(result.contains("5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_messages_format_ja() {
 		let messages = ValidationMessages::new("ja").unwrap();
 		let result = messages
@@ -614,7 +615,7 @@ mod tests {
 		assert!(result.contains("文字")); // Japanese for "characters"
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localize_error() {
 		let messages = ValidationMessages::new("en").unwrap();
 
@@ -624,7 +625,7 @@ mod tests {
 		assert!(localized.contains("5"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localize_error_ja() {
 		let messages = ValidationMessages::new("ja").unwrap();
 
@@ -635,7 +636,7 @@ mod tests {
 		assert!(localized.contains("短すぎ")); // Japanese for "too short"
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localized_validator() {
 		let messages = ValidationMessages::new("ja").unwrap();
 		let validator = LocalizedValidator::new(MinLengthValidator::new(5), messages);
@@ -650,7 +651,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localized_validator_valid() {
 		let messages = ValidationMessages::new("en").unwrap();
 		let validator = LocalizedValidator::new(MinLengthValidator::new(2), messages);
@@ -659,7 +660,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localized_validator_with_language() {
 		let validator =
 			LocalizedValidator::with_language(MinLengthValidator::new(5), "ja").unwrap();
@@ -668,7 +669,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localized_validator_builder() {
 		let validator = LocalizedValidatorBuilder::new()
 			.language(Language::Japanese)
@@ -679,7 +680,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localized_validator_builder_with_code() {
 		let validator = LocalizedValidatorBuilder::new()
 			.language_code("ja")
@@ -691,7 +692,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_convenience_functions() {
 		let validator_en = localize_en(MinLengthValidator::new(5)).unwrap();
 		let validator_ja = localize_ja(MinLengthValidator::new(5)).unwrap();
@@ -700,7 +701,7 @@ mod tests {
 		assert_eq!(validator_ja.messages().language(), Language::Japanese);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_i18n_error_display() {
 		let error = I18nError::UnsupportedLanguage("fr".to_string());
 		assert!(error.to_string().contains("fr"));
@@ -709,7 +710,7 @@ mod tests {
 		assert!(error.to_string().contains("invalid"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_localize_various_errors() {
 		let messages = ValidationMessages::new("en").unwrap();
 
@@ -729,7 +730,7 @@ mod tests {
 		assert!(localized.contains("custom message"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_fallback_on_missing_message() {
 		let messages = ValidationMessages::new("en").unwrap();
 		let result = messages.format("nonexistent-message-id", None);

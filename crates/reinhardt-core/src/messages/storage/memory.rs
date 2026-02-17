@@ -61,8 +61,9 @@ impl MessageStorage for MemoryStorage {
 mod tests {
 	use super::*;
 	use crate::messages::levels::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_messages_memory_storage() {
 		let mut storage = MemoryStorage::new();
 
@@ -75,7 +76,7 @@ mod tests {
 	}
 
 	// Tests from Django messages_tests/base.py - BaseTests
-	#[test]
+	#[rstest]
 	fn test_add_messages() {
 		let mut storage = MemoryStorage::new();
 
@@ -88,7 +89,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_no_update() {
 		let storage = MemoryStorage::new();
 
@@ -97,7 +98,7 @@ mod tests {
 		assert_eq!(messages.len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_update() {
 		let mut storage = MemoryStorage::new();
 
@@ -108,7 +109,7 @@ mod tests {
 		assert_eq!(messages.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_existing_add_read_update() {
 		let mut storage = MemoryStorage::new();
 
@@ -126,7 +127,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_existing_read_add_update() {
 		let mut storage = MemoryStorage::new();
 
@@ -145,7 +146,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 3);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_existing_read() {
 		let mut storage = MemoryStorage::new();
 
@@ -163,7 +164,7 @@ mod tests {
 		assert_eq!(data1.len(), data2.len());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_storage_get() {
 		let mut storage = MemoryStorage::new();
 
@@ -181,7 +182,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_storage_clear() {
 		let mut storage = MemoryStorage::new();
 
@@ -193,7 +194,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_adds() {
 		let mut storage = MemoryStorage::new();
 

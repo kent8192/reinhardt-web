@@ -291,8 +291,9 @@ impl Default for LanguageNegotiator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_language_parse() {
 		let lang = Language::parse("en-US;q=0.9").unwrap();
 		assert_eq!(lang.code, "en");
@@ -300,7 +301,7 @@ mod tests {
 		assert_eq!(lang.quality, 0.9);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_language_matches() {
 		let en_us = Language::with_region("en", "US");
 		let en = Language::new("en");
@@ -308,7 +309,7 @@ mod tests {
 		assert!(en.matches(&en_us));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_negotiate() {
 		let negotiator = LanguageNegotiator::new();
 		let available = vec![Language::new("en"), Language::new("fr")];
@@ -317,7 +318,7 @@ mod tests {
 		assert_eq!(result.code, "fr");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_negotiate_fallback() {
 		let negotiator = LanguageNegotiator::new();
 		let available = vec![Language::new("en"), Language::new("fr")];
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(result.code, "en");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_all_matches() {
 		let negotiator = LanguageNegotiator::new();
 		let available = vec![

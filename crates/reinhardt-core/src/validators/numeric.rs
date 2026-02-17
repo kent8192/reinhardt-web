@@ -185,9 +185,10 @@ impl<T: PartialOrd + Display + Clone> Validator<T> for RangeValidator<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Tests based on Django validators/tests.py - TestValidatorEquality::test_basic_equality
-	#[test]
+	#[rstest]
 	fn test_min_value_validator_integers() {
 		let validator = MinValueValidator::new(10);
 		assert!(validator.validate(&10).is_ok());
@@ -198,7 +199,7 @@ mod tests {
 		assert!(validator.validate(&-10).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_value_validator_floats() {
 		let validator = MinValueValidator::new(10.5);
 		assert!(validator.validate(&10.5).is_ok());
@@ -207,7 +208,7 @@ mod tests {
 		assert!(validator.validate(&5.0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_min_value_validator_error_message() {
 		let validator = MinValueValidator::new(44);
 		match validator.validate(&10) {
@@ -219,7 +220,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_value_validator_integers() {
 		let validator = MaxValueValidator::new(20);
 		assert!(validator.validate(&20).is_ok());
@@ -230,7 +231,7 @@ mod tests {
 		assert!(validator.validate(&100).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_value_validator_floats() {
 		let validator = MaxValueValidator::new(20.5);
 		assert!(validator.validate(&20.5).is_ok());
@@ -239,7 +240,7 @@ mod tests {
 		assert!(validator.validate(&100.0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_max_value_validator_error_message() {
 		let validator = MaxValueValidator::new(44);
 		match validator.validate(&100) {
@@ -251,7 +252,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_within_range() {
 		let validator = RangeValidator::new(10, 20);
 		assert!(validator.validate(&10).is_ok());
@@ -259,7 +260,7 @@ mod tests {
 		assert!(validator.validate(&20).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_below_range() {
 		let validator = RangeValidator::new(10, 20);
 		let result = validator.validate(&5);
@@ -273,7 +274,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_above_range() {
 		let validator = RangeValidator::new(10, 20);
 		let result = validator.validate(&25);
@@ -287,7 +288,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_floats() {
 		let validator = RangeValidator::new(0.0, 1.0);
 		assert!(validator.validate(&0.0).is_ok());
@@ -297,7 +298,7 @@ mod tests {
 		assert!(validator.validate(&1.1).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_range_validator_negative_range() {
 		let validator = RangeValidator::new(-100, -50);
 		assert!(validator.validate(&-75).is_ok());
@@ -308,7 +309,7 @@ mod tests {
 		assert!(validator.validate(&0).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_boundary_conditions() {
 		// Test boundary conditions for min value
 		let min_validator = MinValueValidator::new(0);
@@ -322,7 +323,7 @@ mod tests {
 	}
 
 	// Test with different numeric types
-	#[test]
+	#[rstest]
 	fn test_validators_with_i32() {
 		let validator = RangeValidator::new(i32::MIN + 1000, i32::MAX - 1000);
 		assert!(validator.validate(&0).is_ok());
@@ -330,7 +331,7 @@ mod tests {
 		assert!(validator.validate(&(i32::MAX - 1000)).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validators_with_u32() {
 		let validator = RangeValidator::new(0u32, 1000u32);
 		assert!(validator.validate(&500u32).is_ok());
@@ -339,7 +340,7 @@ mod tests {
 		assert!(validator.validate(&1001u32).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validators_with_f64() {
 		let validator = RangeValidator::new(0.0f64, 1.0f64);
 		assert!(validator.validate(&0.5f64).is_ok());

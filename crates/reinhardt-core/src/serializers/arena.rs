@@ -315,8 +315,9 @@ impl<'a> Default for SerializationArena<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_arena_new() {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::Null);
@@ -324,7 +325,7 @@ mod tests {
 		assert_eq!(json, JsonValue::Null);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_string() {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::String("test".to_string()));
@@ -332,7 +333,7 @@ mod tests {
 		assert_eq!(json, "test");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_integer() {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::Integer(42));
@@ -340,7 +341,7 @@ mod tests {
 		assert_eq!(json, 42);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_float() {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::Float(42.5));
@@ -348,7 +349,7 @@ mod tests {
 		assert_eq!(json, 42.5);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_boolean() {
 		let arena = SerializationArena::new();
 		let value = arena.allocate_field(&FieldValue::Boolean(true));
@@ -356,7 +357,7 @@ mod tests {
 		assert!(json.as_bool().unwrap());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_array() {
 		let arena = SerializationArena::new();
 		let arr = vec![
@@ -369,7 +370,7 @@ mod tests {
 		assert_eq!(json, serde_json::json!([1, 2, 3]));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_allocate_object() {
 		let arena = SerializationArena::new();
 		let mut map = HashMap::new();
@@ -382,7 +383,7 @@ mod tests {
 		assert_eq!(json["age"], 30);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_nested_object() {
 		let arena = SerializationArena::new();
 
@@ -400,7 +401,7 @@ mod tests {
 		assert_eq!(json["address"]["city"], "Tokyo");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_serialize_model() {
 		use serde::{Deserialize, Serialize};
 
@@ -423,7 +424,7 @@ mod tests {
 		assert_eq!(json["name"], "Alice");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_deeply_nested_structure() {
 		let arena = SerializationArena::new();
 
@@ -452,7 +453,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_large_array() {
 		let arena = SerializationArena::new();
 
@@ -467,7 +468,7 @@ mod tests {
 		assert_eq!(json[999], 999);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_arena_mixed_nested_structure() {
 		let arena = SerializationArena::new();
 

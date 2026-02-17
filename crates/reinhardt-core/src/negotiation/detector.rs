@@ -154,8 +154,9 @@ impl Default for ContentTypeDetector {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_detect_json() {
 		let detector = ContentTypeDetector::new();
 		let json = r#"{"name": "test"}"#;
@@ -163,7 +164,7 @@ mod tests {
 		assert_eq!(result.subtype, "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_xml() {
 		let detector = ContentTypeDetector::new();
 		let xml = r#"<?xml version="1.0"?><root/>"#;
@@ -171,7 +172,7 @@ mod tests {
 		assert_eq!(result.subtype, "xml");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_yaml() {
 		let detector = ContentTypeDetector::new();
 		let yaml = "name: test\nage: 30";
@@ -179,7 +180,7 @@ mod tests {
 		assert_eq!(result.subtype, "yaml");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_detect_form_data() {
 		let detector = ContentTypeDetector::new();
 		let form = "name=test&age=30";
@@ -187,21 +188,21 @@ mod tests {
 		assert_eq!(result.subtype, "x-www-form-urlencoded");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_body() {
 		let detector = ContentTypeDetector::new();
 		let result = detector.detect(b"");
 		assert_eq!(result.subtype, "octet-stream");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_default() {
 		let detector = ContentTypeDetector::with_default(MediaType::new("text", "plain"));
 		let result = detector.detect(b"");
 		assert_eq!(result.subtype, "plain");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_json_array() {
 		let detector = ContentTypeDetector::new();
 		let json = r#"[{"name": "test"}]"#;
@@ -209,7 +210,7 @@ mod tests {
 		assert_eq!(result.subtype, "json");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_xml_without_declaration() {
 		let detector = ContentTypeDetector::new();
 		let xml = r#"<root><child>value</child></root>"#;

@@ -385,6 +385,7 @@ where
 mod tests {
 	use super::*;
 	use parking_lot::Mutex;
+	use rstest::rstest;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -394,7 +395,7 @@ mod tests {
 		count: i32,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_distributed_event_creation() {
 		let event = DistributedEvent::new("test_signal", "test_payload", "service-1");
 		assert_eq!(event.signal_name, "test_signal");
@@ -404,6 +405,7 @@ mod tests {
 		assert!(!event.event_id.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_in_memory_broker() {
 		let broker = InMemoryBroker::new();
@@ -423,6 +425,7 @@ mod tests {
 		assert_eq!(messages[0], b"hello");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_distributed_signal_publish_subscribe() {
 		let broker = InMemoryBroker::new();
@@ -451,6 +454,7 @@ mod tests {
 		assert_eq!(events[0], payload);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_distributed_signal_multiple_subscribers() {
 		let broker = InMemoryBroker::new();
@@ -481,6 +485,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_distributed_signal_name_and_service_id() {
 		let broker = InMemoryBroker::new();
@@ -490,6 +495,7 @@ mod tests {
 		assert_eq!(signal.service_id(), "my_service");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_distributed_signal_unsubscribe() {
 		let broker = InMemoryBroker::new();
@@ -516,6 +522,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_distributed_event_metadata() {
 		let broker = InMemoryBroker::new();

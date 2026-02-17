@@ -190,9 +190,10 @@ impl Validator<str> for IPAddressValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Basic IPv4 validation tests
-	#[test]
+	#[rstest]
 	fn test_ipv4_valid_addresses() {
 		let validator = IPAddressValidator::new();
 		let valid_ipv4 = vec![
@@ -215,7 +216,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ipv4_invalid_addresses() {
 		let validator = IPAddressValidator::new();
 		let invalid_ipv4 = vec![
@@ -241,7 +242,7 @@ mod tests {
 	}
 
 	// Basic IPv6 validation tests
-	#[test]
+	#[rstest]
 	fn test_ipv6_valid_addresses() {
 		let validator = IPAddressValidator::new();
 		let valid_ipv6 = vec![
@@ -266,7 +267,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ipv6_invalid_addresses() {
 		let validator = IPAddressValidator::new();
 		let invalid_ipv6 = vec![
@@ -289,7 +290,7 @@ mod tests {
 	}
 
 	// IPv4-only validator tests
-	#[test]
+	#[rstest]
 	fn test_ipv4_only_validator() {
 		let validator = IPAddressValidator::ipv4_only();
 
@@ -305,7 +306,7 @@ mod tests {
 	}
 
 	// IPv6-only validator tests
-	#[test]
+	#[rstest]
 	fn test_ipv6_only_validator() {
 		let validator = IPAddressValidator::ipv6_only();
 
@@ -321,7 +322,7 @@ mod tests {
 	}
 
 	// Custom message tests
-	#[test]
+	#[rstest]
 	fn test_custom_error_message() {
 		let custom_msg = "Please provide a valid IP address";
 		let validator = IPAddressValidator::new().with_message(custom_msg);
@@ -334,7 +335,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_error_message_ipv4_only() {
 		let custom_msg = "Only IPv4 addresses are allowed";
 		let validator = IPAddressValidator::ipv4_only().with_message(custom_msg);
@@ -347,7 +348,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_error_message_ipv6_only() {
 		let custom_msg = "Only IPv6 addresses are allowed";
 		let validator = IPAddressValidator::ipv6_only().with_message(custom_msg);
@@ -361,7 +362,7 @@ mod tests {
 	}
 
 	// String type tests
-	#[test]
+	#[rstest]
 	fn test_validator_with_string_type() {
 		let validator = IPAddressValidator::new();
 
@@ -372,7 +373,7 @@ mod tests {
 		assert!(validator.validate(&invalid_ip).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_with_str_type() {
 		let validator = IPAddressValidator::new();
 
@@ -382,13 +383,13 @@ mod tests {
 	}
 
 	// Edge cases
-	#[test]
+	#[rstest]
 	fn test_empty_string() {
 		let validator = IPAddressValidator::new();
 		assert!(validator.validate("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitespace() {
 		let validator = IPAddressValidator::new();
 		assert!(validator.validate(" ").is_err());
@@ -396,7 +397,7 @@ mod tests {
 		assert!(validator.validate(" 192.168.1.1").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_special_ipv4_addresses() {
 		let validator = IPAddressValidator::new();
 
@@ -410,7 +411,7 @@ mod tests {
 		assert!(validator.validate("0.0.0.0").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_special_ipv6_addresses() {
 		let validator = IPAddressValidator::new();
 
@@ -424,7 +425,7 @@ mod tests {
 		assert!(validator.validate("::ffff:192.0.2.1").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_ipv6_compression() {
 		let validator = IPAddressValidator::new();
 
@@ -435,7 +436,7 @@ mod tests {
 		assert!(validator.validate("2001:db8:0:0:0:0:0:1").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_implementation() {
 		let validator = IPAddressValidator::default();
 		assert!(validator.validate("192.168.1.1").is_ok());
@@ -443,7 +444,7 @@ mod tests {
 	}
 
 	// Error type tests
-	#[test]
+	#[rstest]
 	fn test_error_type_for_invalid_format() {
 		let validator = IPAddressValidator::new();
 
@@ -453,7 +454,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_error_type_for_wrong_version() {
 		let ipv4_validator = IPAddressValidator::ipv4_only();
 		match ipv4_validator.validate("::1") {
@@ -469,7 +470,7 @@ mod tests {
 	}
 
 	// Real-world IP addresses
-	#[test]
+	#[rstest]
 	fn test_real_world_ipv4_addresses() {
 		let validator = IPAddressValidator::new();
 
@@ -484,7 +485,7 @@ mod tests {
 		assert!(validator.validate("172.16.0.1").is_ok()); // Private network
 	}
 
-	#[test]
+	#[rstest]
 	fn test_real_world_ipv6_addresses() {
 		let validator = IPAddressValidator::new();
 

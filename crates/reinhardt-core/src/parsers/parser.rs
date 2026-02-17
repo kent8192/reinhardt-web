@@ -313,8 +313,9 @@ impl ParserRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_media_type_parse() {
 		let mt = MediaType::parse("application/json").unwrap();
 		assert_eq!(mt.main_type, "application");
@@ -326,7 +327,7 @@ mod tests {
 		assert_eq!(mt.parameters.get("charset"), Some(&"utf-8".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_media_type_matches() {
 		let mt = MediaType::new("application", "json");
 		assert!(mt.matches("application/json"));

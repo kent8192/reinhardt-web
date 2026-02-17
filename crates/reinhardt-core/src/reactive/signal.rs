@@ -198,16 +198,17 @@ impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Signal<T> {
 mod tests {
 	use super::*;
 	use crate::reactive::runtime::NodeType;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_creation() {
 		let signal = Signal::new(42);
 		assert_eq!(signal.get_untracked(), 42);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_set() {
 		let signal = Signal::new(0);
@@ -217,7 +218,7 @@ mod tests {
 		assert_eq!(signal.get_untracked(), 100);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_update() {
 		let signal = Signal::new(0);
@@ -229,7 +230,7 @@ mod tests {
 		assert_eq!(signal.get_untracked(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_clone() {
 		let signal1 = Signal::new(42);
@@ -243,7 +244,7 @@ mod tests {
 		assert_eq!(signal2.get_untracked(), 100);
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_multiple_signals() {
 		let signal1 = Signal::new(10);
@@ -263,7 +264,7 @@ mod tests {
 		assert_eq!(signal3.get_untracked(), "world");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_dependency_tracking() {
 		let signal = Signal::new(42);
@@ -293,7 +294,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	#[serial]
 	fn test_signal_change_notification() {
 		let signal = Signal::new(0);

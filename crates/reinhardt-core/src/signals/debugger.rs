@@ -419,6 +419,7 @@ impl<T: Send + Sync + 'static> SignalMiddleware<T> for SignalDebugger<T> {
 mod tests {
 	use super::*;
 	use crate::signals::{SignalName, signal::Signal};
+	use rstest::rstest;
 
 	#[derive(Debug, Clone)]
 	#[allow(dead_code)]
@@ -426,6 +427,7 @@ mod tests {
 		value: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debugger_tracks_sends() {
 		let debugger = SignalDebugger::new();
@@ -447,6 +449,7 @@ mod tests {
 		assert_eq!(stats.successful_executions, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debugger_tracks_failures() {
 		let debugger = SignalDebugger::new();
@@ -471,6 +474,7 @@ mod tests {
 		assert!(!failed.is_empty());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debugger_report() {
 		let debugger = SignalDebugger::new();
@@ -490,6 +494,7 @@ mod tests {
 		assert!(report.contains("total_sends: 1"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_debugger_clear() {
 		let debugger = SignalDebugger::new();
@@ -512,6 +517,7 @@ mod tests {
 		assert_eq!(debugger.events().len(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_events_by_type() {
 		let debugger = SignalDebugger::new();

@@ -140,8 +140,9 @@ fn to_pascal_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_to_pascal_case() {
 		assert_eq!(to_pascal_case("polls"), "Polls");
 		assert_eq!(to_pascal_case("user_profile"), "UserProfile");

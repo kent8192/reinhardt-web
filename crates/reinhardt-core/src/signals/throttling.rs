@@ -473,6 +473,7 @@ impl<T: Send + Sync + 'static> Clone for SignalThrottle<T> {
 mod tests {
 	use super::*;
 	use crate::signals::SignalName;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -495,7 +496,7 @@ mod tests {
 		Err(format!("Timeout after {:?} waiting for condition", timeout))
 	}
 
-	#[test]
+	#[rstest]
 	fn test_throttle_config() {
 		let config = ThrottleConfig::new()
 			.with_strategy(ThrottleStrategy::SlidingWindow)
@@ -509,6 +510,7 @@ mod tests {
 		assert!(!config.drop_on_limit());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_fixed_window_throttle() {
 		let signal = Signal::<i32>::new(SignalName::custom("test_fixed"));
@@ -548,6 +550,7 @@ mod tests {
 		assert_eq!(throttle.dropped_count(), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_sliding_window_throttle() {
 		let signal = Signal::<i32>::new(SignalName::custom("test_sliding"));
@@ -599,6 +602,7 @@ mod tests {
 		.expect("4th signal should be processed within 50ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_throttle() {
 		let signal = Signal::<i32>::new(SignalName::custom("test_token"));
@@ -646,6 +650,7 @@ mod tests {
 		.expect("11th signal should be dropped within 50ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_queue_mode() {
 		let signal = Signal::<i32>::new(SignalName::custom("test_queue"));

@@ -436,6 +436,7 @@ mod tests {
 	use super::*;
 	use crate::signals::SignalName;
 	use crate::signals::persistence::{MemoryStore, PersistentSignal};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -445,7 +446,7 @@ mod tests {
 		message: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_replay_config() {
 		let config = ReplayConfig::new()
 			.with_speed(ReplaySpeed::Fast)
@@ -459,7 +460,7 @@ mod tests {
 		assert!(config.stop_on_error());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_replay_speed_calculations() {
 		let original = Duration::from_secs(10);
 
@@ -477,6 +478,7 @@ mod tests {
 		assert_eq!(custom.calculate_delay(original), Duration::from_secs(5));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_replay_stats() {
 		let mut stats = ReplayStats::new();
@@ -489,6 +491,7 @@ mod tests {
 		assert_eq!(stats.success_rate(), 80.0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_replay_basic() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_replay"));
@@ -533,6 +536,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_replay_with_limit() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_limit"));
@@ -570,6 +574,7 @@ mod tests {
 		assert_eq!(counter.load(Ordering::SeqCst), 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_replay_with_offset() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_offset"));
@@ -613,6 +618,7 @@ mod tests {
 		assert!(!ids.contains(&4));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_replay_one() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_one"));

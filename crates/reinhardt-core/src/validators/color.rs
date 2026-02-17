@@ -208,8 +208,9 @@ impl Validator<str> for ColorValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_hex_colors() {
 		let validator = ColorValidator::new();
 
@@ -232,7 +233,7 @@ mod tests {
 		assert!(validator.validate("#").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rgb_colors() {
 		let validator = ColorValidator::new();
 
@@ -266,7 +267,7 @@ mod tests {
 		assert!(validator.validate("rgb(255.5, 0, 0)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rgba_colors() {
 		let validator = ColorValidator::new();
 
@@ -303,7 +304,7 @@ mod tests {
 		assert!(validator.validate("rgba(255, 0, 0, -0.5)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsl_colors() {
 		let validator = ColorValidator::new();
 
@@ -338,7 +339,7 @@ mod tests {
 		assert!(validator.validate("hsl(360, 100, 50%)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hsla_colors() {
 		let validator = ColorValidator::new();
 
@@ -373,7 +374,7 @@ mod tests {
 		assert!(validator.validate("hsla(360, 100, 50%, 0.5)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_hex_only_validator() {
 		let validator = ColorValidator::hex_only();
 
@@ -382,7 +383,7 @@ mod tests {
 		assert!(validator.validate("hsl(0, 100%, 50%)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_rgb_only_validator() {
 		let validator = ColorValidator::rgb_only();
 
@@ -391,7 +392,7 @@ mod tests {
 		assert!(validator.validate("rgba(255, 0, 0, 0.5)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_allow_specific_formats() {
 		let validator =
 			ColorValidator::new().allow_formats(vec![ColorFormat::RGB, ColorFormat::RGBA]);
@@ -402,7 +403,7 @@ mod tests {
 		assert!(validator.validate("hsl(0, 100%, 50%)").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_message() {
 		let validator = ColorValidator::hex_only().with_message("Please use hex color format");
 
@@ -414,7 +415,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_string() {
 		let validator = ColorValidator::new();
 		let color = String::from("#FF0000");
@@ -423,7 +424,7 @@ mod tests {
 		assert!(Validator::<String>::validate(&validator, &String::from("invalid")).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_str() {
 		let validator = ColorValidator::new();
 
@@ -431,13 +432,13 @@ mod tests {
 		assert!(Validator::<str>::validate(&validator, "invalid").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default() {
 		let validator = ColorValidator::default();
 		assert!(validator.validate("#FF0000").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitespace_handling() {
 		let validator = ColorValidator::new();
 

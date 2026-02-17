@@ -1136,63 +1136,64 @@ impl Default for DateTimeField {
 mod tests {
 	use super::*;
 	use chrono::{Datelike, Timelike};
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_char_field_valid() {
 		let field = CharField::new().min_length(3).max_length(10);
 		assert!(field.validate("hello").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_too_short() {
 		let field = CharField::new().min_length(5);
 		assert_eq!(field.validate("hi"), Err(FieldError::TooShort(5)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_char_field_too_long() {
 		let field = CharField::new().max_length(5);
 		assert_eq!(field.validate("hello world"), Err(FieldError::TooLong(5)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_field_valid() {
 		let field = IntegerField::new().min_value(0).max_value(100);
 		assert!(field.validate(50).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_field_too_small() {
 		let field = IntegerField::new().min_value(0);
 		assert_eq!(field.validate(-1), Err(FieldError::TooSmall(0)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_integer_field_too_large() {
 		let field = IntegerField::new().max_value(100);
 		assert_eq!(field.validate(101), Err(FieldError::TooLarge(100)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_float_field_valid() {
 		let field = FloatField::new().min_value(0.0).max_value(1.0);
 		assert!(field.validate(0.5).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_field() {
 		let field = BooleanField::new();
 		assert!(field.validate(true).is_ok());
 		assert!(field.validate(false).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_field_valid() {
 		let field = EmailField::new();
 		assert!(field.validate("user@example.com").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_field_invalid() {
 		let field = EmailField::new();
 		assert_eq!(field.validate("invalid"), Err(FieldError::InvalidEmail));
@@ -1203,14 +1204,14 @@ mod tests {
 		assert_eq!(field.validate("user@"), Err(FieldError::InvalidEmail));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_field_valid() {
 		let field = URLField::new();
 		assert!(field.validate("https://example.com").is_ok());
 		assert!(field.validate("http://localhost:8000").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_url_field_invalid() {
 		let field = URLField::new();
 		assert_eq!(field.validate("invalid"), Err(FieldError::InvalidUrl));
@@ -1220,7 +1221,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choice_field_valid() {
 		let field = ChoiceField::new(vec![
 			"red".to_string(),
@@ -1231,13 +1232,13 @@ mod tests {
 		assert!(field.validate("green").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_choice_field_invalid() {
 		let field = ChoiceField::new(vec!["red".to_string(), "green".to_string()]);
 		assert_eq!(field.validate("blue"), Err(FieldError::InvalidChoice));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_valid() {
 		let field = DateField::new();
 		let date = field.parse("2024-01-15").unwrap();
@@ -1246,13 +1247,13 @@ mod tests {
 		assert_eq!(date.day(), 15);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_invalid() {
 		let field = DateField::new();
 		assert_eq!(field.validate("invalid-date"), Err(FieldError::InvalidDate));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_date_field_custom_format() {
 		let field = DateField::new().format("%d/%m/%Y");
 		let date = field.parse("15/01/2024").unwrap();
@@ -1261,7 +1262,7 @@ mod tests {
 		assert_eq!(date.day(), 15);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_field_valid() {
 		let field = DateTimeField::new();
 		let dt = field.parse("2024-01-15 14:30:00").unwrap();
@@ -1273,7 +1274,7 @@ mod tests {
 		assert_eq!(dt.second(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_field_invalid() {
 		let field = DateTimeField::new();
 		assert_eq!(
@@ -1282,7 +1283,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_datetime_field_custom_format() {
 		let field = DateTimeField::new().format("%d/%m/%Y %H:%M");
 		let dt = field.parse("15/01/2024 14:30").unwrap();

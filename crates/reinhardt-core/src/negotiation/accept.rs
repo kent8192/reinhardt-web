@@ -88,15 +88,16 @@ impl AcceptHeader {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_parse_accept_header() {
 		let accept = AcceptHeader::parse("application/json, text/html; q=0.9");
 		assert_eq!(accept.media_types.len(), 2);
 		assert_eq!(accept.media_types[0].quality, 1.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_best_match() {
 		let accept = AcceptHeader::parse("application/json, text/html");
 		let available = vec![

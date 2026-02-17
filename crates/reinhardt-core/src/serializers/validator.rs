@@ -239,6 +239,7 @@ pub fn validate_fields(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
 	struct EmailValidator;
@@ -291,7 +292,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_field_error() {
 		let error = ValidationError::field_error("email", "Required field");
 		match error {
@@ -303,7 +304,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_object_error() {
 		let error = ValidationError::object_error("Invalid data");
 		match error {
@@ -314,7 +315,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validation_error_multiple() {
 		let errors = vec![
 			ValidationError::field_error("email", "Required"),
@@ -329,35 +330,35 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_valid() {
 		let validator = EmailValidator;
 		let value = json!("test@example.com");
 		assert!(validator.validate(&value).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_email_validator_invalid() {
 		let validator = EmailValidator;
 		let value = json!("not-an-email");
 		assert!(validator.validate(&value).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_positive_number_validator_valid() {
 		let validator = PositiveNumberValidator;
 		let value = json!(42);
 		assert!(validator.validate(&value).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_positive_number_validator_invalid() {
 		let validator = PositiveNumberValidator;
 		let value = json!(-5);
 		assert!(validator.validate(&value).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_password_match_validator_matching() {
 		let validator = PasswordMatchValidator;
 		let mut data = HashMap::new();
@@ -366,7 +367,7 @@ mod tests {
 		assert!(validator.validate(&data).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_password_match_validator_not_matching() {
 		let validator = PasswordMatchValidator;
 		let mut data = HashMap::new();
@@ -375,7 +376,7 @@ mod tests {
 		assert!(validator.validate(&data).is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_fields_all_valid() {
 		let mut validators: HashMap<String, Box<dyn FieldValidator>> = HashMap::new();
 		validators.insert("email".to_string(), Box::new(EmailValidator));
@@ -389,7 +390,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_fields_one_invalid() {
 		let mut validators: HashMap<String, Box<dyn FieldValidator>> = HashMap::new();
 		validators.insert("email".to_string(), Box::new(EmailValidator));
@@ -403,7 +404,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_fields_multiple_invalid() {
 		let mut validators: HashMap<String, Box<dyn FieldValidator>> = HashMap::new();
 		validators.insert("email".to_string(), Box::new(EmailValidator));
@@ -422,7 +423,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validate_fields_missing_field() {
 		let mut validators: HashMap<String, Box<dyn FieldValidator>> = HashMap::new();
 		validators.insert("email".to_string(), Box::new(EmailValidator));

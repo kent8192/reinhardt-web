@@ -367,6 +367,7 @@ impl<T: Send + Sync + Clone + 'static> Clone for PersistentSignal<T> {
 mod tests {
 	use super::*;
 	use crate::signals::SignalName;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -375,6 +376,7 @@ mod tests {
 		message: String,
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_store_basic() {
 		let store = MemoryStore::new();
@@ -404,6 +406,7 @@ mod tests {
 		assert_eq!(list[0].payload.message, "Hello");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_store_max_size() {
 		let store = MemoryStore::with_max_size(3);
@@ -431,6 +434,7 @@ mod tests {
 		assert_eq!(list[2].id, 5);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_memory_store_clear() {
 		let store = MemoryStore::new();
@@ -453,6 +457,7 @@ mod tests {
 		assert_eq!(store.count().await.unwrap(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_persistent_signal_send_and_store() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_persistent"));
@@ -490,6 +495,7 @@ mod tests {
 		assert_eq!(stored.unwrap().payload.id, 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_persistent_signal_list_pagination() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_pagination"));
@@ -518,6 +524,7 @@ mod tests {
 		assert_eq!(persistent.count().await.unwrap(), 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_persistent_signal_clear() {
 		let signal = Signal::<TestEvent>::new(SignalName::custom("test_clear"));

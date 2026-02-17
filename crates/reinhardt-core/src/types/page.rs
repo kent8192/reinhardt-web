@@ -752,8 +752,9 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_element_view_creation() {
 		let el = PageElement::new("div");
 		assert_eq!(el.tag, "div");
@@ -762,7 +763,7 @@ mod tests {
 		assert!(el.children.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_void_element_detection() {
 		assert!(PageElement::new("br").is_void);
 		assert!(PageElement::new("img").is_void);
@@ -771,7 +772,7 @@ mod tests {
 		assert!(!PageElement::new("span").is_void);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_element_with_attrs() {
 		let el = PageElement::new("div")
 			.attr("class", "container")
@@ -779,19 +780,19 @@ mod tests {
 		assert_eq!(el.attrs.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_element_with_children() {
 		let el = PageElement::new("div").child("Hello").child("World");
 		assert_eq!(el.children.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_element_with_attrs() {
 		let view = PageElement::new("div")
 			.attr("class", "container")
@@ -802,13 +803,13 @@ mod tests {
 		assert!(html.contains("id=\"main\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_void_element() {
 		let view = PageElement::new("br").into_page();
 		assert_eq!(view.render_to_string(), "<br />");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_element_with_children() {
 		let view = PageElement::new("div")
 			.child("Hello, ")
@@ -820,13 +821,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_text() {
 		let view = Page::text("Hello");
 		assert_eq!(view.render_to_string(), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_text_with_escaping() {
 		let view = Page::text("<script>alert('xss')</script>");
 		assert_eq!(
@@ -835,49 +836,49 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_fragment() {
 		let view = Page::fragment(["One", "Two", "Three"]);
 		assert_eq!(view.render_to_string(), "OneTwoThree");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_empty() {
 		let view = Page::empty();
 		assert_eq!(view.render_to_string(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_page_string() {
 		let view = "Hello".into_page();
 		assert_eq!(view.render_to_string(), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_page_option_some() {
 		let view: Page = Some("Hello").into_page();
 		assert_eq!(view.render_to_string(), "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_page_option_none() {
 		let view: Page = None::<String>.into_page();
 		assert_eq!(view.render_to_string(), "");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_page_vec() {
 		let view = vec!["A", "B", "C"].into_page();
 		assert_eq!(view.render_to_string(), "ABC");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_into_page_tuple() {
 		let view = ("Hello, ", "World!").into_page();
 		assert_eq!(view.render_to_string(), "Hello, World!");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_html_escape() {
 		assert_eq!(html_escape("Hello"), Cow::Borrowed("Hello"));
 		assert_eq!(
@@ -890,7 +891,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_elements() {
 		let view = PageElement::new("html")
 			.child(PageElement::new("head").child(PageElement::new("title").child("Test Page")))
@@ -910,7 +911,7 @@ mod tests {
 
 	// Boolean attribute handling tests
 
-	#[test]
+	#[rstest]
 	fn test_is_boolean_attr_truthy() {
 		// Truthy values
 		assert!(is_boolean_attr_truthy("true"));
@@ -924,7 +925,7 @@ mod tests {
 		assert!(!is_boolean_attr_truthy("0"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_disabled_empty_string_not_rendered() {
 		// Empty string should NOT render the disabled attribute
 		let view = PageElement::new("button").attr("disabled", "").into_page();
@@ -933,7 +934,7 @@ mod tests {
 		assert!(!html.contains("disabled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_disabled_false_not_rendered() {
 		// "false" should NOT render the disabled attribute
 		let view = PageElement::new("button")
@@ -944,7 +945,7 @@ mod tests {
 		assert!(!html.contains("disabled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_disabled_zero_not_rendered() {
 		// "0" should NOT render the disabled attribute
 		let view = PageElement::new("button").attr("disabled", "0").into_page();
@@ -953,7 +954,7 @@ mod tests {
 		assert!(!html.contains("disabled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_disabled_true_rendered() {
 		// "true" should render the disabled attribute
 		let view = PageElement::new("button")
@@ -963,7 +964,7 @@ mod tests {
 		assert!(html.contains("disabled=\"true\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_checked_empty_not_rendered() {
 		// Empty string should NOT render the checked attribute
 		let view = PageElement::new("input")
@@ -975,7 +976,7 @@ mod tests {
 		assert!(!html.contains("checked"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_boolean_attr_checked_true_rendered() {
 		// "true" should render the checked attribute
 		let view = PageElement::new("input")
@@ -986,7 +987,7 @@ mod tests {
 		assert!(html.contains("checked=\"true\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_non_boolean_attr_empty_string_rendered() {
 		// Non-boolean attributes with empty string SHOULD be rendered
 		let view = PageElement::new("input")
@@ -996,7 +997,7 @@ mod tests {
 		assert!(html.contains("placeholder=\"\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_non_boolean_attr_false_rendered() {
 		// Non-boolean attributes with "false" SHOULD be rendered as-is
 		let view = PageElement::new("div")
@@ -1006,7 +1007,7 @@ mod tests {
 		assert!(html.contains("data-active=\"false\""));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_boolean_attrs_mixed() {
 		// Mix of boolean and non-boolean attributes
 		let view = PageElement::new("input")

@@ -286,8 +286,9 @@ impl Default for SecurityHeadersMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_default_config() {
 		let config = SecurityHeadersConfig::default();
 		assert!(config.x_content_type_options);
@@ -296,7 +297,7 @@ mod tests {
 		assert!(config.strict_transport_security.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_to_header() {
 		let csp = ContentSecurityPolicy::default();
 		let header = csp.to_header_value();
@@ -304,7 +305,7 @@ mod tests {
 		assert!(header.contains("script-src 'self'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_with_nonce() {
 		let csp = ContentSecurityPolicy::new();
 		let nonce = "abc123xyz";
@@ -312,28 +313,28 @@ mod tests {
 		assert!(header.contains("'nonce-abc123xyz'"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_generate_nonce() {
 		let csp = ContentSecurityPolicy::new();
 		let nonce = csp.generate_nonce();
 		assert_eq!(nonce.len(), 32);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_with_report_uri() {
 		let csp = ContentSecurityPolicy::new().with_report_uri("/csp-report");
 		let header = csp.to_header_value();
 		assert!(header.contains("report-uri /csp-report"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_csp_with_report_to() {
 		let csp = ContentSecurityPolicy::new().with_report_to("csp-endpoint");
 		let header = csp.to_header_value();
 		assert!(header.contains("report-to csp-endpoint"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_security_headers_production() {
 		let config = SecurityHeadersConfig::production();
 		assert!(config.x_content_type_options);
@@ -341,7 +342,7 @@ mod tests {
 		assert!(config.cross_origin_embedder_policy.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_security_headers_development() {
 		let config = SecurityHeadersConfig::development();
 		assert_eq!(config.x_frame_options, Some("SAMEORIGIN".to_string()));

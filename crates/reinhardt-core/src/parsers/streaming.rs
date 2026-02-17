@@ -202,7 +202,9 @@ impl Default for StreamingParser {
 mod tests {
 	use super::*;
 	use futures_util::stream;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_media_types() {
 		let parser = StreamingParser::new(1024);
@@ -213,6 +215,7 @@ mod tests {
 		assert!(media_types.contains(&"*/*".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_can_parse() {
 		let parser = StreamingParser::new(1024);
@@ -222,6 +225,7 @@ mod tests {
 		assert!(parser.can_parse(Some("image/png")));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_small_body() {
 		let parser = StreamingParser::new(1024);
@@ -243,6 +247,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_with_max_size() {
 		let parser = StreamingParser::new(1024).with_max_size(10);
@@ -255,6 +260,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_within_max_size() {
 		let parser = StreamingParser::new(1024).with_max_size(100);
@@ -267,6 +273,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_stream_single_chunk() {
 		let parser = StreamingParser::new(10);
@@ -279,6 +286,7 @@ mod tests {
 		assert_eq!(chunks[0].offset, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_stream_multiple_chunks() {
 		let parser = StreamingParser::new(5);
@@ -296,6 +304,7 @@ mod tests {
 		assert_eq!(chunks[2].offset, 10);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_stream_with_max_size_exceeded() {
 		let parser = StreamingParser::new(5).with_max_size(10);
@@ -310,6 +319,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_stream_with_max_size_ok() {
 		let parser = StreamingParser::new(5).with_max_size(20);
@@ -324,6 +334,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_parse_stream_partial_final_chunk() {
 		let parser = StreamingParser::new(10);
@@ -340,6 +351,7 @@ mod tests {
 		assert!(chunks[1].total_size.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_streaming_parser_default() {
 		let parser = StreamingParser::default();

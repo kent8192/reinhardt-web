@@ -268,8 +268,9 @@ impl Validator<str> for PhoneNumberValidator {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_valid_us_phone_number() {
 		let validator = PhoneNumberValidator::new();
 		assert!(validator.validate("+12025551234").is_ok());
@@ -278,7 +279,7 @@ mod tests {
 		assert!(validator.validate("+1 (202) 555-1234").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_japan_phone_number() {
 		let validator = PhoneNumberValidator::new();
 		assert!(validator.validate("+819012345678").is_ok());
@@ -286,7 +287,7 @@ mod tests {
 		assert!(validator.validate("+81 90 1234 5678").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_uk_phone_number() {
 		let validator = PhoneNumberValidator::new();
 		assert!(validator.validate("+442012345678").is_ok());
@@ -294,7 +295,7 @@ mod tests {
 		assert!(validator.validate("+44 20 1234 5678").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_missing_plus() {
 		let validator = PhoneNumberValidator::new();
 		let result = validator.validate("12025551234");
@@ -307,7 +308,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_too_short() {
 		let validator = PhoneNumberValidator::new();
 		let result = validator.validate("+123");
@@ -320,7 +321,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_too_long() {
 		let validator = PhoneNumberValidator::new();
 		let result = validator.validate("+12345678901234567890");
@@ -333,7 +334,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_empty_string() {
 		let validator = PhoneNumberValidator::new();
 		let result = validator.validate("");
@@ -346,14 +347,14 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_characters() {
 		let validator = PhoneNumberValidator::new();
 		assert!(validator.validate("+1202abc5678").is_err());
 		assert!(validator.validate("+1202#5678901").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_country_code_whitelist() {
 		let validator = PhoneNumberValidator::with_countries(vec![
 			"1".to_string(),
@@ -383,7 +384,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extensions_allowed() {
 		let validator = PhoneNumberValidator::new().with_extensions(true);
 
@@ -393,7 +394,7 @@ mod tests {
 		assert!(validator.validate("+12025551234 ext 789").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_extensions_not_allowed() {
 		let validator = PhoneNumberValidator::new();
 
@@ -408,7 +409,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_various_formatting() {
 		let validator = PhoneNumberValidator::new();
 
@@ -422,7 +423,7 @@ mod tests {
 		assert!(validator.validate("+1 (202) 555-1234").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_edge_cases() {
 		let validator = PhoneNumberValidator::new();
 
@@ -436,7 +437,7 @@ mod tests {
 		assert!(validator.validate("+0123456789").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_validator_trait_with_string() {
 		let validator = PhoneNumberValidator::new();
 		let number = String::from("+12025551234");
@@ -448,7 +449,7 @@ mod tests {
 		assert!(Validator::<str>::validate(&validator, &number).is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_country_code_extraction() {
 		let validator = PhoneNumberValidator::new();
 
@@ -468,13 +469,13 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_default_constructor() {
 		let validator = PhoneNumberValidator::default();
 		assert!(validator.validate("+12025551234").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_whitespace_handling() {
 		let validator = PhoneNumberValidator::new();
 
@@ -483,7 +484,7 @@ mod tests {
 		assert!(validator.validate("\t+12025551234\n").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_combined_country_codes_and_extensions() {
 		let validator =
 			PhoneNumberValidator::with_countries(vec!["1".to_string(), "81".to_string()])

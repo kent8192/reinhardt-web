@@ -421,6 +421,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestData {
@@ -428,7 +429,7 @@ mod tests {
 		message: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_subscription_event_creation() {
 		let event = SubscriptionEvent::new("test", "data");
 		assert_eq!(event.subscription_name, "test");
@@ -436,6 +437,7 @@ mod tests {
 		assert!(event.timestamp > 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_subscribe() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -447,6 +449,7 @@ mod tests {
 		assert_eq!(result, "message");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_multiple_subscribers() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -464,6 +467,7 @@ mod tests {
 		assert_eq!(msg2, "data");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_connect_signal() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -485,6 +489,7 @@ mod tests {
 		assert_eq!(parsed.data, "test data");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_subscription_count() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -497,6 +502,7 @@ mod tests {
 		assert_eq!(bridge.subscription_count(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_remove_stream() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -508,6 +514,7 @@ mod tests {
 		assert_eq!(bridge.subscription_count(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_typed_subscription() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -532,6 +539,7 @@ mod tests {
 		assert_eq!(parsed.data, event.data);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_receiver_count() {
 		let bridge = GraphQLSubscriptionBridge::new();
@@ -546,6 +554,7 @@ mod tests {
 		// Note: receiver_count may still show 2 due to async nature of channel cleanup
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_graphql_bridge_multiple_subscriptions() {
 		let bridge = GraphQLSubscriptionBridge::new();

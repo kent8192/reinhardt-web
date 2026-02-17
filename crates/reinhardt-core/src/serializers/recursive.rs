@@ -368,8 +368,9 @@ mod tests {
 	use super::*;
 	use circular::*;
 	use depth::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_context_new() {
 		let context = SerializationContext::new(3);
 		assert_eq!(context.current_depth(), 0);
@@ -377,7 +378,7 @@ mod tests {
 		assert!(context.can_go_deeper());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_child() {
 		let context = SerializationContext::new(3);
 		let child = context.child();
@@ -387,7 +388,7 @@ mod tests {
 		assert!(child.can_go_deeper());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_can_go_deeper() {
 		let context = SerializationContext::new(2);
 		assert!(context.can_go_deeper());
@@ -399,7 +400,7 @@ mod tests {
 		assert!(!child2.can_go_deeper());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_visit_and_leave() {
 		#[allow(dead_code)]
 		struct User {
@@ -418,7 +419,7 @@ mod tests {
 		assert!(context.visit(&user));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_reset() {
 		#[allow(dead_code)]
 		struct User {
@@ -437,7 +438,7 @@ mod tests {
 		assert_eq!(reset_context.current_depth(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remaining_depth() {
 		let context = SerializationContext::new(3);
 		assert_eq!(context.remaining_depth(), 3);
@@ -452,14 +453,14 @@ mod tests {
 		assert_eq!(child3.remaining_depth(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_default() {
 		let context = SerializationContext::default();
 		assert_eq!(context.current_depth(), 0);
 		assert_eq!(context.max_depth(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_recursive_error_display() {
 		let err = RecursiveError::MaxDepthExceeded {
 			current_depth: 5,
@@ -478,7 +479,7 @@ mod tests {
 		assert_eq!(err.to_string(), "Serialization error: test error");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_reference_detection() {
 		#[allow(dead_code)]
 		struct User {
@@ -495,7 +496,7 @@ mod tests {
 		assert!(!context.visit(&user));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_visit_with() {
 		#[allow(dead_code)]
 		struct User {
@@ -512,7 +513,7 @@ mod tests {
 		assert!(context.visit(&user)); // Can visit again
 	}
 
-	#[test]
+	#[rstest]
 	fn test_circular_visit_with_error() {
 		#[allow(dead_code)]
 		struct User {
@@ -533,7 +534,7 @@ mod tests {
 		assert!(context.visit(&user)); // Can visit again
 	}
 
-	#[test]
+	#[rstest]
 	fn test_different_objects_same_string_representation() {
 		#[allow(dead_code)]
 		struct User {
@@ -552,7 +553,7 @@ mod tests {
 		context.leave(&user2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_same_object_multiple_references() {
 		#[allow(dead_code)]
 		struct User {
@@ -572,7 +573,7 @@ mod tests {
 		assert!(!context.visit(user_ref));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_depth_can_descend() {
 		let context = SerializationContext::new(2);
 		assert!(can_descend(&context));
@@ -584,7 +585,7 @@ mod tests {
 		assert!(!can_descend(&grandchild));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_depth_try_descend() {
 		let context = SerializationContext::new(2);
 		assert!(try_descend(&context).is_ok());
@@ -600,7 +601,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_depth_descend_with() {
 		let context = SerializationContext::new(3);
 

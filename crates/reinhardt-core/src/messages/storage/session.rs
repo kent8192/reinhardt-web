@@ -184,21 +184,22 @@ impl MessageStorage for SessionStorage {
 mod tests {
 	use super::*;
 	use crate::messages::levels::Level;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_creation() {
 		let storage = SessionStorage::new();
 		assert_eq!(storage.session_key(), "_messages");
 		assert!(storage.is_session_available());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_custom_key() {
 		let storage = SessionStorage::new().with_session_key("custom_messages");
 		assert_eq!(storage.session_key(), "custom_messages");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_add_get() {
 		let mut storage = SessionStorage::new();
 		storage.add(Message::new(Level::Info, "Test message"));
@@ -208,7 +209,7 @@ mod tests {
 		assert_eq!(messages[0].text, "Test message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_serialize() {
 		let mut storage = SessionStorage::new();
 		storage.add(Message::new(Level::Info, "Test"));
@@ -219,7 +220,7 @@ mod tests {
 		assert!(serialized.contains("Error"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_round_trip() {
 		let mut storage = SessionStorage::new();
 		storage.add(Message::new(Level::Success, "Success message"));
@@ -236,7 +237,7 @@ mod tests {
 		assert_eq!(messages[1].text, "Warning message");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_without_session() {
 		let storage = SessionStorage::without_session();
 		assert!(!storage.is_session_available());
@@ -250,7 +251,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_with_session() {
 		let storage = SessionStorage::new();
 		assert!(storage.is_session_available());
@@ -259,7 +260,7 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_session_storage_clear() {
 		let mut storage = SessionStorage::new();
 		storage.add(Message::new(Level::Info, "Message 1"));
@@ -271,7 +272,7 @@ mod tests {
 		assert_eq!(storage.peek().len(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_session_storage_get_all_clears() {
 		let mut storage = SessionStorage::new();
 		storage.add(Message::new(Level::Info, "Message 1"));

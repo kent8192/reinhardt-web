@@ -476,6 +476,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::sync::Arc;
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -483,7 +484,7 @@ mod tests {
 		message: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_message_creation() {
 		let msg = WebSocketMessage::new("test", "payload");
 		assert_eq!(msg.event_type, "test");
@@ -491,7 +492,7 @@ mod tests {
 		assert!(msg.timestamp > 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_websocket_client() {
 		let client = MockWebSocketClient::new("test-client");
 		assert_eq!(client.client_id(), "test-client");
@@ -503,7 +504,7 @@ mod tests {
 		assert_eq!(messages[0], "Hello");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mock_client_disconnect() {
 		let client = MockWebSocketClient::new("test");
 		client.disconnect();
@@ -513,7 +514,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_bridge_add_remove_client() {
 		let bridge = WebSocketSignalBridge::new();
 		let client = Arc::new(MockWebSocketClient::new("client-1"));
@@ -525,7 +526,7 @@ mod tests {
 		assert_eq!(bridge.client_count(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_bridge_broadcast() {
 		let bridge = WebSocketSignalBridge::new();
 
@@ -542,6 +543,7 @@ mod tests {
 		assert_eq!(client1.messages()[0], "Test message");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_websocket_bridge_connect_signal() {
 		let bridge = WebSocketSignalBridge::new();
@@ -560,7 +562,7 @@ mod tests {
 		assert_eq!(parsed.event_type, "test.event");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_bridge_cleanup_disconnected() {
 		let bridge = WebSocketSignalBridge::new();
 
@@ -578,7 +580,7 @@ mod tests {
 		assert_eq!(bridge.client_count(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_typed_websocket_broadcaster() {
 		let bridge = WebSocketSignalBridge::new();
 		let client = Arc::new(MockWebSocketClient::new("client-1"));

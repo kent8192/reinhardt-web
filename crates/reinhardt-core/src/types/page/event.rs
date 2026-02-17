@@ -238,8 +238,9 @@ impl std::str::FromStr for EventType {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_event_type_as_str() {
 		assert_eq!(EventType::Click.as_str(), "click");
 		assert_eq!(EventType::MouseDown.as_str(), "mousedown");
@@ -248,7 +249,7 @@ mod tests {
 		assert_eq!(EventType::TouchStart.as_str(), "touchstart");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_event_type_conversion() {
 		let event_str: &str = EventType::Click.into();
 		assert_eq!(event_str, "click");

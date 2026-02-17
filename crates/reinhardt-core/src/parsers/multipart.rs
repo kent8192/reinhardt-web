@@ -155,6 +155,7 @@ impl Parser for MultiPartParser {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	fn create_multipart_body(boundary: &str) -> Bytes {
 		let body = format!(
@@ -177,6 +178,7 @@ mod tests {
 		Bytes::from(body)
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multipart_parser_valid() {
 		let parser = MultiPartParser::new();
@@ -203,6 +205,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_multipart_parser_max_file_size() {
 		let parser = MultiPartParser::new().max_file_size(10); // Very small limit
@@ -215,7 +218,7 @@ mod tests {
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multipart_parser_media_types() {
 		let parser = MultiPartParser::new();
 		let media_types = parser.media_types();

@@ -130,22 +130,23 @@ impl FromStr for Level {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Tests from Django messages_tests/base.py - BaseTests
-	#[test]
+	#[rstest]
 	fn test_default_level() {
 		let default_level = Level::default();
 		assert_eq!(default_level, Level::Info);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_low_level() {
 		// Test that Debug (10) is lower than Info (20)
 		assert!(Level::Debug < Level::Info);
 		assert_eq!(Level::Debug.value(), 10);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_high_level() {
 		// Test that Warning (30) and Error (40) are higher levels
 		assert!(Level::Warning > Level::Info);
@@ -154,7 +155,7 @@ mod tests {
 		assert_eq!(Level::Error.value(), 40);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_messages_level_from_str() {
 		assert_eq!(Level::from_str("debug"), Ok(Level::Debug));
 		assert_eq!(Level::from_str("info"), Ok(Level::Info));
@@ -172,7 +173,7 @@ mod tests {
 		assert!(Level::from_str("").is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_values() {
 		// Verify the exact numeric values match Django's conventions
 		assert_eq!(Level::Debug.value(), 10);
@@ -182,7 +183,7 @@ mod tests {
 		assert_eq!(Level::Error.value(), 40);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_custom_level() {
 		// Test custom level creation and value retrieval
 		let custom_level = Level::Custom(29);
@@ -194,7 +195,7 @@ mod tests {
 		assert_eq!(from_value, Level::Custom(29));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_level_ordering_with_custom() {
 		// Test that custom levels maintain proper ordering
 		let debug = Level::Debug;

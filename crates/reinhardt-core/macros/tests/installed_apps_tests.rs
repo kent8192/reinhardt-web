@@ -1,8 +1,9 @@
 //! Tests for the installed_apps! macro
 
 use reinhardt_macros::installed_apps;
+use rstest::rstest;
 
-#[test]
+#[rstest]
 fn test_installed_apps_basic() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -15,7 +16,7 @@ fn test_installed_apps_basic() {
 	assert!(apps.contains(&"reinhardt.contrib.contenttypes".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_enum() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -26,7 +27,7 @@ fn test_installed_apps_enum() {
 	assert_eq!(InstalledApp::sessions.path(), "reinhardt.contrib.sessions");
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_display() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -36,7 +37,7 @@ fn test_installed_apps_display() {
 	assert_eq!(format!("{}", app), "reinhardt.contrib.auth");
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_from_str() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -53,7 +54,7 @@ fn test_installed_apps_from_str() {
 	assert!(invalid.is_err());
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_with_user_apps() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -67,7 +68,7 @@ fn test_installed_apps_with_user_apps() {
 	assert!(apps.contains(&"custom.another".to_string()));
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_single_app() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -77,7 +78,7 @@ fn test_installed_apps_single_app() {
 	assert_eq!(apps.len(), 1);
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_equality() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",
@@ -92,7 +93,7 @@ fn test_installed_apps_equality() {
 	assert_ne!(app1, app3);
 }
 
-#[test]
+#[rstest]
 fn test_installed_apps_debug() {
 	installed_apps! {
 		auth: "reinhardt.contrib.auth",

@@ -346,6 +346,7 @@ mod tests {
 	use super::*;
 	use crate::signals::SignalName;
 	use parking_lot::Mutex as ParkingLotMutex;
+	use rstest::rstest;
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	/// Polls a condition until it returns true or timeout is reached.
@@ -368,7 +369,7 @@ mod tests {
 		Err(format!("Timeout after {:?} waiting for condition", timeout))
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_config() {
 		let config = BatchConfig::new()
 			.with_max_batch_size(100)
@@ -378,13 +379,14 @@ mod tests {
 		assert_eq!(config.flush_interval(), Duration::from_millis(500));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_batch_config_default() {
 		let config = BatchConfig::default();
 		assert_eq!(config.max_batch_size(), 50);
 		assert_eq!(config.flush_interval(), Duration::from_secs(1));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_batcher_manual_flush() {
 		let signal = Signal::<Vec<i32>>::new(SignalName::custom("test_batch"));
@@ -419,6 +421,7 @@ mod tests {
 		assert_eq!(*results, vec![0, 1, 2, 3, 4]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_batcher_auto_flush_by_size() {
 		let signal = Signal::<Vec<i32>>::new(SignalName::custom("test_auto_batch"));
@@ -447,6 +450,7 @@ mod tests {
 		assert_eq!(batcher.current_batch_size(), 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_batcher_auto_flush_by_time() {
 		let signal = Signal::<Vec<i32>>::new(SignalName::custom("test_time_batch"));
@@ -482,6 +486,7 @@ mod tests {
 		.expect("Batch should be flushed within 400ms");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_signal_batcher_empty_flush() {
 		let signal = Signal::<Vec<i32>>::new(SignalName::custom("test_empty"));

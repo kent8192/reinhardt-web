@@ -517,8 +517,9 @@ impl Default for SignalGraph {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_add_nodes() {
 		let mut graph = SignalGraph::new();
 
@@ -528,7 +529,7 @@ mod tests {
 		assert_eq!(graph.nodes.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_edges() {
 		let mut graph = SignalGraph::new();
 
@@ -539,7 +540,7 @@ mod tests {
 		assert_eq!(graph.edges.len(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_dot() {
 		let mut graph = SignalGraph::new();
 
@@ -554,7 +555,7 @@ mod tests {
 		assert!(dot.contains("notify"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_mermaid() {
 		let mut graph = SignalGraph::new();
 
@@ -567,7 +568,7 @@ mod tests {
 		assert!(mermaid.contains("signal1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_to_ascii() {
 		let mut graph = SignalGraph::new();
 
@@ -580,7 +581,7 @@ mod tests {
 		assert!(ascii.contains("receiver1"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_mark_as_critical() {
 		let mut graph = SignalGraph::new();
 
@@ -591,7 +592,7 @@ mod tests {
 		assert!(node.is_critical);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_find_receivers() {
 		let mut graph = SignalGraph::new();
 
@@ -605,7 +606,7 @@ mod tests {
 		assert_eq!(receivers.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_conditional_edge() {
 		let mut graph = SignalGraph::new();
 
