@@ -48,8 +48,9 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_collect_rust_files_nonexistent() {
 		let path = PathBuf::from("/nonexistent/path/that/does/not/exist");
 		let result = collect_rust_files(&path);
@@ -58,7 +59,7 @@ mod tests {
 		assert!(result.unwrap_err().contains("does not exist"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_collect_rust_files_single_file() {
 		use std::io::Write;
 
@@ -79,7 +80,7 @@ mod tests {
 		std::fs::remove_file(&test_file).ok();
 	}
 
-	#[test]
+	#[rstest]
 	fn test_collect_rust_files_non_rust() {
 		use std::io::Write;
 
