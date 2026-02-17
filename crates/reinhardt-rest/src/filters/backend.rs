@@ -36,8 +36,9 @@
 
 use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
+use reinhardt_query::SimpleExpr;
 use reinhardt_query::prelude::{
-	Cond, Expr, MySqlQueryBuilder, Order, Query, QueryStatementBuilder,
+	Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, Order, Query, QueryStatementBuilder,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -269,31 +270,19 @@ impl SimpleSearchBackend {
 
 	/// Build the search condition using reinhardt-query
 	///
-	/// Returns the WHERE clause string (without the "WHERE" keyword) for the search condition.
-	/// Uses `Expr::cust()` to generate database-agnostic SQL without identifier quoting.
-	fn build_search_condition(&self, search_query: &str) -> String {
+	/// Returns a vector of SimpleExpr for the search condition.
+	/// Uses SeaQuery's parameterized query building to prevent SQL injection.
+	fn build_search_conditions(&self, search_query: &str) -> Vec<SimpleExpr> {
 		let escaped = Self::escape_like_pattern(search_query);
 
-		let mut condition = Cond::any();
-		for field in &self.fields {
-			// Use Expr::cust() to generate SQL without identifier quoting
-			// This ensures compatibility with all databases (PostgreSQL, MySQL, SQLite)
-			let like_expr = format!("{} LIKE '%{}%'", field, escaped);
-			condition = condition.add(Expr::cust(like_expr));
-		}
-
-		// Build a minimal SELECT query to extract the WHERE clause
-		let query = Query::select()
-			.expr(Expr::val(1))
-			.cond_where(condition)
-			.to_string(MySqlQueryBuilder);
-
-		// Extract just the WHERE condition portion (after "WHERE ")
-		if let Some(idx) = query.find("WHERE ") {
-			query[idx + 6..].to_string()
-		} else {
-			String::new()
-		}
+		self.fields
+			.iter()
+			.map(|field| {
+				// Use SeaQuery's .contains() which properly parameterizes the value
+				// This prevents SQL injection by using parameterized queries
+				Expr::col(Alias::new(field)).contains(escaped.as_str())
+			})
+			.collect()
 	}
 }
 
@@ -311,9 +300,30 @@ impl FilterBackend for SimpleSearchBackend {
 				));
 			}
 
-			// Use reinhardt-query to build type-safe LIKE conditions
-			let condition = self.build_search_condition(search_query);
-			let where_clause = format!("WHERE ({})", condition);
+			// Build search conditions using SeaQuery's parameterized queries
+			let conditions = self.build_search_conditions(search_query);
+
+			// Combine all conditions with OR logic
+			let mut condition = Cond::any();
+			for cond in conditions {
+				condition = condition.add(cond);
+			}
+
+			// Build a minimal SELECT query to extract the WHERE clause
+			// SeaQuery properly escapes values when generating SQL
+			let query = Query::select()
+				.expr(Expr::val(1))
+				.cond_where(condition)
+				.to_string(MySqlQueryBuilder);
+
+			// Extract just the WHERE condition portion (after "WHERE ")
+			let condition_str = if let Some(idx) = query.find("WHERE ") {
+				query[idx + 6..].to_string()
+			} else {
+				String::new()
+			};
+
+			let where_clause = format!("WHERE ({})", condition_str);
 
 			if sql.to_uppercase().contains("WHERE") {
 				Ok(sql.replace("WHERE", &format!("{} AND", where_clause)))
@@ -474,8 +484,8 @@ mod tests {
 		let sql = "SELECT * FROM users".to_string();
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 		assert!(result.contains("WHERE"));
-		// reinhardt-query generates backtick-quoted column names for MySQL
-		assert!(result.contains("name LIKE '%john%'"));
+		// SeaQuery generates backtick-quoted column names for MySQL
+		assert!(result.contains("`name` LIKE '%john%'"));
 	}
 
 	#[tokio::test]
@@ -491,9 +501,9 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
 		assert!(result.contains("WHERE"));
-		// reinhardt-query generates backtick-quoted column names for MySQL
-		assert!(result.contains("title LIKE '%rust%'"));
-		assert!(result.contains("content LIKE '%rust%'"));
+		// SeaQuery generates backtick-quoted column names for MySQL
+		assert!(result.contains("`title` LIKE '%rust%'"));
+		assert!(result.contains("`content` LIKE '%rust%'"));
 		assert!(result.contains("OR"));
 	}
 
@@ -519,6 +529,45 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await;
 
 		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_simple_search_backend_sql_injection_prevention() {
+		let backend = SimpleSearchBackend::new("search").with_field("title");
+
+		// Test SQL injection payloads with single quotes
+		// SeaQuery should properly escape single quotes when generating SQL
+		let injection_payloads = [
+			"' OR '1'='1",
+			"'; DROP TABLE articles; --",
+			"' UNION SELECT * FROM users --",
+		];
+
+		for payload in injection_payloads {
+			let mut params = HashMap::new();
+			params.insert("search".to_string(), payload.to_string());
+
+			let sql = "SELECT * FROM articles".to_string();
+			let result = backend.filter_queryset(&params, sql.clone()).await.unwrap();
+
+			// Verify that the result contains a properly formatted LIKE clause
+			// The key protection is that SeaQuery escapes single quotes within the LIKE pattern
+			assert!(
+				result.contains("LIKE"),
+				"Result should contain LIKE clause for payload: {}",
+				payload
+			);
+
+			// Count single quotes in the result - they should be balanced (even count)
+			// If SQL injection succeeded, there would be unbalanced quotes
+			let single_quote_count = result.matches('\'').count();
+			assert!(
+				single_quote_count % 2 == 0,
+				"SQL injection vulnerability: unbalanced single quotes in result for payload: {}. Result: {}",
+				payload,
+				result
+			);
+		}
 	}
 
 	#[tokio::test]
@@ -595,8 +644,8 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await.unwrap();
 
 		assert!(result.contains("WHERE"));
-		// reinhardt-query generates backtick-quoted column names for MySQL
-		assert!(result.contains("title LIKE '%rust%'"));
+		// SeaQuery generates backtick-quoted column names for MySQL
+		assert!(result.contains("`title` LIKE '%rust%'"));
 		assert!(result.contains("ORDER BY created_at DESC"));
 	}
 }
