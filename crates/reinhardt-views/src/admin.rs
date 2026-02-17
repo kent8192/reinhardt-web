@@ -10,6 +10,7 @@
 
 use async_trait::async_trait;
 use reinhardt_core::exception::{Error, Result};
+use reinhardt_core::security::xss::escape_html;
 use reinhardt_db::orm::Model;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -307,13 +308,13 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
 		let count = objects.len();
 
 		let mut html = String::from("<div class=\"admin-list\">\n");
-		html.push_str(&format!("<h2>{} List</h2>\n", T::table_name()));
+		html.push_str(&format!("<h2>{} List</h2>\n", escape_html(T::table_name())));
 		html.push_str(&format!("<p>Total: {} items</p>\n", count));
 
 		// Table header
 		html.push_str("<table>\n<thead>\n<tr>\n");
 		for field in &self.list_display {
-			html.push_str(&format!("<th>{}</th>\n", field));
+			html.push_str(&format!("<th>{}</th>\n", escape_html(field)));
 		}
 		html.push_str("</tr>\n</thead>\n<tbody>\n");
 
@@ -328,7 +329,8 @@ impl<T: Model + Serialize + for<'de> Deserialize<'de> + Clone> ModelAdmin<T> {
 					.get(field)
 					.map(|v| v.to_string())
 					.unwrap_or_else(|| "-".to_string());
-				html.push_str(&format!("<td>{}</td>\n", value));
+				// Escape user-controlled values to prevent XSS
+				html.push_str(&format!("<td>{}</td>\n", escape_html(&value)));
 			}
 			html.push_str("</tr>\n");
 		}
