@@ -133,9 +133,10 @@ pub fn render_text(text: impl Into<String>) -> Response {
 mod tests {
 	use super::*;
 	use hyper::StatusCode;
+	use rstest::rstest;
 	use serde_json::json;
 
-	#[test]
+	#[rstest]
 	fn test_render_json() {
 		let data = json!({"name": "test", "value": 123});
 		let response = render_json(&data);
@@ -156,7 +157,7 @@ mod tests {
 		assert!(body_str.contains("123"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_json_pretty() {
 		let data = json!({"name": "test"});
 		let response = render_json_pretty(&data);
@@ -168,7 +169,7 @@ mod tests {
 		assert!(body_str.contains('\n'));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_html() {
 		let html = "<h1>Title</h1><p>Content</p>";
 		let response = render_html(html);
@@ -188,7 +189,7 @@ mod tests {
 		assert_eq!(body_str, "<h1>Title</h1><p>Content</p>");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_text() {
 		let text = "Plain text content";
 		let response = render_text(text);
@@ -208,7 +209,7 @@ mod tests {
 		assert_eq!(body_str, "Plain text content");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_render_json_with_custom_struct() {
 		#[derive(serde::Serialize)]
 		struct User {

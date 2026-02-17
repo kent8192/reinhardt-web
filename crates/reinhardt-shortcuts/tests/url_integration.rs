@@ -4,9 +4,10 @@
 //! relative paths, absolute paths, query parameters, and error cases.
 
 use reinhardt_shortcuts::{Url, UrlError};
+use rstest::rstest;
 
 /// Test: Valid relative URL paths
-#[test]
+#[rstest]
 fn test_valid_relative_urls() {
 	// Simple relative paths
 	let url = Url::new("/").unwrap();
@@ -24,7 +25,7 @@ fn test_valid_relative_urls() {
 }
 
 /// Test: Valid absolute URLs
-#[test]
+#[rstest]
 fn test_valid_absolute_urls() {
 	// HTTP URLs
 	let url = Url::new("http://example.com").unwrap();
@@ -44,7 +45,7 @@ fn test_valid_absolute_urls() {
 }
 
 /// Test: URLs with query parameters
-#[test]
+#[rstest]
 fn test_urls_with_query_parameters() {
 	// Single parameter
 	let url = Url::new("/search?q=rust").unwrap();
@@ -60,7 +61,7 @@ fn test_urls_with_query_parameters() {
 }
 
 /// Test: URLs with fragments
-#[test]
+#[rstest]
 fn test_urls_with_fragments() {
 	// Fragment only
 	let url = Url::new("/page#section").unwrap();
@@ -76,7 +77,7 @@ fn test_urls_with_fragments() {
 }
 
 /// Test: Empty URL validation error
-#[test]
+#[rstest]
 fn test_empty_url_error() {
 	let result = Url::new("");
 	assert!(result.is_err());
@@ -84,7 +85,7 @@ fn test_empty_url_error() {
 }
 
 /// Test: Whitespace-only URL validation error
-#[test]
+#[rstest]
 fn test_whitespace_only_url_error() {
 	let result = Url::new("   ");
 	assert!(result.is_err());
@@ -96,7 +97,7 @@ fn test_whitespace_only_url_error() {
 }
 
 /// Test: URL Display trait implementation
-#[test]
+#[rstest]
 fn test_url_display() {
 	let url = Url::new("/home").unwrap();
 	assert_eq!(format!("{}", url), "/home");
@@ -106,7 +107,7 @@ fn test_url_display() {
 }
 
 /// Test: URL AsRef<str> implementation
-#[test]
+#[rstest]
 fn test_url_as_ref() {
 	let url = Url::new("/page").unwrap();
 	let url_ref: &str = url.as_ref();
@@ -114,7 +115,7 @@ fn test_url_as_ref() {
 }
 
 /// Test: URL into_string conversion
-#[test]
+#[rstest]
 fn test_url_into_string() {
 	let url = Url::new("/about").unwrap();
 	let string: String = url.into_string();
@@ -122,7 +123,7 @@ fn test_url_into_string() {
 }
 
 /// Test: URL From<String> conversion (backward compatibility)
-#[test]
+#[rstest]
 fn test_url_from_string() {
 	let string = String::from("/users");
 	let url: Url = string.into();
@@ -135,7 +136,7 @@ fn test_url_from_string() {
 }
 
 /// Test: URL From<&str> conversion (backward compatibility)
-#[test]
+#[rstest]
 fn test_url_from_str() {
 	let url: Url = "/profile".into();
 	assert_eq!(url.as_str(), "/profile");
@@ -146,7 +147,7 @@ fn test_url_from_str() {
 }
 
 /// Test: URL cloning
-#[test]
+#[rstest]
 fn test_url_clone() {
 	let url1 = Url::new("/original").unwrap();
 	let url2 = url1.clone();
@@ -156,7 +157,7 @@ fn test_url_clone() {
 }
 
 /// Test: URL equality
-#[test]
+#[rstest]
 fn test_url_equality() {
 	let url1 = Url::new("/same").unwrap();
 	let url2 = Url::new("/same").unwrap();
@@ -167,7 +168,7 @@ fn test_url_equality() {
 }
 
 /// Test: UTF-8 URLs (encoded and unencoded)
-#[test]
+#[rstest]
 fn test_utf8_urls() {
 	// Unencoded UTF-8 (for internal representation)
 	let url = Url::new("/search?q=日本語").unwrap();
@@ -179,7 +180,7 @@ fn test_utf8_urls() {
 }
 
 /// Test: Special characters in URLs
-#[test]
+#[rstest]
 fn test_special_characters_in_urls() {
 	// Spaces (should be percent-encoded in real URLs, but URL type doesn't enforce)
 	let url = Url::new("/path with spaces").unwrap();
@@ -195,7 +196,7 @@ fn test_special_characters_in_urls() {
 }
 
 /// Test: Very long URLs
-#[test]
+#[rstest]
 fn test_long_urls() {
 	let long_path = format!("/very/long/path/{}", "segment/".repeat(100));
 	let url = Url::new(&long_path).unwrap();
@@ -213,7 +214,7 @@ fn test_long_urls() {
 }
 
 /// Test: Error message formatting
-#[test]
+#[rstest]
 fn test_error_message_formatting() {
 	let error = UrlError::Empty;
 	assert_eq!(error.to_string(), "URL cannot be empty");

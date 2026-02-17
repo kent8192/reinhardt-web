@@ -6,9 +6,10 @@
 use hyper::StatusCode;
 use reinhardt_http::Response;
 use reinhardt_shortcuts::GetError;
+use rstest::rstest;
 
 /// Test: GetError::NotFound to Response conversion
-#[test]
+#[rstest]
 fn test_not_found_error_to_response() {
 	let error = GetError::NotFound;
 	let response: Response = error.into();
@@ -17,7 +18,7 @@ fn test_not_found_error_to_response() {
 }
 
 /// Test: GetError::MultipleObjectsReturned to Response conversion
-#[test]
+#[rstest]
 fn test_multiple_objects_error_to_response() {
 	let error = GetError::MultipleObjectsReturned;
 	let response: Response = error.into();
@@ -30,7 +31,7 @@ fn test_multiple_objects_error_to_response() {
 }
 
 /// Test: GetError::DatabaseError to Response conversion
-#[test]
+#[rstest]
 fn test_database_error_to_response() {
 	let error = GetError::DatabaseError("Connection timeout".to_string());
 	let response: Response = error.into();
@@ -43,28 +44,28 @@ fn test_database_error_to_response() {
 }
 
 /// Test: GetError::NotFound error message
-#[test]
+#[rstest]
 fn test_not_found_error_message() {
 	let error = GetError::NotFound;
 	assert_eq!(error.to_string(), "Object not found");
 }
 
 /// Test: GetError::MultipleObjectsReturned error message
-#[test]
+#[rstest]
 fn test_multiple_objects_error_message() {
 	let error = GetError::MultipleObjectsReturned;
 	assert_eq!(error.to_string(), "Multiple objects returned");
 }
 
 /// Test: GetError::DatabaseError error message
-#[test]
+#[rstest]
 fn test_database_error_message() {
 	let error = GetError::DatabaseError("Table does not exist".to_string());
 	assert_eq!(error.to_string(), "Database error: Table does not exist");
 }
 
 /// Test: Multiple different database error messages
-#[test]
+#[rstest]
 fn test_various_database_error_messages() {
 	let errors = [
 		GetError::DatabaseError("Connection refused".to_string()),
@@ -82,7 +83,7 @@ fn test_various_database_error_messages() {
 }
 
 /// Test: GetError Debug formatting
-#[test]
+#[rstest]
 fn test_get_error_debug() {
 	let error = GetError::NotFound;
 	let debug_str = format!("{:?}", error);
@@ -98,7 +99,7 @@ fn test_get_error_debug() {
 }
 
 /// Test: Response from NotFound has correct content type
-#[test]
+#[rstest]
 fn test_not_found_response_content_type() {
 	let error = GetError::NotFound;
 	let response: Response = error.into();
@@ -110,7 +111,7 @@ fn test_not_found_response_content_type() {
 }
 
 /// Test: Response from DatabaseError preserves error details
-#[test]
+#[rstest]
 fn test_database_error_response_preserves_details() {
 	let original_message = "Unique constraint violation on column 'email'";
 	let error = GetError::DatabaseError(original_message.to_string());
@@ -122,7 +123,7 @@ fn test_database_error_response_preserves_details() {
 }
 
 /// Test: Empty database error message
-#[test]
+#[rstest]
 fn test_empty_database_error_message() {
 	let error = GetError::DatabaseError(String::new());
 	assert_eq!(error.to_string(), "Database error: ");
@@ -133,7 +134,7 @@ fn test_empty_database_error_message() {
 }
 
 /// Test: UTF-8 database error message
-#[test]
+#[rstest]
 fn test_utf8_database_error_message() {
 	let error = GetError::DatabaseError("エラー: データベース接続失敗".to_string());
 	assert_eq!(
@@ -147,7 +148,7 @@ fn test_utf8_database_error_message() {
 }
 
 /// Test: Very long database error message
-#[test]
+#[rstest]
 fn test_long_database_error_message() {
 	let long_message = "Error occurred while processing query: ".to_string()
 		+ &"SQL statement execution failed due to ".repeat(10)

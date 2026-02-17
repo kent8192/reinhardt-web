@@ -142,6 +142,7 @@ pub fn exists_or_404_response(exists: Option<bool>) -> Result<(), GetError> {
 mod tests {
 	use super::*;
 	use hyper::StatusCode;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, PartialEq)]
 	struct User {
@@ -149,7 +150,7 @@ mod tests {
 		name: String,
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_404_success() {
 		let user = User {
 			id: 1,
@@ -165,7 +166,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_404_not_found() {
 		let result: Result<Option<User>, String> = Ok(None);
 
@@ -177,7 +178,7 @@ mod tests {
 		assert_eq!(error_response.status, StatusCode::NOT_FOUND);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_or_404_database_error() {
 		let result: Result<Option<User>, String> = Err("Connection failed".to_string());
 
@@ -189,7 +190,7 @@ mod tests {
 		assert_eq!(error_response.status, StatusCode::INTERNAL_SERVER_ERROR);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_list_or_404_success() {
 		let users = vec![
 			User {
@@ -211,7 +212,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_list_or_404_empty() {
 		let result: Result<Vec<User>, String> = Ok(vec![]);
 
@@ -223,7 +224,7 @@ mod tests {
 		assert_eq!(error_response.status, StatusCode::NOT_FOUND);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_list_or_404_database_error() {
 		let result: Result<Vec<User>, String> = Err("Query failed".to_string());
 
@@ -235,13 +236,13 @@ mod tests {
 		assert_eq!(error_response.status, StatusCode::INTERNAL_SERVER_ERROR);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exists_or_404_exists() {
 		let result = exists_or_404_response(Some(true));
 		assert!(result.is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exists_or_404_not_exists() {
 		let result = exists_or_404_response(Some(false));
 		assert!(result.is_err());
@@ -251,7 +252,7 @@ mod tests {
 		assert_eq!(error_response.status, StatusCode::NOT_FOUND);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_exists_or_404_none() {
 		let result = exists_or_404_response(None);
 		assert!(result.is_err());

@@ -95,8 +95,9 @@ pub fn redirect_permanent_to(to: Url) -> Response {
 mod tests {
 	use super::*;
 	use hyper::StatusCode;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_redirect_temporary() {
 		let response = redirect("/users/");
 
@@ -107,7 +108,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redirect_permanent() {
 		let response = redirect_permanent("/new-location/");
 
@@ -118,7 +119,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redirect_absolute_url() {
 		let response = redirect("https://example.com/page/");
 
@@ -128,7 +129,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_redirect_with_query_params() {
 		let response = redirect("/search/?q=test&page=2");
 
