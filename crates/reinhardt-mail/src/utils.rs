@@ -61,7 +61,7 @@ pub async fn send_mail(
 		email_builder = email_builder.html(html);
 	}
 
-	let email = email_builder.build();
+	let email = email_builder.build()?;
 	backend.send_messages(&[email]).await?;
 	Ok(())
 }
@@ -109,7 +109,7 @@ pub async fn send_mail_with_backend(
 		email_builder = email_builder.html(html);
 	}
 
-	let email = email_builder.build();
+	let email = email_builder.build()?;
 	backend.send_messages(&[email]).await?;
 	Ok(())
 }
@@ -133,13 +133,13 @@ pub async fn send_mail_with_backend(
 ///         .body("This month's updates")
 ///         .from("newsletter@example.com")
 ///         .to(vec!["user1@example.com".to_string()])
-///         .build(),
+///         .build()?,
 ///     EmailMessage::builder()
 ///         .subject("Newsletter #1")
 ///         .body("This month's updates")
 ///         .from("newsletter@example.com")
 ///         .to(vec!["user2@example.com".to_string()])
-///         .build(),
+///         .build()?,
 /// ];
 ///
 /// let results = send_mass_mail(messages, &backend).await?;
@@ -186,7 +186,7 @@ pub async fn send_mass_mail(
 ///
 /// assert_eq!(backend.count().await, 1);
 /// let messages = backend.get_messages().await;
-/// assert!(messages[0].subject.starts_with("[ALERT]"));
+/// assert!(messages[0].subject().starts_with("[ALERT]"));
 /// # Ok(())
 /// # }
 /// ```
@@ -268,7 +268,7 @@ pub async fn mail_admins(
 ///
 /// assert_eq!(backend.count().await, 1);
 /// let messages = backend.get_messages().await;
-/// assert!(messages[0].subject.starts_with("[INFO]"));
+/// assert!(messages[0].subject().starts_with("[INFO]"));
 /// # Ok(())
 /// # }
 /// ```
@@ -359,7 +359,7 @@ mod tests {
 		assert!(result.is_ok());
 
 		let messages = backend.get_messages().await;
-		assert!(messages[0].html_body.is_some());
+		assert!(messages[0].html_body().is_some());
 	}
 
 	#[tokio::test]
@@ -372,13 +372,15 @@ mod tests {
 				.body("Body 1")
 				.from("from@example.com")
 				.to(vec!["to1@example.com".to_string()])
-				.build(),
+				.build()
+				.unwrap(),
 			EmailMessage::builder()
 				.subject("Test 2")
 				.body("Body 2")
 				.from("from@example.com")
 				.to(vec!["to2@example.com".to_string()])
-				.build(),
+				.build()
+				.unwrap(),
 		];
 
 		let results = send_mass_mail(messages, &backend).await.unwrap();

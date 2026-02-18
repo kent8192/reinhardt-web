@@ -47,8 +47,6 @@ pub fn get_settings() -> Settings {
 				.with_value("debug", json::Value::Bool(true))
 				.with_value("allowed_hosts", json::Value::Array(vec![]))
 				.with_value("installed_apps", json::Value::Array(vec![]))
-				.with_value("middleware", json::Value::Array(vec![]))
-				.with_value("root_urlconf", json::Value::String(String::new()))
 				.with_value("databases", json::Value::Object(json::Map::new()))
 				.with_value("templates", json::Value::Array(vec![]))
 				.with_value("static_url", json::Value::String("/static/".to_string()))
@@ -69,7 +67,11 @@ pub fn get_settings() -> Settings {
 				.with_value("csrf_cookie_secure", json::Value::Bool(false))
 				.with_value("append_slash", json::Value::Bool(true))
 				.with_value("admins", json::Value::Array(vec![]))
-				.with_value("managers", json::Value::Array(vec![])),
+				.with_value("managers", json::Value::Array(vec![]))
+				// Fields for crates.io compatibility (removed in local version)
+				.with_value("middleware", json::Value::Array(vec![]))
+				.with_value("media_root", json::Value::Null)
+				.with_value("root_urlconf", json::Value::String("".to_string())),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))

@@ -52,7 +52,7 @@ use async_trait::async_trait;
 #[derive(Debug)]
 pub struct TestTransaction<C> {
 	/// The underlying connection or transaction handle.
-	connection: C,
+	connection: Option<C>,
 	/// Whether to commit instead of rollback.
 	commit_on_drop: bool,
 	/// Whether the transaction has been explicitly completed.
@@ -63,7 +63,7 @@ impl<C> TestTransaction<C> {
 	/// Create a new test transaction wrapper.
 	pub fn new(connection: C) -> Self {
 		Self {
-			connection,
+			connection: Some(connection),
 			commit_on_drop: false,
 			completed: false,
 		}
@@ -79,12 +79,16 @@ impl<C> TestTransaction<C> {
 
 	/// Get a reference to the underlying connection.
 	pub fn connection(&self) -> &C {
-		&self.connection
+		self.connection
+			.as_ref()
+			.expect("connection already consumed")
 	}
 
 	/// Get a mutable reference to the underlying connection.
 	pub fn connection_mut(&mut self) -> &mut C {
-		&mut self.connection
+		self.connection
+			.as_mut()
+			.expect("connection already consumed")
 	}
 
 	/// Consume the transaction and return the underlying connection.
@@ -92,8 +96,7 @@ impl<C> TestTransaction<C> {
 	/// Note: This prevents automatic rollback/commit on drop.
 	pub fn into_inner(mut self) -> C {
 		self.completed = true;
-		// Use ManuallyDrop to prevent drop from running
-		let connection = std::mem::replace(&mut self.connection, unsafe { std::mem::zeroed() });
+		let connection = self.connection.take().expect("connection already consumed");
 		std::mem::forget(self);
 		connection
 	}
@@ -108,7 +111,9 @@ impl<C> Deref for TestTransaction<C> {
 	type Target = C;
 
 	fn deref(&self) -> &Self::Target {
-		&self.connection
+		self.connection
+			.as_ref()
+			.expect("connection already consumed")
 	}
 }
 

@@ -8,7 +8,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
 reinhardt-db = { workspace = true, features = ["orm", "di"] }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }

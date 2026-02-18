@@ -375,9 +375,9 @@ impl Form {
 		&self.validation_rules
 	}
 
-	/// Add a client-side field validator (Phase 2-A)
+	/// Add a minimum length validator (Phase 2-A)
 	///
-	/// Adds a JavaScript expression-based validator for a specific field.
+	/// Adds a validator that checks if a string field has at least `min` characters.
 	/// This validator is executed on the client-side for immediate feedback.
 	///
 	/// **Security Note**: Client-side validation is for UX enhancement only.
@@ -386,7 +386,7 @@ impl Form {
 	/// # Arguments
 	///
 	/// - `field_name`: Name of the field to validate
-	/// - `expression`: JavaScript expression (e.g., "value.length >= 8")
+	/// - `min`: Minimum required length
 	/// - `error_message`: Error message to display on validation failure
 	///
 	/// # Examples
@@ -395,37 +395,175 @@ impl Form {
 	/// use reinhardt_forms::Form;
 	///
 	/// let mut form = Form::new();
-	/// form.add_client_field_validator(
-	///     "password",
-	///     "value.length >= 8",
-	///     "Password must be at least 8 characters"
-	/// );
+	/// form.add_min_length_validator("password", 8, "Password must be at least 8 characters");
 	/// ```
-	pub fn add_client_field_validator(
+	pub fn add_min_length_validator(
 		&mut self,
 		field_name: impl Into<String>,
-		expression: impl Into<String>,
+		min: usize,
 		error_message: impl Into<String>,
 	) {
-		self.validation_rules.push(ValidationRule::FieldValidator {
+		self.validation_rules.push(ValidationRule::MinLength {
 			field_name: field_name.into(),
-			expression: expression.into(),
+			min,
 			error_message: error_message.into(),
 		});
 	}
 
-	/// Add a client-side cross-field validator (Phase 2-A)
+	/// Add a maximum length validator (Phase 2-A)
 	///
-	/// Adds a JavaScript expression-based validator that involves multiple fields.
-	/// This validator is executed on the client-side for immediate feedback.
+	/// Adds a validator that checks if a string field has at most `max` characters.
 	///
-	/// **Security Note**: Client-side validation is for UX enhancement only.
-	/// Server-side validation is still mandatory for security.
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_max_length_validator("username", 50, "Username must be at most 50 characters");
+	/// ```
+	pub fn add_max_length_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		max: usize,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::MaxLength {
+			field_name: field_name.into(),
+			max,
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add a pattern validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if a string field matches a regex pattern.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_pattern_validator("code", "^[A-Z]{3}$", "Code must be 3 uppercase letters");
+	/// ```
+	pub fn add_pattern_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		pattern: impl Into<String>,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::Pattern {
+			field_name: field_name.into(),
+			pattern: pattern.into(),
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add a minimum value validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if a numeric field is at least `min`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_min_value_validator("age", 0.0, "Age must be non-negative");
+	/// ```
+	pub fn add_min_value_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		min: f64,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::MinValue {
+			field_name: field_name.into(),
+			min,
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add a maximum value validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if a numeric field is at most `max`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_max_value_validator("age", 150.0, "Age must be at most 150");
+	/// ```
+	pub fn add_max_value_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		max: f64,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::MaxValue {
+			field_name: field_name.into(),
+			max,
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add an email format validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if a field contains a valid email format.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_email_validator("email", "Enter a valid email address");
+	/// ```
+	pub fn add_email_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::Email {
+			field_name: field_name.into(),
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add a URL format validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if a field contains a valid URL format.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_forms::Form;
+	///
+	/// let mut form = Form::new();
+	/// form.add_url_validator("website", "Enter a valid URL");
+	/// ```
+	pub fn add_url_validator(
+		&mut self,
+		field_name: impl Into<String>,
+		error_message: impl Into<String>,
+	) {
+		self.validation_rules.push(ValidationRule::Url {
+			field_name: field_name.into(),
+			error_message: error_message.into(),
+		});
+	}
+
+	/// Add a fields equality validator (Phase 2-A)
+	///
+	/// Adds a validator that checks if multiple fields have equal values.
+	/// Commonly used for password confirmation.
 	///
 	/// # Arguments
 	///
-	/// - `field_names`: Names of fields involved in validation
-	/// - `expression`: JavaScript expression (e.g., "fields.password === fields.password_confirm")
+	/// - `field_names`: Names of fields to compare for equality
 	/// - `error_message`: Error message to display on validation failure
 	/// - `target_field`: Target field for error display (None = non-field error)
 	///
@@ -435,27 +573,23 @@ impl Form {
 	/// use reinhardt_forms::Form;
 	///
 	/// let mut form = Form::new();
-	/// form.add_cross_field_validator(
+	/// form.add_fields_equal_validator(
 	///     vec!["password".to_string(), "password_confirm".to_string()],
-	///     "fields.password === fields.password_confirm",
 	///     "Passwords do not match",
 	///     Some("password_confirm".to_string())
 	/// );
 	/// ```
-	pub fn add_cross_field_validator(
+	pub fn add_fields_equal_validator(
 		&mut self,
 		field_names: Vec<String>,
-		expression: impl Into<String>,
 		error_message: impl Into<String>,
 		target_field: Option<String>,
 	) {
-		self.validation_rules
-			.push(ValidationRule::CrossFieldValidator {
-				field_names,
-				expression: expression.into(),
-				error_message: error_message.into(),
-				target_field,
-			});
+		self.validation_rules.push(ValidationRule::FieldsEqual {
+			field_names,
+			error_message: error_message.into(),
+			target_field,
+		});
 	}
 
 	/// Add a client-side validator reference (Phase 2-A)
@@ -511,7 +645,7 @@ impl Form {
 
 	/// Helper: Add a date range validator (Phase 2-A)
 	///
-	/// Adds a cross-field validator that checks if end_date >= start_date.
+	/// Adds a validator that checks if end_date >= start_date.
 	///
 	/// # Arguments
 	///
@@ -538,20 +672,17 @@ impl Form {
 		let message = error_message
 			.unwrap_or_else(|| "End date must be after or equal to start date".to_string());
 
-		self.add_cross_field_validator(
-			vec![start.clone(), end.clone()],
-			format!(
-				"new Date(fields['{}']) <= new Date(fields['{}'])",
-				start, end
-			),
-			message,
-			Some(end),
-		);
+		self.validation_rules.push(ValidationRule::DateRange {
+			start_field: start,
+			end_field: end.clone(),
+			error_message: message,
+			target_field: Some(end),
+		});
 	}
 
 	/// Helper: Add a numeric range validator (Phase 2-A)
 	///
-	/// Adds a cross-field validator that checks if max >= min.
+	/// Adds a validator that checks if max >= min.
 	///
 	/// # Arguments
 	///
@@ -579,15 +710,12 @@ impl Form {
 			"Maximum value must be greater than or equal to minimum value".to_string()
 		});
 
-		self.add_cross_field_validator(
-			vec![min.clone(), max.clone()],
-			format!(
-				"parseFloat(fields['{}']) <= parseFloat(fields['{}'])",
-				min, max
-			),
-			message,
-			Some(max),
-		);
+		self.validation_rules.push(ValidationRule::NumericRange {
+			min_field: min,
+			max_field: max.clone(),
+			error_message: message,
+			target_field: Some(max),
+		});
 	}
 	pub fn prefix(&self) -> &str {
 		&self.prefix
