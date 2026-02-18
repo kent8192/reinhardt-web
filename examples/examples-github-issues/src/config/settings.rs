@@ -99,7 +99,7 @@ pub fn get_settings() -> Settings {
 				// Fields for crates.io compatibility (removed in local version)
 				.with_value("middleware", json::Value::Array(vec![]))
 				.with_value("media_root", json::Value::Null)
-				.with_value("root_urlconf", json::Value::Null),
+				.with_value("root_urlconf", json::Value::String("".to_string())),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
 		.add_source(TomlFileSource::new(settings_dir.join("base.toml")))
