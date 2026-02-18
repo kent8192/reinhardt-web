@@ -290,7 +290,8 @@ fn generate_link_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenSt
 	if let Some(as_a) = as_attr
 		&& let Some(v) = &as_a.value
 	{
-		chain = quote! { #chain.as_attr = Some(std::borrow::Cow::Borrowed(#v)) };
+		// Fixes #845: use builder method instead of direct field assignment
+		chain = quote! { #chain.with_as(#v) };
 	}
 
 	quote! { .link(#chain) }
