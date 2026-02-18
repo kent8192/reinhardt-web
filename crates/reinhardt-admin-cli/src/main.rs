@@ -1232,7 +1232,7 @@ fn run_rustfmt(content: &str, options: &ast_formatter::RustfmtOptions) -> Result
 fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io::Error> {
 	use std::fs::OpenOptions;
 	use std::io::Read;
-	use std::os::unix::fs::PermissionsExt;
+	use std::os::unix::fs::OpenOptionsExt;
 
 	// Read source content
 	let mut content = Vec::new();
