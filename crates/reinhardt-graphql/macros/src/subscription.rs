@@ -177,7 +177,8 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 				let stream = match client.#method_name(Default::default()).await {
 					Ok(response) => response.into_inner(),
 					Err(e) => {
-						eprintln!("gRPC call failed: {:?}", e);
+						// Fixes #815: use structured logging instead of eprintln
+						::tracing::error!("gRPC call failed: {:?}", e);
 						return Box::pin(tokio_stream::empty());
 					}
 				};
@@ -192,7 +193,8 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 								Some(graphql_event)
 							}
 							Err(e) => {
-								eprintln!("Stream error: {:?}", e);
+								// Fixes #815: use structured logging instead of eprintln
+								::tracing::warn!("gRPC stream error: {:?}", e);
 								None
 							}
 						}

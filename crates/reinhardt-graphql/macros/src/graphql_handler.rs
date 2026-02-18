@@ -198,12 +198,14 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 	let graphql_crate = get_reinhardt_graphql_crate();
 
 	// Generate DI extraction code
+	// Fixes #817: use generic error message to avoid exposing internal types
 	let di_context_extraction = quote! {
 		let __di_ctx = #context_pat
 			.get_di_context()
-			.map_err(|e| ::async_graphql::Error::new(format!(
-				"DI context not set. Ensure the schema was built with .data(injection_ctx): {:?}", e
-			)))?;
+			.map_err(|e| {
+				::tracing::error!("DI context not set: {:?}", e);
+				::async_graphql::Error::new("Internal server error")
+			})?;
 	};
 
 	// Generate injection calls
@@ -215,21 +217,25 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 			let use_cache = param.use_cache;
 
 			if use_cache {
+				// Fixes #817: log detailed error server-side, return generic message to client
 				quote! {
 					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(__di_ctx)
 						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
+						.map_err(|e| {
+							::tracing::error!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
+							::async_graphql::Error::new("Internal server error")
+						})?
 						.into_inner();
 				}
 			} else {
+				// Fixes #817: log detailed error server-side, return generic message to client
 				quote! {
 					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(__di_ctx)
 						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
+						.map_err(|e| {
+							::tracing::error!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
+							::async_graphql::Error::new("Internal server error")
+						})?
 						.into_inner();
 				}
 			}
