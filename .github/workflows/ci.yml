@@ -17,30 +17,70 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # Verify PR branch is up to date with the base branch before running CI.
+  # Only runs on pull_request events; skipped for push to main.
+  # If the branch is out of date, this job fails and all subsequent jobs are skipped.
+  branch-up-to-date:
+    name: Branch Up-to-Date Check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR branch is up to date with base branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Use BASE_REF (branch name) instead of base SHA to ensure comparison
+          # against the current HEAD of the base branch, not a potentially stale SHA.
+          STATUS=$(gh api "repos/${REPO}/compare/${BASE_REF}...${HEAD_SHA}" --jq '.status')
+          echo "Branch comparison status: ${STATUS}"
+          if [[ "${STATUS}" == "behind" || "${STATUS}" == "diverged" ]]; then
+            echo "::error::This branch is out of date with the base branch (${BASE_REF})."
+            echo "::error::Please update your branch by merging or rebasing from the base branch before CI can run."
+            exit 1
+          fi
+          echo "Branch is up to date with ${BASE_REF}."
+
   # Call all reusable workflows
   check:
     name: Check
+    needs: [branch-up-to-date]
+    if: needs.branch-up-to-date.result == 'success' || needs.branch-up-to-date.result == 'skipped'
     uses: ./.github/workflows/check.yml
 
   fmt:
     name: Format
+    needs: [branch-up-to-date]
+    if: needs.branch-up-to-date.result == 'success' || needs.branch-up-to-date.result == 'skipped'
     uses: ./.github/workflows/fmt.yml
 
   clippy:
     name: Clippy
+    needs: [branch-up-to-date]
+    if: needs.branch-up-to-date.result == 'success' || needs.branch-up-to-date.result == 'skipped'
     uses: ./.github/workflows/clippy.yml
 
   publish-check:
     name: Publish Check
+    needs: [branch-up-to-date]
+    if: needs.branch-up-to-date.result == 'success' || needs.branch-up-to-date.result == 'skipped'
     uses: ./.github/workflows/publish-check.yml
 
   todo-check:
     name: TODO Check
+    needs: [branch-up-to-date]
+    if: needs.branch-up-to-date.result == 'success' || needs.branch-up-to-date.result == 'skipped'
     uses: ./.github/workflows/todo-check.yml
 
   release-dry-run:
     name: Release Dry-Run
-    if: ${{ !startsWith(github.head_ref || '', 'release-plz-') }}
+    needs: [branch-up-to-date]
+    if: >-
+      (needs.branch-up-to-date.result == 'success' ||
+      needs.branch-up-to-date.result == 'skipped') &&
+      !startsWith(github.head_ref || '', 'release-plz-')
     uses: ./.github/workflows/release-plz-dry-run.yml
 
   # All tests run in parallel after lightweight checks
@@ -88,6 +128,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     needs:
+      - branch-up-to-date
       - check
       - fmt
       - clippy
@@ -102,19 +143,39 @@ jobs:
       - ui-test
     steps:
       - name: Verify all required checks passed
+        env:
+          BRANCH_CHECK: ${{ needs.branch-up-to-date.result }}
+          CHECK_RESULT: ${{ needs.check.result }}
+          FMT_RESULT: ${{ needs.fmt.result }}
+          CLIPPY_RESULT: ${{ needs.clippy.result }}
+          PUBLISH_CHECK_RESULT: ${{ needs.publish-check.result }}
+          TODO_CHECK_RESULT: ${{ needs.todo-check.result }}
+          UNIT_TEST_RESULT: ${{ needs.unit-test.result }}
+          INTRA_CRATE_RESULT: ${{ needs.intra-crate-integration-test.result }}
+          CROSS_CRATE_RESULT: ${{ needs.cross-crate-integration-test.result }}
+          DOC_TEST_RESULT: ${{ needs.doc-test.result }}
+          EXAMPLES_TEST_RESULT: ${{ needs.examples-test.result }}
+          UI_TEST_RESULT: ${{ needs.ui-test.result }}
+          DRY_RUN_RESULT: ${{ needs.release-dry-run.result }}
         run: |
+          # branch-up-to-date check: failure means PR branch is out of date
+          if [[ "${BRANCH_CHECK}" == "failure" ]]; then
+            echo "::error::PR branch is out of date with the base branch. Please update your branch and re-run CI."
+            exit 1
+          fi
+
           required_results=(
-            "${{ needs.check.result }}"
-            "${{ needs.fmt.result }}"
-            "${{ needs.clippy.result }}"
-            "${{ needs.publish-check.result }}"
-            "${{ needs.todo-check.result }}"
-            "${{ needs.unit-test.result }}"
-            "${{ needs.intra-crate-integration-test.result }}"
-            "${{ needs.cross-crate-integration-test.result }}"
-            "${{ needs.doc-test.result }}"
-            "${{ needs.examples-test.result }}"
-            "${{ needs.ui-test.result }}"
+            "${CHECK_RESULT}"
+            "${FMT_RESULT}"
+            "${CLIPPY_RESULT}"
+            "${PUBLISH_CHECK_RESULT}"
+            "${TODO_CHECK_RESULT}"
+            "${UNIT_TEST_RESULT}"
+            "${INTRA_CRATE_RESULT}"
+            "${CROSS_CRATE_RESULT}"
+            "${DOC_TEST_RESULT}"
+            "${EXAMPLES_TEST_RESULT}"
+            "${UI_TEST_RESULT}"
           )
           for result in "${required_results[@]}"; do
             if [[ "$result" != "success" ]]; then
@@ -123,9 +184,8 @@ jobs:
             fi
           done
           # release-dry-run is skipped on release-plz branches (expected)
-          dry_run="${{ needs.release-dry-run.result }}"
-          if [[ "$dry_run" != "success" && "$dry_run" != "skipped" ]]; then
-            echo "::error::Release dry-run failed: $dry_run"
+          if [[ "${DRY_RUN_RESULT}" != "success" && "${DRY_RUN_RESULT}" != "skipped" ]]; then
+            echo "::error::Release dry-run failed: ${DRY_RUN_RESULT}"
             exit 1
           fi
           echo "All CI checks passed!"
