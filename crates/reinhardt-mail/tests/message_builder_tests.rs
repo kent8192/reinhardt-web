@@ -554,3 +554,113 @@ fn test_email_message_getter_methods() {
 	assert_eq!(message.html_body(), Some("<p>HTML</p>"));
 	assert_eq!(message.headers().len(), 1);
 }
+
+// ===== Header Injection Protection Tests (Issue #515) =====
+
+/// Test: Builder rejects subject with CRLF injection
+#[rstest]
+fn test_builder_rejects_subject_header_injection() {
+	// Arrange & Act
+	let result = EmailMessage::builder()
+		.from("sender@example.com")
+		.to(vec!["test@example.com".to_string()])
+		.subject("Normal\r\nBcc: attacker@evil.com")
+		.body("Body")
+		.build();
+
+	// Assert
+	assert!(result.is_err());
+}
+
+/// Test: Builder rejects subject with newline injection
+#[rstest]
+fn test_builder_rejects_subject_newline_injection() {
+	// Arrange & Act
+	let result = EmailMessage::builder()
+		.from("sender@example.com")
+		.to(vec!["test@example.com".to_string()])
+		.subject("Subject\nX-Injected: malicious")
+		.body("Body")
+		.build();
+
+	// Assert
+	assert!(result.is_err());
+}
+
+/// Test: Builder rejects custom header name with CRLF
+#[rstest]
+fn test_builder_rejects_header_name_injection() {
+	// Arrange & Act
+	let result = EmailMessage::builder()
+		.from("sender@example.com")
+		.to(vec!["test@example.com".to_string()])
+		.subject("Test")
+		.body("Body")
+		.header("X-Header\r\nBcc: evil@attacker.com", "value")
+		.build();
+
+	// Assert
+	assert!(result.is_err());
+}
+
+/// Test: Builder rejects custom header value with CRLF
+#[rstest]
+fn test_builder_rejects_header_value_injection() {
+	// Arrange & Act
+	let result = EmailMessage::builder()
+		.from("sender@example.com")
+		.to(vec!["test@example.com".to_string()])
+		.subject("Test")
+		.body("Body")
+		.header("X-Custom", "value\r\nBcc: evil@attacker.com")
+		.build();
+
+	// Assert
+	assert!(result.is_err());
+}
+
+// ===== Email Sanitization Tests (Issue #517) =====
+
+/// Test: sanitize_email preserves local part case
+#[rstest]
+fn test_sanitize_email_preserves_local_part_case() {
+	// Arrange & Act & Assert
+	// RFC 5321: local part is case-sensitive, only domain is lowercased
+	assert_eq!(
+		reinhardt_mail::validation::sanitize_email("John.Smith@Example.COM").unwrap(),
+		"John.Smith@example.com"
+	);
+}
+
+/// Test: sanitize_email lowercases only domain
+#[rstest]
+fn test_sanitize_email_lowercases_only_domain() {
+	// Arrange & Act & Assert
+	assert_eq!(
+		reinhardt_mail::validation::sanitize_email("MixedCase+Tag@DOMAIN.COM").unwrap(),
+		"MixedCase+Tag@domain.com"
+	);
+}
+
+/// Test: sanitize_email trims whitespace without altering case
+#[rstest]
+fn test_sanitize_email_trims_whitespace() {
+	// Arrange & Act & Assert
+	assert_eq!(
+		reinhardt_mail::validation::sanitize_email("  User@Example.com  ").unwrap(),
+		"User@example.com"
+	);
+}
+
+/// Test: sanitize_email_list preserves local part case for all entries
+#[rstest]
+fn test_sanitize_email_list_preserves_local_case() {
+	// Arrange
+	let emails = vec!["Alice@Example.COM", "BOB@Domain.ORG"];
+
+	// Act
+	let result = reinhardt_mail::validation::sanitize_email_list(&emails).unwrap();
+
+	// Assert
+	assert_eq!(result, vec!["Alice@example.com", "BOB@domain.org"]);
+}
