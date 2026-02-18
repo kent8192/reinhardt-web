@@ -384,6 +384,7 @@ https://github.com/kent8192/reinhardt-web/security/advisories
 ## Related Documentation
 
 - **Pull Request Guidelines**: docs/PR_GUIDELINE.md
+- **Issue Handling Principles**: docs/ISSUE_HANDLING.md
 - **Commit Guidelines**: docs/COMMIT_GUIDELINE.md
 - **Contributing Guide**: CONTRIBUTING.md
 - **Security Policy**: SECURITY.md

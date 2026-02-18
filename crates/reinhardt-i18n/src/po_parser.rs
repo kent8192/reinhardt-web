@@ -6,6 +6,10 @@
 use crate::MessageCatalog;
 use std::io::{BufRead, BufReader};
 
+/// Maximum number of plural forms supported
+/// This covers all known natural languages according to CLDR plural rules
+const MAX_PLURAL_FORMS: usize = 6;
+
 /// Errors that can occur during .po file parsing
 #[derive(Debug, thiserror::Error)]
 pub enum PoParseError {
@@ -15,6 +19,8 @@ pub enum PoParseError {
 	ParseError { line: usize, message: String },
 	#[error("Invalid format: {0}")]
 	InvalidFormat(String),
+	#[error("Invalid plural index: {0} (maximum is 5)")]
+	InvalidPluralIndex(usize),
 }
 
 /// Entry in a .po file
@@ -90,6 +96,10 @@ pub fn parse_po_file<R: std::io::Read>(
 		}
 		// Parse msgstr[n]
 		else if let Some((index, value)) = parse_indexed_msgstr(trimmed) {
+			// Validate plural index to prevent memory exhaustion attacks
+			if index >= MAX_PLURAL_FORMS {
+				return Err(PoParseError::InvalidPluralIndex(index));
+			}
 			let value = unescape_string(&value);
 			// Ensure we have enough space in the msgstr vector
 			while current_entry.msgstr.len() <= index {
@@ -232,6 +242,7 @@ fn add_entry_to_catalog(catalog: &mut MessageCatalog, entry: &PoEntry) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_parse_simple_translation() {
@@ -345,5 +356,52 @@ msgstr "Bonjour"
 		assert_eq!(unescape_string("Tab\\there"), "Tab\there");
 		assert_eq!(unescape_string("Quote\\\"here"), "Quote\"here");
 		assert_eq!(unescape_string("Backslash\\\\here"), "Backslash\\here");
+	}
+
+	/// Test that huge plural index is rejected to prevent memory exhaustion
+	#[rstest]
+	#[case(4294967295_usize)] // usize::MAX on 32-bit, large on 64-bit
+	#[case(1000000)] // Large but not maximum
+	#[case(100)] // Exceeds MAX_PLURAL_FORMS (6)
+	#[case(6)] // Exactly MAX_PLURAL_FORMS (boundary)
+	fn test_parse_rejects_huge_plural_index(#[case] index: usize) {
+		let po_content = format!(
+			r#"
+msgid "test"
+msgstr[{}] "value"
+"#,
+			index
+		);
+
+		let result = parse_po_file(po_content.as_bytes(), "fr");
+		assert!(result.is_err());
+
+		// Verify the error type
+		match result {
+			Err(PoParseError::InvalidPluralIndex(err_index)) => {
+				assert_eq!(err_index, index);
+			}
+			_ => panic!("Expected InvalidPluralIndex error"),
+		}
+	}
+
+	/// Test that valid plural indices are accepted (within MAX_PLURAL_FORMS)
+	#[rstest]
+	#[case(0)]
+	#[case(1)]
+	#[case(2)]
+	#[case(5)] // MAX_PLURAL_FORMS - 1
+	fn test_parse_accepts_valid_plural_index(#[case] index: usize) {
+		let po_content = format!(
+			r#"
+msgid "item"
+msgid_plural "items"
+msgstr[{}] "value"
+"#,
+			index
+		);
+
+		let result = parse_po_file(po_content.as_bytes(), "fr");
+		assert!(result.is_ok());
 	}
 }
