@@ -315,7 +315,7 @@ pub fn escape_css_selector(input: &str) -> String {
 	for (i, &ch) in chars.iter().enumerate() {
 		match ch {
 			// Null character
-			'\0' => result.push_str("\u{FFFD}"),
+			'\0' => result.push('\u{FFFD}'),
 			// Control characters (U+0001 to U+001F, U+007F)
 			'\u{0001}'..='\u{001F}' | '\u{007F}' => {
 				result.push_str(&format!("\\{:x} ", ch as u32));
