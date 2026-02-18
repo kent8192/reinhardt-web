@@ -40,6 +40,7 @@ pub mod error;
 pub mod export;
 pub mod fields;
 pub mod import;
+pub mod limits;
 pub mod list;
 pub mod update;
 

@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::{AdminAuth, MapServerFnError};
+#[cfg(not(target_arch = "wasm32"))]
+use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 
 /// Import model data from various formats
 ///
@@ -53,6 +55,15 @@ pub async fn import_data(
 	let auth = AdminAuth::from_request(&http_request);
 	auth.require_add_permission(&model_name)?;
 
+	// Validate import file size to prevent memory exhaustion
+	if data.len() > MAX_IMPORT_FILE_SIZE {
+		return Err(ServerFnError::application(format!(
+			"Import file size ({} bytes) exceeds maximum allowed size ({} bytes)",
+			data.len(),
+			MAX_IMPORT_FILE_SIZE
+		)));
+	}
+
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	let table_name = model_admin.table_name();
 
@@ -75,6 +86,15 @@ pub async fn import_data(
 				.map_err(|e| ServerFnError::deserialization(format!("TSV parse failed: {}", e)))?
 		}
 	};
+
+	// Validate record count to prevent database overload
+	if records.len() > MAX_IMPORT_RECORDS {
+		return Err(ServerFnError::application(format!(
+			"Import record count ({}) exceeds maximum allowed count ({})",
+			records.len(),
+			MAX_IMPORT_RECORDS
+		)));
+	}
 
 	// Import records
 	let mut imported = 0;
