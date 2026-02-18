@@ -34,8 +34,13 @@ fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
 
+/// Known option names for `#[inject(...)]`
+const KNOWN_INJECT_OPTIONS: &[&str] = &["cache"];
+
 /// Parse `#[inject]` or `#[inject(cache = false)]` attributes
-fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
+///
+/// Returns an error for unrecognized options or invalid value types.
+fn parse_inject_options(attrs: &[syn::Attribute]) -> Result<InjectOptions> {
 	let mut options = InjectOptions {
 		use_cache: true, // Default to caching enabled
 	};
@@ -45,30 +50,82 @@ fn parse_inject_options(attrs: &[syn::Attribute]) -> InjectOptions {
 			continue;
 		}
 
-		// Try to parse as Meta::List: #[inject(cache = false)]
-		if let syn::Meta::List(meta_list) = &attr.meta
-			&& let Ok(nested) =
-				meta_list.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
-		{
-			for meta in nested {
-				if let syn::Meta::NameValue(nv) = meta
-					&& nv.path.is_ident("cache")
-					&& let syn::Expr::Lit(syn::ExprLit {
+		// #[inject] without arguments - use defaults
+		if matches!(&attr.meta, syn::Meta::Path(_)) {
+			continue;
+		}
+
+		// Parse as Meta::List: #[inject(cache = false)]
+		let syn::Meta::List(meta_list) = &attr.meta else {
+			continue;
+		};
+
+		let nested =
+			meta_list.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)?;
+
+		for meta in &nested {
+			match meta {
+				syn::Meta::NameValue(nv) if nv.path.is_ident("cache") => {
+					if let syn::Expr::Lit(syn::ExprLit {
 						lit: syn::Lit::Bool(lit_bool),
 						..
 					}) = &nv.value
-				{
-					options.use_cache = lit_bool.value;
+					{
+						options.use_cache = lit_bool.value;
+					} else {
+						return Err(Error::new_spanned(
+							&nv.value,
+							"`cache` option expects a boolean value (e.g., `cache = false`)",
+						));
+					}
+				}
+				syn::Meta::NameValue(nv) => {
+					let name = nv
+						.path
+						.get_ident()
+						.map(ToString::to_string)
+						.unwrap_or_else(|| "<unknown>".to_string());
+					return Err(Error::new_spanned(
+						&nv.path,
+						format!(
+							"unrecognized `inject` option `{name}`. \
+							 Valid options: {}",
+							KNOWN_INJECT_OPTIONS
+								.iter()
+								.map(|o| format!("`{o}`"))
+								.collect::<Vec<_>>()
+								.join(", ")
+						),
+					));
+				}
+				other => {
+					let name = other
+						.path()
+						.get_ident()
+						.map(ToString::to_string)
+						.unwrap_or_else(|| "<unknown>".to_string());
+					return Err(Error::new_spanned(
+						other.path(),
+						format!(
+							"unrecognized `inject` option `{name}`. \
+							 Valid options: {}",
+							KNOWN_INJECT_OPTIONS
+								.iter()
+								.map(|o| format!("`{o}`"))
+								.collect::<Vec<_>>()
+								.join(", ")
+						),
+					));
 				}
 			}
 		}
 	}
 
-	options
+	Ok(options)
 }
 
 /// Detect parameters with `#[inject]` attribute
-fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo> {
+fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Result<Vec<InjectInfo>> {
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
@@ -76,7 +133,7 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
-				let options = parse_inject_options(attrs);
+				let options = parse_inject_options(attrs)?;
 				inject_params.push(InjectInfo {
 					pat: pat.clone(),
 					ty: ty.clone(),
@@ -86,7 +143,7 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo
 		}
 	}
 
-	inject_params
+	Ok(inject_params)
 }
 
 /// Detect non-inject parameters (regular parameters)
@@ -134,7 +191,7 @@ fn strip_inject_attrs(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<FnArg> {
 
 /// Generate wrapper function with DI support
 pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
-	let inject_params = detect_inject_params(&input.sig.inputs);
+	let inject_params = detect_inject_params(&input.sig.inputs)?;
 
 	// If no #[inject] parameters, return the function as-is
 	if inject_params.is_empty() {
