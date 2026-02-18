@@ -377,10 +377,11 @@ impl ServerFnTestEnv {
 	}
 
 	/// Check if the user has a specific permission.
+	// Fixes #864
 	pub fn has_permission(&self, permission: &str) -> bool {
 		self.test_user
 			.as_ref()
-			.is_some_and(|u| u.permissions.iter().any(|p| p == permission))
+			.is_some_and(|u| u.has_permission(permission))
 	}
 
 	/// Check if the user has a specific role.
