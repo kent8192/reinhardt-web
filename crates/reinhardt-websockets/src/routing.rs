@@ -100,6 +100,7 @@ impl WebSocketRoute {
 /// assert_eq!(found.unwrap().name(), Some("websocket:chat"));
 /// # });
 /// ```
+#[derive(Clone)]
 pub struct WebSocketRouter {
 	routes: Arc<RwLock<HashMap<String, WebSocketRoute>>>,
 	names: Arc<RwLock<HashMap<String, String>>>, // name -> path mapping
@@ -221,11 +222,7 @@ pub async fn register_websocket_router(router: WebSocketRouter) {
 /// Get the global WebSocket router
 pub async fn get_websocket_router() -> Option<WebSocketRouter> {
 	let global = GLOBAL_ROUTER.read().await;
-	if global.is_some() {
-		Some(WebSocketRouter::new())
-	} else {
-		None
-	}
+	global.as_ref().cloned()
 }
 
 /// Clear the global WebSocket router
@@ -263,137 +260,214 @@ pub async fn reverse_websocket_url(router: &WebSocketRouter, name: &str) -> Opti
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_websocket_route_creation() {
-		let route = WebSocketRoute::new("/ws/test".to_string(), Some("test".to_string()));
+		// Arrange
+		let path = "/ws/test".to_string();
+		let name = Some("test".to_string());
+
+		// Act
+		let route = WebSocketRoute::new(path, name);
+
+		// Assert
 		assert_eq!(route.path(), "/ws/test");
 		assert_eq!(route.name(), Some("test"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_websocket_route_metadata() {
+		// Arrange / Act
 		let route = WebSocketRoute::new("/ws/test".to_string(), None)
 			.with_metadata("auth".to_string(), "required".to_string());
 
+		// Assert
 		assert_eq!(route.get_metadata("auth").unwrap(), "required");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_register_route() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
 
-		assert!(router.register_route(route).await.is_ok());
+		// Act
+		let result = router.register_route(route).await;
+
+		// Assert
+		assert!(result.is_ok());
 		assert_eq!(router.route_count().await, 1);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_register_duplicate_route() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route1 = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
 		let route2 = WebSocketRoute::new("/ws/chat".to_string(), Some("chat2".to_string()));
-
 		router.register_route(route1).await.unwrap();
+
+		// Act
 		let result = router.register_route(route2).await;
 
+		// Assert
 		assert!(result.is_err());
 		assert!(matches!(result.unwrap_err(), RouteError::AlreadyExists(_)));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_find_route() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
-
 		router.register_route(route).await.unwrap();
 
+		// Act
 		let found = router.find_route("/ws/chat").await;
+
+		// Assert
 		assert!(found.is_some());
 		assert_eq!(found.unwrap().name(), Some("chat"));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_find_route_by_name() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
-
 		router.register_route(route).await.unwrap();
 
+		// Act
 		let found = router.find_route_by_name("chat").await;
+
+		// Assert
 		assert!(found.is_some());
 		assert_eq!(found.unwrap().path(), "/ws/chat");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_remove_route() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
-
 		router.register_route(route).await.unwrap();
 		assert_eq!(router.route_count().await, 1);
 
-		router.remove_route("/ws/chat").await.unwrap();
+		// Act
+		let result = router.remove_route("/ws/chat").await;
+
+		// Assert
+		assert!(result.is_ok());
 		assert_eq!(router.route_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_all_routes() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route1 = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
 		let route2 = WebSocketRoute::new("/ws/notif".to_string(), Some("notif".to_string()));
-
 		router.register_route(route1).await.unwrap();
 		router.register_route(route2).await.unwrap();
 
+		// Act
 		let routes = router.all_routes().await;
+
+		// Assert
 		assert_eq!(routes.len(), 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_has_route() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), None);
-
 		router.register_route(route).await.unwrap();
 
+		// Act / Assert
 		assert!(router.has_route("/ws/chat").await);
 		assert!(!router.has_route("/ws/notif").await);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_router_clear() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), None);
-
 		router.register_route(route).await.unwrap();
 		assert_eq!(router.route_count().await, 1);
 
+		// Act
 		router.clear().await;
+
+		// Assert
 		assert_eq!(router.route_count().await, 0);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_reverse_websocket_url() {
+		// Arrange
 		let mut router = WebSocketRouter::new();
 		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("chat".to_string()));
-
 		router.register_route(route).await.unwrap();
 
+		// Act
 		let url = reverse_websocket_url(&router, "chat").await;
+
+		// Assert
 		assert_eq!(url, Some("/ws/chat".to_string()));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_global_router_registration() {
+		// Arrange
 		let router = WebSocketRouter::new();
 		register_websocket_router(router).await;
 
+		// Act
 		let global = get_websocket_router().await;
+
+		// Assert
 		assert!(global.is_some());
 
+		// Cleanup
 		clear_websocket_router().await;
 		let cleared = get_websocket_router().await;
 		assert!(cleared.is_none());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_get_websocket_router_returns_registered_routes() {
+		// Arrange
+		let mut router = WebSocketRouter::new();
+		let route = WebSocketRoute::new("/ws/chat".to_string(), Some("websocket:chat".to_string()));
+		router.register_route(route).await.unwrap();
+		register_websocket_router(router).await;
+
+		// Act
+		let retrieved = get_websocket_router().await;
+
+		// Assert
+		assert!(retrieved.is_some());
+		let retrieved_router = retrieved.unwrap();
+		assert_eq!(retrieved_router.route_count().await, 1);
+		let found = retrieved_router.find_route("/ws/chat").await;
+		assert!(found.is_some());
+		assert_eq!(found.unwrap().name(), Some("websocket:chat"));
+
+		// Cleanup
+		clear_websocket_router().await;
 	}
 }
