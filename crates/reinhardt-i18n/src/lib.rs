@@ -46,6 +46,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use reinhardt_utils::safe_path_join;
+
 /// Error types for i18n operations
 #[derive(Debug, thiserror::Error)]
 pub enum I18nError {
@@ -55,6 +57,8 @@ pub enum I18nError {
 	CatalogNotFound(String),
 	#[error("Failed to load catalog: {0}")]
 	LoadError(String),
+	#[error("Path traversal detected: {0}")]
+	PathTraversal(String),
 }
 
 mod catalog;
@@ -125,16 +129,19 @@ impl CatalogLoader {
 			return Err(I18nError::InvalidLocale(locale.to_string()));
 		}
 
+		// Defense in depth: use safe_path_join to verify the locale path stays
+		// within the base directory, even after the character validation above.
+		let safe_locale_dir = safe_path_join(&self.base_path, locale).map_err(|e| {
+			I18nError::PathTraversal(format!(
+				"Locale '{}' failed path safety check: {}",
+				locale, e
+			))
+		})?;
+
 		// Try multiple common .po file locations
 		let possible_paths = vec![
-			self.base_path
-				.join(locale)
-				.join("LC_MESSAGES")
-				.join("django.po"),
-			self.base_path
-				.join(locale)
-				.join("LC_MESSAGES")
-				.join("messages.po"),
+			safe_locale_dir.join("LC_MESSAGES").join("django.po"),
+			safe_locale_dir.join("LC_MESSAGES").join("messages.po"),
 		];
 
 		for path in possible_paths {
@@ -185,7 +192,14 @@ impl CatalogLoader {
 		path: P,
 		locale: &str,
 	) -> Result<MessageCatalog, String> {
-		let file = std::fs::File::open(path.as_ref())
+		// Validate the file path stays within the base directory
+		let path_str = path
+			.as_ref()
+			.to_str()
+			.ok_or_else(|| "Invalid path encoding".to_string())?;
+		let safe_path = safe_path_join(&self.base_path, path_str).map_err(|e| e.to_string())?;
+
+		let file = std::fs::File::open(&safe_path)
 			.map_err(|e| format!("Failed to open .po file: {}", e))?;
 
 		po_parser::parse_po_file(file, locale)
