@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.13...reinhardt-admin@v0.1.0-alpha.14) - 2026-02-18
+
+### Maintenance
+
+- *(admin)* fix contradictory unimplemented!() messages in export handler
+
 ## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-alpha.12...reinhardt-admin@v0.1.0-alpha.13) - 2026-02-16
 
 ### Maintenance

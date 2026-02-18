@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.15...reinhardt-web@v0.1.0-alpha.16) - 2026-02-18
+
+### Added
+
+- *(core)* add enhanced sanitization utilities for XSS prevention
+
+### Fixed
+
+- *(conf)* use ManuallyDrop in into_inner to preserve ZeroizeOnDrop safety
+- *(core)* use push instead of push_str for single char in escape_css_selector
+
+### Maintenance
+
+- use installed reinhardt-admin binary for example format checking
+- *(admin)* fix misleading table_name() default implementation doc
+
+### Styling
+
+- *(core)* fix formatting in security module
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.14...reinhardt-web@v0.1.0-alpha.15) - 2026-02-16
 
 ### Added
