@@ -76,6 +76,8 @@ impl TestEnv {
 			self.modified_keys.push(key.clone());
 		}
 
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// TestEnv is designed for use in tests with #[serial] to ensure exclusive access.
 		unsafe {
 			env::set_var(&key, value.into());
 		}
@@ -104,6 +106,8 @@ impl TestEnv {
 			self.modified_keys.push(key.clone());
 		}
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// TestEnv is designed for use in tests with #[serial] to ensure exclusive access.
 		unsafe {
 			env::remove_var(&key);
 		}
@@ -166,6 +170,8 @@ impl Drop for TestEnv {
 		// Restore original environment variables
 		for key in &self.modified_keys {
 			if let Some(original) = self.original_env.get(key) {
+				// SAFETY: Restoring environment variables is unsafe in multi-threaded programs.
+				// TestEnv is designed for use in tests with #[serial] to ensure exclusive access.
 				unsafe {
 					match original {
 						Some(val) => env::set_var(key, val),
@@ -334,6 +340,8 @@ mod tests {
 	#[rstest]
 	fn test_env_restoration() {
 		// Set an original value
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_VAR_RESTORE", "original");
 		}
@@ -348,6 +356,8 @@ mod tests {
 		assert_eq!(env::var("TEST_VAR_RESTORE").unwrap(), "original");
 
 		// Cleanup
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_VAR_RESTORE");
 		}
@@ -392,6 +402,8 @@ mod tests {
 
 	#[rstest]
 	fn test_remove_var() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_REMOVE_VAR", "exists");
 		}
@@ -406,6 +418,8 @@ mod tests {
 		assert_eq!(env::var("TEST_REMOVE_VAR").unwrap(), "exists");
 
 		// Cleanup
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_REMOVE_VAR");
 		}
@@ -413,6 +427,8 @@ mod tests {
 
 	#[rstest]
 	fn test_macro_assert_env() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("MACRO_TEST_VAR", "macro_value");
 		}
@@ -420,6 +436,8 @@ mod tests {
 		assert_env!("MACRO_TEST_VAR", "macro_value");
 		assert_env_exists!("MACRO_TEST_VAR");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("MACRO_TEST_VAR");
 		}

@@ -207,6 +207,9 @@ impl ChunkedUploadSession {
 	}
 
 	/// Get the path for a specific chunk
+	///
+	/// Uses the pre-validated session_id (validated during session creation)
+	/// combined with the numeric chunk_number, both safe for path construction.
 	fn chunk_path(&self, chunk_number: usize) -> PathBuf {
 		self.temp_dir
 			.join(format!("{}_{}.chunk", self.session_id, chunk_number))
@@ -261,6 +264,18 @@ impl ChunkedUploadManager {
 		total_size: usize,
 		chunk_size: usize,
 	) -> Result<ChunkedUploadSession, ChunkedUploadError> {
+		// Validate session_id to prevent path traversal attacks.
+		// Session IDs are used to construct directory and file paths.
+		if session_id.is_empty()
+			|| session_id.contains('/')
+			|| session_id.contains('\\')
+			|| session_id.contains('\0')
+			|| session_id.contains("..")
+		{
+			return Err(ChunkedUploadError::SessionNotFound(
+				"Invalid session ID".to_string(),
+			));
+		}
 		let temp_dir = self.temp_base_dir.join(&session_id);
 		fs::create_dir_all(&temp_dir)?;
 
@@ -552,5 +567,69 @@ mod tests {
 		assert!(session.is_complete());
 
 		manager.cleanup_session("session4").unwrap();
+	}
+
+	// =================================================================
+	// Path traversal prevention tests (Issue #355)
+	// =================================================================
+
+	#[test]
+	fn test_start_session_rejects_traversal_in_session_id() {
+		// Arrange
+		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_security"));
+
+		// Act & Assert - directory traversal in session_id
+		assert!(
+			manager
+				.start_session(
+					"../../../etc".to_string(),
+					"file.bin".to_string(),
+					1000,
+					100,
+				)
+				.is_err()
+		);
+
+		assert!(
+			manager
+				.start_session("foo/bar".to_string(), "file.bin".to_string(), 1000, 100,)
+				.is_err()
+		);
+
+		assert!(
+			manager
+				.start_session("foo\\bar".to_string(), "file.bin".to_string(), 1000, 100,)
+				.is_err()
+		);
+
+		assert!(
+			manager
+				.start_session("null\0byte".to_string(), "file.bin".to_string(), 1000, 100,)
+				.is_err()
+		);
+
+		assert!(
+			manager
+				.start_session("..".to_string(), "file.bin".to_string(), 1000, 100,)
+				.is_err()
+		);
+	}
+
+	#[test]
+	fn test_start_session_allows_safe_session_id() {
+		// Arrange
+		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_safe"));
+
+		// Act
+		let result = manager.start_session(
+			"safe-session_123".to_string(),
+			"file.bin".to_string(),
+			1000,
+			100,
+		);
+
+		// Assert
+		assert!(result.is_ok());
+		manager.cleanup_session("safe-session_123").unwrap();
 	}
 }

@@ -23,6 +23,36 @@ pub enum FileUploadError {
 	ChecksumMismatch,
 	#[error("MIME type detection failed")]
 	MimeDetectionFailed,
+	#[error("Path traversal detected in filename")]
+	PathTraversal,
+}
+
+/// Validate that a filename does not contain path traversal sequences
+/// or other unsafe characters that could escape the upload directory.
+fn validate_safe_filename(filename: &str) -> Result<(), FileUploadError> {
+	if filename.is_empty() {
+		return Err(FileUploadError::Upload("Empty filename".to_string()));
+	}
+	if filename.contains('\0') {
+		return Err(FileUploadError::PathTraversal);
+	}
+	if filename.contains("..") {
+		return Err(FileUploadError::PathTraversal);
+	}
+	if filename.contains('/') || filename.contains('\\') {
+		return Err(FileUploadError::PathTraversal);
+	}
+	// Reject absolute paths (Unix and Windows)
+	if filename.starts_with('/') || filename.starts_with('\\') {
+		return Err(FileUploadError::PathTraversal);
+	}
+	if filename.len() >= 2
+		&& filename.as_bytes()[0].is_ascii_alphabetic()
+		&& filename.as_bytes()[1] == b':'
+	{
+		return Err(FileUploadError::PathTraversal);
+	}
+	Ok(())
 }
 
 /// FileUploadHandler processes file uploads
@@ -353,13 +383,22 @@ impl FileUploadHandler {
 	}
 
 	/// Generate a unique filename
+	///
+	/// Extracts only the file extension from the original filename,
+	/// discarding the original name to prevent path traversal.
 	fn generate_unique_filename(&self, field_name: &str, original_filename: &str) -> String {
 		let timestamp = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
 			.unwrap()
 			.as_secs();
 
-		let extension = Path::new(original_filename)
+		// Extract only the extension from the basename (strip any directory components)
+		let basename = Path::new(original_filename)
+			.file_name()
+			.and_then(|n| n.to_str())
+			.unwrap_or(original_filename);
+
+		let extension = Path::new(basename)
 			.extension()
 			.and_then(|e| e.to_str())
 			.unwrap_or("");
@@ -384,6 +423,8 @@ impl FileUploadHandler {
 	/// assert!(result.is_ok());
 	/// ```
 	pub fn delete_upload(&self, filename: &str) -> Result<(), FileUploadError> {
+		// Validate filename to prevent path traversal attacks
+		validate_safe_filename(filename)?;
 		let file_path = self.upload_dir.join(filename);
 		fs::remove_file(file_path)?;
 		Ok(())
@@ -752,5 +793,48 @@ mod tests {
 		assert_eq!(content, vec![1, 2, 3, 4, 5]);
 
 		fs::remove_file(temp_path).unwrap();
+	}
+
+	// =================================================================
+	// Path traversal prevention tests (Issue #355)
+	// =================================================================
+
+	#[test]
+	fn test_delete_upload_rejects_path_traversal() {
+		// Arrange
+		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+
+		// Act & Assert
+		assert!(handler.delete_upload("../../../etc/passwd").is_err());
+		assert!(handler.delete_upload("foo/../../bar").is_err());
+		assert!(handler.delete_upload("/etc/passwd").is_err());
+		assert!(handler.delete_upload("test\0file.txt").is_err());
+	}
+
+	#[test]
+	fn test_delete_upload_allows_safe_filenames() {
+		// Arrange
+		let handler = FileUploadHandler::new(PathBuf::from("/tmp/uploads"));
+
+		// Act - these should not return PathTraversal error
+		// (they may return IO NotFound since files don't exist, which is expected)
+		let result = handler.delete_upload("safe_file.txt");
+		assert!(
+			!matches!(result, Err(FileUploadError::PathTraversal)),
+			"Safe filename should not trigger path traversal error"
+		);
+	}
+
+	#[test]
+	fn test_validate_safe_filename() {
+		// Arrange & Act & Assert
+		assert!(validate_safe_filename("normal.txt").is_ok());
+		assert!(validate_safe_filename("my-file_123.jpg").is_ok());
+		assert!(validate_safe_filename("../../../etc/passwd").is_err());
+		assert!(validate_safe_filename("foo/../bar.txt").is_err());
+		assert!(validate_safe_filename("/absolute/path.txt").is_err());
+		assert!(validate_safe_filename("null\0byte.txt").is_err());
+		assert!(validate_safe_filename("").is_err());
+		assert!(validate_safe_filename("back\\slash.txt").is_err());
 	}
 }

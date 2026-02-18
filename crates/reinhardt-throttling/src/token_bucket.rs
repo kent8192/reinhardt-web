@@ -4,7 +4,6 @@
 //! an average rate limit. Tokens are added to a bucket at a fixed rate,
 //! and each request consumes one or more tokens.
 
-use super::backend::ThrottleBackend;
 use super::time_provider::{SystemTimeProvider, TimeProvider};
 use super::{Throttle, ThrottleResult};
 use async_trait::async_trait;
@@ -199,51 +198,40 @@ struct BucketState {
 ///
 /// ```
 /// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
-/// use reinhardt_throttling::{MemoryBackend, Throttle};
-/// use std::sync::Arc;
+/// use reinhardt_throttling::Throttle;
 ///
 /// # tokio_test::block_on(async {
-/// let backend = Arc::new(MemoryBackend::new());
 /// let config = TokenBucketConfig::per_second(10, 20);
-/// let throttle = TokenBucket::new("api_key".to_string(), backend, config);
+/// let throttle = TokenBucket::new(config);
 ///
 /// // First request should succeed
 /// assert!(throttle.allow_request("user_123").await.unwrap());
 /// # });
 /// ```
-pub struct TokenBucket<B: ThrottleBackend, T: TimeProvider = SystemTimeProvider> {
-	#[allow(dead_code)]
-	key: String,
-	#[allow(dead_code)]
-	backend: Arc<B>,
+pub struct TokenBucket<T: TimeProvider = SystemTimeProvider> {
 	config: TokenBucketConfig,
 	time_provider: Arc<T>,
 	state: Arc<RwLock<BucketState>>,
 }
 
-impl<B: ThrottleBackend> TokenBucket<B, SystemTimeProvider> {
+impl TokenBucket<SystemTimeProvider> {
 	/// Creates a new token bucket with default time provider
 	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_throttling::token_bucket::{TokenBucket, TokenBucketConfig};
-	/// use reinhardt_throttling::MemoryBackend;
-	/// use std::sync::Arc;
 	///
-	/// let backend = Arc::new(MemoryBackend::new());
 	/// let config = TokenBucketConfig::per_second(5, 10);
-	/// let throttle = TokenBucket::new("api_key".to_string(), backend, config);
+	/// let throttle = TokenBucket::new(config);
 	/// ```
-	pub fn new(key: String, backend: Arc<B>, config: TokenBucketConfig) -> Self {
+	pub fn new(config: TokenBucketConfig) -> Self {
 		let initial_state = BucketState {
 			tokens: config.capacity,
 			last_refill: SystemTimeProvider::new().now(),
 		};
 
 		Self {
-			key,
-			backend,
 			config,
 			time_provider: Arc::new(SystemTimeProvider::new()),
 			state: Arc::new(RwLock::new(initial_state)),
@@ -251,22 +239,15 @@ impl<B: ThrottleBackend> TokenBucket<B, SystemTimeProvider> {
 	}
 }
 
-impl<B: ThrottleBackend, T: TimeProvider> TokenBucket<B, T> {
+impl<T: TimeProvider> TokenBucket<T> {
 	/// Creates a new token bucket with custom time provider
-	pub fn with_time_provider(
-		key: String,
-		backend: Arc<B>,
-		config: TokenBucketConfig,
-		time_provider: Arc<T>,
-	) -> Self {
+	pub fn with_time_provider(config: TokenBucketConfig, time_provider: Arc<T>) -> Self {
 		let initial_state = BucketState {
 			tokens: config.capacity,
 			last_refill: time_provider.now(),
 		};
 
 		Self {
-			key,
-			backend,
 			config,
 			time_provider,
 			state: Arc::new(RwLock::new(initial_state)),
@@ -324,7 +305,7 @@ impl<B: ThrottleBackend, T: TimeProvider> TokenBucket<B, T> {
 }
 
 #[async_trait]
-impl<B: ThrottleBackend, T: TimeProvider> Throttle for TokenBucket<B, T> {
+impl<T: TimeProvider> Throttle for TokenBucket<T> {
 	async fn allow_request(&self, _key: &str) -> ThrottleResult<bool> {
 		self.consume_tokens(self.config.tokens_per_request).await
 	}
@@ -357,16 +338,14 @@ impl<B: ThrottleBackend, T: TimeProvider> Throttle for TokenBucket<B, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::backend::MemoryBackend;
 	use crate::time_provider::MockTimeProvider;
 	use rstest::rstest;
 
 	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_basic() {
-		let backend = Arc::new(MemoryBackend::new());
 		let config = TokenBucketConfig::new(5, 5, 10, 1);
-		let throttle = TokenBucket::new("test".to_string(), backend, config);
+		let throttle = TokenBucket::new(config);
 
 		// Should allow 5 requests (capacity)
 		for _ in 0..5 {
@@ -382,14 +361,8 @@ mod tests {
 	async fn test_token_bucket_refill() {
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let backend = Arc::new(MemoryBackend::with_time_provider(time_provider.clone()));
 		let config = TokenBucketConfig::new(10, 5, 1, 1);
-		let throttle = TokenBucket::with_time_provider(
-			"test".to_string(),
-			backend,
-			config.clone(),
-			time_provider.clone(),
-		);
+		let throttle = TokenBucket::with_time_provider(config.clone(), time_provider.clone());
 
 		// Consume all tokens
 		for _ in 0..10 {
@@ -410,9 +383,8 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_burst() {
-		let backend = Arc::new(MemoryBackend::new());
 		let config = TokenBucketConfig::per_second(5, 20); // 5/sec, burst 20
-		let throttle = TokenBucket::new("test".to_string(), backend, config);
+		let throttle = TokenBucket::new(config);
 
 		// Should handle burst of 20
 		for _ in 0..20 {
@@ -426,9 +398,8 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_tokens_per_request() {
-		let backend = Arc::new(MemoryBackend::new());
 		let config = TokenBucketConfig::new(10, 10, 10, 2); // 2 tokens per request
-		let throttle = TokenBucket::new("test".to_string(), backend, config);
+		let throttle = TokenBucket::new(config);
 
 		// Should allow 5 requests (10 tokens / 2 per request)
 		for _ in 0..5 {
@@ -442,9 +413,8 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_get_tokens() {
-		let backend = Arc::new(MemoryBackend::new());
 		let config = TokenBucketConfig::new(10, 5, 10, 1);
-		let throttle = TokenBucket::new("test".to_string(), backend, config);
+		let throttle = TokenBucket::new(config);
 
 		// Initial tokens should equal capacity
 		assert_eq!(throttle.tokens().await, 10);
@@ -459,9 +429,8 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_token_bucket_reset() {
-		let backend = Arc::new(MemoryBackend::new());
 		let config = TokenBucketConfig::new(10, 5, 10, 1);
-		let throttle = TokenBucket::new("test".to_string(), backend, config);
+		let throttle = TokenBucket::new(config);
 
 		// Consume all tokens
 		for _ in 0..10 {
@@ -479,14 +448,8 @@ mod tests {
 	async fn test_token_bucket_wait_time() {
 		use tokio::time::Instant;
 		let time_provider = Arc::new(MockTimeProvider::new(Instant::now()));
-		let backend = Arc::new(MemoryBackend::with_time_provider(time_provider.clone()));
 		let config = TokenBucketConfig::new(5, 5, 10, 1);
-		let throttle = TokenBucket::with_time_provider(
-			"test".to_string(),
-			backend,
-			config,
-			time_provider.clone(),
-		);
+		let throttle = TokenBucket::with_time_provider(config, time_provider.clone());
 
 		// Consume all tokens
 		for _ in 0..5 {

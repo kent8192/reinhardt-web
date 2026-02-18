@@ -384,6 +384,8 @@ KEY2=value2
 		assert_eq!(env::var("KEY1").unwrap(), "value1");
 		assert_eq!(env::var("KEY2").unwrap(), "value2");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("KEY1");
 			env::remove_var("KEY2");
@@ -403,6 +405,8 @@ QUOTED_DOUBLE="double quoted"
 		assert_eq!(env::var("QUOTED_SINGLE").unwrap(), "single quoted");
 		assert_eq!(env::var("QUOTED_DOUBLE").unwrap(), "double quoted");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("QUOTED_SINGLE");
 			env::remove_var("QUOTED_DOUBLE");
@@ -420,6 +424,8 @@ export EXPORTED_VAR="exported value"
 
 		assert_eq!(env::var("EXPORTED_VAR").unwrap(), "exported value");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("EXPORTED_VAR");
 		}
@@ -427,6 +433,8 @@ export EXPORTED_VAR="exported value"
 
 	#[rstest]
 	fn test_variable_expansion() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("BASE_VAR", "base");
 		}
@@ -442,6 +450,8 @@ EXPANDED_BRACES=${BASE_VAR}/expanded
 		assert_eq!(env::var("EXPANDED").unwrap(), "base/expanded");
 		assert_eq!(env::var("EXPANDED_BRACES").unwrap(), "base/expanded");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("BASE_VAR");
 			env::remove_var("EXPANDED");
@@ -460,6 +470,8 @@ ESCAPED=\$not_expanded
 
 		assert_eq!(env::var("ESCAPED").unwrap(), "$not_expanded");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("ESCAPED");
 		}
@@ -478,6 +490,8 @@ ESCAPED=\$not_expanded
 
 		assert_eq!(env::var("FILE_VAR").unwrap(), "file_value");
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("FILE_VAR");
 		}

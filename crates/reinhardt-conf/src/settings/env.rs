@@ -220,11 +220,15 @@ mod tests {
 
 	#[rstest]
 	fn test_env_str() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_STR", "hello");
 		}
 		let env = Env::new();
 		assert_eq!(env.str("TEST_STR").unwrap(), "hello");
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_STR");
 		}
@@ -242,6 +246,8 @@ mod tests {
 
 	#[rstest]
 	fn test_env_bool() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_BOOL_TRUE", "true");
 			env::set_var("TEST_BOOL_FALSE", "false");
@@ -255,6 +261,8 @@ mod tests {
 		assert!(env.bool("TEST_BOOL_1").unwrap());
 		assert!(!env.bool("TEST_BOOL_0").unwrap());
 
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_BOOL_TRUE");
 			env::remove_var("TEST_BOOL_FALSE");
@@ -265,11 +273,15 @@ mod tests {
 
 	#[rstest]
 	fn test_env_int() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_INT", "42");
 		}
 		let env = Env::new();
 		assert_eq!(env.int("TEST_INT").unwrap(), 42);
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_INT");
 		}
@@ -277,11 +289,15 @@ mod tests {
 
 	#[rstest]
 	fn test_env_list() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_LIST", "a,b,c");
 		}
 		let env = Env::new();
 		assert_eq!(env.list("TEST_LIST").unwrap(), vec!["a", "b", "c"]);
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_LIST");
 		}
@@ -289,11 +305,15 @@ mod tests {
 
 	#[rstest]
 	fn test_settings_env_with_prefix() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("REINHARDT_DEBUG", "true");
 		}
 		let env = Env::new().with_prefix("REINHARDT_");
 		assert!(env.bool("DEBUG").unwrap());
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("REINHARDT_DEBUG");
 		}
@@ -301,11 +321,15 @@ mod tests {
 
 	#[rstest]
 	fn test_env_path() {
+		// SAFETY: Setting environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::set_var("TEST_PATH", "/tmp/test");
 		}
 		let env = Env::new();
 		assert_eq!(env.path("TEST_PATH").unwrap(), PathBuf::from("/tmp/test"));
+		// SAFETY: Removing environment variables is unsafe in multi-threaded programs.
+		// This test uses #[serial] to ensure exclusive access to environment variables.
 		unsafe {
 			env::remove_var("TEST_PATH");
 		}

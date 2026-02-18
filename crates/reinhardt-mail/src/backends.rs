@@ -291,6 +291,58 @@ impl SmtpBackend {
 	}
 
 	fn build_transport(&self) -> EmailResult<AsyncSmtpTransport<Tokio1Executor>> {
+		// Use lettre's recommended secure APIs for standard ports
+		// This ensures proper TLS hostname verification by default
+		match (&self.config.security, self.config.port) {
+			// Port 465 with TLS: use relay() for secure SMTPS
+			(SmtpSecurity::Tls, 465) => {
+				let builder = AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
+					.map_err(|e| EmailError::SmtpError(format!("TLS relay error: {}", e)))?
+					.timeout(Some(self.config.timeout));
+				let builder = self.configure_auth(builder);
+				Ok(builder.build())
+			}
+			// Port 587 with STARTTLS: use starttls_relay() for secure STARTTLS
+			(SmtpSecurity::StartTls, 587) => {
+				let builder =
+					AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.host)
+						.map_err(|e| EmailError::SmtpError(format!("STARTTLS relay error: {}", e)))?
+						.timeout(Some(self.config.timeout));
+				let builder = self.configure_auth(builder);
+				Ok(builder.build())
+			}
+			// Custom port or no TLS: use builder_dangerous with manual TLS configuration
+			// This is needed for test environments and non-standard SMTP configurations
+			_ => self.build_transport_with_custom_port(),
+		}
+	}
+
+	/// Configure authentication on the transport builder
+	fn configure_auth(
+		&self,
+		mut builder: lettre::transport::smtp::AsyncSmtpTransportBuilder,
+	) -> lettre::transport::smtp::AsyncSmtpTransportBuilder {
+		if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
+			let credentials = Credentials::new(username.clone(), password.clone());
+
+			builder = match &self.config.auth_mechanism {
+				SmtpAuthMechanism::Plain => builder
+					.credentials(credentials)
+					.authentication(vec![Mechanism::Plain]),
+				SmtpAuthMechanism::Login => builder
+					.credentials(credentials)
+					.authentication(vec![Mechanism::Login]),
+				SmtpAuthMechanism::Auto => builder.credentials(credentials),
+			};
+		}
+		builder
+	}
+
+	/// Build transport with custom port using builder_dangerous
+	///
+	/// This method is used for non-standard ports or when TLS is disabled.
+	/// For standard ports (465/587), prefer `relay()` or `starttls_relay()` instead.
+	fn build_transport_with_custom_port(&self) -> EmailResult<AsyncSmtpTransport<Tokio1Executor>> {
 		let mut builder =
 			AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
 				.port(self.config.port)
@@ -299,7 +351,7 @@ impl SmtpBackend {
 		// Configure TLS/SSL
 		match &self.config.security {
 			SmtpSecurity::None => {
-				// No encryption
+				// No encryption - intended for test environments only
 			}
 			SmtpSecurity::StartTls => {
 				let tls_params = TlsParameters::builder(self.config.host.clone())
@@ -315,20 +367,7 @@ impl SmtpBackend {
 			}
 		}
 
-		// Configure authentication
-		if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
-			let credentials = Credentials::new(username.clone(), password.clone());
-
-			builder = match &self.config.auth_mechanism {
-				SmtpAuthMechanism::Plain => builder
-					.credentials(credentials)
-					.authentication(vec![Mechanism::Plain]),
-				SmtpAuthMechanism::Login => builder
-					.credentials(credentials)
-					.authentication(vec![Mechanism::Login]),
-				SmtpAuthMechanism::Auto => builder.credentials(credentials),
-			};
-		}
+		builder = self.configure_auth(builder);
 
 		Ok(builder.build())
 	}

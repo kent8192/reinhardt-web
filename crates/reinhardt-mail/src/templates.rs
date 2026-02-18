@@ -151,7 +151,7 @@ impl TemplateEmailBuilder {
 			builder = builder.html(html);
 		}
 
-		Ok(builder.build())
+		builder.build()
 	}
 
 	/// Simple template rendering using string replacement

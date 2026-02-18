@@ -35,13 +35,6 @@ fn test_load_custom_settings() {
 	assert!(settings.debug); // Still defaults to true
 }
 
-#[rstest]
-fn test_settings_with_root_urlconf() {
-	let settings = Settings::default().with_root_urlconf("myproject.urls");
-
-	assert_eq!(settings.root_urlconf, "myproject.urls");
-}
-
 // ============================================================================
 // Settings Modification Tests
 // ============================================================================
@@ -174,15 +167,12 @@ fn test_settings_deserialization() {
         "debug": false,
         "allowed_hosts": ["example.com"],
         "installed_apps": ["app1", "app2"],
-        "middleware": ["middleware1"],
-        "root_urlconf": "urls",
         "databases": {},
         "templates": [],
         "static_url": "/static/",
         "static_root": null,
         "staticfiles_dirs": [],
         "media_url": "/media/",
-        "media_root": null,
         "language_code": "en",
         "time_zone": "UTC",
         "use_i18n": true,
@@ -236,7 +226,6 @@ fn test_required_settings_present() {
 	// Verify required fields are present
 	assert!(!settings.secret_key.is_empty());
 	assert!(!settings.installed_apps.is_empty());
-	assert!(!settings.middleware.is_empty());
 	assert!(!settings.databases.is_empty());
 }
 

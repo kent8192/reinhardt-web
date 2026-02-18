@@ -42,7 +42,7 @@ impl AzureKeyVaultProvider {
 	///
 	/// # Arguments
 	///
-	/// * `vault_url` - The URL of the Azure Key Vault (e.g., "https://myvault.vault.azure.net")
+	/// * `vault_url` - The URL of the Azure Key Vault (e.g., `"https://myvault.vault.azure.net"`)
 	///
 	/// # Example
 	///

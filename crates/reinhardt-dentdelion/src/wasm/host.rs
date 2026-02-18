@@ -33,6 +33,128 @@ use wasmtime::component::ResourceTable;
 #[cfg(feature = "wasm")]
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
+/// Validate a URL to prevent Server-Side Request Forgery (SSRF) attacks.
+///
+/// Performs the following checks:
+/// 1. Only allows `http://` and `https://` schemes
+/// 2. Resolves the hostname to an IP address
+/// 3. Rejects requests to private, loopback, and link-local IP addresses
+fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
+	use std::net::ToSocketAddrs;
+
+	// Parse the URL
+	let parsed = url::Url::parse(url)
+		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
+
+	// Validate scheme: only http and https are allowed
+	match parsed.scheme() {
+		"http" | "https" => {}
+		scheme => {
+			return Err(WitPluginError::new(
+				403,
+				format!(
+					"URL scheme '{}' is not allowed; only http and https are permitted",
+					scheme
+				),
+			));
+		}
+	}
+
+	// Extract host
+	let host = parsed
+		.host_str()
+		.ok_or_else(|| WitPluginError::new(400, "URL must contain a host"))?;
+
+	// Determine port (default to 80 for http, 443 for https)
+	let port = parsed.port_or_known_default().unwrap_or(80);
+
+	// Resolve hostname to IP addresses for DNS rebinding protection
+	let socket_addrs: Vec<_> = format!("{}:{}", host, port)
+		.to_socket_addrs()
+		.map_err(|e| {
+			WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
+		})?
+		.collect();
+
+	if socket_addrs.is_empty() {
+		return Err(WitPluginError::new(
+			400,
+			"Hostname resolved to no addresses",
+		));
+	}
+
+	// Check each resolved IP address against blocklists
+	for addr in &socket_addrs {
+		if is_private_ip(&addr.ip()) {
+			return Err(WitPluginError::new(
+				403,
+				format!(
+					"Requests to private/internal IP address {} are not allowed",
+					addr.ip()
+				),
+			));
+		}
+	}
+
+	Ok(())
+}
+
+/// Check if an IP address is private, loopback, or link-local.
+fn is_private_ip(ip: &std::net::IpAddr) -> bool {
+	use std::net::IpAddr;
+
+	match ip {
+		IpAddr::V4(ipv4) => {
+			// 127.0.0.0/8 - Loopback
+			ipv4.is_loopback()
+			// 10.0.0.0/8 - Private
+			|| ipv4.octets()[0] == 10
+			// 172.16.0.0/12 - Private
+			|| (ipv4.octets()[0] == 172 && (ipv4.octets()[1] & 0xf0) == 16)
+			// 192.168.0.0/16 - Private
+			|| (ipv4.octets()[0] == 192 && ipv4.octets()[1] == 168)
+			// 169.254.0.0/16 - Link-local
+			|| (ipv4.octets()[0] == 169 && ipv4.octets()[1] == 254)
+			// 0.0.0.0/8 - Current network
+			|| ipv4.octets()[0] == 0
+		}
+		IpAddr::V6(ipv6) => {
+			// ::1 - IPv6 loopback
+			ipv6.is_loopback()
+			// fc00::/7 - IPv6 unique local address (private)
+			|| (ipv6.segments()[0] & 0xfe00) == 0xfc00
+			// fe80::/10 - IPv6 link-local
+			|| (ipv6.segments()[0] & 0xffc0) == 0xfe80
+			// :: - IPv6 unspecified
+			|| ipv6.is_unspecified()
+			// ::ffff:0:0/96 - IPv4-mapped IPv6 (check the embedded IPv4)
+			|| is_ipv4_mapped_private(ipv6)
+		}
+	}
+}
+
+/// Check if an IPv4-mapped IPv6 address contains a private IPv4 address.
+fn is_ipv4_mapped_private(ipv6: &std::net::Ipv6Addr) -> bool {
+	// Check for ::ffff:x.x.x.x pattern (IPv4-mapped IPv6)
+	let segments = ipv6.segments();
+	if segments[0] == 0
+		&& segments[1] == 0
+		&& segments[2] == 0
+		&& segments[3] == 0
+		&& segments[4] == 0
+		&& segments[5] == 0xffff
+	{
+		let ipv4 = std::net::Ipv4Addr::new(
+			(segments[6] >> 8) as u8,
+			(segments[6] & 0xff) as u8,
+			(segments[7] >> 8) as u8,
+			(segments[7] & 0xff) as u8,
+		);
+		return is_private_ip(&std::net::IpAddr::V4(ipv4));
+	}
+	false
+}
+
 /// Host state that is passed to WASM instances.
 ///
 /// This struct contains all the state that plugins can access through host functions.
@@ -223,6 +345,10 @@ impl HostState {
 	}
 
 	/// Perform an HTTP GET request.
+	///
+	/// Validates the URL against SSRF attacks before making the request.
+	/// Only `http://` and `https://` schemes are allowed, and requests to
+	/// private/loopback IP addresses are rejected.
 	pub async fn http_get(
 		&self,
 		url: &str,
@@ -231,6 +357,8 @@ impl HostState {
 		if !self.has_http_capability() {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
+
+		validate_url_for_ssrf(url)?;
 
 		let client = self
 			.http_client
@@ -266,6 +394,10 @@ impl HostState {
 	}
 
 	/// Perform an HTTP POST request.
+	///
+	/// Validates the URL against SSRF attacks before making the request.
+	/// Only `http://` and `https://` schemes are allowed, and requests to
+	/// private/loopback IP addresses are rejected.
 	pub async fn http_post(
 		&self,
 		url: &str,
@@ -275,6 +407,8 @@ impl HostState {
 		if !self.has_http_capability() {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
+
+		validate_url_for_ssrf(url)?;
 
 		let client = self
 			.http_client
@@ -325,6 +459,12 @@ impl HostState {
 			return Err(WitPluginError::new(403, "Database access not permitted"));
 		}
 
+		// Validate SQL statement to prevent SQL injection
+		use super::sql_validator::validate_sql;
+		validate_sql(sql).map_err(|e| {
+			WitPluginError::with_details(403, "SQL validation failed", e.to_string())
+		})?;
+
 		let conn = self
 			.db_connection
 			.as_ref()
@@ -368,6 +508,12 @@ impl HostState {
 		if !self.has_db_capability() {
 			return Err(WitPluginError::new(403, "Database access not permitted"));
 		}
+
+		// Validate SQL statement to prevent SQL injection
+		use super::sql_validator::validate_sql;
+		validate_sql(sql).map_err(|e| {
+			WitPluginError::with_details(403, "SQL validation failed", e.to_string())
+		})?;
 
 		let conn = self
 			.db_connection
@@ -1472,5 +1618,303 @@ mod tests {
 		// Verify the proxy is shared
 		assert!(Arc::ptr_eq(state.ssr_proxy(), &ssr_proxy));
 		assert!(state.is_ssr_available());
+	}
+
+	// ===== SSRF Validation Tests =====
+
+	#[test]
+	fn test_ssrf_rejects_file_scheme() {
+		// Arrange
+		let url = "file:///etc/passwd";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_gopher_scheme() {
+		// Arrange
+		let url = "gopher://evil.com/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_ftp_scheme() {
+		// Arrange
+		let url = "ftp://internal-server/data";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_loopback_ipv4() {
+		// Arrange
+		let url = "http://127.0.0.1/admin";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_loopback_ipv4_other() {
+		// Arrange
+		let url = "http://127.0.0.2:8080/internal";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_private_10_network() {
+		// Arrange
+		let url = "http://10.0.0.1/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_private_172_network() {
+		// Arrange
+		let url = "http://172.16.0.1/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_private_192_168_network() {
+		// Arrange
+		let url = "http://192.168.1.1/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_link_local() {
+		// Arrange
+		let url = "http://169.254.169.254/latest/meta-data/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_ipv6_loopback() {
+		// Arrange
+		let url = "http://[::1]/admin";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_localhost() {
+		// Arrange
+		let url = "http://localhost/admin";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_zero_ip() {
+		// Arrange
+		let url = "http://0.0.0.0/";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 403);
+	}
+
+	#[test]
+	fn test_ssrf_rejects_invalid_url() {
+		// Arrange
+		let url = "not-a-valid-url";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.code, 400);
+	}
+
+	#[test]
+	fn test_ssrf_allows_public_http() {
+		// Arrange
+		let url = "http://example.com/api/data";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_ssrf_allows_public_https() {
+		// Arrange
+		let url = "https://api.github.com/repos";
+
+		// Act
+		let result = validate_url_for_ssrf(url);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_is_private_ip_loopback_v4() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_private_10() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 1, 2, 3));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_private_172() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(172, 16, 0, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_private_192_168() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 0, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_link_local() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(169, 254, 1, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_public() {
+		// Arrange
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8));
+
+		// Act & Assert
+		assert!(!is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_ipv6_loopback() {
+		// Arrange
+		let ip = std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_ipv6_unique_local() {
+		// Arrange - fc00::/7
+		let ip = std::net::IpAddr::V6(std::net::Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_ipv6_link_local() {
+		// Arrange - fe80::/10
+		let ip = std::net::IpAddr::V6(std::net::Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1));
+
+		// Act & Assert
+		assert!(is_private_ip(&ip));
+	}
+
+	#[test]
+	fn test_is_private_ip_172_not_in_range() {
+		// Arrange - 172.32.0.1 is NOT in 172.16.0.0/12 range
+		let ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(172, 32, 0, 1));
+
+		// Act & Assert
+		assert!(!is_private_ip(&ip));
 	}
 }
