@@ -10,17 +10,18 @@
 //! use reinhardt_openapi::OpenApiRouter;
 //! use reinhardt_urls::routers::BasicRouter;
 //!
-//! fn main() {
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create your existing router
 //!     let router = BasicRouter::new();
 //!
 //!     // Wrap with OpenAPI endpoints
-//!     let wrapped = OpenApiRouter::wrap(router);
+//!     let wrapped = OpenApiRouter::wrap(router)?;
 //!
 //!     // The wrapped router now serves:
 //!     // - /api/openapi.json (OpenAPI spec)
 //!     // - /api/docs (Swagger UI)
 //!     // - /api/redoc (Redoc UI)
+//!     Ok(())
 //! }
 //! ```
 
@@ -28,7 +29,7 @@ use async_trait::async_trait;
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response, Result};
 use reinhardt_rest::openapi::endpoints::generate_openapi_schema;
-use reinhardt_rest::openapi::{RedocUI, SwaggerUI};
+use reinhardt_rest::openapi::{RedocUI, SchemaError, SwaggerUI};
 use reinhardt_urls::prelude::Route;
 use reinhardt_urls::routers::Router;
 use std::sync::Arc;
@@ -58,6 +59,13 @@ impl<H> OpenApiRouter<H> {
 	/// This generates the OpenAPI schema from the global registry and
 	/// pre-renders the Swagger and Redoc UIs.
 	///
+	/// # Errors
+	///
+	/// Returns [`SchemaError`] if:
+	/// - The OpenAPI schema cannot be serialized to JSON
+	/// - The Swagger UI HTML cannot be rendered
+	/// - The Redoc UI HTML cannot be rendered
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
@@ -65,30 +73,27 @@ impl<H> OpenApiRouter<H> {
 	/// use reinhardt_urls::routers::BasicRouter;
 	///
 	/// let router = BasicRouter::new();
-	/// let wrapped = OpenApiRouter::wrap(router);
+	/// let wrapped = OpenApiRouter::wrap(router)?;
 	/// ```
-	pub fn wrap(handler: H) -> Self {
+	pub fn wrap(handler: H) -> std::result::Result<Self, SchemaError> {
 		// Generate OpenAPI schema from global registry
 		let schema = generate_openapi_schema();
-		let openapi_json =
-			serde_json::to_string_pretty(&schema).expect("Failed to serialize OpenAPI schema");
+		let openapi_json = serde_json::to_string_pretty(&schema)?;
 
 		// Generate Swagger UI HTML
 		let swagger_ui = SwaggerUI::new(schema.clone());
-		let swagger_html = swagger_ui
-			.render_html()
-			.expect("Failed to render Swagger UI");
+		let swagger_html = swagger_ui.render_html()?;
 
 		// Generate Redoc UI HTML
 		let redoc_ui = RedocUI::new(schema);
-		let redoc_html = redoc_ui.render_html().expect("Failed to render Redoc UI");
+		let redoc_html = redoc_ui.render_html()?;
 
-		Self {
+		Ok(Self {
 			inner: handler,
 			openapi_json: Arc::new(openapi_json),
 			swagger_html: Arc::new(swagger_html),
 			redoc_html: Arc::new(redoc_html),
-		}
+		})
 	}
 
 	/// Get a reference to the wrapped handler
@@ -218,14 +223,29 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_wrap_returns_result() {
+		// Arrange
+		let handler = DummyHandler;
+
+		// Act
+		let result = OpenApiRouter::wrap(handler);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn test_openapi_json_endpoint() {
+		// Arrange
 		let handler = DummyHandler;
-		let wrapped = OpenApiRouter::wrap(handler);
+		let wrapped = OpenApiRouter::wrap(handler).unwrap();
 
+		// Act
 		let request = Request::builder().uri("/api/openapi.json").build().unwrap();
 		let response = wrapped.handle(request).await.unwrap();
 
+		// Assert
 		assert_eq!(response.status, StatusCode::OK);
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body_str.contains("openapi"));
@@ -235,12 +255,15 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_swagger_docs_endpoint() {
+		// Arrange
 		let handler = DummyHandler;
-		let wrapped = OpenApiRouter::wrap(handler);
+		let wrapped = OpenApiRouter::wrap(handler).unwrap();
 
+		// Act
 		let request = Request::builder().uri("/api/docs").build().unwrap();
 		let response = wrapped.handle(request).await.unwrap();
 
+		// Assert
 		assert_eq!(response.status, StatusCode::OK);
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body_str.contains("swagger-ui"));
@@ -249,12 +272,15 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_redoc_docs_endpoint() {
+		// Arrange
 		let handler = DummyHandler;
-		let wrapped = OpenApiRouter::wrap(handler);
+		let wrapped = OpenApiRouter::wrap(handler).unwrap();
 
+		// Act
 		let request = Request::builder().uri("/api/redoc").build().unwrap();
 		let response = wrapped.handle(request).await.unwrap();
 
+		// Assert
 		assert_eq!(response.status, StatusCode::OK);
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert!(body_str.contains("redoc"));
@@ -263,12 +289,15 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_delegation_to_inner_handler() {
+		// Arrange
 		let handler = DummyHandler;
-		let wrapped = OpenApiRouter::wrap(handler);
+		let wrapped = OpenApiRouter::wrap(handler).unwrap();
 
+		// Act
 		let request = Request::builder().uri("/some/other/path").build().unwrap();
 		let response = wrapped.handle(request).await.unwrap();
 
+		// Assert
 		assert_eq!(response.status, StatusCode::OK);
 		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
 		assert_eq!(body_str, "Hello from inner handler");
