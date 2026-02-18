@@ -55,7 +55,7 @@ pub fn get_settings() -> Settings {
 				.with_value("managers", json::Value::Array(vec![]))
 				// Fields for crates.io compatibility (removed in local version)
 				.with_value("middleware", json::Value::Array(vec![]))
-				.with_value("media_root", json::Value::Null),
+				.with_value("media_root", json::Value::Null)
 				.with_value("root_urlconf", json::Value::Null),
 		)
 		.add_source(LowPriorityEnvSource::new().with_prefix("REINHARDT_"))
