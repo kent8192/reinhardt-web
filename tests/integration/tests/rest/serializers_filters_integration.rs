@@ -152,7 +152,7 @@ async fn test_simple_search_backend_with_orm_integration(
 
 	// Verify WHERE clause is added
 	assert!(filtered_sql.contains("WHERE"));
-	assert!(filtered_sql.contains("name LIKE '%Laptop%'"));
+	assert!(filtered_sql.contains("`name` LIKE '%Laptop%'"));
 
 	// Execute generated SQL against database
 	let results = sqlx::query(&filtered_sql)
@@ -355,7 +355,7 @@ async fn test_custom_filter_backend_chaining(
 
 	// Verify both WHERE and ORDER BY are present
 	assert!(filtered_sql.contains("WHERE"));
-	assert!(filtered_sql.contains("category LIKE '%Electronics%'"));
+	assert!(filtered_sql.contains("`category` LIKE '%Electronics%'"));
 	assert!(filtered_sql.contains("ORDER BY price ASC"));
 
 	// Execute query

@@ -393,8 +393,8 @@ async fn test_search_filter_orm_integration(
 
 	// Verify SQL contains LIKE clauses for both fields with OR logic
 	assert!(filtered_sql.contains("WHERE"));
-	assert!(filtered_sql.contains("username LIKE '%alice%'"));
-	assert!(filtered_sql.contains("email LIKE '%alice%'"));
+	assert!(filtered_sql.contains("`username` LIKE '%alice%'"));
+	assert!(filtered_sql.contains("`email` LIKE '%alice%'"));
 	assert!(filtered_sql.contains("OR"));
 
 	// Execute query and verify results
@@ -719,8 +719,8 @@ async fn test_combined_filters_integration(
 	// Verify SQL contains all filter clauses
 	assert!(filtered_sql.contains("age >= 18"));
 	assert!(filtered_sql.contains("age <= 65"));
-	assert!(filtered_sql.contains("username LIKE '%example%'"));
-	assert!(filtered_sql.contains("email LIKE '%example%'"));
+	assert!(filtered_sql.contains("`username` LIKE '%example%'"));
+	assert!(filtered_sql.contains("`email` LIKE '%example%'"));
 	assert!(filtered_sql.contains("ORDER BY age DESC"));
 
 	// Execute query and verify results
