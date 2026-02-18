@@ -1,5 +1,6 @@
 //! HTML utilities for escaping, sanitization, and manipulation
 
+use reinhardt_core::security::xss::strip_tags_safe;
 use std::borrow::Cow;
 /// Escape HTML special characters
 ///
@@ -78,6 +79,13 @@ pub fn unescape(text: &str) -> String {
 }
 /// Strip HTML tags from text
 ///
+/// This function uses `strip_tags_safe` from `reinhardt_core::security::xss`
+/// which properly handles malformed HTML including:
+/// - `>` inside quoted attributes (e.g., `<a title="x>y">`)
+/// - Unclosed tags at end of input
+/// - HTML comments (`<!-- ... -->`)
+/// - Self-closing tags
+///
 /// # Examples
 ///
 /// ```
@@ -86,20 +94,12 @@ pub fn unescape(text: &str) -> String {
 /// assert_eq!(strip_tags("<p>Hello <b>World</b></p>"), "Hello World");
 /// assert_eq!(strip_tags("<a href=\"#\">Link</a>"), "Link");
 /// assert_eq!(strip_tags("No tags here"), "No tags here");
+/// // Fixes #795: Handles > inside quoted attributes
+/// assert_eq!(strip_tags(r#"<a title="x>y">Link</a>"#), "Link");
 /// ```
 pub fn strip_tags(html: &str) -> String {
-	let mut result = String::with_capacity(html.len());
-	let mut in_tag = false;
-
-	for ch in html.chars() {
-		match ch {
-			'<' => in_tag = true,
-			'>' => in_tag = false,
-			_ if !in_tag => result.push(ch),
-			_ => {}
-		}
-	}
-	result
+	// Fixes #795: Delegate to secure implementation that handles malformed HTML
+	strip_tags_safe(html)
 }
 /// Strip spaces between HTML tags
 ///
@@ -466,6 +466,23 @@ mod tests {
 	#[test]
 	fn test_strip_tags_empty() {
 		assert_eq!(strip_tags(""), "");
+	}
+
+	#[test]
+	fn test_strip_tags_quoted_attributes_with_angle_brackets() {
+		// Double-quoted attribute containing >
+		assert_eq!(strip_tags(r#"<a title="x>y">Link</a>"#), "Link");
+		// Single-quoted attribute containing >
+		assert_eq!(strip_tags("<a title='x>y'>Link</a>"), "Link");
+		// Multiple quoted attributes with >
+		assert_eq!(
+			strip_tags(r#"<a title="a>b" data-value="c>d">Text</a>"#),
+			"Text"
+		);
+		// Nested quotes: double inside single
+		assert_eq!(strip_tags(r#"<a title='x"y'>Link</a>"#), "Link");
+		// Nested quotes: single inside double
+		assert_eq!(strip_tags(r#"<a title="x'y">Link</a>"#), "Link");
 	}
 
 	#[test]
