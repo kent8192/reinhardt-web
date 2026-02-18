@@ -57,14 +57,18 @@ pub async fn import_data(
 	let table_name = model_admin.table_name();
 
 	// Parse data based on format
+	// Sanitize error messages to avoid exposing internal details (schema, SQL, etc.)
 	let records: Vec<HashMap<String, serde_json::Value>> = match format {
-		ImportFormat::JSON => serde_json::from_slice(&data)
-			.map_err(|e| ServerFnError::deserialization(format!("JSON parse failed: {}", e)))?,
+		ImportFormat::JSON => serde_json::from_slice(&data).map_err(|_| {
+			ServerFnError::deserialization("Invalid JSON format in import data")
+		})?,
 		ImportFormat::CSV => {
 			let mut rdr = csv::Reader::from_reader(&data[..]);
 			rdr.deserialize()
 				.collect::<Result<Vec<_>, _>>()
-				.map_err(|e| ServerFnError::deserialization(format!("CSV parse failed: {}", e)))?
+				.map_err(|_| {
+					ServerFnError::deserialization("Invalid CSV format in import data")
+				})?
 		}
 		ImportFormat::TSV => {
 			let mut rdr = csv::ReaderBuilder::new()
@@ -72,7 +76,9 @@ pub async fn import_data(
 				.from_reader(&data[..]);
 			rdr.deserialize()
 				.collect::<Result<Vec<_>, _>>()
-				.map_err(|e| ServerFnError::deserialization(format!("TSV parse failed: {}", e)))?
+				.map_err(|_| {
+					ServerFnError::deserialization("Invalid TSV format in import data")
+				})?
 		}
 	};
 
@@ -84,9 +90,11 @@ pub async fn import_data(
 	for (index, record) in records.into_iter().enumerate() {
 		match db.create::<AdminRecord>(table_name, record).await {
 			Ok(_) => imported += 1,
-			Err(e) => {
+			Err(_) => {
+				// Hide internal error details (SQL fragments, table structures, column names)
+				// to prevent information disclosure aiding reconnaissance attacks
 				failed += 1;
-				errors.push(format!("Record {}: {}", index + 1, e));
+				errors.push(format!("Record {}: import failed", index + 1));
 			}
 		}
 	}
