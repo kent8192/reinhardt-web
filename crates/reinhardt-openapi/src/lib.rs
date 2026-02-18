@@ -50,4 +50,5 @@
 mod router_wrapper;
 
 pub use reinhardt_rest::openapi::SchemaError;
+pub use router_wrapper::AuthGuard;
 pub use router_wrapper::OpenApiRouter;
