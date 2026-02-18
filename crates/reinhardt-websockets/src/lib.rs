@@ -186,7 +186,7 @@ pub use metrics::{MetricsCollector, MetricsSnapshot, PeriodicReporter, WebSocket
 pub use middleware::{
 	ConnectionContext, ConnectionMiddleware, IpFilterMiddleware, LoggingMiddleware,
 	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
-	MiddlewareResult,
+	MiddlewareResult, OriginValidationMiddleware,
 };
 pub use protocol::default_websocket_config;
 pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};

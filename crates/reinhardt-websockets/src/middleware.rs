@@ -269,6 +269,96 @@ impl ConnectionMiddleware for IpFilterMiddleware {
 	}
 }
 
+/// Middleware that validates WebSocket connection Origin headers.
+///
+/// Checks the `Origin` header against a list of allowed origins to prevent
+/// cross-site WebSocket hijacking attacks (CSWSH).
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_websockets::OriginValidationMiddleware;
+///
+/// let middleware = OriginValidationMiddleware::new(vec![
+///     "https://example.com".to_string(),
+///     "https://app.example.com".to_string(),
+/// ]);
+/// ```
+pub struct OriginValidationMiddleware {
+	allowed_origins: Vec<String>,
+	allow_missing_origin: bool,
+}
+
+impl OriginValidationMiddleware {
+	/// Create a new Origin validation middleware with specified allowed origins
+	pub fn new(allowed_origins: Vec<String>) -> Self {
+		Self {
+			allowed_origins,
+			allow_missing_origin: false,
+		}
+	}
+
+	/// Allow connections that don't include an Origin header
+	pub fn allow_missing_origin(mut self) -> Self {
+		self.allow_missing_origin = true;
+		self
+	}
+
+	/// Allow all origins (disables validation)
+	pub fn allow_all() -> Self {
+		Self {
+			allowed_origins: Vec::new(),
+			allow_missing_origin: true,
+		}
+	}
+
+	/// Check if this middleware is in allow-all mode
+	fn is_allow_all(&self) -> bool {
+		self.allowed_origins.is_empty() && self.allow_missing_origin
+	}
+}
+
+#[async_trait]
+impl ConnectionMiddleware for OriginValidationMiddleware {
+	async fn on_connect(&self, context: &mut ConnectionContext) -> MiddlewareResult<()> {
+		if self.is_allow_all() {
+			return Ok(());
+		}
+
+		let origin = context
+			.headers
+			.get("Origin")
+			.or_else(|| context.headers.get("origin"))
+			.cloned();
+
+		match origin {
+			None => {
+				if self.allow_missing_origin {
+					Ok(())
+				} else {
+					Err(MiddlewareError::ConnectionRejected(
+						"Missing Origin header".to_string(),
+					))
+				}
+			}
+			Some(origin_value) => {
+				if self.allowed_origins.contains(&origin_value) {
+					Ok(())
+				} else {
+					Err(MiddlewareError::ConnectionRejected(format!(
+						"Origin not allowed: {}",
+						origin_value
+					)))
+				}
+			}
+		}
+	}
+
+	async fn on_disconnect(&self, _connection: &Arc<WebSocketConnection>) -> MiddlewareResult<()> {
+		Ok(())
+	}
+}
+
 /// Message size limit middleware
 ///
 /// # Examples
@@ -409,52 +499,78 @@ impl Default for MiddlewareChain {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use tokio::sync::mpsc;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_connection_context() {
+		// Arrange / Act
 		let context = ConnectionContext::new("192.168.1.1".to_string())
 			.with_header("User-Agent".to_string(), "Test".to_string())
 			.with_metadata("session_id".to_string(), "abc123".to_string());
 
+		// Assert
 		assert_eq!(context.ip, "192.168.1.1");
 		assert_eq!(context.headers.get("User-Agent").unwrap(), "Test");
 		assert_eq!(context.metadata.get("session_id").unwrap(), "abc123");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logging_middleware_connect() {
+		// Arrange
 		let middleware = LoggingMiddleware::new("Test".to_string());
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		assert!(middleware.on_connect(&mut context).await.is_ok());
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_logging_middleware_message() {
+		// Arrange
 		let middleware = LoggingMiddleware::new("Test".to_string());
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("Hello".to_string());
 
+		// Act
 		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_whitelist_allowed() {
+		// Arrange
 		let middleware = IpFilterMiddleware::whitelist(vec!["192.168.1.1".to_string()]);
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		assert!(middleware.on_connect(&mut context).await.is_ok());
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_whitelist_blocked() {
+		// Arrange
 		let middleware = IpFilterMiddleware::whitelist(vec!["192.168.1.1".to_string()]);
 		let mut context = ConnectionContext::new("10.0.0.1".to_string());
 
+		// Act
 		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
 		assert!(result.is_err());
 		assert!(matches!(
 			result.unwrap_err(),
@@ -462,41 +578,63 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_blacklist_allowed() {
+		// Arrange
 		let middleware = IpFilterMiddleware::blacklist(vec!["10.0.0.1".to_string()]);
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		assert!(middleware.on_connect(&mut context).await.is_ok());
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_ip_filter_blacklist_blocked() {
+		// Arrange
 		let middleware = IpFilterMiddleware::blacklist(vec!["10.0.0.1".to_string()]);
 		let mut context = ConnectionContext::new("10.0.0.1".to_string());
 
+		// Act
 		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
 		assert!(result.is_err());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_size_limit_within_limit() {
+		// Arrange
 		let middleware = MessageSizeLimitMiddleware::new(100);
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("Small message".to_string());
 
-		assert!(middleware.on_message(&conn, msg).await.is_ok());
+		// Act
+		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_message_size_limit_exceeds_limit() {
+		// Arrange
 		let middleware = MessageSizeLimitMiddleware::new(10);
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("This is a very long message".to_string());
 
+		// Act
 		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
 		assert!(result.is_err());
 		assert!(matches!(
 			result.unwrap_err(),
@@ -504,35 +642,186 @@ mod tests {
 		));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_connect() {
+		// Arrange
 		let mut chain = MiddlewareChain::new();
 		chain.add_connection_middleware(Box::new(LoggingMiddleware::new("WS".to_string())));
-
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
-		assert!(chain.process_connect(&mut context).await.is_ok());
+
+		// Act
+		let result = chain.process_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_message() {
+		// Arrange
 		let mut chain = MiddlewareChain::new();
 		chain.add_message_middleware(Box::new(MessageSizeLimitMiddleware::new(100)));
-
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("Test".to_string());
 
-		assert!(chain.process_message(&conn, msg).await.is_ok());
+		// Act
+		let result = chain.process_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_rejection() {
+		// Arrange
 		let mut chain = MiddlewareChain::new();
 		chain.add_connection_middleware(Box::new(IpFilterMiddleware::whitelist(vec![
 			"192.168.1.1".to_string(),
 		])));
-
 		let mut context = ConnectionContext::new("10.0.0.1".to_string());
-		assert!(chain.process_connect(&mut context).await.is_err());
+
+		// Act
+		let result = chain.process_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_allowed_origin_accepted() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()]);
+		let mut context = ConnectionContext::new("192.168.1.1".to_string())
+			.with_header("Origin".to_string(), "https://example.com".to_string());
+
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_rejected_origin() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()]);
+		let mut context = ConnectionContext::new("192.168.1.1".to_string())
+			.with_header("Origin".to_string(), "https://evil.com".to_string());
+
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			MiddlewareError::ConnectionRejected(_)
+		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_missing_origin_rejected() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()]);
+		let mut context = ConnectionContext::new("192.168.1.1".to_string());
+
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			MiddlewareError::ConnectionRejected(_)
+		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_missing_origin_allowed() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()])
+			.allow_missing_origin();
+		let mut context = ConnectionContext::new("192.168.1.1".to_string());
+
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_allow_all() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::allow_all();
+		let mut context = ConnectionContext::new("192.168.1.1".to_string())
+			.with_header("Origin".to_string(), "https://anything.com".to_string());
+
+		// Act
+		let result = middleware.on_connect(&mut context).await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_multiple_origins() {
+		// Arrange
+		let middleware = OriginValidationMiddleware::new(vec![
+			"https://example.com".to_string(),
+			"https://app.example.com".to_string(),
+			"https://staging.example.com".to_string(),
+		]);
+
+		// Act / Assert - each allowed origin should be accepted
+		let mut ctx1 = ConnectionContext::new("10.0.0.1".to_string())
+			.with_header("Origin".to_string(), "https://example.com".to_string());
+		assert!(middleware.on_connect(&mut ctx1).await.is_ok());
+
+		let mut ctx2 = ConnectionContext::new("10.0.0.2".to_string())
+			.with_header("Origin".to_string(), "https://app.example.com".to_string());
+		assert!(middleware.on_connect(&mut ctx2).await.is_ok());
+
+		let mut ctx3 = ConnectionContext::new("10.0.0.3".to_string()).with_header(
+			"Origin".to_string(),
+			"https://staging.example.com".to_string(),
+		);
+		assert!(middleware.on_connect(&mut ctx3).await.is_ok());
+
+		// Unlisted origin should be rejected
+		let mut ctx4 = ConnectionContext::new("10.0.0.4".to_string())
+			.with_header("Origin".to_string(), "https://other.com".to_string());
+		assert!(middleware.on_connect(&mut ctx4).await.is_err());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_origin_validation_case_sensitive() {
+		// Arrange - Origin matching is case-sensitive per RFC 6454
+		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()]);
+
+		// Act / Assert - exact case matches
+		let mut ctx_match = ConnectionContext::new("10.0.0.1".to_string())
+			.with_header("Origin".to_string(), "https://example.com".to_string());
+		assert!(middleware.on_connect(&mut ctx_match).await.is_ok());
+
+		// Different case should be rejected
+		let mut ctx_upper = ConnectionContext::new("10.0.0.2".to_string())
+			.with_header("Origin".to_string(), "https://Example.com".to_string());
+		assert!(middleware.on_connect(&mut ctx_upper).await.is_err());
+
+		let mut ctx_all_upper = ConnectionContext::new("10.0.0.3".to_string())
+			.with_header("Origin".to_string(), "HTTPS://EXAMPLE.COM".to_string());
+		assert!(middleware.on_connect(&mut ctx_all_upper).await.is_err());
 	}
 }
