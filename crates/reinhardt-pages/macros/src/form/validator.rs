@@ -1061,11 +1061,13 @@ fn transform_validators(
 					span: *span,
 				});
 			}
-			FormValidator::Form { rules: _, span: _ } => {
-				// Form-level validators are not yet supported in TypedFormValidator.
-				// This feature requires design of validation API, error aggregation strategy,
-				// and macro code generation for cross-field validation rules.
-				// See: https://github.com/kent8192/reinhardt-web/issues/24
+			// Fixes #848: emit compile error instead of silently discarding
+			FormValidator::Form { rules: _, span } => {
+				return Err(Error::new(
+					*span,
+					"form-level validators (@form) are not yet supported. \
+					Use field-level validators instead",
+				));
 			}
 		}
 	}
