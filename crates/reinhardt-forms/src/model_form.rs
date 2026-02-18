@@ -365,14 +365,25 @@ impl<T: FormModel> ModelForm<T> {
 	/// let is_valid = form.is_valid();
 	/// ```
 	pub fn is_valid(&mut self) -> bool {
-		// Validate the model if instance exists
-		if let Some(ref instance) = self.instance
-			&& let Err(_errors) = instance.validate()
-		{
-			return false;
-		}
+		// Run field-level validation via the underlying Form first (#552)
+		let form_valid = self.form.is_valid();
 
-		true
+		// Run model-level validation if instance exists
+		let model_valid = if let Some(ref instance) = self.instance {
+			match instance.validate() {
+				Ok(()) => true,
+				Err(errors) => {
+					for error in errors {
+						self.form.add_error(crate::form::ALL_FIELDS_KEY, error);
+					}
+					false
+				}
+			}
+		} else {
+			true
+		};
+
+		form_valid && model_valid
 	}
 	/// Save the form data to the model instance
 	///
@@ -484,6 +495,7 @@ impl<T: FormModel> Default for ModelFormBuilder<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// Mock model for testing
 	struct TestModel {
@@ -553,12 +565,82 @@ mod tests {
 		}
 	}
 
-	#[test]
+	// Mock model with strict validation for testing #552
+	struct ValidatedModel {
+		name: String,
+		email: String,
+	}
+
+	impl FormModel for ValidatedModel {
+		fn field_names() -> Vec<String> {
+			vec!["name".to_string(), "email".to_string()]
+		}
+
+		fn field_type(name: &str) -> Option<FieldType> {
+			match name {
+				"name" => Some(FieldType::Char {
+					max_length: Some(5),
+				}),
+				"email" => Some(FieldType::Email),
+				_ => None,
+			}
+		}
+
+		fn get_field(&self, name: &str) -> Option<Value> {
+			match name {
+				"name" => Some(Value::String(self.name.clone())),
+				"email" => Some(Value::String(self.email.clone())),
+				_ => None,
+			}
+		}
+
+		fn set_field(&mut self, name: &str, value: Value) -> Result<(), String> {
+			match name {
+				"name" => {
+					if let Value::String(s) = value {
+						self.name = s;
+						Ok(())
+					} else {
+						Err("Invalid type for name".to_string())
+					}
+				}
+				"email" => {
+					if let Value::String(s) = value {
+						self.email = s;
+						Ok(())
+					} else {
+						Err("Invalid type for email".to_string())
+					}
+				}
+				_ => Err(format!("Unknown field: {}", name)),
+			}
+		}
+
+		fn save(&mut self) -> Result<(), String> {
+			Ok(())
+		}
+
+		fn validate(&self) -> Result<(), Vec<String>> {
+			let mut errors = vec![];
+			if self.name.is_empty() {
+				errors.push("Name cannot be empty".to_string());
+			}
+			if errors.is_empty() {
+				Ok(())
+			} else {
+				Err(errors)
+			}
+		}
+	}
+
+	#[rstest]
 	fn test_model_form_config() {
+		// Arrange & Act
 		let config = ModelFormConfig::new()
 			.fields(vec!["name".to_string(), "email".to_string()])
 			.exclude(vec!["id".to_string()]);
 
+		// Assert
 		assert_eq!(
 			config.fields,
 			Some(vec!["name".to_string(), "email".to_string()])
@@ -566,27 +648,133 @@ mod tests {
 		assert_eq!(config.exclude, vec!["id".to_string()]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_form_builder() {
+		// Arrange
 		let instance = TestModel {
 			id: 1,
 			name: "John".to_string(),
 			email: "john@example.com".to_string(),
 		};
 
+		// Act
 		let form = ModelFormBuilder::<TestModel>::new()
 			.fields(vec!["name".to_string(), "email".to_string()])
 			.build(Some(instance));
 
+		// Assert
 		assert!(form.instance().is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_model_field_names() {
+		// Act
 		let fields = TestModel::field_names();
+
+		// Assert
 		assert_eq!(
 			fields,
 			vec!["id".to_string(), "name".to_string(), "email".to_string()]
 		);
+	}
+
+	// ============================================================================
+	// ModelForm::is_valid() field-level validation tests (#552)
+	// ============================================================================
+
+	#[rstest]
+	fn test_model_form_is_valid_runs_field_level_validation() {
+		// Arrange: create ModelForm with CharField(max_length=5)
+		let instance = ValidatedModel {
+			name: "John".to_string(),
+			email: "john@example.com".to_string(),
+		};
+		let config = ModelFormConfig::new();
+		let mut form = ModelForm::new(Some(instance), config);
+
+		// Bind data that exceeds max_length for the name field
+		let mut data = HashMap::new();
+		data.insert(
+			"name".to_string(),
+			Value::String("This name is way too long".to_string()),
+		);
+		data.insert(
+			"email".to_string(),
+			Value::String("valid@example.com".to_string()),
+		);
+		form.bind(data);
+
+		// Act
+		let valid = form.is_valid();
+
+		// Assert: field-level validation should catch the max_length violation
+		assert!(
+			!valid,
+			"ModelForm::is_valid() must enforce field-level validation rules"
+		);
+		assert!(
+			!form.form().errors().is_empty(),
+			"Errors should be present for field-level validation failures"
+		);
+	}
+
+	#[rstest]
+	fn test_model_form_is_valid_with_valid_data() {
+		// Arrange
+		let instance = ValidatedModel {
+			name: "John".to_string(),
+			email: "john@example.com".to_string(),
+		};
+		let config = ModelFormConfig::new();
+		let mut form = ModelForm::new(Some(instance), config);
+
+		let mut data = HashMap::new();
+		data.insert("name".to_string(), Value::String("Alice".to_string()));
+		data.insert(
+			"email".to_string(),
+			Value::String("alice@example.com".to_string()),
+		);
+		form.bind(data);
+
+		// Act
+		let valid = form.is_valid();
+
+		// Assert
+		assert!(valid, "ModelForm should be valid with proper data");
+		assert!(form.form().errors().is_empty());
+	}
+
+	#[rstest]
+	fn test_model_form_is_valid_aggregates_model_and_field_errors() {
+		// Arrange: model with empty name (fails model validation)
+		let instance = ValidatedModel {
+			name: String::new(),
+			email: "test@example.com".to_string(),
+		};
+		let config = ModelFormConfig::new();
+		let mut form = ModelForm::new(Some(instance), config);
+
+		// Bind empty data to also trigger required field failures
+		let data = HashMap::new();
+		form.bind(data);
+
+		// Act
+		let valid = form.is_valid();
+
+		// Assert
+		assert!(!valid, "Should fail with both field and model errors");
+	}
+
+	#[rstest]
+	fn test_model_form_is_valid_unbound_form_is_invalid() {
+		// Arrange: empty ModelForm without instance or bound data
+		let config = ModelFormConfig::new().fields(vec!["name".to_string(), "email".to_string()]);
+		let mut form = ModelForm::<ValidatedModel>::empty(config);
+
+		// Act: don't bind any data
+		let valid = form.is_valid();
+
+		// Assert: unbound forms are always invalid
+		assert!(!valid, "Unbound ModelForm should not be valid");
 	}
 }

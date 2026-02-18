@@ -39,6 +39,9 @@ pub struct Form {
 	/// These rules are transmitted to the client for UX enhancement.
 	/// Server-side validation is still mandatory for security.
 	validation_rules: Vec<ValidationRule>,
+	/// Validated and cleaned data containing only declared form fields.
+	/// Populated during `is_valid()` to prevent mass assignment attacks (#554).
+	cleaned: HashMap<String, serde_json::Value>,
 }
 
 impl Form {
@@ -64,6 +67,7 @@ impl Form {
 			field_clean_functions: HashMap::new(),
 			prefix: String::new(),
 			validation_rules: vec![],
+			cleaned: HashMap::new(),
 		}
 	}
 	/// Create a new form with initial data
@@ -92,6 +96,7 @@ impl Form {
 			field_clean_functions: HashMap::new(),
 			prefix: String::new(),
 			validation_rules: vec![],
+			cleaned: HashMap::new(),
 		}
 	}
 	/// Create a new form with a field prefix
@@ -116,6 +121,7 @@ impl Form {
 			field_clean_functions: HashMap::new(),
 			prefix,
 			validation_rules: vec![],
+			cleaned: HashMap::new(),
 		}
 	}
 	/// Add a field to the form
@@ -179,6 +185,7 @@ impl Form {
 		}
 
 		self.errors.clear();
+		self.cleaned.clear();
 
 		for field in &self.fields {
 			let value = self.data.get(field.name());
@@ -200,7 +207,9 @@ impl Form {
 							}
 						}
 					}
-					self.data.insert(field.name().to_string(), cleaned);
+					self.data.insert(field.name().to_string(), cleaned.clone());
+					// Only store declared field values in cleaned data (#554)
+					self.cleaned.insert(field.name().to_string(), cleaned);
 				}
 				Err(e) => {
 					self.errors
@@ -211,7 +220,7 @@ impl Form {
 			}
 		}
 
-		// Run custom clean functions
+		// Run custom clean functions (using data which includes all values)
 		for clean_fn in &self.clean_functions {
 			if let Err(e) = clean_fn(&self.data) {
 				match e {
@@ -233,11 +242,24 @@ impl Form {
 
 		self.errors.is_empty()
 	}
+	/// Returns validated and cleaned data containing only declared form fields.
+	///
+	/// Extra fields submitted but not declared in the form are excluded
+	/// to prevent mass assignment vulnerabilities (#554).
 	pub fn cleaned_data(&self) -> &HashMap<String, serde_json::Value> {
-		&self.data
+		&self.cleaned
 	}
 	pub fn errors(&self) -> &HashMap<String, Vec<String>> {
 		&self.errors
+	}
+	/// Add an error to a specific field or to the form-level error list.
+	///
+	/// Use `ALL_FIELDS_KEY` for non-field-specific errors.
+	pub fn add_error(&mut self, field: &str, error: String) {
+		self.errors
+			.entry(field.to_string())
+			.or_default()
+			.push(error);
 	}
 	pub fn is_bound(&self) -> bool {
 		self.is_bound
@@ -890,7 +912,7 @@ mod tests {
 
 	#[test]
 	fn test_form_extra_data() {
-		// Form should ignore extra data not defined in fields
+		// Form should filter out extra data not defined in fields (#554)
 		use crate::fields::CharField;
 
 		let mut form = Form::new();
@@ -908,8 +930,8 @@ mod tests {
 		assert!(form.is_valid());
 		let cleaned = form.cleaned_data();
 		assert_eq!(cleaned.get("name").unwrap(), &serde_json::json!("John"));
-		// extra_field is still in data but not validated
-		assert!(cleaned.contains_key("extra_field"));
+		// Extra fields must NOT appear in cleaned_data to prevent mass assignment (#554)
+		assert!(!cleaned.contains_key("extra_field"));
 	}
 
 	#[test]
