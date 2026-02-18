@@ -716,6 +716,45 @@ impl HostState {
 	}
 }
 
+// Clone implementation for HostState (needed for store creation).
+// Preserves all state (config, services, capabilities, shared resources).
+// WASI context and resource table are created fresh since each store
+// requires its own isolated WASI state.
+impl Clone for HostState {
+	fn clone(&self) -> Self {
+		let mut builder = HostStateBuilder::new(&self.plugin_name)
+			.config_all(self.config.read().clone())
+			.capabilities(self.capabilities.clone())
+			.event_bus(self.event_bus.clone())
+			.model_registry(self.model_registry.clone())
+			.ssr_proxy(self.ssr_proxy.clone());
+
+		if let Some(ref client) = self.http_client {
+			builder = builder.http_client(client.clone());
+		} else {
+			builder = builder.no_http_client();
+		}
+
+		#[cfg(feature = "wasm")]
+		if let Some(ref conn) = self.db_connection {
+			builder = builder.db_connection(conn.clone());
+		}
+
+		let state = builder.build();
+
+		// Clone serialized services
+		let services = self.services.read().clone();
+		for (name, data) in services {
+			let _ = state.register_service(&name, data);
+		}
+
+		// Clone typed services (Arc-based shared references)
+		*state.typed_services.write() = self.typed_services.read().clone();
+
+		state
+	}
+}
+
 impl std::fmt::Debug for HostState {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("HostState")
@@ -1914,5 +1953,134 @@ mod tests {
 
 		// Act & Assert
 		assert!(!is_private_ip(&ip));
+	}
+
+	// ==========================================================================
+	// Clone Preservation Tests (#682)
+	// ==========================================================================
+
+	#[rstest::rstest]
+	fn test_clone_preserves_config() {
+		// Arrange
+		let state = HostState::new("test-plugin");
+		state
+			.set_config(
+				"db_url",
+				ConfigValue::StringVal("postgres://localhost".to_string()),
+			)
+			.unwrap();
+		state
+			.set_config("max_retries", ConfigValue::IntVal(3))
+			.unwrap();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert
+		assert_eq!(cloned.plugin_name, "test-plugin");
+		assert_eq!(
+			cloned.get_config("db_url"),
+			Some(ConfigValue::StringVal("postgres://localhost".to_string()))
+		);
+		assert_eq!(
+			cloned.get_config("max_retries"),
+			Some(ConfigValue::IntVal(3))
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_clone_preserves_capabilities() {
+		// Arrange
+		use crate::capability::PluginCapability;
+
+		let mut state = HostState::new("test-plugin");
+		let network_cap = Capability::Core(PluginCapability::NetworkAccess);
+		let db_cap = Capability::Core(PluginCapability::DatabaseAccess);
+		state.add_capability(network_cap.clone());
+		state.add_capability(db_cap.clone());
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert
+		assert!(cloned.has_capability(&network_cap));
+		assert!(cloned.has_capability(&db_cap));
+		assert_eq!(cloned.capabilities().len(), 2);
+	}
+
+	#[rstest::rstest]
+	fn test_clone_preserves_services() {
+		// Arrange
+		let state = HostState::new("test-plugin");
+		let service_data = vec![10, 20, 30, 40];
+		state
+			.register_service("cache-service", service_data.clone())
+			.unwrap();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert
+		assert_eq!(cloned.get_service("cache-service"), Some(service_data));
+	}
+
+	#[rstest::rstest]
+	fn test_clone_shares_event_bus() {
+		// Arrange
+		let event_bus = Arc::new(EventBus::new());
+		let state = HostStateBuilder::new("test-plugin")
+			.event_bus(event_bus.clone())
+			.build();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert - shared event bus should be the same Arc
+		assert!(Arc::ptr_eq(state.event_bus(), cloned.event_bus()));
+	}
+
+	#[rstest::rstest]
+	fn test_clone_shares_model_registry() {
+		// Arrange
+		let model_registry = Arc::new(ModelRegistry::new());
+		let state = HostStateBuilder::new("test-plugin")
+			.model_registry(model_registry.clone())
+			.build();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert - shared model registry should be the same Arc
+		assert!(Arc::ptr_eq(state.model_registry(), cloned.model_registry()));
+	}
+
+	#[rstest::rstest]
+	fn test_clone_shares_ssr_proxy() {
+		// Arrange
+		let ssr_proxy = Arc::new(SsrProxy::with_availability(true));
+		let state = HostStateBuilder::new("test-plugin")
+			.ssr_proxy(ssr_proxy.clone())
+			.build();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert
+		assert!(Arc::ptr_eq(state.ssr_proxy(), cloned.ssr_proxy()));
+		assert!(cloned.is_ssr_available());
+	}
+
+	#[rstest::rstest]
+	fn test_clone_preserves_no_http_client() {
+		// Arrange
+		let state = HostStateBuilder::new("test-plugin")
+			.no_http_client()
+			.build();
+
+		// Act
+		let cloned = state.clone();
+
+		// Assert - http_client should remain None
+		assert!(!cloned.has_http_capability());
 	}
 }
