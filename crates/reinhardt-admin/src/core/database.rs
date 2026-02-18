@@ -105,6 +105,69 @@ pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 	}
 }
 
+/// Convert an annotation `AnnotationValue` to a safe SeaQuery `SimpleExpr`.
+///
+/// Uses type-safe SeaQuery API for field references and literal values
+/// instead of raw SQL string interpolation, preventing SQL injection.
+fn annotation_value_to_safe_expr(
+	val: &reinhardt_db::orm::annotation::AnnotationValue,
+) -> SimpleExpr {
+	use reinhardt_db::orm::annotation::AnnotationValue;
+
+	match val {
+		AnnotationValue::Value(v) => {
+			use reinhardt_db::orm::annotation::Value as AnnotValue;
+			match v {
+				AnnotValue::String(s) => Expr::val(s.as_str()).into(),
+				AnnotValue::Int(i) => Expr::val(*i).into(),
+				AnnotValue::Float(f) => Expr::val(*f).into(),
+				AnnotValue::Bool(b) => Expr::val(*b).into(),
+				AnnotValue::Null => Expr::val(Option::<String>::None).into(),
+			}
+		}
+		AnnotationValue::Field(f) => Expr::col(Alias::new(&f.field)).into(),
+		AnnotationValue::Expression(e) => annotation_expr_to_safe_expr(e),
+		// For aggregate, subquery, and postgres-specific types,
+		// fall back to SQL representation (these are internally constructed)
+		other => Expr::cust(other.to_sql()).into(),
+	}
+}
+
+/// Convert an annotation `Expression` to a safe SeaQuery `SimpleExpr`.
+///
+/// Recursively converts arithmetic expressions using type-safe SeaQuery API
+/// for field references and values. For complex expression types (Case, Coalesce),
+/// falls back to SQL output from the expression's own serialization.
+fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression) -> SimpleExpr {
+	use reinhardt_db::orm::annotation::Expression as AnnotExpr;
+
+	match expr {
+		AnnotExpr::Add(left, right) => {
+			let left_expr = annotation_value_to_safe_expr(left);
+			let right_expr = annotation_value_to_safe_expr(right);
+			Expr::cust_with_values("(? + ?)", [left_expr, right_expr]).into()
+		}
+		AnnotExpr::Subtract(left, right) => {
+			let left_expr = annotation_value_to_safe_expr(left);
+			let right_expr = annotation_value_to_safe_expr(right);
+			Expr::cust_with_values("(? - ?)", [left_expr, right_expr]).into()
+		}
+		AnnotExpr::Multiply(left, right) => {
+			let left_expr = annotation_value_to_safe_expr(left);
+			let right_expr = annotation_value_to_safe_expr(right);
+			Expr::cust_with_values("(? * ?)", [left_expr, right_expr]).into()
+		}
+		AnnotExpr::Divide(left, right) => {
+			let left_expr = annotation_value_to_safe_expr(left);
+			let right_expr = annotation_value_to_safe_expr(right);
+			Expr::cust_with_values("(? / ?)", [left_expr, right_expr]).into()
+		}
+		// For Case and Coalesce, use the expression's own SQL serialization
+		// (these are complex structures built internally, not from user input)
+		_ => Expr::cust(expr.to_sql()).into(),
+	}
+}
+
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
@@ -123,33 +186,45 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Lt, FilterValue::FieldRef(f)) => col.lt(Expr::col(Alias::new(&f.field))),
 		(FilterOperator::Lte, FilterValue::FieldRef(f)) => col.lte(Expr::col(Alias::new(&f.field))),
 
-		// OuterRef: Correlated subquery references (use custom SQL)
+		// OuterRef: Correlated subquery references (use type-safe column API)
 		(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" = {}", filter.field, outer.to_sql())).into()
+			col.eq(Expr::col(Alias::new(&outer.field)))
 		}
 		(FilterOperator::Ne, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" <> {}", filter.field, outer.to_sql())).into()
+			col.ne(Expr::col(Alias::new(&outer.field)))
 		}
 		(FilterOperator::Gt, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" > {}", filter.field, outer.to_sql())).into()
+			col.gt(Expr::col(Alias::new(&outer.field)))
 		}
 		(FilterOperator::Gte, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" >= {}", filter.field, outer.to_sql())).into()
+			col.gte(Expr::col(Alias::new(&outer.field)))
 		}
 		(FilterOperator::Lt, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" < {}", filter.field, outer.to_sql())).into()
+			col.lt(Expr::col(Alias::new(&outer.field)))
 		}
 		(FilterOperator::Lte, FilterValue::OuterRef(outer)) => {
-			Expr::cust(format!("\"{}\" <= {}", filter.field, outer.to_sql())).into()
+			col.lte(Expr::col(Alias::new(&outer.field)))
 		}
 
-		// Expression: Arithmetic expressions (use custom SQL for simplicity)
-		(FilterOperator::Eq, FilterValue::Expression(expr)) => col.eq(Expr::cust(expr.to_sql())),
-		(FilterOperator::Ne, FilterValue::Expression(expr)) => col.ne(Expr::cust(expr.to_sql())),
-		(FilterOperator::Gt, FilterValue::Expression(expr)) => col.gt(Expr::cust(expr.to_sql())),
-		(FilterOperator::Gte, FilterValue::Expression(expr)) => col.gte(Expr::cust(expr.to_sql())),
-		(FilterOperator::Lt, FilterValue::Expression(expr)) => col.lt(Expr::cust(expr.to_sql())),
-		(FilterOperator::Lte, FilterValue::Expression(expr)) => col.lte(Expr::cust(expr.to_sql())),
+		// Expression: Arithmetic expressions (validate field names before building SQL)
+		(FilterOperator::Eq, FilterValue::Expression(expr)) => {
+			col.eq(annotation_expr_to_safe_expr(expr))
+		}
+		(FilterOperator::Ne, FilterValue::Expression(expr)) => {
+			col.ne(annotation_expr_to_safe_expr(expr))
+		}
+		(FilterOperator::Gt, FilterValue::Expression(expr)) => {
+			col.gt(annotation_expr_to_safe_expr(expr))
+		}
+		(FilterOperator::Gte, FilterValue::Expression(expr)) => {
+			col.gte(annotation_expr_to_safe_expr(expr))
+		}
+		(FilterOperator::Lt, FilterValue::Expression(expr)) => {
+			col.lt(annotation_expr_to_safe_expr(expr))
+		}
+		(FilterOperator::Lte, FilterValue::Expression(expr)) => {
+			col.lte(annotation_expr_to_safe_expr(expr))
+		}
 
 		// Generic scalar value patterns
 		(FilterOperator::Eq, v) => col.eq(filter_value_to_sea_value(v)),
@@ -1284,6 +1359,161 @@ mod tests {
 				assert!(s.contains("1"), "SQL should contain value '1'");
 			}
 			_ => panic!("Expected String value"),
+		}
+	}
+
+	// ==================== SQL injection prevention tests ====================
+
+	#[test]
+	fn test_outer_ref_filter_uses_safe_column_api() {
+		// Arrange: OuterRef with a field name that could be an injection attempt
+		let filter = Filter::new(
+			"author_id".to_string(),
+			FilterOperator::Eq,
+			FilterValue::OuterRef(OuterRef::new("users.id")),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert: should produce a valid expression using quoted identifiers
+		assert!(result.is_some());
+		let expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("books"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(expr))
+			.to_string(PostgresQueryBuilder);
+		// The field names should be quoted by SeaQuery's Alias, not raw interpolation
+		assert!(
+			query.contains("\"author_id\""),
+			"Column should be properly quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_outer_ref_injection_attempt_is_safely_quoted() {
+		// Arrange: attacker tries SQL injection through OuterRef field name
+		let filter = Filter::new(
+			"id".to_string(),
+			FilterOperator::Eq,
+			FilterValue::OuterRef(OuterRef::new("id; DROP TABLE users; --")),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert: the injection string should be treated as a quoted identifier
+		assert!(result.is_some());
+		let expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("items"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(expr))
+			.to_string(PostgresQueryBuilder);
+		// SeaQuery's Alias wraps the name in double quotes, treating the entire
+		// injection payload as a single identifier name (not executable SQL).
+		// The right side of the equality uses Expr::col(Alias::new(...)) which
+		// produces a quoted identifier instead of raw SQL interpolation.
+		assert!(
+			query.contains("\"id; DROP TABLE users; --\""),
+			"Injection payload should be enclosed in double quotes as identifier: {}",
+			query
+		);
+		// Verify the query is a valid single-statement SELECT (no semicolons
+		// appear outside of the quoted identifier)
+		let unquoted_parts: Vec<&str> = query.split('"').enumerate()
+			.filter(|(i, _)| i % 2 == 0) // Even indices are outside quotes
+			.map(|(_, s)| s)
+			.collect();
+		let unquoted_sql = unquoted_parts.join("");
+		assert!(
+			!unquoted_sql.contains(';'),
+			"No semicolons should appear outside quoted identifiers: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_expression_filter_uses_safe_api() {
+		use reinhardt_db::orm::annotation::AnnotationValue;
+
+		// Arrange: arithmetic expression (price * quantity)
+		let expr = Expression::Multiply(
+			Box::new(AnnotationValue::Field(F::new("unit_price"))),
+			Box::new(AnnotationValue::Field(F::new("quantity"))),
+		);
+		let filter = Filter::new(
+			"total".to_string(),
+			FilterOperator::Eq,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let sea_expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("orders"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(sea_expr))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("\"total\""),
+			"Left side should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_expression_filter_with_literal_value() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
+
+		// Arrange: field + literal value
+		let expr = Expression::Add(
+			Box::new(AnnotationValue::Field(F::new("price"))),
+			Box::new(AnnotationValue::Value(OrmValue::Int(100))),
+		);
+		let filter = Filter::new(
+			"adjusted_price".to_string(),
+			FilterOperator::Gt,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+	}
+
+	#[test]
+	fn test_outer_ref_all_operators_use_safe_api() {
+		// Arrange & Act & Assert: verify all comparison operators work with OuterRef
+		let operators = vec![
+			FilterOperator::Eq,
+			FilterOperator::Ne,
+			FilterOperator::Gt,
+			FilterOperator::Gte,
+			FilterOperator::Lt,
+			FilterOperator::Lte,
+		];
+
+		for op in operators {
+			let filter = Filter::new(
+				"field_a".to_string(),
+				op.clone(),
+				FilterValue::OuterRef(OuterRef::new("field_b")),
+			);
+			let result = build_single_filter_expr(&filter);
+			assert!(
+				result.is_some(),
+				"OuterRef with {:?} should produce Some",
+				op
+			);
 		}
 	}
 }

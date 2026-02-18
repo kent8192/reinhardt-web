@@ -54,10 +54,20 @@ pub trait SecretProvider: Send + Sync {
 }
 
 /// A secret string that won't be exposed in logs or debug output
-#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct SecretString {
 	#[serde(rename = "secret")]
 	inner: String,
+}
+
+impl Serialize for SecretString {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		// Always serialize as [REDACTED] to prevent accidental exposure
+		serializer.serialize_str("[REDACTED]")
+	}
 }
 
 impl SecretString {
@@ -74,8 +84,17 @@ impl SecretString {
 	}
 	/// Convert to owned String (consumes self)
 	///
+	/// # Safety
+	/// This method moves the inner value out without cloning, bypassing
+	/// the `ZeroizeOnDrop` protection. The caller is responsible for
+	/// ensuring the returned String is properly handled.
 	pub fn into_inner(self) -> String {
-		self.inner.clone()
+		// Use ManuallyDrop to prevent the Drop handler from zeroizing
+		// the inner value after we've moved it out.
+		let this = std::mem::ManuallyDrop::new(self);
+		// SAFETY: We're reading the inner field before ManuallyDrop drops,
+		// and ManuallyDrop prevents the Drop impl from running.
+		unsafe { std::ptr::read(&this.inner) }
 	}
 	/// Get the length of the secret
 	///
@@ -124,10 +143,20 @@ impl PartialEq for SecretString {
 impl Eq for SecretString {}
 
 /// A generic secret value that can hold any serializable type
-#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct SecretValue<T: Zeroize> {
 	#[serde(bound(deserialize = "T: Deserialize<'de>"))]
 	inner: T,
+}
+
+impl<T: Zeroize> Serialize for SecretValue<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		// Always serialize as [REDACTED] to prevent accidental exposure
+		serializer.serialize_str("[REDACTED]")
+	}
 }
 
 impl<T: Zeroize> SecretValue<T> {
@@ -142,11 +171,17 @@ impl<T: Zeroize> SecretValue<T> {
 	}
 	/// Convert to owned value (consumes self)
 	///
-	pub fn into_inner(self) -> T
-	where
-		T: Clone,
-	{
-		self.inner.clone()
+	/// # Safety
+	/// This method moves the inner value out without cloning, bypassing
+	/// the `ZeroizeOnDrop` protection. The caller is responsible for
+	/// ensuring the returned value is properly handled.
+	pub fn into_inner(self) -> T {
+		// Use ManuallyDrop to prevent the Drop handler from zeroizing
+		// the inner value after we've moved it out.
+		let this = std::mem::ManuallyDrop::new(self);
+		// SAFETY: We're reading the inner field before ManuallyDrop drops,
+		// and ManuallyDrop prevents the Drop impl from running.
+		unsafe { std::ptr::read(&this.inner) }
 	}
 }
 
@@ -238,18 +273,71 @@ mod tests {
 	}
 
 	#[test]
-	fn test_secret_string_serialization() {
-		let secret = SecretString::new("test-secret");
+	fn test_secret_string_serialization_redacts_value() {
+		let secret = SecretString::new("my-super-secret-password");
 		let json = serde_json::to_string(&secret).unwrap();
-		let deserialized: SecretString = serde_json::from_str(&json).unwrap();
+		// Serialization should always output [REDACTED], not the actual secret
+		assert!(!json.contains("my-super-secret-password"));
+		assert!(json.contains("[REDACTED]"));
+		assert_eq!(json, "\"[REDACTED]\"");
+	}
+
+	#[test]
+	fn test_secret_string_deserialization() {
+		// Deserialization should still work for config loading
+		let json = r#"{"secret":"test-secret"}"#;
+		let deserialized: SecretString = serde_json::from_str(json).unwrap();
 		assert_eq!(deserialized.expose_secret(), "test-secret");
 	}
 
 	#[test]
-	fn test_secret_value_serialization() {
+	fn test_secret_value_serialization_redacts_value() {
 		let secret = SecretValue::new(42);
 		let json = serde_json::to_string(&secret).unwrap();
-		let deserialized: SecretValue<i32> = serde_json::from_str(&json).unwrap();
+		// Serialization should always output [REDACTED], not the actual value
+		assert!(!json.contains("42"));
+		assert!(json.contains("[REDACTED]"));
+		assert_eq!(json, "\"[REDACTED]\"");
+	}
+
+	#[test]
+	fn test_secret_value_deserialization() {
+		// Deserialization should still work for config loading
+		let json = r#"{"inner":42}"#;
+		let deserialized: SecretValue<i32> = serde_json::from_str(json).unwrap();
 		assert_eq!(*deserialized.expose_secret(), 42);
+	}
+
+	#[test]
+	fn test_secret_string_into_inner() {
+		let secret = SecretString::new("my-secret-value");
+		let inner = secret.into_inner();
+		assert_eq!(inner, "my-secret-value");
+	}
+
+	#[test]
+	fn test_secret_value_into_inner() {
+		let secret = SecretValue::new(vec![1, 2, 3, 4, 5]);
+		let inner = secret.into_inner();
+		assert_eq!(inner, vec![1, 2, 3, 4, 5]);
+	}
+
+	#[test]
+	fn test_secret_value_into_inner_non_clone() {
+		// Test with a type that does NOT implement Clone
+		// This verifies the fix: T: Clone bound was removed
+		struct NonClone {
+			inner: String,
+		}
+		impl Zeroize for NonClone {
+			fn zeroize(&mut self) {
+				self.inner.zeroize();
+			}
+		}
+		let secret = SecretValue::new(NonClone {
+			inner: "secret".to_string(),
+		});
+		let inner = secret.into_inner();
+		assert_eq!(inner.inner, "secret");
 	}
 }

@@ -384,6 +384,8 @@ cargo make clippy-check
 - Each PR should have a single, clear purpose
 - Smaller PRs are easier to review and less risky to merge
 
+**For batch issue handling**: See docs/ISSUE_HANDLING.md for work unit principles (WU-1 ~ WU-3) on how to scope PRs when addressing multiple issues.
+
 ---
 
 ## PR Merge Policy
@@ -520,6 +522,7 @@ docs(readme): add installation instructions
 ## Related Documentation
 
 - **Main Quick Reference**: @CLAUDE.md (see Quick Reference section)
+- **Issue Handling Principles**: docs/ISSUE_HANDLING.md
 - **Commit Guidelines**: @docs/COMMIT_GUIDELINE.md
 - **Release Process**: @docs/RELEASE_PROCESS.md
 - **GitHub MCP Tools**: Available when GitHub MCP server is configured
