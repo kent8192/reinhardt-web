@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.5...reinhardt-core@v0.1.0-alpha.6) - 2026-02-18
+
+### Added
+
+- *(core)* add enhanced sanitization utilities for XSS prevention
+
+### Changed
+
+- *(core)* replace glob import with explicit rayon trait imports
+
+### Fixed
+
+- *(core)* use push instead of push_str for single char in escape_css_selector
+
+### Styling
+
+- *(core)* fix formatting in security module
+
 ## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.4...reinhardt-core@v0.1.0-alpha.5) - 2026-02-12
 
 ### Changed

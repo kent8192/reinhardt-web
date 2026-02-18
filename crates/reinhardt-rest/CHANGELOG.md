@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.15...reinhardt-rest@v0.1.0-alpha.16) - 2026-02-18
+
+### Fixed
+
+- *(rest)* use parameterized queries in SimpleSearchBackend
+- update filter test assertions to expect MySQL-style backtick quoting
+- *(rest)* add database dialect support for PostgreSQL compatibility
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.1.0-alpha.14...reinhardt-rest@v0.1.0-alpha.15) - 2026-02-16
 
 ### Maintenance
