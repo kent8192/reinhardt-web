@@ -14,6 +14,7 @@
 use proc_macro2::Span;
 use syn::{Expr, Result};
 
+use reinhardt_core::security::xss::is_safe_url;
 use reinhardt_manouche::core::{
 	PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent, PageMacro, PageNode,
 	PageWatch, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
@@ -606,26 +607,23 @@ fn validate_attr_type(
 			));
 		}
 
-		// Check for dangerous schemes (case-insensitive)
-		let url_lower = url_str.to_lowercase();
-		for scheme in DANGEROUS_URL_SCHEMES {
-			if url_lower.starts_with(scheme) {
-				return Err(syn::Error::new(
-					span,
-					format!(
-						"Dangerous URL scheme detected in attribute '{}'.\n\
-							The '{}' scheme can be used for XSS (Cross-Site Scripting) attacks.\n\n\
-							Security risk: This URL could execute arbitrary JavaScript code.\n\n\
-							Use safe URL schemes instead:\n\
-							  - https://example.com\n\
-							  - /path/to/resource\n\
-							  - #anchor\n\
-							  - mailto:user@example.com",
-						attr_name,
-						scheme.trim_end_matches(':')
-					),
-				));
-			}
+		// Check for dangerous schemes (case-insensitive) using is_safe_url from reinhardt-core
+		// Fixes #849
+		if !is_safe_url(url_str) {
+			return Err(syn::Error::new(
+				span,
+				format!(
+					"Dangerous URL scheme detected in attribute '{}'.\n\
+						The URL scheme can be used for XSS (Cross-Site Scripting) attacks.\n\n\
+						Security risk: This URL could execute arbitrary JavaScript code.\n\n\
+						Use safe URL schemes instead:\n\
+						  - https://example.com\n\
+						  - /path/to/resource\n\
+						  - #anchor\n\
+						  - mailto:user@example.com",
+					attr_name
+				),
+			));
 		}
 	}
 	// Dynamic expressions are OK (runtime validation recommended)
@@ -634,6 +632,7 @@ fn validate_attr_type(
 	validate_enum_attr(attr_name, value, element_tag, span)?;
 
 	// img element src attribute validation
+	// Fixes #849
 	if element_tag == "img" && attr_name == "src" {
 		// Must be a string literal
 		if !value.is_string_literal() {
@@ -644,13 +643,28 @@ fn validate_attr_type(
 		}
 
 		// Must not be empty
-		if let Some(src_value) = value.as_string()
-			&& src_value.trim().is_empty()
-		{
-			return Err(syn::Error::new(
-				span,
-				"Element <img> 'src' attribute must not be empty",
-			));
+		if let Some(src_value) = value.as_string() {
+			if src_value.trim().is_empty() {
+				return Err(syn::Error::new(
+					span,
+					"Element <img> 'src' attribute must not be empty",
+				));
+			}
+
+			// Check for dangerous URL schemes (XSS prevention) using is_safe_url from reinhardt-core
+			// Fixes #849
+			if !is_safe_url(src_value) {
+				return Err(syn::Error::new(
+					span,
+					"Dangerous URL scheme detected in <img> 'src' attribute.\n\
+					The URL scheme can be used for XSS (Cross-Site Scripting) attacks.\n\n\
+					Security risk: This URL could execute arbitrary JavaScript code.\n\n\
+					Use safe URL schemes instead:\n\
+					  - https://example.com/image.png\n\
+					  - /path/to/image.png\n\
+					  - image.png",
+				));
+			}
 		}
 	}
 
@@ -1256,12 +1270,42 @@ mod tests {
 	}
 
 	#[test]
-	fn test_validate_url_attr_img_src_excluded() {
-		// img src should not be validated as URL attribute (has separate rules)
+	fn test_validate_url_attr_img_src_dangerous_scheme() {
+		// img src should be validated for dangerous URL schemes (Fixes #849)
 		let value = AttrValue::from_expr(parse_quote!("javascript:alert(1)"));
-		// This should fail with img src validation error, not URL validation error
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
-		assert!(result.is_ok()); // img src allows string literals (separate validation)
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(err_msg.contains("Dangerous URL scheme"));
+		assert!(err_msg.contains("javascript"));
+	}
+
+	#[test]
+	fn test_validate_url_attr_img_src_data_scheme() {
+		let value =
+			AttrValue::from_expr(parse_quote!("data:text/html,<script>alert('xss')</script>"));
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(err_msg.contains("Dangerous URL scheme"));
+		assert!(err_msg.contains("data"));
+	}
+
+	#[test]
+	fn test_validate_url_attr_img_src_vbscript_scheme() {
+		let value = AttrValue::from_expr(parse_quote!("vbscript:alert(1)"));
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(err_msg.contains("Dangerous URL scheme"));
+		assert!(err_msg.contains("vbscript"));
+	}
+
+	#[test]
+	fn test_validate_url_attr_img_src_safe_url() {
+		let value = AttrValue::from_expr(parse_quote!("/images/photo.png"));
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+		assert!(result.is_ok());
 	}
 
 	// Enumerated attribute tests - invalid values are prohibited
