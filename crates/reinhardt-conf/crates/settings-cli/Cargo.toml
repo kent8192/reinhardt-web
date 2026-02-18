@@ -24,6 +24,8 @@ anyhow = "1.0"
 hex = "0.4"
 rpassword = "7.3"
 reinhardt-conf = {workspace = true, features = ["settings", "encryption"]}
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3.8"
+rstest = { workspace = true }

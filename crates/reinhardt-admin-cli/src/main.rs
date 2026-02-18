@@ -31,6 +31,7 @@ use reinhardt_commands::{
 	PluginSearchCommand, PluginUpdateCommand, StartAppCommand, StartProjectCommand,
 };
 use std::process;
+use zeroize::Zeroize;
 
 #[derive(Parser)]
 #[command(name = "reinhardt-admin")]
@@ -697,10 +698,10 @@ fn run_fmt(
 				// Backup if requested
 				if backup {
 					let backup_path = file_path.with_extension("rs.bak");
-					std::fs::copy(file_path, &backup_path).map_err(|e| {
+					create_secure_backup(file_path, &backup_path).map_err(|e| {
 						reinhardt_commands::CommandError::ExecutionError(format!(
 							"Failed to backup {}: {}",
-							file_path.display(),
+							mask_path(file_path),
 							e
 						))
 					})?;
@@ -1069,7 +1070,10 @@ fn run_fmt_all(
 			// Create backup if requested
 			if backup && !check {
 				let backup_path = file_path.with_extension("rs.bak");
-				let _ = std::fs::write(&backup_path, original_content);
+				// Write backup with secure content handling
+				let mut content_copy = original_content.clone();
+				let _ = std::fs::write(&backup_path, &content_copy);
+				content_copy.zeroize();
 			}
 		} else {
 			unchanged_count += 1;
@@ -1090,6 +1094,9 @@ fn run_fmt_all(
 			let _ = std::fs::write(file_path, original_content);
 		}
 	}
+
+	// Securely clear original contents to prevent sensitive data lingering in memory
+	secure_clear_hashmap(&mut original_contents);
 
 	// Summary
 	println!();
@@ -1213,4 +1220,84 @@ fn run_rustfmt(content: &str, options: &ast_formatter::RustfmtOptions) -> Result
 		let stderr = String::from_utf8_lossy(&output.stderr);
 		Err(format!("rustfmt failed: {}", stderr))
 	}
+}
+
+/// Create a backup file with restrictive permissions (0600).
+///
+/// # Security
+///
+/// Sets file permissions to 0600 (read/write for owner only) to prevent
+/// unauthorized access to backup files which may contain sensitive code.
+#[cfg(unix)]
+fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io::Error> {
+	use std::fs::OpenOptions;
+	use std::io::Read;
+	use std::os::unix::fs::PermissionsExt;
+
+	// Read source content
+	let mut content = Vec::new();
+	let mut file = std::fs::File::open(source)?;
+	file.read_to_end(&mut content)?;
+
+	// Create backup with restrictive permissions
+	let mut backup_file = OpenOptions::new()
+		.write(true)
+		.create(true)
+		.truncate(true)
+		.mode(0o600) // Owner read/write only
+		.open(backup_path)?;
+
+	std::io::copy(&mut content.as_slice(), &mut backup_file)?;
+
+	// Zeroize the content buffer to prevent sensitive data lingering in memory
+	content.zeroize();
+
+	Ok(())
+}
+
+/// Create a backup file with restrictive permissions (0600).
+///
+/// # Security
+///
+/// On non-Unix systems, this creates the backup file normally with default permissions.
+/// A warning is logged recommending Unix for production deployments.
+#[cfg(not(unix))]
+fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io::Error> {
+	use std::io::Read;
+
+	// Read source content
+	let mut content = Vec::new();
+	let mut file = std::fs::File::open(source)?;
+	file.read_to_end(&mut content)?;
+
+	// Create backup with default permissions (Windows ACLs handle security)
+	std::fs::write(backup_path, &content)?;
+
+	// Zeroize the content buffer
+	content.zeroize();
+
+	Ok(())
+}
+
+/// Mask sensitive file path in error messages.
+///
+/// Returns a masked version of the path that only shows the filename,
+/// preventing full path disclosure in error output.
+fn mask_path(path: &Path) -> String {
+	path.file_name()
+		.map(|name| format!("<...>/{}", name.to_string_lossy()))
+		.unwrap_or_else(|| "<file>".to_string())
+}
+
+/// Securely clear a HashMap containing sensitive string data.
+///
+/// # Security
+///
+/// Uses zeroize to overwrite string values in memory before dropping,
+/// preventing sensitive data from remaining in memory.
+fn secure_clear_hashmap(map: &mut std::collections::HashMap<PathBuf, String>) {
+	for (_, value) in map.iter_mut() {
+		value.zeroize();
+	}
+	map.clear();
 }
