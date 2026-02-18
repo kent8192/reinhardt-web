@@ -64,6 +64,7 @@ pub mod state_loader;
 pub mod visualization;
 pub mod zero_downtime;
 
+pub use crate::contenttypes::migration::MigrationRecord;
 pub use autodetector::{
 	// Pattern Learning and Inference
 	ChangeTracker,
@@ -121,7 +122,7 @@ pub use operations::{
 	DropExtension, FieldDefinition, MoveModel, RemoveField, RenameField, RenameModel, RunCode,
 	RunSQL, StateOperation, special::DataMigration,
 };
-pub use recorder::{DatabaseMigrationRecorder, MigrationRecord, MigrationRecorder};
+pub use recorder::{DatabaseMigrationRecorder, MigrationRecorder};
 pub use repository::{MigrationRepository, filesystem::FilesystemRepository};
 pub use schema_diff::{
 	ColumnSchema, ConstraintSchema, DatabaseSchema, ForeignKeySchemaInfo, IndexSchema, SchemaDiff,

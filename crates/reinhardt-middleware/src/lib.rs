@@ -99,6 +99,7 @@
 //! 9. `RateLimitMiddleware` - Apply rate limits
 //! 10. Application handlers
 
+pub mod allowed_hosts;
 pub mod auth;
 pub mod broken_link;
 #[cfg(feature = "compression")]
@@ -138,6 +139,7 @@ pub mod xss;
 // Re-export core middleware traits from reinhardt-http
 pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
 
+pub use allowed_hosts::{AllowedHostsConfig, AllowedHostsMiddleware};
 #[cfg(feature = "sessions")]
 pub use auth::AuthenticationMiddleware;
 pub use broken_link::{BrokenLinkConfig, BrokenLinkEmailsMiddleware};

@@ -137,6 +137,8 @@ pub use field::{
 	FormField as Field, // Alias for compatibility
 	FormField,
 	Widget,
+	escape_attribute,
+	html_escape,
 };
 pub use fields::{
 	BooleanField, CharField, ChoiceField, ColorField, ComboField, DateField, DateTimeField,

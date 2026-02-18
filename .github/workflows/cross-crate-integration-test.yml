@@ -15,13 +15,13 @@ env:
 
 jobs:
   cross-crate-integration-test:
-    name: Cross-Crate Integration Tests (${{ matrix.partition }}/2)
+    name: Cross-Crate Integration Tests (${{ matrix.partition }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        partition: [1, 2]
+        partition: [1, 2, 3]
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -90,14 +90,14 @@ jobs:
         with:
           images-file: .github/docker-images-cross-crate.txt
 
-      - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/2)
+      - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/3)
         env:
           RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
-            --partition hash:${{ matrix.partition }}/2 \
+            --partition hash:${{ matrix.partition }}/3 \
             --no-fail-fast \
             --status-level=none \
             --final-status-level=none

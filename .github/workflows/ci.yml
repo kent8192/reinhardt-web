@@ -38,7 +38,12 @@ jobs:
     name: TODO Check
     uses: ./.github/workflows/todo-check.yml
 
-  # Phase 1: All tests run in parallel after lightweight checks
+  release-dry-run:
+    name: Release Dry-Run
+    if: ${{ !startsWith(github.head_ref || '', 'release-plz-') }}
+    uses: ./.github/workflows/release-plz-dry-run.yml
+
+  # All tests run in parallel after lightweight checks
   # Note: Each job runs on its own runner (no shared disk), so parallel execution is safe
   # Integration tests are split into intra-crate and cross-crate to reduce disk usage per job
   unit-test:
@@ -71,16 +76,16 @@ jobs:
     needs: [check, fmt, clippy]
     secrets: inherit
 
-  # Phase 2: Examples tests run last (requires 70-90GB, must run alone)
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
-    needs: [unit-test, intra-crate-integration-test, cross-crate-integration-test, doc-test, ui-test]
+    needs: [check, fmt, clippy]
     secrets: inherit
 
   # All jobs must pass
   ci-success:
     name: CI Success
+    if: always()
     runs-on: ubuntu-latest
     needs:
       - check
@@ -88,6 +93,7 @@ jobs:
       - clippy
       - publish-check
       - todo-check
+      - release-dry-run
       - unit-test
       - intra-crate-integration-test
       - cross-crate-integration-test
@@ -95,5 +101,31 @@ jobs:
       - examples-test
       - ui-test
     steps:
-      - name: Mark CI as successful
-        run: echo "All CI checks passed!"
+      - name: Verify all required checks passed
+        run: |
+          required_results=(
+            "${{ needs.check.result }}"
+            "${{ needs.fmt.result }}"
+            "${{ needs.clippy.result }}"
+            "${{ needs.publish-check.result }}"
+            "${{ needs.todo-check.result }}"
+            "${{ needs.unit-test.result }}"
+            "${{ needs.intra-crate-integration-test.result }}"
+            "${{ needs.cross-crate-integration-test.result }}"
+            "${{ needs.doc-test.result }}"
+            "${{ needs.examples-test.result }}"
+            "${{ needs.ui-test.result }}"
+          )
+          for result in "${required_results[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::Required CI check failed: $result"
+              exit 1
+            fi
+          done
+          # release-dry-run is skipped on release-plz branches (expected)
+          dry_run="${{ needs.release-dry-run.result }}"
+          if [[ "$dry_run" != "success" && "$dry_run" != "skipped" ]]; then
+            echo "::error::Release dry-run failed: $dry_run"
+            exit 1
+          fi
+          echo "All CI checks passed!"
