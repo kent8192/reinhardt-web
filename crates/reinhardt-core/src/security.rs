@@ -40,8 +40,8 @@ pub use headers::{ContentSecurityPolicy, SecurityHeadersConfig, SecurityHeadersM
 pub use hsts::{HstsConfig, HstsMiddleware};
 pub use ip_filter::{IpFilterConfig, IpFilterMiddleware, IpFilterMode};
 pub use xss::{
-	escape_html, escape_html_content, sanitize_html, strip_tags_safe,
-	escape_css_selector, validate_css_selector,
+	escape_css_selector, escape_html, escape_html_content, sanitize_html, strip_tags_safe,
+	validate_css_selector,
 };
 
 use thiserror::Error;

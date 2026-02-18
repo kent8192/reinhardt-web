@@ -330,9 +330,9 @@ pub fn escape_css_selector(input: &str) -> String {
 				result.push(ch);
 			}
 			// CSS metacharacters that need escaping
-			'!' | '"' | '#' | '$' | '%' | '&' | '\'' | '(' | ')' | '*' | '+' | ',' | '.'
-			| '/' | ':' | ';' | '<' | '=' | '>' | '?' | '@' | '[' | '\\' | ']' | '^' | '`'
-			| '{' | '|' | '}' | '~' => {
+			'!' | '"' | '#' | '$' | '%' | '&' | '\'' | '(' | ')' | '*' | '+' | ',' | '.' | '/'
+			| ':' | ';' | '<' | '=' | '>' | '?' | '@' | '[' | '\\' | ']' | '^' | '`' | '{'
+			| '|' | '}' | '~' => {
 				result.push('\\');
 				result.push(ch);
 			}
@@ -363,9 +363,11 @@ pub fn validate_css_selector(input: &str) -> bool {
 		return false;
 	}
 
-	input.chars().all(|ch| matches!(ch,
-		'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_'
-	))
+	input.chars().all(|ch| {
+		matches!(ch,
+			'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_'
+		)
+	})
 }
 
 #[cfg(test)]
@@ -463,10 +465,7 @@ mod tests {
 	#[test]
 	fn test_strip_tags_safe_html_comments() {
 		assert_eq!(strip_tags_safe("Hello<!-- comment -->World"), "HelloWorld");
-		assert_eq!(
-			strip_tags_safe("A<!-- multi\nline -->B"),
-			"AB"
-		);
+		assert_eq!(strip_tags_safe("A<!-- multi\nline -->B"), "AB");
 		// Unclosed comment
 		assert_eq!(strip_tags_safe("Hello<!-- unclosed"), "Hello");
 	}
