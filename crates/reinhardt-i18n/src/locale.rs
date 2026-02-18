@@ -4,7 +4,8 @@
 //! For new code, prefer using `TranslationContext` with `set_active_translation()`.
 
 use crate::{
-	I18nError, MessageCatalog, TranslationContext, get_active_translation, set_active_translation,
+	I18nError, MessageCatalog, TranslationContext, get_active_translation,
+	set_active_translation_permanent,
 };
 use std::sync::Arc;
 
@@ -60,10 +61,9 @@ pub fn activate(locale: &str) -> Result<(), I18nError> {
 
 	ctx.set_locale(locale);
 
-	// Set the new context (this leaks the guard, but maintains backward compatibility)
+	// Set the new context permanently (no guard, no memory leak)
 	// In new code, users should use set_active_translation() directly
-	let guard = set_active_translation(Arc::new(ctx));
-	std::mem::forget(guard);
+	set_active_translation_permanent(Arc::new(ctx));
 
 	Ok(())
 }
@@ -99,9 +99,8 @@ pub fn activate_with_catalog(locale: &str, catalog: MessageCatalog) {
 	ctx.set_locale(locale);
 	ctx.add_catalog(locale, catalog);
 
-	// Set the new context (this leaks the guard, but maintains backward compatibility)
-	let guard = set_active_translation(Arc::new(ctx));
-	std::mem::forget(guard);
+	// Set the new context permanently (no guard, no memory leak)
+	set_active_translation_permanent(Arc::new(ctx));
 }
 
 /// Deactivate the current locale and revert to English
@@ -131,9 +130,8 @@ pub fn deactivate() {
 		let mut ctx = (*arc).clone();
 		ctx.set_locale("");
 
-		// Set the new context (this leaks the guard)
-		let guard = set_active_translation(Arc::new(ctx));
-		std::mem::forget(guard);
+		// Set the new context permanently (no guard, no memory leak)
+		set_active_translation_permanent(Arc::new(ctx));
 	}
 }
 
@@ -163,30 +161,100 @@ pub fn get_locale() -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::set_active_translation;
+	use rstest::rstest;
 	use serial_test::serial;
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_locale_activation() {
+		// Arrange
 		let mut ctx = TranslationContext::new("pt", "en-US");
 		let catalog = MessageCatalog::new("pt");
 		ctx.add_catalog("pt", catalog);
-
 		let _guard = set_active_translation(Arc::new(ctx));
-		assert_eq!(get_locale(), "pt");
+
+		// Act
+		let locale = get_locale();
+
+		// Assert
+		assert_eq!(locale, "pt");
 	}
 
-	#[test]
+	#[rstest]
 	#[serial(i18n)]
 	fn test_deactivate() {
+		// Arrange
 		let mut ctx = TranslationContext::new("fr", "en-US");
 		let catalog = MessageCatalog::new("fr");
 		ctx.add_catalog("fr", catalog);
-
 		let _guard = set_active_translation(Arc::new(ctx));
 		assert_eq!(get_locale(), "fr");
 
+		// Act
 		deactivate();
+
+		// Assert
 		assert_eq!(get_locale(), "en-US");
+	}
+
+	#[rstest]
+	#[serial(i18n)]
+	fn test_activate_does_not_leak_arc() {
+		// Arrange
+		let ctx = Arc::new(TranslationContext::new("en-US", "en-US"));
+		set_active_translation_permanent(Arc::clone(&ctx));
+
+		// Act: activate multiple times; each call replaces the previous Arc
+		activate("ja").unwrap();
+		activate("de").unwrap();
+		activate("fr").unwrap();
+
+		// Assert: only one strong reference remains from this scope
+		// (the thread-local holds a different Arc after activate calls)
+		assert_eq!(Arc::strong_count(&ctx), 1);
+	}
+
+	#[rstest]
+	#[serial(i18n)]
+	fn test_activate_with_catalog_does_not_leak_arc() {
+		// Arrange
+		let ctx = Arc::new(TranslationContext::new("en-US", "en-US"));
+		set_active_translation_permanent(Arc::clone(&ctx));
+
+		// Act: activate_with_catalog replaces the context without leaking
+		let catalog = MessageCatalog::new("es");
+		activate_with_catalog("es", catalog);
+
+		// Assert: original Arc has only one strong reference (this scope)
+		assert_eq!(Arc::strong_count(&ctx), 1);
+	}
+
+	#[rstest]
+	#[serial(i18n)]
+	fn test_deactivate_does_not_leak_arc() {
+		// Arrange
+		let mut ctx = TranslationContext::new("ko", "en-US");
+		let catalog = MessageCatalog::new("ko");
+		ctx.add_catalog("ko", catalog);
+		let shared = Arc::new(ctx);
+		set_active_translation_permanent(Arc::clone(&shared));
+
+		// Act
+		deactivate();
+
+		// Assert: original Arc has only one strong reference (this scope)
+		assert_eq!(Arc::strong_count(&shared), 1);
+	}
+
+	#[rstest]
+	#[serial(i18n)]
+	fn test_activate_validates_locale() {
+		// Act & Assert
+		assert!(activate("").is_err());
+		assert!(activate("en/US").is_err());
+		assert!(activate("en US").is_err());
+		assert!(activate("en-US").is_ok());
+		assert!(activate("ja").is_ok());
 	}
 }
