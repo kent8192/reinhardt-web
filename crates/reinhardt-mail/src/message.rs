@@ -274,76 +274,87 @@ impl Attachment {
 	}
 }
 
+/// Represents an email message with validated addresses.
+///
+/// Fields are not publicly accessible to enforce validation through the builder.
+/// Use getter methods for read access and the builder for construction.
 #[derive(Debug, Clone)]
 pub struct EmailMessage {
-	pub subject: String,
-	pub body: String,
-	pub from_email: String,
-	pub to: Vec<String>,
-	pub cc: Vec<String>,
-	pub bcc: Vec<String>,
-	pub reply_to: Vec<String>,
-	pub html_body: Option<String>,
-	pub alternatives: Vec<Alternative>,
-	pub attachments: Vec<Attachment>,
-	pub headers: Vec<(String, String)>,
+	pub(crate) subject: String,
+	pub(crate) body: String,
+	pub(crate) from_email: String,
+	pub(crate) to: Vec<String>,
+	pub(crate) cc: Vec<String>,
+	pub(crate) bcc: Vec<String>,
+	pub(crate) reply_to: Vec<String>,
+	pub(crate) html_body: Option<String>,
+	pub(crate) alternatives: Vec<Alternative>,
+	pub(crate) attachments: Vec<Attachment>,
+	pub(crate) headers: Vec<(String, String)>,
 }
 
 impl EmailMessage {
+	/// Create a new builder for constructing an `EmailMessage`.
 	pub fn builder() -> EmailMessageBuilder {
 		EmailMessageBuilder::default()
 	}
 
-	pub fn subject(&mut self, subject: impl Into<String>) -> &mut Self {
-		self.subject = subject.into();
-		self
+	/// Get the subject.
+	pub fn subject(&self) -> &str {
+		&self.subject
 	}
 
-	pub fn body(&mut self, body: impl Into<String>) -> &mut Self {
-		self.body = body.into();
-		self
+	/// Get the body.
+	pub fn body(&self) -> &str {
+		&self.body
 	}
 
-	pub fn from_email(&mut self, from: impl Into<String>) -> &mut Self {
-		self.from_email = from.into();
-		self
+	/// Get the from email address.
+	pub fn from_email(&self) -> &str {
+		&self.from_email
 	}
 
-	pub fn to(&mut self, to: Vec<String>) -> &mut Self {
-		self.to = to;
-		self
+	/// Get the list of recipients.
+	pub fn to(&self) -> &[String] {
+		&self.to
 	}
 
-	pub fn cc(&mut self, cc: Vec<String>) -> &mut Self {
-		self.cc = cc;
-		self
+	/// Get the list of CC recipients.
+	pub fn cc(&self) -> &[String] {
+		&self.cc
 	}
 
-	pub fn bcc(&mut self, bcc: Vec<String>) -> &mut Self {
-		self.bcc = bcc;
-		self
+	/// Get the list of BCC recipients.
+	pub fn bcc(&self) -> &[String] {
+		&self.bcc
 	}
 
-	pub fn reply_to(&mut self, reply_to: Vec<String>) -> &mut Self {
-		self.reply_to = reply_to;
-		self
+	/// Get the list of reply-to addresses.
+	pub fn reply_to(&self) -> &[String] {
+		&self.reply_to
 	}
 
-	pub fn add_attachment(&mut self, attachment: Attachment) -> &mut Self {
-		self.attachments.push(attachment);
-		self
+	/// Get the HTML body.
+	pub fn html_body(&self) -> Option<&str> {
+		self.html_body.as_deref()
 	}
 
-	pub fn add_alternative(&mut self, alternative: Alternative) -> &mut Self {
-		self.alternatives.push(alternative);
-		self
+	/// Get the alternatives.
+	pub fn alternatives(&self) -> &[Alternative] {
+		&self.alternatives
 	}
 
-	pub fn add_header(&mut self, name: impl Into<String>, value: impl Into<String>) -> &mut Self {
-		self.headers.push((name.into(), value.into()));
-		self
+	/// Get the attachments.
+	pub fn attachments(&self) -> &[Attachment] {
+		&self.attachments
 	}
 
+	/// Get the custom headers.
+	pub fn headers(&self) -> &[(String, String)] {
+		&self.headers
+	}
+
+	/// Send the email using the given backend.
 	pub async fn send(
 		&self,
 		backend: &dyn crate::backends::EmailBackend,
@@ -352,6 +363,7 @@ impl EmailMessage {
 		Ok(())
 	}
 
+	/// Send the email using the given backend (alias for `send`).
 	pub async fn send_with_backend(
 		&self,
 		backend: &dyn crate::backends::EmailBackend,
@@ -437,8 +449,25 @@ impl EmailMessageBuilder {
 		self
 	}
 
-	pub fn build(self) -> EmailMessage {
-		EmailMessage {
+	/// Build the email message with validation.
+	///
+	/// Validates all email addresses using `validate_email()` before
+	/// constructing the message. Returns an error if any address is invalid.
+	pub fn build(self) -> crate::EmailResult<EmailMessage> {
+		use crate::validation::{validate_email, validate_email_list};
+
+		// Validate from_email if provided
+		if !self.from_email.is_empty() {
+			validate_email(&self.from_email)?;
+		}
+
+		// Validate recipient lists
+		validate_email_list(&self.to)?;
+		validate_email_list(&self.cc)?;
+		validate_email_list(&self.bcc)?;
+		validate_email_list(&self.reply_to)?;
+
+		Ok(EmailMessage {
 			subject: self.subject,
 			body: self.body,
 			from_email: self.from_email,
@@ -450,6 +479,6 @@ impl EmailMessageBuilder {
 			alternatives: self.alternatives,
 			attachments: self.attachments,
 			headers: self.headers,
-		}
+		})
 	}
 }

@@ -137,7 +137,11 @@ impl ImageField {
 	}
 
 	fn is_valid_image_extension(filename: &str) -> bool {
-		let valid_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+		// NOTE: SVG is intentionally excluded due to Stored XSS risk.
+		// SVG files can contain arbitrary JavaScript that executes when served
+		// with Content-Type: image/svg+xml. Use opt-in validation if SVG support
+		// is required, with appropriate sanitization or Content-Disposition headers.
+		let valid_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
 		filename
 			.rsplit('.')
 			.next()
@@ -281,5 +285,21 @@ mod tests {
 			field.clean(Some(&file)),
 			Err(FieldError::Validation(_))
 		));
+	}
+
+	#[test]
+	fn test_imagefield_rejects_svg_for_xss_prevention() {
+		let field = ImageField::new("photo".to_string());
+
+		// SVG files are rejected due to Stored XSS vulnerability risk
+		let svg_file = serde_json::json!({
+			"filename": "malicious.svg",
+			"size": 1024
+		});
+
+		assert!(
+			matches!(field.clean(Some(&svg_file)), Err(FieldError::Validation(_))),
+			"SVG files should be rejected to prevent Stored XSS attacks"
+		);
 	}
 }
