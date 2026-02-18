@@ -151,10 +151,15 @@ impl ServerFnTestContext {
 	/// # Arguments
 	///
 	/// * `permissions` - List of permission strings to grant
+	// Fixes #868
 	pub fn with_permissions<S: Into<String>>(mut self, permissions: Vec<S>) -> Self {
 		if let Some(ref mut user) = self.test_user {
 			for perm in permissions {
 				user.permissions.push(perm.into());
+			}
+			// Synchronize mock_session user with updated test_user
+			if let Some(ref mut session) = self.mock_session {
+				session.user = Some(user.clone());
 			}
 		} else {
 			let mut user = TestUser::authenticated("test-user");
@@ -172,10 +177,15 @@ impl ServerFnTestContext {
 	/// # Arguments
 	///
 	/// * `roles` - List of role strings to assign
+	// Fixes #868
 	pub fn with_roles<S: Into<String>>(mut self, roles: Vec<S>) -> Self {
 		if let Some(ref mut user) = self.test_user {
 			for role in roles {
 				user.roles.push(role.into());
+			}
+			// Synchronize mock_session user with updated test_user
+			if let Some(ref mut session) = self.mock_session {
+				session.user = Some(user.clone());
 			}
 		} else {
 			let mut user = TestUser::authenticated("test-user");
