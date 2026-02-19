@@ -23,6 +23,9 @@ use chrono::{DateTime, Utc};
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_core::macros::model;
 use reinhardt_http::{Request, Response};
+use reinhardt_query::prelude::{
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::shared_db_pool;
 use reinhardt_views::{
@@ -30,7 +33,6 @@ use reinhardt_views::{
 	RetrieveUpdateDestroyAPIView, UpdateAPIView, View,
 };
 use rstest::*;
-use sea_query::{ColumnDef, Iden, PostgresQueryBuilder, Table};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serial_test::serial;
@@ -60,10 +62,10 @@ struct Article {
 }
 
 // ============================================================================
-// Table Identifiers (for SeaQuery operations)
+// Table Identifiers (for reinhardt-query operations)
 // ============================================================================
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum Articles {
 	Table,
 	Id,
@@ -95,43 +97,46 @@ async fn articles_table(#[future] db_pool: Arc<PgPool>) -> Arc<PgPool> {
 	let pool = db_pool.await;
 
 	// Drop existing table to ensure clean state
-	let drop_stmt = Table::drop()
-		.table(Articles::Table)
-		.if_exists()
-		.to_string(PostgresQueryBuilder);
-	sqlx::query(&drop_stmt)
+	let mut drop_stmt = Query::drop_table();
+	drop_stmt.table(Articles::Table.into_iden()).if_exists();
+	let drop_sql = drop_stmt.to_string(PostgresQueryBuilder::new());
+	sqlx::query(&drop_sql)
 		.execute(pool.as_ref())
 		.await
 		.expect("Failed to drop articles table");
 
-	// Create articles table using SeaQuery
-	let create_table_stmt = Table::create()
-		.table(Articles::Table)
+	// Create articles table using reinhardt-query
+	let mut create_table_stmt = Query::create_table();
+	create_table_stmt
+		.table(Articles::Table.into_iden())
 		.col(
 			ColumnDef::new(Articles::Id)
 				.big_integer()
-				.not_null()
-				.auto_increment()
-				.primary_key(),
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
 		)
-		.col(ColumnDef::new(Articles::Title).string_len(200).not_null())
-		.col(ColumnDef::new(Articles::Content).text().not_null())
+		.col(
+			ColumnDef::new(Articles::Title)
+				.string_len(200)
+				.not_null(true),
+		)
+		.col(ColumnDef::new(Articles::Content).text().not_null(true))
 		.col(
 			ColumnDef::new(Articles::Published)
 				.boolean()
-				.not_null()
-				.default(false),
+				.not_null(true)
+				.default(false.into()),
 		)
 		.col(
 			ColumnDef::new(Articles::ViewCount)
 				.integer()
-				.not_null()
-				.default(0),
+				.not_null(true)
+				.default(0i32.into()),
 		)
-		.col(ColumnDef::new(Articles::CreatedAt).timestamp())
-		.to_owned();
+		.col(ColumnDef::new(Articles::CreatedAt).timestamp());
 
-	let sql = create_table_stmt.to_string(PostgresQueryBuilder);
+	let sql = create_table_stmt.to_string(PostgresQueryBuilder::new());
 	sqlx::query(&sql)
 		.execute(pool.as_ref())
 		.await

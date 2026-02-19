@@ -284,12 +284,8 @@ impl WasmPluginInstance {
 	}
 }
 
-// Clone implementation for HostState (needed for store creation)
-impl Clone for HostState {
-	fn clone(&self) -> Self {
-		Self::new(&self.plugin_name)
-	}
-}
+// Clone implementation for HostState is defined in host.rs where it has
+// access to private fields.
 
 impl Plugin for WasmPluginInstance {
 	fn metadata(&self) -> &PluginMetadata {

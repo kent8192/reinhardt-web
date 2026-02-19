@@ -42,6 +42,7 @@ mod instance;
 mod loader;
 mod models;
 mod runtime;
+mod sql_validator;
 mod ssr;
 #[cfg(feature = "ts")]
 mod ts_runtime;
@@ -55,7 +56,10 @@ pub use models::{
 	ColumnDef, ColumnType, IndexDef, ModelRegistry, ModelSchema, SharedModelRegistry, SqlMigration,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeConfig, WasmRuntimeConfigBuilder};
-pub use ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
+pub use sql_validator::{
+	SqlStatementType, SqlValidationError, SqlValidator, default_validator, validate_sql,
+};
+pub use ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy, escape_for_script};
 #[cfg(feature = "ts")]
 pub use ts_runtime::{SharedTsRuntime, TsError, TsRuntime};
 pub use types::{ConfigValue, WitCapability, WitPluginError, WitPluginMetadata};

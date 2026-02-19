@@ -7,6 +7,147 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.14...reinhardt-web@v0.1.0-alpha.15) - 2026-02-16
+
+### Added
+
+- *(examples)* add settings files for all examples
+- *(examples)* add ci.toml and auto-detect CI environment
+- *(examples)* add docker-compose.yml for PostgreSQL examples
+- *(examples)* add docker-up dependency to runserver for PostgreSQL examples
+
+### Changed
+
+- *(examples)* remove reinhardt-examples references and adopt monorepo-only strategy
+- *(examples)* remove stale staging/production settings templates
+- *(examples)* simplify settings.rs to consistent pattern
+- *(examples)* move docker-compose.yml into each PostgreSQL example
+
+### Documentation
+
+- *(examples)* add quick start instructions to README.md
+
+### Fixed
+
+- *(examples)* update Docker build context and COPY paths for flattened structure
+- *(gitignore)* update stale examples/local path to flattened structure
+- *(ci)* remove stale example package overrides from release-plz.toml
+- *(ci)* remove stale test-common-crates job from test-examples.yml
+- *(examples)* restore required default settings values for Settings deserialization
+
+### Maintenance
+
+- *(examples)* remove stale examples/local settings files
+- *(examples)* remove stale configuration files from old repository
+- *(examples)* remove unused example-common and example-test-macros crates
+- *(examples)* update stale remote-examples-test task in Makefile.toml
+- *(examples)* remove stale help tasks from all example Makefile.toml
+- *(examples)* remove stale availability test referencing deleted example_common crate
+- *(examples)* remove stale settings from example base.toml files
+
+### Other
+
+- Squashed 'examples/' changes from 3a2c7662..77534e4c
+
+### Styling
+
+- format twitter example common component
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.13...reinhardt-web@v0.1.0-alpha.14) - 2026-02-15
+
+### Fixed
+
+- resolve Test Examples CI failures
+
+### Maintenance
+
+- add setup-protoc step to test-examples workflow
+- remove pull_request trigger from test-examples.yml
+
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.11...reinhardt-web@v0.1.0-alpha.12) - 2026-02-14
+
+### Maintenance
+
+- add copilot setup steps workflow
+
+## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.10...reinhardt-web@v0.1.0-alpha.11) - 2026-02-14
+
+### Changed
+
+- *(query)* replace super::super:: with crate:: absolute paths in query submodules
+- *(query)* replace super::super:: with crate:: absolute paths in dcl tests
+- *(db)* replace super::super:: with crate:: absolute paths in migrations
+- *(rest)* remove unused sea-orm dependency
+- *(query)* remove unused backend imports in drop role and drop user tests
+- *(db)* fix unused variable assignments in migration operation tests
+- *(query)* move DML integration tests to integration test crate
+
+### Fixed
+
+- *(query)* add missing DropBehavior import in revoke statement tests
+- *(query)* add Table variant special handling in Iden derive macro
+- *(query)* add missing code fence markers in alter_type doc example
+- *(ci)* migrate publish check to cargo publish --workspace
+- *(query)* add explicit path attributes to DML test module declarations
+- *(query)* add Meta::List support to Iden derive macro attribute parsing
+- *(query)* read iden attribute from struct-level instead of first field
+- *(db)* bind insert values in many-to-many manager instead of discarding
+- *(query)* reject whitespace-only names in CreateUser and GrantRole validation
+- *(commands)* remove unused reinhardt-i18n dev-dependency
+- *(release)* roll back unpublished crate versions after partial release failure
+
+### Maintenance
+
+- increase test partition counts for faster CI execution
+
+### Styling
+
+- *(query)* format Iden derive macro code
+
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.9...reinhardt-web@v0.1.0-alpha.10) - 2026-02-12
+
+### Changed
+
+- convert relative paths to absolute paths
+- *(db)* convert relative paths to absolute paths in orm execution
+- restore single-level super:: paths preserved by convention
+
+### Fixed
+
+- correct incorrect path conversions in test imports
+- *(release)* roll back unpublished crate versions and enable release_always
+
+### Maintenance
+
+- *(todo-check)* add clippy todo lint job to TODO Check workflow
+
+### Reverted
+
+- undo unintended visibility and formatting changes
+
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.8...reinhardt-web@v0.1.0-alpha.9) - 2026-02-11
+
+### Fixed
+
+- *(dentdelion)* correct doctest import path to use prelude module
+
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.7...reinhardt-web@v0.1.0-alpha.8) - 2026-02-10
+
+### Documentation
+
+- update TODO policy with CI enforcement
+- rewrite CLAUDE.md TODO check sections in English
+
+### Maintenance
+
+- *(todo-check)* add semgrep rules for TODO/FIXME comment detection
+- *(todo-check)* add reusable workflow for unresolved TODO scanning
+- integrate TODO check into CI pipeline
+- *(todo-check)* switch from semgrep scan to semgrep ci
+- *(clippy)* add deny lints for todo/unimplemented/dbg_macro
+- *(todo-check)* remove redundant todo macro rule and fix block comment pattern
+- *(todo-check)* separate clippy todo lints into dedicated task
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.6...reinhardt-web@v0.1.0-alpha.7) - 2026-02-10
 
 ### Fixed

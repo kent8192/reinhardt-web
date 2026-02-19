@@ -1,7 +1,7 @@
 //! Database integration tests for GraphQL
 //!
 //! This module contains tests for GraphQL with real database integration
-//! using PostgreSQL via TestContainers and SeaQuery for SQL construction.
+//! using PostgreSQL via TestContainers and reinhardt-query for SQL construction.
 
 // Re-export test modules
 pub mod models;

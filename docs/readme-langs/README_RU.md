@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -49,7 +50,7 @@ Reinhardt объединяет лучшее из трёх миров:
 
 ## ✨ Ключевые функции
 
-- **Типобезопасная ORM** с проверкой во время компиляции (SeaQuery v1.0.0-rc)
+- **Типобезопасная ORM** с проверкой во время компиляции (reinhardt-query)
 - **Мощные сериализаторы** с автоматической валидацией (serde + validator)
 - **DI в стиле FastAPI** с типобезопасным внедрением зависимостей и кэшированием
 - **ViewSets** для быстрой разработки CRUD API
@@ -537,7 +538,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**Примечание**: Reinhardt использует [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) для SQL операций. Макрос `#[derive(Model)]` автоматически генерирует реализации трейта Model, типобезопасные аксессоры полей и регистрацию в глобальном реестре моделей.
+**Примечание**: Reinhardt использует reinhardt-query для SQL операций. Макрос `#[derive(Model)]` автоматически генерирует реализации трейта Model, типобезопасные аксессоры полей и регистрацию в глобальном реестре моделей.
 
 Зарегистрируйте в `src/config/apps.rs`:
 
@@ -983,7 +984,7 @@ Reinhardt предлагает модульные компоненты для к
 | Команды             | `reinhardt-commands`      | CLI инструменты управления (startproject и др.)|
 | Шорткаты            | `reinhardt-shortcuts`     | Общие утилитарные функции                   |
 | **База данных**     |                           |                                             |
-| ORM                 | `reinhardt-db`            | Интеграция SeaQuery v1.0.0-rc               |
+| ORM                 | `reinhardt-db`            | Интеграция reinhardt-query                  |
 | **Аутентификация**  |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT, Token, Session, Basic auth, модели User|
 | **REST API**        |                           |                                             |
@@ -1037,6 +1038,16 @@ Reinhardt — проект, управляемый сообществом. Во�
 - [Настройка разработки](../../CONTRIBUTING.md#development-setup)
 - [Руководство по тестированию](../../CONTRIBUTING.md#testing-guidelines)
 - [Руководство по коммитам](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ История звёзд
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## Лицензия
 

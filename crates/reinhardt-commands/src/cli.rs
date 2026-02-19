@@ -530,8 +530,6 @@ async fn execute_collectstatic(
 				)
 				.with_value("allowed_hosts", Value::Array(vec![]))
 				.with_value("installed_apps", Value::Array(vec![]))
-				.with_value("middleware", Value::Array(vec![]))
-				.with_value("root_urlconf", Value::String("config.urls".to_string()))
 				.with_value("databases", serde_json::json!({}))
 				.with_value("templates", Value::Array(vec![]))
 				.with_value("static_url", Value::String("/static/".to_string()))
