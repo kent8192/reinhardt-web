@@ -1,7 +1,11 @@
 use crate::field::{FieldError, FieldResult, FormField, Widget};
 use regex::Regex;
+use std::sync::OnceLock;
 
 /// RegexField for pattern-based validation
+///
+/// Compiled regex is cached using `OnceLock` to avoid repeated
+/// compilation which could lead to ReDoS via allocation overhead.
 pub struct RegexField {
 	pub name: String,
 	pub label: Option<String>,
@@ -9,7 +13,10 @@ pub struct RegexField {
 	pub help_text: Option<String>,
 	pub widget: Widget,
 	pub initial: Option<serde_json::Value>,
-	pub regex: Regex,
+	/// Cached compiled regex to prevent repeated compilation (ReDoS mitigation)
+	regex_cache: OnceLock<Regex>,
+	/// Raw pattern string stored for lazy compilation
+	pattern: String,
 	pub error_message: String,
 	pub max_length: Option<usize>,
 	pub min_length: Option<usize>,
@@ -17,6 +24,8 @@ pub struct RegexField {
 
 impl RegexField {
 	/// Create a new RegexField
+	///
+	/// The regex is compiled lazily on first use and cached for subsequent calls.
 	///
 	/// # Examples
 	///
@@ -27,6 +36,12 @@ impl RegexField {
 	/// assert_eq!(field.name, "pattern");
 	/// ```
 	pub fn new(name: String, pattern: &str) -> Result<Self, regex::Error> {
+		// Validate the pattern eagerly so callers get errors at construction time
+		let compiled = Regex::new(pattern)?;
+		let cache = OnceLock::new();
+		cache
+			.set(compiled)
+			.unwrap_or_else(|_| panic!("OnceLock should be empty at construction"));
 		Ok(Self {
 			name,
 			label: None,
@@ -34,11 +49,18 @@ impl RegexField {
 			help_text: None,
 			widget: Widget::TextInput,
 			initial: None,
-			regex: Regex::new(pattern)?,
+			regex_cache: cache,
+			pattern: pattern.to_string(),
 			error_message: "Enter a valid value".to_string(),
 			max_length: None,
 			min_length: None,
 		})
+	}
+
+	/// Get the cached compiled regex
+	fn regex(&self) -> &Regex {
+		self.regex_cache
+			.get_or_init(|| Regex::new(&self.pattern).expect("Pattern was validated at construction"))
 	}
 	pub fn with_error_message(mut self, message: String) -> Self {
 		self.error_message = message;
@@ -106,8 +128,8 @@ impl FormField for RegexField {
 					));
 				}
 
-				// Regex validation
-				if !self.regex.is_match(s) {
+				// Regex validation (uses cached compiled regex)
+				if !self.regex().is_match(s) {
 					return Err(FieldError::validation(None, &self.error_message));
 				}
 
