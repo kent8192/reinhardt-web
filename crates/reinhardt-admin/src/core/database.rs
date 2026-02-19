@@ -10,8 +10,8 @@ use reinhardt_db::orm::{
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, SimpleExpr, Value,
+	Alias, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
+	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -127,17 +127,54 @@ fn annotation_value_to_safe_expr(
 		}
 		AnnotationValue::Field(f) => Expr::col(Alias::new(&f.field)).into(),
 		AnnotationValue::Expression(e) => annotation_expr_to_safe_expr(e),
-		// For aggregate, subquery, and postgres-specific types,
-		// fall back to SQL representation (these are internally constructed)
-		other => Expr::cust(other.to_sql()).into(),
+		AnnotationValue::Aggregate(a) => aggregate_to_safe_expr(a),
+		// Subquery and PostgreSQL-specific aggregation types produce SQL
+		// from internally constructed ORM queries, not from user HTTP input.
+		// Their SQL output is safe because it's built through type-safe ORM APIs.
+		AnnotationValue::Subquery(_)
+		| AnnotationValue::ArrayAgg(_)
+		| AnnotationValue::StringAgg(_)
+		| AnnotationValue::JsonbAgg(_)
+		| AnnotationValue::JsonbBuildObject(_)
+		| AnnotationValue::TsRank(_) => Expr::cust(val.to_sql()).into(),
+	}
+}
+
+/// Convert an `Aggregate` to a safe SeaQuery `SimpleExpr`.
+///
+/// Uses parameterized function templates with quoted column identifiers
+/// instead of raw SQL string interpolation, preventing SQL injection
+/// through field name manipulation.
+fn aggregate_to_safe_expr(agg: &reinhardt_db::orm::aggregation::Aggregate) -> SimpleExpr {
+	use reinhardt_db::orm::aggregation::AggregateFunc;
+
+	let func_name = match agg.func {
+		AggregateFunc::Count | AggregateFunc::CountDistinct => "COUNT",
+		AggregateFunc::Sum => "SUM",
+		AggregateFunc::Avg => "AVG",
+		AggregateFunc::Max => "MAX",
+		AggregateFunc::Min => "MIN",
+	};
+
+	if let Some(field) = &agg.field {
+		let col_expr: SimpleExpr = Expr::col(Alias::new(field)).into();
+		let is_distinct = agg.distinct || matches!(agg.func, AggregateFunc::CountDistinct);
+		if is_distinct {
+			Expr::cust_with_values(format!("{func_name}(DISTINCT ?)"), [col_expr]).into()
+		} else {
+			Expr::cust_with_values(format!("{func_name}(?)"), [col_expr]).into()
+		}
+	} else {
+		// COUNT(*) case - static SQL template, no user input
+		Expr::cust(format!("{func_name}(*)")).into()
 	}
 }
 
 /// Convert an annotation `Expression` to a safe SeaQuery `SimpleExpr`.
 ///
-/// Recursively converts arithmetic expressions using type-safe SeaQuery API
-/// for field references and values. For complex expression types (Case, Coalesce),
-/// falls back to SQL output from the expression's own serialization.
+/// Recursively converts all expression types using type-safe SeaQuery API
+/// for field references and values, preventing SQL injection through
+/// value manipulation in expression trees.
 fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression) -> SimpleExpr {
 	use reinhardt_db::orm::annotation::Expression as AnnotExpr;
 
@@ -162,9 +199,31 @@ fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression
 			let right_expr = annotation_value_to_safe_expr(right);
 			Expr::cust_with_values("(? / ?)", [left_expr, right_expr]).into()
 		}
-		// For Case and Coalesce, use the expression's own SQL serialization
-		// (these are complex structures built internally, not from user input)
-		_ => Expr::cust(expr.to_sql()).into(),
+		AnnotExpr::Case { whens, default } => {
+			let mut case = CaseStatement::new();
+			for when in whens {
+				// Q conditions are constructed internally by the ORM's query builder,
+				// not from user HTTP input. The THEN values are safely converted
+				// through annotation_value_to_safe_expr.
+				let cond_expr: SimpleExpr = Expr::cust(when.condition.to_sql()).into();
+				let then_expr = annotation_value_to_safe_expr(&when.then);
+				case = case.when(cond_expr, then_expr);
+			}
+			if let Some(default_val) = default {
+				case = case.else_result(annotation_value_to_safe_expr(default_val));
+			}
+			SimpleExpr::from(case)
+		}
+		AnnotExpr::Coalesce(values) => {
+			let exprs: Vec<SimpleExpr> =
+				values.iter().map(annotation_value_to_safe_expr).collect();
+			if exprs.is_empty() {
+				Expr::val(Option::<String>::None).into()
+			} else {
+				let placeholders = vec!["?"; exprs.len()].join(", ");
+				Expr::cust_with_values(format!("COALESCE({placeholders})"), exprs).into()
+			}
+		}
 	}
 }
 
@@ -1515,5 +1574,235 @@ mod tests {
 				op
 			);
 		}
+	}
+
+	// ==================== Case/Coalesce safe expression tests ====================
+
+	#[test]
+	fn test_coalesce_expression_uses_safe_parameterized_api() {
+		use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
+
+		// Arrange: COALESCE(field_a, 0)
+		let expr = Expression::Coalesce(vec![
+			AnnotationValue::Field(F::new("field_a")),
+			AnnotationValue::Value(OrmValue::Int(0)),
+		]);
+		let filter = Filter::new(
+			"result".to_string(),
+			FilterOperator::Gt,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let sea_expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("items"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(sea_expr))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COALESCE"),
+			"Should contain COALESCE function: {}",
+			query
+		);
+		assert!(
+			query.contains("\"result\""),
+			"Left side should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_case_expression_uses_safe_api() {
+		use reinhardt_db::orm::annotation::{
+			AnnotationValue, Value as OrmValue, When as AnnotWhen,
+		};
+		use reinhardt_db::orm::expressions::Q;
+
+		// Arrange: CASE WHEN status = 'active' THEN 1 ELSE 0 END
+		let expr = Expression::Case {
+			whens: vec![AnnotWhen::new(
+				Q::new("status", "=", "'active'"),
+				AnnotationValue::Value(OrmValue::Int(1)),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(OrmValue::Int(0)))),
+		};
+		let filter = Filter::new(
+			"priority".to_string(),
+			FilterOperator::Eq,
+			FilterValue::Expression(expr),
+		);
+
+		// Act
+		let result = build_single_filter_expr(&filter);
+
+		// Assert
+		assert!(result.is_some());
+		let sea_expr = result.unwrap();
+		let query = Query::select()
+			.from(Alias::new("tasks"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(sea_expr))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("CASE"),
+			"Should contain CASE keyword: {}",
+			query
+		);
+		assert!(
+			query.contains("WHEN"),
+			"Should contain WHEN keyword: {}",
+			query
+		);
+		assert!(
+			query.contains("ELSE"),
+			"Should contain ELSE keyword: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_empty_coalesce_returns_null() {
+		// Arrange: COALESCE() with no values
+		let expr = Expression::Coalesce(vec![]);
+
+		// Act
+		let result = annotation_expr_to_safe_expr(&expr);
+
+		// Assert: should produce NULL expression without panicking
+		let query = Query::select()
+			.from(Alias::new("test"))
+			.column(ColumnRef::Asterisk)
+			.cond_where(Condition::all().add(result))
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("NULL"),
+			"Empty COALESCE should produce NULL: {}",
+			query
+		);
+	}
+
+	// ==================== Aggregate safe expression tests ====================
+
+	#[test]
+	fn test_aggregate_count_uses_safe_api() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: COUNT(*)
+		let agg = Aggregate {
+			func: AggregateFunc::Count,
+			field: None,
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("items"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COUNT(*)"),
+			"Should contain COUNT(*): {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_sum_field_uses_quoted_identifier() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: SUM(price)
+		let agg = Aggregate {
+			func: AggregateFunc::Sum,
+			field: Some("price".to_string()),
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("orders"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("SUM("),
+			"Should contain SUM function: {}",
+			query
+		);
+		assert!(
+			query.contains("\"price\""),
+			"Field name should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_count_distinct_uses_distinct_keyword() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: COUNT(DISTINCT category)
+		let agg = Aggregate {
+			func: AggregateFunc::CountDistinct,
+			field: Some("category".to_string()),
+			alias: None,
+			distinct: false, // AggregateFunc::CountDistinct implies DISTINCT
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert
+		let query = Query::select()
+			.from(Alias::new("products"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("COUNT(DISTINCT"),
+			"Should contain COUNT(DISTINCT: {}",
+			query
+		);
+		assert!(
+			query.contains("\"category\""),
+			"Field name should be quoted: {}",
+			query
+		);
+	}
+
+	#[test]
+	fn test_aggregate_injection_attempt_is_quoted() {
+		use reinhardt_db::orm::aggregation::{Aggregate, AggregateFunc};
+
+		// Arrange: attacker tries injection via aggregate field name
+		let agg = Aggregate {
+			func: AggregateFunc::Sum,
+			field: Some("price); DROP TABLE users; --".to_string()),
+			alias: None,
+			distinct: false,
+		};
+
+		// Act
+		let result = aggregate_to_safe_expr(&agg);
+
+		// Assert: injection payload should be treated as a quoted identifier
+		let query = Query::select()
+			.from(Alias::new("orders"))
+			.expr(result)
+			.to_string(PostgresQueryBuilder);
+		assert!(
+			query.contains("\"price); DROP TABLE users; --\""),
+			"Injection payload should be enclosed in double quotes: {}",
+			query
+		);
 	}
 }
