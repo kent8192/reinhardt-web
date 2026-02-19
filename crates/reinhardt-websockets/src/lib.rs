@@ -201,8 +201,8 @@ pub use routing::{
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
 pub use throttling::{
-	CombinedThrottler, ConnectionThrottler, RateLimitConfig, RateLimiter, ThrottleError,
-	ThrottleResult,
+	CombinedThrottler, ConnectionRateLimiter, ConnectionThrottler, RateLimitConfig,
+	RateLimitMiddleware, RateLimiter, ThrottleError, ThrottleResult, WebSocketRateLimitConfig,
 };
 
 #[cfg(test)]
