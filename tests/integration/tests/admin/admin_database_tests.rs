@@ -12,9 +12,11 @@ use reinhardt_db::orm::expressions::{OuterRef, F};
 use reinhardt_db::orm::{
 	DatabaseBackend, DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue,
 };
+use reinhardt_query::{
+	Alias, ColumnRef, Condition, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
+};
 use reinhardt_test::fixtures::mock_connection;
 use rstest::*;
-use sea_query::{Alias, Asterisk, Condition, PostgresQueryBuilder, Query as SeaQuery};
 use std::collections::HashMap;
 
 // Mock User model for testing
@@ -173,9 +175,9 @@ fn test_build_composite_single_condition() {
 	// Assert
 	assert!(result.is_some());
 	let cond = result.unwrap();
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("users"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(cond)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"name\""));
@@ -206,9 +208,9 @@ fn test_build_composite_or_condition() {
 	// Assert
 	assert!(result.is_some());
 	let cond = result.unwrap();
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("users"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(cond)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"name\""));
@@ -240,9 +242,9 @@ fn test_build_composite_and_condition() {
 	// Assert
 	assert!(result.is_some());
 	let cond = result.unwrap();
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("users"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(cond)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"is_active\""));
@@ -281,9 +283,9 @@ fn test_build_composite_nested_condition() {
 	// Assert
 	assert!(result.is_some());
 	let cond = result.unwrap();
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("users"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(cond)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"name\""));
@@ -502,9 +504,9 @@ fn test_build_single_filter_expr_field_ref_eq() {
 
 	// Assert
 	assert!(result.is_some());
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("products"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(Condition::all().add(result.unwrap()))
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"price\""));
@@ -571,9 +573,9 @@ fn test_build_single_filter_expr_outer_ref() {
 
 	// Assert
 	assert!(result.is_some());
-	let query = SeaQuery::select()
+	let query = Query::select()
 		.from(Alias::new("books"))
-		.column(Asterisk)
+		.column(ColumnRef::Asterisk)
 		.cond_where(Condition::all().add(result.unwrap()))
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("author_id"));
@@ -679,7 +681,7 @@ fn test_filter_value_to_sea_value_field_ref_fallback() {
 
 	// Assert
 	match sea_value {
-		sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
+		Value::String(Some(s)) => assert_eq!(s.as_str(), "test_field"),
 		_ => panic!("Expected String value"),
 	}
 }
@@ -694,19 +696,19 @@ fn test_filter_value_to_sea_value_outer_ref_fallback() {
 
 	// Assert
 	match sea_value {
-		sea_query::Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
+		Value::String(Some(s)) => assert_eq!(s.as_str(), "outer.field"),
 		_ => panic!("Expected String value"),
 	}
 }
 
 #[rstest]
 fn test_filter_value_to_sea_value_expression_fallback() {
-	use reinhardt_db::orm::annotation::{AnnotationValue, Value};
+	use reinhardt_db::orm::annotation::{AnnotationValue, Value as OrmValue};
 
 	// Arrange
 	let expr = Expression::Add(
 		Box::new(AnnotationValue::Field(F::new("a"))),
-		Box::new(AnnotationValue::Value(Value::Int(1))),
+		Box::new(AnnotationValue::Value(OrmValue::Int(1))),
 	);
 	let value = FilterValue::Expression(expr);
 
@@ -715,7 +717,7 @@ fn test_filter_value_to_sea_value_expression_fallback() {
 
 	// Assert
 	match sea_value {
-		sea_query::Value::String(Some(s)) => {
+		Value::String(Some(s)) => {
 			assert!(s.contains("a"), "SQL should contain field name 'a'");
 			assert!(s.contains("1"), "SQL should contain value '1'");
 		}

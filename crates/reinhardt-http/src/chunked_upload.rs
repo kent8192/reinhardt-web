@@ -4,6 +4,7 @@
 //! by splitting them into manageable chunks, supporting resumable uploads,
 //! and assembling chunks back into complete files.
 
+use percent_encoding::percent_decode_str;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -207,6 +208,9 @@ impl ChunkedUploadSession {
 	}
 
 	/// Get the path for a specific chunk
+	///
+	/// Uses the pre-validated session_id (validated during session creation)
+	/// combined with the numeric chunk_number, both safe for path construction.
 	fn chunk_path(&self, chunk_number: usize) -> PathBuf {
 		self.temp_dir
 			.join(format!("{}_{}.chunk", self.session_id, chunk_number))
@@ -261,6 +265,23 @@ impl ChunkedUploadManager {
 		total_size: usize,
 		chunk_size: usize,
 	) -> Result<ChunkedUploadSession, ChunkedUploadError> {
+		// Validate session_id to prevent path traversal attacks.
+		// Session IDs are used to construct directory and file paths.
+		// Check both raw and URL-decoded forms to prevent bypass via
+		// percent-encoded traversal sequences like %2e%2e%2f.
+		let decoded = percent_decode_str(&session_id).decode_utf8_lossy();
+		for candidate in [session_id.as_str(), decoded.as_ref()] {
+			if candidate.is_empty()
+				|| candidate.contains('/')
+				|| candidate.contains('\\')
+				|| candidate.contains('\0')
+				|| candidate.contains("..")
+			{
+				return Err(ChunkedUploadError::SessionNotFound(
+					"Invalid session ID".to_string(),
+				));
+			}
+		}
 		let temp_dir = self.temp_base_dir.join(&session_id);
 		fs::create_dir_all(&temp_dir)?;
 
@@ -551,5 +572,52 @@ mod tests {
 		assert!(session.is_complete());
 
 		manager.cleanup_session("session4").unwrap();
+	}
+
+	// =================================================================
+	// Path traversal prevention tests (Issue #355)
+	// =================================================================
+
+	#[rstest::rstest]
+	#[case("../../../etc")]
+	#[case("foo/bar")]
+	#[case("foo\\bar")]
+	#[case("null\0byte")]
+	#[case("..")]
+	#[case("..%2f..%2fetc")]
+	#[case("%2e%2e%2f%2e%2e%2f")]
+	#[case("..%2fmalicious")]
+	fn test_start_session_rejects_traversal_in_session_id(#[case] session_id: &str) {
+		// Arrange
+		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_security"));
+
+		// Act
+		let result =
+			manager.start_session(session_id.to_string(), "file.bin".to_string(), 1000, 100);
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"Expected error for session_id: {}",
+			session_id
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_start_session_allows_safe_session_id() {
+		// Arrange
+		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_safe"));
+
+		// Act
+		let result = manager.start_session(
+			"safe-session_123".to_string(),
+			"file.bin".to_string(),
+			1000,
+			100,
+		);
+
+		// Assert
+		assert!(result.is_ok());
+		manager.cleanup_session("safe-session_123").unwrap();
 	}
 }

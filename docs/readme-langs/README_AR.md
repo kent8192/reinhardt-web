@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -49,7 +50,7 @@ Reinhardt يجمع أفضل ما في ثلاثة عوالم:
 
 ## ✨ الميزات الرئيسية
 
-- **ORM آمن النوع** مع التحقق في وقت الترجمة (SeaQuery v1.0.0-rc)
+- **ORM آمن النوع** مع التحقق في وقت الترجمة (reinhardt-query)
 - **مسلسلات قوية** مع التحقق التلقائي (serde + validator)
 - **DI بأسلوب FastAPI** مع حقن التبعية الآمن النوع والتخزين المؤقت
 - **ViewSets** للتطوير السريع لـ CRUD API
@@ -537,7 +538,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**ملاحظة**: Reinhardt يستخدم [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) لعمليات SQL. ماكرو `#[derive(Model)]` يولد تلقائياً تنفيذات سمة Model، وموصلات حقول آمنة النوع، والتسجيل في سجل النماذج العام.
+**ملاحظة**: Reinhardt يستخدم reinhardt-query لعمليات SQL. ماكرو `#[derive(Model)]` يولد تلقائياً تنفيذات سمة Model، وموصلات حقول آمنة النوع، والتسجيل في سجل النماذج العام.
 
 سجّل في `src/config/apps.rs`:
 
@@ -983,7 +984,7 @@ Reinhardt يقدم مكونات معيارية قابلة للمزج:
 | الأوامر             | `reinhardt-commands`      | أدوات CLI للإدارة (startproject، إلخ)      |
 | الاختصارات          | `reinhardt-shortcuts`     | دوال مساعدة شائعة                          |
 | **قاعدة البيانات**   |                           |                                             |
-| ORM                 | `reinhardt-db`            | تكامل SeaQuery v1.0.0-rc                   |
+| ORM                 | `reinhardt-db`            | تكامل reinhardt-query                      |
 | **المصادقة**        |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT، Token، Session، Basic auth، نماذج User|
 | **REST API**        |                           |                                             |
@@ -1037,6 +1038,16 @@ Reinhardt مشروع يقوده المجتمع. إليك أين تحصل على 
 - [إعداد التطوير](../../CONTRIBUTING.md#development-setup)
 - [إرشادات الاختبار](../../CONTRIBUTING.md#testing-guidelines)
 - [إرشادات الإيداع](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ تاريخ النجوم
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## الترخيص
 

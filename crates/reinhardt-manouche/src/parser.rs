@@ -8,7 +8,6 @@
 mod form;
 mod head;
 mod page;
-mod util;
 
 pub use form::*;
 pub use head::*;

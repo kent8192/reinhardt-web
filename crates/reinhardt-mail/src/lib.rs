@@ -82,12 +82,14 @@
 //!     .subject("Monthly Report")
 //!     .body("Please find attached your monthly report.")
 //!     .attachment(attachment)
-//!     .build();
+//!     .build()?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! ### HTML Email with Inline Images
 //!
 //! ```rust,no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use reinhardt_mail::{EmailMessage, Attachment};
 //!
 //! let logo_data = b"PNG content".to_vec();
@@ -100,7 +102,9 @@
 //!     .body("Newsletter content")
 //!     .html(r#"<html><body><img src="cid:logo-cid"/><h1>Newsletter</h1></body></html>"#)
 //!     .attachment(logo)
-//!     .build();
+//!     .build()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ### Template-based Emails
@@ -145,7 +149,7 @@
 //!     .to(vec!["recipient@example.com".to_string()])
 //!     .subject("Test")
 //!     .body("Test message")
-//!     .build();
+//!     .build()?;
 //!
 //! email.send(&backend).await?;
 //! # Ok(())
@@ -171,7 +175,7 @@
 //!         .to(vec!["user1@example.com".to_string()])
 //!         .subject("Newsletter")
 //!         .body("Content")
-//!         .build(),
+//!         .build()?,
 //!     // ... more messages
 //! ];
 //!

@@ -74,13 +74,13 @@ impl PoolConfig {
 ///         .to(vec!["recipient1@example.com".to_string()])
 ///         .subject("Test 1")
 ///         .body("Body 1")
-///         .build(),
+///         .build()?,
 ///     EmailMessage::builder()
 ///         .from("sender@example.com")
 ///         .to(vec!["recipient2@example.com".to_string()])
 ///         .subject("Test 2")
 ///         .body("Body 2")
-///         .build(),
+///         .build()?,
 /// ];
 ///
 /// let sent_count = pool.send_bulk(messages).await?;

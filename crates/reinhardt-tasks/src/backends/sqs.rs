@@ -336,10 +336,14 @@ impl crate::backend::TaskBackend for SqsBackend {
 		metadata.updated_at = chrono::Utc::now().timestamp();
 
 		// If task is completed (success or failure), delete from SQS
+		// Fixes #789
 		if matches!(status, TaskStatus::Success | TaskStatus::Failure) {
-			let handles = self.receipt_handles.read().await;
-			if let Some(receipt_handle) = handles.get(&task_id) {
-				self.delete_message(receipt_handle).await?;
+			let receipt_handle = {
+				let mut handles = self.receipt_handles.write().await;
+				handles.remove(&task_id)
+			};
+			if let Some(receipt_handle) = receipt_handle {
+				self.delete_message(&receipt_handle).await?;
 			}
 		}
 
