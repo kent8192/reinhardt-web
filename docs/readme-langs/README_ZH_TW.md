@@ -1038,6 +1038,16 @@ Reinhardt是一個社群驅動的專案。以下是取得幫助的途徑:
 - [測試指南](../../CONTRIBUTING.md#testing-guidelines)
 - [提交指南](../../CONTRIBUTING.md#commit-guidelines)
 
+## ⭐ Star 趨勢
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
+
 ## 授權
 
 雙重授權，可選擇以下之一:
