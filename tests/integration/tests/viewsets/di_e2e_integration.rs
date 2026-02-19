@@ -609,7 +609,7 @@ async fn test_custom_action_handling() {
 		.unwrap();
 
 	let custom_action = Action {
-		action_type: ActionType::Custom("special"),
+		action_type: ActionType::Custom("special".into()),
 		detail: false,
 	};
 
