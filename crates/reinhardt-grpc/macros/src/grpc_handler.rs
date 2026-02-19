@@ -254,13 +254,13 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	let grpc_crate = get_reinhardt_grpc_crate();
 
 	// Generate DI extraction code
+	// Fixes #820: Return generic error message, log details server-side
 	let di_context_extraction = quote! {
 		let __di_ctx = #request_pat
 			.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>()
 			.ok_or_else(|| {
-				::tonic::Status::internal(
-					"DI context not set. Ensure the request extensions contain InjectionContext"
-				)
+				::tracing::error!("DI context not found in request extensions");
+				::tonic::Status::internal("Internal server error")
 			})?;
 	};
 
@@ -272,22 +272,25 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
 
+			// Fixes #820
 			if use_cache {
 				quote! {
 					let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
 						.await
-						.map_err(|e| ::tonic::Status::internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
+						.map_err(|e| {
+							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);
+							::tonic::Status::internal("Internal server error")
+						})?
 						.into_inner();
 				}
 			} else {
 				quote! {
 					let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
 						.await
-						.map_err(|e| ::tonic::Status::internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?
+						.map_err(|e| {
+							::tracing::error!("DI resolution failed for {}: {:?}", stringify!(#ty), e);
+							::tonic::Status::internal("Internal server error")
+						})?
 						.into_inner();
 				}
 			}
