@@ -120,13 +120,15 @@ impl BaseHandler {
 		Ok(Response::new(StatusCode::OK))
 	}
 
-	/// Process an exception and convert it to a response
+	/// Process an exception and convert it to a response.
+	///
+	/// Error details are logged server-side but not included in the response
+	/// body to prevent information disclosure.
 	pub async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
 		error!("Handling exception: {}", error);
 
-		// Return a simple error response
 		let mut response = Response::new(StatusCode::INTERNAL_SERVER_ERROR);
-		response.body = Bytes::from(format!("Internal Server Error: {}", error));
+		response.body = Bytes::from("Internal Server Error");
 		response
 	}
 
@@ -153,10 +155,10 @@ impl Handler for BaseHandler {
 		match self.handle_request(request).await {
 			Ok(response) => Ok(response),
 			Err(e) => {
-				// Convert error to 500 response (similar to Django's behavior)
+				// Log the detailed error server-side; return generic message to client
 				error!("Handler error in BaseHandler::handle: {}", e);
 				let mut response = Response::new(StatusCode::INTERNAL_SERVER_ERROR);
-				response.body = Bytes::from(format!("Internal Server Error: {}", e));
+				response.body = Bytes::from("Internal Server Error");
 				Ok(response)
 			}
 		}
@@ -220,6 +222,78 @@ mod tests {
 
 		let response = handler.handle_exception(&request, error).await;
 		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+	}
+
+	// ==========================================================================
+	// Information Disclosure Prevention Tests (#439)
+	// ==========================================================================
+
+	#[tokio::test]
+	async fn test_handle_exception_does_not_expose_internal_details() {
+		// Arrange
+		let handler = BaseHandler::new();
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let sensitive_detail = "database connection refused at postgres://admin:secret@db:5432";
+		let error = DispatchError::Internal(sensitive_detail.to_string());
+
+		// Act
+		let response = handler.handle_exception(&request, error).await;
+
+		// Assert: response must not contain the sensitive detail
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert!(!body.contains("database"));
+		assert!(!body.contains("postgres"));
+		assert!(!body.contains("secret"));
+		assert_eq!(body, "Internal Server Error");
+	}
+
+	#[tokio::test]
+	async fn test_handler_impl_does_not_expose_error_in_body() {
+		// Arrange: create a handler that returns a view error with internal paths
+		struct FailingHandler;
+
+		#[async_trait]
+		impl Handler for FailingHandler {
+			async fn handle(&self, _req: Request) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Internal(
+					"module::secret_handler panicked at /src/app/handlers.rs:42".to_string(),
+				))
+			}
+		}
+
+		let mut router = DefaultRouter::new();
+		let failing = Arc::new(FailingHandler);
+		let route = path("/fail", failing).with_name("fail");
+		router.add_route(route);
+		let handler = BaseHandler::with_router(Arc::new(router));
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/fail")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert: internal details must not leak
+		let body = String::from_utf8(response.body.to_vec()).unwrap();
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert!(!body.contains("panicked"));
+		assert!(!body.contains("handlers.rs"));
+		assert!(!body.contains("secret_handler"));
+		assert_eq!(body, "Internal Server Error");
 	}
 
 	#[test]
