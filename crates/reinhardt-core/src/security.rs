@@ -32,6 +32,7 @@ pub mod csrf;
 pub mod headers;
 pub mod hsts;
 pub mod ip_filter;
+pub mod resource_limits;
 pub mod utils;
 pub mod xss;
 
@@ -39,6 +40,7 @@ pub use csrf::{CsrfConfig, CsrfMiddleware, CsrfToken};
 pub use headers::{ContentSecurityPolicy, SecurityHeadersConfig, SecurityHeadersMiddleware};
 pub use hsts::{HstsConfig, HstsMiddleware};
 pub use ip_filter::{IpFilterConfig, IpFilterMiddleware, IpFilterMode};
+pub use resource_limits::{LimitExceeded, ResourceLimits};
 pub use xss::{
 	escape_css_selector, escape_html, escape_html_content, sanitize_html, strip_tags_safe,
 	validate_css_selector,
