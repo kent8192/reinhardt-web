@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -49,7 +50,7 @@ Reinhardtは3つの世界のベストを統合しています:
 
 ## ✨ 主な機能
 
-- **型安全なORM** コンパイル時検証付き（SeaQuery v1.0.0-rc）
+- **型安全なORM** コンパイル時検証付き（reinhardt-query）
 - **強力なシリアライザー** 自動検証付き（serde + validator）
 - **FastAPIスタイルのDI** 型安全な依存性注入とキャッシング
 - **ViewSets** 迅速なCRUD API開発用
@@ -537,7 +538,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**注意**: ReinhardtはSQL操作に[SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query)を使用しています。`#[derive(Model)]`マクロはModelトレイト実装、型安全なフィールドアクセサー、グローバルモデルレジストリ登録を自動生成します。
+**注意**: ReinhardtはSQL操作にreinhardt-queryを使用しています。`#[derive(Model)]`マクロはModelトレイト実装、型安全なフィールドアクセサー、グローバルモデルレジストリ登録を自動生成します。
 
 `src/config/apps.rs`で登録:
 
@@ -983,7 +984,7 @@ Reinhardtは組み合わせ可能なモジュラーコンポーネントを提�
 | コマンド            | `reinhardt-commands`      | 管理CLIツール（startprojectなど）           |
 | ショートカット      | `reinhardt-shortcuts`     | 一般的なユーティリティ関数                  |
 | **データベース**    |                           |                                             |
-| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc統合                      |
+| ORM                 | `reinhardt-db`            | reinhardt-query統合                         |
 | **認証**            |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT、Token、Session、Basic認証、Userモデル |
 | **REST API**        |                           |                                             |
@@ -1037,6 +1038,16 @@ Reinhardtはコミュニティ駆動のプロジェクトです。ヘルプが�
 - [開発セットアップ](../../CONTRIBUTING.md#development-setup)
 - [テストガイドライン](../../CONTRIBUTING.md#testing-guidelines)
 - [コミットガイドライン](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ スター履歴
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## ライセンス
 

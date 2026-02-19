@@ -18,7 +18,7 @@
 //! ```
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -151,7 +151,9 @@ fn parse_attrs(input: ParseStream) -> syn::Result<Vec<HeadAttr>> {
 }
 
 /// Generate code for the head macro.
-fn generate(ast: &HeadMacro) -> TokenStream2 {
+///
+/// Fixes #844: returns `syn::Result` instead of panicking on invalid input.
+fn generate(ast: &HeadMacro) -> syn::Result<TokenStream2> {
 	let pages_crate = get_reinhardt_pages_crate();
 	let mut builder_calls = Vec::new();
 
@@ -161,15 +163,15 @@ fn generate(ast: &HeadMacro) -> TokenStream2 {
 				builder_calls.push(quote! { .title(#expr) });
 			}
 			HeadElement::Meta(attrs) => {
-				let meta_call = generate_meta_call(attrs, &pages_crate);
+				let meta_call = generate_meta_call(attrs, &pages_crate)?;
 				builder_calls.push(meta_call);
 			}
 			HeadElement::Link(attrs) => {
-				let link_call = generate_link_call(attrs, &pages_crate);
+				let link_call = generate_link_call(attrs, &pages_crate)?;
 				builder_calls.push(link_call);
 			}
 			HeadElement::Script(attrs, inline_content) => {
-				let script_call = generate_script_call(attrs, inline_content, &pages_crate);
+				let script_call = generate_script_call(attrs, inline_content, &pages_crate)?;
 				builder_calls.push(script_call);
 			}
 			HeadElement::Style(expr) => {
@@ -178,16 +180,18 @@ fn generate(ast: &HeadMacro) -> TokenStream2 {
 		}
 	}
 
-	quote! {
+	Ok(quote! {
 		{
 			#pages_crate::component::Head::new()
 				#(#builder_calls)*
 		}
-	}
+	})
 }
 
 /// Generate a meta tag builder call.
-fn generate_meta_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenStream2 {
+///
+/// Fixes #844: returns `syn::Result` instead of panicking via `expect()`.
+fn generate_meta_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> syn::Result<TokenStream2> {
 	// Check for common meta tag patterns
 	let name_attr = attrs.iter().find(|a| a.name == "name");
 	let property_attr = attrs.iter().find(|a| a.name == "property");
@@ -195,46 +199,73 @@ fn generate_meta_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenSt
 	let charset_attr = attrs.iter().find(|a| a.name == "charset");
 	let http_equiv_attr = attrs.iter().find(|a| a.name == "http_equiv");
 
+	let fallback_span = attrs
+		.first()
+		.map(|a| a.name.span())
+		.unwrap_or_else(Span::call_site);
+
 	if let Some(charset) = charset_attr {
-		let value = charset.value.as_ref().expect("charset requires a value");
-		return quote! { .meta(#pages_crate::component::MetaTag::charset(#value)) };
+		let value = charset
+			.value
+			.as_ref()
+			.ok_or_else(|| syn::Error::new(charset.name.span(), "charset requires a value"))?;
+		return Ok(quote! { .meta(#pages_crate::component::MetaTag::charset(#value)) });
 	}
 
 	if let Some(http_equiv) = http_equiv_attr {
-		let equiv_value = http_equiv
-			.value
-			.as_ref()
-			.expect("http_equiv requires a value");
-		let content_value = content_attr
-			.and_then(|a| a.value.as_ref())
-			.expect("http_equiv meta requires content");
-		return quote! { .meta(#pages_crate::component::MetaTag::http_equiv(#equiv_value, #content_value)) };
+		let equiv_value = http_equiv.value.as_ref().ok_or_else(|| {
+			syn::Error::new(http_equiv.name.span(), "http_equiv requires a value")
+		})?;
+		let content_value = content_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+			syn::Error::new(
+				http_equiv.name.span(),
+				"http_equiv meta requires content attribute",
+			)
+		})?;
+		return Ok(
+			quote! { .meta(#pages_crate::component::MetaTag::http_equiv(#equiv_value, #content_value)) },
+		);
 	}
 
 	if let Some(property) = property_attr {
-		let prop_value = property.value.as_ref().expect("property requires a value");
-		let content_value = content_attr
-			.and_then(|a| a.value.as_ref())
-			.expect("property meta requires content");
-		return quote! { .meta(#pages_crate::component::MetaTag::property(#prop_value, #content_value)) };
+		let prop_value = property
+			.value
+			.as_ref()
+			.ok_or_else(|| syn::Error::new(property.name.span(), "property requires a value"))?;
+		let content_value = content_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+			syn::Error::new(
+				property.name.span(),
+				"property meta requires content attribute",
+			)
+		})?;
+		return Ok(
+			quote! { .meta(#pages_crate::component::MetaTag::property(#prop_value, #content_value)) },
+		);
 	}
 
 	if let Some(name) = name_attr {
-		let name_value = name.value.as_ref().expect("name requires a value");
-		let content_value = content_attr
-			.and_then(|a| a.value.as_ref())
-			.expect("name meta requires content");
-		return quote! { .meta(#pages_crate::component::MetaTag::new(#name_value, #content_value)) };
+		let name_value = name
+			.value
+			.as_ref()
+			.ok_or_else(|| syn::Error::new(name.name.span(), "name requires a value"))?;
+		let content_value = content_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+			syn::Error::new(name.name.span(), "name meta requires content attribute")
+		})?;
+		return Ok(
+			quote! { .meta(#pages_crate::component::MetaTag::new(#name_value, #content_value)) },
+		);
 	}
 
-	// Fallback: create meta with raw attributes
-	quote! {
-		compile_error!("meta tag requires either 'name', 'property', 'charset', or 'http_equiv' attribute")
-	}
+	Err(syn::Error::new(
+		fallback_span,
+		"meta tag requires either 'name', 'property', 'charset', or 'http_equiv' attribute",
+	))
 }
 
 /// Generate a link tag builder call.
-fn generate_link_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenStream2 {
+///
+/// Fixes #844: returns `syn::Result` instead of panicking via `expect()`.
+fn generate_link_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> syn::Result<TokenStream2> {
 	let rel_attr = attrs.iter().find(|a| a.name == "rel");
 	let href_attr = attrs.iter().find(|a| a.name == "href");
 	let type_attr = attrs
@@ -246,12 +277,23 @@ fn generate_link_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenSt
 	let sizes_attr = attrs.iter().find(|a| a.name == "sizes");
 	let as_attr = attrs.iter().find(|a| a.name == "r#as" || a.name == "as_");
 
-	let rel_value = rel_attr
-		.and_then(|a| a.value.as_ref())
-		.expect("link tag requires 'rel' attribute");
-	let href_value = href_attr
-		.and_then(|a| a.value.as_ref())
-		.expect("link tag requires 'href' attribute");
+	let fallback_span = attrs
+		.first()
+		.map(|a| a.name.span())
+		.unwrap_or_else(Span::call_site);
+
+	let rel_value = rel_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+		syn::Error::new(
+			rel_attr.map(|a| a.name.span()).unwrap_or(fallback_span),
+			"link tag requires 'rel' attribute with a value",
+		)
+	})?;
+	let href_value = href_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+		syn::Error::new(
+			href_attr.map(|a| a.name.span()).unwrap_or(fallback_span),
+			"link tag requires 'href' attribute with a value",
+		)
+	})?;
 
 	let mut chain = quote! {
 		#pages_crate::component::LinkTag::new(#rel_value, #href_value)
@@ -290,20 +332,23 @@ fn generate_link_call(attrs: &[HeadAttr], pages_crate: &TokenStream2) -> TokenSt
 	if let Some(as_a) = as_attr
 		&& let Some(v) = &as_a.value
 	{
-		chain = quote! { #chain.as_attr = Some(std::borrow::Cow::Borrowed(#v)) };
+		// Fixes #845: use builder method instead of direct field assignment
+		chain = quote! { #chain.with_as(#v) };
 	}
 
-	quote! { .link(#chain) }
+	Ok(quote! { .link(#chain) })
 }
 
 /// Generate a script tag builder call.
+///
+/// Fixes #844: returns `syn::Result` instead of panicking via `expect()`.
 fn generate_script_call(
 	attrs: &[HeadAttr],
 	inline_content: &Option<Expr>,
 	pages_crate: &TokenStream2,
-) -> TokenStream2 {
+) -> syn::Result<TokenStream2> {
 	if let Some(content) = inline_content {
-		return quote! { .script(#pages_crate::component::ScriptTag::inline(#content)) };
+		return Ok(quote! { .script(#pages_crate::component::ScriptTag::inline(#content)) });
 	}
 
 	let src_attr = attrs.iter().find(|a| a.name == "src");
@@ -318,9 +363,17 @@ fn generate_script_call(
 	let crossorigin_attr = attrs.iter().find(|a| a.name == "crossorigin");
 	let nonce_attr = attrs.iter().find(|a| a.name == "nonce");
 
-	let src_value = src_attr
-		.and_then(|a| a.value.as_ref())
-		.expect("script tag requires 'src' attribute for external scripts");
+	let fallback_span = attrs
+		.first()
+		.map(|a| a.name.span())
+		.unwrap_or_else(Span::call_site);
+
+	let src_value = src_attr.and_then(|a| a.value.as_ref()).ok_or_else(|| {
+		syn::Error::new(
+			src_attr.map(|a| a.name.span()).unwrap_or(fallback_span),
+			"script tag requires 'src' attribute for external scripts",
+		)
+	})?;
 
 	// Check if it's a module
 	let is_module = type_attr
@@ -376,7 +429,7 @@ fn generate_script_call(
 		chain = quote! { #chain.with_nonce(#v) };
 	}
 
-	quote! { .script(#chain) }
+	Ok(quote! { .script(#chain) })
 }
 
 /// Implementation of the head! macro.
@@ -388,8 +441,11 @@ pub(crate) fn head_impl(input: TokenStream) -> TokenStream {
 		Err(err) => return err.to_compile_error().into(),
 	};
 
-	let output = generate(&ast);
-	output.into()
+	// Fixes #844: propagate errors from generate() as compile errors
+	match generate(&ast) {
+		Ok(output) => output.into(),
+		Err(err) => err.to_compile_error().into(),
+	}
 }
 
 #[cfg(test)]

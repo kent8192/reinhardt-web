@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages-macros"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.7"
 edition = "2024"
 authors = ["Reinhardt Contributors"]
 license = "MIT OR Apache-2.0"
@@ -18,6 +18,9 @@ default = []
 [dependencies]
 # DSL definitions (new canonical location)
 reinhardt-manouche = { workspace = true }
+
+# Security utilities for URL validation (Fixes #849)
+reinhardt-core = { workspace = true }
 
 # Procedural macro essentials
 syn = { version = "2.0", features = ["full", "extra-traits"] }

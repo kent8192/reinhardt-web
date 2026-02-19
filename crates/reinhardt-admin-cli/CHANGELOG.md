@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.13...reinhardt-admin-cli@v0.1.0-alpha.14) - 2026-02-16
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.12...reinhardt-admin-cli@v0.1.0-alpha.13) - 2026-02-15
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.11...reinhardt-admin-cli@v0.1.0-alpha.12) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages, reinhardt-commands
+
+## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.10...reinhardt-admin-cli@v0.1.0-alpha.11) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages, reinhardt-dentdelion, reinhardt-commands
+
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.9...reinhardt-admin-cli@v0.1.0-alpha.10) - 2026-02-14
+
+### Fixed
+
+- *(release)* roll back unpublished crate versions after partial release failure
+
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.8...reinhardt-admin-cli@v0.1.0-alpha.9) - 2026-02-12
+
+### Maintenance
+
+- updated the following local packages: reinhardt-commands
+
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.7...reinhardt-admin-cli@v0.1.0-alpha.8) - 2026-02-10
+
+### Maintenance
+
+- updated the following local packages: reinhardt-commands
+
 ## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.1.0-alpha.6...reinhardt-admin-cli@v0.1.0-alpha.7) - 2026-02-10
 
 ### Maintenance

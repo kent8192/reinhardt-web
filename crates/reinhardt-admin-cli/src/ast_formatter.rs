@@ -222,44 +222,37 @@ impl<'ast, 'a> Visit<'ast> for PageMacroVisitor<'a> {
 }
 
 /// Find the matching closing parenthesis, handling strings and nested parens.
+///
+/// Uses char_indices() to properly handle UTF-8 multi-byte characters.
 fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
-	let bytes = source.as_bytes();
+	let substring = &source[start..];
 	let mut depth = 1;
-	let mut pos = start;
 	let mut in_string = false;
 	let mut in_char = false;
 	let mut escape_next = false;
 
-	while pos < bytes.len() && depth > 0 {
+	for (offset, ch) in substring.char_indices() {
 		if escape_next {
 			escape_next = false;
-			pos += 1;
 			continue;
 		}
 
-		match bytes[pos] {
-			b'\\' if in_string || in_char => {
-				escape_next = true;
-			}
-			b'"' if !in_char => {
-				in_string = !in_string;
-			}
-			b'\'' if !in_string => {
-				in_char = !in_char;
-			}
-			b'(' if !in_string && !in_char => {
-				depth += 1;
-			}
-			b')' if !in_string && !in_char => {
+		match ch {
+			'\\' if in_string || in_char => escape_next = true,
+			'"' if !in_char => in_string = !in_string,
+			'\'' if !in_string => in_char = !in_char,
+			'(' if !in_string && !in_char => depth += 1,
+			')' if !in_string && !in_char => {
 				depth -= 1;
+				if depth == 0 {
+					return Some(start + offset);
+				}
 			}
 			_ => {}
 		}
-
-		pos += 1;
 	}
 
-	if depth == 0 { Some(pos - 1) } else { None }
+	None
 }
 
 /// AST-based page! macro formatter.
@@ -471,63 +464,65 @@ impl AstPageFormatter {
 	}
 
 	/// Check if a position is inside a comment or string literal.
+	///
+	/// Uses char_indices() to properly handle UTF-8 multi-byte characters.
 	fn is_in_comment_or_string(&self, content: &str, pos: usize) -> bool {
-		let bytes = content.as_bytes();
-		let mut i = 0;
+		let mut chars = content.char_indices().peekable();
 		let mut in_string = false;
 		let mut in_line_comment = false;
 		let mut in_block_comment = false;
 		let mut escape_next = false;
 
-		while i < pos && i < bytes.len() {
+		while let Some((offset, ch)) = chars.next() {
+			if offset >= pos {
+				break;
+			}
+
 			if escape_next {
 				escape_next = false;
-				i += 1;
 				continue;
 			}
 
-			// Check for line comment
-			if !in_string && !in_block_comment && i + 1 < bytes.len() {
-				if bytes[i] == b'/' && bytes[i + 1] == b'/' {
+			// Check for two-character sequences
+			if !in_string
+				&& !in_block_comment
+				&& ch == '/' && let Some(&(_, next_ch)) = chars.peek()
+			{
+				if next_ch == '/' {
 					in_line_comment = true;
-					i += 2;
+					chars.next(); // consume second '/'
 					continue;
-				}
-				if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+				} else if next_ch == '*' {
 					in_block_comment = true;
-					i += 2;
+					chars.next(); // consume '*'
 					continue;
 				}
 			}
 
 			// Check for end of line comment
-			if in_line_comment && bytes[i] == b'\n' {
+			if in_line_comment && ch == '\n' {
 				in_line_comment = false;
-				i += 1;
 				continue;
 			}
 
 			// Check for end of block comment
-			if in_block_comment && i + 1 < bytes.len() && bytes[i] == b'*' && bytes[i + 1] == b'/' {
+			if in_block_comment
+				&& ch == '*' && let Some(&(_, next_ch)) = chars.peek()
+				&& next_ch == '/'
+			{
 				in_block_comment = false;
-				i += 2;
+				chars.next(); // consume '/'
 				continue;
 			}
 
 			// Handle strings
 			if !in_line_comment && !in_block_comment {
-				match bytes[i] {
-					b'\\' if in_string => {
-						escape_next = true;
-					}
-					b'"' => {
-						in_string = !in_string;
-					}
+				match ch {
+					'\\' if in_string => escape_next = true,
+					'"' => in_string = !in_string,
 					_ => {}
 				}
 			}
-
-			i += 1;
 		}
 
 		in_string || in_line_comment || in_block_comment
@@ -2213,5 +2208,69 @@ fn main() {
 		let restored =
 			AstPageFormatter::restore_page_macros(&result.protected_content, &result.backups);
 		assert_eq!(restored, input);
+	}
+
+	// ==================== Unicode Character Tests ====================
+
+	#[test]
+	fn test_find_matching_paren_with_emoji() {
+		let source = r#"(div { "😀" })"#;
+		let result = find_matching_paren(source, 1);
+		assert_eq!(result, Some(source.len() - 1));
+	}
+
+	#[test]
+	fn test_find_matching_paren_with_cjk() {
+		let source = r#"(div { "日本語" })"#;
+		let result = find_matching_paren(source, 1);
+		assert_eq!(result, Some(source.len() - 1));
+	}
+
+	#[test]
+	fn test_find_matching_paren_nested_with_unicode() {
+		let source = r#"(outer { (inner { "안녕" }) })"#;
+		let result = find_matching_paren(source, 1);
+		assert_eq!(result, Some(source.len() - 1));
+	}
+
+	#[test]
+	fn test_find_matching_paren_mixed() {
+		let source = r#"(div { "Hello 世界 مرحبا" })"#;
+		let result = find_matching_paren(source, 1);
+		assert_eq!(result, Some(source.len() - 1));
+	}
+
+	#[test]
+	fn test_is_in_comment_or_string_unicode_in_string() {
+		let formatter = AstPageFormatter::new();
+		let content = r#"let s = "😀🎉日本語";"#;
+		let pos_in_string = content.find("日").unwrap();
+		assert!(formatter.is_in_comment_or_string(content, pos_in_string));
+	}
+
+	#[test]
+	fn test_is_in_comment_or_string_unicode_in_comment() {
+		let formatter = AstPageFormatter::new();
+		let content = r#"// This is a comment with 日本語"#;
+		let pos_in_comment = content.find("日").unwrap();
+		assert!(formatter.is_in_comment_or_string(content, pos_in_comment));
+	}
+
+	#[test]
+	fn test_protect_restore_with_unicode_content() {
+		let formatter = AstPageFormatter::new();
+		let original = r#"let view = page!(|| { div { "😀🎉日本語" } });"#;
+
+		let protected = formatter.protect_page_macros(original);
+		assert_eq!(protected.backups.len(), 1);
+		assert!(
+			protected
+				.protected_content
+				.contains("__reinhardt_placeholder__")
+		);
+
+		let restored =
+			AstPageFormatter::restore_page_macros(&protected.protected_content, &protected.backups);
+		assert_eq!(restored, original);
 	}
 }

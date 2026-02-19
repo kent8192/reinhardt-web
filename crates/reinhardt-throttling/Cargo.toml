@@ -25,3 +25,4 @@ maxminddb = { version = "0.26", optional = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
 tokio-test = { workspace = true }
+rstest = { workspace = true }

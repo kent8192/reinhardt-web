@@ -499,20 +499,14 @@ fn generate_client_stub(
 					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
 			},
 		),
-		// Default to json for unknown codecs
-		_ => (
-			"application/json",
-			quote! {
-				let __body = ::serde_json::to_string(&__args)
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::serialization(e.to_string()))?;
-			},
-			quote! {
-				__response
-					.json()
-					.await
-					.map_err(|e| #pages_crate::server_fn::ServerFnError::deserialization(e.to_string()))
-			},
-		),
+		// Fixes #843: emit compile error for unknown codec instead of silent fallback
+		unknown => {
+			let msg = format!(
+				"unknown codec '{}'. Valid options: \"json\", \"url\", \"msgpack\"",
+				unknown,
+			);
+			return quote! { compile_error!(#msg); };
+		}
 	};
 
 	quote! {
@@ -701,11 +695,14 @@ fn generate_server_handler(
 			let args: #args_struct_name = ::rmp_serde::from_slice(&bytes)
 				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
 		},
-		// Default to json for unknown codecs
-		_ => quote! {
-			let args: #args_struct_name = ::serde_json::from_str(&body)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
-		},
+		// Fixes #843: emit compile error for unknown codec instead of silent fallback
+		unknown => {
+			let msg = format!(
+				"unknown codec '{}'. Valid options: \"json\", \"url\", \"msgpack\"",
+				unknown,
+			);
+			return quote! { compile_error!(#msg); };
+		}
 	};
 
 	// Generate codec-specific serialization code for server response
@@ -726,11 +723,14 @@ fn generate_server_handler(
 			// Encode as base64 for HTTP transport
 			Ok(::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes))
 		},
-		// Default to json for unknown codecs
-		_ => quote! {
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
-		},
+		// Fixes #843: emit compile error for unknown codec instead of silent fallback
+		unknown => {
+			let msg = format!(
+				"unknown codec '{}'. Valid options: \"json\", \"url\", \"msgpack\"",
+				unknown,
+			);
+			return quote! { compile_error!(#msg); };
+		}
 	};
 
 	// Generate handler signature based on whether DI is needed

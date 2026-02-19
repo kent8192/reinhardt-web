@@ -19,6 +19,7 @@ fluent-syntax = "0.12.0"
 unic-langid = "0.9"
 http = "1.0"
 chrono = { workspace = true }
+reinhardt-utils = { workspace = true }
 
 # DI integration (optional)
 reinhardt-di = { workspace = true, optional = true }
