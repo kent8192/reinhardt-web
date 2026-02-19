@@ -4,31 +4,11 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Click event
-	let _with_click = page!(|| {
-		button {
-			@click: |_| { },
-			"Click me"
-		}
-	});
+	let _with_click = __reinhardt_placeholder__!(/*0*/);
 
 	// Multiple events
-	let _with_events = page!(|| {
-		input {
-			@input: |_| { },
-			@change: |_| { },
-			@focus: |_| { },
-			@blur: |_| { },
-		}
-	});
+	let _with_events = __reinhardt_placeholder__!(/*1*/);
 
 	// Form events
-	let _form = page!(|| {
-		form {
-			@submit: |_| { },
-			button {
-				@click: |_| { },
-				"Submit"
-			}
-		}
-	});
+	let _form = __reinhardt_placeholder__!(/*2*/);
 }
