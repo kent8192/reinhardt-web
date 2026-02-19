@@ -1,0 +1,115 @@
+name: Test Examples
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * *'  # 09:00 UTC daily
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-local-examples:
+    name: Test ${{ matrix.example }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - examples-hello-world
+          - examples-rest-api
+          - examples-database-integration
+          - examples-tutorial-basis
+          - examples-tutorial-rest
+          - examples-github-issues
+          - examples-twitter
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup protoc
+        uses: ./.github/actions/setup-protoc
+
+      - name: Cache Cargo Registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Cargo Git
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Target
+        uses: actions/cache@v5
+        with:
+          path: target
+          key: ${{ runner.os }}-target-${{ matrix.example }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
+
+      - name: Install reinhardt-admin
+        run: cargo install --path crates/reinhardt-admin-cli
+
+      - name: Setup local development config
+        run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
+
+      - name: Check Format
+        working-directory: examples/${{ matrix.example }}
+        run: cargo make fmt-check
+
+      - name: Clippy
+        working-directory: examples/${{ matrix.example }}
+        run: cargo make clippy-check
+
+      - name: Build
+        working-directory: examples/${{ matrix.example }}
+        run: cargo build --all-features
+
+      - name: Test
+        working-directory: examples/${{ matrix.example }}
+        run: cargo nextest run --all-features
+
+      - name: Doc Test
+        working-directory: examples/${{ matrix.example }}
+        run: cargo test --doc --all-features
+
+  compatibility-report:
+    name: Compatibility Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    needs: [test-local-examples]
+    steps:
+      - name: Report Success
+        run: echo "✅ All examples compatible"
+
+      - name: Create Issue on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Daily Compatibility Check Failed',
+              body: `Daily compatibility check failed. Please investigate.\n\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+              labels: ['compatibility', 'bug']
+            })

@@ -134,6 +134,20 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Use `gh api` for accessing GitHub API
 - **NEVER** use raw `curl` or web browser for GitHub operations when `gh` is available
 
+**GitHub Comments & Interactions:**
+- **NEVER** post comments on PRs or Issues without authorization
+- Authorization = explicit user instruction OR Plan Mode approval
+- Self-initiated comments MUST be previewed and approved by user before posting
+- ALL comments MUST be in English and include Claude Code attribution footer
+- Comments MUST reference specific code locations with repository-relative paths
+- Comments MUST NOT contain user requests, AI interactions, or absolute local paths
+
+See docs/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
+- Posting authorization policy (PP-1 ~ PP-3)
+- PR review response format (RR-1 ~ RR-3)
+- Issue discussion guidelines (ID-1 ~ ID-2)
+- Agent context provision (AC-1 ~ AC-2)
+
 See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
@@ -213,6 +227,24 @@ See docs/RELEASE_PROCESS.md for detailed release procedures.
 - Run dry-run for ALL batch operations before actual execution
 - Use parallel agents for independent file edits
 - NO batch commits (create one at a time with user confirmation)
+
+### Issue Handling
+
+**Batch Issue Strategy:**
+- Group issues by fix pattern and process as a batch (HA-1)
+- Divide work into phases ordered by severity (HA-2)
+- Parallelize independent crate work using Agent Teams (HA-3)
+- Organize phases into logically grouped branches and PRs (HA-4)
+
+**Work Unit Principles:**
+- 1 PR = 1 crate × 1 fix pattern as the basic work unit (WU-1)
+- Same-crate related issues MAY be combined into a single PR (WU-2)
+- Cross-crate shared changes MUST be preceding PRs, merged before per-crate fix PRs (WU-3)
+
+See docs/ISSUE_HANDLING.md for comprehensive issue handling principles including:
+- Handling approach (HA-1 ~ HA-4)
+- Work unit principles (WU-1 ~ WU-3)
+- Workflow examples
 
 ---
 
@@ -346,6 +378,8 @@ Before submitting code:
    - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
    - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
    - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
+   - [ ] GitHub interaction policy (@docs/GITHUB_INTERACTION.md)
+   - [ ] Issue handling principles (@docs/ISSUE_HANDLING.md)
    - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
@@ -388,6 +422,9 @@ Before submitting code:
 - Apply at least one type label to every issue
 - Report security vulnerabilities privately via GitHub Security Advisories
 - Use `.github/labels.yml` as source of truth for label definitions
+- Use 1 PR = 1 crate x 1 fix pattern as the basic work unit for batch issue handling
+- Create preceding PRs for cross-crate shared changes before per-crate fix PRs
+- Organize batch work into phases by severity and parallelize across independent crates
 - Use `rstest` for ALL test cases (no plain `#[test]`)
 - Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
 - Use `reinhardt-test` fixtures for test setup/teardown
@@ -402,6 +439,10 @@ Before submitting code:
 - Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
 - Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
 - Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
+- Preview and get user confirmation before posting self-initiated GitHub comments
+- Include Claude Code attribution footer on all GitHub comments
+- Use repository-relative paths (not absolute) in GitHub comments
+- Provide structured agent context using AC-2 template format
 
 ### ❌ NEVER DO
 - Use `mod.rs` files (deprecated pattern)
@@ -436,6 +477,9 @@ Before submitting code:
 - Skip issue templates when creating issues
 - Use non-English in issue titles or descriptions
 - Apply `release` label to issues (only for PRs)
+- Mix changes to unrelated crates in a single issue-fix PR
+- Mix unrelated fix patterns in a single PR
+- Skip preceding PRs for cross-crate shared utilities
 - Use plain `#[test]` instead of `#[rstest]`
 - Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
 - Write raw SQL strings in tests (use SeaQuery instead)
@@ -447,6 +491,10 @@ Before submitting code:
 - Create new ASCII art diagrams in doc comments (use Mermaid instead)
 - Mix warnings and errors in trybuild `.stderr` files
 - Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
+- Post GitHub comments without authorization (explicit instruction or Plan Mode approval)
+- Include absolute local paths in GitHub comments (`/Users/...`, `/home/...`)
+- Post vague or non-actionable GitHub comments
+- Skip Claude Code attribution footer on GitHub comments
 
 ### 📚 Detailed Standards
 
@@ -458,6 +506,8 @@ For comprehensive guidelines, see:
 - **Git Commits**: docs/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
 - **Release Process**: docs/RELEASE_PROCESS.md
 - **Issues**: docs/ISSUE_GUIDELINES.md
+- **Issue Handling**: docs/ISSUE_HANDLING.md
+- **GitHub Interactions**: docs/GITHUB_INTERACTION.md
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
 - **Label Definitions**: .github/labels.yml

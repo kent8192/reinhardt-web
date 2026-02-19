@@ -1,6 +1,8 @@
 //! HashiCorp Vault secret provider
 
-use super::super::{SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString};
+use crate::settings::secrets::{
+	SecretError, SecretMetadata, SecretProvider, SecretResult, SecretString,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

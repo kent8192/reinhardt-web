@@ -22,6 +22,10 @@ pub(crate) struct DiffArgs {
 	/// Show values (otherwise just show keys)
 	#[arg(short = 'v', long)]
 	pub show_values: bool,
+
+	/// Show sensitive values without redaction (passwords, keys, tokens)
+	#[arg(long)]
+	pub show_secrets: bool,
 }
 /// Documentation for `execute`
 ///
@@ -47,13 +51,22 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	for key in all_keys {
 		let val1 = map1.get(&key);
 		let val2 = map2.get(&key);
+		let is_sensitive = !args.show_secrets && output::is_sensitive_key(&key);
 
 		match (val1, val2) {
 			(Some(v1), Some(v2)) if v1 == v2 => {
 				// Same value
 				if !args.only_differences {
 					if args.show_values {
-						output::print_diff(&key, Some(v1), Some(v2));
+						if is_sensitive {
+							output::print_diff(
+								&key,
+								Some(output::REDACTED),
+								Some(output::REDACTED),
+							);
+						} else {
+							output::print_diff(&key, Some(v1), Some(v2));
+						}
 					} else {
 						output::print_diff(&key, None, None);
 					}
@@ -63,7 +76,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Different values
 				differences += 1;
 				if args.show_values {
-					output::print_diff(&key, Some(v1), Some(v2));
+					if is_sensitive {
+						output::print_diff(&key, Some(output::REDACTED), Some(output::REDACTED));
+					} else {
+						output::print_diff(&key, Some(v1), Some(v2));
+					}
 				} else {
 					output::print_diff(&key, Some("*"), Some("*"));
 				}
@@ -72,7 +89,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Only in file1 (deleted in file2)
 				deletions += 1;
 				if args.show_values {
-					output::print_diff(&key, Some(v1), None);
+					if is_sensitive {
+						output::print_diff(&key, Some(output::REDACTED), None);
+					} else {
+						output::print_diff(&key, Some(v1), None);
+					}
 				} else {
 					output::print_diff(&key, Some("*"), None);
 				}
@@ -81,7 +102,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Only in file2 (added in file2)
 				additions += 1;
 				if args.show_values {
-					output::print_diff(&key, None, Some(v2));
+					if is_sensitive {
+						output::print_diff(&key, None, Some(output::REDACTED));
+					} else {
+						output::print_diff(&key, None, Some(v2));
+					}
 				} else {
 					output::print_diff(&key, None, Some("*"));
 				}
