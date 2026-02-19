@@ -622,6 +622,8 @@ impl AutoReconnectHandler {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
+
 	use super::*;
 
 	#[test]
@@ -762,7 +764,7 @@ mod tests {
 		assert!((0.9..=1.1).contains(&delay_secs));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_strategy_config_accessor() {
 		// Arrange
 		let config = ReconnectionConfig::default().with_max_attempts(7);
@@ -774,7 +776,7 @@ mod tests {
 		assert_eq!(strategy.config().max_attempts, Some(7));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_reconnection_state_variants() {
 		// Arrange & Act & Assert
 		let connected = ReconnectionState::Connected;
@@ -808,6 +810,7 @@ mod tests {
 		assert_eq!(disabled, ReconnectionState::Disabled);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_new() {
 		// Arrange & Act
@@ -818,6 +821,7 @@ mod tests {
 		assert_eq!(*handler.state().await, ReconnectionState::Connected);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_disabled() {
 		// Arrange & Act
