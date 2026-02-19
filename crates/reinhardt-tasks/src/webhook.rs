@@ -648,6 +648,8 @@ impl HttpWebhookSender {
 						backoff
 					);
 
+					// Wait before retrying to avoid tight retry loops
+					tokio::time::sleep(backoff).await;
 					retry_count += 1;
 				}
 			}
