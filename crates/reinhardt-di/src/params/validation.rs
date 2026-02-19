@@ -246,8 +246,18 @@ impl<T> ValidationConstraints<T> {
 			reinhardt_core::validators::MaxLengthValidator::new(max).validate(value)?;
 		}
 
-		// Regex constraint
+		// Regex constraint with pattern length limit to mitigate ReDoS
 		if let Some(ref pattern) = self.regex {
+			const MAX_REGEX_PATTERN_LENGTH: usize = 1024;
+			if pattern.len() > MAX_REGEX_PATTERN_LENGTH {
+				return Err(reinhardt_core::validators::ValidationError::Custom(
+					format!(
+						"Regex pattern length {} exceeds maximum allowed length {}",
+						pattern.len(),
+						MAX_REGEX_PATTERN_LENGTH
+					),
+				));
+			}
 			reinhardt_core::validators::RegexValidator::new(pattern)
 				.map_err(|e| {
 					reinhardt_core::validators::ValidationError::Custom(format!(
@@ -521,6 +531,10 @@ impl<T> ValidationConstraints<T> {
 		self
 	}
 
+	/// Maximum allowed regex pattern length to mitigate ReDoS attacks.
+	/// Patterns exceeding this length are rejected before compilation.
+	const MAX_REGEX_PATTERN_LENGTH: usize = 1024;
+
 	pub fn validate_string(&self, value: &str) -> Result<(), String> {
 		if let Some(min) = self.min_length
 			&& value.len() < min
@@ -542,8 +556,41 @@ impl<T> ValidationConstraints<T> {
 		}
 		if let Some(ref pattern) = self.regex {
 			use regex::Regex;
-			let regex = Regex::new(pattern).map_err(|e| format!("Invalid regex: {}", e))?;
-			if !regex.is_match(value) {
+			use std::sync::OnceLock;
+
+			// Reject overly long patterns that could cause excessive compilation time
+			if pattern.len() > Self::MAX_REGEX_PATTERN_LENGTH {
+				return Err(format!(
+					"Regex pattern length {} exceeds maximum allowed length {}",
+					pattern.len(),
+					Self::MAX_REGEX_PATTERN_LENGTH
+				));
+			}
+
+			// Cache compiled regex per instance using thread-local storage.
+			// Regex::new already uses a bounded internal cache, but we avoid
+			// repeated parsing of the same pattern string.
+			thread_local! {
+				static REGEX_CACHE: std::cell::RefCell<Option<(String, Regex)>> =
+					const { std::cell::RefCell::new(None) };
+			}
+
+			let matched: Result<bool, String> = REGEX_CACHE.with(|cache| {
+				let mut cache = cache.borrow_mut();
+				if let Some((ref cached_pattern, ref cached_regex)) = *cache {
+					if cached_pattern == pattern {
+						return Ok(cached_regex.is_match(value));
+					}
+				}
+				let regex =
+					Regex::new(pattern).map_err(|e| format!("Invalid regex: {}", e))?;
+				let result = regex.is_match(value);
+				*cache = Some((pattern.clone(), regex));
+				Ok(result)
+			});
+			let matched = matched?;
+
+			if !matched {
 				return Err(format!("String does not match pattern: {}", pattern));
 			}
 		}
