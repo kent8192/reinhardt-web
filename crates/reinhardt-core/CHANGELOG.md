@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.5...reinhardt-core@v0.1.0-alpha.6) - 2026-02-19
+
+### Changed
+
+- *(core)* replace glob import with explicit rayon trait imports
+
+### Fixed
+
+- *(security)* emit error when permission function lacks Request ([[#775](https://github.com/kent8192/reinhardt-web/issues/775)](https://github.com/kent8192/reinhardt-web/issues/775))
+
 ## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.1.0-alpha.4...reinhardt-core@v0.1.0-alpha.5) - 2026-02-12
 
 ### Changed
