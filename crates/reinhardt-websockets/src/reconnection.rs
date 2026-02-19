@@ -314,11 +314,18 @@ impl ReconnectionStrategy {
 
 		self.current_attempt += 1;
 
-		// Calculate next delay (exponential backoff)
+		// Calculate next delay (exponential backoff with overflow protection).
+		// The multiplication is done in f64 space and clamped to max_delay to prevent
+		// overflow when retry counts are high.
+		let max_delay_secs = self.config.max_delay.as_secs_f64();
 		let next_delay_secs = delay.as_secs_f64() * self.config.backoff_multiplier;
-		let next_delay =
-			Duration::from_secs_f64(next_delay_secs.min(self.config.max_delay.as_secs_f64()));
-		self.current_delay = next_delay;
+		// Clamp to max_delay; also handles NaN/Infinity by falling back to max_delay
+		let clamped_secs = if next_delay_secs.is_finite() {
+			next_delay_secs.min(max_delay_secs)
+		} else {
+			max_delay_secs
+		};
+		self.current_delay = Duration::from_secs_f64(clamped_secs);
 
 		Some(jitter)
 	}
@@ -762,6 +769,27 @@ mod tests {
 		// However, it's within 1 second ±10%
 		let delay_secs = delay.as_secs_f64();
 		assert!((0.9..=1.1).contains(&delay_secs));
+	}
+
+	#[rstest]
+	fn test_backoff_does_not_overflow_at_high_retry_counts() {
+		// Arrange - use a large multiplier to trigger potential overflow quickly
+		let config = ReconnectionConfig::default()
+			.with_unlimited_attempts()
+			.with_initial_delay(Duration::from_secs(1))
+			.with_backoff_multiplier(10.0)
+			.with_max_delay(Duration::from_secs(300))
+			.with_jitter_factor(0.0);
+
+		let mut strategy = ReconnectionStrategy::new(config);
+
+		// Act - run many iterations that would overflow with naive integer math
+		for _ in 0..100 {
+			if let Some(delay) = strategy.next_delay() {
+				// Assert - delay must always be within bounds, never panic or wrap
+				assert!(delay <= Duration::from_secs(300));
+			}
+		}
 	}
 
 	#[rstest]
