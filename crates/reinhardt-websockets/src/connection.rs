@@ -40,9 +40,9 @@ pub struct ConnectionConfig {
 impl Default for ConnectionConfig {
 	fn default() -> Self {
 		Self {
-			idle_timeout: Duration::from_secs(300),       // 5 minutes default
-			handshake_timeout: Duration::from_secs(10),   // 10 seconds default
-			cleanup_interval: Duration::from_secs(30),    // 30 seconds default
+			idle_timeout: Duration::from_secs(300), // 5 minutes default
+			handshake_timeout: Duration::from_secs(10), // 10 seconds default
+			cleanup_interval: Duration::from_secs(30), // 30 seconds default
 		}
 	}
 }
@@ -1011,8 +1011,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_connection_with_config() {
 		// Arrange
-		let config = ConnectionConfig::new()
-			.with_idle_timeout(Duration::from_secs(60));
+		let config = ConnectionConfig::new().with_idle_timeout(Duration::from_secs(60));
 		let (tx, _rx) = mpsc::unbounded_channel();
 
 		// Act
@@ -1027,8 +1026,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_connection_record_activity_resets_idle() {
 		// Arrange
-		let config = ConnectionConfig::new()
-			.with_idle_timeout(Duration::from_millis(50));
+		let config = ConnectionConfig::new().with_idle_timeout(Duration::from_millis(50));
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = WebSocketConnection::with_config("test".to_string(), tx, config);
 
@@ -1047,8 +1045,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_connection_becomes_idle_after_timeout() {
 		// Arrange
-		let config = ConnectionConfig::new()
-			.with_idle_timeout(Duration::from_millis(50));
+		let config = ConnectionConfig::new().with_idle_timeout(Duration::from_millis(50));
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = WebSocketConnection::with_config("test".to_string(), tx, config);
 
@@ -1064,8 +1061,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_send_resets_activity() {
 		// Arrange
-		let config = ConnectionConfig::new()
-			.with_idle_timeout(Duration::from_millis(100));
+		let config = ConnectionConfig::new().with_idle_timeout(Duration::from_millis(100));
 		let (tx, mut _rx) = mpsc::unbounded_channel();
 		let conn = WebSocketConnection::with_config("test".to_string(), tx, config);
 
@@ -1139,8 +1135,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_timeout_monitor_closes_idle_connections() {
 		// Arrange
-		let config = ConnectionConfig::new()
-			.with_idle_timeout(Duration::from_millis(50));
+		let config = ConnectionConfig::new().with_idle_timeout(Duration::from_millis(50));
 		let monitor = ConnectionTimeoutMonitor::new(config);
 
 		let (tx1, mut rx1) = mpsc::unbounded_channel();
