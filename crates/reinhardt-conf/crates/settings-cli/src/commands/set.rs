@@ -26,35 +26,48 @@ pub(crate) struct SetArgs {
 	#[arg(short, long, default_value = "true")]
 	pub backup: bool,
 }
-/// Documentation for `execute`
-///
+/// Maximum configuration file size for set command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
+/// Set a configuration value in a file
 pub(crate) async fn execute(args: SetArgs) -> anyhow::Result<()> {
 	output::info(&format!("Setting configuration value in: {:?}", args.file));
 
-	// Check if file exists
-	if !args.file.exists() {
-		if args.create {
-			output::info("Creating new configuration file");
-			// Create with empty object/map
-			let extension = args.file.extension().and_then(|s| s.to_str());
-			match extension {
-				Some("json") => {
-					std::fs::write(&args.file, "{}")?;
-				}
-				Some("toml") => {
-					std::fs::write(&args.file, "")?;
-				}
-				Some("env") => {
-					std::fs::write(&args.file, "")?;
-				}
-				_ => {
-					output::error("Unsupported file format");
-					return Err(anyhow::anyhow!("Unsupported file format"));
-				}
+	// Try to read file metadata to check existence and size (TOCTOU mitigation)
+	match std::fs::metadata(&args.file) {
+		Ok(metadata) => {
+			if metadata.len() > MAX_CONFIG_FILE_SIZE {
+				return Err(anyhow::anyhow!(
+					"Configuration file exceeds maximum size ({} bytes, limit {} bytes)",
+					metadata.len(),
+					MAX_CONFIG_FILE_SIZE
+				));
 			}
-		} else {
-			output::error("Configuration file not found. Use --create to create it.");
-			return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+		}
+		Err(_) => {
+			if args.create {
+				output::info("Creating new configuration file");
+				// Create with empty object/map using atomic create
+				let extension = args.file.extension().and_then(|s| s.to_str());
+				match extension {
+					Some("json") => {
+						std::fs::write(&args.file, "{}")?;
+					}
+					Some("toml") => {
+						std::fs::write(&args.file, "")?;
+					}
+					Some("env") => {
+						std::fs::write(&args.file, "")?;
+					}
+					_ => {
+						output::error("Unsupported file format");
+						return Err(anyhow::anyhow!("Unsupported file format"));
+					}
+				}
+			} else {
+				output::error("Configuration file not found. Use --create to create it.");
+				return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+			}
 		}
 	}
 

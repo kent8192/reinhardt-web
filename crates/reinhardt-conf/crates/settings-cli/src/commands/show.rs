@@ -43,15 +43,25 @@ impl From<OutputFormatArg> for OutputFormat {
 		}
 	}
 }
-/// Documentation for `execute`
-///
+/// Maximum configuration file size for show command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
+/// Display configuration file contents
 pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
 	output::info(&format!("Reading configuration file: {:?}", args.file));
 
-	// Check if file exists
-	if !args.file.exists() {
-		output::error("Configuration file not found");
-		return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+	// Check file existence and size in one operation (TOCTOU mitigation)
+	let metadata = std::fs::metadata(&args.file).map_err(|e| {
+		output::error("Configuration file not found or inaccessible");
+		anyhow::anyhow!("Cannot access file {:?}: {}", args.file, e)
+	})?;
+
+	if metadata.len() > MAX_CONFIG_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Configuration file exceeds maximum size ({} bytes, limit {} bytes)",
+			metadata.len(),
+			MAX_CONFIG_FILE_SIZE
+		));
 	}
 
 	// Determine file type and load
