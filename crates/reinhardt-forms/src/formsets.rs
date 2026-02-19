@@ -177,9 +177,20 @@ impl<T: FormModel> ModelFormSet<T> {
 		self
 	}
 
-	/// Add a model form to the formset
-	pub fn add_form(&mut self, form: ModelForm<T>) {
+	/// Add a model form to the formset.
+	///
+	/// Returns an error if adding the form would exceed `max_num`.
+	pub fn add_form(&mut self, form: ModelForm<T>) -> Result<(), String> {
+		if let Some(max) = self.max_num {
+			if self.forms.len() >= max {
+				return Err(format!(
+					"Cannot add form: maximum number of forms ({}) reached",
+					max
+				));
+			}
+		}
 		self.forms.push(form);
+		Ok(())
 	}
 
 	/// Get all forms
@@ -650,7 +661,7 @@ mod tests {
 			email: "test@example.com".to_string(),
 		};
 		let form = ModelForm::new(Some(instance), ModelFormConfig::new());
-		formset.add_form(form);
+		formset.add_form(form).unwrap();
 
 		assert_eq!(formset.forms().len(), 1);
 	}
@@ -667,7 +678,7 @@ mod tests {
 			email: "test@example.com".to_string(),
 		};
 		let form = ModelForm::new(Some(instance), ModelFormConfig::new());
-		formset.add_form(form);
+		formset.add_form(form).unwrap();
 
 		assert!(!formset.is_valid());
 		assert!(!formset.errors().is_empty());
