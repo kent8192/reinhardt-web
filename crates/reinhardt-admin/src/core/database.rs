@@ -5,6 +5,7 @@
 
 use crate::types::{AdminError, AdminResult};
 use async_trait::async_trait;
+use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
 };
@@ -227,6 +228,14 @@ fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression
 	}
 }
 
+/// Escape SQL LIKE wildcard characters in user input
+fn escape_like_pattern(input: &str) -> String {
+	input
+		.replace('\\', "\\\\")
+		.replace('%', "\\%")
+		.replace('_', "\\_")
+}
+
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
@@ -294,9 +303,15 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Lte, v) => col.lte(filter_value_to_sea_value(v)),
 
 		// String-specific operators
-		(FilterOperator::Contains, FilterValue::String(s)) => col.like(format!("%{}%", s)),
-		(FilterOperator::StartsWith, FilterValue::String(s)) => col.like(format!("{}%", s)),
-		(FilterOperator::EndsWith, FilterValue::String(s)) => col.like(format!("%{}", s)),
+		(FilterOperator::Contains, FilterValue::String(s)) => {
+			col.like(format!("%{}%", escape_like_pattern(s)))
+		}
+		(FilterOperator::StartsWith, FilterValue::String(s)) => {
+			col.like(format!("{}%", escape_like_pattern(s)))
+		}
+		(FilterOperator::EndsWith, FilterValue::String(s)) => {
+			col.like(format!("%{}", escape_like_pattern(s)))
+		}
 		(FilterOperator::In, FilterValue::String(s)) => {
 			let values: Vec<Value> = s.split(',').map(|v| v.trim().into_value()).collect();
 			col.is_in(values)
@@ -494,10 +509,11 @@ impl AdminDatabase {
 		query.limit(limit).offset(offset);
 
 		// Execute query
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let rows = self
 			.connection
-			.query(&sql, vec![])
+			.query(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -585,10 +601,11 @@ impl AdminDatabase {
 		query.limit(limit).offset(offset);
 
 		// Execute query
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let rows = self
 			.connection
-			.query(&sql, vec![])
+			.query(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -646,10 +663,11 @@ impl AdminDatabase {
 			query.cond_where(combined);
 		}
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -700,10 +718,11 @@ impl AdminDatabase {
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_optional(&sql, vec![])
+			.query_optional(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -781,10 +800,11 @@ impl AdminDatabase {
 		// Add RETURNING clause to get the inserted ID
 		query.returning([Alias::new("id")]);
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -855,10 +875,11 @@ impl AdminDatabase {
 		};
 		query.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value));
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -899,10 +920,11 @@ impl AdminDatabase {
 			.and_where(Expr::col(Alias::new(pk_field)).eq(pk_value))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -983,10 +1005,11 @@ impl AdminDatabase {
 			.and_where(Expr::col(Alias::new(pk_field)).is_in(pk_values))
 			.to_owned();
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let affected = self
 			.connection
-			.execute(&sql, vec![])
+			.execute(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -1028,10 +1051,11 @@ impl AdminDatabase {
 			query.cond_where(condition);
 		}
 
-		let sql = query.to_string(PostgresQueryBuilder);
+		let (sql, values) = query.build(PostgresQueryBuilder);
+		let params = convert_values(values);
 		let row = self
 			.connection
-			.query_one(&sql, vec![])
+			.query_one(&sql, params)
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
@@ -1067,6 +1091,69 @@ mod tests {
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;
 	use reinhardt_db::orm::expressions::{F, OuterRef};
+	use rstest::rstest;
+
+	// ==================== escape_like_pattern tests ====================
+
+	#[rstest]
+	fn test_escape_like_pattern_percent() {
+		// Arrange
+		let input = "100%";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "100\\%");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_underscore() {
+		// Arrange
+		let input = "user_name";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "user\\_name");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_backslash() {
+		// Arrange
+		let input = "path\\to";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "path\\\\to");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_combined() {
+		// Arrange
+		let input = "100%_done";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "100\\%\\_done");
+	}
+
+	#[rstest]
+	fn test_escape_like_pattern_no_special_chars() {
+		// Arrange
+		let input = "normal text";
+
+		// Act
+		let result = escape_like_pattern(input);
+
+		// Assert
+		assert_eq!(result, "normal text");
+	}
 
 	// ==================== build_composite_filter_condition tests ====================
 
