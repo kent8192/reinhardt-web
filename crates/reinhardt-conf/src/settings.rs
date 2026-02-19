@@ -10,6 +10,7 @@ pub mod env_loader;
 pub mod env_parser;
 pub mod prelude;
 pub mod profile;
+pub mod secret_types;
 pub mod sources;
 pub mod validation;
 

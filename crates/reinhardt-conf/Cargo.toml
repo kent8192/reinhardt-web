@@ -18,6 +18,7 @@ toml = "0.9.8"
 reinhardt-core = { workspace = true, features = ["exception", "validators"] }
 dotenv = "0.15"
 url = "2.5"
+percent-encoding = "2.3"
 secrecy = "0.10.3"
 zeroize = { version = "1.7", features = ["derive"] }
 subtle = "2.5"
