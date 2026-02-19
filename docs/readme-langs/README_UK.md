@@ -1038,6 +1038,16 @@ Reinhardt — проєкт, керований спільнотою. Ось де
 - [Керівництво з тестування](../../CONTRIBUTING.md#testing-guidelines)
 - [Керівництво з комітів](../../CONTRIBUTING.md#commit-guidelines)
 
+## ⭐ Історія зірок
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
+
 ## Ліцензія
 
 Ліцензовано за однією з наступних ліцензій на ваш вибір:
