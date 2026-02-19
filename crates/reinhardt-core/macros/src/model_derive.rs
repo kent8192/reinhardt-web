@@ -37,6 +37,70 @@ use crate::crate_paths::{
 };
 use crate::rel::RelAttribute;
 
+/// SQL keywords that are prohibited in raw SQL expressions within model attributes.
+/// These indicate potential SQL injection or unintended DDL/DML operations.
+const DANGEROUS_SQL_KEYWORDS: &[&str] = &[
+	"DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE", "ALTER", "CREATE", "EXEC", "EXECUTE",
+	"GRANT", "REVOKE",
+];
+
+/// Validates a raw SQL expression used in model attributes (`check`, `generated`, `condition`).
+///
+/// Returns an error if the expression contains dangerous SQL keywords or statement terminators
+/// that could indicate SQL injection patterns.
+fn validate_sql_expression(expr: &str, attr_name: &str, span: proc_macro2::Span) -> Result<()> {
+	// Reject statement terminators that could allow statement chaining
+	if expr.contains(';') {
+		return Err(syn::Error::new(
+			span,
+			format!(
+				"`{}` attribute must not contain ';' (statement terminator). \
+				 Provide a single SQL expression only.",
+				attr_name
+			),
+		));
+	}
+
+	// Reject SQL comment sequences
+	if expr.contains("--") || expr.contains("/*") {
+		return Err(syn::Error::new(
+			span,
+			format!(
+				"`{}` attribute must not contain SQL comments ('--' or '/*').",
+				attr_name
+			),
+		));
+	}
+
+	// Reject dangerous SQL keywords (case-insensitive word boundary check)
+	let upper = expr.to_uppercase();
+	for keyword in DANGEROUS_SQL_KEYWORDS {
+		// Check for the keyword as a standalone word (not part of an identifier)
+		let keyword_upper = keyword.to_uppercase();
+		for (idx, _) in upper.match_indices(&keyword_upper) {
+			let before_ok = idx == 0
+				|| !upper.as_bytes()[idx - 1].is_ascii_alphanumeric()
+					&& upper.as_bytes()[idx - 1] != b'_';
+			let after_idx = idx + keyword_upper.len();
+			let after_ok = after_idx >= upper.len()
+				|| !upper.as_bytes()[after_idx].is_ascii_alphanumeric()
+					&& upper.as_bytes()[after_idx] != b'_';
+			if before_ok && after_ok {
+				return Err(syn::Error::new(
+					span,
+					format!(
+						"`{}` attribute contains prohibited SQL keyword '{}'. \
+						 Only value expressions are allowed, not DDL/DML statements.",
+						attr_name, keyword
+					),
+				));
+			}
+		}
+	}
+
+	Ok(())
+}
+
 /// Constraint specification from `#[model(constraints = [...])]`
 #[derive(Debug, Clone)]
 enum ConstraintSpec {
@@ -232,6 +296,7 @@ impl ModelConfig {
 			} else if param_name == "condition" {
 				// Parse string: "WHERE clause"
 				let value: LitStr = content.parse()?;
+				validate_sql_expression(&value.value(), "condition", value.span())?;
 				condition = Some(value.value());
 			} else {
 				return Err(syn::Error::new_spanned(
@@ -444,6 +509,7 @@ impl FieldConfig {
 					Ok(())
 				} else if meta.path.is_ident("check") {
 					let value: syn::LitStr = meta.value()?.parse()?;
+					validate_sql_expression(&value.value(), "check", value.span())?;
 					config.check = Some(value.value());
 					Ok(())
 				} else if meta.path.is_ident("email") {
@@ -515,6 +581,7 @@ impl FieldConfig {
 				// Generated Columns
 				else if meta.path.is_ident("generated") {
 					let value: syn::LitStr = meta.value()?.parse()?;
+					validate_sql_expression(&value.value(), "generated", value.span())?;
 					config.generated = Some(value.value());
 					Ok(())
 				} else if meta.path.is_ident("generated_stored") {
