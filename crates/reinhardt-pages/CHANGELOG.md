@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.14...reinhardt-pages@v0.1.0-alpha.15) - 2026-02-16
+
+### Maintenance
+
+- updated the following local packages: reinhardt-pages-macros, reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.13...reinhardt-pages@v0.1.0-alpha.14) - 2026-02-15
+
+### Maintenance
+
+- updated the following local packages: reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.12...reinhardt-pages@v0.1.0-alpha.13) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.11...reinhardt-pages@v0.1.0-alpha.12) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.10...reinhardt-pages@v0.1.0-alpha.11) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-middleware, reinhardt-urls
+
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.8...reinhardt-pages@v0.1.0-alpha.9) - 2026-02-12
+
+### Changed
+
+- convert relative paths to absolute paths
+- restore single-level super:: paths preserved by convention
+
+### Reverted
+
+- undo unintended visibility and formatting changes
+
 ## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.7...reinhardt-pages@v0.1.0-alpha.8) - 2026-02-10
 
 ### Maintenance

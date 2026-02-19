@@ -8,6 +8,7 @@
 //! - GraphQL over gRPC types (GraphQLRequest, GraphQLResponse, SubscriptionEvent)
 //! - gRPC error handling
 //! - gRPC service adapter trait
+//! - Server configuration with message size limits
 //! - Dependency injection support (with `di` feature)
 //!
 //! # Usage
@@ -48,6 +49,7 @@
 
 pub mod adapter;
 pub mod error;
+pub mod server;
 
 #[cfg(feature = "di")]
 pub mod di;
@@ -65,6 +67,7 @@ pub mod proto {
 
 pub use adapter::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
 pub use error::{GrpcError, GrpcResult};
+pub use server::{GrpcServerConfig, GrpcServerConfigBuilder, MessageSizeLimiter};
 
 #[cfg(feature = "di")]
 pub use di::GrpcRequestExt;

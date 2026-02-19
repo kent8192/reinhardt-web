@@ -95,6 +95,17 @@ pub struct RedisThrottleBackend {
 	client: redis::Client,
 }
 
+/// Lua script for atomic INCR + EXPIRE in Redis rate limiting.
+/// Prevents race condition where INCR succeeds but EXPIRE fails, leaving permanent keys.
+#[cfg(feature = "redis-backend")]
+const INCREMENT_SCRIPT: &str = r#"
+	local count = redis.call('INCR', KEYS[1])
+	if count == 1 then
+		redis.call('EXPIRE', KEYS[1], ARGV[1])
+	end
+	return count
+"#;
+
 #[cfg(feature = "redis-backend")]
 impl RedisThrottleBackend {
 	/// Creates a new `RedisThrottleBackend` connected to the specified Redis URL.
@@ -117,19 +128,20 @@ impl RedisThrottleBackend {
 #[async_trait]
 impl ThrottleBackend for RedisThrottleBackend {
 	async fn increment(&self, key: &str, window: u64) -> Result<usize, String> {
-		use redis::AsyncCommands;
+		use redis::Script;
 		let mut conn = self
 			.client
 			.get_multiplexed_async_connection()
 			.await
 			.map_err(|e| e.to_string())?;
-		let count: usize = conn.incr(key, 1).await.map_err(|e| e.to_string())?;
-		if count == 1 {
-			let _: () = conn
-				.expire(key, window as i64)
-				.await
-				.map_err(|e| e.to_string())?;
-		}
+
+		let script = Script::new(INCREMENT_SCRIPT);
+		let count: usize = script
+			.key(key)
+			.arg(window)
+			.invoke_async(&mut conn)
+			.await
+			.map_err(|e| e.to_string())?;
 		Ok(count)
 	}
 	async fn get_count(&self, key: &str) -> Result<usize, String> {

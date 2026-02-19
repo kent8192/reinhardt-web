@@ -19,6 +19,18 @@ pub(crate) struct FieldAttributes {
 	pub pattern: Option<String>,
 	/// Property name override from `#[serde(rename = "...")]` or `#[schema(rename = "...")]`
 	pub rename: Option<String>,
+	/// Whether `#[serde(skip)]` is present - excludes field from schema
+	/// Fixes #836
+	pub skip: bool,
+	/// Whether `#[serde(skip_serializing)]` is present - excludes field from schema
+	/// Fixes #836
+	pub skip_serializing: bool,
+	/// Whether `#[serde(skip_deserializing)]` is present - excludes field from schema
+	/// Fixes #836
+	pub skip_deserializing: bool,
+	/// Whether `#[serde(flatten)]` is present - merges field's schema via allOf
+	/// Fixes #839
+	pub flatten: bool,
 }
 
 impl FieldAttributes {
@@ -68,7 +80,8 @@ pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
 			continue;
 		}
 
-		// Check for #[serde(...)] attributes to extract rename
+		// Check for #[serde(...)] attributes
+		// Fixes #836 (skip), #838 (default), #839 (flatten)
 		if attr.path().is_ident("serde") {
 			if let Ok(meta_list) = attr.meta.require_list() {
 				for nested_meta in meta_list
@@ -77,17 +90,39 @@ pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
 					)
 					.unwrap_or_default()
 				{
-					if let Meta::NameValue(nv) = nested_meta
-						&& nv.path.is_ident("rename")
-						&& let syn::Expr::Lit(syn::ExprLit {
-							lit: Lit::Str(lit_str),
-							..
-						}) = nv.value
-					{
-						// Only set if not already set by #[schema(rename = "...")]
-						if field_attrs.rename.is_none() {
-							field_attrs.rename = Some(lit_str.value());
+					match nested_meta {
+						Meta::NameValue(nv) => {
+							if nv.path.is_ident("rename") {
+								if let syn::Expr::Lit(syn::ExprLit {
+									lit: Lit::Str(lit_str),
+									..
+								}) = nv.value
+								{
+									// Only set if not already set by #[schema(rename = "...")]
+									if field_attrs.rename.is_none() {
+										field_attrs.rename = Some(lit_str.value());
+									}
+								}
+							} else if nv.path.is_ident("default") {
+								// #[serde(default = "path")] - field has a default value
+								field_attrs.default = true;
+							}
 						}
+						Meta::Path(path) => {
+							if path.is_ident("skip") {
+								field_attrs.skip = true;
+							} else if path.is_ident("skip_serializing") {
+								field_attrs.skip_serializing = true;
+							} else if path.is_ident("skip_deserializing") {
+								field_attrs.skip_deserializing = true;
+							} else if path.is_ident("flatten") {
+								field_attrs.flatten = true;
+							} else if path.is_ident("default") {
+								// #[serde(default)] - field has a default value
+								field_attrs.default = true;
+							}
+						}
+						_ => {}
 					}
 				}
 			}

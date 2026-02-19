@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-views"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.12"
 description = "View layer aggregator for viewsets and views-core"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types"] }
+reinhardt-core = { workspace = true, features = ["exception", "macros", "pagination", "serializers", "serde", "types", "security"] }
 reinhardt-db = { workspace = true, features = ["orm", "di"] }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -41,7 +41,7 @@ sqlx = { workspace = true, features = [
 tokio = { workspace = true, features = ["sync"] }
 inventory = "0.3"
 urlencoding = "2.1"
-sea-query = { workspace = true }
+reinhardt-query = { workspace = true }
 parking_lot = { workspace = true }
 utoipa = { version = "5.4", features = ["url", "uuid", "yaml"] }
 

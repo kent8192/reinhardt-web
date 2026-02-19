@@ -29,11 +29,13 @@ dependencies_update = true
 # - Stage 1: Push to main → `release-plz release-pr` creates Release PR (branch: release-plz-*)
 # - Stage 2: Merge Release PR → `release-plz release` detects commit from release-plz-* branch and publishes
 #
-# With release_always = false:
-# - release-plz only publishes when the commit is from a merged release-plz-* branch PR
-# - This gives maintainers control over when releases happen (must merge the Release PR)
+# With release_always = true:
+# - release-plz publishes ALL crates whose local version differs from crates.io
+# - This prevents phantom version bumps from `dependencies_update = true` (see KI-5 in RELEASE_PROCESS.md)
+# - Normal code pushes are unaffected since versions match crates.io
+# - Only after Release PR merge will version differences trigger publishing
 # See: https://release-plz.ieni.dev/docs/config#the-release_always-field
-release_always = false
+release_always = true
 
 # Skip cargo publish verification (dev-dependencies may reference unpublished workspace crates)
 publish_no_verify = true
@@ -56,41 +58,6 @@ publish = false
 
 [[package]]
 name = "reinhardt-benchmarks"
-release = false
-publish = false
-
-[[package]]
-name = "examples-hello-world"
-release = false
-publish = false
-
-[[package]]
-name = "examples-rest-api"
-release = false
-publish = false
-
-[[package]]
-name = "examples-database-integration"
-release = false
-publish = false
-
-[[package]]
-name = "examples-tutorial-basis"
-release = false
-publish = false
-
-[[package]]
-name = "examples-tutorial-rest"
-release = false
-publish = false
-
-[[package]]
-name = "examples-twitter"
-release = false
-publish = false
-
-[[package]]
-name = "examples-github-issues"
 release = false
 publish = false
 

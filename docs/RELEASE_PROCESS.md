@@ -206,8 +206,8 @@ git_tag_name = "{{ package }}@v{{ version }}"
 git_release_type = "auto"
 semver_check = false
 publish_timeout = "10m"
-dependencies_update = false
-release_always = false
+dependencies_update = true
+release_always = true
 publish_no_verify = true
 
 # Exclude packages from release
@@ -270,13 +270,9 @@ During `cargo publish`, Cargo attempts to build the crate including dev-dependen
 
 Enables release-plz to automatically update explicit `version` fields in workspace dependency declarations when a dependent crate's version is bumped. Without this, workspace members that pin explicit versions would become out-of-sync after a release, causing the next Release PR to carry stale dependency versions. (Ref: [#223](https://github.com/kent8192/reinhardt-web/pull/223))
 
-**`release_always = false`**
+**`release_always = true`**
 
-Enables a two-stage release workflow:
-1. **Stage 1** (push to main): `release-plz release-pr` creates a Release PR with version bumps and CHANGELOG updates.
-2. **Stage 2** (merge Release PR): `release-plz release` detects the merged release-plz branch and publishes to crates.io.
-
-This gives maintainers explicit control over when releases happen — crates are only published when the Release PR is deliberately merged. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186))
+Ensures `release-plz release` publishes ALL crates whose local version differs from crates.io, not just those with actual code changes. This prevents the phantom version issue described in [KI-5](#ki-5-phantom-version-bumps-from-dependencies_update): when `dependencies_update = true` bumps versions for dependency-only changes, `release_always = false` would skip publishing those crates, creating versions in git that don't exist on crates.io. Normal code pushes are unaffected since local versions match crates.io; only after a Release PR merge will version differences trigger publishing. (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#186](https://github.com/kent8192/reinhardt-web/pull/186), [#246](https://github.com/kent8192/reinhardt-web/issues/246))
 
 **`reinhardt-test` workspace dependency without `version` field**
 
@@ -334,6 +330,20 @@ The `reinhardt-test` crate (`publish = false`) is used as a workspace dependency
 **Tracking**: [gitoxide#1788](https://github.com/GitoxideLabs/gitoxide/issues/1788)
 
 (Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
+
+### KI-5: Phantom Version Bumps from `dependencies_update`
+
+**Symptom**: Crates are version-bumped in Release PR but not published to crates.io. Downstream crates fail with "dependency not found" errors.
+
+**Root cause**: When `dependencies_update = true`, `release-plz release-pr` bumps versions for dependency-only changes. However, `release-plz release` with `release_always = false` skips those crates since they have no actual code changes. This creates "phantom versions" — versions referenced in git that don't exist on crates.io.
+
+**Impact**: For pre-release semver (`0.x.y-alpha.N`), Cargo's `^` requirement resolves to exact version match, so any downstream crate depending on a phantom version will fail to publish.
+
+**Resolution**: Set `release_always = true` in `release-plz.toml`. This ensures all crates whose local version differs from crates.io are published, including those bumped only for dependency updates. Normal code pushes are unaffected since versions match crates.io; only Release PR merges trigger publishing.
+
+**History**: This issue caused 3+ RP-1 recovery cycles before the root cause was identified.
+
+(Ref: [#246](https://github.com/kent8192/reinhardt-web/issues/246))
 
 ---
 
@@ -508,6 +518,7 @@ cargo publish --dry-run -p reinhardt-orm  # or any crate that dev-depends on rei
 - **Dev-Dependency Resolution**: See [KI-2: Cargo 1.84+ Dev-Dependency Resolution Regression](#ki-2-cargo-184-dev-dependency-resolution-regression) and [RP-4](#rp-4-reinhardt-test-version-reintroduced)
 - **Partial Failure**: See [KI-3: Partial Release Failure Deadlock](#ki-3-partial-release-failure-deadlock) and [RP-1](#rp-1-partial-release-failure-recovery)
 - **gix Panic**: See [KI-4: gix/gitoxide Slotmap Overflow](#ki-4-gixgitoxide-slotmap-overflow) and [RP-3](#rp-3-gix-cache-failure-recovery)
+- **Phantom Version (dependency not found)**: See [KI-5: Phantom Version Bumps from `dependencies_update`](#ki-5-phantom-version-bumps-from-dependencies_update)
 
 **CHANGELOG Not Updated:**
 - Ensure `changelog_update = true` in config
