@@ -4,6 +4,7 @@
 //! by splitting them into manageable chunks, supporting resumable uploads,
 //! and assembling chunks back into complete files.
 
+use percent_encoding::percent_decode_str;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -266,15 +267,20 @@ impl ChunkedUploadManager {
 	) -> Result<ChunkedUploadSession, ChunkedUploadError> {
 		// Validate session_id to prevent path traversal attacks.
 		// Session IDs are used to construct directory and file paths.
-		if session_id.is_empty()
-			|| session_id.contains('/')
-			|| session_id.contains('\\')
-			|| session_id.contains('\0')
-			|| session_id.contains("..")
-		{
-			return Err(ChunkedUploadError::SessionNotFound(
-				"Invalid session ID".to_string(),
-			));
+		// Check both raw and URL-decoded forms to prevent bypass via
+		// percent-encoded traversal sequences like %2e%2e%2f.
+		let decoded = percent_decode_str(&session_id).decode_utf8_lossy();
+		for candidate in [session_id.as_str(), decoded.as_ref()] {
+			if candidate.is_empty()
+				|| candidate.contains('/')
+				|| candidate.contains('\\')
+				|| candidate.contains('\0')
+				|| candidate.contains("..")
+			{
+				return Err(ChunkedUploadError::SessionNotFound(
+					"Invalid session ID".to_string(),
+				));
+			}
 		}
 		let temp_dir = self.temp_base_dir.join(&session_id);
 		fs::create_dir_all(&temp_dir)?;
@@ -572,49 +578,32 @@ mod tests {
 	// Path traversal prevention tests (Issue #355)
 	// =================================================================
 
-	#[test]
-	fn test_start_session_rejects_traversal_in_session_id() {
+	#[rstest::rstest]
+	#[case("../../../etc")]
+	#[case("foo/bar")]
+	#[case("foo\\bar")]
+	#[case("null\0byte")]
+	#[case("..")]
+	#[case("..%2f..%2fetc")]
+	#[case("%2e%2e%2f%2e%2e%2f")]
+	#[case("..%2fmalicious")]
+	fn test_start_session_rejects_traversal_in_session_id(#[case] session_id: &str) {
 		// Arrange
 		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_security"));
 
-		// Act & Assert - directory traversal in session_id
-		assert!(
-			manager
-				.start_session(
-					"../../../etc".to_string(),
-					"file.bin".to_string(),
-					1000,
-					100,
-				)
-				.is_err()
-		);
+		// Act
+		let result =
+			manager.start_session(session_id.to_string(), "file.bin".to_string(), 1000, 100);
 
+		// Assert
 		assert!(
-			manager
-				.start_session("foo/bar".to_string(), "file.bin".to_string(), 1000, 100,)
-				.is_err()
-		);
-
-		assert!(
-			manager
-				.start_session("foo\\bar".to_string(), "file.bin".to_string(), 1000, 100,)
-				.is_err()
-		);
-
-		assert!(
-			manager
-				.start_session("null\0byte".to_string(), "file.bin".to_string(), 1000, 100,)
-				.is_err()
-		);
-
-		assert!(
-			manager
-				.start_session("..".to_string(), "file.bin".to_string(), 1000, 100,)
-				.is_err()
+			result.is_err(),
+			"Expected error for session_id: {}",
+			session_id
 		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn test_start_session_allows_safe_session_id() {
 		// Arrange
 		let manager = ChunkedUploadManager::new(PathBuf::from("/tmp/test_chunks_safe"));
