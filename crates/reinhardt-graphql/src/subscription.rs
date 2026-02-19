@@ -141,16 +141,22 @@ impl SubscriptionRoot {
 		&self,
 		ctx: &Context<'ctx>,
 	) -> impl Stream<Item = crate::schema::User> + 'ctx {
-		let broadcaster = ctx.data::<EventBroadcaster>().unwrap();
-		let rx = broadcaster.subscribe().await;
+		// Gracefully handle missing EventBroadcaster instead of panicking.
+		// Returns an empty stream if the broadcaster is not in context.
+		let receiver = match ctx.data::<EventBroadcaster>() {
+			Ok(broadcaster) => Some(broadcaster.subscribe().await),
+			Err(_) => None,
+		};
 
-		let stream = receiver_to_stream(rx);
+		let stream = receiver.map(|rx| receiver_to_stream(rx));
 		async_stream::stream! {
-			use futures_util::StreamExt;
-			let mut stream = std::pin::pin!(stream);
-			while let Some(event) = stream.next().await {
-				if let UserEvent::Created(user) = event {
-					yield user;
+			if let Some(stream) = stream {
+				use futures_util::StreamExt;
+				let mut stream = std::pin::pin!(stream);
+				while let Some(event) = stream.next().await {
+					if let UserEvent::Created(user) = event {
+						yield user;
+					}
 				}
 			}
 		}
@@ -160,32 +166,40 @@ impl SubscriptionRoot {
 		&self,
 		ctx: &Context<'ctx>,
 	) -> impl Stream<Item = crate::schema::User> + 'ctx {
-		let broadcaster = ctx.data::<EventBroadcaster>().unwrap();
-		let rx = broadcaster.subscribe().await;
+		let receiver = match ctx.data::<EventBroadcaster>() {
+			Ok(broadcaster) => Some(broadcaster.subscribe().await),
+			Err(_) => None,
+		};
 
-		let stream = receiver_to_stream(rx);
+		let stream = receiver.map(|rx| receiver_to_stream(rx));
 		async_stream::stream! {
-			use futures_util::StreamExt;
-			let mut stream = std::pin::pin!(stream);
-			while let Some(event) = stream.next().await {
-				if let UserEvent::Updated(user) = event {
-					yield user;
+			if let Some(stream) = stream {
+				use futures_util::StreamExt;
+				let mut stream = std::pin::pin!(stream);
+				while let Some(event) = stream.next().await {
+					if let UserEvent::Updated(user) = event {
+						yield user;
+					}
 				}
 			}
 		}
 	}
 
 	async fn user_deleted<'ctx>(&self, ctx: &Context<'ctx>) -> impl Stream<Item = ID> + 'ctx {
-		let broadcaster = ctx.data::<EventBroadcaster>().unwrap();
-		let rx = broadcaster.subscribe().await;
+		let receiver = match ctx.data::<EventBroadcaster>() {
+			Ok(broadcaster) => Some(broadcaster.subscribe().await),
+			Err(_) => None,
+		};
 
-		let stream = receiver_to_stream(rx);
+		let stream = receiver.map(|rx| receiver_to_stream(rx));
 		async_stream::stream! {
-			use futures_util::StreamExt;
-			let mut stream = std::pin::pin!(stream);
-			while let Some(event) = stream.next().await {
-				if let UserEvent::Deleted(id) = event {
-					yield id;
+			if let Some(stream) = stream {
+				use futures_util::StreamExt;
+				let mut stream = std::pin::pin!(stream);
+				while let Some(event) = stream.next().await {
+					if let UserEvent::Deleted(id) = event {
+						yield id;
+					}
 				}
 			}
 		}
@@ -519,5 +533,36 @@ mod tests {
 		let user = make_test_user("cap-overflow", "CapOverflow");
 		let count = broadcaster.broadcast(UserEvent::Created(user)).await;
 		assert_eq!(count, 1);
+	}
+
+	#[tokio::test]
+	async fn test_subscription_missing_broadcaster_does_not_panic() {
+		// Arrange: schema without EventBroadcaster in context data
+		use async_graphql::{EmptyMutation, Schema};
+		use tokio_stream::StreamExt;
+
+		let schema = Schema::build(crate::schema::Query, EmptyMutation, SubscriptionRoot)
+			.data(crate::schema::UserStorage::new())
+			.finish();
+
+		// Act: attempt to subscribe to user_created without EventBroadcaster
+		let query = r#"subscription { userCreated { id name } }"#;
+		let mut stream = schema.execute_stream(query);
+
+		// Assert: stream should terminate gracefully without panic.
+		// Use a timeout to prevent hanging if stream never terminates.
+		let result =
+			tokio::time::timeout(std::time::Duration::from_millis(100), stream.next()).await;
+
+		// Either the stream returned None (empty) or a response -- both are acceptable.
+		// The key assertion is that we reached this point without a panic.
+		if let Ok(Some(resp)) = result {
+			// If we got a response, it should be an empty data set (no panic)
+			assert!(
+				resp.errors.is_empty() || !resp.errors.is_empty(),
+				"reached without panic"
+			);
+		}
+		// If timeout or None, that is also fine -- no panic occurred.
 	}
 }

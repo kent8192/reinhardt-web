@@ -80,7 +80,10 @@ pub mod di;
 pub mod grpc_service;
 
 pub use context::{DataLoader, GraphQLContext, LoaderError};
-pub use schema::{AppSchema, CreateUserInput, Mutation, Query, User, UserStorage, create_schema};
+pub use schema::{
+	AppSchema, CreateUserInput, Mutation, Query, QueryLimits, User, UserStorage, create_schema,
+	create_schema_with_limits,
+};
 pub use subscription::{DEFAULT_CHANNEL_CAPACITY, EventBroadcaster, SubscriptionRoot, UserEvent};
 
 #[cfg(feature = "graphql-grpc")]
