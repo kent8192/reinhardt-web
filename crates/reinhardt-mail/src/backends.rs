@@ -30,6 +30,11 @@ pub trait EmailBackend: Send + Sync {
 pub fn backend_from_settings(
 	settings: &reinhardt_conf::settings::EmailSettings,
 ) -> crate::EmailResult<Box<dyn EmailBackend>> {
+	// Validate from_email if configured
+	if !settings.from_email.is_empty() {
+		crate::validation::validate_email(&settings.from_email)?;
+	}
+
 	match settings.backend.to_lowercase().as_str() {
 		"smtp" => {
 			let security = match (settings.use_tls, settings.use_ssl) {
@@ -89,6 +94,9 @@ impl EmailBackend for ConsoleBackend {
 				println!("Bcc: {}", msg.bcc().join(", "));
 			}
 			println!("Subject: {}", msg.subject());
+			for (name, value) in msg.headers() {
+				println!("{}: {}", name, value);
+			}
 			println!("\n{}", msg.body());
 			if let Some(html) = msg.html_body() {
 				println!("\n--- HTML ---\n{}", html);
@@ -125,12 +133,18 @@ impl EmailBackend for FileBackend {
 			let path = self.directory.join(filename);
 
 			let mut content = format!(
-				"From: {}\nTo: {}\nSubject: {}\n\n{}",
+				"From: {}\nTo: {}\nSubject: {}",
 				msg.from_email(),
 				msg.to().join(", "),
-				msg.subject(),
-				msg.body()
+				msg.subject()
 			);
+
+			// Include custom headers
+			for (name, value) in msg.headers() {
+				content.push_str(&format!("\n{}: {}", name, value));
+			}
+
+			content.push_str(&format!("\n\n{}", msg.body()));
 
 			// Include HTML body if present
 			if let Some(html) = msg.html_body() {
@@ -262,6 +276,19 @@ impl SmtpConfig {
 		self.timeout = timeout;
 		self
 	}
+
+	/// Validate the SMTP configuration
+	///
+	/// Checks that email-formatted usernames (containing `@`) are valid email addresses.
+	pub fn validate(&self) -> EmailResult<()> {
+		// Validate username if it looks like an email address
+		if let Some(username) = &self.username {
+			if username.contains('@') {
+				crate::validation::validate_email(username)?;
+			}
+		}
+		Ok(())
+	}
 }
 
 /// SMTP backend for sending emails
@@ -287,6 +314,7 @@ pub struct SmtpBackend {
 
 impl SmtpBackend {
 	pub fn new(config: SmtpConfig) -> EmailResult<Self> {
+		config.validate()?;
 		Ok(Self { config })
 	}
 
@@ -439,9 +467,8 @@ impl SmtpBackend {
 				_ => {
 					// Unsupported headers are skipped due to lettre's Header trait design
 					// (the name() method is static, so arbitrary headers cannot be added dynamically)
-					#[cfg(debug_assertions)]
 					eprintln!(
-						"Warning: Skipping unsupported header '{}'. Supported headers: {:?}",
+						"Warning: Skipping unsupported SMTP header '{}'. Supported headers: {:?}",
 						name,
 						crate::headers::SUPPORTED_HEADERS
 					);
@@ -465,15 +492,20 @@ impl SmtpBackend {
 				MultiPart::mixed().singlepart(SinglePart::plain(email.body().to_string()));
 
 			for attachment in email.attachments() {
+				let content_type = header::ContentType::parse(attachment.mime_type())
+					.unwrap_or(header::ContentType::parse("application/octet-stream").unwrap());
+
 				let part = if let Some(cid) = attachment.content_id() {
-					// Inline attachment with content ID
+					// Inline attachment with content ID and Content-Type
 					SinglePart::builder()
+						.header(content_type)
 						.header(header::ContentDisposition::inline())
 						.header(header::ContentId::from(cid.to_string()))
 						.body(attachment.content().to_vec())
 				} else {
-					// Regular attachment
+					// Regular attachment with Content-Type
 					SinglePart::builder()
+						.header(content_type)
 						.header(header::ContentDisposition::attachment(
 							attachment.filename(),
 						))
