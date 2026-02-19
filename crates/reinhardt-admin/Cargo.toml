@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-admin"
-version = "0.1.0-alpha.11"
+version = "0.1.0-alpha.13"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,7 +10,7 @@ publish = true
 
 [dependencies]
 reinhardt-apps = { workspace = true }
-reinhardt-auth = { workspace = true }
+reinhardt-auth = { workspace = true, features = ["argon2-hasher", "params"] }
 reinhardt-core = { workspace = true, features = ["exception"]}
 reinhardt-db = { workspace = true, features = ["orm"] }
 reinhardt-di = { workspace = true }
@@ -81,3 +81,5 @@ tokio-test = { workspace = true }
 rstest = { workspace = true }
 wasm-bindgen-test = "0.3.56"
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio-native-tls"] }
+# Pin to avoid build failure in native-tls 0.2.17 (non-exhaustive pattern in openssl.rs)
+native-tls = { workspace = true }

@@ -133,6 +133,6 @@ db.sqlite3
 .worktrees/
 
 # WASM build artifacts (examples)
-examples/local/examples-twitter/static/admin/
+examples/examples-twitter/static/admin/
 
 docs/plans/

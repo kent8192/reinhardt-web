@@ -66,52 +66,37 @@ jobs:
         with:
           tool: cargo-make
 
+      - name: Install reinhardt-admin
+        run: cargo install --path crates/reinhardt-admin-cli
+
+      - name: Setup local development config
+        run: cp examples/.cargo/config.local.toml examples/.cargo/config.toml
+
       - name: Check Format
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo make fmt-check
 
       - name: Clippy
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo make clippy-check
 
       - name: Build
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo build --all-features
 
       - name: Test
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo nextest run --all-features
 
       - name: Doc Test
-        working-directory: examples/local/${{ matrix.example }}
+        working-directory: examples/${{ matrix.example }}
         run: cargo test --doc --all-features
-
-  test-common-crates:
-    name: Test Common Crates
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.91.1
-
-      - name: Setup protoc
-        uses: ./.github/actions/setup-protoc
-
-      - name: Test common
-        working-directory: examples/remote/common
-        run: cargo test --all-features
-
-      - name: Test test-macros
-        working-directory: examples/remote/test-macros
-        run: cargo test --all-features
 
   compatibility-report:
     name: Compatibility Report
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
-    needs: [test-local-examples, test-common-crates]
+    needs: [test-local-examples]
     steps:
       - name: Report Success
         run: echo "✅ All examples compatible"

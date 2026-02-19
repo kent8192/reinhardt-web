@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-conf"
-version = "0.1.0-alpha.11"
+version = "0.1.0-alpha.12"
 edition.workspace = true
 license.workspace = true
 description = "Configuration management framework for Reinhardt - Django-inspired settings with encryption and secrets management"
@@ -18,6 +18,7 @@ toml = "0.9.8"
 reinhardt-core = { workspace = true, features = ["exception", "validators"] }
 dotenv = "0.15"
 url = "2.5"
+percent-encoding = "2.3"
 secrecy = "0.10.3"
 zeroize = { version = "1.7", features = ["derive"] }
 subtle = "2.5"

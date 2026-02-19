@@ -306,8 +306,11 @@ impl PluginRegistry {
 	/// Gets the topological order for enabling plugins.
 	///
 	/// Returns plugins in an order where dependencies come before dependents.
+	/// Uses Kahn's algorithm: edges point from dependency to dependent,
+	/// so in-degree counts represent the number of unsatisfied dependencies.
 	pub fn get_enable_order(&self) -> PluginResult<Vec<String>> {
 		let deps = self.dependency_graph.read();
+		let reverse_deps = self.dependents.read();
 		let plugins = self.plugins.read();
 
 		// Kahn's algorithm for topological sort
@@ -318,16 +321,17 @@ impl PluginRegistry {
 			in_degree.insert(name.clone(), 0);
 		}
 
-		// Count incoming edges
-		for dependencies in deps.values() {
-			for dep in dependencies {
-				if let Some(degree) = in_degree.get_mut(dep) {
-					*degree += 1;
-				}
+		// Count incoming edges: for each plugin, in-degree = number of dependencies
+		for (plugin_name, dependencies) in deps.iter() {
+			if let Some(degree) = in_degree.get_mut(plugin_name) {
+				*degree = dependencies
+					.iter()
+					.filter(|d| plugins.contains_key(d.as_str()))
+					.count();
 			}
 		}
 
-		// Find nodes with no incoming edges
+		// Start with nodes that have no dependencies (in-degree = 0)
 		let mut queue: Vec<String> = in_degree
 			.iter()
 			.filter(|&(_, &degree)| degree == 0)
@@ -339,12 +343,13 @@ impl PluginRegistry {
 		while let Some(name) = queue.pop() {
 			result.push(name.clone());
 
-			if let Some(dependencies) = deps.get(&name) {
-				for dep in dependencies {
-					if let Some(degree) = in_degree.get_mut(dep) {
+			// For each plugin that depends on this one, decrement its in-degree
+			if let Some(dependents) = reverse_deps.get(&name) {
+				for dependent in dependents {
+					if let Some(degree) = in_degree.get_mut(dependent) {
 						*degree -= 1;
 						if *degree == 0 {
-							queue.push(dep.clone());
+							queue.push(dependent.clone());
 						}
 					}
 				}
@@ -355,8 +360,6 @@ impl PluginRegistry {
 			return Err(PluginError::CircularDependency);
 		}
 
-		// Reverse to get correct order (dependencies first)
-		result.reverse();
 		Ok(result)
 	}
 
@@ -604,11 +607,14 @@ mod tests {
 		}
 
 		fn with_dependency(mut self, dep_name: &str, version_req: &str) -> Self {
-			self.metadata =
-				PluginMetadata::builder(&self.metadata.name, &self.metadata.version.to_string())
-					.depends_on(dep_name, version_req)
-					.build()
-					.unwrap();
+			let mut builder =
+				PluginMetadata::builder(&self.metadata.name, &self.metadata.version.to_string());
+			// Preserve existing dependencies
+			for dep in &self.metadata.dependencies {
+				builder = builder.depends_on(&dep.name, &dep.version_req.to_string());
+			}
+			builder = builder.depends_on(dep_name, version_req);
+			self.metadata = builder.build().unwrap();
 			self
 		}
 	}
@@ -1207,5 +1213,140 @@ mod tests {
 
 		assert!(registry.is_enabled("core-delion"));
 		assert!(registry.is_enabled("auth-delion"));
+	}
+
+	// ==========================================================================
+	// Topological Sort Correctness Tests (#683)
+	// ==========================================================================
+
+	#[rstest::rstest]
+	fn test_enable_order_diamond_dependency() {
+		// Arrange: Diamond pattern A -> B, A -> C, B -> D, C -> D
+		let registry = PluginRegistry::new();
+
+		let d = Arc::new(TestPlugin::new("d-delion", "1.0.0"));
+		let b =
+			Arc::new(TestPlugin::new("b-delion", "1.0.0").with_dependency("d-delion", "^1.0.0"));
+		let c =
+			Arc::new(TestPlugin::new("c-delion", "1.0.0").with_dependency("d-delion", "^1.0.0"));
+		let a = Arc::new(
+			TestPlugin::new("a-delion", "1.0.0")
+				.with_dependency("b-delion", "^1.0.0")
+				.with_dependency("c-delion", "^1.0.0"),
+		);
+
+		registry.register(d).unwrap();
+		registry.register(b).unwrap();
+		registry.register(c).unwrap();
+		registry.register(a).unwrap();
+
+		// Act
+		let order = registry.get_enable_order().unwrap();
+
+		// Assert - dependencies must come before dependents
+		let pos = |name: &str| order.iter().position(|n| n == name).unwrap();
+		assert!(pos("d-delion") < pos("b-delion"));
+		assert!(pos("d-delion") < pos("c-delion"));
+		assert!(pos("b-delion") < pos("a-delion"));
+		assert!(pos("c-delion") < pos("a-delion"));
+	}
+
+	#[rstest::rstest]
+	fn test_enable_order_single_node() {
+		// Arrange
+		let registry = PluginRegistry::new();
+		let plugin = Arc::new(TestPlugin::new("solo-delion", "1.0.0"));
+		registry.register(plugin).unwrap();
+
+		// Act
+		let order = registry.get_enable_order().unwrap();
+
+		// Assert
+		assert_eq!(order.len(), 1);
+		assert_eq!(order[0], "solo-delion");
+	}
+
+	#[rstest::rstest]
+	fn test_enable_order_independent_plugins() {
+		// Arrange - three independent plugins with no dependencies
+		let registry = PluginRegistry::new();
+		registry
+			.register(Arc::new(TestPlugin::new("x-delion", "1.0.0")))
+			.unwrap();
+		registry
+			.register(Arc::new(TestPlugin::new("y-delion", "1.0.0")))
+			.unwrap();
+		registry
+			.register(Arc::new(TestPlugin::new("z-delion", "1.0.0")))
+			.unwrap();
+
+		// Act
+		let order = registry.get_enable_order().unwrap();
+
+		// Assert - all three should be present (any order is valid)
+		assert_eq!(order.len(), 3);
+		assert!(order.contains(&"x-delion".to_string()));
+		assert!(order.contains(&"y-delion".to_string()));
+		assert!(order.contains(&"z-delion".to_string()));
+	}
+
+	#[rstest::rstest]
+	fn test_enable_order_complex_graph() {
+		// Arrange: A -> B, B -> C, D -> C, E is independent
+		let registry = PluginRegistry::new();
+
+		let c = Arc::new(TestPlugin::new("c-delion", "1.0.0"));
+		let b =
+			Arc::new(TestPlugin::new("b-delion", "1.0.0").with_dependency("c-delion", "^1.0.0"));
+		let a =
+			Arc::new(TestPlugin::new("a-delion", "1.0.0").with_dependency("b-delion", "^1.0.0"));
+		let d =
+			Arc::new(TestPlugin::new("d-delion", "1.0.0").with_dependency("c-delion", "^1.0.0"));
+		let e = Arc::new(TestPlugin::new("e-delion", "1.0.0"));
+
+		registry.register(c).unwrap();
+		registry.register(b).unwrap();
+		registry.register(a).unwrap();
+		registry.register(d).unwrap();
+		registry.register(e).unwrap();
+
+		// Act
+		let order = registry.get_enable_order().unwrap();
+
+		// Assert
+		assert_eq!(order.len(), 5);
+		let pos = |name: &str| order.iter().position(|n| n == name).unwrap();
+		assert!(pos("c-delion") < pos("b-delion"));
+		assert!(pos("b-delion") < pos("a-delion"));
+		assert!(pos("c-delion") < pos("d-delion"));
+	}
+
+	#[rstest::rstest]
+	fn test_enable_order_no_false_circular_detection() {
+		// Arrange: A -> B, A -> C (fan-out, no cycle)
+		let registry = PluginRegistry::new();
+
+		let b = Arc::new(TestPlugin::new("b-delion", "1.0.0"));
+		let c = Arc::new(TestPlugin::new("c-delion", "1.0.0"));
+		let a = Arc::new(
+			TestPlugin::new("a-delion", "1.0.0")
+				.with_dependency("b-delion", "^1.0.0")
+				.with_dependency("c-delion", "^1.0.0"),
+		);
+
+		registry.register(b).unwrap();
+		registry.register(c).unwrap();
+		registry.register(a).unwrap();
+
+		// Act
+		let result = registry.get_enable_order();
+
+		// Assert - should succeed, not report false circular dependency
+		assert!(result.is_ok());
+		let order = result.unwrap();
+		assert_eq!(order.len(), 3);
+		let pos = |name: &str| order.iter().position(|n| n == name).unwrap();
+		assert!(pos("b-delion") < pos("a-delion"));
+		assert!(pos("c-delion") < pos("a-delion"));
 	}
 }

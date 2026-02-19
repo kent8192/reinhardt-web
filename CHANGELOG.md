@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.14...reinhardt-web@v0.1.0-alpha.15) - 2026-02-16
+
+### Added
+
+- *(examples)* add settings files for all examples
+- *(examples)* add ci.toml and auto-detect CI environment
+- *(examples)* add docker-compose.yml for PostgreSQL examples
+- *(examples)* add docker-up dependency to runserver for PostgreSQL examples
+
+### Changed
+
+- *(examples)* remove reinhardt-examples references and adopt monorepo-only strategy
+- *(examples)* remove stale staging/production settings templates
+- *(examples)* simplify settings.rs to consistent pattern
+- *(examples)* move docker-compose.yml into each PostgreSQL example
+
+### Documentation
+
+- *(examples)* add quick start instructions to README.md
+
+### Fixed
+
+- *(examples)* update Docker build context and COPY paths for flattened structure
+- *(gitignore)* update stale examples/local path to flattened structure
+- *(ci)* remove stale example package overrides from release-plz.toml
+- *(ci)* remove stale test-common-crates job from test-examples.yml
+- *(examples)* restore required default settings values for Settings deserialization
+
+### Maintenance
+
+- *(examples)* remove stale examples/local settings files
+- *(examples)* remove stale configuration files from old repository
+- *(examples)* remove unused example-common and example-test-macros crates
+- *(examples)* update stale remote-examples-test task in Makefile.toml
+- *(examples)* remove stale help tasks from all example Makefile.toml
+- *(examples)* remove stale availability test referencing deleted example_common crate
+- *(examples)* remove stale settings from example base.toml files
+
+### Other
+
+- Squashed 'examples/' changes from 3a2c7662..77534e4c
+
+### Styling
+
+- format twitter example common component
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.13...reinhardt-web@v0.1.0-alpha.14) - 2026-02-15
+
+### Fixed
+
+- resolve Test Examples CI failures
+
+### Maintenance
+
+- add setup-protoc step to test-examples workflow
+- remove pull_request trigger from test-examples.yml
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.11...reinhardt-web@v0.1.0-alpha.12) - 2026-02-14
 
 ### Maintenance
