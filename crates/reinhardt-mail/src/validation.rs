@@ -139,23 +139,34 @@ pub fn validate_email_list(emails: &[impl AsRef<str>]) -> EmailResult<()> {
 	Ok(())
 }
 
-/// Sanitizes an email address by trimming whitespace and converting to lowercase
+/// Sanitizes an email address by trimming whitespace and lowercasing the domain.
+///
+/// Per RFC 5321 Section 2.4, the local part of an email address is case-sensitive,
+/// while the domain part is case-insensitive. This function only lowercases the
+/// domain part, preserving the original case of the local part.
 ///
 /// # Examples
 ///
 /// ```
 /// use reinhardt_mail::validation::sanitize_email;
 ///
-/// assert_eq!(sanitize_email("  User@Example.COM  ").unwrap(), "user@example.com");
+/// assert_eq!(sanitize_email("  User@Example.COM  ").unwrap(), "User@example.com");
 /// assert_eq!(sanitize_email("user+tag@EXAMPLE.com").unwrap(), "user+tag@example.com");
 /// ```
 pub fn sanitize_email(email: &str) -> EmailResult<String> {
 	let trimmed = email.trim();
 	validate_email(trimmed)?;
-	Ok(trimmed.to_lowercase())
+
+	// RFC 5321: local part is case-sensitive, domain is case-insensitive
+	let (local, domain) = trimmed.rsplit_once('@').ok_or_else(|| {
+		EmailError::InvalidAddress("Email must contain exactly one @ symbol, found 0".to_string())
+	})?;
+	Ok(format!("{}@{}", local, domain.to_lowercase()))
 }
 
 /// Sanitizes a list of email addresses
+///
+/// Preserves case of local parts and lowercases domain parts per RFC 5321.
 ///
 /// # Examples
 ///
@@ -164,7 +175,7 @@ pub fn sanitize_email(email: &str) -> EmailResult<String> {
 ///
 /// let emails = vec!["  User1@Example.COM  ", "User2@EXAMPLE.com"];
 /// let sanitized = sanitize_email_list(&emails).unwrap();
-/// assert_eq!(sanitized, vec!["user1@example.com", "user2@example.com"]);
+/// assert_eq!(sanitized, vec!["User1@example.com", "User2@example.com"]);
 /// ```
 pub fn sanitize_email_list(emails: &[impl AsRef<str>]) -> EmailResult<Vec<String>> {
 	emails.iter().map(|e| sanitize_email(e.as_ref())).collect()
@@ -246,13 +257,18 @@ mod tests {
 
 	#[test]
 	fn test_sanitize_email() {
+		// RFC 5321: local part is case-sensitive, only domain is lowercased
 		assert_eq!(
 			sanitize_email("  User@Example.COM  ").unwrap(),
-			"user@example.com"
+			"User@example.com"
 		);
 		assert_eq!(
 			sanitize_email("USER+TAG@EXAMPLE.COM").unwrap(),
-			"user+tag@example.com"
+			"USER+TAG@example.com"
+		);
+		assert_eq!(
+			sanitize_email("john.smith@example.com").unwrap(),
+			"john.smith@example.com"
 		);
 	}
 
@@ -260,7 +276,7 @@ mod tests {
 	fn test_sanitize_email_list() {
 		let emails = vec!["  User1@Example.COM  ", "User2@EXAMPLE.com"];
 		let sanitized = sanitize_email_list(&emails).unwrap();
-		assert_eq!(sanitized, vec!["user1@example.com", "user2@example.com"]);
+		assert_eq!(sanitized, vec!["User1@example.com", "User2@example.com"]);
 	}
 
 	#[test]

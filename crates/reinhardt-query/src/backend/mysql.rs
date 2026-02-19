@@ -136,13 +136,18 @@ impl MySqlQueryBuilder {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
 			TableRef::SubQuery(query, alias) => {
-				let (sql, _) = self.build_select(query);
+				let (subquery_sql, subquery_values) = self.build_select(query);
+
+				// MySQL uses ? placeholders, no adjustment needed
 				writer.push("(");
-				writer.push(&sql);
+				writer.push(&subquery_sql);
 				writer.push(")");
 				writer.push_keyword("AS");
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+
+				// Merge the values from the subquery
+				writer.append_values(&subquery_values);
 			}
 		}
 	}
@@ -3362,7 +3367,7 @@ mod tests {
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
-		types::IntoIden,
+		types::{Alias, IntoIden},
 	};
 
 	#[test]
@@ -4025,6 +4030,34 @@ mod tests {
 		assert!(sql.contains("`status` = ?"));
 		assert!(sql.contains("`active` = ?"));
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
+	}
+
+	#[test]
+	fn test_from_subquery_preserves_parameter_values() {
+		let builder = MySqlQueryBuilder::new();
+
+		// Arrange
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("active_admins"))
+			.and_where(Expr::col("name").like("A%"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("(SELECT"));
+		assert!(sql.contains(") AS `active_admins`"));
+		// Subquery params (true, "admin") + outer param ("A%") = 3 values
+		assert_eq!(values.len(), 3);
 	}
 
 	// --- Phase 5: NULL Handling Tests ---

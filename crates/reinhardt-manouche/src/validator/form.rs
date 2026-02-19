@@ -318,8 +318,9 @@ fn transform_derived(derived: &Option<FormDerived>) -> Result<Option<TypedFormDe
 ///
 /// Validates that the redirect path:
 /// - Starts with `/` (relative paths)
-/// - Or is a valid URL pattern
+/// - Or is a valid HTTPS URL only (http:// is rejected for security)
 /// - Supports `{param}` syntax for dynamic parameters
+/// - Rejects dangerous schemes (javascript:, data:, vbscript:, file:)
 fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> {
 	let Some(redirect) = redirect else {
 		return Ok(None);
@@ -335,15 +336,44 @@ fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> 
 		));
 	}
 
-	// Path must start with / or be a valid URL (http:// or https://)
-	if !path.starts_with('/') && !path.starts_with("http://") && !path.starts_with("https://") {
+	// Check for dangerous schemes that could enable XSS or other attacks
+	let path_lower = path.to_lowercase();
+	let dangerous_schemes = ["javascript:", "data:", "vbscript:", "file:"];
+	for scheme in &dangerous_schemes {
+		if path_lower.starts_with(scheme) {
+			return Err(Error::new(
+				redirect.span(),
+				format!(
+					"redirect_on_success rejects dangerous scheme '{}'. Use relative path or HTTPS URL instead.",
+					scheme
+				),
+			));
+		}
+	}
+
+	// Allow relative paths (starts with /, ./, or ../)
+	if path.starts_with('/') || path.starts_with("./") || path.starts_with("../") {
+		return Ok(Some(path));
+	}
+
+	// For absolute URLs, only allow HTTPS (not HTTP) for security
+	if path_lower.starts_with("https://") {
+		return Ok(Some(path));
+	}
+
+	// Reject http:// and other schemes
+	if path_lower.starts_with("http://") {
 		return Err(Error::new(
 			redirect.span(),
-			"redirect_on_success path must start with '/' or be a full URL (http:// or https://)",
+			"redirect_on_success rejects HTTP URLs for security. Use HTTPS URL instead.",
 		));
 	}
 
-	Ok(Some(path))
+	// Reject any other scheme or malformed URL
+	Err(Error::new(
+		redirect.span(),
+		"redirect_on_success path must be a relative path (starting with '/', './', or '../') or an HTTPS URL",
+	))
 }
 
 /// Transforms FormSlots to TypedFormSlots.
@@ -3744,5 +3774,330 @@ mod tests {
 			status_field.choices_config.as_ref().unwrap().choices_from,
 			"statuses"
 		);
+	}
+
+	// =========================================================================
+	// redirect_on_success URL Validation Tests (Security: #579, #580)
+	// =========================================================================
+
+	#[rstest]
+	fn test_validate_redirect_relative_path() {
+		// Arrange
+		let input = quote! {
+			name: RedirectForm,
+			action: "/test",
+			redirect_on_success: "/dashboard",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.redirect_on_success, Some("/dashboard".to_string()));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_relative_path_with_dot() {
+		// Arrange
+		let input = quote! {
+			name: DotPathForm,
+			action: "/test",
+			redirect_on_success: "./success",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.redirect_on_success, Some("./success".to_string()));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_relative_path_with_double_dot() {
+		// Arrange
+		let input = quote! {
+			name: DoubleDotForm,
+			action: "/test",
+			redirect_on_success: "../home",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(typed.redirect_on_success, Some("../home".to_string()));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_https_url() {
+		// Arrange
+		let input = quote! {
+			name: HttpsRedirectForm,
+			action: "/test",
+			redirect_on_success: "https://example.com/success",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(
+			typed.redirect_on_success,
+			Some("https://example.com/success".to_string())
+		);
+	}
+
+	#[rstest]
+	fn test_validate_redirect_https_url_uppercase() {
+		// Arrange - HTTPS in uppercase should also be accepted
+		let input = quote! {
+			name: HttpsUpperForm,
+			action: "/test",
+			redirect_on_success: "HTTPS://EXAMPLE.COM/success",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(
+			typed.redirect_on_success,
+			Some("HTTPS://EXAMPLE.COM/success".to_string())
+		);
+	}
+
+	#[rstest]
+	fn test_validate_redirect_http_rejected() {
+		// Arrange - HTTP should be rejected for security (#579)
+		let input = quote! {
+			name: HttpRedirectForm,
+			action: "/test",
+			redirect_on_success: "http://example.com/success",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("rejects HTTP URLs"));
+		assert!(err.contains("HTTPS"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_javascript_rejected() {
+		// Arrange - javascript: scheme should be rejected (#580)
+		let input = quote! {
+			name: JsRedirectForm,
+			action: "/test",
+			redirect_on_success: "javascript:alert('xss')",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("dangerous scheme"));
+		assert!(err.contains("javascript:"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_data_rejected() {
+		// Arrange - data: scheme should be rejected (#580)
+		let input = quote! {
+			name: DataRedirectForm,
+			action: "/test",
+			redirect_on_success: "data:text/html,<script>alert('xss')</script>",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("dangerous scheme"));
+		assert!(err.contains("data:"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_vbscript_rejected() {
+		// Arrange - vbscript: scheme should be rejected (#580)
+		let input = quote! {
+			name: VbsRedirectForm,
+			action: "/test",
+			redirect_on_success: "vbscript:msgbox('xss')",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("dangerous scheme"));
+		assert!(err.contains("vbscript:"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_file_rejected() {
+		// Arrange - file: scheme should be rejected (#580)
+		let input = quote! {
+			name: FileRedirectForm,
+			action: "/test",
+			redirect_on_success: "file:///etc/passwd",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("dangerous scheme"));
+		assert!(err.contains("file:"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_empty_rejected() {
+		// Arrange - empty redirect should be rejected
+		let input = quote! {
+			name: EmptyRedirectForm,
+			action: "/test",
+			redirect_on_success: "",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("cannot be empty"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_invalid_format_rejected() {
+		// Arrange - invalid format should be rejected
+		let input = quote! {
+			name: InvalidRedirectForm,
+			action: "/test",
+			redirect_on_success: "invalid-url",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("relative path") || err.contains("HTTPS"));
+	}
+
+	#[rstest]
+	fn test_validate_redirect_with_dynamic_param() {
+		// Arrange - dynamic parameter syntax should be allowed
+		let input = quote! {
+			name: DynamicRedirectForm,
+			action: "/test",
+			redirect_on_success: "/user/{id}/profile",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert_eq!(
+			typed.redirect_on_success,
+			Some("/user/{id}/profile".to_string())
+		);
+	}
+
+	#[rstest]
+	fn test_validate_redirect_none() {
+		// Arrange - no redirect_on_success should be allowed
+		let input = quote! {
+			name: NoRedirectForm,
+			action: "/test",
+
+			fields: {
+				data: CharField { required },
+			},
+		};
+
+		// Act
+		let result = parse_and_validate(input);
+
+		// Assert
+		assert!(result.is_ok());
+		let typed = result.unwrap();
+		assert!(typed.redirect_on_success.is_none());
 	}
 }
