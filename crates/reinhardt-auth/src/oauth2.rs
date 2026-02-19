@@ -8,6 +8,7 @@ use reinhardt_http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 /// OAuth2 grant type
@@ -316,10 +317,15 @@ impl OAuth2Authentication {
 	}
 
 	/// Validate client credentials
+	///
+	/// Uses constant-time comparison to prevent timing attacks on client secrets.
 	pub fn validate_client(&self, client_id: &str, client_secret: &str) -> bool {
 		let applications = self.applications.lock().unwrap();
 		if let Some(app) = applications.get(client_id) {
-			app.client_secret == client_secret
+			app.client_secret
+				.as_bytes()
+				.ct_eq(client_secret.as_bytes())
+				.into()
 		} else {
 			false
 		}
