@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.15...reinhardt-pages@v0.1.0-alpha.16) - 2026-02-19
+
+### Fixed
+
+- *(admin)* add authentication and authorization enforcement to all endpoints
+- *(security)* escape field names and media paths ([[#594](https://github.com/kent8192/reinhardt-web/issues/594)](https://github.com/kent8192/reinhardt-web/issues/594), [[#595](https://github.com/kent8192/reinhardt-web/issues/595)](https://github.com/kent8192/reinhardt-web/issues/595))
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.1.0-alpha.14...reinhardt-pages@v0.1.0-alpha.15) - 2026-02-16
 
 ### Maintenance

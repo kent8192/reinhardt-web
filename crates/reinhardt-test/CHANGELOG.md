@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.16...reinhardt-test@v0.1.0-alpha.17) - 2026-02-19
+
+### Documentation
+
+- *(test)* add SAFETY comments to unsafe Send/Sync implementations
+
 ## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.15...reinhardt-test@v0.1.0-alpha.16) - 2026-02-16
 
 ### Maintenance
