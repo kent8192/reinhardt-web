@@ -586,6 +586,8 @@ pub struct RabbitMQContainer {
 	host: String,
 	port: u16,
 	management_port: u16,
+	username: String,
+	password: String,
 }
 
 /// Helper function to start a RabbitMQ container
@@ -628,6 +630,8 @@ impl RabbitMQContainer {
 			host: "localhost".to_string(),
 			port,
 			management_port,
+			username: username.to_string(),
+			password: password.to_string(),
 		};
 
 		// Wait for RabbitMQ to be ready
@@ -676,7 +680,10 @@ impl RabbitMQContainer {
 
 	/// Get the AMQP connection URL for RabbitMQ
 	pub fn connection_url(&self) -> String {
-		format!("amqp://guest:guest@{}:{}", self.host, self.port)
+		format!(
+			"amqp://{}:{}@{}:{}",
+			self.username, self.password, self.host, self.port
+		)
 	}
 
 	/// Get the Management UI URL for RabbitMQ
@@ -872,6 +879,33 @@ pub mod sqlite {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_rabbitmq_connection_url_uses_default_credentials() {
+		// Arrange
+		let container = RabbitMQContainer::new().await;
+
+		// Act
+		let url = container.connection_url();
+
+		// Assert
+		assert!(url.starts_with("amqp://guest:guest@"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_rabbitmq_connection_url_uses_custom_credentials() {
+		// Arrange
+		let container = RabbitMQContainer::with_credentials("admin", "secret_pass").await;
+
+		// Act
+		let url = container.connection_url();
+
+		// Assert
+		assert!(url.starts_with("amqp://admin:secret_pass@"));
+	}
 
 	#[tokio::test]
 	async fn test_postgres_container() {
