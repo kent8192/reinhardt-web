@@ -485,43 +485,15 @@ impl IconChild {
 impl FormFieldProperty {
 	/// Returns the property name for named properties and flags.
 	///
-	/// # Panics
-	///
-	/// Panics if called on a Widget, Wrapper, Icon, IconPosition, Attrs, or Bind property.
-	pub fn name(&self) -> &Ident {
+	/// Returns `Some(&Ident)` for `Named` and `Flag` variants,
+	/// `None` for all other variants that have no direct name.
+	// Fixes #829
+	pub fn name(&self) -> Option<&Ident> {
 		match self {
-			FormFieldProperty::Named { name, .. } => name,
-			FormFieldProperty::Flag { name, .. } => name,
-			FormFieldProperty::Widget { .. } => {
-				panic!("Widget property has no direct name")
+			FormFieldProperty::Named { name, .. } | FormFieldProperty::Flag { name, .. } => {
+				Some(name)
 			}
-			FormFieldProperty::Wrapper { .. } => {
-				panic!("Wrapper property has no direct name")
-			}
-			FormFieldProperty::Icon { .. } => {
-				panic!("Icon property has no direct name")
-			}
-			FormFieldProperty::IconPosition { .. } => {
-				panic!("IconPosition property has no direct name")
-			}
-			FormFieldProperty::Attrs { .. } => {
-				panic!("Attrs property has no direct name")
-			}
-			FormFieldProperty::Bind { .. } => {
-				panic!("Bind property has no direct name")
-			}
-			FormFieldProperty::InitialFrom { .. } => {
-				panic!("InitialFrom property has no direct name")
-			}
-			FormFieldProperty::ChoicesFrom { .. } => {
-				panic!("ChoicesFrom property has no direct name")
-			}
-			FormFieldProperty::ChoiceValue { .. } => {
-				panic!("ChoiceValue property has no direct name")
-			}
-			FormFieldProperty::ChoiceLabel { .. } => {
-				panic!("ChoiceLabel property has no direct name")
-			}
+			_ => None,
 		}
 	}
 

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.11...reinhardt-middleware@v0.1.0-alpha.12) - 2026-02-16
+
+### Maintenance
+
+- updated the following local packages: reinhardt-auth
+
+## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.10...reinhardt-middleware@v0.1.0-alpha.11) - 2026-02-15
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf, reinhardt-auth, reinhardt-mail
+
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.9...reinhardt-middleware@v0.1.0-alpha.10) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-auth
+
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.8...reinhardt-middleware@v0.1.0-alpha.9) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf, reinhardt-auth, reinhardt-mail
+
+## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.7...reinhardt-middleware@v0.1.0-alpha.8) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf, reinhardt-auth, reinhardt-mail
+
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.6...reinhardt-middleware@v0.1.0-alpha.7) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-conf, reinhardt-di, reinhardt-auth, reinhardt-mail
+
+## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.5...reinhardt-middleware@v0.1.0-alpha.6) - 2026-02-12
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-conf, reinhardt-auth, reinhardt-http, reinhardt-di, reinhardt-mail
+
 ## [0.1.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.4...reinhardt-middleware@v0.1.0-alpha.5) - 2026-02-10
 
 ### Maintenance

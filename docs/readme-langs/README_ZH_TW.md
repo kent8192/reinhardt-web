@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -49,7 +50,7 @@ Reinhardt匯集了三個世界的精華:
 
 ## ✨ 主要功能
 
-- **型別安全的ORM** 帶編譯時驗證（SeaQuery v1.0.0-rc）
+- **型別安全的ORM** 帶編譯時驗證（reinhardt-query）
 - **強大的序列化器** 帶自動驗證（serde + validator）
 - **FastAPI風格的DI** 帶型別安全的依賴注入和快取
 - **ViewSets** 用於快速CRUD API開發
@@ -537,7 +538,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**注意**: Reinhardt使用[SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query)進行SQL操作。`#[derive(Model)]`巨集自動生成Model trait實作、型別安全的欄位存取器和全域模型註冊表註冊。
+**注意**: Reinhardt使用reinhardt-query進行SQL操作。`#[derive(Model)]`巨集自動生成Model trait實作、型別安全的欄位存取器和全域模型註冊表註冊。
 
 在`src/config/apps.rs`中註冊:
 
@@ -983,7 +984,7 @@ Reinhardt提供可混合搭配的模組化元件:
 | 命令                | `reinhardt-commands`      | 管理CLI工具（startproject等）               |
 | 捷徑                | `reinhardt-shortcuts`     | 常用工具函數                                |
 | **資料庫**          |                           |                                             |
-| ORM                 | `reinhardt-db`            | SeaQuery v1.0.0-rc整合                      |
+| ORM                 | `reinhardt-db`            | reinhardt-query整合                         |
 | **認證**            |                           |                                             |
 | Auth                | `reinhardt-auth`          | JWT、Token、Session、Basic認證、使用者模型 |
 | **REST API**        |                           |                                             |
@@ -1037,6 +1038,16 @@ Reinhardt是一個社群驅動的專案。以下是取得幫助的途徑:
 - [開發設定](../../CONTRIBUTING.md#development-setup)
 - [測試指南](../../CONTRIBUTING.md#testing-guidelines)
 - [提交指南](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ Star 趨勢
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## 授權
 

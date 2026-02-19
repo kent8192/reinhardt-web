@@ -313,7 +313,7 @@ mod tests {
 
 	#[test]
 	fn test_router_outlet() {
-		use super::super::Router;
+		use crate::router::Router;
 		use std::sync::Arc;
 
 		fn test_view() -> Page {
