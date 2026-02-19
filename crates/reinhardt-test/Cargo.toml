@@ -114,6 +114,9 @@ reinhardt-core = { workspace = true, features = [
 reinhardt-utils = { workspace = true, features = ["cache", "staticfiles"] }
 reinhardt-pages = { workspace = true }
 
+# SQL Query Builder (Fixes #872: replaces raw string interpolation)
+sea-query = { workspace = true }
+
 # Token pasting for macros
 paste = "1.0"
 

@@ -108,7 +108,9 @@ fn benchmark_request_factory_operations(c: &mut Criterion) {
 				factory
 					.get("/api/users")
 					.header("Authorization", "Bearer token")
+					.unwrap()
 					.header("Content-Type", "application/json")
+					.unwrap()
 					.build(),
 			);
 		});

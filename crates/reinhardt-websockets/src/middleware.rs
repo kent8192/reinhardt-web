@@ -359,7 +359,15 @@ impl ConnectionMiddleware for OriginValidationMiddleware {
 	}
 }
 
+/// WebSocket close code for "Message Too Big" as defined in RFC 6455 Section 7.4.1
+const CLOSE_CODE_MESSAGE_TOO_BIG: u16 = 1009;
+
 /// Message size limit middleware
+///
+/// Enforces maximum message size to prevent memory exhaustion attacks.
+/// By default, uses a 1 MB limit matching the protocol-level default.
+/// When an oversized message is detected, the connection is closed with
+/// status code 1009 (Message Too Big) as per RFC 6455.
 ///
 /// # Examples
 ///
@@ -370,7 +378,8 @@ impl ConnectionMiddleware for OriginValidationMiddleware {
 /// use std::sync::Arc;
 ///
 /// # tokio_test::block_on(async {
-/// let middleware = MessageSizeLimitMiddleware::new(100);
+/// // Use default 1 MB limit
+/// let middleware = MessageSizeLimitMiddleware::default();
 ///
 /// let (tx, _rx) = mpsc::unbounded_channel();
 /// let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
@@ -378,8 +387,10 @@ impl ConnectionMiddleware for OriginValidationMiddleware {
 /// let small_msg = Message::text("Small".to_string());
 /// assert!(middleware.on_message(&conn, small_msg).await.is_ok());
 ///
+/// // Custom limit
+/// let strict = MessageSizeLimitMiddleware::new(100);
 /// let large_msg = Message::text("x".repeat(200));
-/// assert!(middleware.on_message(&conn, large_msg).await.is_err());
+/// assert!(strict.on_message(&conn, large_msg).await.is_err());
 /// # });
 /// ```
 pub struct MessageSizeLimitMiddleware {
@@ -387,9 +398,23 @@ pub struct MessageSizeLimitMiddleware {
 }
 
 impl MessageSizeLimitMiddleware {
-	/// Create a new message size limit middleware
+	/// Create a new message size limit middleware with a custom limit
 	pub fn new(max_size: usize) -> Self {
 		Self { max_size }
+	}
+
+	/// Get the configured maximum message size
+	pub fn max_size(&self) -> usize {
+		self.max_size
+	}
+}
+
+impl Default for MessageSizeLimitMiddleware {
+	/// Create a message size limit middleware with the default 1 MB limit
+	fn default() -> Self {
+		Self {
+			max_size: crate::protocol::DEFAULT_MAX_MESSAGE_SIZE,
+		}
 	}
 }
 
@@ -397,7 +422,7 @@ impl MessageSizeLimitMiddleware {
 impl MessageMiddleware for MessageSizeLimitMiddleware {
 	async fn on_message(
 		&self,
-		_connection: &Arc<WebSocketConnection>,
+		connection: &Arc<WebSocketConnection>,
 		message: Message,
 	) -> MiddlewareResult<Message> {
 		let size = match &message {
@@ -407,6 +432,15 @@ impl MessageMiddleware for MessageSizeLimitMiddleware {
 		};
 
 		if size > self.max_size {
+			// Send close frame with 1009 (Message Too Big) before rejecting
+			let reason = format!(
+				"Message size {} bytes exceeds limit of {} bytes",
+				size, self.max_size
+			);
+			let _ = connection
+				.close_with_reason(CLOSE_CODE_MESSAGE_TOO_BIG, reason.clone())
+				.await;
+
 			Err(MiddlewareError::MessageRejected(format!(
 				"Message size {} exceeds limit {}",
 				size, self.max_size
@@ -505,7 +539,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_connection_context() {
-		// Arrange / Act
+		// Arrange & Act
 		let context = ConnectionContext::new("192.168.1.1".to_string())
 			.with_header("User-Agent".to_string(), "Test".to_string())
 			.with_metadata("session_id".to_string(), "abc123".to_string());
@@ -553,11 +587,8 @@ mod tests {
 		let middleware = IpFilterMiddleware::whitelist(vec!["192.168.1.1".to_string()]);
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		// Act
-		let result = middleware.on_connect(&mut context).await;
-
-		// Assert
-		assert!(result.is_ok());
+		// Act & Assert
+		assert!(middleware.on_connect(&mut context).await.is_ok());
 	}
 
 	#[rstest]
@@ -585,11 +616,8 @@ mod tests {
 		let middleware = IpFilterMiddleware::blacklist(vec!["10.0.0.1".to_string()]);
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		// Act
-		let result = middleware.on_connect(&mut context).await;
-
-		// Assert
-		assert!(result.is_ok());
+		// Act & Assert
+		assert!(middleware.on_connect(&mut context).await.is_ok());
 	}
 
 	#[rstest]
@@ -615,11 +643,8 @@ mod tests {
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("Small message".to_string());
 
-		// Act
-		let result = middleware.on_message(&conn, msg).await;
-
-		// Assert
-		assert!(result.is_ok());
+		// Act & Assert
+		assert!(middleware.on_message(&conn, msg).await.is_ok());
 	}
 
 	#[rstest]
@@ -643,6 +668,117 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_message_size_limit_default_is_1mb() {
+		// Arrange & Act
+		let middleware = MessageSizeLimitMiddleware::default();
+
+		// Assert
+		assert_eq!(middleware.max_size(), 1_048_576);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_message_size_limit_default_accepts_normal_messages() {
+		// Arrange
+		let middleware = MessageSizeLimitMiddleware::default();
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		// 10 KB message - well within 1 MB limit
+		let msg = Message::text("x".repeat(10_000));
+
+		// Act
+		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_message_size_limit_default_rejects_oversized_messages() {
+		// Arrange
+		let middleware = MessageSizeLimitMiddleware::default();
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		// 2 MB message - exceeds 1 MB limit
+		let msg = Message::text("x".repeat(2 * 1024 * 1024));
+
+		// Act
+		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_message_size_limit_sends_close_frame_on_rejection() {
+		// Arrange
+		let middleware = MessageSizeLimitMiddleware::new(10);
+		let (tx, mut rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+		let msg = Message::text("This exceeds the limit".to_string());
+
+		// Act
+		let result = middleware.on_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_err());
+
+		// Verify close frame was sent with code 1009 (Message Too Big)
+		let close_msg = rx.recv().await.unwrap();
+		match close_msg {
+			Message::Close { code, reason } => {
+				assert_eq!(code, 1009);
+				assert!(reason.contains("exceeds limit"));
+			}
+			_ => panic!("Expected close message with code 1009"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_message_size_limit_binary_messages() {
+		// Arrange
+		let middleware = MessageSizeLimitMiddleware::new(100);
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+
+		// Act - within limit
+		let small_binary = Message::binary(vec![0u8; 50]);
+		assert!(middleware.on_message(&conn, small_binary).await.is_ok());
+
+		// Act - exceeds limit
+		let large_binary = Message::binary(vec![0u8; 200]);
+		let result = middleware.on_message(&conn, large_binary).await;
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_message_size_limit_control_frames_always_pass() {
+		// Arrange
+		let middleware = MessageSizeLimitMiddleware::new(1);
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+
+		// Act & Assert - control frames (Ping, Pong) should always pass
+		assert!(middleware.on_message(&conn, Message::Ping).await.is_ok());
+		assert!(middleware.on_message(&conn, Message::Pong).await.is_ok());
+	}
+
+	#[rstest]
+	fn test_message_size_limit_custom_configuration() {
+		// Arrange & Act
+		let middleware = MessageSizeLimitMiddleware::new(512 * 1024); // 512 KB
+
+		// Assert
+		assert_eq!(middleware.max_size(), 512 * 1024);
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn test_middleware_chain_connect() {
 		// Arrange
@@ -650,11 +786,8 @@ mod tests {
 		chain.add_connection_middleware(Box::new(LoggingMiddleware::new("WS".to_string())));
 		let mut context = ConnectionContext::new("192.168.1.1".to_string());
 
-		// Act
-		let result = chain.process_connect(&mut context).await;
-
-		// Assert
-		assert!(result.is_ok());
+		// Act & Assert
+		assert!(chain.process_connect(&mut context).await.is_ok());
 	}
 
 	#[rstest]
@@ -667,11 +800,8 @@ mod tests {
 		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
 		let msg = Message::text("Test".to_string());
 
-		// Act
-		let result = chain.process_message(&conn, msg).await;
-
-		// Assert
-		assert!(result.is_ok());
+		// Act & Assert
+		assert!(chain.process_message(&conn, msg).await.is_ok());
 	}
 
 	#[rstest]
@@ -684,11 +814,8 @@ mod tests {
 		])));
 		let mut context = ConnectionContext::new("10.0.0.1".to_string());
 
-		// Act
-		let result = chain.process_connect(&mut context).await;
-
-		// Assert
-		assert!(result.is_err());
+		// Act & Assert
+		assert!(chain.process_connect(&mut context).await.is_err());
 	}
 
 	#[rstest]
@@ -783,7 +910,7 @@ mod tests {
 			"https://staging.example.com".to_string(),
 		]);
 
-		// Act / Assert - each allowed origin should be accepted
+		// Act & Assert - each allowed origin should be accepted
 		let mut ctx1 = ConnectionContext::new("10.0.0.1".to_string())
 			.with_header("Origin".to_string(), "https://example.com".to_string());
 		assert!(middleware.on_connect(&mut ctx1).await.is_ok());
@@ -810,7 +937,7 @@ mod tests {
 		// Arrange - Origin matching is case-sensitive per RFC 6454
 		let middleware = OriginValidationMiddleware::new(vec!["https://example.com".to_string()]);
 
-		// Act / Assert - exact case matches
+		// Act & Assert - exact case matches
 		let mut ctx_match = ConnectionContext::new("10.0.0.1".to_string())
 			.with_header("Origin".to_string(), "https://example.com".to_string());
 		assert!(middleware.on_connect(&mut ctx_match).await.is_ok());
@@ -823,5 +950,22 @@ mod tests {
 		let mut ctx_all_upper = ConnectionContext::new("10.0.0.3".to_string())
 			.with_header("Origin".to_string(), "HTTPS://EXAMPLE.COM".to_string());
 		assert!(middleware.on_connect(&mut ctx_all_upper).await.is_err());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_middleware_chain_with_default_size_limit() {
+		// Arrange
+		let mut chain = MiddlewareChain::new();
+		chain.add_message_middleware(Box::new(MessageSizeLimitMiddleware::default()));
+		let (tx, _rx) = mpsc::unbounded_channel();
+		let conn = Arc::new(WebSocketConnection::new("test".to_string(), tx));
+
+		// Act - normal message should pass through default chain
+		let msg = Message::text("Normal message".to_string());
+		let result = chain.process_message(&conn, msg).await;
+
+		// Assert
+		assert!(result.is_ok());
 	}
 }

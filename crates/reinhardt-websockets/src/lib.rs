@@ -172,7 +172,10 @@ pub use channels::{
 };
 #[cfg(feature = "compression")]
 pub use compression::{CompressionCodec, compress_message, decompress_message};
-pub use connection::{Message, WebSocketConnection, WebSocketError, WebSocketResult};
+pub use connection::{
+	ConnectionConfig, ConnectionTimeoutMonitor, Message, WebSocketConnection, WebSocketError,
+	WebSocketResult,
+};
 pub use consumers::{
 	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
 	WebSocketConsumer,
@@ -188,18 +191,21 @@ pub use middleware::{
 	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
 	MiddlewareResult, OriginValidationMiddleware,
 };
-pub use protocol::default_websocket_config;
+pub use protocol::{
+	DEFAULT_MAX_FRAME_SIZE, DEFAULT_MAX_MESSAGE_SIZE, default_websocket_config,
+	websocket_config_with_limits,
+};
 pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
 #[cfg(feature = "redis-channel")]
 pub use redis_channel::{RedisChannelLayer, RedisConfig};
-pub use room::{Room, RoomError, RoomManager, RoomResult};
+pub use room::{BroadcastResult, Room, RoomError, RoomManager, RoomResult};
 pub use routing::{
 	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
 };
 pub use throttling::{
-	CombinedThrottler, ConnectionThrottler, RateLimitConfig, RateLimiter, ThrottleError,
-	ThrottleResult,
+	CombinedThrottler, ConnectionRateLimiter, ConnectionThrottler, RateLimitConfig,
+	RateLimitMiddleware, RateLimiter, ThrottleError, ThrottleResult, WebSocketRateLimitConfig,
 };
 
 #[cfg(test)]
