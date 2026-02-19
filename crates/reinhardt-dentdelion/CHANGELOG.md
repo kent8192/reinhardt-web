@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.11...reinhardt-dentdelion@v0.1.0-alpha.12) - 2026-02-19
+
+### Fixed
+
+- *(dentdelion)* add SQL validation for WASM plugin queries
+
 ## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.1.0-alpha.10...reinhardt-dentdelion@v0.1.0-alpha.11) - 2026-02-16
 
 ### Maintenance
