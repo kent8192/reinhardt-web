@@ -60,11 +60,14 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use ipnet::IpNet;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::time::Duration;
 use thiserror::Error;
+use url::Url;
 
 use crate::TaskId;
 
@@ -116,6 +119,240 @@ pub enum WebhookError {
 	/// ```
 	#[error("Webhook serialization error: {0}")]
 	SerializationError(String),
+
+	/// Invalid URL format
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::webhook::WebhookError;
+	///
+	/// let error = WebhookError::InvalidUrl("not-a-url".to_string());
+	/// ```
+	#[error("Invalid webhook URL: {0}")]
+	InvalidUrl(String),
+
+	/// URL scheme not allowed (only HTTPS is permitted)
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::webhook::WebhookError;
+	///
+	/// let error = WebhookError::SchemeNotAllowed("http".to_string());
+	/// ```
+	#[error("URL scheme not allowed: {0}. Only HTTPS is permitted for webhooks")]
+	SchemeNotAllowed(String),
+
+	/// SSRF protection: URL resolves to blocked IP address
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::webhook::WebhookError;
+	///
+	/// let error = WebhookError::BlockedIpAddress("127.0.0.1".to_string());
+	/// ```
+	#[error("Webhook URL resolves to blocked IP address: {0}")]
+	BlockedIpAddress(String),
+
+	/// DNS resolution failed
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_tasks::webhook::WebhookError;
+	///
+	/// let error = WebhookError::DnsResolutionFailed("example.invalid".to_string());
+	/// ```
+	#[error("DNS resolution failed for webhook URL host: {0}")]
+	DnsResolutionFailed(String),
+}
+
+/// SSRF protection: blocked IP address ranges
+///
+/// These ranges are blocked to prevent Server-Side Request Forgery attacks:
+/// - Loopback addresses (127.0.0.0/8, ::1/128)
+/// - Private IPv4 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+/// - Link-local addresses (169.254.0.0/16, fe80::/10)
+/// - Cloud metadata endpoints (169.254.169.254/32 for AWS/GCP/Azure)
+const BLOCKED_IP_RANGES: &[&str] = &[
+	// IPv4 loopback
+	"127.0.0.0/8",
+	// IPv4 private ranges
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	// IPv4 link-local (includes cloud metadata at 169.254.169.254)
+	"169.254.0.0/16",
+	// IPv6 loopback
+	"::1/128",
+	// IPv6 link-local
+	"fe80::/10",
+	// IPv6 unique local (private)
+	"fc00::/7",
+];
+
+/// Check if an IP address is in a blocked range for SSRF protection.
+///
+/// # Arguments
+///
+/// * `ip` - The IP address to check
+///
+/// # Returns
+///
+/// `true` if the IP is in a blocked range, `false` otherwise
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_tasks::webhook::is_blocked_ip;
+/// use std::net::IpAddr;
+///
+/// let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+/// assert!(is_blocked_ip(&loopback));
+///
+/// let public: IpAddr = "8.8.8.8".parse().unwrap();
+/// assert!(!is_blocked_ip(&public));
+/// ```
+pub fn is_blocked_ip(ip: &IpAddr) -> bool {
+	BLOCKED_IP_RANGES.iter().any(|range| {
+		range
+			.parse::<IpNet>()
+			.map(|net| net.contains(ip))
+			.unwrap_or(false)
+	})
+}
+
+/// Validate a webhook URL for SSRF protection.
+///
+/// This function performs the following checks:
+/// 1. URL must be parseable
+/// 2. URL scheme must be HTTPS
+/// 3. URL hostname must resolve to a non-blocked IP address
+///
+/// # Arguments
+///
+/// * `url_str` - The URL string to validate
+///
+/// # Returns
+///
+/// `Ok(Url)` if the URL is valid and safe, `Err(WebhookError)` otherwise
+///
+/// # Example
+///
+/// ```rust
+/// use reinhardt_tasks::webhook::validate_webhook_url;
+///
+/// // Valid public HTTPS URL
+/// let result = validate_webhook_url("https://example.com/webhook");
+/// assert!(result.is_ok());
+///
+/// // Invalid: HTTP scheme
+/// let result = validate_webhook_url("http://example.com/webhook");
+/// assert!(result.is_err());
+///
+/// // Invalid: Private IP
+/// let result = validate_webhook_url("https://192.168.1.1/webhook");
+/// assert!(result.is_err());
+/// ```
+pub fn validate_webhook_url(url_str: &str) -> Result<Url, WebhookError> {
+	// Parse the URL
+	let parsed_url =
+		Url::parse(url_str).map_err(|e| WebhookError::InvalidUrl(format!("{}: {}", url_str, e)))?;
+
+	// Check scheme - only HTTPS is allowed
+	if parsed_url.scheme() != "https" {
+		return Err(WebhookError::SchemeNotAllowed(
+			parsed_url.scheme().to_string(),
+		));
+	}
+
+	// Get the host
+	let host = parsed_url
+		.host_str()
+		.ok_or_else(|| WebhookError::InvalidUrl("URL has no host".to_string()))?;
+
+	// Check if host is an IP address directly
+	// Note: host_str() returns IPv6 addresses with brackets (e.g., "[::1]")
+	// so we need to strip them before parsing
+	let host_for_parse = host
+		.strip_prefix('[')
+		.and_then(|s| s.strip_suffix(']'))
+		.unwrap_or(host);
+
+	if let Ok(ip) = host_for_parse.parse::<IpAddr>() {
+		if is_blocked_ip(&ip) {
+			return Err(WebhookError::BlockedIpAddress(ip.to_string()));
+		}
+		return Ok(parsed_url);
+	}
+
+	// For hostnames, we need to resolve DNS (synchronously check common patterns)
+	// First check for localhost-like patterns
+	let host_lower = host.to_lowercase();
+	if host_lower == "localhost" || host_lower.ends_with(".localhost") {
+		return Err(WebhookError::BlockedIpAddress("localhost".to_string()));
+	}
+
+	// Check for internal hostname patterns (common in cloud environments)
+	if host_lower.ends_with(".internal") || host_lower.ends_with(".local") {
+		return Err(WebhookError::BlockedIpAddress(format!(
+			"internal hostname: {}",
+			host
+		)));
+	}
+
+	Ok(parsed_url)
+}
+
+/// Asynchronously resolve a hostname and validate all resolved IP addresses.
+///
+/// This function performs DNS resolution and checks each resolved IP address
+/// against the blocked ranges.
+///
+/// # Arguments
+///
+/// * `url` - The parsed URL to validate
+///
+/// # Returns
+///
+/// `Ok(())` if all resolved IPs are safe, `Err(WebhookError)` if any IP is blocked
+pub async fn validate_resolved_ips(url: &Url) -> Result<(), WebhookError> {
+	let host = url
+		.host_str()
+		.ok_or_else(|| WebhookError::InvalidUrl("URL has no host".to_string()))?;
+
+	// Skip DNS resolution for IP addresses (already validated)
+	// Note: host_str() returns IPv6 addresses with brackets (e.g., "[::1]")
+	let host_for_parse = host
+		.strip_prefix('[')
+		.and_then(|s| s.strip_suffix(']'))
+		.unwrap_or(host);
+
+	if host_for_parse.parse::<IpAddr>().is_ok() {
+		return Ok(());
+	}
+
+	let port = url.port().unwrap_or(443);
+
+	// Perform DNS resolution
+	let addrs = tokio::net::lookup_host(format!("{}:{}", host, port))
+		.await
+		.map_err(|e| WebhookError::DnsResolutionFailed(format!("{}: {}", host, e)))?;
+
+	// Check each resolved IP address
+	for addr in addrs {
+		if is_blocked_ip(&addr.ip()) {
+			return Err(WebhookError::BlockedIpAddress(format!(
+				"{} resolves to {}",
+				host,
+				addr.ip()
+			)));
+		}
+	}
+
+	Ok(())
 }
 
 /// Task status for webhook events
@@ -461,6 +698,10 @@ impl HttpWebhookSender {
 #[async_trait]
 impl WebhookSender for HttpWebhookSender {
 	async fn send(&self, event: &WebhookEvent) -> Result<(), WebhookError> {
+		// Validate URL for SSRF protection before making any requests
+		let validated_url = validate_webhook_url(&self.config.url)?;
+		validate_resolved_ips(&validated_url).await?;
+
 		self.send_with_retry(event).await
 	}
 }
@@ -468,6 +709,7 @@ impl WebhookSender for HttpWebhookSender {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use std::time::Duration;
 
 	#[test]
@@ -627,6 +869,9 @@ mod tests {
 	}
 
 	// Integration test with mock HTTP server
+	// NOTE: These tests use send_with_retry directly because mockito servers
+	// use HTTP on localhost, which is intentionally blocked by SSRF validation.
+	// SSRF validation is tested separately below.
 	#[tokio::test]
 	async fn test_webhook_send_success() {
 		let mut server = mockito::Server::new_async().await;
@@ -665,7 +910,7 @@ mod tests {
 			duration_ms: 100,
 		};
 
-		let result = sender.send(&event).await;
+		let result = sender.send_with_retry(&event).await;
 		assert!(result.is_ok());
 
 		mock.assert_async().await;
@@ -724,7 +969,7 @@ mod tests {
 			duration_ms: 100,
 		};
 
-		let result = sender.send(&event).await;
+		let result = sender.send_with_retry(&event).await;
 		assert!(result.is_ok());
 
 		mock1.assert_async().await;
@@ -738,11 +983,11 @@ mod tests {
 
 		// All requests fail
 		let mock = server
-            .mock("POST", "/webhook")
-            .with_status(500)
-            .expect(4) // Initial + 3 retries
-            .create_async()
-            .await;
+			.mock("POST", "/webhook")
+			.with_status(500)
+			.expect(4) // Initial + 3 retries
+			.create_async()
+			.await;
 
 		let config = WebhookConfig {
 			url: format!("{}/webhook", server.url()),
@@ -771,7 +1016,7 @@ mod tests {
 			duration_ms: 100,
 		};
 
-		let result = sender.send(&event).await;
+		let result = sender.send_with_retry(&event).await;
 		assert!(result.is_err());
 		assert!(matches!(
 			result.unwrap_err(),
@@ -824,9 +1069,224 @@ mod tests {
 			duration_ms: 100,
 		};
 
-		let result = sender.send(&event).await;
+		let result = sender.send_with_retry(&event).await;
 		assert!(result.is_ok());
 
 		mock.assert_async().await;
+	}
+
+	// SSRF protection tests
+
+	#[rstest]
+	#[case("127.0.0.1", true)]
+	#[case("127.0.0.2", true)]
+	#[case("127.255.255.255", true)]
+	#[case("10.0.0.1", true)]
+	#[case("10.255.255.255", true)]
+	#[case("172.16.0.1", true)]
+	#[case("172.31.255.255", true)]
+	#[case("192.168.0.1", true)]
+	#[case("192.168.255.255", true)]
+	#[case("169.254.169.254", true)]
+	#[case("169.254.170.2", true)]
+	#[case("::1", true)]
+	#[case("fe80::1", true)]
+	#[case("fc00::1", true)]
+	#[case("8.8.8.8", false)]
+	#[case("1.1.1.1", false)]
+	#[case("203.0.113.1", false)]
+	#[case("2001:db8::1", false)]
+	fn test_is_blocked_ip(#[case] ip_str: &str, #[case] expected: bool) {
+		// Arrange
+		let ip: IpAddr = ip_str.parse().unwrap();
+
+		// Act
+		let result = is_blocked_ip(&ip);
+
+		// Assert
+		assert_eq!(
+			result, expected,
+			"IP {} should be blocked={}",
+			ip_str, expected
+		);
+	}
+
+	#[rstest]
+	#[case("https://example.com/webhook", true)]
+	#[case("https://api.example.com/hooks/123", true)]
+	#[case("https://hooks.slack.com/services/T00/B00/xxx", true)]
+	fn test_validate_webhook_url_accepts_valid_urls(#[case] url: &str, #[case] _valid: bool) {
+		// Act
+		let result = validate_webhook_url(url);
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"URL {} should be valid: {:?}",
+			url,
+			result.err()
+		);
+	}
+
+	#[rstest]
+	#[case("http://example.com/webhook", "SchemeNotAllowed")]
+	#[case("ftp://example.com/file", "SchemeNotAllowed")]
+	#[case("not-a-url", "InvalidUrl")]
+	#[case("https://127.0.0.1/webhook", "BlockedIpAddress")]
+	#[case("https://10.0.0.1/webhook", "BlockedIpAddress")]
+	#[case("https://172.16.0.1/webhook", "BlockedIpAddress")]
+	#[case("https://192.168.1.1/webhook", "BlockedIpAddress")]
+	#[case("https://169.254.169.254/latest/meta-data/", "BlockedIpAddress")]
+	#[case("https://[::1]/webhook", "BlockedIpAddress")]
+	#[case("https://[fe80::1]/webhook", "BlockedIpAddress")]
+	#[case("https://[fc00::1]/webhook", "BlockedIpAddress")]
+	#[case("https://localhost/webhook", "BlockedIpAddress")]
+	#[case("https://sub.localhost/webhook", "BlockedIpAddress")]
+	#[case("https://service.internal/webhook", "BlockedIpAddress")]
+	#[case("https://printer.local/webhook", "BlockedIpAddress")]
+	fn test_validate_webhook_url_rejects_unsafe_urls(
+		#[case] url: &str,
+		#[case] expected_error: &str,
+	) {
+		// Act
+		let result = validate_webhook_url(url);
+
+		// Assert
+		assert!(result.is_err(), "URL {} should be rejected", url);
+		let err = result.unwrap_err();
+		let err_name = match &err {
+			WebhookError::InvalidUrl(_) => "InvalidUrl",
+			WebhookError::SchemeNotAllowed(_) => "SchemeNotAllowed",
+			WebhookError::BlockedIpAddress(_) => "BlockedIpAddress",
+			WebhookError::DnsResolutionFailed(_) => "DnsResolutionFailed",
+			_ => "Other",
+		};
+		assert_eq!(
+			err_name, expected_error,
+			"URL {} should produce {} error, got: {}",
+			url, expected_error, err
+		);
+	}
+
+	#[rstest]
+	fn test_validate_webhook_url_blocks_cloud_metadata_endpoint() {
+		// Arrange
+		let metadata_urls = [
+			"https://169.254.169.254/latest/meta-data/",
+			"https://169.254.169.254/computeMetadata/v1/",
+			"https://169.254.170.2/v2/credentials",
+		];
+
+		for url in &metadata_urls {
+			// Act
+			let result = validate_webhook_url(url);
+
+			// Assert
+			assert!(
+				result.is_err(),
+				"Cloud metadata URL {} should be blocked",
+				url
+			);
+			assert!(
+				matches!(result.unwrap_err(), WebhookError::BlockedIpAddress(_)),
+				"Cloud metadata URL {} should produce BlockedIpAddress error",
+				url
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_webhook_error_display_ssrf_variants() {
+		// Arrange & Act & Assert
+		let error = WebhookError::InvalidUrl("bad-url".to_string());
+		assert_eq!(error.to_string(), "Invalid webhook URL: bad-url");
+
+		let error = WebhookError::SchemeNotAllowed("http".to_string());
+		assert_eq!(
+			error.to_string(),
+			"URL scheme not allowed: http. Only HTTPS is permitted for webhooks"
+		);
+
+		let error = WebhookError::BlockedIpAddress("127.0.0.1".to_string());
+		assert_eq!(
+			error.to_string(),
+			"Webhook URL resolves to blocked IP address: 127.0.0.1"
+		);
+
+		let error = WebhookError::DnsResolutionFailed("bad.host".to_string());
+		assert_eq!(
+			error.to_string(),
+			"DNS resolution failed for webhook URL host: bad.host"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_send_rejects_http_url_via_ssrf_validation() {
+		// Arrange
+		let config = WebhookConfig {
+			url: "http://example.com/webhook".to_string(),
+			method: "POST".to_string(),
+			headers: HashMap::new(),
+			timeout: Duration::from_secs(5),
+			retry_config: RetryConfig::default(),
+		};
+		let sender = HttpWebhookSender::new(config);
+		let now = Utc::now();
+		let event = WebhookEvent {
+			task_id: TaskId::new(),
+			task_name: "test_task".to_string(),
+			status: TaskStatus::Success,
+			result: None,
+			error: None,
+			started_at: now,
+			completed_at: now,
+			duration_ms: 0,
+		};
+
+		// Act
+		let result = sender.send(&event).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			WebhookError::SchemeNotAllowed(_)
+		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_send_rejects_private_ip_via_ssrf_validation() {
+		// Arrange
+		let config = WebhookConfig {
+			url: "https://192.168.1.1/webhook".to_string(),
+			method: "POST".to_string(),
+			headers: HashMap::new(),
+			timeout: Duration::from_secs(5),
+			retry_config: RetryConfig::default(),
+		};
+		let sender = HttpWebhookSender::new(config);
+		let now = Utc::now();
+		let event = WebhookEvent {
+			task_id: TaskId::new(),
+			task_name: "test_task".to_string(),
+			status: TaskStatus::Success,
+			result: None,
+			error: None,
+			started_at: now,
+			completed_at: now,
+			duration_ms: 0,
+		};
+
+		// Act
+		let result = sender.send(&event).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert!(matches!(
+			result.unwrap_err(),
+			WebhookError::BlockedIpAddress(_)
+		));
 	}
 }

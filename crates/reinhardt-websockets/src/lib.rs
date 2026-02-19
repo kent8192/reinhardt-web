@@ -172,7 +172,10 @@ pub use channels::{
 };
 #[cfg(feature = "compression")]
 pub use compression::{CompressionCodec, compress_message, decompress_message};
-pub use connection::{Message, WebSocketConnection, WebSocketError, WebSocketResult};
+pub use connection::{
+	ConnectionConfig, ConnectionTimeoutMonitor, Message, WebSocketConnection, WebSocketError,
+	WebSocketResult,
+};
 pub use consumers::{
 	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
 	WebSocketConsumer,
