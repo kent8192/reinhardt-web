@@ -17,6 +17,10 @@ use crate::{
 	IconElement, IconPosition, ValidatorRule, WrapperAttr, WrapperElement,
 };
 
+/// Maximum nesting depth for SVG icon child elements.
+/// Prevents stack overflow from deeply nested SVG structures. (Fixes #825)
+const MAX_NESTING_DEPTH: usize = 64;
+
 impl Parse for FormMacro {
 	fn parse(input: ParseStream) -> Result<Self> {
 		let span = input.span();
@@ -480,7 +484,7 @@ fn parse_icon_content(input: ParseStream) -> Result<(Vec<IconAttr>, Vec<IconChil
 			// Child element: path { d: "..." }
 			let content;
 			braced!(content in input);
-			let child = parse_icon_child(name, &content, span)?;
+			let child = parse_icon_child(name, &content, span, MAX_NESTING_DEPTH)?;
 			children.push(child);
 		} else if input.peek(Token![:]) {
 			// Attribute: class: "..."
@@ -501,7 +505,17 @@ fn parse_icon_content(input: ParseStream) -> Result<(Vec<IconAttr>, Vec<IconChil
 }
 
 /// Parses a single SVG child element (path, circle, rect, g, etc.)
-fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconChild> {
+///
+/// The `depth` parameter limits recursion to prevent stack overflow
+/// from deeply nested SVG structures. (Fixes #825)
+fn parse_icon_child(tag: Ident, input: ParseStream, span: Span, depth: usize) -> Result<IconChild> {
+	if depth == 0 {
+		return Err(syn::Error::new(
+			span,
+			"SVG icon nesting depth exceeded maximum limit",
+		));
+	}
+
 	let mut attrs = Vec::new();
 	let mut children = Vec::new();
 
@@ -513,7 +527,7 @@ fn parse_icon_child(tag: Ident, input: ParseStream, span: Span) -> Result<IconCh
 			// Nested child element (for g, defs, etc.)
 			let content;
 			braced!(content in input);
-			let child = parse_icon_child(name, &content, attr_span)?;
+			let child = parse_icon_child(name, &content, attr_span, depth - 1)?;
 			children.push(child);
 		} else if input.peek(Token![:]) {
 			// Attribute
