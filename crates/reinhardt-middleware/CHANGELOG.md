@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.12...reinhardt-middleware@v0.1.0-alpha.13) - 2026-02-19
+
+### Added
+
+- *(middleware)* add security middleware components (Refs [[#292](https://github.com/kent8192/reinhardt-web/issues/292)](https://github.com/kent8192/reinhardt-web/issues/292))
+
+### Security
+
+- *(http)* validate CORS origin against request per Fetch Standard
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.1.0-alpha.11...reinhardt-middleware@v0.1.0-alpha.12) - 2026-02-16
 
 ### Maintenance
