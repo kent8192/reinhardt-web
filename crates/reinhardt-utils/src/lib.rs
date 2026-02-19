@@ -46,6 +46,9 @@ pub mod humanize;
 // Re-export utils-core modules
 pub use crate::utils_core::{dateformat, encoding, html, text, timezone};
 
+pub use crate::utils_core::lock_recovery::{
+	LockRecoveryError, recover_mutex, recover_rwlock_read, recover_rwlock_write,
+};
 pub use crate::utils_core::path_safety::{
 	PathTraversalError, is_safe_filename_component, safe_path_join,
 };
