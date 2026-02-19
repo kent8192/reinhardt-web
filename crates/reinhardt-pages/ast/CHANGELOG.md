@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.3...reinhardt-pages-ast@v0.1.0-alpha.4) - 2026-02-19
+
+### Fixed
+
+- *(pages-ast)* add max nesting depth to SVG icon parser
+- *(pages-ast)* add max nesting depth to page parser
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.2...reinhardt-pages-ast@v0.1.0-alpha.3) - 2026-02-05
 
 ### Fixed
