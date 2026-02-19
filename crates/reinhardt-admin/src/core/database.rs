@@ -216,8 +216,7 @@ fn annotation_expr_to_safe_expr(expr: &reinhardt_db::orm::annotation::Expression
 			SimpleExpr::from(case)
 		}
 		AnnotExpr::Coalesce(values) => {
-			let exprs: Vec<SimpleExpr> =
-				values.iter().map(annotation_value_to_safe_expr).collect();
+			let exprs: Vec<SimpleExpr> = values.iter().map(annotation_value_to_safe_expr).collect();
 			if exprs.is_empty() {
 				Expr::val(Option::<String>::None).into()
 			} else {

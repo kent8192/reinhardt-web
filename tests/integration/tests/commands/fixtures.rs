@@ -8,7 +8,7 @@ use reinhardt_db::migrations::{Migration, Operation};
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
-use reinhardt_test::fixtures::{postgres_container, TestMigrationSource};
+use reinhardt_test::fixtures::{TestMigrationSource, postgres_container};
 use rstest::*;
 use sqlx::PgPool;
 use std::path::PathBuf;
