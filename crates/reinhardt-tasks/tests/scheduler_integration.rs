@@ -112,7 +112,7 @@ fn test_scheduler_new() {
 #[test]
 fn test_scheduler_add_task() {
 	let mut scheduler = Scheduler::new();
-	let executor = Box::new(TestExecutor::new("test_task"));
+	let executor = Arc::new(TestExecutor::new("test_task"));
 	let schedule = Box::new(CronSchedule::new("0 0 * * *".to_string()));
 
 	scheduler.add_task(executor, schedule);
@@ -124,15 +124,15 @@ fn test_scheduler_add_task() {
 fn test_scheduler_multiple_tasks() {
 	let mut scheduler = Scheduler::new();
 
-	let executor1 = Box::new(TestExecutor::new("task1"));
+	let executor1 = Arc::new(TestExecutor::new("task1"));
 	let schedule1 = Box::new(CronSchedule::new("0 0 * * *".to_string()));
 	scheduler.add_task(executor1, schedule1);
 
-	let executor2 = Box::new(TestExecutor::new("task2"));
+	let executor2 = Arc::new(TestExecutor::new("task2"));
 	let schedule2 = Box::new(CronSchedule::new("0 * * * *".to_string()));
 	scheduler.add_task(executor2, schedule2);
 
-	let executor3 = Box::new(TestExecutor::new("task3"));
+	let executor3 = Arc::new(TestExecutor::new("task3"));
 	let schedule3 = Box::new(CronSchedule::new("*/5 * * * *".to_string()));
 	scheduler.add_task(executor3, schedule3);
 
@@ -160,7 +160,7 @@ impl Schedule for FixedSchedule {
 #[test]
 fn test_scheduler_with_custom_schedule() {
 	let mut scheduler = Scheduler::new();
-	let executor = Box::new(TestExecutor::new("custom_task"));
+	let executor = Arc::new(TestExecutor::new("custom_task"));
 	let next_time = Utc::now() + Duration::hours(1);
 	let schedule = Box::new(FixedSchedule::new(next_time));
 

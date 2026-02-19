@@ -110,13 +110,29 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
 			TableRef::SubQuery(query, alias) => {
-				let (sql, _) = self.build_select(query);
+				let (subquery_sql, subquery_values) = self.build_select(query);
+
+				// Adjust placeholders for PostgreSQL ($1, $2, ... -> $N, $N+1, ...)
+				let offset = writer.param_index() - 1;
+				let adjusted_sql = if offset > 0 {
+					let mut sql = subquery_sql;
+					for i in (1..=subquery_values.len()).rev() {
+						sql = sql.replace(&format!("${}", i), &format!("${}", i + offset));
+					}
+					sql
+				} else {
+					subquery_sql
+				};
+
 				writer.push("(");
-				writer.push(&sql);
+				writer.push(&adjusted_sql);
 				writer.push(")");
 				writer.push_keyword("AS");
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+
+				// Merge the values from the subquery
+				writer.append_values(&subquery_values);
 			}
 		}
 	}
@@ -1951,9 +1967,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if let Some(body) = &stmt.function_def.body {
 			writer.push_keyword("AS");
 			writer.push_space();
-			writer.push("$$");
+			let delimiter = generate_safe_dollar_quote_delimiter(body);
+			writer.push(&delimiter);
 			writer.push(body);
-			writer.push("$$");
+			writer.push(&delimiter);
 		}
 
 		writer.finish()
@@ -3608,9 +3625,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if let Some(body) = &stmt.procedure_def.body {
 			writer.push_keyword("AS");
 			writer.push_space();
-			writer.push("$$");
+			let delimiter = generate_safe_dollar_quote_delimiter(body);
+			writer.push(&delimiter);
 			writer.push(body);
-			writer.push("$$");
+			writer.push(&delimiter);
 		}
 
 		writer.finish()
@@ -4193,8 +4211,9 @@ mod tests {
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
-		types::IntoIden,
+		types::{Alias, IntoIden},
 	};
+	use rstest::rstest;
 
 	#[test]
 	fn test_escape_identifier() {
@@ -5001,6 +5020,59 @@ mod tests {
 		assert!(sql.contains("\"status\" = $"));
 		assert!(sql.contains("\"active\" = $"));
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
+	}
+
+	#[test]
+	fn test_from_subquery_preserves_parameter_values() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("active_admins"))
+			.and_where(Expr::col("name").like("A%"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("(SELECT"));
+		assert!(sql.contains(") AS \"active_admins\""));
+		// Subquery params (true, "admin") + outer param ("A%") = 3 values
+		assert_eq!(values.len(), 3);
+	}
+
+	#[test]
+	fn test_from_subquery_postgres_placeholder_renumbering() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange: outer query has params before the FROM subquery
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.from("users")
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("sub"))
+			.and_where(Expr::col("status").eq("active"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert: subquery param should be $1, outer param should be $2
+		assert!(sql.contains("$1"));
+		assert!(sql.contains("$2"));
+		assert_eq!(values.len(), 2);
 	}
 
 	// --- Phase 5: NULL Handling Tests ---
@@ -9012,6 +9084,323 @@ mod tests {
 
 		builder.build_set_default_role(&stmt);
 	}
+
+	// ==================== Dollar-quote delimiter safety tests ====================
+
+	#[rstest]
+	fn test_safe_delimiter_default_when_body_has_no_dollar_quotes() {
+		// Arrange
+		let body = "BEGIN RETURN 1; END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_avoids_collision_with_dollar_dollar() {
+		// Arrange
+		let body = "BEGIN $$ nested $$ END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_ne!(
+			delimiter, "$$",
+			"Delimiter must not be $$ when body contains $$"
+		);
+		assert_eq!(delimiter, "$body_0$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_injection_attempt_with_dollar_quotes() {
+		// Arrange: attacker tries to break out of dollar-quoting
+		let body = "$$ ; DROP TABLE users; --";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_ne!(delimiter, "$$");
+		let delimiters = collect_dollar_quote_delimiters(body);
+		assert!(
+			!delimiters.contains(&delimiter),
+			"Generated delimiter must not conflict with any delimiter in body"
+		);
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_skips_collision_with_body_0() {
+		// Arrange: body contains both $$ and $body_0$
+		let body = "BEGIN $$ test $body_0$ END;";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$body_1$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_multiple_collisions() {
+		// Arrange: body contains $$, $body_0$, $body_1$
+		let body = "$$ $body_0$ $body_1$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$body_2$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_ignores_dollar_amount_not_delimiter() {
+		// Arrange: $100 is not a dollar-quote delimiter (digit after $)
+		let body = "SELECT $100 + $200";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: $$ is safe because $100 is not a delimiter
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_empty_body() {
+		// Arrange
+		let body = "";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_whitespace_only_body() {
+		// Arrange
+		let body = "   \t\n  ";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert
+		assert_eq!(delimiter, "$$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_nested_dollar_quotes() {
+		// Arrange: body contains nested dollar-quoted strings
+		let body = "$inner$ SELECT 1 $inner$ $$ nested $$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: must avoid both $$ and $inner$
+		assert_ne!(delimiter, "$$");
+		assert_ne!(delimiter, "$inner$");
+		assert_eq!(delimiter, "$body_0$");
+	}
+
+	#[rstest]
+	fn test_safe_delimiter_tag_style_delimiters() {
+		// Arrange: body contains $tag$ style delimiters
+		let body = "$func$ BEGIN RETURN 1; END; $func$";
+
+		// Act
+		let delimiter = generate_safe_dollar_quote_delimiter(body);
+
+		// Assert: $$ is safe because body only contains $func$
+		assert_eq!(delimiter, "$$");
+	}
+
+	// ==================== Dollar-quote delimiter collection tests ====================
+
+	#[rstest]
+	fn test_collect_delimiters_empty_body() {
+		// Arrange
+		let body = "";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_no_dollar_signs() {
+		// Arrange
+		let body = "SELECT 1 + 2";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_dollar_amounts_are_not_delimiters() {
+		// Arrange: $1, $2 are PostgreSQL parameter placeholders, not delimiters
+		let body = "SELECT $1 + $2";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.is_empty());
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_empty_tag() {
+		// Arrange
+		let body = "$$ body content $$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 1);
+		assert!(delimiters.contains("$$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_named_tag() {
+		// Arrange
+		let body = "$func$ body $func$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 1);
+		assert!(delimiters.contains("$func$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_finds_multiple_tags() {
+		// Arrange
+		let body = "$$ outer $inner$ nested $inner$ outer $$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert_eq!(delimiters.len(), 2);
+		assert!(delimiters.contains("$$"));
+		assert!(delimiters.contains("$inner$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_underscore_in_tag() {
+		// Arrange
+		let body = "$my_tag$ content $my_tag$";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert
+		assert!(delimiters.contains("$my_tag$"));
+	}
+
+	#[rstest]
+	fn test_collect_delimiters_rejects_digit_start_tag() {
+		// Arrange: $1tag$ is not valid because tag starts with digit
+		let body = "$1tag$ content";
+
+		// Act
+		let delimiters = collect_dollar_quote_delimiters(body);
+
+		// Assert: $1tag$ is not a valid delimiter
+		assert!(!delimiters.contains("$1tag$"));
+	}
+}
+
+/// Collect all dollar-quote delimiters present in the body text.
+///
+/// A dollar-quote delimiter in PostgreSQL has the form `$tag$` where `tag` is
+/// either empty or consists of `[a-zA-Z0-9_]` characters not starting with a
+/// digit. This function scans the body and returns the set of all such
+/// delimiters (including the surrounding `$` signs).
+///
+/// Using exact delimiter boundary detection instead of substring matching
+/// prevents false positives (e.g. `$100` is not a delimiter) and false
+/// negatives (e.g. partial overlap with candidate delimiter tags).
+fn collect_dollar_quote_delimiters(body: &str) -> std::collections::HashSet<String> {
+	let mut delimiters = std::collections::HashSet::new();
+	let bytes = body.as_bytes();
+	let len = bytes.len();
+	let mut i = 0;
+
+	while i < len {
+		if bytes[i] == b'$' {
+			// Found a '$', try to parse a dollar-quote delimiter
+			let start = i;
+			i += 1;
+
+			// Empty tag: `$$`
+			if i < len && bytes[i] == b'$' {
+				delimiters.insert("$$".to_string());
+				i += 1;
+				continue;
+			}
+
+			// Non-empty tag: tag must match [a-zA-Z_][a-zA-Z0-9_]*
+			if i < len && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+				let tag_start = i;
+				i += 1;
+				while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+					i += 1;
+				}
+				// Check for closing '$'
+				if i < len && bytes[i] == b'$' {
+					let delimiter = &body[start..=i];
+					delimiters.insert(delimiter.to_string());
+					i += 1;
+					continue;
+				}
+				// Not a valid delimiter, continue from after the initial '$'
+				i = tag_start;
+				continue;
+			}
+
+			// '$' followed by a digit or other non-tag character -- not a delimiter
+			continue;
+		}
+		i += 1;
+	}
+
+	delimiters
+}
+
+/// Generate a safe dollar-quote delimiter that does not appear in the body.
+///
+/// PostgreSQL dollar-quoting uses `$$` as the default delimiter. If the function
+/// body contains `$$`, an attacker could break out of the dollar-quoted string.
+/// This function scans for all dollar-quote delimiter patterns in the body and
+/// generates a unique delimiter that does not conflict with any of them.
+fn generate_safe_dollar_quote_delimiter(body: &str) -> String {
+	let existing = collect_dollar_quote_delimiters(body);
+
+	if !existing.contains("$$") {
+		return "$$".to_string();
+	}
+
+	// Try numbered delimiters: $body_0$, $body_1$, ...
+	for i in 0u64.. {
+		let candidate = format!("$body_{}$", i);
+		if !existing.contains(&candidate) {
+			return candidate;
+		}
+	}
+
+	// Unreachable in practice, but satisfy the compiler
+	"$$".to_string()
 }
 
 impl crate::query::QueryBuilderTrait for PostgresQueryBuilder {

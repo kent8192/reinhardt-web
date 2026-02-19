@@ -12,6 +12,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 🌐 **English** | [日本語](docs/readme-langs/README_JA.md) | [简体中文](docs/readme-langs/README_ZH_CN.md) | [繁體中文](docs/readme-langs/README_ZH_TW.md) | [Русский](docs/readme-langs/README_RU.md) | [Українська](docs/readme-langs/README_UK.md) | [فارسی](docs/readme-langs/README_FA.md) | [العربية](docs/readme-langs/README_AR.md)
@@ -1038,6 +1039,16 @@ We love contributions! Please read our [Contributing Guide](CONTRIBUTING.md) to 
 - [Development Setup](CONTRIBUTING.md#development-setup)
 - [Testing Guidelines](CONTRIBUTING.md#testing-guidelines)
 - [Commit Guidelines](CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ Star History
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## License
 

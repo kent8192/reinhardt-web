@@ -4,11 +4,13 @@
 
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::{MutationRequest, MutationResponse};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
-use super::error::MapServerFnError;
+use super::error::{AdminAuth, MapServerFnError};
+#[cfg(not(target_arch = "wasm32"))]
+use super::validation::validate_mutation_data;
 
 /// Update an existing model instance
 ///
@@ -19,6 +21,10 @@ use super::error::MapServerFnError;
 ///
 /// This function is automatically exposed as an HTTP endpoint by the `#[server_fn]` macro.
 /// AdminSite and AdminDatabase dependencies are automatically injected via the DI system.
+///
+/// # Authentication
+///
+/// Requires staff (admin) permission and change permission for the model.
 ///
 /// # Example
 ///
@@ -42,10 +48,18 @@ pub async fn update_record(
 	request: MutationRequest,
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
+	#[inject] http_request: ServerFnRequest,
 ) -> Result<MutationResponse, ServerFnError> {
+	// Authentication and authorization check
+	let auth = AdminAuth::from_request(&http_request);
+	auth.require_change_permission(&model_name)?;
+
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
+
+	// Validate input data before database operation
+	validate_mutation_data(&request.data, model_admin.as_ref(), true).map_server_fn_error()?;
 
 	let affected = db
 		.update::<AdminRecord>(table_name, pk_field, &id, request.data)

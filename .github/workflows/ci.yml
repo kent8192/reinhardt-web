@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     # Run CI on PRs targeting any branch
 
@@ -79,6 +76,12 @@ jobs:
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
+    needs: [check, fmt, clippy]
+    secrets: inherit
+
+  coverage:
+    name: Coverage
+    uses: ./.github/workflows/coverage.yml
     needs: [check, fmt, clippy]
     secrets: inherit
 

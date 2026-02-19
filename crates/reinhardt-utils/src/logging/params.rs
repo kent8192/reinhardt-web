@@ -77,28 +77,40 @@ fn repr_multi_params(params: &[Value], config: &ReprParamsConfig) -> String {
 	)
 }
 
+// Fixes #802: Find byte index at the n-th character boundary for safe UTF-8 slicing.
+// Returns `s.len()` if `n` >= number of characters in `s`.
+fn byte_index_at_char(s: &str, n: usize) -> usize {
+	s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
+}
+
 fn repr_array(arr: &[Value], config: &ReprParamsConfig) -> String {
 	let repr = format!("{:?}", arr);
+	let char_count = repr.chars().count();
 
-	if repr.len() <= config.max_chars {
+	if char_count <= config.max_chars {
 		return repr;
 	}
 
 	let half_chars = config.max_chars / 2;
-	let truncated_chars = repr.len() - config.max_chars;
+	let truncated_chars = char_count - config.max_chars;
+
+	// Fixes #802: Use char_indices() for character-aware slicing
+	let start_end = byte_index_at_char(&repr, half_chars);
+	let tail_start = byte_index_at_char(&repr, char_count - half_chars);
 
 	format!(
 		"{}  ... ({} characters truncated) ...  {}",
-		&repr[..half_chars],
+		&repr[..start_end],
 		truncated_chars,
-		&repr[repr.len() - half_chars..]
+		&repr[tail_start..]
 	)
 }
 
 fn repr_object(obj: &serde_json::Map<String, Value>, config: &ReprParamsConfig) -> String {
 	let repr = format!("{:?}", obj);
+	let char_count = repr.chars().count();
 
-	if repr.len() <= config.max_chars {
+	if char_count <= config.max_chars {
 		return repr;
 	}
 
@@ -107,21 +119,29 @@ fn repr_object(obj: &serde_json::Map<String, Value>, config: &ReprParamsConfig) 
 		let half_chars = config.max_chars / 2;
 		let truncated_params = obj.len() - 10; // Show ~10 params
 
+		// Fixes #802: Use char_indices() for character-aware slicing
+		let start_end = byte_index_at_char(&repr, half_chars);
+		let tail_start = byte_index_at_char(&repr, char_count - half_chars);
+
 		format!(
 			"{} ... {} parameters truncated ... {}",
-			&repr[..half_chars],
+			&repr[..start_end],
 			truncated_params,
-			&repr[repr.len() - half_chars..]
+			&repr[tail_start..]
 		)
 	} else {
 		let half_chars = config.max_chars / 2;
-		let truncated_chars = repr.len() - config.max_chars;
+		let truncated_chars = char_count - config.max_chars;
+
+		// Fixes #802: Use char_indices() for character-aware slicing
+		let start_end = byte_index_at_char(&repr, half_chars);
+		let tail_start = byte_index_at_char(&repr, char_count - half_chars);
 
 		format!(
 			"{}  ... ({} characters truncated) ...  {}",
-			&repr[..half_chars],
+			&repr[..start_end],
 			truncated_chars,
-			&repr[repr.len() - half_chars..]
+			&repr[tail_start..]
 		)
 	}
 }
@@ -143,24 +163,31 @@ fn repr_object(obj: &serde_json::Map<String, Value>, config: &ReprParamsConfig) 
 /// assert!(truncated.contains("characters truncated"));
 /// ```
 pub fn truncate_param(value: &str, max_chars: usize) -> String {
-	if value.len() <= max_chars {
+	let char_count = value.chars().count();
+
+	if char_count <= max_chars {
 		return value.to_string();
 	}
 
 	let half_chars = max_chars / 2;
-	let truncated_chars = value.len() - max_chars;
+	let truncated_chars = char_count - max_chars;
+
+	// Fixes #802: Use char_indices() for character-aware slicing
+	let start_end = byte_index_at_char(value, half_chars);
+	let tail_start = byte_index_at_char(value, char_count - half_chars);
 
 	format!(
 		"{} ... ({} characters truncated) ... {}",
-		&value[..half_chars],
+		&value[..start_end],
 		truncated_chars,
-		&value[value.len() - half_chars..]
+		&value[tail_start..]
 	)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 	use serde_json::json;
 
 	#[test]
@@ -393,5 +420,114 @@ mod tests {
 		let result = truncate_param(small_param, 100);
 
 		assert_eq!(result, "small");
+	}
+
+	#[rstest]
+	fn test_repr_array_with_multibyte_utf8_does_not_panic() {
+		// Arrange
+		let params = json!(["こんにちは世界", "テスト文字列", "日本語データ"]);
+		let arr = params.as_array().unwrap();
+		let config = ReprParamsConfig {
+			max_chars: 20,
+			batches: 10,
+			is_multi: false,
+		};
+
+		// Act
+		let result = repr_array(arr, &config);
+
+		// Assert
+		assert!(result.contains("characters truncated"));
+	}
+
+	#[rstest]
+	fn test_repr_object_with_multibyte_utf8_does_not_panic() {
+		// Arrange
+		let mut obj = serde_json::Map::new();
+		for i in 0..10 {
+			obj.insert(format!("キー_{}", i), json!(format!("値_{}", i)));
+		}
+		let config = ReprParamsConfig {
+			max_chars: 20,
+			batches: 10,
+			is_multi: false,
+		};
+
+		// Act
+		let result = repr_object(&obj, &config);
+
+		// Assert
+		assert!(result.contains("characters truncated"));
+	}
+
+	#[rstest]
+	fn test_repr_object_huge_with_multibyte_utf8_does_not_panic() {
+		// Arrange
+		let mut obj = serde_json::Map::new();
+		for i in 0..200 {
+			obj.insert(format!("キー_{}", i), json!(format!("値_{}", i)));
+		}
+		let config = ReprParamsConfig {
+			max_chars: 50,
+			batches: 10,
+			is_multi: false,
+		};
+
+		// Act
+		let result = repr_object(&obj, &config);
+
+		// Assert
+		assert!(result.contains("parameters truncated"));
+	}
+
+	#[rstest]
+	fn test_truncate_param_with_multibyte_utf8_does_not_panic() {
+		// Arrange
+		let multibyte_param = "あ".repeat(500);
+
+		// Act
+		let result = truncate_param(&multibyte_param, 50);
+
+		// Assert
+		assert!(result.contains("characters truncated"));
+		assert!(result.starts_with("あ"));
+		assert!(result.ends_with("あ"));
+	}
+
+	#[rstest]
+	fn test_truncate_param_with_mixed_ascii_and_multibyte() {
+		// Arrange
+		let mixed = format!("{}abc{}", "日本語".repeat(50), "中文字".repeat(50));
+
+		// Act
+		let result = truncate_param(&mixed, 30);
+
+		// Assert
+		assert!(result.contains("characters truncated"));
+	}
+
+	#[rstest]
+	fn test_byte_index_at_char_with_ascii() {
+		// Arrange
+		let s = "hello";
+
+		// Act & Assert
+		assert_eq!(byte_index_at_char(s, 0), 0);
+		assert_eq!(byte_index_at_char(s, 3), 3);
+		assert_eq!(byte_index_at_char(s, 5), 5);
+		assert_eq!(byte_index_at_char(s, 10), 5); // beyond end
+	}
+
+	#[rstest]
+	fn test_byte_index_at_char_with_multibyte() {
+		// Arrange
+		let s = "あいう"; // Each char is 3 bytes
+
+		// Act & Assert
+		assert_eq!(byte_index_at_char(s, 0), 0);
+		assert_eq!(byte_index_at_char(s, 1), 3);
+		assert_eq!(byte_index_at_char(s, 2), 6);
+		assert_eq!(byte_index_at_char(s, 3), 9);
+		assert_eq!(byte_index_at_char(s, 10), 9); // beyond end
 	}
 }

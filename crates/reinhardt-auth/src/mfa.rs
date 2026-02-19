@@ -6,6 +6,7 @@ use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use reinhardt_http::Request;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 /// MFA authentication backend
@@ -116,7 +117,8 @@ impl MFAAuthentication {
 				time_step,
 			);
 
-			Ok(totp == code)
+			// Use constant-time comparison to prevent timing attacks
+			Ok(totp.as_bytes().ct_eq(code.as_bytes()).into())
 		} else {
 			Err(AuthenticationError::UserNotFound)
 		}

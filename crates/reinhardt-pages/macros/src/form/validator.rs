@@ -28,6 +28,89 @@ use reinhardt_manouche::core::{
 	TypedValidatorRule, TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
 
+/// Allowlist of safe HTML tag names for wrapper and icon child elements.
+///
+/// Rejects dangerous tags like `<script>`, `<iframe>`, etc. to prevent XSS attacks.
+///
+/// Fixes #850
+const ALLOWED_CHILD_TAGS: &[&str] = &[
+	"div",
+	"span",
+	"p",
+	"a",
+	"b",
+	"i",
+	"strong",
+	"em",
+	"section",
+	"article",
+	"header",
+	"footer",
+	"nav",
+	"aside",
+	"main",
+	"h1",
+	"h2",
+	"h3",
+	"h4",
+	"h5",
+	"h6",
+	"ul",
+	"ol",
+	"li",
+	"dl",
+	"dt",
+	"dd",
+	"table",
+	"thead",
+	"tbody",
+	"tfoot",
+	"tr",
+	"th",
+	"td",
+	"caption",
+	"figure",
+	"figcaption",
+	"blockquote",
+	"pre",
+	"code",
+	"svg",
+	"path",
+	"circle",
+	"rect",
+	"g",
+	"use",
+	"symbol",
+	"defs",
+	"line",
+	"polyline",
+	"polygon",
+	"text",
+	"tspan",
+];
+
+/// Validates that a tag name is in the allowlist of safe HTML tags.
+///
+/// Returns an error if the tag is not allowed (e.g., `<script>`, `<iframe>`).
+///
+/// Fixes #850
+fn validate_safe_tag(tag: &str, context: &str, span: Span) -> Result<()> {
+	if !ALLOWED_CHILD_TAGS.contains(&tag) {
+		return Err(Error::new(
+			span,
+			format!(
+				"Tag <{}> is not allowed in {}.\n\
+				Only safe HTML tags are permitted: {}.\n\n\
+				Dangerous tags like <script>, <iframe>, <object>, etc. are blocked for security.",
+				tag,
+				context,
+				ALLOWED_CHILD_TAGS.join(", "),
+			),
+		));
+	}
+	Ok(())
+}
+
 /// Validates and transforms the FormMacro AST into a typed AST.
 ///
 /// This is the main entry point for form! macro validation.
@@ -749,6 +832,9 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 fn extract_wrapper(properties: &[FormFieldProperty]) -> Result<Option<TypedWrapper>> {
 	for prop in properties {
 		if let FormFieldProperty::Wrapper { element, span } = prop {
+			// Validate wrapper tag name against allowlist (Fixes #850)
+			validate_safe_tag(&element.tag.to_string(), "wrapper", *span)?;
+
 			// Transform wrapper attributes
 			let attrs = element
 				.attrs
@@ -849,6 +935,9 @@ fn extract_icon(properties: &[FormFieldProperty]) -> Result<Option<TypedIcon>> {
 
 /// Transforms a single icon child element recursively.
 fn transform_icon_child(child: &reinhardt_manouche::core::IconChild) -> Result<TypedIconChild> {
+	// Validate icon child tag name against allowlist (Fixes #850)
+	validate_safe_tag(&child.tag.to_string(), "icon child", child.span)?;
+
 	let attrs = child
 		.attrs
 		.iter()
@@ -1061,11 +1150,13 @@ fn transform_validators(
 					span: *span,
 				});
 			}
-			FormValidator::Form { rules: _, span: _ } => {
-				// Form-level validators are not yet supported in TypedFormValidator.
-				// This feature requires design of validation API, error aggregation strategy,
-				// and macro code generation for cross-field validation rules.
-				// See: https://github.com/kent8192/reinhardt-web/issues/24
+			// Fixes #848: emit compile error instead of silently discarding
+			FormValidator::Form { rules: _, span } => {
+				return Err(Error::new(
+					*span,
+					"form-level validators (@form) are not yet supported. \
+					Use field-level validators instead",
+				));
 			}
 		}
 	}

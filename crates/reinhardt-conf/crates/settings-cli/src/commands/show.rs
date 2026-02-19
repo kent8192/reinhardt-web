@@ -21,6 +21,10 @@ pub(crate) struct ShowArgs {
 	/// Profile to use
 	#[arg(short, long)]
 	pub profile: Option<String>,
+
+	/// Show sensitive values without redaction (passwords, keys, tokens)
+	#[arg(long)]
+	pub show_secrets: bool,
 }
 
 #[derive(Debug, Clone, clap::ValueEnum)]
@@ -99,12 +103,26 @@ pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
 				.ok_or_else(|| anyhow::anyhow!("Key not found: {}", key))?;
 		}
 
+		// Redact sensitive values unless --show-secrets is used
+		let display_value = if args.show_secrets || !output::is_sensitive_key(key) {
+			current.clone()
+		} else {
+			serde_json::Value::String(output::REDACTED.to_string())
+		};
+
 		output::info(&format!("Value for key '{}':", key));
-		output::print_value(current, args.format.into())?;
+		output::print_value(&display_value, args.format.into())?;
 	} else {
+		// Redact sensitive values unless --show-secrets is used
+		let display_value = if args.show_secrets {
+			value
+		} else {
+			output::redact_sensitive_values(&value)
+		};
+
 		// Show all values
 		output::info("Configuration values:");
-		output::print_value(&value, args.format.into())?;
+		output::print_value(&display_value, args.format.into())?;
 	}
 
 	Ok(())

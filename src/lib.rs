@@ -42,13 +42,7 @@
 //! - `db-postgres` - PostgreSQL support
 //! - `db-mysql` - MySQL support
 //! - `db-sqlite` - SQLite support
-//! - `db-mongodb` - MongoDB support
 //! - `db-cockroachdb` - CockroachDB support (distributed transactions)
-//!
-//! #### Serialization ✅
-//! - `serialize-json` - JSON serialization (via `serde_json`)
-//! - `serialize-xml` - XML serialization (via `quick-xml` and `serde-xml-rs`)
-//! - `serialize-yaml` - YAML serialization (via `serde_yaml`)
 //!
 //! #### Middleware ✅
 //! - `middleware-cors` - CORS (Cross-Origin Resource Sharing) middleware
