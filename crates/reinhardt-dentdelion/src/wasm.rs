@@ -59,7 +59,7 @@ pub use runtime::{WasmRuntime, WasmRuntimeConfig, WasmRuntimeConfigBuilder};
 pub use sql_validator::{
 	SqlStatementType, SqlValidationError, SqlValidator, default_validator, validate_sql,
 };
-pub use ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
+pub use ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy, escape_for_script};
 #[cfg(feature = "ts")]
 pub use ts_runtime::{SharedTsRuntime, TsError, TsRuntime};
 pub use types::{ConfigValue, WitCapability, WitPluginError, WitPluginMetadata};
