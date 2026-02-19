@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
+#[cfg(not(target_arch = "wasm32"))]
+use super::validation::validate_mutation_data;
 
 /// Create a new model instance
 ///
@@ -64,6 +66,9 @@ pub async fn create_record(
 	}
 
 	let table_name = model_admin.table_name();
+
+	// Validate input data before database operation
+	validate_mutation_data(&request.data, model_admin.as_ref(), false).map_server_fn_error()?;
 
 	let affected = db
 		.create::<AdminRecord>(table_name, request.data)

@@ -516,41 +516,46 @@ impl InjectionContext {
 	/// # }
 	/// ```
 	pub async fn resolve<T: Any + Send + Sync + 'static>(&self) -> crate::DiResult<Arc<T>> {
-		use crate::cycle_detection::{begin_resolution, register_type_name};
+		use crate::cycle_detection::{
+			begin_resolution, register_type_name, with_cycle_detection_scope,
+		};
 		use crate::registry::{DependencyScope, global_registry};
 
-		let type_id = std::any::TypeId::of::<T>();
-		let type_name = std::any::type_name::<T>();
-		let registry = global_registry();
+		with_cycle_detection_scope(async {
+			let type_id = std::any::TypeId::of::<T>();
+			let type_name = std::any::type_name::<T>();
+			let registry = global_registry();
 
-		// Register type name (for error messages)
-		register_type_name::<T>(type_name);
+			// Register type name (for error messages)
+			register_type_name::<T>(type_name);
 
-		// [Fast path] Skip circular detection on cache hit
-		let scope = registry
-			.get_scope::<T>()
-			.unwrap_or(DependencyScope::Singleton);
-		match scope {
-			DependencyScope::Singleton => {
-				if let Some(cached) = self.get_singleton::<T>() {
-					return Ok(cached); // ✓ < 5% overhead
+			// [Fast path] Skip circular detection on cache hit
+			let scope = registry
+				.get_scope::<T>()
+				.unwrap_or(DependencyScope::Singleton);
+			match scope {
+				DependencyScope::Singleton => {
+					if let Some(cached) = self.get_singleton::<T>() {
+						return Ok(cached); // < 5% overhead
+					}
 				}
-			}
-			DependencyScope::Request => {
-				if let Some(cached) = self.get_request::<T>() {
-					return Ok(cached); // ✓ < 5% overhead
+				DependencyScope::Request => {
+					if let Some(cached) = self.get_request::<T>() {
+						return Ok(cached); // < 5% overhead
+					}
 				}
+				_ => {}
 			}
-			_ => {}
-		}
 
-		// [Slow path] Execute circular detection only on cache miss
-		let _guard = begin_resolution(type_id, type_name)
-			.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
+			// [Slow path] Execute circular detection only on cache miss
+			let _guard = begin_resolution(type_id, type_name)
+				.map_err(|e| crate::DiError::CircularDependency(e.to_string()))?;
 
-		// Actual resolution processing (existing logic)
-		self.resolve_internal::<T>(scope).await
-		// Guard is automatically cleaned up when dropped
+			// Actual resolution processing (existing logic)
+			self.resolve_internal::<T>(scope).await
+			// Guard is automatically cleaned up when dropped
+		})
+		.await
 	}
 
 	async fn resolve_internal<T: Any + Send + Sync + 'static>(

@@ -509,6 +509,7 @@ proc-macro2 = "1.0"
 aes-gcm = "0.10"
 sha2 = "0.10.9"
 hmac = "0.12"
+subtle = "2.6"
 
 # Image Processing
 image = "0.25.8"

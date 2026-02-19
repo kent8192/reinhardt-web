@@ -1,3 +1,4 @@
+use async_graphql::extensions::Analyzer;
 use async_graphql::{Context, EmptySubscription, ID, Object, Result as GqlResult, Schema};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,6 +16,65 @@ pub enum GraphQLError {
 }
 
 pub type GraphQLResult<T> = Result<T, GraphQLError>;
+
+/// Default maximum query depth limit.
+///
+/// Limits how deeply nested a query can be to prevent resource exhaustion
+/// from deeply nested selections.
+pub const DEFAULT_MAX_QUERY_DEPTH: usize = 10;
+
+/// Default maximum query complexity limit.
+///
+/// Limits total complexity score for a single query to prevent
+/// resource exhaustion from expensive operations.
+pub const DEFAULT_MAX_QUERY_COMPLEXITY: usize = 100;
+
+/// Configuration for GraphQL query protection limits.
+///
+/// Controls query depth and complexity limits to prevent
+/// denial-of-service attacks through resource exhaustion.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_graphql::schema::QueryLimits;
+///
+/// // Use defaults
+/// let limits = QueryLimits::default();
+/// assert_eq!(limits.max_depth, 10);
+/// assert_eq!(limits.max_complexity, 100);
+///
+/// // Custom limits
+/// let limits = QueryLimits::new(15, 200);
+/// assert_eq!(limits.max_depth, 15);
+/// assert_eq!(limits.max_complexity, 200);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct QueryLimits {
+	/// Maximum allowed query depth
+	pub max_depth: usize,
+	/// Maximum allowed query complexity
+	pub max_complexity: usize,
+}
+
+impl QueryLimits {
+	/// Create a new `QueryLimits` with custom values.
+	pub fn new(max_depth: usize, max_complexity: usize) -> Self {
+		Self {
+			max_depth,
+			max_complexity,
+		}
+	}
+}
+
+impl Default for QueryLimits {
+	fn default() -> Self {
+		Self {
+			max_depth: DEFAULT_MAX_QUERY_DEPTH,
+			max_complexity: DEFAULT_MAX_QUERY_COMPLEXITY,
+		}
+	}
+}
 
 /// Example: User type for GraphQL
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,11 +227,30 @@ impl Mutation {
 
 /// Create GraphQL schema
 pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;
-/// Documentation for `create_schema`
+
+/// Create a GraphQL schema with default query protection limits.
 ///
+/// Applies default depth and complexity limits to prevent
+/// resource exhaustion from malicious queries.
 pub fn create_schema(storage: UserStorage) -> AppSchema {
+	create_schema_with_limits(storage, QueryLimits::default())
+}
+
+/// Create a GraphQL schema with custom query protection limits.
+///
+/// Configures depth limit, complexity limit, and the `Analyzer` extension
+/// for query cost analysis.
+///
+/// # Arguments
+///
+/// * `storage` - User data storage
+/// * `limits` - Query protection limits configuration
+pub fn create_schema_with_limits(storage: UserStorage, limits: QueryLimits) -> AppSchema {
 	Schema::build(Query, Mutation, EmptySubscription)
 		.data(storage)
+		.limit_depth(limits.max_depth)
+		.limit_complexity(limits.max_complexity)
+		.extension(Analyzer)
 		.finish()
 }
 
@@ -493,5 +572,131 @@ mod tests {
 
 		let err3 = GraphQLError::NotFound("test item".to_string());
 		assert!(err3.to_string().contains("Not found"));
+	}
+
+	#[tokio::test]
+	async fn test_query_depth_limit_rejects_deep_query() {
+		// Arrange: depth limit of 1 only allows top-level fields
+		let storage = UserStorage::new();
+		let limits = QueryLimits::new(1, 1000);
+		let schema = create_schema_with_limits(storage, limits);
+
+		// Act: query with nested selection exceeds depth limit of 1
+		let query = r#"
+			{
+				users {
+					name
+				}
+			}
+		"#;
+		let result = schema.execute(query).await;
+
+		// Assert: should produce a depth-limit error
+		assert!(
+			!result.errors.is_empty(),
+			"expected depth limit error but query succeeded"
+		);
+		let error_message = &result.errors[0].message;
+		assert!(
+			error_message.to_lowercase().contains("too deep"),
+			"expected depth-limit message, got: {error_message}"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_query_depth_limit_allows_shallow_query() {
+		// Arrange
+		let storage = UserStorage::new();
+		let limits = QueryLimits::new(10, 1000);
+		let schema = create_schema_with_limits(storage, limits);
+
+		// Act
+		let query = r#"{ hello(name: "Test") }"#;
+		let result = schema.execute(query).await;
+
+		// Assert
+		assert!(
+			result.errors.is_empty(),
+			"expected no errors for shallow query"
+		);
+		let data = result.data.into_json().unwrap();
+		assert_eq!(data["hello"], "Hello, Test!");
+	}
+
+	#[tokio::test]
+	async fn test_query_complexity_limit_rejects_complex_query() {
+		// Arrange: very low complexity limit
+		let storage = UserStorage::new();
+		let limits = QueryLimits::new(100, 1);
+		let schema = create_schema_with_limits(storage, limits);
+
+		// Act: query with multiple fields exceeds complexity of 1
+		let query = r#"
+			{
+				users {
+					id
+					name
+					email
+					active
+				}
+			}
+		"#;
+		let result = schema.execute(query).await;
+
+		// Assert: should produce a complexity-limit error
+		assert!(
+			!result.errors.is_empty(),
+			"expected complexity limit error but query succeeded"
+		);
+		let error_message = &result.errors[0].message;
+		assert!(
+			error_message.to_lowercase().contains("complex"),
+			"expected complexity-limit message, got: {error_message}"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_query_limits_default_values() {
+		// Arrange / Act
+		let limits = QueryLimits::default();
+
+		// Assert
+		assert_eq!(limits.max_depth, DEFAULT_MAX_QUERY_DEPTH);
+		assert_eq!(limits.max_complexity, DEFAULT_MAX_QUERY_COMPLEXITY);
+	}
+
+	#[tokio::test]
+	async fn test_create_schema_with_custom_limits() {
+		// Arrange
+		let storage = UserStorage::new();
+		let limits = QueryLimits::new(20, 500);
+		let schema = create_schema_with_limits(storage, limits);
+
+		// Act: simple query within limits
+		let query = r#"{ hello }"#;
+		let result = schema.execute(query).await;
+
+		// Assert
+		assert!(result.errors.is_empty());
+		let data = result.data.into_json().unwrap();
+		assert_eq!(data["hello"], "Hello, World!");
+	}
+
+	#[tokio::test]
+	async fn test_analyzer_extension_present() {
+		// Arrange
+		let storage = UserStorage::new();
+		let schema = create_schema(storage);
+
+		// Act: execute query and check for complexity/depth in extensions
+		let query = r#"{ hello(name: "Analyzer") }"#;
+		let result = schema.execute(query).await;
+
+		// Assert: Analyzer extension adds complexity/depth to response extensions
+		assert!(result.errors.is_empty());
+		assert!(
+			!result.extensions.is_empty(),
+			"expected Analyzer extension data in response"
+		);
 	}
 }

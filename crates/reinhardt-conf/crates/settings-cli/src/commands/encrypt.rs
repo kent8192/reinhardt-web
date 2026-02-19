@@ -43,15 +43,20 @@ pub(crate) async fn execute(args: EncryptArgs) -> anyhow::Result<()> {
 	}
 
 	// Get encryption key from CLI arg, env var, or stdin prompt
+	// Key material is wrapped in Zeroizing and will be securely erased on drop
 	let key_source = key::get_encryption_key(args.key.as_deref())?;
-	let key_bytes = key_source.key_bytes;
 
 	// Read the file content
 	let content = std::fs::read_to_string(&args.file)?;
 
 	// Encrypt using the encryption module
-	let encryptor = reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_bytes)
-		.map_err(|e| anyhow::anyhow!(e))?;
+	// Clone key bytes for ConfigEncryptor; original is zeroed when key_source drops
+	let encryptor =
+		reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_source.key_bytes.to_vec())
+			.map_err(|e| anyhow::anyhow!(e))?;
+	// Explicitly drop key_source to zero key material as early as possible
+	drop(key_source);
+
 	let encrypted_config = encryptor
 		.encrypt(content.as_bytes())
 		.map_err(|e| anyhow::anyhow!(e))?;

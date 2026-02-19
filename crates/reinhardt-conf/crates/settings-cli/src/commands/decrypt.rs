@@ -43,8 +43,8 @@ pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 	}
 
 	// Get decryption key from CLI arg, env var, or stdin prompt
+	// Key material is wrapped in Zeroizing and will be securely erased on drop
 	let key_source = key::get_encryption_key(args.key.as_deref())?;
-	let key_bytes = key_source.key_bytes;
 
 	// Read the encrypted content
 	let encrypted = std::fs::read(&args.file)?;
@@ -52,8 +52,13 @@ pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 	// Decrypt using the encryption module
 	let encrypted_config: reinhardt_conf::settings::encryption::EncryptedConfig =
 		serde_json::from_slice(&encrypted)?;
-	let encryptor = reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_bytes)
-		.map_err(|e| anyhow::anyhow!(e))?;
+	// Clone key bytes for ConfigEncryptor; original is zeroed when key_source drops
+	let encryptor =
+		reinhardt_conf::settings::encryption::ConfigEncryptor::new(key_source.key_bytes.to_vec())
+			.map_err(|e| anyhow::anyhow!(e))?;
+	// Explicitly drop key_source to zero key material as early as possible
+	drop(key_source);
+
 	let decrypted = encryptor
 		.decrypt(&encrypted_config)
 		.map_err(|e| anyhow::anyhow!(e))?;
