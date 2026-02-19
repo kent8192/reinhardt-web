@@ -109,7 +109,8 @@ fn test_assetlinks_handler_creation() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config);
 	assert!(handler.is_ok());
@@ -120,7 +121,8 @@ fn test_assetlinks_handler_json_content() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let json = handler.json();
@@ -135,7 +137,8 @@ fn test_assetlinks_handler_json_array_format() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let json = handler.json();
@@ -151,7 +154,8 @@ fn test_assetlinks_handler_response_headers() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 
@@ -175,7 +179,8 @@ fn test_assetlinks_handler_async_handle() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let request = Request::builder()
@@ -194,7 +199,8 @@ fn test_assetlinks_handler_clone() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let cloned = handler.clone();
@@ -235,7 +241,8 @@ fn test_assetlinks_handler_multiple_statements() {
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
 		.additional_package("com.example.app2", &[VALID_FINGERPRINT])
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let json = handler.json();
@@ -273,7 +280,8 @@ fn test_assetlinks_handler_content_type() {
 	let config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let handler = AssetLinksHandler::new(config).unwrap();
 	let request = Request::builder()
@@ -298,7 +306,8 @@ fn test_both_handlers_cache_control() {
 	let android_config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let aasa_handler = AasaHandler::new(ios_config).unwrap();
 	let assetlinks_handler = AssetLinksHandler::new(android_config).unwrap();
@@ -344,7 +353,8 @@ fn test_both_headers_cors() {
 	let android_config = AndroidConfig::builder()
 		.package_name("com.example.app")
 		.sha256_fingerprint(VALID_FINGERPRINT)
-		.build();
+		.build()
+		.unwrap();
 
 	let aasa_handler = AasaHandler::new(ios_config).unwrap();
 	let assetlinks_handler = AssetLinksHandler::new(android_config).unwrap();
