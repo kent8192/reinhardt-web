@@ -111,7 +111,7 @@ pub(crate) fn permission_required_impl(args: TokenStream, input: ItemFn) -> Resu
 		})
 		.collect();
 
-	// Generate runtime permission checking code (only if Request parameter exists)
+	// Generate runtime permission checking code (requires Request parameter)
 	let permission_check = if let Some(request_ident) = request_param {
 		quote! {
 			// Runtime permission check using Request parameter
@@ -130,13 +130,15 @@ pub(crate) fn permission_required_impl(args: TokenStream, input: ItemFn) -> Resu
 			}
 		}
 	} else {
-		// No Request parameter: compile-time validation only
-		// Runtime checking should be performed by middleware or at call site
-		quote! {
-			// Note: Runtime permission checking requires a Request parameter.
-			// Current function has no Request parameter, so permissions are validated at compile-time only.
-			// Ensure authentication middleware is properly configured.
-		}
+		// No Request parameter: emit compile error to prevent silent permission bypass
+		// Security: Functions decorated with #[permission_required] MUST have a Request parameter
+		// for runtime permission enforcement
+		return Err(syn::Error::new_spanned(
+			&input.sig,
+			"#[permission_required] requires a Request parameter for runtime permission checking. \
+			 Add a `request: Request` parameter to this function, or remove the #[permission_required] attribute \
+			 if permission checking is handled elsewhere.",
+		));
 	};
 
 	// Inject permission check into function body
