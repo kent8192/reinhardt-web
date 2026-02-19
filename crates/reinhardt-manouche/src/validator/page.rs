@@ -257,14 +257,7 @@ fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<Vec<TypedPag
 }
 
 /// Checks if an attribute is a URL attribute for the given element.
-///
-/// Note: img element's src attribute is excluded as it has separate validation rules.
 fn is_url_attribute(attr_name: &str, element_tag: &str, url_attrs: &[(&str, &str)]) -> bool {
-	// Exclude img src - it has separate validation rules
-	if element_tag == "img" && attr_name == "src" {
-		return false;
-	}
-
 	for (url_attr, applicable_tags) in url_attrs {
 		if attr_name == *url_attr {
 			for tag in applicable_tags.split(',').map(|s| s.trim()) {
@@ -474,7 +467,7 @@ fn validate_attr_type(
 		("href", "a, area, link"),
 		("action", "form"),
 		("formaction", "button, input"),
-		("src", "iframe, video, audio, source, script, embed"),
+		("src", "iframe, video, audio, source, script, embed, img"),
 	];
 
 	// Dangerous URL schemes that should be blocked for security (XSS prevention)
@@ -1079,12 +1072,7 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		assert!(
-			result
-				.unwrap_err()
-				.to_string()
-				.contains("must not be empty")
-		);
+		assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 	}
 
 	// Boolean attribute tests - string literals are prohibited
@@ -1446,17 +1434,82 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_validate_url_attr_img_src_excluded() {
+	fn test_validate_url_attr_img_src_javascript_blocked() {
 		// Arrange
-		// img src should not be validated as URL attribute (has separate rules)
+		// img src should block dangerous URL schemes like javascript:
 		let value = AttrValue::from_expr(parse_quote!("javascript:alert(1)"));
 
 		// Act
-		// This should fail with img src validation error, not URL validation error
 		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
 
 		// Assert
-		assert!(result.is_ok()); // img src allows string literals (separate validation)
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(
+			err_msg.contains("Dangerous URL scheme"),
+			"Expected dangerous URL scheme error, got: {}",
+			err_msg
+		);
+	}
+
+	#[rstest]
+	fn test_validate_url_attr_img_src_data_scheme_blocked() {
+		// Arrange
+		let value = AttrValue::from_expr(parse_quote!("data:text/html,<script>alert(1)</script>"));
+
+		// Act
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(
+			err_msg.contains("Dangerous URL scheme"),
+			"Expected dangerous URL scheme error, got: {}",
+			err_msg
+		);
+	}
+
+	#[rstest]
+	fn test_validate_url_attr_img_src_vbscript_blocked() {
+		// Arrange
+		let value = AttrValue::from_expr(parse_quote!("vbscript:MsgBox('XSS')"));
+
+		// Act
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
+		assert!(result.is_err());
+		let err_msg = result.unwrap_err().to_string();
+		assert!(
+			err_msg.contains("Dangerous URL scheme"),
+			"Expected dangerous URL scheme error, got: {}",
+			err_msg
+		);
+	}
+
+	#[rstest]
+	fn test_validate_url_attr_img_src_safe_url_passes() {
+		// Arrange
+		let value = AttrValue::from_expr(parse_quote!("https://example.com/image.png"));
+
+		// Act
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_validate_url_attr_img_src_relative_path_passes() {
+		// Arrange
+		let value = AttrValue::from_expr(parse_quote!("/images/photo.jpg"));
+
+		// Act
+		let result = validate_attr_type("src", &value, "img", proc_macro2::Span::call_site());
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
 	// Enumerated attribute tests - invalid values are prohibited

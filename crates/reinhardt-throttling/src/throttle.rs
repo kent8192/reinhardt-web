@@ -7,6 +7,8 @@ pub enum ThrottleError {
 	RateLimitExceeded,
 	#[error("Throttle error: {0}")]
 	ThrottleError(String),
+	#[error("Invalid configuration: {0}")]
+	InvalidConfig(String),
 }
 
 pub type ThrottleResult<T> = Result<T, ThrottleError>;

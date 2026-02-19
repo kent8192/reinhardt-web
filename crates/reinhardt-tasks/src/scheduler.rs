@@ -4,6 +4,7 @@ use crate::TaskExecutor;
 use chrono::{DateTime, Utc};
 use cron::Schedule as CronParser;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Cron-like schedule for periodic tasks
 ///
@@ -79,8 +80,10 @@ impl Schedule for CronSchedule {
 /// let scheduler = Scheduler::new();
 // Add tasks and run scheduler
 /// ```
+// Fixes #786: added shutdown broadcast channel
 pub struct Scheduler {
-	tasks: Vec<(Box<dyn TaskExecutor>, Box<dyn Schedule>)>,
+	tasks: Vec<(Arc<dyn TaskExecutor>, Box<dyn Schedule>)>,
+	shutdown_tx: tokio::sync::broadcast::Sender<()>,
 }
 
 impl Scheduler {
@@ -94,7 +97,11 @@ impl Scheduler {
 	/// let scheduler = Scheduler::new();
 	/// ```
 	pub fn new() -> Self {
-		Self { tasks: Vec::new() }
+		let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
+		Self {
+			tasks: Vec::new(),
+			shutdown_tx,
+		}
 	}
 
 	/// Add a task with schedule
@@ -109,8 +116,29 @@ impl Scheduler {
 	/// let schedule = CronSchedule::new("0 0 * * *".to_string());
 	/// // scheduler.add_task(Box::new(my_task), Box::new(schedule));
 	/// ```
-	pub fn add_task(&mut self, task: Box<dyn TaskExecutor>, schedule: Box<dyn Schedule>) {
+	pub fn add_task(&mut self, task: Arc<dyn TaskExecutor>, schedule: Box<dyn Schedule>) {
 		self.tasks.push((task, schedule));
+	}
+
+	/// Shut down the scheduler gracefully
+	///
+	/// Signals the scheduler to stop processing tasks. Already spawned
+	/// tasks will continue to completion, but no new tasks will be started.
+	///
+	/// # Example
+	///
+	/// ```rust,no_run
+	/// # use reinhardt_tasks::Scheduler;
+	/// # #[tokio::main]
+	/// # async fn main() {
+	/// let scheduler = Scheduler::new();
+	/// // ... add tasks ...
+	/// scheduler.shutdown();
+	/// # }
+	/// ```
+	// Fixes #786
+	pub fn shutdown(&self) {
+		let _ = self.shutdown_tx.send(());
 	}
 
 	/// Run the scheduler
@@ -129,8 +157,12 @@ impl Scheduler {
 	/// scheduler.run().await;
 	/// # }
 	/// ```
+	// Fixes #787: spawn each task execution as a separate tokio task
+	// Fixes #786: check shutdown signal via tokio::select!
 	pub async fn run(&self) {
 		use tokio::time::{Duration, sleep};
+
+		let mut shutdown_rx = self.shutdown_tx.subscribe();
 
 		loop {
 			let now = Utc::now();
@@ -141,10 +173,13 @@ impl Scheduler {
 				if let Some(next_run) = schedule.next_run() {
 					// If it's time to run the task
 					if next_run <= now {
-						// Execute the task
-						if let Err(e) = task.execute().await {
-							eprintln!("Task execution failed: {}", e);
-						}
+						// Spawn each task execution concurrently instead of awaiting inline
+						let task = Arc::clone(task);
+						tokio::spawn(async move {
+							if let Err(e) = task.execute().await {
+								eprintln!("Task execution failed: {}", e);
+							}
+						});
 					} else {
 						// Track the earliest next run time
 						match next_check {
@@ -156,13 +191,19 @@ impl Scheduler {
 				}
 			}
 
-			// Sleep until the next scheduled task
-			if let Some(next) = next_check {
-				let duration = (next - now).to_std().unwrap_or(Duration::from_secs(1));
-				sleep(duration).await;
+			// Sleep until the next scheduled task, or break on shutdown
+			let sleep_duration = if let Some(next) = next_check {
+				(next - now).to_std().unwrap_or(Duration::from_secs(1))
 			} else {
 				// No tasks scheduled, check again in 60 seconds
-				sleep(Duration::from_secs(60)).await;
+				Duration::from_secs(60)
+			};
+
+			tokio::select! {
+				_ = sleep(sleep_duration) => {}
+				_ = shutdown_rx.recv() => {
+					break;
+				}
 			}
 		}
 	}
@@ -171,5 +212,56 @@ impl Scheduler {
 impl Default for Scheduler {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::{TaskId, TaskResult};
+	use async_trait::async_trait;
+
+	#[derive(Debug)]
+	struct DummyTask {
+		id: TaskId,
+	}
+
+	impl crate::Task for DummyTask {
+		fn id(&self) -> TaskId {
+			self.id
+		}
+
+		fn name(&self) -> &str {
+			"dummy"
+		}
+	}
+
+	#[async_trait]
+	impl TaskExecutor for DummyTask {
+		async fn execute(&self) -> TaskResult<()> {
+			Ok(())
+		}
+	}
+
+	#[tokio::test]
+	async fn test_scheduler_shutdown() {
+		let scheduler = Arc::new(Scheduler::new());
+		let scheduler_clone = Arc::clone(&scheduler);
+
+		let handle = tokio::spawn(async move {
+			scheduler_clone.run().await;
+		});
+
+		// Give the scheduler a moment to start its run loop
+		tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+		// Signal shutdown via the public method
+		scheduler.shutdown();
+
+		// run() should exit without hanging
+		tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+			.await
+			.expect("scheduler should shut down within timeout")
+			.expect("scheduler task should not panic");
 	}
 }

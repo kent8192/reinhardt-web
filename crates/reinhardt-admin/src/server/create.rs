@@ -4,11 +4,14 @@
 
 use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
 use crate::types::{MutationRequest, MutationResponse};
+use reinhardt_auth::{CurrentUser, DefaultUser};
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
+#[cfg(not(target_arch = "wasm32"))]
+use super::validation::validate_mutation_data;
 
 /// Create a new model instance
 ///
@@ -19,6 +22,10 @@ use super::error::MapServerFnError;
 ///
 /// This function is automatically exposed as an HTTP endpoint by the `#[server_fn]` macro.
 /// AdminSite and AdminDatabase dependencies are automatically injected via the DI system.
+///
+/// # Authentication
+///
+/// Requires authentication and add permission for the model.
 ///
 /// # Example
 ///
@@ -42,9 +49,26 @@ pub async fn create_record(
 	request: MutationRequest,
 	#[inject] site: Arc<AdminSite>,
 	#[inject] db: Arc<AdminDatabase>,
+	#[inject] current_user: CurrentUser<DefaultUser>,
 ) -> Result<MutationResponse, ServerFnError> {
+	// Authentication check
+	let user = current_user
+		.user()
+		.map_err(|_| ServerFnError::server(401, "Authentication required"))?;
+
+	// Get model admin and check permission
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
+	if !model_admin
+		.has_add_permission(user as &(dyn std::any::Any + Send + Sync))
+		.await
+	{
+		return Err(ServerFnError::server(403, "Permission denied"));
+	}
+
 	let table_name = model_admin.table_name();
+
+	// Validate input data before database operation
+	validate_mutation_data(&request.data, model_admin.as_ref(), false).map_server_fn_error()?;
 
 	let affected = db
 		.create::<AdminRecord>(table_name, request.data)

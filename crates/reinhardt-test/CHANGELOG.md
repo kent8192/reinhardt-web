@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.15...reinhardt-test@v0.1.0-alpha.16) - 2026-02-16
+
+### Maintenance
+
+- updated the following local packages: reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.14...reinhardt-test@v0.1.0-alpha.15) - 2026-02-15
+
+### Maintenance
+
+- updated the following local packages: reinhardt-query, reinhardt-rest, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.13...reinhardt-test@v0.1.0-alpha.14) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.12...reinhardt-test@v0.1.0-alpha.13) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.11...reinhardt-test@v0.1.0-alpha.12) - 2026-02-14
+
+### Maintenance
+
+- updated the following local packages: reinhardt-query, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-rest, reinhardt-views, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-websockets
+
+## [0.1.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.9...reinhardt-test@v0.1.0-alpha.10) - 2026-02-12
+
+### Maintenance
+
+- updated the following local packages: reinhardt-core, reinhardt-utils, reinhardt-conf, reinhardt-db, reinhardt-auth, reinhardt-urls, reinhardt-pages, reinhardt-admin, reinhardt-http, reinhardt-di, reinhardt-server, reinhardt-rest, reinhardt-views, reinhardt-websockets
+
+## [0.1.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.8...reinhardt-test@v0.1.0-alpha.9) - 2026-02-10
+
+### Maintenance
+
+- updated the following local packages: reinhardt-admin
+
 ## [0.1.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.1.0-alpha.7...reinhardt-test@v0.1.0-alpha.8) - 2026-02-10
 
 ### Maintenance

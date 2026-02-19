@@ -3,8 +3,11 @@
 //! Provides dashboard data retrieval functionality.
 
 use crate::adapters::{AdminSite, DashboardResponse, ModelInfo};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest, server_fn};
 use std::sync::Arc;
+
+#[cfg(not(target_arch = "wasm32"))]
+use super::error::AdminAuth;
 
 /// Get dashboard data
 ///
@@ -14,6 +17,10 @@ use std::sync::Arc;
 ///
 /// This function is automatically exposed as an HTTP endpoint by the `#[server_fn]` macro.
 /// The AdminSite dependency is automatically injected via the DI system.
+///
+/// # Authentication
+///
+/// Requires staff (admin) permission to access the admin panel.
 ///
 /// # Example
 ///
@@ -27,7 +34,12 @@ use std::sync::Arc;
 #[server_fn(use_inject = true)]
 pub async fn get_dashboard(
 	#[inject] site: Arc<AdminSite>,
+	#[inject] http_request: ServerFnRequest,
 ) -> Result<DashboardResponse, ServerFnError> {
+	// Authentication and authorization check
+	let auth = AdminAuth::from_request(&http_request);
+	auth.require_staff()?;
+
 	// Collect model information
 	let models: Vec<ModelInfo> = site
 		.registered_models()
