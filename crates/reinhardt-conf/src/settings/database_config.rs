@@ -3,11 +3,24 @@
 //! This module provides the `DatabaseConfig` struct and its methods for
 //! configuring database connections in Reinhardt settings files.
 
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
+
+use crate::settings::secret_types::SecretString;
+
+/// Characters that must be percent-encoded in URL userinfo components.
+/// RFC 3986 Section 3.2.1 defines userinfo = *( unreserved / pct-encoded / sub-delims / ":" )
+/// We encode everything except unreserved characters to be safe.
+const USERINFO_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+	.remove(b'-')
+	.remove(b'.')
+	.remove(b'_')
+	.remove(b'~');
 
 /// Database configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
 	/// Database engine/backend
 	pub engine: String,
@@ -18,8 +31,8 @@ pub struct DatabaseConfig {
 	/// Database user (if applicable)
 	pub user: Option<String>,
 
-	/// Database password (if applicable)
-	pub password: Option<String>,
+	/// Database password (if applicable) - stored as `SecretString` to prevent accidental exposure
+	pub password: Option<SecretString>,
 
 	/// Database host (if applicable)
 	pub host: Option<String>,
@@ -29,6 +42,20 @@ pub struct DatabaseConfig {
 
 	/// Additional options
 	pub options: HashMap<String, String>,
+}
+
+impl fmt::Debug for DatabaseConfig {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("DatabaseConfig")
+			.field("engine", &self.engine)
+			.field("name", &self.name)
+			.field("user", &self.user)
+			.field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+			.field("host", &self.host)
+			.field("port", &self.port)
+			.field("options", &self.options)
+			.finish()
+	}
 }
 
 impl DatabaseConfig {
@@ -69,7 +96,7 @@ impl DatabaseConfig {
 	/// assert_eq!(db.engine, "reinhardt.db.backends.postgresql");
 	/// assert_eq!(db.name, "mydb");
 	/// assert_eq!(db.user, Some("admin".to_string()));
-	/// assert_eq!(db.password, Some("password123".to_string()));
+	/// assert_eq!(db.password.as_ref().map(|p| p.expose_secret()), Some("password123"));
 	/// assert_eq!(db.host, Some("localhost".to_string()));
 	/// assert_eq!(db.port, Some(5432));
 	/// ```
@@ -84,7 +111,7 @@ impl DatabaseConfig {
 			engine: "reinhardt.db.backends.postgresql".to_string(),
 			name: name.into(),
 			user: Some(user.into()),
-			password: Some(password.into()),
+			password: Some(SecretString::new(password.into())),
 			host: Some(host.into()),
 			port: Some(port),
 			options: HashMap::new(),
@@ -102,7 +129,7 @@ impl DatabaseConfig {
 	/// assert_eq!(db.engine, "reinhardt.db.backends.mysql");
 	/// assert_eq!(db.name, "mydb");
 	/// assert_eq!(db.user, Some("root".to_string()));
-	/// assert_eq!(db.password, Some("password123".to_string()));
+	/// assert_eq!(db.password.as_ref().map(|p| p.expose_secret()), Some("password123"));
 	/// assert_eq!(db.host, Some("localhost".to_string()));
 	/// assert_eq!(db.port, Some(3306));
 	/// ```
@@ -117,14 +144,17 @@ impl DatabaseConfig {
 			engine: "reinhardt.db.backends.mysql".to_string(),
 			name: name.into(),
 			user: Some(user.into()),
-			password: Some(password.into()),
+			password: Some(SecretString::new(password.into())),
 			host: Some(host.into()),
 			port: Some(port),
 			options: HashMap::new(),
 		}
 	}
 
-	/// Convert DatabaseConfig to DATABASE_URL string
+	/// Convert `DatabaseConfig` to DATABASE_URL string
+	///
+	/// Credentials and query parameter values are percent-encoded per RFC 3986
+	/// to prevent URL injection and parsing errors from special characters.
 	///
 	/// # Examples
 	///
@@ -134,8 +164,8 @@ impl DatabaseConfig {
 	/// let db = DatabaseConfig::sqlite("db.sqlite3");
 	/// assert_eq!(db.to_url(), "sqlite:db.sqlite3");
 	///
-	/// let db = DatabaseConfig::postgresql("mydb", "user", "pass", "localhost", 5432);
-	/// assert_eq!(db.to_url(), "postgresql://user:pass@localhost:5432/mydb");
+	/// let db = DatabaseConfig::postgresql("mydb", "user", "p@ss:word", "localhost", 5432);
+	/// assert_eq!(db.to_url(), "postgresql://user:p%40ss%3Aword@localhost:5432/mydb");
 	/// ```
 	pub fn to_url(&self) -> String {
 		// Determine the database scheme from engine
@@ -176,12 +206,16 @@ impl DatabaseConfig {
 			"postgresql" | "mysql" => {
 				let mut url = format!("{}://", scheme);
 
-				// Add user and password if available
+				// Add user and password if available, percent-encoded per RFC 3986
 				if let Some(user) = &self.user {
-					url.push_str(user);
+					let encoded_user = utf8_percent_encode(user, USERINFO_ENCODE_SET).to_string();
+					url.push_str(&encoded_user);
 					if let Some(password) = &self.password {
 						url.push(':');
-						url.push_str(password);
+						let encoded_password =
+							utf8_percent_encode(password.expose_secret(), USERINFO_ENCODE_SET)
+								.to_string();
+						url.push_str(&encoded_password);
 					}
 					url.push('@');
 				}
@@ -200,11 +234,14 @@ impl DatabaseConfig {
 				url.push('/');
 				url.push_str(&self.name);
 
-				// Add query parameters if any
+				// Add query parameters if any, with percent-encoded values
 				if !self.options.is_empty() {
 					let mut query_parts = Vec::new();
 					for (key, value) in &self.options {
-						query_parts.push(format!("{}={}", key, value));
+						let encoded_key = utf8_percent_encode(key, USERINFO_ENCODE_SET).to_string();
+						let encoded_value =
+							utf8_percent_encode(value, USERINFO_ENCODE_SET).to_string();
+						query_parts.push(format!("{}={}", encoded_key, encoded_value));
 					}
 					url.push('?');
 					url.push_str(&query_parts.join("&"));
@@ -226,21 +263,146 @@ impl Default for DatabaseConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_settings_db_config_sqlite() {
+		// Arrange
 		let db = DatabaseConfig::sqlite("test.db");
+
+		// Assert
 		assert_eq!(db.engine, "reinhardt.db.backends.sqlite3");
 		assert_eq!(db.name, "test.db");
 		assert!(db.user.is_none());
+		assert!(db.password.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_settings_db_config_postgresql() {
+		// Arrange
 		let db = DatabaseConfig::postgresql("testdb", "user", "pass", "localhost", 5432);
+
+		// Assert
 		assert_eq!(db.engine, "reinhardt.db.backends.postgresql");
 		assert_eq!(db.name, "testdb");
 		assert_eq!(db.user, Some("user".to_string()));
+		assert_eq!(
+			db.password.as_ref().map(|p| p.expose_secret()),
+			Some("pass")
+		);
 		assert_eq!(db.port, Some(5432));
+	}
+
+	#[rstest]
+	fn test_debug_output_redacts_password() {
+		// Arrange
+		let db = DatabaseConfig::postgresql("testdb", "user", "s3cr3t!", "localhost", 5432);
+
+		// Act
+		let debug_output = format!("{:?}", db);
+
+		// Assert
+		assert!(!debug_output.contains("s3cr3t!"));
+		assert!(debug_output.contains("[REDACTED]"));
+	}
+
+	#[rstest]
+	fn test_debug_output_without_password() {
+		// Arrange
+		let db = DatabaseConfig::sqlite("test.db");
+
+		// Act
+		let debug_output = format!("{:?}", db);
+
+		// Assert
+		assert!(debug_output.contains("None"));
+		assert!(debug_output.contains("DatabaseConfig"));
+	}
+
+	#[rstest]
+	fn test_to_url_encodes_special_chars_in_username() {
+		// Arrange
+		let mut db = DatabaseConfig::postgresql("mydb", "user@domain", "pass", "localhost", 5432);
+		db.user = Some("user@domain".to_string());
+
+		// Act
+		let url = db.to_url();
+
+		// Assert
+		assert!(url.contains("user%40domain"));
+		assert!(!url.contains("user@domain:"));
+	}
+
+	#[rstest]
+	fn test_to_url_encodes_special_chars_in_password() {
+		// Arrange
+		let db = DatabaseConfig::postgresql("mydb", "user", "p@ss:w/rd#", "localhost", 5432);
+
+		// Act
+		let url = db.to_url();
+
+		// Assert
+		assert!(url.contains("p%40ss%3Aw%2Frd%23"));
+		assert!(!url.contains("p@ss:w/rd#"));
+	}
+
+	#[rstest]
+	fn test_to_url_prevents_host_injection() {
+		// Arrange - malicious username that attempts to redirect to a different host
+		let db = DatabaseConfig::postgresql(
+			"mydb",
+			"admin@evil.com:9999/fake",
+			"pass",
+			"localhost",
+			5432,
+		);
+
+		// Act
+		let url = db.to_url();
+
+		// Assert - the @ in username should be encoded, preventing host injection
+		assert!(url.contains("admin%40evil.com%3A9999%2Ffake"));
+		assert!(url.contains("@localhost:5432"));
+	}
+
+	#[rstest]
+	fn test_to_url_encodes_query_parameter_values() {
+		// Arrange
+		let mut db = DatabaseConfig::postgresql("mydb", "user", "pass", "localhost", 5432);
+		db.options
+			.insert("sslmode".to_string(), "require&inject=true".to_string());
+
+		// Act
+		let url = db.to_url();
+
+		// Assert
+		assert!(url.contains("require%26inject%3Dtrue"));
+		assert!(!url.contains("require&inject=true"));
+	}
+
+	#[rstest]
+	fn test_to_url_simple_credentials() {
+		// Arrange
+		let db = DatabaseConfig::postgresql("mydb", "user", "pass", "localhost", 5432);
+
+		// Act
+		let url = db.to_url();
+
+		// Assert
+		assert_eq!(url, "postgresql://user:pass@localhost:5432/mydb");
+	}
+
+	#[rstest]
+	fn test_password_stored_as_secret_string() {
+		// Arrange
+		let db = DatabaseConfig::postgresql("mydb", "user", "my-secret-pw", "localhost", 5432);
+
+		// Act
+		let password = db.password.as_ref().unwrap();
+
+		// Assert
+		assert_eq!(password.expose_secret(), "my-secret-pw");
+		// Display should not reveal the password
+		assert_eq!(format!("{}", password), "[REDACTED]");
 	}
 }
