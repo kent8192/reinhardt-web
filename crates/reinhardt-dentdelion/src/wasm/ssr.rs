@@ -86,6 +86,14 @@ pub enum SsrError {
 	/// JavaScript evaluation failed
 	#[error("JavaScript evaluation failed: {0}")]
 	EvalFailed(String),
+
+	/// Permission denied due to insufficient trust level
+	#[error("Permission denied: {0}")]
+	PermissionDenied(String),
+
+	/// Dangerous code pattern detected in component code
+	#[error("Dangerous code pattern detected: {0}")]
+	DangerousPattern(String),
 }
 
 #[cfg(feature = "ts")]
@@ -326,6 +334,9 @@ impl SsrProxy {
 			return Err(SsrError::NotAvailable);
 		}
 
+		// Validate component code for dangerous patterns before execution
+		validate_component_code(component_code)?;
+
 		#[cfg(feature = "ts")]
 		if let Some(ref runtime) = self.ts_runtime {
 			let html = runtime.render_component(component_code, props_json)?;
@@ -502,6 +513,53 @@ if (root) {{
 /// Shared SSR proxy instance type.
 pub type SharedSsrProxy = std::sync::Arc<SsrProxy>;
 
+/// Dangerous JavaScript patterns that should not appear in component code.
+///
+/// These patterns indicate attempts to access host system resources,
+/// load external modules, or execute system commands from within
+/// a component rendering context.
+const DANGEROUS_PATTERNS: &[(&str, &str)] = &[
+	("require(", "Node.js module loading via require()"),
+	("require (", "Node.js module loading via require()"),
+	("import(", "Dynamic import via import()"),
+	("import (", "Dynamic import via import()"),
+	("process.", "Node.js process access"),
+	("Deno.", "Deno runtime access"),
+	("__filename", "Node.js file system path access"),
+	("__dirname", "Node.js directory path access"),
+	("child_process", "Node.js child process execution"),
+	("execSync", "Synchronous command execution"),
+	("spawnSync", "Synchronous process spawning"),
+	// Block dynamic code construction
+	("Function(", "Dynamic function construction"),
+	("Function (", "Dynamic function construction"),
+];
+
+/// Validate component code for dangerous patterns.
+///
+/// This function scans component code for patterns that could indicate
+/// attempts to escape the rendering sandbox or access host resources.
+///
+/// # Arguments
+///
+/// * `code` - JavaScript component code to validate
+///
+/// # Returns
+///
+/// `Ok(())` if the code is safe, or `Err(SsrError::DangerousPattern)` if
+/// a dangerous pattern is detected.
+fn validate_component_code(code: &str) -> Result<(), SsrError> {
+	for (pattern, description) in DANGEROUS_PATTERNS {
+		if code.contains(pattern) {
+			return Err(SsrError::DangerousPattern(format!(
+				"{} (found '{}')",
+				description, pattern
+			)));
+		}
+	}
+	Ok(())
+}
+
 /// Validate component file path for security.
 ///
 /// This function prevents path traversal attacks and enforces extension whitelisting.
@@ -665,6 +723,12 @@ mod tests {
 
 		let err = SsrError::RenderFailed("syntax error".to_string());
 		assert!(err.to_string().contains("syntax error"));
+
+		let err = SsrError::PermissionDenied("insufficient trust level".to_string());
+		assert!(err.to_string().contains("Permission denied"));
+
+		let err = SsrError::DangerousPattern("Node.js module loading".to_string());
+		assert!(err.to_string().contains("Dangerous code pattern"));
 	}
 
 	#[test]
@@ -676,6 +740,96 @@ mod tests {
 			RenderOptions::default(),
 		);
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	// =========================================================================
+	// Component Code Validation Tests (Issue #677)
+	// =========================================================================
+
+	#[test]
+	fn test_validate_safe_component_code() {
+		let safe_code = r#"
+			function Component(props) {
+				return h('div', null, 'Hello, ' + props.name);
+			}
+		"#;
+		assert!(validate_component_code(safe_code).is_ok());
+	}
+
+	#[test]
+	fn test_validate_rejects_require() {
+		let code = "var fs = require('fs');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_dynamic_import() {
+		let code = "var mod = import('os');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_process_access() {
+		let code = "var key = process.env.SECRET;";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_deno_access() {
+		let code = "Deno.readTextFileSync('/etc/passwd');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_filename_dirname() {
+		let code_filename = "console.log(__filename);";
+		let code_dirname = "console.log(__dirname);";
+		assert!(matches!(
+			validate_component_code(code_filename),
+			Err(SsrError::DangerousPattern(_))
+		));
+		assert!(matches!(
+			validate_component_code(code_dirname),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_exec_sync() {
+		let code = "execSync('ls -la');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_function_constructor() {
+		let code = r#"var fn = Function("return 1");"#;
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_render_component_rejects_dangerous_code() {
+		let proxy = SsrProxy::with_availability(true);
+		let dangerous_code = "var fs = require('fs'); function Component() { return h('div'); }";
+		let result = proxy.render_component(dangerous_code, "{}", RenderOptions::default());
+		assert!(matches!(result, Err(SsrError::DangerousPattern(_))));
 	}
 
 	#[tokio::test]
