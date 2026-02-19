@@ -46,6 +46,7 @@ httpdate = "1.0"
 bytes = { workspace = true }
 sqlx = { workspace = true, optional = true }
 regex = "1.10"
+ipnet = "2.10"
 log = "0.4"
 thiserror = { workspace = true }
 url = "2.5"
