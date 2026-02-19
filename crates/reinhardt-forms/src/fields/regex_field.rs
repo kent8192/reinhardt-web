@@ -109,9 +109,11 @@ impl FormField for RegexField {
 					return Ok(serde_json::Value::Null);
 				}
 
-				// Length validation
+				// Length validation using character count (not byte count)
+				// for correct multi-byte character handling
+				let char_count = s.chars().count();
 				if let Some(max) = self.max_length
-					&& s.len() > max
+					&& char_count > max
 				{
 					return Err(FieldError::validation(
 						None,
@@ -120,7 +122,7 @@ impl FormField for RegexField {
 				}
 
 				if let Some(min) = self.min_length
-					&& s.len() < min
+					&& char_count < min
 				{
 					return Err(FieldError::validation(
 						None,
@@ -218,8 +220,9 @@ impl FormField for SlugField {
 					return Ok(serde_json::Value::Null);
 				}
 
+				// Use character count for correct multi-byte handling
 				if let Some(max) = self.max_length
-					&& s.len() > max
+					&& s.chars().count() > max
 				{
 					return Err(FieldError::validation(
 						None,

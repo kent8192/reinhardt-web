@@ -1,7 +1,18 @@
 use crate::field::{FieldError, FieldResult, FormField, Widget};
 use std::str::FromStr;
 
-/// DecimalField for precise decimal number input
+/// DecimalField for decimal number input with digit and precision validation.
+///
+/// **Precision Note**: This field stores values internally as `f64` (IEEE 754),
+/// which provides approximately 15-17 significant decimal digits of precision.
+/// All digit count and decimal place validations are performed on the **string
+/// representation** before conversion to `f64`, ensuring accurate constraint
+/// enforcement even for values that cannot be exactly represented in binary
+/// floating-point.
+///
+/// For applications requiring exact decimal arithmetic (e.g., financial
+/// calculations), consider using `rust_decimal::Decimal` in your application
+/// layer after form validation.
 pub struct DecimalField {
 	pub name: String,
 	pub label: Option<String>,
@@ -127,10 +138,11 @@ impl FormField for DecimalField {
 			None if self.required => Err(FieldError::required(None)),
 			None => Ok(serde_json::Value::Null),
 			Some(v) => {
-				// Parse decimal from either number or string
-				let num = if let Some(f) = v.as_f64() {
-					f
-				} else if let Some(s) = v.as_str() {
+				// Convert to string representation for precise validation,
+				// then parse to f64 for range checks. This ensures digit count
+				// and decimal place validation is done on the original string
+				// rather than on a potentially imprecise f64 representation.
+				let (num, str_repr) = if let Some(s) = v.as_str() {
 					let s = s.trim();
 
 					if s.is_empty() {
@@ -140,12 +152,49 @@ impl FormField for DecimalField {
 						return Ok(serde_json::Value::Null);
 					}
 
-					self.validate_decimal(s).map_err(FieldError::Validation)?
+					let n = self.validate_decimal(s).map_err(FieldError::Validation)?;
+					(n, s.to_string())
+				} else if let Some(f) = v.as_f64() {
+					if !f.is_finite() {
+						return Err(FieldError::Validation(
+							"Enter a valid number".to_string(),
+						));
+					}
+					(f, format!("{}", f))
 				} else if let Some(i) = v.as_i64() {
-					i as f64
+					(i as f64, format!("{}", i))
 				} else {
 					return Err(FieldError::Invalid("Expected number or string".to_string()));
 				};
+
+				// Validate digit/decimal constraints on string representation
+				// when value was provided as a number (string inputs are already
+				// validated in validate_decimal)
+				if !v.is_string() {
+					if let Some(max_digits) = self.max_digits {
+						let parts: Vec<&str> = str_repr.split('.').collect();
+						let total_digits = parts[0].trim_start_matches('-').len()
+							+ parts.get(1).map(|p| p.len()).unwrap_or(0);
+						if total_digits > max_digits {
+							return Err(FieldError::Validation(format!(
+								"Ensure that there are no more than {} digits in total",
+								max_digits
+							)));
+						}
+					}
+
+					if let Some(decimal_places) = self.decimal_places {
+						let parts: Vec<&str> = str_repr.split('.').collect();
+						if let Some(decimals) = parts.get(1)
+							&& decimals.len() > decimal_places
+						{
+							return Err(FieldError::Validation(format!(
+								"Ensure that there are no more than {} decimal places",
+								decimal_places
+							)));
+						}
+					}
+				}
 
 				// Validate range
 				if let Some(max) = self.max_value
