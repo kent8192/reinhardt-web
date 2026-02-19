@@ -308,12 +308,15 @@ impl SsrRenderer {
 		html.push_str("</div>\n");
 
 		// Auth data script (if provided)
+		// Note: We escape </script> sequences to prevent XSS attacks where
+		// user-controlled data (like username) could break out of the script context
 		if let Some(ref auth_data) = self.options.auth_data
 			&& let Ok(json) = serde_json::to_string(auth_data)
 		{
+			let safe_json = escape_json_for_script(&json);
 			html.push_str(&format!(
 				"<script id=\"auth-data\" type=\"application/json\">{}</script>\n",
-				json
+				safe_json
 			));
 		}
 
@@ -371,12 +374,15 @@ impl SsrRenderer {
 		html.push_str("</div>\n");
 
 		// Auth data script (if provided)
+		// Note: We escape </script> sequences to prevent XSS attacks where
+		// user-controlled data (like username) could break out of the script context
 		if let Some(ref auth_data) = self.options.auth_data
 			&& let Ok(json) = serde_json::to_string(auth_data)
 		{
+			let safe_json = escape_json_for_script(&json);
 			html.push_str(&format!(
 				"<script id=\"auth-data\" type=\"application/json\">{}</script>\n",
-				json
+				safe_json
 			));
 		}
 
@@ -417,6 +423,23 @@ fn html_escape(s: &str) -> String {
 		.replace('>', "&gt;")
 		.replace('"', "&quot;")
 		.replace('\'', "&#x27;")
+}
+
+/// Escapes JSON content for safe embedding in HTML script tags.
+///
+/// This function prevents XSS attacks by escaping `</script>` sequences
+/// that could break out of the script context. The escaping is done by
+/// replacing `</` with `<\/`, which is safe because:
+/// 1. JavaScript string literals interpret `<\/` as `</`
+/// 2. HTML parsers don't recognize `<\/script>` as a closing tag
+///
+/// # Security Note
+///
+/// When embedding JSON data in `<script>` tags, the `</script>` sequence
+/// must be escaped because HTML parsers don't understand JavaScript string
+/// context - they will see `</script>` and close the tag, allowing XSS.
+fn escape_json_for_script(json: &str) -> String {
+	json.replace("</", "<\\/")
 }
 
 /// Simple HTML minification (removes extra whitespace).
@@ -592,5 +615,83 @@ mod tests {
 		assert_eq!(html_escape("<script>"), "&lt;script&gt;");
 		assert_eq!(html_escape("a&b"), "a&amp;b");
 		assert_eq!(html_escape("\"quoted\""), "&quot;quoted&quot;");
+	}
+
+	#[test]
+	fn test_escape_json_for_script() {
+		// Verify that </script> is escaped to prevent XSS
+		assert_eq!(escape_json_for_script("</script>"), "<\\/script>");
+		// Verify that </ is escaped in any context
+		assert_eq!(
+			escape_json_for_script("</script><script>alert(1)</script>"),
+			"<\\/script><script>alert(1)<\\/script>"
+		);
+		// Normal JSON should not be modified
+		assert_eq!(
+			escape_json_for_script(r#"{"name":"test"}"#),
+			r#"{"name":"test"}"#
+		);
+	}
+
+	#[test]
+	fn test_ssr_renderer_with_auth_xss_prevention() {
+		// Test that auth data with </script> in username is properly escaped
+		let component = TestComponent {
+			message: "Auth".to_string(),
+		};
+		// Simulate a malicious username that contains </script>
+		let malicious_username = "</script><script>alert('xss')</script>";
+		let auth = AuthData::authenticated(1, malicious_username);
+		let opts = SsrOptions::new().auth(auth);
+		let mut renderer = SsrRenderer::with_options(opts);
+		let html = renderer.render_page(&component);
+
+		// Verify the auth-data script tag exists
+		assert!(html.contains("auth-data"));
+
+		// Verify that </script> sequences are escaped in the JSON
+		// The raw </script> should NOT appear in the HTML output
+		assert!(!html.contains("</script><script>alert"));
+
+		// The escaped version should be present
+		assert!(html.contains("<\\/script>"));
+	}
+
+	#[test]
+	fn test_ssr_renderer_with_auth_xss_prevention_wrap_in_html_with_head() {
+		use crate::component::PageElement;
+
+		// Test XSS prevention via wrap_in_html_with_head path
+		struct TestPage {
+			message: String,
+		}
+
+		impl Component for TestPage {
+			fn render(&self) -> Page {
+				PageElement::new("div")
+					.child(self.message.clone())
+					.into_page()
+			}
+
+			fn name() -> &'static str {
+				"TestPage"
+			}
+		}
+
+		let component = TestPage {
+			message: "Test".to_string(),
+		};
+		// Simulate a malicious username
+		let malicious_username = "</script><img src=x onerror=alert(1)>";
+		let auth = AuthData::authenticated(1, malicious_username);
+		let opts = SsrOptions::new().auth(auth);
+		let mut renderer = SsrRenderer::with_options(opts);
+		let view = component.render();
+		let html = renderer.render_page_with_view_head(view);
+
+		// Verify that raw </script> does not appear (it should be escaped)
+		assert!(!html.contains("</script><img"));
+		// The escaped version should be present
+		assert!(html.contains("<\\/script>"));
 	}
 }
