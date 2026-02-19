@@ -55,7 +55,7 @@ pub use extensions::Extensions;
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;
 pub use middleware::{Handler, Middleware, MiddlewareChain};
-pub use request::{Request, RequestBuilder};
+pub use request::{Request, RequestBuilder, TrustedProxies};
 pub use response::{Response, StreamBody, StreamingResponse};
 pub use upload::{FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload};
 
