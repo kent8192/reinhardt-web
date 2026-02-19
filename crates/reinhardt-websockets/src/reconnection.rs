@@ -833,6 +833,7 @@ mod tests {
 		assert!(handler.on_disconnect().await.is_none());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_disconnect_and_reconnect() {
 		// Arrange
@@ -866,6 +867,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_exhausted() {
 		// Arrange
@@ -894,6 +896,7 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_on_connected_resets() {
 		// Arrange
@@ -911,6 +914,7 @@ mod tests {
 		assert_eq!(*handler.state().await, ReconnectionState::Connected);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_with_callback() {
 		// Arrange
@@ -932,6 +936,7 @@ mod tests {
 		assert!(callback_fired.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_auto_reconnect_handler_exponential_backoff() {
 		// Arrange
