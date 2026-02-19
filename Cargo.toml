@@ -456,6 +456,10 @@ sqlx = { version = "0.8", features = [
   "rust_decimal",
 ] }
 
+# TLS
+# Pin to avoid build failure in native-tls 0.2.17 (non-exhaustive pattern in openssl.rs)
+native-tls = "=0.2.14"
+
 # Authentication & Security
 argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
