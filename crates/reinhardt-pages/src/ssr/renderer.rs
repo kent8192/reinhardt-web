@@ -620,10 +620,7 @@ mod tests {
 	#[test]
 	fn test_escape_json_for_script() {
 		// Verify that </script> is escaped to prevent XSS
-		assert_eq!(
-			escape_json_for_script("</script>"),
-			"<\\/script>"
-		);
+		assert_eq!(escape_json_for_script("</script>"), "<\\/script>");
 		// Verify that </ is escaped in any context
 		assert_eq!(
 			escape_json_for_script("</script><script>alert(1)</script>"),
