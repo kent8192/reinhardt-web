@@ -28,6 +28,7 @@
 //! app.add_middleware(SecurityHeadersMiddleware::default());
 //! ```
 
+pub mod bounds;
 pub mod csrf;
 pub mod headers;
 pub mod hsts;
@@ -36,6 +37,7 @@ pub mod redirect;
 pub mod utils;
 pub mod xss;
 
+pub use bounds::CheckedArithmeticError;
 pub use csrf::{CsrfConfig, CsrfMiddleware, CsrfToken};
 pub use headers::{ContentSecurityPolicy, SecurityHeadersConfig, SecurityHeadersMiddleware};
 pub use hsts::{HstsConfig, HstsMiddleware};
