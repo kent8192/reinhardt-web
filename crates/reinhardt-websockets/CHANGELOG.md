@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-alpha.12...reinhardt-websockets@v0.1.0-alpha.13) - 2026-02-19
+
+### Fixed
+
+- *(security)* add connection timeout for WebSocket ([[#508](https://github.com/kent8192/reinhardt-web/issues/508)](https://github.com/kent8192/reinhardt-web/issues/508))
+
+### Styling
+
+- *(websockets)* fix rustfmt formatting in connection.rs
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.1.0-alpha.11...reinhardt-websockets@v0.1.0-alpha.12) - 2026-02-16
 
 ### Maintenance
