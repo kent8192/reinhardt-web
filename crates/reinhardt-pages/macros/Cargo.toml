@@ -19,6 +19,9 @@ default = []
 # DSL definitions (new canonical location)
 reinhardt-manouche = { workspace = true }
 
+# Security utilities for URL validation (Fixes #849)
+reinhardt-core = { workspace = true }
+
 # Procedural macro essentials
 syn = { version = "2.0", features = ["full", "extra-traits"] }
 quote = "1.0"
