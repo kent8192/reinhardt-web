@@ -110,13 +110,29 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
 			TableRef::SubQuery(query, alias) => {
-				let (sql, _) = self.build_select(query);
+				let (subquery_sql, subquery_values) = self.build_select(query);
+
+				// Adjust placeholders for PostgreSQL ($1, $2, ... -> $N, $N+1, ...)
+				let offset = writer.param_index() - 1;
+				let adjusted_sql = if offset > 0 {
+					let mut sql = subquery_sql;
+					for i in (1..=subquery_values.len()).rev() {
+						sql = sql.replace(&format!("${}", i), &format!("${}", i + offset));
+					}
+					sql
+				} else {
+					subquery_sql
+				};
+
 				writer.push("(");
-				writer.push(&sql);
+				writer.push(&adjusted_sql);
 				writer.push(")");
 				writer.push_keyword("AS");
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
+
+				// Merge the values from the subquery
+				writer.append_values(&subquery_values);
 			}
 		}
 	}
@@ -4195,7 +4211,7 @@ mod tests {
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
-		types::IntoIden,
+		types::{Alias, IntoIden},
 	};
 	use rstest::rstest;
 
@@ -5004,6 +5020,59 @@ mod tests {
 		assert!(sql.contains("\"status\" = $"));
 		assert!(sql.contains("\"active\" = $"));
 		assert_eq!(values.len(), 4); // 0, "main", "available", true
+	}
+
+	#[test]
+	fn test_from_subquery_preserves_parameter_values() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.column("name")
+			.from("users")
+			.and_where(Expr::col("active").eq(true))
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("active_admins"))
+			.and_where(Expr::col("name").like("A%"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("(SELECT"));
+		assert!(sql.contains(") AS \"active_admins\""));
+		// Subquery params (true, "admin") + outer param ("A%") = 3 values
+		assert_eq!(values.len(), 3);
+	}
+
+	#[test]
+	fn test_from_subquery_postgres_placeholder_renumbering() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Arrange: outer query has params before the FROM subquery
+		let mut subquery = Query::select();
+		subquery
+			.column("id")
+			.from("users")
+			.and_where(Expr::col("role").eq("admin"));
+
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from_subquery(subquery, Alias::new("sub"))
+			.and_where(Expr::col("status").eq("active"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert: subquery param should be $1, outer param should be $2
+		assert!(sql.contains("$1"));
+		assert!(sql.contains("$2"));
+		assert_eq!(values.len(), 2);
 	}
 
 	// --- Phase 5: NULL Handling Tests ---
