@@ -230,6 +230,8 @@ pub enum WebSocketError {
 	Internal(String),
 	#[error("Connection timeout: idle for {0:?}")]
 	Timeout(Duration),
+	#[error("Reconnection failed after {0} attempts")]
+	ReconnectFailed(u32),
 }
 
 pub type WebSocketResult<T> = Result<T, WebSocketError>;

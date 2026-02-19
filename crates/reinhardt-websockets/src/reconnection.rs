@@ -22,7 +22,36 @@
 //! }
 //! ```
 
+use std::sync::Arc;
 use std::time::Duration;
+
+use tokio::sync::RwLock;
+
+/// Reconnection state representing the current phase of the reconnection process
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReconnectionState {
+	/// No reconnection is needed; connection is active
+	Connected,
+	/// Connection was lost and reconnection is being attempted
+	Reconnecting {
+		/// Current attempt number (1-based)
+		attempt: u32,
+		/// Delay before the next reconnection attempt
+		next_delay: Duration,
+	},
+	/// Reconnection was successful after a disconnection
+	Reconnected {
+		/// Total number of attempts it took to reconnect
+		total_attempts: u32,
+	},
+	/// All reconnection attempts have been exhausted
+	Failed {
+		/// Total number of attempts that were made
+		total_attempts: u32,
+	},
+	/// Reconnection was explicitly disabled or cancelled
+	Disabled,
+}
 
 /// Reconnection configuration
 #[derive(Debug, Clone)]
@@ -352,6 +381,243 @@ impl ReconnectionStrategy {
 			true
 		}
 	}
+
+	/// Returns a reference to the reconnection configuration.
+	pub fn config(&self) -> &ReconnectionConfig {
+		&self.config
+	}
+}
+
+/// Callback type for reconnection state changes
+pub type OnReconnectStateChange = Box<dyn Fn(&ReconnectionState) + Send + Sync>;
+
+/// Automatic reconnection handler that manages the reconnection lifecycle.
+///
+/// This handler wraps a `ReconnectionStrategy` and provides an async interface
+/// for managing automatic reconnection with state tracking and callbacks.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_websockets::reconnection::{
+///     AutoReconnectHandler, ReconnectionConfig, ReconnectionState,
+/// };
+///
+/// # tokio_test::block_on(async {
+/// let config = ReconnectionConfig::default().with_max_attempts(3);
+/// let handler = AutoReconnectHandler::new(config);
+///
+/// assert!(handler.is_enabled());
+/// assert_eq!(*handler.state().await, ReconnectionState::Connected);
+/// # });
+/// ```
+pub struct AutoReconnectHandler {
+	strategy: RwLock<ReconnectionStrategy>,
+	state: Arc<RwLock<ReconnectionState>>,
+	enabled: bool,
+	on_state_change: Option<OnReconnectStateChange>,
+}
+
+impl AutoReconnectHandler {
+	/// Creates a new auto-reconnect handler with the given configuration.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::{AutoReconnectHandler, ReconnectionConfig};
+	///
+	/// let handler = AutoReconnectHandler::new(ReconnectionConfig::default());
+	/// assert!(handler.is_enabled());
+	/// ```
+	pub fn new(config: ReconnectionConfig) -> Self {
+		Self {
+			strategy: RwLock::new(ReconnectionStrategy::new(config)),
+			state: Arc::new(RwLock::new(ReconnectionState::Connected)),
+			enabled: true,
+			on_state_change: None,
+		}
+	}
+
+	/// Creates a disabled auto-reconnect handler.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::AutoReconnectHandler;
+	///
+	/// # tokio_test::block_on(async {
+	/// let handler = AutoReconnectHandler::disabled();
+	/// assert!(!handler.is_enabled());
+	///
+	/// // Attempting reconnection on a disabled handler returns None
+	/// assert!(handler.on_disconnect().await.is_none());
+	/// # });
+	/// ```
+	pub fn disabled() -> Self {
+		Self {
+			strategy: RwLock::new(ReconnectionStrategy::new(ReconnectionConfig::default())),
+			state: Arc::new(RwLock::new(ReconnectionState::Disabled)),
+			enabled: false,
+			on_state_change: None,
+		}
+	}
+
+	/// Sets a callback to be invoked when the reconnection state changes.
+	pub fn with_on_state_change(mut self, callback: OnReconnectStateChange) -> Self {
+		self.on_state_change = Some(callback);
+		self
+	}
+
+	/// Returns whether auto-reconnect is enabled.
+	pub fn is_enabled(&self) -> bool {
+		self.enabled
+	}
+
+	/// Returns the current reconnection state.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::{
+	///     AutoReconnectHandler, ReconnectionConfig, ReconnectionState,
+	/// };
+	///
+	/// # tokio_test::block_on(async {
+	/// let handler = AutoReconnectHandler::new(ReconnectionConfig::default());
+	/// let state = handler.state().await;
+	/// assert_eq!(*state, ReconnectionState::Connected);
+	/// # });
+	/// ```
+	pub async fn state(&self) -> tokio::sync::RwLockReadGuard<'_, ReconnectionState> {
+		self.state.read().await
+	}
+
+	/// Called when a connection is lost. Returns the delay to wait before
+	/// the next reconnection attempt, or `None` if reconnection is exhausted
+	/// or disabled.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::{
+	///     AutoReconnectHandler, ReconnectionConfig, ReconnectionState,
+	/// };
+	/// use std::time::Duration;
+	///
+	/// # tokio_test::block_on(async {
+	/// let config = ReconnectionConfig::default()
+	///     .with_max_attempts(2)
+	///     .with_initial_delay(Duration::from_secs(1))
+	///     .with_jitter_factor(0.0);
+	///
+	/// let handler = AutoReconnectHandler::new(config);
+	///
+	/// // First disconnect
+	/// let delay = handler.on_disconnect().await;
+	/// assert!(delay.is_some());
+	/// assert_eq!(delay.unwrap(), Duration::from_secs(1));
+	///
+	/// // Second disconnect
+	/// let delay = handler.on_disconnect().await;
+	/// assert!(delay.is_some());
+	///
+	/// // Third disconnect (exhausted)
+	/// let delay = handler.on_disconnect().await;
+	/// assert!(delay.is_none());
+	/// # });
+	/// ```
+	pub async fn on_disconnect(&self) -> Option<Duration> {
+		if !self.enabled {
+			return None;
+		}
+
+		let mut strategy = self.strategy.write().await;
+		let delay = strategy.next_delay();
+
+		match delay {
+			Some(d) => {
+				let new_state = ReconnectionState::Reconnecting {
+					attempt: strategy.attempt_count(),
+					next_delay: d,
+				};
+				self.set_state(new_state).await;
+				Some(d)
+			}
+			None => {
+				let new_state = ReconnectionState::Failed {
+					total_attempts: strategy.attempt_count(),
+				};
+				self.set_state(new_state).await;
+				None
+			}
+		}
+	}
+
+	/// Called when a reconnection attempt succeeds.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::{
+	///     AutoReconnectHandler, ReconnectionConfig, ReconnectionState,
+	/// };
+	///
+	/// # tokio_test::block_on(async {
+	/// let handler = AutoReconnectHandler::new(ReconnectionConfig::default());
+	///
+	/// // Simulate disconnect then reconnect
+	/// handler.on_disconnect().await;
+	/// handler.on_reconnect_success().await;
+	///
+	/// let state = handler.state().await;
+	/// match &*state {
+	///     ReconnectionState::Reconnected { total_attempts } => {
+	///         assert_eq!(*total_attempts, 1);
+	///     }
+	///     _ => panic!("Expected Reconnected state"),
+	/// }
+	/// # });
+	/// ```
+	pub async fn on_reconnect_success(&self) {
+		let mut strategy = self.strategy.write().await;
+		let total_attempts = strategy.attempt_count();
+		strategy.reset();
+		drop(strategy);
+
+		self.set_state(ReconnectionState::Reconnected { total_attempts })
+			.await;
+	}
+
+	/// Called when the connection is fully established (initial or after reconnection).
+	/// Resets the strategy and sets state to Connected.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::reconnection::{
+	///     AutoReconnectHandler, ReconnectionConfig, ReconnectionState,
+	/// };
+	///
+	/// # tokio_test::block_on(async {
+	/// let handler = AutoReconnectHandler::new(ReconnectionConfig::default());
+	/// handler.on_connected().await;
+	///
+	/// let state = handler.state().await;
+	/// assert_eq!(*state, ReconnectionState::Connected);
+	/// # });
+	/// ```
+	pub async fn on_connected(&self) {
+		self.strategy.write().await.reset();
+		self.set_state(ReconnectionState::Connected).await;
+	}
+
+	/// Updates the state and fires the callback if one is set.
+	async fn set_state(&self, new_state: ReconnectionState) {
+		if let Some(cb) = &self.on_state_change {
+			cb(&new_state);
+		}
+		*self.state.write().await = new_state;
+	}
 }
 
 #[cfg(test)]
@@ -494,5 +760,195 @@ mod tests {
 		// However, it's within 1 second ±10%
 		let delay_secs = delay.as_secs_f64();
 		assert!((0.9..=1.1).contains(&delay_secs));
+	}
+
+	#[test]
+	fn test_strategy_config_accessor() {
+		// Arrange
+		let config = ReconnectionConfig::default().with_max_attempts(7);
+
+		// Act
+		let strategy = ReconnectionStrategy::new(config);
+
+		// Assert
+		assert_eq!(strategy.config().max_attempts, Some(7));
+	}
+
+	#[test]
+	fn test_reconnection_state_variants() {
+		// Arrange & Act & Assert
+		let connected = ReconnectionState::Connected;
+		assert_eq!(connected, ReconnectionState::Connected);
+
+		let reconnecting = ReconnectionState::Reconnecting {
+			attempt: 1,
+			next_delay: Duration::from_secs(2),
+		};
+		assert_eq!(
+			reconnecting,
+			ReconnectionState::Reconnecting {
+				attempt: 1,
+				next_delay: Duration::from_secs(2),
+			}
+		);
+
+		let reconnected = ReconnectionState::Reconnected { total_attempts: 3 };
+		assert_eq!(
+			reconnected,
+			ReconnectionState::Reconnected { total_attempts: 3 }
+		);
+
+		let failed = ReconnectionState::Failed { total_attempts: 5 };
+		assert_eq!(
+			failed,
+			ReconnectionState::Failed { total_attempts: 5 }
+		);
+
+		let disabled = ReconnectionState::Disabled;
+		assert_eq!(disabled, ReconnectionState::Disabled);
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_new() {
+		// Arrange & Act
+		let handler = AutoReconnectHandler::new(ReconnectionConfig::default());
+
+		// Assert
+		assert!(handler.is_enabled());
+		assert_eq!(*handler.state().await, ReconnectionState::Connected);
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_disabled() {
+		// Arrange & Act
+		let handler = AutoReconnectHandler::disabled();
+
+		// Assert
+		assert!(!handler.is_enabled());
+		assert_eq!(*handler.state().await, ReconnectionState::Disabled);
+		assert!(handler.on_disconnect().await.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_disconnect_and_reconnect() {
+		// Arrange
+		let config = ReconnectionConfig::default()
+			.with_max_attempts(3)
+			.with_initial_delay(Duration::from_secs(1))
+			.with_jitter_factor(0.0);
+		let handler = AutoReconnectHandler::new(config);
+
+		// Act - first disconnect
+		let delay = handler.on_disconnect().await;
+
+		// Assert - should get initial delay
+		assert_eq!(delay, Some(Duration::from_secs(1)));
+		match &*handler.state().await {
+			ReconnectionState::Reconnecting { attempt, .. } => {
+				assert_eq!(*attempt, 1);
+			}
+			other => panic!("Expected Reconnecting, got {:?}", other),
+		}
+
+		// Act - reconnect succeeds
+		handler.on_reconnect_success().await;
+
+		// Assert
+		match &*handler.state().await {
+			ReconnectionState::Reconnected { total_attempts } => {
+				assert_eq!(*total_attempts, 1);
+			}
+			other => panic!("Expected Reconnected, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_exhausted() {
+		// Arrange
+		let config = ReconnectionConfig::default()
+			.with_max_attempts(2)
+			.with_initial_delay(Duration::from_secs(1))
+			.with_jitter_factor(0.0);
+		let handler = AutoReconnectHandler::new(config);
+
+		// Act - exhaust all attempts
+		let delay1 = handler.on_disconnect().await;
+		assert!(delay1.is_some());
+
+		let delay2 = handler.on_disconnect().await;
+		assert!(delay2.is_some());
+
+		let delay3 = handler.on_disconnect().await;
+
+		// Assert - should be exhausted
+		assert!(delay3.is_none());
+		match &*handler.state().await {
+			ReconnectionState::Failed { total_attempts } => {
+				assert_eq!(*total_attempts, 2);
+			}
+			other => panic!("Expected Failed, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_on_connected_resets() {
+		// Arrange
+		let config = ReconnectionConfig::default()
+			.with_max_attempts(5)
+			.with_jitter_factor(0.0);
+		let handler = AutoReconnectHandler::new(config);
+
+		// Act - disconnect and reconnect
+		handler.on_disconnect().await;
+		handler.on_reconnect_success().await;
+		handler.on_connected().await;
+
+		// Assert - state should be Connected and strategy reset
+		assert_eq!(*handler.state().await, ReconnectionState::Connected);
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_with_callback() {
+		// Arrange
+		let callback_fired = Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let callback_fired_clone = callback_fired.clone();
+
+		let config = ReconnectionConfig::default()
+			.with_max_attempts(3)
+			.with_jitter_factor(0.0);
+		let handler = AutoReconnectHandler::new(config)
+			.with_on_state_change(Box::new(move |_state| {
+				callback_fired_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+			}));
+
+		// Act
+		handler.on_disconnect().await;
+
+		// Assert
+		assert!(callback_fired.load(std::sync::atomic::Ordering::SeqCst));
+	}
+
+	#[tokio::test]
+	async fn test_auto_reconnect_handler_exponential_backoff() {
+		// Arrange
+		let config = ReconnectionConfig::default()
+			.with_max_attempts(4)
+			.with_initial_delay(Duration::from_secs(1))
+			.with_backoff_multiplier(2.0)
+			.with_jitter_factor(0.0);
+		let handler = AutoReconnectHandler::new(config);
+
+		// Act & Assert - verify exponential backoff
+		let delay1 = handler.on_disconnect().await.unwrap();
+		assert_eq!(delay1, Duration::from_secs(1));
+
+		let delay2 = handler.on_disconnect().await.unwrap();
+		assert_eq!(delay2, Duration::from_secs(2));
+
+		let delay3 = handler.on_disconnect().await.unwrap();
+		assert_eq!(delay3, Duration::from_secs(4));
+
+		let delay4 = handler.on_disconnect().await.unwrap();
+		assert_eq!(delay4, Duration::from_secs(8));
 	}
 }
