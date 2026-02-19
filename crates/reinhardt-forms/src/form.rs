@@ -948,6 +948,10 @@ impl Default for Form {
 /// assert!(form.get("nonexistent").is_none());
 /// ```
 impl Form {
+	/// Clippy suggests `&dyn FormField` over `&Box<dyn FormField>`, but the
+	/// `Index` trait requires returning a reference to the stored `Box`, so
+	/// `get` returns the same type for consistency with indexing.
+	#[allow(clippy::borrowed_box)]
 	pub fn get(&self, name: &str) -> Option<&Box<dyn FormField>> {
 		self.fields.iter().find(|f| f.name() == name)
 	}

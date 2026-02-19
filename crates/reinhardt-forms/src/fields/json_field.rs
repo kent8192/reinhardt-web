@@ -140,8 +140,12 @@ impl JSONField {
 			return false;
 		}
 		match value {
-			Value::Array(arr) => arr.iter().all(|v| Self::depth_check_recursive(v, current + 1, max)),
-			Value::Object(map) => map.values().all(|v| Self::depth_check_recursive(v, current + 1, max)),
+			Value::Array(arr) => arr
+				.iter()
+				.all(|v| Self::depth_check_recursive(v, current + 1, max)),
+			Value::Object(map) => map
+				.values()
+				.all(|v| Self::depth_check_recursive(v, current + 1, max)),
 			_ => true,
 		}
 	}
