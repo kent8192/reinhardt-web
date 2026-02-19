@@ -191,7 +191,10 @@ pub use middleware::{
 	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
 	MiddlewareResult,
 };
-pub use protocol::default_websocket_config;
+pub use protocol::{
+	DEFAULT_MAX_FRAME_SIZE, DEFAULT_MAX_MESSAGE_SIZE, default_websocket_config,
+	websocket_config_with_limits,
+};
 pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
 #[cfg(feature = "redis-channel")]
 pub use redis_channel::{RedisChannelLayer, RedisConfig};
