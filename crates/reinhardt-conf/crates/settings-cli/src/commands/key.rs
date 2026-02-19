@@ -2,17 +2,17 @@
 
 use crate::output;
 use std::io::{self, IsTerminal};
+use zeroize::Zeroizing;
 
 /// Environment variable name for encryption key
 pub(crate) const ENV_KEY_NAME: &str = "REINHARDT_ENCRYPTION_KEY";
 
 /// Key source for encryption/decryption
-#[derive(Debug, Clone)]
 pub(crate) struct KeySource {
-	/// The key bytes (32 bytes for AES-256)
-	pub(crate) key_bytes: Vec<u8>,
+	/// The key bytes (32 bytes for AES-256), zeroed on drop
+	pub(crate) key_bytes: Zeroizing<Vec<u8>>,
 	/// Source of the key (for logging purposes)
-	#[allow(dead_code)]
+	#[allow(dead_code)] // Used for diagnostic logging
 	pub(crate) source: KeySourceInfo,
 }
 
@@ -44,7 +44,7 @@ pub(crate) fn get_encryption_key(cli_key: Option<&str>) -> anyhow::Result<KeySou
 
 		let key_bytes = decode_and_validate_key(key)?;
 		return Ok(KeySource {
-			key_bytes,
+			key_bytes: Zeroizing::new(key_bytes),
 			source: KeySourceInfo::CliArgument,
 		});
 	}
@@ -60,7 +60,7 @@ pub(crate) fn get_encryption_key(cli_key: Option<&str>) -> anyhow::Result<KeySou
 			));
 			let key_bytes = decode_and_validate_key(&key)?;
 			return Ok(KeySource {
-				key_bytes,
+				key_bytes: Zeroizing::new(key_bytes),
 				source: KeySourceInfo::EnvironmentVariable,
 			});
 		}
@@ -74,7 +74,7 @@ pub(crate) fn get_encryption_key(cli_key: Option<&str>) -> anyhow::Result<KeySou
 
 		let key_bytes = decode_and_validate_key(&key)?;
 		return Ok(KeySource {
-			key_bytes,
+			key_bytes: Zeroizing::new(key_bytes),
 			source: KeySourceInfo::StdinPrompt,
 		});
 	}

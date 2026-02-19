@@ -296,6 +296,25 @@ description = "Run all tests (with Docker cleanup)"
 dependencies = ["docker-cleanup-force", "test-only"]
 
 # ============================================================================
+# Coverage Tasks
+# ============================================================================
+
+[tasks.coverage-unit]
+description = "Run unit tests with coverage (generates LCOV report)"
+command = "cargo"
+args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-fail-fast", "--lcov", "--output-path", "/tmp/reinhardt-unit-lcov.info"]
+
+[tasks.coverage-html]
+description = "Run unit tests with coverage and open HTML report"
+command = "cargo"
+args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-fail-fast", "--html", "--open"]
+
+[tasks.coverage-summary]
+description = "Run unit tests with coverage and show summary in terminal"
+command = "cargo"
+args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-fail-fast"]
+
+# ============================================================================
 # CI Tasks
 # ============================================================================
 

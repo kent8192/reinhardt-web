@@ -168,8 +168,12 @@ pub fn sanitize_html(input: &str) -> String {
 pub fn is_safe_url(url: &str) -> bool {
 	let url_lower = url.to_lowercase();
 
-	// Allow relative URLs
-	if url.starts_with('/') || url.starts_with("./") || url.starts_with("../") {
+	// Allow relative URLs and anchor links
+	if url.starts_with('/')
+		|| url.starts_with("./")
+		|| url.starts_with("../")
+		|| url.starts_with('#')
+	{
 		return true;
 	}
 
@@ -426,6 +430,7 @@ mod tests {
 		assert!(is_safe_url("/path/to/page"));
 		assert!(is_safe_url("./relative/path"));
 		assert!(is_safe_url("../parent/path"));
+		assert!(is_safe_url("#section")); // Anchor links are safe
 		assert!(is_safe_url("mailto:user@example.com"));
 		assert!(!is_safe_url("javascript:alert(1)"));
 		assert!(!is_safe_url("data:text/html,<script>alert(1)</script>"));

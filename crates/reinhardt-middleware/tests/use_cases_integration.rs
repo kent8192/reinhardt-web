@@ -288,6 +288,7 @@ async fn use_case_api_gateway_protection() {
 		strategy: RateLimitStrategy::PerIp,
 		exclude_paths: vec![],
 		error_message: None,
+		trusted_proxies: vec![],
 	};
 	let rate_limit = Arc::new(RateLimitMiddleware::new(rate_config));
 
@@ -492,6 +493,7 @@ async fn use_case_login_throttling() {
 		strategy: RateLimitStrategy::PerIp,
 		exclude_paths: vec![],
 		error_message: Some("Too many login attempts. Please try again later.".to_string()),
+		trusted_proxies: vec![],
 	};
 	let rate_limit = Arc::new(RateLimitMiddleware::new(login_rate_config));
 

@@ -10,6 +10,8 @@ pub enum FormError {
 	Field { field: String, error: FieldError },
 	#[error("Validation error: {0}")]
 	Validation(String),
+	#[error("No model instance available for save operation")]
+	NoInstance,
 }
 
 pub type FormResult<T> = Result<T, FormError>;
@@ -226,6 +228,12 @@ impl Form {
 							.entry(ALL_FIELDS_KEY.to_string())
 							.or_default()
 							.push(msg);
+					}
+					FormError::NoInstance => {
+						self.errors
+							.entry(ALL_FIELDS_KEY.to_string())
+							.or_default()
+							.push(e.to_string());
 					}
 				}
 			}
