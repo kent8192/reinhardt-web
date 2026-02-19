@@ -117,6 +117,24 @@ impl<U: BaseUser + Clone> CurrentUser<U> {
 	pub fn into_user(self) -> Result<U, AuthenticationError> {
 		self.user.ok_or(AuthenticationError::NotAuthenticated)
 	}
+
+	/// Returns the user as a trait object for permission checking.
+	///
+	/// This method is used to pass the user to `ModelAdmin` permission methods
+	/// that accept `&(dyn Any + Send + Sync)`.
+	///
+	/// # Returns
+	///
+	/// Returns `Some` with a reference to the user as a trait object if authenticated,
+	/// or `None` if the user is anonymous.
+	pub fn as_any(&self) -> Option<&(dyn std::any::Any + Send + Sync)>
+	where
+		U: 'static,
+	{
+		self.user
+			.as_ref()
+			.map(|u| u as &(dyn std::any::Any + Send + Sync))
+	}
 }
 
 #[async_trait]

@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -49,7 +50,7 @@ Reinhardt بهترین‌ها را از سه دنیا گرد هم می‌آور�
 
 ## ✨ ویژگی‌های کلیدی
 
-- **ORM ایمن از نظر نوع** با اعتبارسنجی زمان کامپایل (SeaQuery v1.0.0-rc)
+- **ORM ایمن از نظر نوع** با اعتبارسنجی زمان کامپایل (reinhardt-query)
 - **سریال‌سازهای قدرتمند** با اعتبارسنجی خودکار (serde + validator)
 - **DI به سبک FastAPI** با تزریق وابستگی ایمن از نظر نوع و کش
 - **ViewSets** برای توسعه سریع CRUD API
@@ -537,7 +538,7 @@ async fn create_user_with_transaction(
 }
 ```
 
-**نکته**: Reinhardt از [SeaQuery v1.0.0-rc](https://crates.io/crates/sea-query) برای عملیات SQL استفاده می‌کند. ماکرو `#[derive(Model)]` به طور خودکار پیاده‌سازی‌های صفت Model، دسترسی‌دهنده‌های فیلد ایمن از نظر نوع و ثبت در رجیستری مدل جهانی را تولید می‌کند.
+**نکته**: Reinhardt از reinhardt-query برای عملیات SQL استفاده می‌کند. ماکرو `#[derive(Model)]` به طور خودکار پیاده‌سازی‌های صفت Model، دسترسی‌دهنده‌های فیلد ایمن از نظر نوع و ثبت در رجیستری مدل جهانی را تولید می‌کند.
 
 در `src/config/apps.rs` ثبت کنید:
 
@@ -983,7 +984,7 @@ Reinhardt اجزای ماژولار قابل ترکیب ارائه می‌دهد
 | دستورات            | `reinhardt-commands`      | ابزارهای CLI مدیریت (startproject و غیره)  |
 | میانبرها           | `reinhardt-shortcuts`     | توابع کمکی رایج                            |
 | **پایگاه داده**     |                           |                                             |
-| ORM                | `reinhardt-db`            | یکپارچگی SeaQuery v1.0.0-rc                |
+| ORM                | `reinhardt-db`            | یکپارچگی reinhardt-query                   |
 | **احراز هویت**      |                           |                                             |
 | Auth               | `reinhardt-auth`          | JWT، Token، Session، Basic auth، مدل‌های User|
 | **REST API**       |                           |                                             |
@@ -1037,6 +1038,16 @@ Reinhardt یک پروژه مبتنی بر انجمن است. اینجا می‌�
 - [راه‌اندازی توسعه](../../CONTRIBUTING.md#development-setup)
 - [راهنمای تست](../../CONTRIBUTING.md#testing-guidelines)
 - [راهنمای کامیت](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ تاریخچه ستاره‌ها
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## مجوز
 

@@ -1262,7 +1262,13 @@ impl RunServerCommand {
 		let router = if !no_docs {
 			use reinhardt_http::Handler;
 			use reinhardt_openapi::OpenApiRouter;
-			std::sync::Arc::new(OpenApiRouter::wrap(base_router)) as std::sync::Arc<dyn Handler>
+			let wrapped = OpenApiRouter::wrap(base_router).map_err(|e| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to initialize OpenAPI router: {}",
+					e
+				))
+			})?;
+			std::sync::Arc::new(wrapped) as std::sync::Arc<dyn Handler>
 		} else {
 			base_router
 		};

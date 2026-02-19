@@ -68,6 +68,15 @@ pub(crate) async fn execute(args: SetArgs) -> anyhow::Result<()> {
 			.trim_start_matches('.'),
 		);
 		std::fs::copy(&args.file, &backup_path)?;
+
+		// Set restrictive permissions on backup file (owner read/write only)
+		#[cfg(unix)]
+		{
+			use std::os::unix::fs::PermissionsExt;
+			let permissions = std::fs::Permissions::from_mode(0o600);
+			std::fs::set_permissions(&backup_path, permissions)?;
+		}
+
 		output::info(&format!("Backup created: {:?}", backup_path));
 	}
 
@@ -228,4 +237,40 @@ fn set_nested_json_value(
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+	use tempfile::TempDir;
+
+	#[cfg(unix)]
+	#[rstest]
+	#[tokio::test]
+	async fn backup_file_has_restrictive_permissions() {
+		// Arrange
+		let tmp_dir = TempDir::new().unwrap();
+		let config_path = tmp_dir.path().join("config.toml");
+		std::fs::write(&config_path, "[database]\nhost = \"localhost\"\n").unwrap();
+
+		let args = SetArgs {
+			file: config_path.clone(),
+			key: "database.port".to_string(),
+			value: "5432".to_string(),
+			create: false,
+			backup: true,
+		};
+
+		// Act
+		execute(args).await.unwrap();
+
+		// Assert
+		let backup_path = config_path.with_extension("toml.bak");
+		assert!(backup_path.exists());
+		use std::os::unix::fs::PermissionsExt;
+		let metadata = std::fs::metadata(&backup_path).unwrap();
+		let mode = metadata.permissions().mode() & 0o777;
+		assert_eq!(mode, 0o600, "Backup file should have 0600 permissions");
+	}
 }

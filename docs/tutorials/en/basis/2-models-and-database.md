@@ -1,7 +1,7 @@
 # Part 2: Models and Database
 
 In this tutorial, we'll set up a database and create our first models using
-Reinhardt's ORM layer, which is built on SeaQuery v1.0.0-rc.
+Reinhardt's ORM layer, which is built on reinhardt-query.
 
 ## Database Setup
 

@@ -2040,7 +2040,7 @@ pub fn head(input: TokenStream) -> TokenStream {
 ///
 /// ### Real-World Example
 ///
-/// See `examples/local/examples-tutorial-basis` for a complete voting form implementation:
+/// See `examples/examples-tutorial-basis` for a complete voting form implementation:
 /// - Client: `src/client/components/polls.rs` - `polls_detail` function
 /// - Server: `src/server_fn/polls.rs` - `submit_vote` wrapper function
 ///
