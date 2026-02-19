@@ -1318,7 +1318,7 @@ impl RunServerCommand {
 									singleton_scope.set(db_conn);
 									ctx.info(&format!(
 										"💾 Database: {} (connected)",
-										&url[..url.len().min(30)]
+										sanitize_database_url(&url)
 									));
 								}
 								Err(e) => {
@@ -1983,6 +1983,24 @@ impl CheckCommand {
 
 		passed
 	}
+}
+
+/// Sanitizes a database URL for display, removing credentials.
+///
+/// Replaces `user:password@` with `***@` to prevent credential leakage
+/// in logs and startup banners.
+#[cfg(feature = "reinhardt-db")]
+fn sanitize_database_url(url: &str) -> String {
+	// Match scheme://user:pass@host pattern and redact credentials
+	if let Some(scheme_end) = url.find("://") {
+		let after_scheme = &url[scheme_end + 3..];
+		if let Some(at_pos) = after_scheme.find('@') {
+			let host_part = &after_scheme[at_pos..];
+			return format!("{}://***{}", &url[..scheme_end], host_part);
+		}
+	}
+	// For non-URL formats (e.g., sqlite:file.db), return as-is
+	url.to_string()
 }
 
 /// Helper function to get DATABASE_URL from environment or settings
