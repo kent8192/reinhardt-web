@@ -36,6 +36,7 @@ pub mod hot_reload;
 pub mod config;
 pub mod database_config;
 pub mod docs;
+pub mod redact;
 pub mod testing;
 
 use reinhardt_utils::staticfiles::storage::StaticFilesConfig;
@@ -91,7 +92,7 @@ pub use advanced::{
 };
 
 /// Main settings structure for a Reinhardt project
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
 	/// Base directory of the project
 	pub base_dir: PathBuf,
@@ -253,6 +254,7 @@ impl Settings {
 			static_root: None,
 			staticfiles_dirs: vec![],
 			media_url: "/media/".to_string(),
+			media_root: None,
 			language_code: "en-us".to_string(),
 			time_zone: "UTC".to_string(),
 			use_i18n: true,
@@ -445,6 +447,45 @@ impl Settings {
 			staticfiles_dirs: self.staticfiles_dirs.clone(),
 			media_url: Some(self.media_url.clone()),
 		})
+	}
+}
+
+impl std::fmt::Debug for Settings {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Settings")
+			.field("base_dir", &self.base_dir)
+			.field("secret_key", &"[REDACTED]")
+			.field("debug", &self.debug)
+			.field("allowed_hosts", &self.allowed_hosts)
+			.field("installed_apps", &self.installed_apps)
+			.field("middleware", &self.middleware)
+			.field("root_urlconf", &self.root_urlconf)
+			.field("databases", &self.databases)
+			.field("templates", &self.templates)
+			.field("static_url", &self.static_url)
+			.field("static_root", &self.static_root)
+			.field("staticfiles_dirs", &self.staticfiles_dirs)
+			.field("media_url", &self.media_url)
+			.field("media_root", &self.media_root)
+			.field("language_code", &self.language_code)
+			.field("time_zone", &self.time_zone)
+			.field("use_i18n", &self.use_i18n)
+			.field("use_tz", &self.use_tz)
+			.field("default_auto_field", &self.default_auto_field)
+			.field("secure_proxy_ssl_header", &self.secure_proxy_ssl_header)
+			.field("secure_ssl_redirect", &self.secure_ssl_redirect)
+			.field("secure_hsts_seconds", &self.secure_hsts_seconds)
+			.field(
+				"secure_hsts_include_subdomains",
+				&self.secure_hsts_include_subdomains,
+			)
+			.field("secure_hsts_preload", &self.secure_hsts_preload)
+			.field("session_cookie_secure", &self.session_cookie_secure)
+			.field("csrf_cookie_secure", &self.csrf_cookie_secure)
+			.field("append_slash", &self.append_slash)
+			.field("admins", &self.admins)
+			.field("managers", &self.managers)
+			.finish()
 	}
 }
 
@@ -679,5 +720,34 @@ mod tests {
 
 		assert_eq!(settings.managers.len(), 1);
 		assert_eq!(settings.managers[0].name, "Charlie");
+	}
+
+	#[test]
+	fn test_settings_debug_redacts_secret_key() {
+		// Arrange
+		let settings = Settings::new(PathBuf::from("/app"), "super-secret-key-12345".to_string());
+
+		// Act
+		let debug_output = format!("{:?}", settings);
+
+		// Assert
+		assert!(!debug_output.contains("super-secret-key-12345"));
+		assert!(debug_output.contains("[REDACTED]"));
+		assert!(debug_output.contains("secret_key"));
+	}
+
+	#[test]
+	fn test_settings_debug_shows_non_secret_fields() {
+		// Arrange
+		let settings = Settings::new(PathBuf::from("/app"), "my-secret".to_string());
+
+		// Act
+		let debug_output = format!("{:?}", settings);
+
+		// Assert
+		assert!(debug_output.contains("/app"));
+		assert!(debug_output.contains("debug"));
+		assert!(debug_output.contains("allowed_hosts"));
+		assert!(debug_output.contains("installed_apps"));
 	}
 }

@@ -121,12 +121,26 @@ impl RouteConfig {
 }
 
 /// Database configuration for the application
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ApplicationDatabaseConfig {
 	pub url: String,
 	pub pool_size: Option<u32>,
 	pub max_overflow: Option<u32>,
 	pub timeout: Option<u64>,
+}
+
+impl std::fmt::Debug for ApplicationDatabaseConfig {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ApplicationDatabaseConfig")
+			.field(
+				"url",
+				&reinhardt_conf::settings::redact::redact_url_credentials(&self.url),
+			)
+			.field("pool_size", &self.pool_size)
+			.field("max_overflow", &self.max_overflow)
+			.field("timeout", &self.timeout)
+			.finish()
+	}
 }
 
 impl ApplicationDatabaseConfig {
@@ -889,5 +903,46 @@ mod tests {
 	fn test_application_builder_empty_settings() {
 		let app = ApplicationBuilder::new().build().unwrap();
 		assert!(app.settings().is_empty());
+	}
+
+	#[test]
+	fn test_database_config_debug_redacts_credentials() {
+		// Arrange
+		let db_config =
+			ApplicationDatabaseConfig::new("postgres://admin:secret123@localhost:5432/mydb");
+
+		// Act
+		let debug_output = format!("{:?}", db_config);
+
+		// Assert
+		assert!(!debug_output.contains("admin"));
+		assert!(!debug_output.contains("secret123"));
+		assert!(debug_output.contains("***:***"));
+		assert!(debug_output.contains("localhost:5432/mydb"));
+	}
+
+	#[test]
+	fn test_database_config_debug_without_credentials() {
+		// Arrange
+		let db_config = ApplicationDatabaseConfig::new("postgres://localhost:5432/mydb");
+
+		// Act
+		let debug_output = format!("{:?}", db_config);
+
+		// Assert
+		assert!(debug_output.contains("postgres://localhost:5432/mydb"));
+	}
+
+	#[test]
+	fn test_database_config_debug_non_url() {
+		// Arrange
+		let db_config = ApplicationDatabaseConfig::new("not-a-url");
+
+		// Act
+		let debug_output = format!("{:?}", db_config);
+
+		// Assert
+		assert!(debug_output.contains("[REDACTED]"));
+		assert!(!debug_output.contains("not-a-url"));
 	}
 }
