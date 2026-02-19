@@ -71,24 +71,25 @@ Phase 1 (parallel work):
 - When one fix depends on another fix being completed
 - When fixes modify the same files or modules
 
-### HA-4 (MUST): Phase-Based Branch Organization
+### HA-4 (MUST): Branch Organization
 
-Organize work into branches at the phase or crate level. Each phase MUST produce logically grouped PRs.
+Organize work into branches with descriptive names. Each work unit MUST produce logically grouped PRs.
 
 **Branch naming:**
 ```
-<type>/<phase-or-scope>/<description>
+<type>/<description>
 
 Examples:
-fix/phase-1/critical-input-validation
-fix/reinhardt-core/sql-injection-prevention
-security/phase-2/xss-sanitization
+fix/sql-injection-prevention
+fix/xss-sanitization
+security/input-validation
 ```
 
 **Rules:**
 - One branch per logical work unit (see WU-1)
-- Never mix unrelated phases in a single branch
-- Phase branches may contain multiple commits if they follow commit guidelines (@docs/COMMIT_GUIDELINE.md)
+- Branch names MUST NOT include internal metadata such as phase numbers, agent states, or workflow identifiers
+- Branch names MUST be descriptive and understandable to other developers without project-specific context
+- Branches may contain multiple commits if they follow commit guidelines (@docs/COMMIT_GUIDELINE.md)
 
 ---
 
@@ -205,7 +206,7 @@ Commits 2-4 (parallel via Agent Team, HA-3):
 ### ✅ MUST DO
 - Use 1 PR = 1 crate × 1 fix pattern as the basic work unit (WU-1)
 - Create preceding PRs for cross-crate shared changes before per-crate fix PRs (WU-3)
-- Organize work into phases with logically grouped branches (HA-4)
+- Use descriptive branch names without internal metadata (HA-4)
 - Merge preceding PRs before dependent per-crate PRs (WU-3)
 
 ### ❌ NEVER DO
