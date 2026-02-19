@@ -430,6 +430,40 @@ pub fn set_active_translation(ctx: Arc<TranslationContext>) -> TranslationGuard 
 	TranslationGuard { prev }
 }
 
+/// Sets the active translation context permanently without returning a guard.
+///
+/// Unlike `set_active_translation()`, this function does not provide RAII semantics.
+/// The translation context remains active until explicitly changed or until the thread ends.
+/// Use this when you need permanent activation without scope-based cleanup.
+///
+/// # Memory Safety
+///
+/// This function is memory-safe and does not leak memory like `std::mem::forget` on the guard.
+/// The previous translation context (if any) is properly dropped.
+///
+/// # Example
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation_permanent, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// let mut ctx = TranslationContext::new("de", "en-US");
+/// let mut catalog = MessageCatalog::new("de");
+/// catalog.add_translation("Hello", "Hallo");
+/// ctx.add_catalog("de", catalog);
+///
+/// set_active_translation_permanent(Arc::new(ctx));
+/// assert_eq!(gettext("Hello"), "Hallo");
+///
+/// // Context remains active (no guard to drop)
+/// assert_eq!(gettext("Hello"), "Hallo");
+/// ```
+pub fn set_active_translation_permanent(ctx: Arc<TranslationContext>) {
+	ACTIVE_TRANSLATION.with(|t| {
+		*t.borrow_mut() = Some(ctx);
+	});
+}
+
 /// Returns the currently active translation context, if any.
 pub fn get_active_translation() -> Option<Arc<TranslationContext>> {
 	ACTIVE_TRANSLATION.with(|t| t.borrow().clone())
