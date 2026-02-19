@@ -48,3 +48,4 @@ unified-router = []
 tokio = { version = "1.41", features = ["full"] }
 bytes = { workspace = true }
 hyper = { workspace = true }
+rstest = { workspace = true }
