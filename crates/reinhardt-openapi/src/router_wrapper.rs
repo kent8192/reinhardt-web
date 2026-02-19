@@ -178,9 +178,10 @@ impl<H> OpenApiRouter<H> {
 			return Some(Response::not_found());
 		}
 		if let Some(ref guard) = self.auth_guard
-			&& !guard(request) {
-				return Some(Response::forbidden());
-			}
+			&& !guard(request)
+		{
+			return Some(Response::forbidden());
+		}
 		None
 	}
 }
