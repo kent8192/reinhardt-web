@@ -82,7 +82,7 @@ pub mod grpc_service;
 pub use context::{DataLoader, GraphQLContext, LoaderError};
 pub use schema::{
 	AppSchema, CreateUserInput, Mutation, Query, QueryLimits, User, UserStorage, create_schema,
-	create_schema_with_limits,
+	create_schema_with_limits, validate_query,
 };
 pub use subscription::{EventBroadcaster, SubscriptionRoot, UserEvent};
 
