@@ -255,8 +255,8 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(email.subject, "Order 12345 Confirmation");
-		assert_eq!(email.body, "Hello Bob, your order 12345 is confirmed.");
+		assert_eq!(email.subject(), "Order 12345 Confirmation");
+		assert_eq!(email.body(), "Hello Bob, your order 12345 is confirmed.");
 	}
 
 	#[test]
@@ -274,11 +274,8 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(email.subject, "Welcome Charlie");
-		assert_eq!(
-			email.html_body,
-			Some("<h1>Welcome Charlie</h1>".to_string())
-		);
+		assert_eq!(email.subject(), "Welcome Charlie");
+		assert_eq!(email.html_body(), Some("<h1>Welcome Charlie</h1>"));
 	}
 
 	#[test]
@@ -293,7 +290,7 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(email.subject, "Test Value1");
-		assert_eq!(email.body, "Body Value2");
+		assert_eq!(email.subject(), "Test Value1");
+		assert_eq!(email.body(), "Body Value2");
 	}
 }

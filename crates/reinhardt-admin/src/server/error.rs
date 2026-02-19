@@ -155,8 +155,8 @@ impl AdminAuth {
 	/// Checks if the user has permission to view the model.
 	///
 	/// This uses the default admin permission logic: authenticated staff users
-	/// have view permission by default. Override ModelAdmin::has_view_permission
-	/// for custom permission logic.
+	/// must be explicitly granted view permission. Override
+	/// `ModelAdmin::has_view_permission` for custom permission logic.
 	///
 	/// # Errors
 	///

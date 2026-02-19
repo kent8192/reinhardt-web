@@ -86,6 +86,14 @@ pub enum SsrError {
 	/// JavaScript evaluation failed
 	#[error("JavaScript evaluation failed: {0}")]
 	EvalFailed(String),
+
+	/// Permission denied due to insufficient trust level
+	#[error("Permission denied: {0}")]
+	PermissionDenied(String),
+
+	/// Dangerous code pattern detected in component code
+	#[error("Dangerous code pattern detected: {0}")]
+	DangerousPattern(String),
 }
 
 #[cfg(feature = "ts")]
@@ -326,6 +334,9 @@ impl SsrProxy {
 			return Err(SsrError::NotAvailable);
 		}
 
+		// Validate component code for dangerous patterns before execution
+		validate_component_code(component_code)?;
+
 		#[cfg(feature = "ts")]
 		if let Some(ref runtime) = self.ts_runtime {
 			let html = runtime.render_component(component_code, props_json)?;
@@ -482,14 +493,21 @@ impl SsrProxy {
 	///
 	/// This creates a `<script>` tag that will re-render the component
 	/// on the client side for interactivity.
+	///
+	/// # Security
+	///
+	/// Both `component_code` and `props_json` are escaped to prevent XSS attacks
+	/// via `</script>` tag injection. See [`escape_for_script`] for details.
 	fn generate_hydration_script(&self, component_code: &str, props_json: &str) -> String {
+		let safe_code = escape_for_script(component_code);
+		let safe_props = escape_for_script(props_json);
 		format!(
 			r#"<script type="module">
 import {{ h, render }} from 'https://esm.sh/preact@10';
 
-{component_code}
+{safe_code}
 
-const props = {props_json};
+const props = {safe_props};
 const root = document.getElementById('root');
 if (root) {{
     render(h(Component, props), root);
@@ -499,8 +517,98 @@ if (root) {{
 	}
 }
 
+/// Escape content for safe embedding inside a `<script>` tag.
+///
+/// This function prevents XSS attacks by escaping the `</script>` sequence,
+/// which would otherwise terminate the script tag and allow arbitrary HTML/JS injection.
+///
+/// # Security
+///
+/// The browser's HTML parser looks for `</script>` (case-insensitive) to determine
+/// the end of a script tag, regardless of JavaScript string context. An attacker
+/// who can inject `</script><script>malicious()</script>` into `props_json` could
+/// execute arbitrary JavaScript.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_dentdelion::wasm::ssr::escape_for_script;
+///
+/// // Malicious input is escaped
+/// let malicious = r#"{"name": "</script><script>alert(1)</script>"}"#;
+/// let escaped = escape_for_script(malicious);
+/// assert!(!escaped.contains("</script>"));
+/// assert!(escaped.contains("<\\/script>"));
+///
+/// // Normal content is unchanged
+/// let normal = r#"{"name": "Alice"}"#;
+/// assert_eq!(escape_for_script(normal), normal);
+/// ```
+pub fn escape_for_script(s: &str) -> String {
+	// Escape </script> (case-insensitive variants) to prevent XSS
+	// The escaped version <\/script> is safe because:
+	// 1. HTML parser doesn't recognize it as a closing tag
+	// 2. JavaScript treats \/ as just / in string literals
+	let mut result = s.to_string();
+
+	// Replace common case variations of </script>
+	// Order matters: replace specific patterns before generic ones
+	result = result.replace("</script>", "<\\/script>");
+	result = result.replace("</SCRIPT>", "<\\/SCRIPT>");
+	result = result.replace("</Script>", "<\\/Script>");
+
+	result
+}
+
 /// Shared SSR proxy instance type.
 pub type SharedSsrProxy = std::sync::Arc<SsrProxy>;
+
+/// Dangerous JavaScript patterns that should not appear in component code.
+///
+/// These patterns indicate attempts to access host system resources,
+/// load external modules, or execute system commands from within
+/// a component rendering context.
+const DANGEROUS_PATTERNS: &[(&str, &str)] = &[
+	("require(", "Node.js module loading via require()"),
+	("require (", "Node.js module loading via require()"),
+	("import(", "Dynamic import via import()"),
+	("import (", "Dynamic import via import()"),
+	("process.", "Node.js process access"),
+	("Deno.", "Deno runtime access"),
+	("__filename", "Node.js file system path access"),
+	("__dirname", "Node.js directory path access"),
+	("child_process", "Node.js child process execution"),
+	("execSync", "Synchronous command execution"),
+	("spawnSync", "Synchronous process spawning"),
+	// Block dynamic code construction
+	("Function(", "Dynamic function construction"),
+	("Function (", "Dynamic function construction"),
+];
+
+/// Validate component code for dangerous patterns.
+///
+/// This function scans component code for patterns that could indicate
+/// attempts to escape the rendering sandbox or access host resources.
+///
+/// # Arguments
+///
+/// * `code` - JavaScript component code to validate
+///
+/// # Returns
+///
+/// `Ok(())` if the code is safe, or `Err(SsrError::DangerousPattern)` if
+/// a dangerous pattern is detected.
+fn validate_component_code(code: &str) -> Result<(), SsrError> {
+	for (pattern, description) in DANGEROUS_PATTERNS {
+		if code.contains(pattern) {
+			return Err(SsrError::DangerousPattern(format!(
+				"{} (found '{}')",
+				description, pattern
+			)));
+		}
+	}
+	Ok(())
+}
 
 /// Validate component file path for security.
 ///
@@ -665,6 +773,12 @@ mod tests {
 
 		let err = SsrError::RenderFailed("syntax error".to_string());
 		assert!(err.to_string().contains("syntax error"));
+
+		let err = SsrError::PermissionDenied("insufficient trust level".to_string());
+		assert!(err.to_string().contains("Permission denied"));
+
+		let err = SsrError::DangerousPattern("Node.js module loading".to_string());
+		assert!(err.to_string().contains("Dangerous code pattern"));
 	}
 
 	#[test]
@@ -678,11 +792,202 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
 	}
 
+	// =========================================================================
+	// Component Code Validation Tests (Issue #677)
+	// =========================================================================
+
+	#[test]
+	fn test_validate_safe_component_code() {
+		let safe_code = r#"
+			function Component(props) {
+				return h('div', null, 'Hello, ' + props.name);
+			}
+		"#;
+		assert!(validate_component_code(safe_code).is_ok());
+	}
+
+	#[test]
+	fn test_validate_rejects_require() {
+		let code = "var fs = require('fs');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_dynamic_import() {
+		let code = "var mod = import('os');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_process_access() {
+		let code = "var key = process.env.SECRET;";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_deno_access() {
+		let code = "Deno.readTextFileSync('/etc/passwd');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_filename_dirname() {
+		let code_filename = "console.log(__filename);";
+		let code_dirname = "console.log(__dirname);";
+		assert!(matches!(
+			validate_component_code(code_filename),
+			Err(SsrError::DangerousPattern(_))
+		));
+		assert!(matches!(
+			validate_component_code(code_dirname),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_exec_sync() {
+		let code = "execSync('ls -la');";
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_validate_rejects_function_constructor() {
+		let code = r#"var fn = Function("return 1");"#;
+		assert!(matches!(
+			validate_component_code(code),
+			Err(SsrError::DangerousPattern(_))
+		));
+	}
+
+	#[test]
+	fn test_render_component_rejects_dangerous_code() {
+		let proxy = SsrProxy::with_availability(true);
+		let dangerous_code = "var fs = require('fs'); function Component() { return h('div'); }";
+		let result = proxy.render_component(dangerous_code, "{}", RenderOptions::default());
+		assert!(matches!(result, Err(SsrError::DangerousPattern(_))));
+	}
+
 	#[tokio::test]
 	async fn test_eval_js_bytes_without_runtime() {
 		let proxy = SsrProxy::new();
 		let result = proxy.eval_js_bytes("({foo: 'bar'})").await;
 		assert!(matches!(result, Err(SsrError::NotAvailable)));
+	}
+
+	// ===== XSS Prevention Tests =====
+
+	#[test]
+	fn test_escape_for_script_prevents_script_tag_injection() {
+		// Test the most common attack vector
+		let malicious = r#"{"name": "</script><script>alert(1)</script>"}"#;
+		let escaped = escape_for_script(malicious);
+
+		// The escaped string should NOT contain unescaped </script>
+		assert!(!escaped.contains("</script>"));
+
+		// It should contain the escaped version
+		assert!(escaped.contains("<\\/script>"));
+	}
+
+	#[test]
+	fn test_escape_for_script_handles_uppercase() {
+		let malicious = r#"{"name": "</SCRIPT><script>alert(1)</script>"}"#;
+		let escaped = escape_for_script(malicious);
+
+		assert!(!escaped.contains("</SCRIPT>"));
+		assert!(escaped.contains("<\\/SCRIPT>"));
+	}
+
+	#[test]
+	fn test_escape_for_script_handles_mixed_case() {
+		let malicious = r#"{"name": "</Script><script>alert(1)</script>"}"#;
+		let escaped = escape_for_script(malicious);
+
+		assert!(!escaped.contains("</Script>"));
+		assert!(escaped.contains("<\\/Script>"));
+	}
+
+	#[test]
+	fn test_escape_for_script_preserves_normal_content() {
+		let normal = r#"{"name": "Alice", "age": 30}"#;
+		let escaped = escape_for_script(normal);
+
+		assert_eq!(escaped, normal);
+	}
+
+	#[test]
+	fn test_escape_for_script_handles_multiple_occurrences() {
+		let malicious = r#"</script></script></SCRIPT>"#;
+		let escaped = escape_for_script(malicious);
+
+		assert!(!escaped.contains("</script>"));
+		assert!(!escaped.contains("</SCRIPT>"));
+		assert!(escaped.matches("<\\/script>").count() == 2);
+		assert!(escaped.matches("<\\/SCRIPT>").count() == 1);
+	}
+
+	#[test]
+	fn test_escape_for_script_empty_string() {
+		assert_eq!(escape_for_script(""), "");
+	}
+
+	#[test]
+	fn test_generate_hydration_script_escapes_malicious_props() {
+		let proxy = SsrProxy::new();
+		let component = r#"function Component(props) { return h('div', null, props.name); }"#;
+		let malicious_props = r#"{"name": "</script><script>alert(document.cookie)</script>"}"#;
+
+		let script = proxy.generate_hydration_script(component, malicious_props);
+
+		// The malicious </script> should be escaped
+		assert!(script.contains("<\\/script>"));
+
+		// The script should still be valid HTML with exactly one closing tag at the end
+		assert!(script.starts_with("<script type=\"module\">"));
+		assert!(script.ends_with("</script>"));
+
+		// Count the number of </script> occurrences - should be exactly 1 (the closing tag)
+		let closing_tag_count = script.matches("</script>").count();
+		assert_eq!(
+			closing_tag_count, 1,
+			"Expected exactly 1 closing </script> tag"
+		);
+	}
+
+	#[test]
+	fn test_generate_hydration_script_escapes_malicious_code() {
+		let proxy = SsrProxy::new();
+		// Malicious component code trying to break out
+		let malicious_code =
+			r#"function Component() { return '</script><script>alert(1)</script>'; }"#;
+		let props = "{}";
+
+		let script = proxy.generate_hydration_script(malicious_code, props);
+
+		// The malicious </script> should be escaped
+		assert!(script.contains("<\\/script>"));
+
+		// Count the number of </script> occurrences - should be exactly 1 (the closing tag)
+		let closing_tag_count = script.matches("</script>").count();
+		assert_eq!(
+			closing_tag_count, 1,
+			"Expected exactly 1 closing </script> tag"
+		);
 	}
 
 	#[cfg(feature = "ts")]

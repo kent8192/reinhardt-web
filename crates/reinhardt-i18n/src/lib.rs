@@ -46,6 +46,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use reinhardt_utils::safe_path_join;
+
 /// Error types for i18n operations
 #[derive(Debug, thiserror::Error)]
 pub enum I18nError {
@@ -55,6 +57,8 @@ pub enum I18nError {
 	CatalogNotFound(String),
 	#[error("Failed to load catalog: {0}")]
 	LoadError(String),
+	#[error("Path traversal detected: {0}")]
+	PathTraversal(String),
 }
 
 mod catalog;
@@ -125,16 +129,19 @@ impl CatalogLoader {
 			return Err(I18nError::InvalidLocale(locale.to_string()));
 		}
 
+		// Defense in depth: use safe_path_join to verify the locale path stays
+		// within the base directory, even after the character validation above.
+		let safe_locale_dir = safe_path_join(&self.base_path, locale).map_err(|e| {
+			I18nError::PathTraversal(format!(
+				"Locale '{}' failed path safety check: {}",
+				locale, e
+			))
+		})?;
+
 		// Try multiple common .po file locations
 		let possible_paths = vec![
-			self.base_path
-				.join(locale)
-				.join("LC_MESSAGES")
-				.join("django.po"),
-			self.base_path
-				.join(locale)
-				.join("LC_MESSAGES")
-				.join("messages.po"),
+			safe_locale_dir.join("LC_MESSAGES").join("django.po"),
+			safe_locale_dir.join("LC_MESSAGES").join("messages.po"),
 		];
 
 		for path in possible_paths {
@@ -185,7 +192,14 @@ impl CatalogLoader {
 		path: P,
 		locale: &str,
 	) -> Result<MessageCatalog, String> {
-		let file = std::fs::File::open(path.as_ref())
+		// Validate the file path stays within the base directory
+		let path_str = path
+			.as_ref()
+			.to_str()
+			.ok_or_else(|| "Invalid path encoding".to_string())?;
+		let safe_path = safe_path_join(&self.base_path, path_str).map_err(|e| e.to_string())?;
+
+		let file = std::fs::File::open(&safe_path)
 			.map_err(|e| format!("Failed to open .po file: {}", e))?;
 
 		po_parser::parse_po_file(file, locale)
@@ -428,6 +442,40 @@ impl Drop for TranslationGuard {
 pub fn set_active_translation(ctx: Arc<TranslationContext>) -> TranslationGuard {
 	let prev = ACTIVE_TRANSLATION.with(|t| t.borrow_mut().replace(ctx));
 	TranslationGuard { prev }
+}
+
+/// Sets the active translation context permanently without returning a guard.
+///
+/// Unlike `set_active_translation()`, this function does not provide RAII semantics.
+/// The translation context remains active until explicitly changed or until the thread ends.
+/// Use this when you need permanent activation without scope-based cleanup.
+///
+/// # Memory Safety
+///
+/// This function is memory-safe and does not leak memory like `std::mem::forget` on the guard.
+/// The previous translation context (if any) is properly dropped.
+///
+/// # Example
+///
+/// ```
+/// use reinhardt_i18n::{TranslationContext, set_active_translation_permanent, gettext, MessageCatalog};
+/// use std::sync::Arc;
+///
+/// let mut ctx = TranslationContext::new("de", "en-US");
+/// let mut catalog = MessageCatalog::new("de");
+/// catalog.add_translation("Hello", "Hallo");
+/// ctx.add_catalog("de", catalog);
+///
+/// set_active_translation_permanent(Arc::new(ctx));
+/// assert_eq!(gettext("Hello"), "Hallo");
+///
+/// // Context remains active (no guard to drop)
+/// assert_eq!(gettext("Hello"), "Hallo");
+/// ```
+pub fn set_active_translation_permanent(ctx: Arc<TranslationContext>) {
+	ACTIVE_TRANSLATION.with(|t| {
+		*t.borrow_mut() = Some(ctx);
+	});
 }
 
 /// Returns the currently active translation context, if any.
