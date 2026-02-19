@@ -54,6 +54,8 @@ url = "2.5"
 uuid = { workspace = true }
 tokio = { workspace = true }
 colored = "3.0"
+rand = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 reinhardt-test = { workspace = true }
