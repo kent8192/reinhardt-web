@@ -220,17 +220,25 @@ impl BatchSender {
 	}
 
 	/// Send emails in batches with rate limiting
+	///
+	/// Sends emails in batches of `batch_size`, applying `delay` between each batch
+	/// to avoid overwhelming the SMTP server.
 	pub async fn send_with_rate_limit(
 		&mut self,
 		messages: Vec<EmailMessage>,
 	) -> EmailResult<usize> {
 		let mut total_sent = 0;
+		let chunks: Vec<&[EmailMessage]> = messages.chunks(self.batch_size).collect();
+		let last_index = chunks.len().saturating_sub(1);
 
-		for batch in messages.chunks(self.batch_size) {
+		for (i, batch) in chunks.into_iter().enumerate() {
 			let sent = self.pool.send_bulk(batch.to_vec()).await?;
 			total_sent += sent;
 
-			if self.delay.as_millis() > 0 {}
+			// Apply rate limiting delay between batches (skip after the last batch)
+			if !self.delay.is_zero() && i < last_index {
+				tokio::time::sleep(self.delay).await;
+			}
 		}
 
 		Ok(total_sent)
