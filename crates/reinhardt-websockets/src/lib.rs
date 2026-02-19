@@ -198,7 +198,7 @@ pub use protocol::{
 pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
 #[cfg(feature = "redis-channel")]
 pub use redis_channel::{RedisChannelLayer, RedisConfig};
-pub use room::{Room, RoomError, RoomManager, RoomResult};
+pub use room::{BroadcastResult, Room, RoomError, RoomManager, RoomResult};
 pub use routing::{
 	RouteError, RouteResult, WebSocketRoute, WebSocketRouter, clear_websocket_router,
 	get_websocket_router, register_websocket_router, reverse_websocket_url,
