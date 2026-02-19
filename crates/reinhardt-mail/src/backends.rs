@@ -80,17 +80,17 @@ impl EmailBackend for ConsoleBackend {
 	async fn send_messages(&self, messages: &[EmailMessage]) -> EmailResult<usize> {
 		for (i, msg) in messages.iter().enumerate() {
 			println!("========== Email {} ==========", i + 1);
-			println!("From: {}", msg.from_email);
-			println!("To: {}", msg.to.join(", "));
-			if !msg.cc.is_empty() {
-				println!("Cc: {}", msg.cc.join(", "));
+			println!("From: {}", msg.from_email());
+			println!("To: {}", msg.to().join(", "));
+			if !msg.cc().is_empty() {
+				println!("Cc: {}", msg.cc().join(", "));
 			}
-			if !msg.bcc.is_empty() {
-				println!("Bcc: {}", msg.bcc.join(", "));
+			if !msg.bcc().is_empty() {
+				println!("Bcc: {}", msg.bcc().join(", "));
 			}
-			println!("Subject: {}", msg.subject);
-			println!("\n{}", msg.body);
-			if let Some(html) = &msg.html_body {
+			println!("Subject: {}", msg.subject());
+			println!("\n{}", msg.body());
+			if let Some(html) = msg.html_body() {
 				println!("\n--- HTML ---\n{}", html);
 			}
 			println!("==============================\n");
@@ -126,14 +126,14 @@ impl EmailBackend for FileBackend {
 
 			let mut content = format!(
 				"From: {}\nTo: {}\nSubject: {}\n\n{}",
-				msg.from_email,
-				msg.to.join(", "),
-				msg.subject,
-				msg.body
+				msg.from_email(),
+				msg.to().join(", "),
+				msg.subject(),
+				msg.body()
 			);
 
 			// Include HTML body if present
-			if let Some(ref html) = msg.html_body {
+			if let Some(html) = msg.html_body() {
 				content.push_str("\n\n--- HTML Body ---\n");
 				content.push_str(html);
 			}
@@ -375,15 +375,15 @@ impl SmtpBackend {
 	fn build_message(&self, email: &EmailMessage) -> EmailResult<Message> {
 		// Parse from address
 		let from = email
-			.from_email
+			.from_email()
 			.parse::<Mailbox>()
 			.map_err(|e| EmailError::InvalidAddress(format!("Invalid from address: {}", e)))?;
 
 		// Start building the message
-		let mut builder = Message::builder().from(from).subject(&email.subject);
+		let mut builder = Message::builder().from(from).subject(email.subject());
 
 		// Add recipients
-		for to in &email.to {
+		for to in email.to() {
 			let mailbox = to
 				.parse::<Mailbox>()
 				.map_err(|e| EmailError::InvalidAddress(format!("Invalid to address: {}", e)))?;
@@ -391,7 +391,7 @@ impl SmtpBackend {
 		}
 
 		// Add CC recipients
-		for cc in &email.cc {
+		for cc in email.cc() {
 			let mailbox = cc
 				.parse::<Mailbox>()
 				.map_err(|e| EmailError::InvalidAddress(format!("Invalid cc address: {}", e)))?;
@@ -399,7 +399,7 @@ impl SmtpBackend {
 		}
 
 		// Add BCC recipients
-		for bcc in &email.bcc {
+		for bcc in email.bcc() {
 			let mailbox = bcc
 				.parse::<Mailbox>()
 				.map_err(|e| EmailError::InvalidAddress(format!("Invalid bcc address: {}", e)))?;
@@ -407,7 +407,7 @@ impl SmtpBackend {
 		}
 
 		// Add Reply-To
-		for reply_to in &email.reply_to {
+		for reply_to in email.reply_to() {
 			let mailbox = reply_to.parse::<Mailbox>().map_err(|e| {
 				EmailError::InvalidAddress(format!("Invalid reply-to address: {}", e))
 			})?;
@@ -415,7 +415,7 @@ impl SmtpBackend {
 		}
 
 		// Add custom headers (only supported headers can be added due to lettre's Header trait design)
-		for (name, value) in &email.headers {
+		for (name, value) in email.headers() {
 			let name_lower = name.to_lowercase();
 			match name_lower.as_str() {
 				"x-mailer" => {
@@ -450,21 +450,21 @@ impl SmtpBackend {
 		}
 
 		// Build the body
-		let message = if let Some(html) = &email.html_body {
+		let message = if let Some(html) = email.html_body() {
 			// HTML with plain text alternative
 			let multipart = MultiPart::alternative()
-				.singlepart(SinglePart::plain(email.body.clone()))
-				.singlepart(SinglePart::html(html.clone()));
+				.singlepart(SinglePart::plain(email.body().to_string()))
+				.singlepart(SinglePart::html(html.to_string()));
 
 			builder
 				.multipart(multipart)
 				.map_err(|e| EmailError::BackendError(format!("Failed to build message: {}", e)))?
-		} else if !email.attachments.is_empty() {
+		} else if !email.attachments().is_empty() {
 			// Plain text with attachments
 			let mut multipart =
-				MultiPart::mixed().singlepart(SinglePart::plain(email.body.clone()));
+				MultiPart::mixed().singlepart(SinglePart::plain(email.body().to_string()));
 
-			for attachment in &email.attachments {
+			for attachment in email.attachments() {
 				let part = if let Some(cid) = attachment.content_id() {
 					// Inline attachment with content ID
 					SinglePart::builder()
@@ -489,7 +489,7 @@ impl SmtpBackend {
 		} else {
 			// Plain text only
 			builder
-				.body(email.body.clone())
+				.body(email.body().to_string())
 				.map_err(|e| EmailError::BackendError(format!("Failed to build message: {}", e)))?
 		};
 
