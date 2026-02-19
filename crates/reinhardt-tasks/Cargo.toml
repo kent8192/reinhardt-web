@@ -19,6 +19,8 @@ uuid = { workspace = true }
 cron = "0.15.0"
 rand = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
+url = { workspace = true }
+ipnet = "2.0"
 
 # Redis backend (optional)
 redis = { workspace = true, optional = true }
