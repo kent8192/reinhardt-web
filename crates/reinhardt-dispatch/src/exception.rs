@@ -65,32 +65,44 @@ impl ExceptionHandler for DefaultExceptionHandler {
 ///
 /// This function wraps a handler that returns `Result<Response, DispatchError>`
 /// and converts any errors into proper HTTP responses using the default exception handler.
+///
+/// The request's method, URI, version, and headers are preserved before
+/// passing ownership to the handler, so that the exception handler retains
+/// the original request context (headers, auth info) for context-aware error
+/// responses.
 pub async fn convert_exception_to_response<F, Fut>(handler: F, request: Request) -> Response
 where
 	F: FnOnce(Request) -> Fut,
 	Fut: Future<Output = Result<Response, DispatchError>>,
 {
+	// Capture the request context before consuming the request,
+	// so the exception handler has access to headers and auth info.
+	let method = request.method.clone();
+	let uri = request.uri.clone();
+	let version = request.version;
+	let headers = request.headers.clone();
+
 	match handler(request).await {
 		Ok(response) => response,
 		Err(error) => {
 			let exception_handler = DefaultExceptionHandler;
-			// Create a dummy request for error handling since we consumed the original.
-			// Fall back to a plain 500 response if request construction fails to avoid panicking.
+			// Reconstruct a request with the original context for error handling
 			match Request::builder()
-				.method(hyper::Method::GET)
-				.uri("/")
-				.version(hyper::Version::HTTP_11)
-				.headers(hyper::HeaderMap::new())
+				.method(method)
+				.uri(uri.to_string())
+				.version(version)
+				.headers(headers)
 				.body(Bytes::new())
 				.build()
 			{
-				Ok(dummy_request) => {
+				Ok(context_request) => {
 					exception_handler
-						.handle_exception(&dummy_request, error)
+						.handle_exception(&context_request, error)
 						.await
 				}
 				Err(_) => {
-					let mut response = Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
+					let mut response =
+						Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
 					response.body = Bytes::from("Internal Server Error");
 					response
 				}

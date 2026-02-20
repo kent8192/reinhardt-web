@@ -128,15 +128,21 @@ pub(crate) async fn execute(args: SetArgs) -> anyhow::Result<()> {
 			let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
 
 			// Find and replace or append
-			let key_prefix = format!("{}=", args.key);
 			let new_line = format!("{}={}", args.key, args.value);
 
 			let mut found = false;
 			for line in &mut lines {
-				if line.trim().starts_with(&key_prefix) {
-					*line = new_line.clone();
-					found = true;
-					break;
+				let trimmed = line.trim();
+				if trimmed.is_empty() || trimmed.starts_with('#') {
+					continue;
+				}
+				// Split on first '=' and trim spaces around key/value
+				if let Some((key, _)) = trimmed.split_once('=') {
+					if key.trim() == args.key {
+						*line = new_line.clone();
+						found = true;
+						break;
+					}
 				}
 			}
 

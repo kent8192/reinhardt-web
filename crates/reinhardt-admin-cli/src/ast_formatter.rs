@@ -230,19 +230,67 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 	let mut in_string = false;
 	let mut in_char = false;
 	let mut escape_next = false;
+	let chars: Vec<(usize, char)> = substring.char_indices().collect();
+	let mut i = 0;
 
-	for (offset, ch) in substring.char_indices() {
+	while i < chars.len() {
+		let (offset, ch) = chars[i];
+
 		if escape_next {
 			escape_next = false;
+			i += 1;
+			continue;
+		}
+
+		if in_string {
+			match ch {
+				'\\' => escape_next = true,
+				'"' => in_string = false,
+				_ => {}
+			}
+			i += 1;
+			continue;
+		}
+
+		if in_char {
+			match ch {
+				'\\' => escape_next = true,
+				'\'' => in_char = false,
+				_ => {}
+			}
+			i += 1;
 			continue;
 		}
 
 		match ch {
-			'\\' if in_string || in_char => escape_next = true,
-			'"' if !in_char => in_string = !in_string,
-			'\'' if !in_string => in_char = !in_char,
-			'(' if !in_string && !in_char => depth += 1,
-			')' if !in_string && !in_char => {
+			'"' => {
+				// Check for raw strings: r#"..."# or r"..."
+				// Look back to see if preceded by 'r' and optional '#'s
+				let raw_start = detect_raw_string_start(substring, offset);
+				if let Some(hash_count) = raw_start {
+					// Skip raw string content until closing "###
+					if let Some(end_offset) = skip_raw_string(substring, offset + 1, hash_count) {
+						// Find the index in chars that corresponds to end_offset
+						while i < chars.len() && chars[i].0 < end_offset {
+							i += 1;
+						}
+						i += 1; // skip past end
+						continue;
+					}
+				}
+				in_string = true;
+			}
+			'\'' => {
+				// Distinguish char literal from lifetime annotation:
+				// Char literal: 'a', '\n', '\\'
+				// Lifetime: 'a (letter not followed by closing quote in char-literal pattern)
+				if is_char_literal(&chars, i) {
+					in_char = true;
+				}
+				// Otherwise it's a lifetime, just skip the tick
+			}
+			'(' => depth += 1,
+			')' => {
 				depth -= 1;
 				if depth == 0 {
 					return Some(start + offset);
@@ -250,10 +298,66 @@ fn find_matching_paren(source: &str, start: usize) -> Option<usize> {
 			}
 			_ => {}
 		}
+		i += 1;
 	}
 
 	None
 }
+
+/// Detect if a '"' at the given offset is the start of a raw string.
+/// Returns Some(hash_count) if so (0 for r"...", 1 for r#"..."#, etc.).
+fn detect_raw_string_start(s: &str, quote_offset: usize) -> Option<usize> {
+	// Walk backwards from the quote to find r followed by optional #s
+	let before = &s[..quote_offset];
+	let trimmed = before.trim_end_matches('#');
+	let hash_count = before.len() - trimmed.len();
+	if trimmed.ends_with('r') {
+		// Verify the 'r' is not part of an identifier
+		let r_pos = trimmed.len() - 1;
+		if r_pos == 0 || !before.as_bytes()[r_pos - 1].is_ascii_alphanumeric() {
+			return Some(hash_count);
+		}
+	}
+	None
+}
+
+/// Skip past the contents of a raw string starting after the opening '"'.
+/// Returns the byte offset just past the closing '"' + hashes.
+fn skip_raw_string(s: &str, start_after_quote: usize, hash_count: usize) -> Option<usize> {
+	let closing_pattern: String = std::iter::once('"').chain(std::iter::repeat('#').take(hash_count)).collect();
+	s[start_after_quote..].find(&closing_pattern).map(|pos| start_after_quote + pos + closing_pattern.len())
+}
+
+/// Check if a '\'' at chars[idx] starts a char literal (not a lifetime).
+/// A char literal has the pattern: 'x' or '\x' or '\xx'
+fn is_char_literal(chars: &[(usize, char)], idx: usize) -> bool {
+	// After the opening quote, check if we see a closing quote pattern
+	let remaining = &chars[idx + 1..];
+
+	if remaining.is_empty() {
+		return false;
+	}
+
+	// Pattern: '\...' (escaped char literal)
+	if remaining[0].1 == '\\' {
+		// Look for closing quote within the next few chars
+		for j in 2..remaining.len().min(5) {
+			if remaining[j].1 == '\'' {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Pattern: 'x' (single char literal) - must have closing quote at position +2
+	if remaining.len() >= 2 && remaining[1].1 == '\'' {
+		return true;
+	}
+
+	// Otherwise, it's a lifetime ('a in type position, no closing quote)
+	false
+}
+
 
 /// Maximum recursion depth for formatting nested nodes.
 ///
@@ -740,9 +844,14 @@ impl AstPageFormatter {
 			Regex::new(r"([\w:]+) !").expect("Failed to compile IDENT_MACRO regex")
 		});
 		// Match generic type opening: Result <T> -> Result<T>
-		// This is safe because comparison operators like "x < 5" have different patterns
+		// Only matches when followed by an identifier (not =, <, > which indicate operators)
 		static IDENT_ANGLE: LazyLock<Regex> = LazyLock::new(|| {
-			Regex::new(r"([\w:>)]+) <").expect("Failed to compile IDENT_ANGLE regex")
+			Regex::new(r"([\w:>)]+) <([A-Za-z_&'\[(\*])").expect("Failed to compile IDENT_ANGLE regex")
+		});
+		// Match generic type closing: String > -> String>
+		// Only matches when preceded by an identifier/closing bracket and not followed by =, >, <
+		static ANGLE_CLOSE: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"([\w>)]) >([\s,;)}\]>])").expect("Failed to compile ANGLE_CLOSE regex")
 		});
 
 		let s = s
@@ -755,12 +864,6 @@ impl AstPageFormatter {
 			.replace("( ", "(")
 			.replace(" )", ")")
 			.replace(" ()", "()")
-
-			// New: Generic type angle brackets
-			.replace(" < ", "<")
-			.replace(" > ", ">")
-			.replace("< ", "<")
-			.replace(" >", ">")
 
 			// New: Path separator (std::vec::Vec)
 			.replace(" :: ", "::")
@@ -798,7 +901,9 @@ impl AstPageFormatter {
 		// Apply regex replacements for identifier patterns
 		let s = IDENT_PAREN.replace_all(&s, "$1("); // identifier ( -> identifier(
 		let s = IDENT_MACRO.replace_all(&s, "$1!"); // identifier ! -> identifier!
-		let s = IDENT_ANGLE.replace_all(&s, "$1<"); // identifier < -> identifier< (for generics)
+		let s = IDENT_ANGLE.replace_all(&s, "$1<$2"); // identifier <T -> identifier<T (for generics)
+		// Apply closing angle bracket repeatedly for nested generics like Option<String >
+		let s = ANGLE_CLOSE.replace_all(&s, "$1>$2");
 
 		// Handle closure pipes: | x | -> |x|, | x, y | -> |x, y|, || -> ||
 		// This regex matches closure parameter lists between pipes
