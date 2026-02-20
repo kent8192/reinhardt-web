@@ -17,7 +17,7 @@
 //! let mut ctx = TranslationContext::new("ja", "en-US");
 //! let mut catalog = MessageCatalog::new("ja");
 //! catalog.add_translation("Hello", "こんにちは");
-//! ctx.add_catalog("ja", catalog);
+//! ctx.add_catalog("ja", catalog).unwrap();
 //!
 //! // Set as active translation context (scoped)
 //! let _guard = set_active_translation(Arc::new(ctx));
@@ -71,6 +71,7 @@ pub mod utils;
 pub use catalog::MessageCatalog;
 pub use lazy::LazyString;
 pub use locale::{activate, activate_with_catalog, deactivate, get_locale};
+use locale::validate_locale;
 pub use translation::{gettext, gettext_lazy, ngettext, ngettext_lazy, npgettext, pgettext};
 
 // Re-export get_locale as get_language for compatibility
@@ -228,7 +229,7 @@ thread_local! {
 /// let mut ctx = TranslationContext::new("ja", "en-US");
 /// let mut catalog = MessageCatalog::new("ja");
 /// catalog.add_translation("Hello", "こんにちは");
-/// ctx.add_catalog("ja", catalog);
+/// ctx.add_catalog("ja", catalog).unwrap();
 ///
 /// let _guard = set_active_translation(Arc::new(ctx));
 /// assert_eq!(gettext("Hello"), "こんにちは");
@@ -284,18 +285,48 @@ impl TranslationContext {
 	}
 
 	/// Sets the current locale.
-	pub fn set_locale(&mut self, locale: impl Into<String>) {
-		self.current_locale = locale.into();
+	///
+	/// # Errors
+	///
+	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
+	pub fn set_locale(&mut self, locale: impl Into<String>) -> Result<(), I18nError> {
+		let locale = locale.into();
+		// Allow empty string for deactivation (reset to default)
+		if !locale.is_empty() {
+			validate_locale(&locale)?;
+		}
+		self.current_locale = locale;
+		Ok(())
 	}
 
 	/// Sets the fallback locale.
-	pub fn set_fallback_locale(&mut self, locale: impl Into<String>) {
-		self.fallback_locale = locale.into();
+	///
+	/// # Errors
+	///
+	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
+	pub fn set_fallback_locale(&mut self, locale: impl Into<String>) -> Result<(), I18nError> {
+		let locale = locale.into();
+		if !locale.is_empty() {
+			validate_locale(&locale)?;
+		}
+		self.fallback_locale = locale;
+		Ok(())
 	}
 
 	/// Adds a message catalog for the given locale.
-	pub fn add_catalog(&mut self, locale: impl Into<String>, catalog: MessageCatalog) {
-		self.catalogs.insert(locale.into(), catalog);
+	///
+	/// # Errors
+	///
+	/// Returns `I18nError::InvalidLocale` if the locale string format is invalid.
+	pub fn add_catalog(
+		&mut self,
+		locale: impl Into<String>,
+		catalog: MessageCatalog,
+	) -> Result<(), I18nError> {
+		let locale = locale.into();
+		validate_locale(&locale)?;
+		self.catalogs.insert(locale, catalog);
+		Ok(())
 	}
 
 	/// Translates a message using the current locale.
@@ -430,7 +461,7 @@ impl Drop for TranslationGuard {
 /// let mut ctx = TranslationContext::new("de", "en-US");
 /// let mut catalog = MessageCatalog::new("de");
 /// catalog.add_translation("Hello", "Hallo");
-/// ctx.add_catalog("de", catalog);
+/// ctx.add_catalog("de", catalog).unwrap();
 ///
 /// {
 ///     let _guard = set_active_translation(Arc::new(ctx));
@@ -464,7 +495,7 @@ pub fn set_active_translation(ctx: Arc<TranslationContext>) -> TranslationGuard 
 /// let mut ctx = TranslationContext::new("de", "en-US");
 /// let mut catalog = MessageCatalog::new("de");
 /// catalog.add_translation("Hello", "Hallo");
-/// ctx.add_catalog("de", catalog);
+/// ctx.add_catalog("de", catalog).unwrap();
 ///
 /// set_active_translation_permanent(Arc::new(ctx));
 /// assert_eq!(gettext("Hello"), "Hallo");
