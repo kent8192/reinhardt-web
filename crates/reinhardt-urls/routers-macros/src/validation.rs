@@ -21,6 +21,10 @@ pub(crate) enum PathValidationError {
 	InvalidCharacter { ch: char, position: usize },
 	/// Nested parameters (e.g., {{inner}})
 	NestedParameters(usize),
+	/// Consecutive parameters without separator (e.g., {id}{name})
+	ConsecutiveParameters(usize),
+	/// Wildcard not at end of path
+	WildcardNotAtEnd(usize),
 	/// Path traversal sequence '..' detected
 	PathTraversal(usize),
 	/// Duplicate parameter name detected
@@ -49,6 +53,11 @@ pub(crate) fn validate_path_syntax(path: &str) -> Result<(), PathValidationError
 		// Check for double slashes
 		if ch == '/' && prev_char == Some('/') {
 			return Err(PathValidationError::DoubleSlash(i));
+		}
+
+		// Check for consecutive parameters without separator (e.g., {id}{name})
+		if ch == '{' && prev_char == Some('}') {
+			return Err(PathValidationError::ConsecutiveParameters(i));
 		}
 
 		match ch {
@@ -102,6 +111,30 @@ pub(crate) fn validate_path_syntax(path: &str) -> Result<(), PathValidationError
 		return Err(PathValidationError::UnmatchedOpenBrace(start));
 	}
 
+	// Validate wildcard position: '*' must only appear in the last segment
+	validate_wildcard_position(path)?;
+
+	Ok(())
+}
+
+/// Validates that wildcard '*' only appears in the last path segment
+fn validate_wildcard_position(path: &str) -> Result<(), PathValidationError> {
+	// Find all wildcard positions outside of parameter braces
+	let mut brace_depth = 0;
+	for (i, ch) in path.char_indices() {
+		match ch {
+			'{' => brace_depth += 1,
+			'}' => brace_depth -= 1,
+			'*' if brace_depth == 0 => {
+				// Check that everything after '*' is empty or only '/'
+				let rest = &path[i + 1..];
+				if !rest.is_empty() && rest != "/" {
+					return Err(PathValidationError::WildcardNotAtEnd(i));
+				}
+			}
+			_ => {}
+		}
+	}
 	Ok(())
 }
 
@@ -276,6 +309,47 @@ mod tests {
 		// Single dots are valid in paths (e.g., file extensions, version numbers)
 		assert!(validate_path_syntax("/files/document.pdf").is_ok());
 		assert!(validate_path_syntax("/api/v1.0/users/").is_ok());
+	}
+
+	#[test]
+	fn test_consecutive_parameters_without_separator() {
+		// Consecutive parameters without any separator should be rejected
+		let result = validate_path_syntax("/users/{id}{name}/");
+		assert_eq!(result, Err(PathValidationError::ConsecutiveParameters(11)));
+
+		let result = validate_path_syntax("/{a}{b}{c}/");
+		assert_eq!(result, Err(PathValidationError::ConsecutiveParameters(4)));
+	}
+
+	#[test]
+	fn test_consecutive_parameters_with_separator() {
+		// Parameters separated by '/' are valid
+		assert!(validate_path_syntax("/{year}/{month}/").is_ok());
+		assert!(validate_path_syntax("/{a}/{b}/{c}/").is_ok());
+	}
+
+	#[test]
+	fn test_wildcard_at_end() {
+		// Wildcard at end of path is valid
+		assert!(validate_path_syntax("/static/*").is_ok());
+		assert!(validate_path_syntax("/files/*/").is_ok());
+		assert!(validate_path_syntax("/users/{id}/*").is_ok());
+	}
+
+	#[test]
+	fn test_wildcard_not_at_end() {
+		// Wildcard not at end of path should be rejected
+		let result = validate_path_syntax("/files/*/download");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::WildcardNotAtEnd(_))
+		));
+
+		let result = validate_path_syntax("/*/items/{item_id}/");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::WildcardNotAtEnd(_))
+		));
 	}
 
 	#[test]
