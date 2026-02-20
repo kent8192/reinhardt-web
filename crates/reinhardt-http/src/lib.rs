@@ -56,7 +56,7 @@ pub use extensions::Extensions;
 pub use messages_middleware::MessagesMiddleware;
 pub use middleware::{Handler, Middleware, MiddlewareChain};
 pub use request::{Request, RequestBuilder, TrustedProxies};
-pub use response::{Response, StreamBody, StreamingResponse};
+pub use response::{Response, SafeErrorResponse, StreamBody, StreamingResponse};
 pub use upload::{FileUploadError, FileUploadHandler, MemoryFileUpload, TemporaryFileUpload};
 
 // Re-export error types from reinhardt-exception for consistency across the framework
