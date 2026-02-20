@@ -126,6 +126,7 @@ pub mod formset;
 pub mod formsets;
 pub mod model_form;
 pub mod model_formset;
+pub mod validators;
 pub mod wasm_compat;
 pub mod wizard;
 
@@ -156,4 +157,5 @@ pub use formsets::{
 };
 pub use model_form::{FieldType, FormModel, ModelForm, ModelFormBuilder, ModelFormConfig};
 pub use model_formset::{ModelFormSet, ModelFormSetBuilder, ModelFormSetConfig};
+pub use validators::{SlugValidator, UrlValidator};
 pub use wizard::{FormWizard, WizardStep};
