@@ -170,3 +170,25 @@ pub enum DispatchError {
 	#[error("Internal error: {0}")]
 	Internal(String),
 }
+
+/// Build a plain-text error response with security headers.
+///
+/// Sets `Content-Type: text/plain; charset=utf-8` and
+/// `X-Content-Type-Options: nosniff` to prevent browsers from MIME-sniffing
+/// the error body into an executable content type.
+pub(crate) fn build_error_response(
+	status: hyper::StatusCode,
+	message: &str,
+) -> reinhardt_http::Response {
+	let mut response = reinhardt_http::Response::new(status);
+	response.body = bytes::Bytes::from(message.to_owned());
+	response.headers.insert(
+		hyper::header::CONTENT_TYPE,
+		hyper::header::HeaderValue::from_static("text/plain; charset=utf-8"),
+	);
+	response.headers.insert(
+		hyper::header::HeaderName::from_static("x-content-type-options"),
+		hyper::header::HeaderValue::from_static("nosniff"),
+	);
+	response
+}

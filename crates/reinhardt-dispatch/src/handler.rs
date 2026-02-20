@@ -3,7 +3,6 @@
 //! This module provides the base handler for processing HTTP requests,
 //! similar to Django's `django.core.handlers.base.BaseHandler`.
 
-use bytes::Bytes;
 use hyper::StatusCode;
 use reinhardt_core::signals::{
 	RequestFinishedEvent, RequestStartedEvent, request_finished, request_started,
@@ -127,9 +126,7 @@ impl BaseHandler {
 	pub async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
 		error!("Handling exception: {}", error);
 
-		let mut response = Response::new(StatusCode::INTERNAL_SERVER_ERROR);
-		response.body = Bytes::from("Internal Server Error");
-		response
+		crate::build_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
 	}
 
 	/// Check if handler is configured for async mode
@@ -157,9 +154,10 @@ impl Handler for BaseHandler {
 			Err(e) => {
 				// Log the detailed error server-side; return generic message to client
 				error!("Handler error in BaseHandler::handle: {}", e);
-				let mut response = Response::new(StatusCode::INTERNAL_SERVER_ERROR);
-				response.body = Bytes::from("Internal Server Error");
-				Ok(response)
+				Ok(crate::build_error_response(
+					StatusCode::INTERNAL_SERVER_ERROR,
+					"Internal Server Error",
+				))
 			}
 		}
 	}
@@ -169,6 +167,7 @@ impl Handler for BaseHandler {
 mod tests {
 	use super::*;
 	use async_trait::async_trait;
+	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
 

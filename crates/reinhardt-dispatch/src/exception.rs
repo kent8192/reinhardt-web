@@ -12,6 +12,7 @@ use std::future::Future;
 use tracing::{error, warn};
 
 use crate::DispatchError;
+use crate::build_error_response;
 
 /// Result type for exception handlers
 pub type ExceptionResult = Result<Response, DispatchError>;
@@ -56,9 +57,7 @@ impl ExceptionHandler for DefaultExceptionHandler {
 			}
 		};
 
-		let mut response = Response::new(status);
-		response.body = Bytes::from(client_message);
-		response
+		build_error_response(status, client_message)
 	}
 }
 
@@ -149,9 +148,7 @@ impl<T: IntoResponse, E: fmt::Display> IntoResponse for Result<T, E> {
 			Err(error) => {
 				// Log the error details server-side only; never expose in response body
 				error!("Error converting to response: {}", error);
-				let mut response = Response::new(StatusCode::INTERNAL_SERVER_ERROR);
-				response.body = Bytes::from("Internal Server Error");
-				response
+				build_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
 			}
 		}
 	}
