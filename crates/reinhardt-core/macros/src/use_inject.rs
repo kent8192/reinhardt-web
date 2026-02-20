@@ -216,9 +216,12 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 				let #pat: #ty = #di_crate::Injected::<#ty>::resolve(&__di_ctx)
 					.await
 					.map_err(|e| {
-						eprintln!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
+						tracing::debug!(
+							dependency_type = stringify!(#ty),
+							"dependency injection resolution failed"
+						);
 						#core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+							format!("Dependency injection failed: {:?}", e)
 						)
 					})?
 					.into_inner();
@@ -228,9 +231,12 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 				let #pat: #ty = #di_crate::Injected::<#ty>::resolve_uncached(&__di_ctx)
 					.await
 					.map_err(|e| {
-						eprintln!("Dependency injection failed for {}: {:?}", stringify!(#ty), e);
+						tracing::debug!(
+							dependency_type = stringify!(#ty),
+							"dependency injection resolution failed"
+						);
 						#core_crate::exception::Error::Internal(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+							format!("Dependency injection failed: {:?}", e)
 						)
 					})?
 					.into_inner();

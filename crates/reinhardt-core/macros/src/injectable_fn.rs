@@ -123,7 +123,10 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 									#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
 								}
 								.map_err(|e| {
-									eprintln!("Injectable function dependency failed for {}: {:?}", stringify!(#ty), e);
+									tracing::debug!(
+										dependency_type = stringify!(#ty),
+										"injectable function dependency resolution failed"
+									);
 									e
 								})?;
 								let value = (*__injected).clone();
@@ -142,7 +145,10 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 								#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
 							}
 							.map_err(|e| {
-								eprintln!("Injectable function dependency failed for {}: {:?}", stringify!(#ty), e);
+								tracing::debug!(
+									dependency_type = stringify!(#ty),
+									"injectable function dependency resolution failed"
+								);
 								e
 							})?;
 							(*__injected).clone()
