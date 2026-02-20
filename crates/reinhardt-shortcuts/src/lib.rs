@@ -26,12 +26,15 @@
 //!
 //! ```
 //! use reinhardt_shortcuts::{redirect, redirect_permanent};
+//! use std::collections::HashSet;
 //!
-//! // Temporary redirect (302)
-//! let response = redirect("/users/");
+//! let allowed_hosts: HashSet<String> = HashSet::new();
+//!
+//! // Temporary redirect (302) - validates URL against allowed hosts
+//! let response = redirect("/users/", &allowed_hosts).unwrap();
 //!
 //! // Permanent redirect (301)
-//! let response = redirect_permanent("/new-location/");
+//! let response = redirect_permanent("/new-location/", &allowed_hosts).unwrap();
 //! ```
 //!
 //! ### Database Shortcuts
@@ -86,6 +89,7 @@ pub use get_or_404::{
 	GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
 };
 pub use redirect::{redirect, redirect_permanent, redirect_permanent_to, redirect_to};
+pub use reinhardt_core::security::redirect::RedirectValidationError;
 pub use render::{render_html, render_json, render_json_pretty, render_text};
 pub use url::{Url, UrlError};
 
