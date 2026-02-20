@@ -6,8 +6,14 @@
 //! # Capabilities
 //!
 //! Some host functions require specific capabilities:
-//! - HTTP functions: Require network access permission
-//! - Database functions: Require database access permission
+//! - HTTP functions: Require `NetworkAccess` capability
+//! - Database functions: Require `DatabaseAccess` capability
+//! - SSR rendering: Requires `Verified` or `Trusted` trust level
+//! - JavaScript execution: Requires `Trusted` trust level only
+//!
+//! The capability-based access control pattern ensures plugins can only access
+//! resources they have been explicitly granted. Capabilities are preserved
+//! across `Clone` operations so that WASM store creation does not lose state.
 
 use crate::capability::{Capability, TrustLevel};
 use crate::error::PluginResult;
@@ -15,12 +21,19 @@ use crate::error::PluginResult;
 use parking_lot::RwLock;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use super::events::{Event, EventBus, SharedEventBus};
 use super::models::{ModelRegistry, ModelSchema, SharedModelRegistry, SqlMigration};
 use super::ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
 use super::types::{ConfigValue, WitHttpResponse, WitPluginError};
+
+/// Shared default HTTP client reused across all `HostState` instances.
+///
+/// Creating a `reqwest::Client` per `HostState` wastes connection pools and
+/// may lead to file descriptor exhaustion under high load. This shared client
+/// ensures connection pools are reused across all plugins.
+static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 #[cfg(feature = "ts")]
 use super::ts_runtime::SharedTsRuntime;
@@ -236,7 +249,7 @@ impl HostState {
 			services: RwLock::new(HashMap::new()),
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: HashSet::new(),
-			http_client: Some(reqwest::Client::new()),
+			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
 			db_connection: None,
 			event_bus,
 			model_registry,
@@ -851,13 +864,15 @@ pub struct HostStateBuilder {
 
 impl HostStateBuilder {
 	/// Create a new builder.
+	///
+	/// Uses the shared default HTTP client to avoid creating redundant connection pools.
 	pub fn new(plugin_name: impl Into<String>) -> Self {
 		Self {
 			plugin_name: plugin_name.into(),
 			trust_level: TrustLevel::default(),
 			config: HashMap::new(),
 			capabilities: HashSet::new(),
-			http_client: Some(reqwest::Client::new()),
+			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
 			db_connection: None,
 			event_bus: None,
 			model_registry: None,
