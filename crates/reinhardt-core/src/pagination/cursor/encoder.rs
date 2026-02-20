@@ -114,8 +114,8 @@ impl Base64CursorEncoder {
 
 	/// Compute HMAC-SHA256 over the given message using the encoder's secret key
 	fn compute_hmac(&self, message: &[u8]) -> Vec<u8> {
-		let mut mac = HmacSha256::new_from_slice(&self.secret_key)
-			.expect("HMAC accepts any key length");
+		let mut mac =
+			HmacSha256::new_from_slice(&self.secret_key).expect("HMAC accepts any key length");
 		mac.update(message);
 		mac.finalize().into_bytes().to_vec()
 	}
@@ -171,8 +171,8 @@ impl CursorEncoder for Base64CursorEncoder {
 
 		// Verify HMAC-SHA256 signature
 		let payload = format!("{}:{}", position, timestamp);
-		let mut mac = HmacSha256::new_from_slice(&self.secret_key)
-			.expect("HMAC accepts any key length");
+		let mut mac =
+			HmacSha256::new_from_slice(&self.secret_key).expect("HMAC accepts any key length");
 		mac.update(payload.as_bytes());
 		mac.verify_slice(&provided_hmac)
 			.map_err(|_| Error::InvalidPage("Cursor integrity check failed".to_string()))?;
@@ -182,7 +182,9 @@ impl CursorEncoder for Base64CursorEncoder {
 			.duration_since(std::time::UNIX_EPOCH)
 			.unwrap()
 			.as_secs();
-		if now - timestamp > self.expiry_seconds {
+		// Use saturating_sub to prevent underflow when timestamp > now
+		// (e.g., due to clock skew or NTP adjustments)
+		if now.saturating_sub(timestamp) > self.expiry_seconds {
 			return Err(Error::Validation("Cursor expired".to_string()));
 		}
 
@@ -193,6 +195,7 @@ impl CursorEncoder for Base64CursorEncoder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use base64::Engine as _;
 	use rstest::rstest;
 
 	#[rstest]
@@ -300,5 +303,35 @@ mod tests {
 			let decoded = encoder.decode(&cursor).unwrap();
 			assert_eq!(decoded, position);
 		}
+	}
+
+	#[rstest]
+	fn test_base64_encoder_future_timestamp_no_underflow() {
+		// Arrange
+		// Simulate clock skew: cursor created on a server with a slightly ahead clock
+		let encoder = Base64CursorEncoder::with_secret_key(b"test-secret-key-for-unit-tests!!");
+		let position: usize = 42;
+		let future_timestamp = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_secs()
+			+ 3600; // 1 hour in the future
+
+		// Manually construct a valid cursor with a future timestamp
+		let payload = format!("{}:{}", position, future_timestamp);
+		let hmac_bytes = encoder.compute_hmac(payload.as_bytes());
+		let hmac_hex = hex::encode(&hmac_bytes);
+		let cursor_data = format!("{}:{}:{}", position, future_timestamp, hmac_hex);
+		let cursor =
+			base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cursor_data.as_bytes());
+
+		// Act
+		let result = encoder.decode(&cursor);
+
+		// Assert
+		// With saturating_sub, future timestamps yield 0 elapsed time,
+		// so the cursor should not be treated as expired
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), position);
 	}
 }

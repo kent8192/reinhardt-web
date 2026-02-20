@@ -136,9 +136,7 @@ impl RateLimitStore {
 		// Evict stale buckets that have not been accessed within max_age
 		let mut buckets = self.buckets.write().unwrap();
 		let now = Instant::now();
-		buckets.retain(|_, bucket| {
-			now.duration_since(bucket.last_refill) < max_age
-		});
+		buckets.retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
 	}
 
 	/// Reset the store

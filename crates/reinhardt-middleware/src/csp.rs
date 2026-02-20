@@ -271,10 +271,9 @@ impl CspMiddleware {
 			// Add nonce to script-src and style-src if enabled
 			if self.config.include_nonce
 				&& (directive == "script-src" || directive == "style-src")
+				&& let Some(n) = validated_nonce
 			{
-				if let Some(n) = validated_nonce {
-					directive_values.push(format!("'nonce-{}'", n));
-				}
+				directive_values.push(format!("'nonce-{}'", n));
 			}
 
 			parts.push(format!("{} {}", directive, directive_values.join(" ")));
@@ -808,7 +807,10 @@ mod tests {
 		let csp = middleware.build_csp_header(Some("abc\r\ndef;injected"));
 
 		// Assert - invalid nonce should be silently dropped
-		assert!(!csp.contains("nonce-"), "Invalid nonce should not be embedded in header");
+		assert!(
+			!csp.contains("nonce-"),
+			"Invalid nonce should not be embedded in header"
+		);
 		assert!(csp.contains("script-src 'self'"));
 	}
 

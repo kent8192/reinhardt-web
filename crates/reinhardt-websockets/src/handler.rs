@@ -67,9 +67,7 @@ pub trait WebSocketHandler: Send + Sync {
 	///
 	/// This hook allows handlers to perform post-reconnection setup
 	/// (e.g., resubscribing to channels, restoring state).
-	fn on_reconnected(
-		&self,
-	) -> impl std::future::Future<Output = WebSocketResult<()>> + Send {
+	fn on_reconnected(&self) -> impl std::future::Future<Output = WebSocketResult<()>> + Send {
 		async { Ok(()) }
 	}
 

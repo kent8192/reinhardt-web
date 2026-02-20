@@ -1,10 +1,21 @@
 //! Decrypt command
+//!
+//! # Security
+//!
+//! - Decrypted output files are created with restrictive permissions (0600)
+//! - File operations use direct error handling instead of check-then-act patterns
+//!   to avoid TOCTOU race conditions
 
 use crate::output;
 use clap::Args;
 use std::path::PathBuf;
 
 use super::key;
+
+/// Maximum encrypted file size (50 MB).
+///
+/// Prevents OOM from processing extremely large files.
+const MAX_ENCRYPTED_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 #[derive(Args)]
 pub(crate) struct DecryptArgs {
@@ -36,10 +47,18 @@ pub(crate) struct DecryptArgs {
 pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 	output::info(&format!("Decrypting configuration file: {:?}", args.file));
 
-	// Check if file exists
-	if !args.file.exists() {
-		output::error("Encrypted file not found");
-		return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+	// Check file size before reading to prevent OOM (handles existence check implicitly)
+	let metadata = std::fs::metadata(&args.file).map_err(|e| {
+		output::error("Encrypted file not found or inaccessible");
+		anyhow::anyhow!("Cannot access file {:?}: {}", args.file, e)
+	})?;
+
+	if metadata.len() > MAX_ENCRYPTED_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Encrypted file exceeds maximum size ({} bytes, limit {} bytes)",
+			metadata.len(),
+			MAX_ENCRYPTED_FILE_SIZE
+		));
 	}
 
 	// Get decryption key from CLI arg, env var, or stdin prompt
@@ -72,8 +91,8 @@ pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 		}
 	});
 
-	// Write decrypted content
-	std::fs::write(&output_path, decrypted)?;
+	// Write decrypted content with restrictive permissions (owner read/write only)
+	write_with_restricted_permissions(&output_path, &decrypted)?;
 	output::success(&format!("Decrypted file written to: {:?}", output_path));
 
 	// Delete encrypted file if requested
@@ -82,5 +101,33 @@ pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 		output::info("Encrypted file deleted");
 	}
 
+	Ok(())
+}
+
+/// Write file content with restrictive permissions (0600 on Unix).
+///
+/// Creates the file atomically with restricted permissions from the start,
+/// preventing any window where the file exists with permissive permissions.
+#[cfg(unix)]
+fn write_with_restricted_permissions(path: &PathBuf, content: &[u8]) -> anyhow::Result<()> {
+	use std::fs::OpenOptions;
+	use std::io::Write;
+	use std::os::unix::fs::OpenOptionsExt;
+
+	let mut file = OpenOptions::new()
+		.write(true)
+		.create(true)
+		.truncate(true)
+		.mode(0o600) // Owner read/write only
+		.open(path)?;
+	file.write_all(content)?;
+	file.sync_all()?;
+	Ok(())
+}
+
+/// Write file content with default permissions on non-Unix platforms.
+#[cfg(not(unix))]
+fn write_with_restricted_permissions(path: &PathBuf, content: &[u8]) -> anyhow::Result<()> {
+	std::fs::write(path, content)?;
 	Ok(())
 }

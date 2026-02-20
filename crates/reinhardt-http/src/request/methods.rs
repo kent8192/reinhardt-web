@@ -43,14 +43,13 @@ impl Request {
 		}
 
 		// Only trust X-Forwarded-Proto header from configured trusted proxies
-		if self.is_from_trusted_proxy() {
-			if let Some(proto) = self
+		if self.is_from_trusted_proxy()
+			&& let Some(proto) = self
 				.headers
 				.get("x-forwarded-proto")
 				.and_then(|h| h.to_str().ok())
-			{
-				return proto.eq_ignore_ascii_case("https");
-			}
+		{
+			return proto.eq_ignore_ascii_case("https");
 		}
 
 		false

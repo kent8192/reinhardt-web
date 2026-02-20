@@ -128,9 +128,21 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	Ok(())
 }
 
+/// Maximum configuration file size for diff command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 fn load_config_file(path: &PathBuf) -> anyhow::Result<serde_json::Value> {
-	if !path.exists() {
-		return Err(anyhow::anyhow!("File not found: {:?}", path));
+	// Check file existence and size in one operation (TOCTOU mitigation)
+	let metadata = std::fs::metadata(path)
+		.map_err(|e| anyhow::anyhow!("Cannot access file {:?}: {}", path, e))?;
+
+	if metadata.len() > MAX_CONFIG_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Configuration file {:?} exceeds maximum size ({} bytes, limit {} bytes)",
+			path,
+			metadata.len(),
+			MAX_CONFIG_FILE_SIZE
+		));
 	}
 
 	let extension = path.extension().and_then(|s| s.to_str());

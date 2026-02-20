@@ -597,8 +597,7 @@ mod tests {
 		}
 
 		// PasswordInput intentionally does not render the value attribute
-		let password_html =
-			Widget::PasswordInput.render_html("field", Some(xss_payload), None);
+		let password_html = Widget::PasswordInput.render_html("field", Some(xss_payload), None);
 		assert!(
 			!password_html.contains("value="),
 			"PasswordInput should never render the value attribute"

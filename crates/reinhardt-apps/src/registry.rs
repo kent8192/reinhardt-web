@@ -23,7 +23,7 @@
 
 use linkme::distributed_slice;
 use std::collections::HashMap;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{OnceLock, PoisonError, RwLock};
 
 /// Metadata for a registered model
 ///
@@ -483,7 +483,10 @@ pub fn register_reverse_relation(relation: ReverseRelationMetadata) {
 	if REVERSE_RELATIONS.get().is_some() {
 		panic!("Cannot register reverse relations after finalization");
 	}
-	let mut builder = REVERSE_RELATIONS_BUILDER.write().unwrap();
+	// Recover from poisoned lock to prevent cascading panics
+	let mut builder = REVERSE_RELATIONS_BUILDER
+		.write()
+		.unwrap_or_else(PoisonError::into_inner);
 	builder.push(relation);
 }
 
@@ -496,7 +499,10 @@ pub fn finalize_reverse_relations() {
 	if REVERSE_RELATIONS.get().is_some() {
 		return;
 	}
-	let builder = REVERSE_RELATIONS_BUILDER.read().unwrap();
+	// Recover from poisoned lock to prevent cascading panics
+	let builder = REVERSE_RELATIONS_BUILDER
+		.read()
+		.unwrap_or_else(PoisonError::into_inner);
 	let mut indexed = HashMap::new();
 	for relation in builder.iter() {
 		indexed
@@ -729,5 +735,42 @@ mod tests {
 
 		assert_eq!(rel1, rel2);
 		assert_ne!(rel1, rel3);
+	}
+
+	#[rstest]
+	fn test_rwlock_poison_recovery_write() {
+		// Arrange
+		let lock = RwLock::new(vec![1, 2, 3]);
+
+		// Poison the lock by panicking inside a write guard
+		let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _guard = lock.write().unwrap();
+			panic!("intentional panic to poison the lock");
+		}));
+
+		// Act: recover from poisoned lock using PoisonError::into_inner
+		let mut guard = lock.write().unwrap_or_else(PoisonError::into_inner);
+		guard.push(4);
+
+		// Assert: data is accessible and intact after recovery
+		assert_eq!(*guard, vec![1, 2, 3, 4]);
+	}
+
+	#[rstest]
+	fn test_rwlock_poison_recovery_read() {
+		// Arrange
+		let lock = RwLock::new(vec![10, 20, 30]);
+
+		// Poison the lock by panicking inside a write guard
+		let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _guard = lock.write().unwrap();
+			panic!("intentional panic to poison the lock");
+		}));
+
+		// Act: recover from poisoned lock using PoisonError::into_inner
+		let guard = lock.read().unwrap_or_else(PoisonError::into_inner);
+
+		// Assert: data is readable after recovery
+		assert_eq!(*guard, vec![10, 20, 30]);
 	}
 }

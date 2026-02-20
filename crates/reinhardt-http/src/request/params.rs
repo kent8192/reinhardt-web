@@ -10,7 +10,8 @@ impl Request {
 			.map(|q| {
 				q.split('&')
 					.filter_map(|pair| {
-						let mut parts = pair.split('=');
+						// Split on first '=' only to preserve '=' in values (e.g., Base64)
+						let mut parts = pair.splitn(2, '=');
 						Some((
 							parts.next()?.to_string(),
 							parts.next().unwrap_or("").to_string(),
@@ -274,5 +275,101 @@ impl Request {
 				})
 			})
 			.filter(|lang| Self::is_valid_language_code(lang))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	// =================================================================
+	// Query parameter '=' preservation tests (Issue #362)
+	// =================================================================
+
+	#[rstest]
+	fn test_parse_query_params_preserves_equals_in_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?token=abc==".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("token"), Some(&"abc==".to_string()));
+	}
+
+	#[rstest]
+	fn test_parse_query_params_base64_encoded_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?data=dGVzdA==".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("data"), Some(&"dGVzdA==".to_string()));
+	}
+
+	#[rstest]
+	fn test_parse_query_params_multiple_equals_in_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?formula=a=b=c".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("formula"), Some(&"a=b=c".to_string()));
+	}
+
+	#[rstest]
+	fn test_parse_query_params_simple_key_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?key=value".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("key"), Some(&"value".to_string()));
+	}
+
+	#[rstest]
+	fn test_parse_query_params_key_without_value() {
+		// Arrange
+		let uri: hyper::Uri = "/test?key=".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("key"), Some(&"".to_string()));
+	}
+
+	#[rstest]
+	fn test_parse_query_params_no_query_string() {
+		// Arrange
+		let uri: hyper::Uri = "/test".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert!(params.is_empty());
+	}
+
+	#[rstest]
+	fn test_parse_query_params_multiple_params_with_equals() {
+		// Arrange
+		let uri: hyper::Uri = "/test?a=1&b=x=y=z&c=3".parse().unwrap();
+
+		// Act
+		let params = Request::parse_query_params(&uri);
+
+		// Assert
+		assert_eq!(params.get("a"), Some(&"1".to_string()));
+		assert_eq!(params.get("b"), Some(&"x=y=z".to_string()));
+		assert_eq!(params.get("c"), Some(&"3".to_string()));
 	}
 }

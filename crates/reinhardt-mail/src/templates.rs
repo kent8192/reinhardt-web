@@ -172,11 +172,7 @@ impl TemplateEmailBuilder {
 				serde_json::Value::Null => String::new(),
 				_ => value.to_string(),
 			};
-			let replacement = if html_escape {
-				escape_html(&raw)
-			} else {
-				raw
-			};
+			let replacement = if html_escape { escape_html(&raw) } else { raw };
 
 			result = result.replace(&placeholder, &replacement);
 		}
@@ -223,11 +219,7 @@ pub fn render_template(
 			serde_json::Value::Null => String::new(),
 			_ => value.to_string(),
 		};
-		let replacement = if html_escape {
-			escape_html(&raw)
-		} else {
-			raw
-		};
+		let replacement = if html_escape { escape_html(&raw) } else { raw };
 
 		result = result.replace(&placeholder, &replacement);
 	}
@@ -248,8 +240,12 @@ mod tests {
 		context.insert("age".to_string(), 30.into());
 
 		// Act
-		let result =
-			render_template("Hello {{name}}, you are {{age}} years old.", &context, false).unwrap();
+		let result = render_template(
+			"Hello {{name}}, you are {{age}} years old.",
+			&context,
+			false,
+		)
+		.unwrap();
 
 		// Assert
 		assert_eq!(result, "Hello Alice, you are 30 years old.");
@@ -275,8 +271,7 @@ mod tests {
 		context.insert("name".to_string(), "<script>alert('xss')</script>".into());
 
 		// Act
-		let result =
-			render_template("<p>Hello {{name}}</p>", &context, true).unwrap();
+		let result = render_template("<p>Hello {{name}}</p>", &context, true).unwrap();
 
 		// Assert
 		assert_eq!(

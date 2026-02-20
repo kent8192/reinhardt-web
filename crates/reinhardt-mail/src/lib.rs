@@ -199,6 +199,7 @@ pub use backends::{
 };
 pub use message::{Alternative, Attachment, EmailMessage, EmailMessageBuilder};
 pub use utils::{mail_admins, mail_managers, send_mail, send_mail_with_backend, send_mass_mail};
+pub use validation::MAX_EMAIL_LENGTH;
 
 #[derive(Debug, Error)]
 pub enum EmailError {

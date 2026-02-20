@@ -3,6 +3,12 @@
 use crate::{EmailError, EmailResult};
 use idna::domain_to_ascii;
 
+/// Maximum email address length per RFC 5321 Section 4.5.3.1.3.
+///
+/// The total path length including angle brackets must not exceed 256 octets,
+/// so the address itself is limited to 254 characters.
+pub const MAX_EMAIL_LENGTH: usize = 254;
+
 /// Validates an email address according to RFC 5321/5322 standards
 ///
 /// # Examples
@@ -20,6 +26,16 @@ pub fn validate_email(email: &str) -> EmailResult<()> {
 		return Err(EmailError::InvalidAddress(
 			"Email cannot be empty".to_string(),
 		));
+	}
+
+	// RFC 5321 Section 4.5.3.1.3: maximum total length is 254 characters
+	// (256 octets including angle brackets in SMTP envelope)
+	if email.len() > MAX_EMAIL_LENGTH {
+		return Err(EmailError::InvalidAddress(format!(
+			"Email address exceeds maximum length of {} characters (got {})",
+			MAX_EMAIL_LENGTH,
+			email.len()
+		)));
 	}
 
 	// Check for header injection attempts
@@ -204,97 +220,245 @@ pub fn check_header_injection(value: &str) -> EmailResult<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
-	fn test_validate_email_valid() {
-		assert!(validate_email("user@example.com").is_ok());
-		assert!(validate_email("user+tag@example.com").is_ok());
-		assert!(validate_email("user.name@example.com").is_ok());
-		assert!(validate_email("user_name@example.com").is_ok());
-		assert!(validate_email("user123@example.co.uk").is_ok());
+	#[rstest]
+	#[case("user@example.com")]
+	#[case("user+tag@example.com")]
+	#[case("user.name@example.com")]
+	#[case("user_name@example.com")]
+	#[case("user123@example.co.uk")]
+	fn test_validate_email_valid(#[case] email: &str) {
+		// Arrange
+		// (input provided by case parameter)
+
+		// Act
+		let result = validate_email(email);
+
+		// Assert
+		assert!(result.is_ok(), "Expected valid email: {}", email);
 	}
 
-	#[test]
-	fn test_validate_email_invalid() {
-		assert!(validate_email("").is_err());
-		assert!(validate_email("invalid").is_err());
-		assert!(validate_email("@example.com").is_err());
-		assert!(validate_email("user@").is_err());
-		assert!(validate_email("user@@example.com").is_err());
-		assert!(validate_email("user@example@com").is_err());
+	#[rstest]
+	#[case("")]
+	#[case("invalid")]
+	#[case("@example.com")]
+	#[case("user@")]
+	#[case("user@@example.com")]
+	#[case("user@example@com")]
+	fn test_validate_email_invalid(#[case] email: &str) {
+		// Arrange
+		// (input provided by case parameter)
+
+		// Act
+		let result = validate_email(email);
+
+		// Assert
+		assert!(result.is_err(), "Expected invalid email: {}", email);
 	}
 
-	#[test]
-	fn test_validate_email_header_injection() {
-		assert!(validate_email("user@example.com\nBcc: attacker@evil.com").is_err());
-		assert!(validate_email("user@example.com\rCc: attacker@evil.com").is_err());
-	}
+	#[rstest]
+	#[case("user@example.com\nBcc: attacker@evil.com")]
+	#[case("user@example.com\rCc: attacker@evil.com")]
+	fn test_validate_email_header_injection(#[case] email: &str) {
+		// Arrange
+		// (input provided by case parameter)
 
-	#[test]
-	fn test_validate_local_part() {
-		assert!(validate_local_part("user").is_ok());
-		assert!(validate_local_part("user.name").is_ok());
-		assert!(validate_local_part("user+tag").is_ok());
+		// Act
+		let result = validate_email(email);
 
-		assert!(validate_local_part("").is_err());
-		assert!(validate_local_part(".user").is_err());
-		assert!(validate_local_part("user.").is_err());
-		assert!(validate_local_part("user..name").is_err());
-	}
-
-	#[test]
-	fn test_validate_domain() {
-		assert!(validate_domain("example.com").is_ok());
-		assert!(validate_domain("mail.example.com").is_ok());
-		assert!(validate_domain("example.co.uk").is_ok());
-
-		assert!(validate_domain("").is_err());
-		assert!(validate_domain(".example.com").is_err());
-		assert!(validate_domain("example.com.").is_err());
-		assert!(validate_domain("-example.com").is_err());
-		assert!(validate_domain("example.com-").is_err());
-	}
-
-	#[test]
-	fn test_sanitize_email() {
-		// RFC 5321: local part is case-sensitive, only domain is lowercased
-		assert_eq!(
-			sanitize_email("  User@Example.COM  ").unwrap(),
-			"User@example.com"
-		);
-		assert_eq!(
-			sanitize_email("USER+TAG@EXAMPLE.COM").unwrap(),
-			"USER+TAG@example.com"
-		);
-		assert_eq!(
-			sanitize_email("john.smith@example.com").unwrap(),
-			"john.smith@example.com"
+		// Assert
+		assert!(
+			result.is_err(),
+			"Expected header injection rejection for: {:?}",
+			email
 		);
 	}
 
-	#[test]
+	#[rstest]
+	fn test_validate_email_max_length_boundary() {
+		// Arrange
+		// 254 characters is the maximum allowed (local@domain)
+		let local = "a".repeat(64);
+		let domain_label = "b".repeat(63);
+		// Build domain to reach exactly 254 total: local(64) + @(1) + domain(189) = 254
+		let domain_part_len = MAX_EMAIL_LENGTH - local.len() - 1; // subtract local and @
+		let domain = format!("{}.{}", "b".repeat(domain_part_len - 4), "com");
+		let email_at_limit = format!("{}@{}", local, domain);
+		assert_eq!(email_at_limit.len(), MAX_EMAIL_LENGTH);
+
+		// Act
+		let result = validate_email(&email_at_limit);
+
+		// Assert
+		assert!(
+			result.is_ok(),
+			"Email at exactly {} chars should be valid",
+			MAX_EMAIL_LENGTH
+		);
+	}
+
+	#[rstest]
+	fn test_validate_email_exceeds_max_length() {
+		// Arrange
+		// 255 characters exceeds the maximum
+		let local = "a".repeat(64);
+		let domain_part_len = MAX_EMAIL_LENGTH - local.len(); // one more than allowed
+		let domain = format!("{}.{}", "b".repeat(domain_part_len - 4), "com");
+		let email_over_limit = format!("{}@{}", local, domain);
+		assert!(email_over_limit.len() > MAX_EMAIL_LENGTH);
+
+		// Act
+		let result = validate_email(&email_over_limit);
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"Email over {} chars should be rejected",
+			MAX_EMAIL_LENGTH
+		);
+		let err_msg = result.unwrap_err().to_string();
+		assert!(
+			err_msg.contains("maximum length"),
+			"Error should mention maximum length, got: {}",
+			err_msg
+		);
+	}
+
+	#[rstest]
+	#[case("user", true)]
+	#[case("user.name", true)]
+	#[case("user+tag", true)]
+	#[case("", false)]
+	#[case(".user", false)]
+	#[case("user.", false)]
+	#[case("user..name", false)]
+	fn test_validate_local_part(#[case] local: &str, #[case] expected_valid: bool) {
+		// Arrange
+		// (input provided by case parameters)
+
+		// Act
+		let result = validate_local_part(local);
+
+		// Assert
+		assert_eq!(
+			result.is_ok(),
+			expected_valid,
+			"Local part '{}': expected valid={}, got {:?}",
+			local,
+			expected_valid,
+			result
+		);
+	}
+
+	#[rstest]
+	#[case("example.com", true)]
+	#[case("mail.example.com", true)]
+	#[case("example.co.uk", true)]
+	#[case("", false)]
+	#[case(".example.com", false)]
+	#[case("example.com.", false)]
+	#[case("-example.com", false)]
+	#[case("example.com-", false)]
+	fn test_validate_domain(#[case] domain: &str, #[case] expected_valid: bool) {
+		// Arrange
+		// (input provided by case parameters)
+
+		// Act
+		let result = validate_domain(domain);
+
+		// Assert
+		assert_eq!(
+			result.is_ok(),
+			expected_valid,
+			"Domain '{}': expected valid={}, got {:?}",
+			domain,
+			expected_valid,
+			result
+		);
+	}
+
+	#[rstest]
+	#[case("  User@Example.COM  ", "User@example.com")]
+	#[case("USER+TAG@EXAMPLE.COM", "USER+TAG@example.com")]
+	#[case("john.smith@example.com", "john.smith@example.com")]
+	fn test_sanitize_email(#[case] input: &str, #[case] expected: &str) {
+		// Arrange
+		// (inputs provided by case parameters)
+
+		// Act
+		let result = sanitize_email(input).unwrap();
+
+		// Assert
+		assert_eq!(result, expected);
+	}
+
+	#[rstest]
 	fn test_sanitize_email_list() {
+		// Arrange
 		let emails = vec!["  User1@Example.COM  ", "User2@EXAMPLE.com"];
+
+		// Act
 		let sanitized = sanitize_email_list(&emails).unwrap();
+
+		// Assert
 		assert_eq!(sanitized, vec!["User1@example.com", "User2@example.com"]);
 	}
 
-	#[test]
-	fn test_check_header_injection() {
-		assert!(check_header_injection("Normal subject").is_ok());
-		assert!(check_header_injection("Subject with spaces").is_ok());
+	#[rstest]
+	#[case("Normal subject", true)]
+	#[case("Subject with spaces", true)]
+	#[case("Subject\nBcc: attacker@evil.com", false)]
+	#[case("Subject\rCc: attacker@evil.com", false)]
+	#[case("Subject\r\nTo: attacker@evil.com", false)]
+	fn test_check_header_injection(#[case] value: &str, #[case] expected_ok: bool) {
+		// Arrange
+		// (input provided by case parameters)
 
-		assert!(check_header_injection("Subject\nBcc: attacker@evil.com").is_err());
-		assert!(check_header_injection("Subject\rCc: attacker@evil.com").is_err());
-		assert!(check_header_injection("Subject\r\nTo: attacker@evil.com").is_err());
+		// Act
+		let result = check_header_injection(value);
+
+		// Assert
+		assert_eq!(
+			result.is_ok(),
+			expected_ok,
+			"Header injection check for {:?}: expected ok={}, got {:?}",
+			value,
+			expected_ok,
+			result
+		);
 	}
 
-	#[test]
-	fn test_validate_email_list() {
+	#[rstest]
+	fn test_validate_email_list_valid() {
+		// Arrange
 		let valid_emails = vec!["user1@example.com", "user2@example.com"];
-		assert!(validate_email_list(&valid_emails).is_ok());
 
+		// Act
+		let result = validate_email_list(&valid_emails);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_validate_email_list_invalid() {
+		// Arrange
 		let invalid_emails = vec!["valid@example.com", "invalid@"];
-		assert!(validate_email_list(&invalid_emails).is_err());
+
+		// Act
+		let result = validate_email_list(&invalid_emails);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_max_email_length_constant() {
+		// Assert
+		assert_eq!(
+			MAX_EMAIL_LENGTH, 254,
+			"RFC 5321 max email length should be 254"
+		);
 	}
 }

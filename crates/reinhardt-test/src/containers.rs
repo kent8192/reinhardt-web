@@ -872,6 +872,26 @@ pub mod sqlite {
 	/// // Use the database...
 	/// ```
 	pub fn temp_file_url(name: &str) -> String {
+		// Validate name to prevent path traversal attacks
+		assert!(!name.is_empty(), "temp_file_url: name must not be empty");
+		assert!(
+			!name.contains(".."),
+			"temp_file_url: name must not contain '..' (path traversal)"
+		);
+		assert!(
+			!name.contains('/') && !name.contains('\\'),
+			"temp_file_url: name must not contain path separators ('/' or '\\')"
+		);
+		assert!(
+			!name.contains('\0'),
+			"temp_file_url: name must not contain null bytes"
+		);
+		assert!(
+			name.chars()
+				.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
+			"temp_file_url: name must contain only alphanumeric characters, hyphens, underscores, or dots"
+		);
+
 		format!("sqlite:/tmp/{}.db", name)
 	}
 }
@@ -940,5 +960,89 @@ mod tests {
 		})
 		.await
 		.unwrap();
+	}
+
+	#[rstest]
+	fn test_temp_file_url_accepts_valid_name() {
+		// Arrange
+		let name = "test_db";
+
+		// Act
+		let url = sqlite::temp_file_url(name);
+
+		// Assert
+		assert_eq!(url, "sqlite:/tmp/test_db.db");
+	}
+
+	#[rstest]
+	fn test_temp_file_url_accepts_name_with_dots_and_hyphens() {
+		// Arrange
+		let name = "my-test.db-v2";
+
+		// Act
+		let url = sqlite::temp_file_url(name);
+
+		// Assert
+		assert_eq!(url, "sqlite:/tmp/my-test.db-v2.db");
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not be empty")]
+	fn test_temp_file_url_rejects_empty_name() {
+		// Arrange
+		let name = "";
+
+		// Act
+		sqlite::temp_file_url(name);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "path traversal")]
+	fn test_temp_file_url_rejects_path_traversal() {
+		// Arrange
+		let name = "../../etc/passwd";
+
+		// Act
+		sqlite::temp_file_url(name);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "path separators")]
+	fn test_temp_file_url_rejects_forward_slash() {
+		// Arrange
+		let name = "foo/bar";
+
+		// Act
+		sqlite::temp_file_url(name);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "path separators")]
+	fn test_temp_file_url_rejects_backslash() {
+		// Arrange
+		let name = "foo\\bar";
+
+		// Act
+		sqlite::temp_file_url(name);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "null bytes")]
+	fn test_temp_file_url_rejects_null_bytes() {
+		// Arrange
+		let name = "test\0db";
+
+		// Act
+		sqlite::temp_file_url(name);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "alphanumeric")]
+	fn test_temp_file_url_rejects_special_characters() {
+		// Arrange
+		let name = "test db!@#";
+
+		// Act
+		sqlite::temp_file_url(name);
 	}
 }

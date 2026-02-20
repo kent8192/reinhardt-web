@@ -710,10 +710,10 @@ impl Request {
 	/// Returns `true` only if trusted proxies are configured AND the
 	/// remote address is in the trusted set.
 	fn is_from_trusted_proxy(&self) -> bool {
-		if let Some(trusted) = self.extensions.get::<TrustedProxies>() {
-			if let Some(addr) = self.remote_addr {
-				return trusted.is_trusted(&addr.ip());
-			}
+		if let Some(trusted) = self.extensions.get::<TrustedProxies>()
+			&& let Some(addr) = self.remote_addr
+		{
+			return trusted.is_trusted(&addr.ip());
 		}
 		false
 	}
@@ -880,7 +880,9 @@ impl Request {
 			.map(|(k, v)| (k.clone(), v.clone()))
 			.collect();
 
-		serde_urlencoded::from_str(&serde_urlencoded::to_string(&params).unwrap())
+		let encoded = serde_urlencoded::to_string(&params)
+			.map_err(|e| crate::Error::Http(format!("Failed to encode query parameters: {}", e)))?;
+		serde_urlencoded::from_str(&encoded)
 			.map_err(|e| crate::Error::Http(format!("Failed to parse query parameters: {}", e)))
 	}
 }

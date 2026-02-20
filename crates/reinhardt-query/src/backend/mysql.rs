@@ -346,8 +346,22 @@ impl MySqlQueryBuilder {
 			SimpleExpr::Asterisk => {
 				writer.push("*");
 			}
-			_ => {
-				writer.push("(EXPR)");
+			SimpleExpr::TableColumn(table, col) => {
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			}
+			SimpleExpr::AsEnum(_name, expr) => {
+				// MySQL does not support PostgreSQL-style enum casting (::type),
+				// so we render only the inner expression.
+				self.write_simple_expr(writer, expr);
+			}
+			SimpleExpr::Cast(expr, type_name) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
+				writer.push(")");
 			}
 		}
 	}
@@ -3369,6 +3383,7 @@ mod tests {
 		query::Query,
 		types::{Alias, IntoIden},
 	};
+	use rstest::rstest;
 
 	#[test]
 	fn test_escape_identifier() {
@@ -7449,6 +7464,100 @@ mod tests {
 		let (sql, values) = builder.build_set_default_role(&stmt);
 		assert_eq!(sql, "SET DEFAULT ROLE `role1`, `role2` TO 'app_user'@'%'");
 		assert!(values.is_empty());
+	}
+
+	// ==================== SimpleExpr variant handling tests ====================
+
+	#[rstest]
+	fn test_table_column_expr_renders_qualified_identifier() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::tbl("users", "name")).from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert
+		assert_eq!(sql, "SELECT `users`.`name` FROM `users`");
+	}
+
+	#[rstest]
+	fn test_table_column_expr_escapes_special_characters() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::tbl(Alias::new("my`table"), Alias::new("my`col")))
+			.from("t");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("`my``table`.`my``col`"));
+	}
+
+	#[rstest]
+	fn test_as_enum_expr_renders_inner_expression_only() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::val("active").as_enum(Alias::new("status")))
+			.from("users");
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert: MySQL does not support ::type casting, only inner expression is rendered
+		assert_eq!(sql, "SELECT ? FROM `users`");
+		assert_eq!(values.len(), 1);
+	}
+
+	#[rstest]
+	fn test_cast_expr_renders_cast_syntax() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("UNSIGNED")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert
+		assert_eq!(sql, "SELECT CAST(`age` AS `UNSIGNED`) FROM `users`");
+	}
+
+	#[rstest]
+	fn test_cast_expr_escapes_type_name_with_special_characters() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("my`type")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("CAST(`age` AS `my``type`)"));
+	}
+
+	#[rstest]
+	fn test_table_column_in_where_clause() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("id")
+			.from("orders")
+			.and_where(Expr::tbl("orders", "status").eq("shipped"));
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert
+		assert!(sql.contains("`orders`.`status`"));
+		assert!(sql.contains("WHERE"));
 	}
 }
 

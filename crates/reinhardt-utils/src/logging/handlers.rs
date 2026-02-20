@@ -20,11 +20,11 @@ impl MemoryHandler {
 	}
 
 	pub fn get_records(&self) -> Vec<LogRecord> {
-		self.records.lock().unwrap().clone()
+		self.records.lock().unwrap_or_else(|e| e.into_inner()).clone()
 	}
 
 	pub fn clear(&self) {
-		self.records.lock().unwrap().clear();
+		self.records.lock().unwrap_or_else(|e| e.into_inner()).clear();
 	}
 }
 
@@ -32,7 +32,7 @@ impl MemoryHandler {
 impl LogHandler for MemoryHandler {
 	async fn handle(&self, record: &LogRecord) {
 		if record.level >= self.level {
-			self.records.lock().unwrap().push(record.clone());
+			self.records.lock().unwrap_or_else(|e| e.into_inner()).push(record.clone());
 		}
 	}
 

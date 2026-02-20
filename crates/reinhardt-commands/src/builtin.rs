@@ -768,7 +768,12 @@ impl BaseCommand for MakeMigrationsCommand {
 							Vec::new() // Initial migration has no dependencies
 						} else {
 							// Get previous migration number
-							let prev_number_int = migration_number.parse::<u32>().unwrap() - 1;
+							let prev_number_int = migration_number.parse::<u32>().map_err(|e| {
+								CommandError::ParseError(format!(
+									"invalid migration number '{}': {}",
+									migration_number, e
+								))
+							})? - 1;
 							let prev_number = format!("{:04}", prev_number_int);
 							// Find the previous migration by scanning the directory
 							let prev_migration_name = if let Ok(entries) =
@@ -1262,12 +1267,7 @@ impl RunServerCommand {
 		let router = if !no_docs {
 			use reinhardt_http::Handler;
 			use reinhardt_openapi::OpenApiRouter;
-			let wrapped = OpenApiRouter::wrap(base_router).map_err(|e| {
-				crate::CommandError::ExecutionError(format!(
-					"Failed to initialize OpenAPI router: {}",
-					e
-				))
-			})?;
+			let wrapped = OpenApiRouter::wrap(base_router);
 			std::sync::Arc::new(wrapped) as std::sync::Arc<dyn Handler>
 		} else {
 			base_router

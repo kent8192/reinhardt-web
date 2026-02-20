@@ -1,7 +1,7 @@
 //! Unit tests for Provider and ProviderFn
 
-use reinhardt_di::provider::{Provider, ProviderFn};
 use reinhardt_di::InjectionContext;
+use reinhardt_di::provider::{Provider, ProviderFn};
 use reinhardt_test::fixtures::*;
 use rstest::*;
 use std::sync::Arc;

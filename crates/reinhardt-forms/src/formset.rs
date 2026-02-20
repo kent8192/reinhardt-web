@@ -88,13 +88,13 @@ impl FormSet {
 	/// assert!(formset.add_form(Form::new()).is_err());
 	/// ```
 	pub fn add_form(&mut self, form: Form) -> Result<(), String> {
-		if let Some(max) = self.max_num {
-			if self.forms.len() >= max {
-				return Err(format!(
-					"Cannot add form: maximum number of forms ({}) reached",
-					max
-				));
-			}
+		if let Some(max) = self.max_num
+			&& self.forms.len() >= max
+		{
+			return Err(format!(
+				"Cannot add form: maximum number of forms ({}) reached",
+				max
+			));
 		}
 		self.forms.push(form);
 		Ok(())
@@ -215,10 +215,10 @@ impl FormSet {
 		for (key, form_data) in data {
 			if key.starts_with(&self.prefix) {
 				// Enforce max_num limit during data processing
-				if let Some(max) = self.max_num {
-					if self.forms.len() >= max {
-						break;
-					}
+				if let Some(max) = self.max_num
+					&& self.forms.len() >= max
+				{
+					break;
 				}
 				let mut form = Form::new();
 				form.bind(form_data.clone());

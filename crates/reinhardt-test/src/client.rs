@@ -686,12 +686,16 @@ impl APIClient {
 			req_builder = req_builder.header("Content-Type", ct);
 		}
 
-		// Add cookies
+		// Add cookies (with validation to prevent header injection)
 		let cookies = self.cookies.read().await;
 		if !cookies.is_empty() {
 			let cookie_header = cookies
 				.iter()
-				.map(|(k, v)| format!("{}={}", k, v))
+				.map(|(k, v)| {
+					validate_cookie_key(k);
+					validate_cookie_value(v);
+					format!("{}={}", k, v)
+				})
 				.collect::<Vec<_>>()
 				.join("; ");
 			req_builder = req_builder.header("Cookie", cookie_header);
@@ -825,12 +829,16 @@ impl APIClient {
 			req_builder = req_builder.header("Content-Type", ct);
 		}
 
-		// Add cookies
+		// Add cookies (with validation to prevent header injection)
 		let cookies = self.cookies.read().await;
 		if !cookies.is_empty() {
 			let cookie_header = cookies
 				.iter()
-				.map(|(k, v)| format!("{}={}", k, v))
+				.map(|(k, v)| {
+					validate_cookie_key(k);
+					validate_cookie_value(v);
+					format!("{}={}", k, v)
+				})
 				.collect::<Vec<_>>()
 				.join("; ");
 			req_builder = req_builder.header("Cookie", cookie_header);
@@ -978,6 +986,62 @@ impl APIClient {
 	}
 }
 
+/// Validate a cookie key to prevent header injection attacks.
+///
+/// Cookie keys must not contain `=`, `;`, whitespace, or control characters.
+///
+/// # Panics
+///
+/// Panics if the cookie key contains invalid characters.
+fn validate_cookie_key(key: &str) {
+	assert!(!key.is_empty(), "cookie key must not be empty");
+	assert!(
+		!key.contains('='),
+		"cookie key must not contain '=' (found in key: {:?})",
+		key
+	);
+	assert!(
+		!key.contains(';'),
+		"cookie key must not contain ';' (found in key: {:?})",
+		key
+	);
+	assert!(
+		!key.chars().any(|c| c.is_ascii_whitespace()),
+		"cookie key must not contain whitespace (found in key: {:?})",
+		key
+	);
+	assert!(
+		!key.chars().any(|c| c.is_control()),
+		"cookie key must not contain control characters (found in key: {:?})",
+		key
+	);
+}
+
+/// Validate a cookie value to prevent header injection attacks.
+///
+/// Cookie values must not contain `;`, newlines (`\r`, `\n`), or control characters.
+///
+/// # Panics
+///
+/// Panics if the cookie value contains invalid characters.
+fn validate_cookie_value(value: &str) {
+	assert!(
+		!value.contains(';'),
+		"cookie value must not contain ';' (found in value: {:?})",
+		value
+	);
+	assert!(
+		!value.contains('\r') && !value.contains('\n'),
+		"cookie value must not contain newlines (found in value: {:?})",
+		value
+	);
+	assert!(
+		!value.chars().any(|c| c.is_control()),
+		"cookie value must not contain control characters (found in value: {:?})",
+		value
+	);
+}
+
 impl Default for APIClient {
 	fn default() -> Self {
 		Self::new()
@@ -997,5 +1061,128 @@ mod base64 {
 mod urlencoding {
 	pub(super) fn encode(input: &str) -> String {
 		url::form_urlencoded::byte_serialize(input.as_bytes()).collect()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_validate_cookie_key_accepts_valid_key() {
+		// Arrange
+		let key = "session_id";
+
+		// Act & Assert (should not panic)
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not be empty")]
+	fn test_validate_cookie_key_rejects_empty() {
+		// Arrange
+		let key = "";
+
+		// Act
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain '='")]
+	fn test_validate_cookie_key_rejects_equals_sign() {
+		// Arrange
+		let key = "key=value";
+
+		// Act
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain ';'")]
+	fn test_validate_cookie_key_rejects_semicolon() {
+		// Arrange
+		let key = "key;injection";
+
+		// Act
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain whitespace")]
+	fn test_validate_cookie_key_rejects_whitespace() {
+		// Arrange
+		let key = "key name";
+
+		// Act
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain control characters")]
+	fn test_validate_cookie_key_rejects_control_chars() {
+		// Arrange
+		let key = "key\x00name";
+
+		// Act
+		validate_cookie_key(key);
+	}
+
+	#[rstest]
+	fn test_validate_cookie_value_accepts_valid_value() {
+		// Arrange
+		let value = "abc123-token";
+
+		// Act & Assert (should not panic)
+		validate_cookie_value(value);
+	}
+
+	#[rstest]
+	fn test_validate_cookie_value_accepts_empty() {
+		// Arrange
+		let value = "";
+
+		// Act & Assert (should not panic)
+		validate_cookie_value(value);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain ';'")]
+	fn test_validate_cookie_value_rejects_semicolon() {
+		// Arrange
+		let value = "value; extra=injected";
+
+		// Act
+		validate_cookie_value(value);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain newlines")]
+	fn test_validate_cookie_value_rejects_newline() {
+		// Arrange
+		let value = "value\r\nInjected-Header: malicious";
+
+		// Act
+		validate_cookie_value(value);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain control characters")]
+	fn test_validate_cookie_value_rejects_control_chars() {
+		// Arrange
+		let value = "value\x01hidden";
+
+		// Act
+		validate_cookie_value(value);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "must not contain newlines")]
+	fn test_validate_cookie_value_rejects_lf_only() {
+		// Arrange
+		let value = "value\nInjected-Header: evil";
+
+		// Act
+		validate_cookie_value(value);
 	}
 }
