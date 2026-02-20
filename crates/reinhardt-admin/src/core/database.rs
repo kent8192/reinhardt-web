@@ -670,14 +670,8 @@ impl AdminDatabase {
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
@@ -1058,18 +1052,46 @@ impl AdminDatabase {
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			// COUNT(*) result may be in the first column
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
+}
+
+/// Extract count value from a query result row
+///
+/// Attempts to extract an integer count from the query result in the following order:
+/// 1. Look for a "count" key in the JSON object
+/// 2. Take the first value from the JSON object
+///
+/// Returns an error if the data format is unexpected or the value cannot be
+/// interpreted as an integer.
+fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
+	if let Some(count_value) = data.get("count") {
+		return count_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				count_value
+			))
+		});
+	}
+
+	if let Some(obj) = data.as_object()
+		&& let Some(first_value) = obj.values().next()
+	{
+		return first_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				first_value
+			))
+		});
+	}
+
+	Err(AdminError::DatabaseError(format!(
+		"COUNT query returned unexpected data format: {}",
+		data
+	)))
 }
 
 /// Injectable trait implementation for AdminDatabase

@@ -179,8 +179,8 @@ pub use compression::{
 #[cfg(not(feature = "compression"))]
 pub use compression::CompressionConfig;
 pub use connection::{
-	ConnectionConfig, ConnectionTimeoutMonitor, Message, PingPongConfig, WebSocketConnection,
-	WebSocketError, WebSocketResult,
+	ConnectionConfig, ConnectionTimeoutMonitor, HeartbeatConfig, HeartbeatMonitor, Message,
+	PingPongConfig, WebSocketConnection, WebSocketError, WebSocketResult,
 };
 pub use consumers::{
 	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,
