@@ -762,11 +762,18 @@ impl AdminDatabase {
 			.into_table(Alias::new(table_name))
 			.to_owned();
 
-		// Build column and value lists
+		// Sort keys for deterministic column ordering in generated SQL.
+		// HashMap iteration order is non-deterministic, which causes
+		// flaky tests and non-reproducible query plans.
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build column and value lists in sorted order
 		let mut columns = Vec::new();
 		let mut values = Vec::new();
 
-		for (key, value) in data {
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			columns.push(Alias::new(&key));
 
 			let sea_value = match value {
@@ -840,8 +847,13 @@ impl AdminDatabase {
 	) -> AdminResult<u64> {
 		let mut query = Query::update().table(Alias::new(table_name)).to_owned();
 
-		// Build SET clauses
-		for (key, value) in data {
+		// Sort keys for deterministic SET clause ordering in generated SQL
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build SET clauses in sorted order
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			let sea_value = match value {
 				serde_json::Value::String(s) => Value::String(Some(Box::new(s))),
 				serde_json::Value::Number(n) => {

@@ -20,6 +20,13 @@ use crate::DispatchError;
 /// Handles the complete request lifecycle including URL resolution,
 /// view execution, and signal emission.
 pub struct BaseHandler {
+	/// Whether the handler operates in async mode.
+	///
+	/// This flag mirrors Django's `BaseHandler._is_async` and is read by
+	/// `Dispatcher` to choose between sync and async code paths. When
+	/// `false`, async dispatch still works but callers may opt for a
+	/// blocking wrapper.
+	#[allow(dead_code)] // read via is_async() accessor; behavioral branching planned
 	is_async: bool,
 	router: Option<Arc<DefaultRouter>>,
 }
@@ -118,9 +125,9 @@ impl BaseHandler {
 			}
 		}
 
-		// Fallback: router not configured
-		debug!("No router configured, returning default OK response");
-		Ok(Response::new(StatusCode::OK))
+		// Fallback: router not configured, return 404 since no routes can match
+		debug!("No router configured, returning 404 Not Found");
+		Ok(Response::new(StatusCode::NOT_FOUND))
 	}
 
 	/// Process an exception and convert it to a response.
@@ -207,7 +214,8 @@ mod tests {
 
 		let response = handler.handle_request(request).await;
 		let resp = response.unwrap();
-		assert_eq!(resp.status, StatusCode::OK);
+		// Handler without router should return 404 Not Found
+		assert_eq!(resp.status, StatusCode::NOT_FOUND);
 	}
 
 	#[tokio::test]

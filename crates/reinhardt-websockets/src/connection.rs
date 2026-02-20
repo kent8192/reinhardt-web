@@ -1136,6 +1136,29 @@ impl ConnectionTimeoutMonitor {
 		timed_out
 	}
 
+	/// Gracefully shuts down all monitored connections.
+	///
+	/// Sends a Close frame (code 1001, "Going Away") to each active connection
+	/// and removes it from monitoring. Already-closed connections are silently
+	/// removed.
+	///
+	/// Returns the IDs of all connections that were shut down.
+	pub async fn shutdown_all(&self) -> Vec<String> {
+		let mut connections = self.connections.write().await;
+		let mut shut_down = Vec::with_capacity(connections.len());
+
+		for (id, conn) in connections.drain() {
+			if !conn.is_closed().await {
+				let _ = conn
+					.close_with_reason(1001, "Server shutting down".to_string())
+					.await;
+			}
+			shut_down.push(id);
+		}
+
+		shut_down
+	}
+
 	/// Starts the background monitoring task.
 	///
 	/// Returns a [`tokio::task::JoinHandle`] that can be used to abort the monitor.
