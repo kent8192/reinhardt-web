@@ -8,6 +8,7 @@ use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::time::Duration;
+use zeroize::Zeroize;
 
 /// Trait for email backends
 #[async_trait::async_trait]
@@ -252,7 +253,11 @@ impl SmtpConfig {
 		Self {
 			host: host.into(),
 			port,
-			..Default::default()
+			username: None,
+			password: None,
+			security: SmtpSecurity::None,
+			auth_mechanism: SmtpAuthMechanism::Auto,
+			timeout: Duration::from_secs(30),
 		}
 	}
 
@@ -288,6 +293,22 @@ impl SmtpConfig {
 			}
 		}
 		Ok(())
+	}
+}
+
+/// Zeroize SMTP credentials on drop to prevent sensitive data from lingering in memory.
+///
+/// This ensures that username and password fields are securely erased when
+/// the `SmtpConfig` is no longer needed, reducing the risk of credential
+/// exposure through memory inspection or core dumps.
+impl Drop for SmtpConfig {
+	fn drop(&mut self) {
+		if let Some(ref mut username) = self.username {
+			username.zeroize();
+		}
+		if let Some(ref mut password) = self.password {
+			password.zeroize();
+		}
 	}
 }
 
