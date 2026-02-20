@@ -723,7 +723,8 @@ fn run_fmt(
 				println!("{} Would format: {}", progress, display_path(file_path));
 				formatted_count += 1;
 			} else {
-				// Backup if requested
+				// Backup if requested (with RAII guard to clean up on failure)
+				let mut _backup_guard = None;
 				if backup {
 					let backup_path = create_temp_backup_path(file_path);
 					create_secure_backup(file_path, &backup_path).map_err(|e| {
@@ -733,16 +734,22 @@ fn run_fmt(
 							e
 						))
 					})?;
+					_backup_guard = Some(utils::BackupGuard::new(backup_path));
 				}
 
-				// Format mode: write changes
-				std::fs::write(file_path, &final_result).map_err(|e| {
+				// Format mode: write changes atomically (write to temp, then rename)
+				utils::atomic_write(file_path, &final_result).map_err(|e| {
 					reinhardt_commands::CommandError::ExecutionError(format!(
 						"Failed to write {}: {}",
 						mask_path(file_path),
 						sanitize_error(&e.to_string())
 					))
 				})?;
+
+				// Commit the backup guard so the backup is preserved on success
+				if let Some(ref mut guard) = _backup_guard {
+					guard.commit();
+				}
 				// Color output: success in green
 				println!(
 					"{} {} {}",
@@ -933,8 +940,8 @@ fn run_fmt_all(
 		if !protect_result.backups.is_empty() {
 			page_macro_count += protect_result.backups.len();
 
-			// Write protected content to disk (cargo fmt will format it)
-			std::fs::write(file_path, &protect_result.protected_content).map_err(|e| {
+			// Write protected content to disk atomically (cargo fmt will format it)
+			utils::atomic_write(file_path, &protect_result.protected_content).map_err(|e| {
 				reinhardt_commands::CommandError::ExecutionError(format!(
 					"Failed to write protected content to {}: {}",
 					mask_path(file_path),
@@ -1082,14 +1089,14 @@ fn run_fmt_all(
 					sanitize_error(&e.to_string())
 				);
 				error_count += 1;
-				// Write restored content anyway (without DSL formatting)
-				let _ = std::fs::write(file_path, &restored);
+				// Write restored content anyway (without DSL formatting), atomically
+				let _ = utils::atomic_write(file_path, &restored);
 				continue;
 			}
 		};
 
-		// Write final result
-		if let Err(e) = std::fs::write(file_path, &final_result) {
+		// Write final result atomically
+		if let Err(e) = utils::atomic_write(file_path, &final_result) {
 			eprintln!(
 				"{} Failed to write {}: {}",
 				"Error:".red(),
@@ -1139,14 +1146,22 @@ fn run_fmt_all(
 			formatted_count += 1;
 
 			// Create backup if requested (stored in /tmp with restrictive permissions)
+			// BackupGuard ensures cleanup if the write fails
 			if backup && !check {
 				let backup_path = create_temp_backup_path(file_path);
-				if let Err(e) = create_secure_backup(file_path, &backup_path) {
-					eprintln!(
-						"Warning: failed to create backup for {}: {}",
-						mask_path(file_path),
-						e
-					);
+				match create_secure_backup(file_path, &backup_path) {
+					Ok(()) => {
+						// Commit immediately since the format write already succeeded
+						let mut guard = utils::BackupGuard::new(backup_path);
+						guard.commit();
+					}
+					Err(e) => {
+						eprintln!(
+							"Warning: failed to create backup for {}: {}",
+							mask_path(file_path),
+							e
+						);
+					}
 				}
 			}
 		} else {
