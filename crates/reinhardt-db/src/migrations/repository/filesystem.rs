@@ -102,15 +102,14 @@ impl FilesystemRepository {
 		// verify the resolved path stays within root_dir.
 		// When directories don't exist yet (e.g., during save), the component-level
 		// validation above is sufficient to prevent traversal.
-		if let (Ok(canonical_root), Some(parent)) = (self.root_dir.canonicalize(), path.parent()) {
-			if let Ok(canonical_parent) = parent.canonicalize() {
-				if !canonical_parent.starts_with(&canonical_root) {
-					return Err(MigrationError::PathTraversal(format!(
-						"Resolved path escapes migration root directory: {}",
-						path.display()
-					)));
-				}
-			}
+		if let (Ok(canonical_root), Some(parent)) = (self.root_dir.canonicalize(), path.parent())
+			&& let Ok(canonical_parent) = parent.canonicalize()
+			&& !canonical_parent.starts_with(&canonical_root)
+		{
+			return Err(MigrationError::PathTraversal(format!(
+				"Resolved path escapes migration root directory: {}",
+				path.display()
+			)));
 		}
 
 		Ok(path)
