@@ -40,7 +40,7 @@ pub(crate) fn model_attribute_impl(
 					// Match exact "Model" or paths ending in "Model" (e.g., reinhardt::macros::Model)
 					path.segments
 						.last()
-						.map_or(false, |seg| seg.ident == "Model")
+						.is_some_and(|seg| seg.ident == "Model")
 				});
 			}
 			return false;
@@ -67,7 +67,7 @@ pub(crate) fn model_attribute_impl(
 					return paths.iter().any(|path| {
 						path.segments
 							.last()
-							.map_or(false, |seg| seg.ident == trait_name)
+							.is_some_and(|seg| seg.ident == trait_name)
 					});
 				}
 				return false;
