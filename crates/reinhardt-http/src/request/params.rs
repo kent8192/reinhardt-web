@@ -262,19 +262,68 @@ impl Request {
 		self.headers
 			.get(COOKIE)
 			.and_then(|h| h.to_str().ok())
-			.and_then(|cookies| {
-				cookies.split(';').find_map(|cookie| {
-					let mut parts = cookie.trim().splitn(2, '=');
-					let name = parts.next()?.trim();
-					let value = parts.next()?.trim();
+			.and_then(|cookies| Self::parse_cookies(cookies))
+			.and_then(|parsed| {
+				parsed.into_iter().find_map(|(name, value)| {
 					if name == cookie_name {
-						Some(value.to_string())
+						Some(value)
 					} else {
 						None
 					}
 				})
 			})
 			.filter(|lang| Self::is_valid_language_code(lang))
+	}
+
+	/// Parse cookie header with strict validation.
+	///
+	/// Rejects malformed cookies:
+	/// - Missing `=` separator
+	/// - Cookie name containing separators (`;`, `=`, whitespace, control chars)
+	/// - Empty cookie name
+	fn parse_cookies(header: &str) -> Option<Vec<(String, String)>> {
+		let mut cookies = Vec::new();
+		for cookie in header.split(';') {
+			let cookie = cookie.trim();
+			if cookie.is_empty() {
+				continue;
+			}
+			// Cookie must contain '=' separator
+			let mut parts = cookie.splitn(2, '=');
+			let name = parts.next()?.trim();
+			let value = match parts.next() {
+				Some(v) => v.trim(),
+				// Missing '=' means malformed cookie - skip it
+				None => continue,
+			};
+			// Validate cookie name: must not be empty or contain separators/control chars
+			if name.is_empty() || !Self::is_valid_cookie_name(name) {
+				continue;
+			}
+			cookies.push((name.to_string(), value.to_string()));
+		}
+		Some(cookies)
+	}
+
+	/// Validate cookie name per RFC 6265.
+	///
+	/// Cookie name must not contain separators, whitespace, or control characters.
+	fn is_valid_cookie_name(name: &str) -> bool {
+		name.chars().all(|c| {
+			// Must be a visible ASCII character (0x21-0x7E) excluding separators
+			let code = c as u32;
+			code >= 0x21
+				&& code <= 0x7E
+				&& !matches!(
+					c,
+					'(' | ')' | '<' | '>'
+						| '@' | ',' | ';'
+						| ':' | '\\' | '"'
+						| '/' | '[' | ']'
+						| '?' | '=' | '{'
+						| '}' | ' ' | '\t'
+				)
+		})
 	}
 }
 

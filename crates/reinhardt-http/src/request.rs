@@ -105,6 +105,10 @@ pub struct RequestBuilder {
 	is_secure: bool,
 	remote_addr: Option<SocketAddr>,
 	path_params: HashMap<String, String>,
+	/// Captured error from invalid URI
+	uri_error: Option<String>,
+	/// Captured error from invalid header value
+	header_error: Option<String>,
 	#[cfg(feature = "parsers")]
 	parsers: Vec<Box<dyn Parser>>,
 }
@@ -120,6 +124,8 @@ impl Default for RequestBuilder {
 			is_secure: false,
 			remote_addr: None,
 			path_params: HashMap::new(),
+			uri_error: None,
+			header_error: None,
 			#[cfg(feature = "parsers")]
 			parsers: Vec::new(),
 		}
@@ -171,9 +177,15 @@ impl RequestBuilder {
 	pub fn uri<T>(mut self, uri: T) -> Self
 	where
 		T: TryInto<Uri>,
+		T::Error: std::fmt::Display,
 	{
-		if let Ok(uri) = uri.try_into() {
-			self.uri = Some(uri);
+		match uri.try_into() {
+			Ok(uri) => {
+				self.uri = Some(uri);
+			}
+			Err(e) => {
+				self.uri_error = Some(format!("Invalid URI: {}", e));
+			}
 		}
 		self
 	}
@@ -252,9 +264,15 @@ impl RequestBuilder {
 	where
 		K: hyper::header::IntoHeaderName,
 		V: TryInto<hyper::header::HeaderValue>,
+		V::Error: std::fmt::Display,
 	{
-		if let Ok(val) = value.try_into() {
-			self.headers.insert(key, val);
+		match value.try_into() {
+			Ok(val) => {
+				self.headers.insert(key, val);
+			}
+			Err(e) => {
+				self.header_error = Some(format!("Invalid header value: {}", e));
+			}
 		}
 		self
 	}
@@ -404,8 +422,15 @@ impl RequestBuilder {
 	/// assert_eq!(request.method, Method::GET);
 	/// assert_eq!(request.path(), "/api/users");
 	/// ```
-	pub fn build(self) -> Result<Request, &'static str> {
-		let uri = self.uri.ok_or("URI is required")?;
+	pub fn build(self) -> Result<Request, String> {
+		// Report captured errors from builder methods
+		if let Some(err) = self.uri_error {
+			return Err(err);
+		}
+		if let Some(err) = self.header_error {
+			return Err(err);
+		}
+		let uri = self.uri.ok_or_else(|| "URI is required".to_string())?;
 		let query_params = Request::parse_query_params(&uri);
 
 		Ok(Request {
