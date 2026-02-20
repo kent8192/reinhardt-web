@@ -82,19 +82,10 @@ pub enum DeeplinkError {
 ///
 /// Returns `DeeplinkError::InvalidAppId` if the format is invalid.
 pub fn validate_app_id(app_id: &str) -> Result<(), DeeplinkError> {
-	// Must contain at least one dot separating team ID and bundle ID
-	if !app_id.contains('.') {
+	// Split into team ID and bundle ID (requires at least one dot)
+	let Some((team_id, bundle_id)) = app_id.split_once('.') else {
 		return Err(DeeplinkError::InvalidAppId(app_id.to_string()));
-	}
-
-	// Split into team ID and bundle ID
-	let parts: Vec<&str> = app_id.splitn(2, '.').collect();
-	if parts.len() != 2 {
-		return Err(DeeplinkError::InvalidAppId(app_id.to_string()));
-	}
-
-	let team_id = parts[0];
-	let bundle_id = parts[1];
+	};
 
 	// Team ID should be alphanumeric (typically 10 characters, but we allow flexibility)
 	if team_id.is_empty() || !team_id.chars().all(|c| c.is_ascii_alphanumeric()) {
