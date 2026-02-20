@@ -1029,6 +1029,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+		use crate::query::insert::InsertSource;
+
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
@@ -1052,18 +1054,29 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push(")");
 		}
 
-		// VALUES clause
-		if !stmt.values.is_empty() {
-			writer.push_keyword("VALUES");
-			writer.push_space();
+		// VALUES clause or SELECT subquery
+		match &stmt.source {
+			InsertSource::Values(values) if !values.is_empty() => {
+				writer.push_keyword("VALUES");
+				writer.push_space();
 
-			writer.push_list(&stmt.values, ", ", |w, row| {
-				w.push("(");
-				w.push_list(row, ", ", |w2, value| {
-					w2.push_value(value.clone(), |i| self.placeholder(i));
+				writer.push_list(values, ", ", |w, row| {
+					w.push("(");
+					w.push_list(row, ", ", |w2, value| {
+						w2.push_value(value.clone(), |i| self.placeholder(i));
+					});
+					w.push(")");
 				});
-				w.push(")");
-			});
+			}
+			InsertSource::Subquery(select) => {
+				writer.push_space();
+				let (select_sql, select_values) = self.build_select(select);
+				writer.push(&select_sql);
+				writer.append_values(&select_values);
+			}
+			_ => {
+				// Empty values - this is valid SQL in some contexts
+			}
 		}
 
 		// ON CONFLICT clause
@@ -3331,177 +3344,177 @@ impl QueryBuilder for PostgresQueryBuilder {
 
 		writer.finish()
 	}
-	//
-	// 	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("ANALYZE");
-	//
-	// 		if stmt.verbose {
-	// 			writer.push_keyword("VERBOSE");
-	// 		}
-	//
-	// 		// Tables and columns
-	// 		if !stmt.tables.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push_list(&stmt.tables, ", ", |w, table| {
-	// 				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
-	// 					self.escape_iden(s)
-	// 				});
-	// 				if !table.columns.is_empty() {
-	// 					w.push(" (");
-	// 					w.push_list(&table.columns, ", ", |w2, col| {
-	// 						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-	// 					});
-	// 					w.push(")");
-	// 				}
-	// 			});
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("VACUUM");
-	//
-	// 		// Options
-	// 		if stmt.full {
-	// 			writer.push_keyword("FULL");
-	// 		}
-	// 		if stmt.freeze {
-	// 			writer.push_keyword("FREEZE");
-	// 		}
-	// 		if stmt.verbose {
-	// 			writer.push_keyword("VERBOSE");
-	// 		}
-	// 		if stmt.analyze {
-	// 			writer.push_keyword("ANALYZE");
-	// 		}
-	//
-	// 		// Tables
-	// 		if !stmt.tables.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push_list(&stmt.tables, ", ", |w, table| {
-	// 				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
-	// 			});
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_create_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::CreateMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("CREATE MATERIALIZED VIEW");
-	//
-	// 		// IF NOT EXISTS
-	// 		if stmt.def.if_not_exists {
-	// 			writer.push_keyword("IF NOT EXISTS");
-	// 		}
-	//
-	// 		// View name
-	// 		writer.push_space();
-	// 		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
-	// 			self.escape_iden(s)
-	// 		});
-	//
-	// 		// Column names
-	// 		if !stmt.def.columns.is_empty() {
-	// 			writer.push_space();
-	// 			writer.push("(");
-	// 			writer.push_list(&stmt.def.columns, ", ", |w, col| {
-	// 				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-	// 			});
-	// 			writer.push(")");
-	// 		}
-	//
-	// 		// TABLESPACE
-	// 		if let Some(ref tablespace) = stmt.def.tablespace {
-	// 			writer.push_keyword("TABLESPACE");
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
-	// 				self.escape_iden(s)
-	// 			});
-	// 		}
-	//
-	// 		// AS SELECT
-	// 		if let Some(ref select) = stmt.select {
-	// 			writer.push_keyword("AS");
-	// 			writer.push_space();
-	// 			let (select_sql, select_values) = self.build_select(select);
-	// 			writer.push(&select_sql);
-	//
-	// 			// WITH [NO] DATA
-	// 			if let Some(with_data) = stmt.def.with_data {
-	// 				writer.push_space();
-	// 				if with_data {
-	// 					writer.push_keyword("WITH DATA");
-	// 				} else {
-	// 					writer.push_keyword("WITH NO DATA");
-	// 				}
-	// 			}
-	//
-	// 			let (sql, _) = writer.finish();
-	// 			return (sql, select_values);
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_alter_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::AlterMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::{Iden, MaterializedViewOperation};
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("ALTER MATERIALIZED VIEW");
-	//
-	// 		// View name
-	// 		if let Some(ref name) = stmt.name {
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// Operations
-	// 		for operation in &stmt.operations {
-	// 			writer.push_space();
-	// 			match operation {
-	// 				MaterializedViewOperation::Rename(new_name) => {
-	// 					writer.push_keyword("RENAME TO");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 				MaterializedViewOperation::OwnerTo(new_owner) => {
-	// 					writer.push_keyword("OWNER TO");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 				MaterializedViewOperation::SetSchema(schema_name) => {
-	// 					writer.push_keyword("SET SCHEMA");
-	// 					writer.push_space();
-	// 					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
-	// 						self.escape_iden(s)
-	// 					});
-	// 				}
-	// 			}
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
+
+	fn build_analyze(&self, stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ANALYZE");
+
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+
+		// Tables and columns
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.table.as_ref()), |s| {
+					self.escape_iden(s)
+				});
+				if !table.columns.is_empty() {
+					w.push(" (");
+					w.push_list(&table.columns, ", ", |w2, col| {
+						w2.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+					});
+					w.push(")");
+				}
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_vacuum(&self, stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("VACUUM");
+
+		// Options
+		if stmt.full {
+			writer.push_keyword("FULL");
+		}
+		if stmt.freeze {
+			writer.push_keyword("FREEZE");
+		}
+		if stmt.verbose {
+			writer.push_keyword("VERBOSE");
+		}
+		if stmt.analyze {
+			writer.push_keyword("ANALYZE");
+		}
+
+		// Tables
+		if !stmt.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&stmt.tables, ", ", |w, table| {
+				w.push_identifier(&Iden::to_string(table.as_ref()), |s| self.escape_iden(s));
+			});
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_materialized_view(
+		&self,
+		stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("CREATE MATERIALIZED VIEW");
+
+		// IF NOT EXISTS
+		if stmt.def.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// View name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Column names
+		if !stmt.def.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(&stmt.def.columns, ", ", |w, col| {
+				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		// TABLESPACE
+		if let Some(ref tablespace) = stmt.def.tablespace {
+			writer.push_keyword("TABLESPACE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+				self.escape_iden(s)
+			});
+		}
+
+		// AS SELECT
+		if let Some(ref select) = stmt.select {
+			writer.push_keyword("AS");
+			writer.push_space();
+			let (select_sql, select_values) = self.build_select(select);
+			writer.push(&select_sql);
+
+			// WITH [NO] DATA
+			if let Some(with_data) = stmt.def.with_data {
+				writer.push_space();
+				if with_data {
+					writer.push_keyword("WITH DATA");
+				} else {
+					writer.push_keyword("WITH NO DATA");
+				}
+			}
+
+			let (sql, _) = writer.finish();
+			return (sql, select_values);
+		}
+
+		writer.finish()
+	}
+
+	fn build_alter_materialized_view(
+		&self,
+		stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::{Iden, MaterializedViewOperation};
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("ALTER MATERIALIZED VIEW");
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// Operations
+		for operation in &stmt.operations {
+			writer.push_space();
+			match operation {
+				MaterializedViewOperation::Rename(new_name) => {
+					writer.push_keyword("RENAME TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::OwnerTo(new_owner) => {
+					writer.push_keyword("OWNER TO");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(new_owner.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+				MaterializedViewOperation::SetSchema(schema_name) => {
+					writer.push_keyword("SET SCHEMA");
+					writer.push_space();
+					writer.push_identifier(&Iden::to_string(schema_name.as_ref()), |s| {
+						self.escape_iden(s)
+					});
+				}
+			}
+		}
+
+		writer.finish()
+	}
+
 	// 	fn build_drop_materialized_view(
 	// 		&self,
 	// 		stmt: &crate::query::DropMaterializedViewStatement,
@@ -4388,6 +4401,55 @@ mod tests {
 		let (sql, values) = builder.build_insert(&stmt);
 		assert!(sql.contains("RETURNING *"));
 		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_from_subquery() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Create a SELECT subquery
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users");
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("\"name\", \"email\""));
+		assert!(sql.contains("SELECT \"name\", \"email\" FROM \"temp_users\""));
+		assert!(!sql.contains("VALUES"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_from_subquery_with_where() {
+		let builder = PostgresQueryBuilder::new();
+
+		// Create a SELECT subquery with WHERE clause
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.and_where(Expr::col("active").eq(true));
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("SELECT"));
+		assert!(sql.contains("FROM \"temp_users\""));
+		assert!(sql.contains("WHERE"));
+		assert_eq!(values.len(), 1); // true value from WHERE clause
 	}
 
 	#[test]
