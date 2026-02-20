@@ -488,7 +488,12 @@ fn js_error_to_string(error: &JsError, context: &mut Context) -> String {
 pub type SharedTsRuntime = Arc<TsRuntime>;
 
 /// JavaScript runtime errors.
+///
+/// This enum is marked `#[non_exhaustive]` to allow adding new error variants
+/// in future minor versions without breaking downstream code. Match arms
+/// should include a wildcard pattern.
 #[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
 pub enum TsError {
 	/// JavaScript runtime initialization failed
 	#[error("JavaScript runtime initialization failed: {0}")]
