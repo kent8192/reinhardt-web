@@ -291,9 +291,10 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 
 			// Generate Iden::unquoted match arms
 			// Fixes #792: Use pattern instead of simple variant ident
+			// Iden::unquoted contract: writer is expected to not fail
 			let iden_arms = variant_data.iter().map(|(pattern, iden_name)| {
 				quote! {
-					#pattern => s.write_str(#iden_name).unwrap(),
+					#pattern => s.write_str(#iden_name).expect("write to String is infallible"),
 				}
 			});
 
@@ -329,7 +330,8 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 
 				impl reinhardt_query::types::Iden for #name {
 					fn unquoted(&self, s: &mut dyn ::std::fmt::Write) {
-						s.write_str(#iden_name).unwrap();
+						// Iden::unquoted contract: writer is expected to not fail
+						s.write_str(#iden_name).expect("write to String is infallible");
 					}
 				}
 			})
