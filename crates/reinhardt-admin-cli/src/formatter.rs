@@ -52,8 +52,16 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 		for entry in WalkDir::new(path)
 			.follow_links(false) // Do not follow symlinks to prevent symlink attacks
 			.into_iter()
-			.filter_map(|e| e.ok())
-		{
+			.filter_map(|result| match result {
+				Ok(entry) => Some(entry),
+				Err(e) => {
+					eprintln!(
+						"Warning: skipping directory entry due to error: {}",
+						e
+					);
+					None
+				}
+			}) {
 			let entry_path = entry.path();
 
 			// Skip symlinks entirely

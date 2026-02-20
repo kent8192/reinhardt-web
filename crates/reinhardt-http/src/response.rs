@@ -426,12 +426,45 @@ impl Response {
 		self.body = body.into();
 		self
 	}
-	/// Add a custom header to the response
+	/// Try to add a custom header to the response, returning an error on invalid inputs.
 	///
-	/// # Panics
+	/// # Errors
 	///
-	/// Panics if the header name or value is invalid according to HTTP specifications.
-	/// Header names must be valid ASCII tokens, and values must not contain invalid characters.
+	/// Returns `Err` if the header name or value is invalid according to HTTP specifications.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::ok().try_with_header("X-Custom-Header", "custom-value").unwrap();
+	/// assert_eq!(
+	///     response.headers.get("X-Custom-Header").unwrap().to_str().unwrap(),
+	///     "custom-value"
+	/// );
+	/// ```
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	///
+	/// // Invalid header names return an error instead of panicking
+	/// let result = Response::ok().try_with_header("Invalid Header", "value");
+	/// assert!(result.is_err());
+	/// ```
+	pub fn try_with_header(mut self, name: &str, value: &str) -> crate::Result<Self> {
+		let header_name = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			.map_err(|e| crate::Error::Http(format!("Invalid header name '{}': {}", name, e)))?;
+		let header_value = hyper::header::HeaderValue::from_str(value).map_err(|e| {
+			crate::Error::Http(format!("Invalid header value for '{}': {}", name, e))
+		})?;
+		self.headers.insert(header_name, header_value);
+		Ok(self)
+	}
+
+	/// Add a custom header to the response.
+	///
+	/// Invalid header names or values are silently ignored.
+	/// Use `try_with_header` if you need error reporting.
 	///
 	/// # Examples
 	///
@@ -445,18 +478,19 @@ impl Response {
 	/// );
 	/// ```
 	///
-	/// ```should_panic
+	/// ```
 	/// use reinhardt_http::Response;
 	///
-	/// // This will panic because header names cannot contain spaces
+	/// // Invalid header names are silently ignored (no panic)
 	/// let response = Response::ok().with_header("Invalid Header", "value");
+	/// assert!(response.headers.is_empty());
 	/// ```
 	pub fn with_header(mut self, name: &str, value: &str) -> Self {
-		let header_name = hyper::header::HeaderName::from_bytes(name.as_bytes())
-			.unwrap_or_else(|e| panic!("Invalid header name '{}': {}", name, e));
-		let header_value = hyper::header::HeaderValue::from_str(value)
-			.unwrap_or_else(|e| panic!("Invalid header value for '{}': {}", name, e));
-		self.headers.insert(header_name, header_value);
+		if let Ok(header_name) = hyper::header::HeaderName::from_bytes(name.as_bytes())
+			&& let Ok(header_value) = hyper::header::HeaderValue::from_str(value)
+		{
+			self.headers.insert(header_name, header_value);
+		}
 		self
 	}
 	/// Add a Location header to the response (typically used for redirects)
@@ -1055,5 +1089,77 @@ mod tests {
 			.to_str()
 			.unwrap();
 		assert_eq!(content_type, "application/json");
+	}
+
+	// =================================================================
+	// with_header panic prevention tests (Issue #357)
+	// =================================================================
+
+	#[rstest]
+	fn test_with_header_invalid_name_does_not_panic() {
+		// Arrange
+		let response = Response::ok();
+
+		// Act - invalid header name with space (previously panicked)
+		let response = response.with_header("Invalid Header", "value");
+
+		// Assert - header is silently ignored, no panic
+		assert!(response.headers.is_empty());
+	}
+
+	#[rstest]
+	fn test_with_header_invalid_value_does_not_panic() {
+		// Arrange
+		let response = Response::ok();
+
+		// Act - header value with non-visible ASCII (previously panicked)
+		let response = response.with_header("X-Test", "value\x00with\x01control");
+
+		// Assert - header is silently ignored, no panic
+		assert!(response.headers.get("X-Test").is_none());
+	}
+
+	#[rstest]
+	fn test_with_header_valid_header_works() {
+		// Arrange
+		let response = Response::ok();
+
+		// Act
+		let response = response.with_header("X-Custom", "custom-value");
+
+		// Assert
+		assert_eq!(
+			response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+			"custom-value"
+		);
+	}
+
+	#[rstest]
+	fn test_try_with_header_invalid_name_returns_error() {
+		// Arrange
+		let response = Response::ok();
+
+		// Act
+		let result = response.try_with_header("Invalid Header", "value");
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_try_with_header_valid_header_returns_ok() {
+		// Arrange
+		let response = Response::ok();
+
+		// Act
+		let result = response.try_with_header("X-Custom", "valid-value");
+
+		// Assert
+		assert!(result.is_ok());
+		let response = result.unwrap();
+		assert_eq!(
+			response.headers.get("X-Custom").unwrap().to_str().unwrap(),
+			"valid-value"
+		);
 	}
 }

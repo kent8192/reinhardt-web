@@ -20,6 +20,7 @@
 
 mod ast_formatter;
 mod formatter;
+mod utils;
 
 use std::path::{Path, PathBuf};
 
@@ -724,7 +725,7 @@ fn run_fmt(
 			} else {
 				// Backup if requested
 				if backup {
-					let backup_path = file_path.with_extension("rs.bak");
+					let backup_path = create_temp_backup_path(file_path);
 					create_secure_backup(file_path, &backup_path).map_err(|e| {
 						reinhardt_commands::CommandError::ExecutionError(format!(
 							"Failed to backup {}: {}",
@@ -1005,23 +1006,26 @@ fn run_fmt_all(
 
 	let cargo_fmt_result = cmd.output();
 
-	// If cargo fmt fails, restore original files
-	if let Err(e) = &cargo_fmt_result {
-		eprintln!(
-			"{} cargo fmt failed: {}",
-			"Error:".red(),
-			sanitize_error(&e.to_string())
-		);
-		// Restore original files
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
-		return Err(reinhardt_commands::CommandError::ExecutionError(
-			"cargo fmt failed to execute".to_string(),
-		));
-	}
+	// Track files that were actually modified on disk (for targeted rollback)
+	let modified_on_disk: Vec<PathBuf> = protected_files.iter().map(|(p, _)| p.clone()).collect();
 
-	let output = cargo_fmt_result.unwrap();
+	// If cargo fmt fails, restore only modified files
+	let output = match cargo_fmt_result {
+		Ok(output) => output,
+		Err(e) => {
+			eprintln!(
+				"{} cargo fmt failed: {}",
+				"Error:".red(),
+				sanitize_error(&e.to_string())
+			);
+			let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+			utils::report_rollback_errors(&rollback_errors);
+			return Err(reinhardt_commands::CommandError::ExecutionError(
+				"cargo fmt failed to execute".to_string(),
+			));
+		}
+	};
+
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
 		let sanitized_stderr = sanitize_error(&stderr);
@@ -1030,10 +1034,8 @@ fn run_fmt_all(
 			"Error:".red(),
 			sanitized_stderr
 		);
-		// Restore original files
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
+		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+		utils::report_rollback_errors(&rollback_errors);
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt exited with error: {}",
 			sanitized_stderr
@@ -1119,7 +1121,13 @@ fn run_fmt_all(
 			if check {
 				println!("{} Would format: {}", progress, display_path(file_path));
 				// Restore original content in check mode
-				let _ = std::fs::write(file_path, original_content);
+				if let Err(e) = std::fs::write(file_path, original_content) {
+					eprintln!(
+						"Warning: failed to restore {} in check mode: {}",
+						file_path.display(),
+						e
+					);
+				}
 			} else if verbosity > 0 {
 				println!(
 					"{} {} {}",
@@ -1130,13 +1138,16 @@ fn run_fmt_all(
 			}
 			formatted_count += 1;
 
-			// Create backup if requested
+			// Create backup if requested (stored in /tmp with restrictive permissions)
 			if backup && !check {
-				let backup_path = file_path.with_extension("rs.bak");
-				// Write backup with secure content handling
-				let mut content_copy = original_content.clone();
-				let _ = std::fs::write(&backup_path, &content_copy);
-				content_copy.zeroize();
+				let backup_path = create_temp_backup_path(file_path);
+				if let Err(e) = create_secure_backup(file_path, &backup_path) {
+					eprintln!(
+						"Warning: failed to create backup for {}: {}",
+						mask_path(file_path),
+						e
+					);
+				}
 			}
 		} else {
 			unchanged_count += 1;
@@ -1151,11 +1162,11 @@ fn run_fmt_all(
 		}
 	}
 
-	// In check mode, restore all files to original state
+	// In check mode, restore only files that were modified on disk
 	if check {
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
+		let all_paths: Vec<PathBuf> = original_contents.keys().cloned().collect();
+		let rollback_errors = utils::rollback_files(&all_paths, &original_contents);
+		utils::report_rollback_errors(&rollback_errors);
 	}
 
 	// Securely clear original contents to prevent sensitive data lingering in memory
@@ -1210,12 +1221,15 @@ fn run_fmt_all(
 }
 
 /// Find the project root by searching upward for Cargo.toml.
+///
+/// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
+/// race conditions in the existence check.
 fn find_project_root() -> Option<PathBuf> {
 	let current_dir = std::env::current_dir().ok()?;
 	let mut current = current_dir.as_path();
 
 	loop {
-		if current.join("Cargo.toml").exists() {
+		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
 			return Some(current.to_path_buf());
 		}
 		current = current.parent()?;
@@ -1223,6 +1237,9 @@ fn find_project_root() -> Option<PathBuf> {
 }
 
 /// Find rustfmt.toml by searching upward from a path.
+///
+/// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
+/// race conditions in the existence check.
 fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 	let mut current = if start_path.is_file() {
 		start_path.parent()
@@ -1232,14 +1249,14 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 
 	loop {
 		let config = current.join("rustfmt.toml");
-		if config.exists() {
+		if std::fs::metadata(&config).is_ok() {
 			return Some(config);
 		}
 		let hidden_config = current.join(".rustfmt.toml");
-		if hidden_config.exists() {
+		if std::fs::metadata(&hidden_config).is_ok() {
 			return Some(hidden_config);
 		}
-		if current.join("Cargo.toml").exists() {
+		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
 			break;
 		}
 		current = current.parent()?;
@@ -1340,6 +1357,22 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 	content.zeroize();
 
 	Ok(())
+}
+
+/// Create a backup file path in the system temporary directory.
+///
+/// # Security
+///
+/// Stores backup files in `/tmp` instead of the source directory to prevent
+/// backup files from being committed or exposed in the project tree.
+/// Uses a deterministic name based on the source file name so the backup
+/// can be identified if cleanup is interrupted.
+fn create_temp_backup_path(source: &Path) -> PathBuf {
+	let file_name = source
+		.file_name()
+		.unwrap_or_else(|| std::ffi::OsStr::new("unknown"));
+	let backup_name = format!("reinhardt-fmt-{}.bak", file_name.to_string_lossy());
+	std::env::temp_dir().join(backup_name)
 }
 
 /// Mask sensitive file path in error messages.
@@ -1443,21 +1476,22 @@ fn validate_config_path(path: &Path) -> Result<(), String> {
 		));
 	}
 
-	// Check that path exists
-	if !path.exists() {
-		return Err(format!("Config path does not exist: {}", mask_path(path)));
-	}
+	// Use symlink_metadata for a single atomic check (avoids TOCTOU between
+	// exists/is_symlink/is_file calls). symlink_metadata does not follow
+	// symlinks, so a symlink target cannot change between checks.
+	let symlink_meta = std::fs::symlink_metadata(path)
+		.map_err(|e| format!("Config path is not accessible: {} ({})", mask_path(path), e))?;
 
 	// Reject symlinks
-	if path.is_symlink() {
+	if symlink_meta.file_type().is_symlink() {
 		return Err(format!(
 			"Config path is a symlink, which is not allowed: {}",
 			mask_path(path)
 		));
 	}
 
-	// Verify it's a regular file
-	if !path.is_file() {
+	// Verify it's a regular file (not a directory, device, etc.)
+	if !symlink_meta.is_file() {
 		return Err(format!(
 			"Config path is not a regular file: {}",
 			mask_path(path)
