@@ -12,7 +12,7 @@ pub mod custom;
 pub mod ios;
 
 pub use android::{AndroidConfig, AndroidConfigBuilder, AssetStatement, AssetTarget};
-pub use custom::{CustomScheme, CustomSchemeConfig};
+pub use custom::{CustomScheme, CustomSchemeBuilder, CustomSchemeConfig};
 pub use ios::{
 	AppClipsConfig, AppLinkComponent, AppLinkDetail, AppLinksConfig, IosConfig, IosConfigBuilder,
 	WebCredentialsConfig,
@@ -131,6 +131,19 @@ impl DeeplinkConfigBuilder {
 		self
 	}
 
+	/// Validates all custom scheme names in the configuration.
+	///
+	/// # Errors
+	///
+	/// Returns an error if any custom scheme name is invalid per RFC 3986
+	/// or is a dangerous scheme.
+	pub fn validate_schemes(&self) -> Result<(), crate::error::DeeplinkError> {
+		for scheme in &self.custom_schemes {
+			crate::error::validate_scheme_name(&scheme.name)?;
+		}
+		Ok(())
+	}
+
 	/// Builds the deeplink configuration.
 	pub fn build(self) -> DeeplinkConfig {
 		DeeplinkConfig {
@@ -163,7 +176,7 @@ mod tests {
 		let config = DeeplinkConfig::builder()
 			.ios(
 				IosConfig::builder()
-					.app_id("TEAM.bundle")
+					.app_id("TEAM.com.example")
 					.paths(&["/"])
 					.build(),
 			)
@@ -196,7 +209,7 @@ mod tests {
 		let config = DeeplinkConfig::builder()
 			.ios(
 				IosConfig::builder()
-					.app_id("TEAM.bundle")
+					.app_id("TEAM.com.example")
 					.paths(&["/"])
 					.build(),
 			)
