@@ -38,8 +38,8 @@
 
 pub mod body;
 pub mod cookie;
-pub(crate) mod cookie_util;
 pub mod cookie_named;
+pub(crate) mod cookie_util;
 pub mod extract;
 pub mod form;
 pub mod header;

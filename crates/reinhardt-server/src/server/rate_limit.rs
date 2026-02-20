@@ -272,7 +272,9 @@ impl RateLimitHandler {
 		});
 
 		// Remove timestamps outside the current window
-		entry.timestamps.retain(|&ts| now.duration_since(ts) < window);
+		entry
+			.timestamps
+			.retain(|&ts| now.duration_since(ts) < window);
 
 		// Check if under limit
 		if entry.timestamps.len() < self.config.max_requests {

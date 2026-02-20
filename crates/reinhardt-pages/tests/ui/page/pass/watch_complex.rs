@@ -7,7 +7,7 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Complex nested structure with multiple watches
-	let _complex = page!(|loading: Signal<bool>, error: Signal<Option<String>>, items: Signal<Vec<String>>| {
+	let _complex = page!(|loading: Signal < bool >, error: Signal < Option < String> >, items: Signal < Vec < String> >| {
 		div {
 			class: "container",
 			h1 {
@@ -47,7 +47,7 @@ fn main() {
 	});
 
 	// Watch with deeply nested conditions
-	let _deep_nesting = page!(|a: Signal<bool>, b: Signal<bool>, c: Signal<bool>| {
+	let _deep_nesting = page!(|a: Signal < bool >, b: Signal < bool >, c: Signal < bool >| {
 		div {
 			watch {
 				if a.get() {
