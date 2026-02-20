@@ -59,8 +59,9 @@ impl RegexField {
 
 	/// Get the cached compiled regex
 	fn regex(&self) -> &Regex {
-		self.regex_cache
-			.get_or_init(|| Regex::new(&self.pattern).expect("Pattern was validated at construction"))
+		self.regex_cache.get_or_init(|| {
+			Regex::new(&self.pattern).expect("Pattern was validated at construction")
+		})
 	}
 	pub fn with_error_message(mut self, message: String) -> Self {
 		self.error_message = message;
