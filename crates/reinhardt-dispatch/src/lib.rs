@@ -117,6 +117,7 @@
 //! // Wrap with middleware
 //! let handler = MiddlewareChain::new(base_handler)
 //!     .add_middleware(Arc::new(LoggingMiddleware))
+//!     .expect("Failed to add middleware")
 //!     .build();
 //!
 //! // Use the handler
