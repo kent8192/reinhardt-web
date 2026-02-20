@@ -21,6 +21,7 @@ rand = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 url = { workspace = true }
 ipnet = "2.0"
+tracing = { workspace = true }
 
 # Redis backend (optional)
 redis = { workspace = true, optional = true }

@@ -289,15 +289,16 @@ impl Worker {
 		let mut shutdown_rx = self.shutdown_tx.subscribe();
 		let mut poll_interval = interval(self.config.poll_interval);
 
-		println!(
-			"[{}] Worker started with concurrency {}",
-			self.config.name, self.config.concurrency
+		tracing::info!(
+			worker = %self.config.name,
+			concurrency = self.config.concurrency,
+			"Worker started"
 		);
 
 		loop {
 			tokio::select! {
 				_ = shutdown_rx.recv() => {
-					println!("[{}] Shutdown signal received", self.config.name);
+					tracing::info!(worker = %self.config.name, "Shutdown signal received");
 					break;
 				}
 				_ = poll_interval.tick() => {
@@ -306,7 +307,7 @@ impl Worker {
 			}
 		}
 
-		println!("[{}] Worker stopped", self.config.name);
+		tracing::info!(worker = %self.config.name, "Worker stopped");
 		Ok(())
 	}
 
@@ -323,36 +324,46 @@ impl Worker {
 				let permit = match self.concurrency_semaphore.clone().acquire_owned().await {
 					Ok(permit) => permit,
 					Err(_) => {
-						eprintln!(
-							"[{}] Concurrency semaphore closed unexpectedly",
-							self.config.name
+						tracing::error!(
+							worker = %self.config.name,
+							"Concurrency semaphore closed unexpectedly"
 						);
 						return;
 					}
 				};
 
-				println!("[{}] Processing task: {}", self.config.name, task_id);
+				tracing::info!(worker = %self.config.name, task_id = %task_id, "Processing task");
 
 				// Execute task; permit is held for the duration
 				match self.execute_task(task_id, backend.clone()).await {
 					Ok(_) => {
-						println!(
-							"[{}] Task {} completed successfully",
-							self.config.name, task_id
+						tracing::info!(
+							worker = %self.config.name,
+							task_id = %task_id,
+							"Task completed successfully"
 						);
 						if let Err(e) = backend.update_status(task_id, TaskStatus::Success).await {
-							eprintln!(
-								"[{}] Failed to update task {} status: {}",
-								self.config.name, task_id, e
+							tracing::error!(
+								worker = %self.config.name,
+								task_id = %task_id,
+								error = %e,
+								"Failed to update task status"
 							);
 						}
 					}
 					Err(e) => {
-						eprintln!("[{}] Task {} failed: {}", self.config.name, task_id, e);
+						tracing::error!(
+							worker = %self.config.name,
+							task_id = %task_id,
+							error = %e,
+							"Task failed"
+						);
 						if let Err(e) = backend.update_status(task_id, TaskStatus::Failure).await {
-							eprintln!(
-								"[{}] Failed to update task {} status: {}",
-								self.config.name, task_id, e
+							tracing::error!(
+								worker = %self.config.name,
+								task_id = %task_id,
+								error = %e,
+								"Failed to update task status"
 							);
 						}
 					}
@@ -365,7 +376,7 @@ impl Worker {
 				// No tasks available - interval will automatically wait before next poll
 			}
 			Err(e) => {
-				eprintln!("[{}] Failed to dequeue task: {}", self.config.name, e);
+				tracing::error!(worker = %self.config.name, error = %e, "Failed to dequeue task");
 				// Error occurred - interval will automatically wait before next poll
 			}
 		}
@@ -377,7 +388,7 @@ impl Worker {
 		task_id: crate::TaskId,
 		backend: Arc<dyn TaskBackend>,
 	) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-		println!("[{}] Executing task: {}", self.config.name, task_id);
+		tracing::debug!(worker = %self.config.name, task_id = %task_id, "Executing task");
 
 		let started_at = Utc::now();
 
@@ -385,9 +396,10 @@ impl Worker {
 		if let Some(ref lock) = self.task_lock {
 			let acquired = lock.acquire(task_id, Duration::from_secs(300)).await?;
 			if !acquired {
-				println!(
-					"[{}] Task {} already locked by another worker",
-					self.config.name, task_id
+				tracing::info!(
+					worker = %self.config.name,
+					task_id = %task_id,
+					"Task already locked by another worker"
 				);
 				return Ok(());
 			}
@@ -405,9 +417,10 @@ impl Worker {
 			if let Some(ref registry) = self.registry {
 				match serialized_task {
 					Some(serialized_task) => {
-						println!(
-							"[{}] Executing task {} with registry",
-							self.config.name, task_name
+						tracing::debug!(
+							worker = %self.config.name,
+							task_name = %task_name,
+							"Executing task with registry"
 						);
 
 						// Deserialize task using registry to get concrete task instance
@@ -419,42 +432,48 @@ impl Worker {
 								// Execute the deserialized task with its arguments
 								match task_executor.execute().await {
 									Ok(_) => {
-										println!(
-											"[{}] Task {} completed successfully",
-											self.config.name, task_name
+										tracing::info!(
+											worker = %self.config.name,
+											task_name = %task_name,
+											"Task completed successfully"
 										);
 										Ok(())
 									}
 									Err(e) => {
-										println!(
-											"[{}] Task {} failed: {}",
-											self.config.name, task_name, e
+										tracing::error!(
+											worker = %self.config.name,
+											task_name = %task_name,
+											error = %e,
+											"Task failed"
 										);
 										Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 									}
 								}
 							}
 							Err(e) => {
-								println!(
-									"[{}] Failed to deserialize task {}: {}",
-									self.config.name, task_name, e
+								tracing::error!(
+									worker = %self.config.name,
+									task_name = %task_name,
+									error = %e,
+									"Failed to deserialize task"
 								);
 								Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 							}
 						}
 					}
 					None => {
-						println!(
-							"[{}] Task {} not found in backend",
-							self.config.name, task_id
+						tracing::warn!(
+							worker = %self.config.name,
+							task_id = %task_id,
+							"Task not found in backend"
 						);
 						Err(format!("Task {} not found", task_id).into())
 					}
 				}
 			} else {
-				println!(
-					"[{}] Task execution without registry (basic mode)",
-					self.config.name
+				tracing::debug!(
+					worker = %self.config.name,
+					"Task execution without registry (basic mode)"
 				);
 				Ok(())
 			};
@@ -516,7 +535,7 @@ impl Worker {
 				let event_clone = webhook_event.clone();
 				tokio::spawn(async move {
 					if let Err(e) = sender_clone.send(&event_clone).await {
-						eprintln!("Failed to send webhook notification: {}", e);
+						tracing::error!(error = %e, "Failed to send webhook notification");
 					}
 				});
 			}
