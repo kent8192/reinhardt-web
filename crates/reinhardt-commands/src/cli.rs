@@ -7,7 +7,10 @@
 use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
-use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
+use crate::{
+	CheckCommand, CommandContext, DeployCommand, DeployInitCommand, MigrateCommand,
+	RunServerCommand, ShellCommand,
+};
 use clap::{Parser, Subcommand};
 use reinhardt_conf::settings::builder::SettingsBuilder;
 use reinhardt_conf::settings::profile::Profile;
@@ -196,6 +199,12 @@ pub enum Commands {
 		#[arg(long)]
 		postman: bool,
 	},
+
+	/// Deploy the application to a cloud provider
+	Deploy,
+
+	/// Initialize deployment configuration
+	DeployInit,
 }
 
 /// Execute commands from command-line arguments
@@ -334,6 +343,8 @@ pub async fn run_command(
 			output,
 			postman,
 		} => execute_generateopenapi(format, output, postman, verbosity).await,
+		Commands::Deploy => execute_deploy(verbosity).await,
+		Commands::DeployInit => execute_deploy_init(verbosity).await,
 	}
 }
 
@@ -713,6 +724,24 @@ async fn execute_generateopenapi(
 		Enable it in your Cargo.toml: \
 		reinhardt-commands = { version = \"0.1.0\", features = [\"openapi\"] }"
 		.into())
+}
+
+/// Execute the deploy command
+async fn execute_deploy(verbosity: u8) -> Result<(), Box<dyn std::error::Error>> {
+	let mut ctx = CommandContext::default();
+	ctx.set_verbosity(verbosity);
+
+	let cmd = DeployCommand;
+	cmd.execute(&ctx).await.map_err(|e| e.into())
+}
+
+/// Execute the deploy init command
+async fn execute_deploy_init(verbosity: u8) -> Result<(), Box<dyn std::error::Error>> {
+	let mut ctx = CommandContext::default();
+	ctx.set_verbosity(verbosity);
+
+	let cmd = DeployInitCommand;
+	cmd.execute(&ctx).await.map_err(|e| e.into())
 }
 
 // ============================================================================

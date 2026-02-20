@@ -27,7 +27,9 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 colored = "3.0.0"
+console = "0.15"
 dialoguer = "0.12.0"
+toml = "0.8"
 hyper = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }

@@ -142,6 +142,7 @@ pub mod builtin;
 pub mod cli;
 pub mod collectstatic;
 pub mod context;
+pub mod deploy;
 pub mod embedded_templates;
 pub mod formatter;
 pub mod i18n_commands;
@@ -166,6 +167,7 @@ pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand
 pub use cli::{Cli, Commands, execute_from_command_line, run_command};
 pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
 pub use context::CommandContext;
+pub use deploy::{DeployCommand, DeployConfig, DeployError, DeployInitCommand, DeployProvider};
 pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
 pub use mail_commands::SendTestEmailCommand;
 pub use output::OutputWrapper;
