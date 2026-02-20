@@ -147,97 +147,126 @@ fn validate_parameter_name(name: &str, position: usize) -> Result<(), PathValida
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_valid_simple_path() {
+		// Arrange & Act & Assert
 		assert!(validate_path_syntax("/users/").is_ok());
 		assert!(validate_path_syntax("/items/").is_ok());
 		assert!(validate_path_syntax("/api/v1/users/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_path_with_parameters() {
+		// Arrange & Act & Assert
 		assert!(validate_path_syntax("/users/{id}/").is_ok());
 		assert!(validate_path_syntax("/users/{user_id}/").is_ok());
 		assert!(validate_path_syntax("/users/{user_id}/posts/{post_id}/").is_ok());
 		assert!(validate_path_syntax("/items/{item_id}/details/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_must_start_with_slash() {
+		// Arrange & Act
 		let result = validate_path_syntax("users/");
+
+		// Assert
 		assert_eq!(result, Err(PathValidationError::MustStartWithSlash));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unmatched_open_brace() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/{id/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::UnmatchedOpenBrace(_))
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_unmatched_close_brace() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/id}/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::UnmatchedCloseBrace(_))
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_empty_parameter_name() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/{}/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::EmptyParameterName(_))
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_parameter_name_uppercase() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/{userId}/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::InvalidParameterName { .. })
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_invalid_parameter_name_hyphen() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/{user-id}/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::InvalidParameterName { .. })
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_double_slash() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users//posts/");
+
+		// Assert
 		assert!(matches!(result, Err(PathValidationError::DoubleSlash(_))));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_nested_parameters() {
+		// Arrange & Act
 		let result = validate_path_syntax("/users/{{id}}/");
+
+		// Assert
 		assert!(matches!(
 			result,
 			Err(PathValidationError::NestedParameters(_))
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_parameter_with_underscore() {
+		// Arrange & Act & Assert
 		assert!(validate_path_syntax("/users/{_id}/").is_ok());
 		assert!(validate_path_syntax("/users/{_}/").is_ok());
 		assert!(validate_path_syntax("/users/{user_id_123}/").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_valid_path_with_hyphens() {
+		// Arrange & Act & Assert
 		assert!(validate_path_syntax("/user-profiles/").is_ok());
 		assert!(validate_path_syntax("/api-v1/user-data/").is_ok());
 	}
