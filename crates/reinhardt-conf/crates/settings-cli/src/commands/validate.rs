@@ -59,8 +59,7 @@ pub(crate) fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 		Some("env") => {
 			// Validate .env file with comprehensive checks
 			let content = std::fs::read_to_string(&args.file)?;
-			let mut seen_keys: std::collections::HashSet<String> =
-				std::collections::HashSet::new();
+			let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 			let mut has_warnings = false;
 
 			for (line_num, line) in content.lines().enumerate() {
@@ -83,10 +82,7 @@ pub(crate) fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 				if let Some((key, _)) = line.split_once('=') {
 					let key = key.trim();
 					if key.is_empty() {
-						output::warning(&format!(
-							"Line {}: empty key name",
-							line_num + 1
-						));
+						output::warning(&format!("Line {}: empty key name", line_num + 1));
 						has_warnings = true;
 					} else if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
 						output::warning(&format!(
@@ -99,11 +95,7 @@ pub(crate) fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 
 					// Check for duplicate keys
 					if !key.is_empty() && !seen_keys.insert(key.to_string()) {
-						output::warning(&format!(
-							"Line {}: duplicate key '{}'",
-							line_num + 1,
-							key
-						));
+						output::warning(&format!("Line {}: duplicate key '{}'", line_num + 1, key));
 						has_warnings = true;
 					}
 				}

@@ -152,7 +152,7 @@ impl RestAuthentication for CompositeAuthentication {
 				Err(e) => {
 					// Log error but continue to next backend
 					tracing::warn!("Authentication backend error occurred");
-				tracing::debug!(error = %e, "Authentication backend error details");
+					tracing::debug!(error = %e, "Authentication backend error details");
 					continue;
 				}
 			}
@@ -180,7 +180,7 @@ impl AuthenticationBackend for CompositeAuthentication {
 				Err(e) => {
 					// Log error but continue to next backend
 					tracing::warn!("get_user backend error occurred");
-				tracing::debug!(error = %e, "get_user backend error details");
+					tracing::debug!(error = %e, "get_user backend error details");
 					continue;
 				}
 			}

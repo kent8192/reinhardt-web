@@ -619,7 +619,8 @@ mod tests {
 		let backend_write = Arc::clone(&backend);
 		let backend_read = Arc::clone(&backend);
 
-		let write = tokio::spawn(async move { backend_write.delete_result(task_id).await.unwrap() });
+		let write =
+			tokio::spawn(async move { backend_write.delete_result(task_id).await.unwrap() });
 
 		let other_id = TaskId::new();
 		backend
@@ -631,8 +632,7 @@ mod tests {
 			.await
 			.unwrap();
 
-		let read =
-			tokio::spawn(async move { backend_read.get_result(other_id).await.unwrap() });
+		let read = tokio::spawn(async move { backend_read.get_result(other_id).await.unwrap() });
 
 		write.await.unwrap();
 		let read_result = read.await.unwrap();

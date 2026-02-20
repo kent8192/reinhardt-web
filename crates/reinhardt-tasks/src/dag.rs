@@ -990,6 +990,9 @@ mod tests {
 		let result = dag.add_dependency(task_ids[0], task_ids[depth - 1]);
 
 		// Assert - cycle must be detected
-		assert!(result.is_err(), "back-edge cycle must be detected in 10k chain");
+		assert!(
+			result.is_err(),
+			"back-edge cycle must be detected in 10k chain"
+		);
 	}
 }

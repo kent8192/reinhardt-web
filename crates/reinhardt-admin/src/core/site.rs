@@ -203,12 +203,9 @@ impl AdminSite {
 		let model_name = model_name.into();
 		// Use entry API for atomic check-and-insert to avoid TOCTOU race condition
 		match self.registry.entry(model_name) {
-			dashmap::mapref::entry::Entry::Occupied(entry) => {
-				Err(AdminError::ValidationError(format!(
-					"Model '{}' is already registered",
-					entry.key()
-				)))
-			}
+			dashmap::mapref::entry::Entry::Occupied(entry) => Err(AdminError::ValidationError(
+				format!("Model '{}' is already registered", entry.key()),
+			)),
 			dashmap::mapref::entry::Entry::Vacant(entry) => {
 				entry.insert(Arc::new(admin));
 				Ok(())

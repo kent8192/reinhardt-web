@@ -73,7 +73,7 @@ fn counter_signal() -> Signal<i32> {
 fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
-	let view = page!(|signal: Signal<String>| {
+	let view = page!(|signal: Signal < String >| {
 		div {
 			class: "container",
 			watch {
@@ -107,7 +107,7 @@ fn test_watch_ssr_basic_render(string_signal: Signal<String>) {
 fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -140,7 +140,7 @@ fn test_watch_ssr_condition_true(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -172,7 +172,7 @@ fn test_watch_ssr_condition_false(bool_signal_false: Signal<bool>) {
 fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -202,7 +202,7 @@ fn test_watch_ssr_if_else_true_branch(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 	let signal = bool_signal_false.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -236,7 +236,7 @@ fn test_watch_ssr_if_else_false_branch(bool_signal_false: Signal<bool>) {
 fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			class: "outer",
 			watch {
@@ -280,7 +280,7 @@ fn test_watch_ssr_nested_elements(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_content_escaping() {
 	let xss_content = Signal::new("<script>alert('xss')</script>".to_string());
 
-	let view = page!(|xss_content: Signal<String>| {
+	let view = page!(|xss_content: Signal < String >| {
 		div {
 			watch {
 				{ xss_content.get() }
@@ -311,7 +311,7 @@ fn test_watch_ssr_content_escaping() {
 fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
 
-	let view = page!(|items: Signal<Vec<String>>| {
+	let view = page!(|items: Signal < Vec < String> >| {
 		ul {
 			watch {
 				for item in items.get().iter() {
@@ -350,7 +350,7 @@ fn test_watch_ssr_for_loop(list_signal: Signal<Vec<String>>) {
 fn test_watch_ssr_expression(counter_signal: Signal<i32>) {
 	let counter = counter_signal.clone();
 
-	let view = page!(|counter: Signal<i32>| {
+	let view = page!(|counter: Signal < i32 >| {
 		div {
 			watch {
 				{ format!("Count: {}", counter.get()) }
@@ -379,7 +379,7 @@ fn test_watch_ssr_multiple_blocks(
 	let loading = bool_signal_true.clone();
 	let error = error_signal.clone();
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
+	let view = page!(|loading: Signal < bool >, error: Signal < Option < String> >| {
 		div {
 			watch {
 				if loading.get() {
@@ -422,7 +422,7 @@ fn test_watch_ssr_multiple_blocks(
 fn test_watch_ssr_unicode() {
 	let unicode_content = Signal::new("日本語テスト 🎉 한국어".to_string());
 
-	let view = page!(|content: Signal<String>| {
+	let view = page!(|content: Signal < String >| {
 		div {
 			watch {
 				{ content.get() }
@@ -449,7 +449,7 @@ fn test_watch_ssr_unicode() {
 fn test_watch_ssr_data_attributes(counter_signal: Signal<i32>) {
 	let counter = counter_signal.clone();
 
-	let view = page!(|counter: Signal<i32>| {
+	let view = page!(|counter: Signal < i32 >| {
 		div {
 			watch {
 				span {
@@ -482,7 +482,7 @@ fn test_watch_ssr_data_attributes(counter_signal: Signal<i32>) {
 fn test_watch_ssr_empty_content() {
 	let empty = Signal::new("".to_string());
 
-	let view = page!(|empty: Signal<String>| {
+	let view = page!(|empty: Signal < String >| {
 		div {
 			class: "wrapper",
 			watch {
@@ -512,7 +512,7 @@ fn test_watch_ssr_empty_content() {
 fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
-	let view = page!(|signal: Signal<String>| {
+	let view = page!(|signal: Signal < String >| {
 		div {
 			watch {
 				p {
@@ -540,7 +540,7 @@ fn test_watch_ssr_with_renderer(ssr_renderer: SsrRenderer, string_signal: Signal
 fn test_watch_ssr_deeply_nested(bool_signal_true: Signal<bool>) {
 	let signal = bool_signal_true.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			class: "level-1",
 			div {
@@ -592,10 +592,10 @@ fn test_watch_ssr_deeply_nested(bool_signal_true: Signal<bool>) {
 fn test_watch_ssr_fragment_result(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
 
-	let view = page!(|items: Signal<Vec<String>>| {
+	let view = page!(|items: Signal < Vec < String> >| {
 		div {
 			watch {
-				{ Page::fragment(items.get().iter().map(|i| { Page::text(i.clone()) }).collect ::<Vec<Page>>()) }
+				{ Page::fragment(items.get().iter().map(|i| { Page::text(i.clone()) }).collect::< Vec < Page> >()) }
 			}
 		}
 	})(items.clone());
@@ -625,7 +625,7 @@ fn test_watch_ssr_state_matrix(
 	let loading = Signal::new(loading_state);
 	let error = Signal::new(error_state.clone());
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
+	let view = page!(|loading: Signal < bool >, error: Signal < Option < String> >| {
 		div {
 			watch {
 				if loading.get() {
@@ -682,7 +682,7 @@ fn test_watch_ssr_state_matrix(
 fn test_watch_ssr_special_chars_in_attrs() {
 	let title = Signal::new("Title with \"quotes\" & ampersand".to_string());
 
-	let view = page!(|title: Signal<String>| {
+	let view = page!(|title: Signal < String >| {
 		div {
 			watch {
 				span {
@@ -709,7 +709,7 @@ fn test_watch_ssr_special_chars_in_attrs() {
 fn test_watch_ssr_void_elements(bool_signal_true: Signal<bool>) {
 	let show = bool_signal_true.clone();
 
-	let view = page!(|show: Signal<bool>| {
+	let view = page!(|show: Signal < bool >| {
 		div {
 			watch {
 				if show.get() {
