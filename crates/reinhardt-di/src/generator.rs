@@ -240,6 +240,7 @@ mod tests {
 		assert_eq!(generator.next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_generator_collect() {
 		let generator = DependencyGenerator::new(|co| {
@@ -254,6 +255,7 @@ mod tests {
 		assert_eq!(deps, vec![1, 2, 3]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_stream() {
 		let mut stream = DependencyStream::new(|co| {
@@ -268,6 +270,7 @@ mod tests {
 		assert_eq!(stream.next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_request_scoped_generator() {
 		let stream = DependencyStream::new(|co| {
@@ -366,6 +369,7 @@ mod tests {
 		assert_eq!(stream.next().await, None);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_async_operations_in_generator() {
 		let generator = DependencyGenerator::new(|co| {
@@ -380,5 +384,75 @@ mod tests {
 
 		let deps = generator.collect().await;
 		assert_eq!(deps, vec!["database".to_string(), "cache".to_string()]);
+	}
+
+	// Regression test for #453: is_empty() must not consume stream elements.
+	// Previously, is_empty() advanced the generator without buffering the peeked
+	// value, causing the first element to be silently dropped on the next next() call.
+	#[rstest]
+	#[tokio::test]
+	async fn test_is_empty_does_not_drop_first_element_regression() {
+		// Arrange - stream with 3 elements; the bug would drop element "a" after is_empty()
+		let mut stream = DependencyStream::new(|co| {
+			Box::pin(async move {
+				co.yield_("a".to_string()).await;
+				co.yield_("b".to_string()).await;
+				co.yield_("c".to_string()).await;
+			})
+		});
+
+		// Act - call is_empty() before consuming any element
+		let result = stream.is_empty().await;
+
+		// Assert - stream must not be empty, and ALL three elements must still be reachable
+		assert!(
+			!result,
+			"Regression #453: stream with 3 elements must not be empty"
+		);
+		assert_eq!(
+			stream.next().await,
+			Some("a".to_string()),
+			"Regression #453: first element must not be dropped after is_empty()"
+		);
+		assert_eq!(stream.next().await, Some("b".to_string()));
+		assert_eq!(stream.next().await, Some("c".to_string()));
+		assert_eq!(stream.next().await, None);
+	}
+
+	// Regression test for #453: repeated is_empty() calls must buffer only one value.
+	// Each repeated call should return the same peeked value without advancing the generator further.
+	#[rstest]
+	#[tokio::test]
+	async fn test_repeated_is_empty_buffers_single_value_regression() {
+		// Arrange - stream with 2 elements
+		let mut stream = DependencyStream::new(|co| {
+			Box::pin(async move {
+				co.yield_(10_u32).await;
+				co.yield_(20_u32).await;
+			})
+		});
+
+		// Act - call is_empty() three times in a row
+		assert!(
+			!stream.is_empty().await,
+			"Regression #453: first is_empty() call should return false"
+		);
+		assert!(
+			!stream.is_empty().await,
+			"Regression #453: second is_empty() call should return false (peeked slot not overwritten)"
+		);
+		assert!(
+			!stream.is_empty().await,
+			"Regression #453: third is_empty() call should return false"
+		);
+
+		// Assert - all elements must still be reachable in order
+		assert_eq!(
+			stream.next().await,
+			Some(10_u32),
+			"Regression #453: element 10 must survive three is_empty() calls"
+		);
+		assert_eq!(stream.next().await, Some(20_u32));
+		assert_eq!(stream.next().await, None);
 	}
 }
