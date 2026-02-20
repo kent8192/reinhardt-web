@@ -131,6 +131,8 @@ where
 #[cfg(feature = "generator")]
 pub struct DependencyStream<T> {
 	generator: Gen<T, (), Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+	/// Buffer for peeked values to avoid consuming elements during `is_empty()` checks
+	peeked: Option<T>,
 	_phantom: PhantomData<T>,
 }
 
@@ -146,25 +148,38 @@ where
 	{
 		Self {
 			generator: Gen::new(producer),
+			peeked: None,
 			_phantom: PhantomData,
 		}
 	}
 
 	/// Stream the next dependency
 	pub async fn next(&mut self) -> Option<T> {
+		// Return peeked value first if available
+		if let Some(value) = self.peeked.take() {
+			return Some(value);
+		}
 		match self.generator.async_resume().await {
 			GeneratorState::Yielded(value) => Some(value),
 			GeneratorState::Complete(_) => None,
 		}
 	}
 
-	/// Check if stream has more dependencies
+	/// Check if stream has more dependencies without consuming elements.
+	///
+	/// This method peeks at the next value and buffers it internally,
+	/// so subsequent calls to `next()` will return the peeked value first.
 	pub async fn is_empty(&mut self) -> bool {
-		// Peek without consuming
-		matches!(
-			self.generator.async_resume().await,
-			GeneratorState::Complete(_)
-		)
+		if self.peeked.is_some() {
+			return false;
+		}
+		match self.generator.async_resume().await {
+			GeneratorState::Yielded(value) => {
+				self.peeked = Some(value);
+				false
+			}
+			GeneratorState::Complete(_) => true,
+		}
 	}
 }
 
@@ -206,7 +221,9 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_dependency_generator_basic() {
 		let mut generator = DependencyGenerator::new(|co| {
@@ -272,6 +289,81 @@ mod tests {
 			Some("dependency2".to_string())
 		);
 		assert_eq!(generator.resolve_next().await, None);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_dependency_stream_is_empty_does_not_consume() {
+		// Arrange
+		let mut stream = DependencyStream::new(|co| {
+			Box::pin(async move {
+				co.yield_("first".to_string()).await;
+				co.yield_("second".to_string()).await;
+			})
+		});
+
+		// Act - is_empty should peek without consuming
+		let empty = stream.is_empty().await;
+
+		// Assert - stream is not empty
+		assert!(!empty);
+		// The peeked element should still be available via next()
+		assert_eq!(stream.next().await, Some("first".to_string()));
+		assert_eq!(stream.next().await, Some("second".to_string()));
+		assert_eq!(stream.next().await, None);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_dependency_stream_is_empty_on_exhausted_stream() {
+		// Arrange
+		let mut stream: DependencyStream<i32> =
+			DependencyStream::new(|_co| Box::pin(async move {}));
+
+		// Act & Assert - empty stream should return true
+		assert!(stream.is_empty().await);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_dependency_stream_is_empty_after_partial_consumption() {
+		// Arrange
+		let mut stream = DependencyStream::new(|co| {
+			Box::pin(async move {
+				co.yield_(1).await;
+				co.yield_(2).await;
+			})
+		});
+
+		// Consume first element
+		assert_eq!(stream.next().await, Some(1));
+
+		// Act - check is_empty after partial consumption
+		assert!(!stream.is_empty().await);
+
+		// Assert - second element should still be available
+		assert_eq!(stream.next().await, Some(2));
+		assert!(stream.is_empty().await);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_dependency_stream_multiple_is_empty_calls() {
+		// Arrange
+		let mut stream = DependencyStream::new(|co| {
+			Box::pin(async move {
+				co.yield_(42).await;
+			})
+		});
+
+		// Act - calling is_empty multiple times should not consume
+		assert!(!stream.is_empty().await);
+		assert!(!stream.is_empty().await);
+		assert!(!stream.is_empty().await);
+
+		// Assert - element should still be available
+		assert_eq!(stream.next().await, Some(42));
+		assert_eq!(stream.next().await, None);
 	}
 
 	#[tokio::test]

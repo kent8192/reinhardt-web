@@ -73,6 +73,30 @@ impl RequestScope {
 		let type_id = TypeId::of::<T>();
 		cache.insert(type_id, Arc::new(value));
 	}
+
+	/// Stores a pre-wrapped `Arc<T>` in the request scope cache.
+	///
+	/// Unlike `set`, this method accepts an already-wrapped Arc value,
+	/// avoiding the need to unwrap and re-wrap. This is useful when
+	/// the value is produced by a factory that returns `Arc<T>`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_di::RequestScope;
+	/// use std::sync::Arc;
+	///
+	/// let scope = RequestScope::new();
+	/// let value = Arc::new(42i32);
+	/// scope.set_arc(value);
+	///
+	/// assert_eq!(*scope.get::<i32>().unwrap(), 42);
+	/// ```
+	pub fn set_arc<T: Any + Send + Sync>(&self, value: Arc<T>) {
+		let mut cache = self.cache.write().unwrap_or_else(PoisonError::into_inner);
+		let type_id = TypeId::of::<T>();
+		cache.insert(type_id, value);
+	}
 }
 
 impl RequestScope {
@@ -156,6 +180,30 @@ impl SingletonScope {
 		let mut cache = self.cache.write().unwrap_or_else(PoisonError::into_inner);
 		let type_id = TypeId::of::<T>();
 		cache.insert(type_id, Arc::new(value));
+	}
+
+	/// Stores a pre-wrapped `Arc<T>` in the singleton scope cache.
+	///
+	/// Unlike `set`, this method accepts an already-wrapped Arc value,
+	/// avoiding the need to unwrap and re-wrap. This is useful when
+	/// the value is produced by a factory that returns `Arc<T>`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_di::SingletonScope;
+	/// use std::sync::Arc;
+	///
+	/// let scope = SingletonScope::new();
+	/// let value = Arc::new(42i32);
+	/// scope.set_arc(value);
+	///
+	/// assert_eq!(*scope.get::<i32>().unwrap(), 42);
+	/// ```
+	pub fn set_arc<T: Any + Send + Sync>(&self, value: Arc<T>) {
+		let mut cache = self.cache.write().unwrap_or_else(PoisonError::into_inner);
+		let type_id = TypeId::of::<T>();
+		cache.insert(type_id, value);
 	}
 }
 
