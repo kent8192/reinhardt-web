@@ -10,6 +10,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Error types for context operations
+#[derive(Debug, thiserror::Error)]
+pub enum ContextError {
+	/// Required data was not found in context
+	#[error("Required context data not found for key: {0}")]
+	DataNotFound(String),
+	/// Required data loader was not found in context
+	#[error("Required data loader not found: {0}")]
+	LoaderNotFound(String),
+}
+
 /// Error types for data loader operations
 #[derive(Debug, thiserror::Error)]
 pub enum LoaderError {
@@ -125,6 +136,10 @@ impl GraphQLContext {
 
 	/// Get custom data from the context
 	///
+	/// Returns `None` if the key does not exist. For GraphQL resolvers that
+	/// require the data to be present, use [`require_data`](Self::require_data)
+	/// instead to get a proper GraphQL error.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -140,6 +155,36 @@ impl GraphQLContext {
 	pub fn get_data(&self, key: &str) -> Option<Value> {
 		let data = self.custom_data.blocking_read();
 		data.get(key).cloned()
+	}
+
+	/// Get required custom data from the context, returning a GraphQL error if missing
+	///
+	/// This method should be used in GraphQL resolvers where the data is expected
+	/// to be present. Instead of panicking on a missing key, it returns a
+	/// descriptive [`async_graphql::Error`] that will be surfaced as a GraphQL error
+	/// in the response.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_graphql::context::GraphQLContext;
+	/// use serde_json::json;
+	///
+	/// let context = GraphQLContext::new();
+	/// context.set_data("api_version".to_string(), json!("v1"));
+	///
+	/// // Successful lookup
+	/// let version = context.require_data("api_version");
+	/// assert!(version.is_ok());
+	/// assert_eq!(version.unwrap(), json!("v1"));
+	///
+	/// // Missing key returns an error
+	/// let missing = context.require_data("nonexistent");
+	/// assert!(missing.is_err());
+	/// ```
+	pub fn require_data(&self, key: &str) -> async_graphql::Result<Value> {
+		self.get_data(key)
+			.ok_or_else(|| ContextError::DataNotFound(key.to_string()).into())
 	}
 
 	/// Remove custom data from the context
@@ -223,6 +268,11 @@ impl GraphQLContext {
 
 	/// Get a data loader from the context
 	///
+	/// Returns `None` if the loader has not been registered. For GraphQL
+	/// resolvers that require the loader, use
+	/// [`require_data_loader`](Self::require_data_loader) instead to get a
+	/// proper GraphQL error.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -258,6 +308,53 @@ impl GraphQLContext {
 		loaders
 			.get(&TypeId::of::<T>())
 			.and_then(|loader| loader.downcast_ref::<Arc<T>>().cloned())
+	}
+
+	/// Get a required data loader from the context, returning a GraphQL error if missing
+	///
+	/// This method should be used in GraphQL resolvers where the data loader is
+	/// expected to be registered. Instead of panicking on a missing loader, it
+	/// returns a descriptive [`async_graphql::Error`] that will be surfaced as a
+	/// GraphQL error in the response.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_graphql::context::{GraphQLContext, DataLoader, LoaderError};
+	/// use async_trait::async_trait;
+	/// use std::sync::Arc;
+	///
+	/// struct MyLoader;
+	///
+	/// #[async_trait]
+	/// impl DataLoader for MyLoader {
+	///     type Key = String;
+	///     type Value = i32;
+	///
+	///     async fn load(&self, _key: Self::Key) -> Result<Self::Value, LoaderError> {
+	///         Ok(42)
+	///     }
+	///
+	///     async fn load_many(&self, keys: Vec<Self::Key>) -> Result<Vec<Self::Value>, LoaderError> {
+	///         Ok(vec![42; keys.len()])
+	///     }
+	/// }
+	///
+	/// let context = GraphQLContext::new();
+	///
+	/// // Missing loader returns an error
+	/// let result = context.require_data_loader::<MyLoader>();
+	/// assert!(result.is_err());
+	///
+	/// // After adding the loader, it succeeds
+	/// context.add_data_loader(Arc::new(MyLoader));
+	/// let result = context.require_data_loader::<MyLoader>();
+	/// assert!(result.is_ok());
+	/// ```
+	pub fn require_data_loader<T: DataLoader>(&self) -> async_graphql::Result<Arc<T>> {
+		self.get_data_loader::<T>().ok_or_else(|| {
+			ContextError::LoaderNotFound(std::any::type_name::<T>().to_string()).into()
+		})
 	}
 
 	/// Remove a data loader from the context
@@ -357,6 +454,7 @@ impl Default for GraphQLContext {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	struct TestLoader;
 
@@ -380,88 +478,115 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_new() {
+		// Arrange & Act
 		let context = GraphQLContext::new();
+
+		// Assert
 		assert!(context.get_data("any_key").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_set_and_get_data() {
+		// Arrange
 		let context = GraphQLContext::new();
 		let value = serde_json::json!({"name": "test", "value": 42});
 
+		// Act
 		context.set_data("test_key".to_string(), value.clone());
 
+		// Assert
 		let retrieved = context.get_data("test_key");
 		assert_eq!(retrieved, Some(value));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_data() {
+		// Arrange
 		let context = GraphQLContext::new();
+
+		// Act
 		let result = context.get_data("nonexistent");
+
+		// Assert
 		assert_eq!(result, None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_data() {
+		// Arrange
 		let context = GraphQLContext::new();
 		let value = serde_json::json!("test_value");
-
 		context.set_data("key".to_string(), value.clone());
+
+		// Act
 		let removed = context.remove_data("key");
 
+		// Assert
 		assert_eq!(removed, Some(value));
 		assert_eq!(context.get_data("key"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_data() {
+		// Arrange
 		let context = GraphQLContext::new();
-
 		context.set_data("key1".to_string(), serde_json::json!(1));
 		context.set_data("key2".to_string(), serde_json::json!(2));
 		context.set_data("key3".to_string(), serde_json::json!(3));
 
+		// Act
 		context.clear_data();
 
+		// Assert
 		assert_eq!(context.get_data("key1"), None);
 		assert_eq!(context.get_data("key2"), None);
 		assert_eq!(context.get_data("key3"), None);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_add_and_get_data_loader() {
+		// Arrange
 		let context = GraphQLContext::new();
 		let loader = Arc::new(TestLoader);
 
+		// Act
 		context.add_data_loader(loader);
 
+		// Assert
 		let retrieved = context.get_data_loader::<TestLoader>();
 		assert!(retrieved.is_some());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_nonexistent_loader() {
+		// Arrange
 		let context = GraphQLContext::new();
+
+		// Act
 		let result = context.get_data_loader::<TestLoader>();
+
+		// Assert
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_remove_data_loader() {
+		// Arrange
 		let context = GraphQLContext::new();
 		let loader = Arc::new(TestLoader);
-
 		context.add_data_loader(loader);
+
+		// Act
 		context.remove_data_loader::<TestLoader>();
 
+		// Assert
 		let result = context.get_data_loader::<TestLoader>();
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_clear_loaders() {
 		struct Loader1;
 		struct Loader2;
@@ -496,25 +621,31 @@ mod tests {
 			}
 		}
 
+		// Arrange
 		let context = GraphQLContext::new();
 		context.add_data_loader(Arc::new(Loader1));
 		context.add_data_loader(Arc::new(Loader2));
 
+		// Act
 		context.clear_loaders();
 
+		// Assert
 		assert!(context.get_data_loader::<Loader1>().is_none());
 		assert!(context.get_data_loader::<Loader2>().is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_multiple_data_values() {
+		// Arrange
 		let context = GraphQLContext::new();
 
+		// Act
 		context.set_data("int".to_string(), serde_json::json!(123));
 		context.set_data("string".to_string(), serde_json::json!("hello"));
 		context.set_data("array".to_string(), serde_json::json!([1, 2, 3]));
 		context.set_data("object".to_string(), serde_json::json!({"key": "value"}));
 
+		// Assert
 		assert_eq!(context.get_data("int"), Some(serde_json::json!(123)));
 		assert_eq!(context.get_data("string"), Some(serde_json::json!("hello")));
 		assert_eq!(
@@ -527,27 +658,45 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_load() {
+		// Arrange
 		let loader = TestLoader;
+
+		// Act
 		let result = loader.load("42".to_string()).await;
+
+		// Assert
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), 42);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_load_many() {
+		// Arrange
 		let loader = TestLoader;
 		let keys = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+
+		// Act
 		let result = loader.load_many(keys).await;
+
+		// Assert
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), vec![1, 2, 3]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_data_loader_error() {
+		// Arrange
 		let loader = TestLoader;
+
+		// Act
 		let result = loader.load("invalid".to_string()).await;
+
+		// Assert
 		assert!(result.is_err());
 		match result {
 			Err(LoaderError::InvalidData(_)) => {}
@@ -555,20 +704,168 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn test_context_default() {
+		// Arrange & Act
 		let context = GraphQLContext::default();
+
+		// Assert
 		assert!(context.get_data("any_key").is_none());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_overwrite_data() {
+		// Arrange
+		let context = GraphQLContext::new();
+		context.set_data("key".to_string(), serde_json::json!(1));
+
+		// Act
+		context.set_data("key".to_string(), serde_json::json!(2));
+
+		// Assert
+		assert_eq!(context.get_data("key"), Some(serde_json::json!(2)));
+	}
+
+	#[rstest]
+	fn test_require_data_returns_value_when_present() {
+		// Arrange
+		let context = GraphQLContext::new();
+		context.set_data("user_id".to_string(), serde_json::json!("user-42"));
+
+		// Act
+		let result = context.require_data("user_id");
+
+		// Assert
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), serde_json::json!("user-42"));
+	}
+
+	#[rstest]
+	fn test_require_data_returns_error_when_missing() {
+		// Arrange
 		let context = GraphQLContext::new();
 
-		context.set_data("key".to_string(), serde_json::json!(1));
-		assert_eq!(context.get_data("key"), Some(serde_json::json!(1)));
+		// Act
+		let result = context.require_data("nonexistent_key");
 
-		context.set_data("key".to_string(), serde_json::json!(2));
-		assert_eq!(context.get_data("key"), Some(serde_json::json!(2)));
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(
+			err.message.contains("nonexistent_key"),
+			"Error should mention the missing key, got: {}",
+			err.message
+		);
+		assert!(
+			err.message.contains("Required context data not found"),
+			"Error should describe the issue, got: {}",
+			err.message
+		);
+	}
+
+	#[rstest]
+	fn test_require_data_does_not_panic_on_missing_key() {
+		// Arrange
+		let context = GraphQLContext::new();
+
+		// Act -- this must NOT panic, unlike unwrap() on get_data()
+		let result = context.require_data("missing");
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_require_data_loader_returns_loader_when_present() {
+		// Arrange
+		let context = GraphQLContext::new();
+		context.add_data_loader(Arc::new(TestLoader));
+
+		// Act
+		let result = context.require_data_loader::<TestLoader>();
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_require_data_loader_returns_error_when_missing() {
+		// Arrange
+		let context = GraphQLContext::new();
+
+		// Act
+		let result = context.require_data_loader::<TestLoader>();
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(
+			err.message.contains("Required data loader not found"),
+			"Error should describe the issue, got: {}",
+			err.message
+		);
+	}
+
+	#[rstest]
+	fn test_require_data_loader_does_not_panic_on_missing_loader() {
+		// Arrange
+		let context = GraphQLContext::new();
+
+		// Act -- this must NOT panic, unlike unwrap() on get_data_loader()
+		let result = context.require_data_loader::<TestLoader>();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_require_data_loader_after_removal_returns_error() {
+		// Arrange
+		let context = GraphQLContext::new();
+		context.add_data_loader(Arc::new(TestLoader));
+		context.remove_data_loader::<TestLoader>();
+
+		// Act
+		let result = context.require_data_loader::<TestLoader>();
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_context_error_data_not_found_display() {
+		// Arrange
+		let err = ContextError::DataNotFound("my_key".to_string());
+
+		// Act
+		let message = err.to_string();
+
+		// Assert
+		assert_eq!(message, "Required context data not found for key: my_key");
+	}
+
+	#[rstest]
+	fn test_context_error_loader_not_found_display() {
+		// Arrange
+		let err = ContextError::LoaderNotFound("MyLoader".to_string());
+
+		// Act
+		let message = err.to_string();
+
+		// Assert
+		assert_eq!(message, "Required data loader not found: MyLoader");
+	}
+
+	#[rstest]
+	fn test_context_error_converts_to_graphql_error() {
+		// Arrange
+		let err = ContextError::DataNotFound("test_key".to_string());
+
+		// Act
+		let gql_err: async_graphql::Error = err.into();
+
+		// Assert
+		assert!(gql_err.message.contains("test_key"));
+		assert!(gql_err.message.contains("Required context data not found"));
 	}
 }
