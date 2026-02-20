@@ -88,9 +88,11 @@ impl WorkerInfo {
 	/// Decrement active task count (saturates at 0 to prevent underflow wrap)
 	pub fn decrement_tasks(&self) {
 		// Use fetch_update with saturating_sub to prevent wrapping to usize::MAX
-		let _ = self.active_tasks.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-			Some(current.saturating_sub(1))
-		});
+		let _ = self
+			.active_tasks
+			.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+				Some(current.saturating_sub(1))
+			});
 	}
 
 	/// Get current active task count
@@ -166,8 +168,7 @@ impl WorkerMetrics {
 			let new_count = (current_tasks as u128).saturating_add(1);
 			let avg = total_time / new_count;
 			// Clamp to u64::MAX to prevent truncation panic
-			self.average_execution_time =
-				Duration::from_millis(avg.min(u64::MAX as u128) as u64);
+			self.average_execution_time = Duration::from_millis(avg.min(u64::MAX as u128) as u64);
 		}
 	}
 
