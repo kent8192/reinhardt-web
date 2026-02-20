@@ -14,11 +14,11 @@ fn main() {
 			}
 			input {
 				r#type: "checkbox",
-				checked: count>3,
+				checked: count> 3,
 			}
 			input {
 				r#type: "text",
-				required: count<10 &&condition,
+				required: count < 10 &&condition,
 			}
 		}
 	});

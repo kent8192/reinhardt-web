@@ -405,7 +405,10 @@ mod tests {
 		let result = stream.is_empty().await;
 
 		// Assert - stream must not be empty, and ALL three elements must still be reachable
-		assert!(!result, "Regression #453: stream with 3 elements must not be empty");
+		assert!(
+			!result,
+			"Regression #453: stream with 3 elements must not be empty"
+		);
 		assert_eq!(
 			stream.next().await,
 			Some("a".to_string()),
