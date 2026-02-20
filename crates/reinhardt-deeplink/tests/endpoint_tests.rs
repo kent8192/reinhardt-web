@@ -336,10 +336,10 @@ fn test_both_handlers_cache_control() {
 	let cache_control_assetlinks = response_assetlinks.headers.get("cache-control").unwrap();
 
 	// Both should have cache-control header
-	assert_eq!(cache_control_aasa.to_str().unwrap(), "max-age=3600, public");
+	assert_eq!(cache_control_aasa.to_str().unwrap(), "max-age=86400, public");
 	assert_eq!(
 		cache_control_assetlinks.to_str().unwrap(),
-		"max-age=3600, public"
+		"max-age=86400, public"
 	);
 }
 

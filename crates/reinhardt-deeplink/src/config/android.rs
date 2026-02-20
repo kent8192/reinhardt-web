@@ -140,6 +140,7 @@ impl AndroidConfigBuilder {
 	/// - Package name has invalid format
 	/// - No fingerprints are provided
 	/// - Any fingerprint has an invalid format
+	/// - Any additional package has empty fingerprints
 	pub fn validate(&self) -> Result<(), DeeplinkError> {
 		if self.package_name.is_none() {
 			return Err(DeeplinkError::MissingPackageName);
@@ -161,6 +162,12 @@ impl AndroidConfigBuilder {
 		// Validate additional package names and their fingerprints
 		for (pkg_name, fps) in &self.additional_packages {
 			validate_package_name(pkg_name)?;
+			// Each additional package must have at least one fingerprint;
+			// an empty fingerprints list produces a semantically invalid
+			// Asset Links entry that Android will never match.
+			if fps.is_empty() {
+				return Err(DeeplinkError::MissingFingerprint);
+			}
 			for fingerprint in fps {
 				validate_fingerprint(fingerprint)?;
 			}
@@ -317,5 +324,23 @@ mod tests {
 			.package_name("com.example.app")
 			.sha256_fingerprint(VALID_FINGERPRINT);
 		assert!(builder.validate().is_ok());
+	}
+
+	#[rstest]
+	fn test_validation_additional_package_empty_fingerprints() {
+		// Arrange
+		let builder = AndroidConfigBuilder::new()
+			.package_name("com.example.app")
+			.sha256_fingerprint(VALID_FINGERPRINT)
+			.additional_package("com.example.app2", &[]);
+
+		// Act
+		let result = builder.validate();
+
+		// Assert
+		assert!(
+			matches!(result, Err(DeeplinkError::MissingFingerprint)),
+			"additional_package with empty fingerprints should be rejected"
+		);
 	}
 }
