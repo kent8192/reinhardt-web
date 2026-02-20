@@ -330,6 +330,8 @@ members = [
   "crates/reinhardt-graphql/macros",
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
+  "crates/reinhardt-seeding",                           # Database seeding
+  "crates/reinhardt-seeding/macros",                    # Seeding macros
   "crates/reinhardt-deeplink",                          # Mobile deep linking
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
   # Integration tests
@@ -406,6 +408,8 @@ reinhardt-mail = { path = "crates/reinhardt-mail", version = "0.1.0-alpha.9" }
 reinhardt-graphql = { path = "crates/reinhardt-graphql", version = "0.1.0-alpha.5" }
 reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-alpha.12" }
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.11" }
+reinhardt-seeding = { path = "crates/reinhardt-seeding", version = "0.1.0-alpha.1" }
+reinhardt-seeding-macros = { path = "crates/reinhardt-seeding/macros", version = "0.1.0-alpha.1" }
 reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-alpha.3" }
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.13" }
 
