@@ -1070,11 +1070,10 @@ impl SelectBuilder {
 		}
 
 		// Add LIMIT (only apply non-negative values)
-		if let Some(limit) = self.limit {
-			if let Ok(limit_u64) = u64::try_from(limit) {
+		if let Some(limit) = self.limit
+			&& let Ok(limit_u64) = u64::try_from(limit) {
 				stmt.limit(limit_u64);
 			}
-		}
 
 		// Build SQL with inline values
 		let sql = match self.backend.database_type() {
