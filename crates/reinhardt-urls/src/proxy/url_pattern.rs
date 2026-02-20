@@ -142,10 +142,7 @@ impl UrlPattern {
 					match kwargs.get(&param_name) {
 						Some(value) => result.push_str(value),
 						None => {
-							return Err(format!(
-								"Missing required parameter: {}",
-								param_name
-							));
+							return Err(format!("Missing required parameter: {}", param_name));
 						}
 					}
 				}

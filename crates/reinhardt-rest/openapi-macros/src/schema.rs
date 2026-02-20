@@ -58,9 +58,7 @@ impl FieldAttributes {
 /// syntax is malformed.
 ///
 /// Fixes #842: Propagate parse errors instead of silently ignoring them.
-pub(crate) fn extract_field_attributes(
-	attrs: &[Attribute],
-) -> Result<FieldAttributes, syn::Error> {
+pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> Result<FieldAttributes, syn::Error> {
 	let mut field_attrs = FieldAttributes::default();
 
 	for attr in attrs {
@@ -265,7 +263,10 @@ pub(crate) fn extract_field_attributes(
 		if min > max {
 			return Err(syn::Error::new(
 				Span::call_site(),
-				format!("contradictory constraints: minimum ({}) > maximum ({})", min, max),
+				format!(
+					"contradictory constraints: minimum ({}) > maximum ({})",
+					min, max
+				),
 			));
 		}
 	}
@@ -273,7 +274,10 @@ pub(crate) fn extract_field_attributes(
 		if min > max {
 			return Err(syn::Error::new(
 				Span::call_site(),
-				format!("contradictory constraints: min_length ({}) > max_length ({})", min, max),
+				format!(
+					"contradictory constraints: min_length ({}) > max_length ({})",
+					min, max
+				),
 			));
 		}
 	}
