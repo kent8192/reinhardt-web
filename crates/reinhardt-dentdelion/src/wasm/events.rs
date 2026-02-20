@@ -33,9 +33,10 @@ pub struct Event {
 impl Event {
 	/// Create a new event with the current timestamp.
 	pub fn new(name: impl Into<String>, payload: Vec<u8>, source: impl Into<String>) -> Self {
+		// Use unwrap_or_default to avoid panic when system clock precedes Unix epoch.
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("System time before UNIX epoch")
+			.unwrap_or_default()
 			.as_millis() as u64;
 
 		Self {
@@ -245,7 +246,11 @@ impl EventBus {
 			});
 		}
 
-		let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+		// Wrapping addition is the default behavior of AtomicU64::fetch_add.
+		// With u64 range (~1.8 * 10^19), overflow is practically unreachable.
+		// If it ever wraps, the subscription map insertion will overwrite any
+		// stale entry with the same ID, which is acceptable.
+		let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 		let subscription = Subscription {
 			pattern: pattern.to_string(),
 			queue: VecDeque::new(),
