@@ -310,6 +310,13 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 			});
 
 			Ok(quote! {
+				// Fixes #808: Compile-time assertion that Debug is implemented,
+				// required by the Iden supertrait
+				const _: () = {
+					fn __assert_debug<T: ::std::fmt::Debug>() {}
+					fn __check() { __assert_debug::<#name>(); }
+				};
+
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
 						match self {
@@ -333,6 +340,13 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 				.unwrap_or_else(|| name.to_string().to_snake_case());
 
 			Ok(quote! {
+				// Fixes #808: Compile-time assertion that Debug is implemented,
+				// required by the Iden supertrait
+				const _: () = {
+					fn __assert_debug<T: ::std::fmt::Debug>() {}
+					fn __check() { __assert_debug::<#name>(); }
+				};
+
 				impl ::std::fmt::Display for #name {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
 						f.write_str(#iden_name)
