@@ -69,8 +69,8 @@ impl AasaHandler {
 
 	/// Returns the cached JSON content as a string slice.
 	pub fn json(&self) -> &str {
-		// SAFETY: JSON serialization always produces valid UTF-8
-		std::str::from_utf8(&self.cached_json).unwrap()
+		std::str::from_utf8(&self.cached_json)
+			.expect("cached_json was serialized from valid UTF-8 strings and cannot be invalid UTF-8")
 	}
 }
 
