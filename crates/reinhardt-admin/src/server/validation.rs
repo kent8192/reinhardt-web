@@ -184,7 +184,7 @@ fn validate_value_size(field_name: &str, value: &serde_json::Value) -> Result<()
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::core::{ModelAdmin, ModelAdminConfig};
+	use crate::core::ModelAdminConfig;
 	use rstest::rstest;
 
 	fn create_test_admin() -> ModelAdminConfig {
@@ -194,6 +194,7 @@ mod tests {
 			.fields(vec!["id", "name", "email", "created_at"])
 			.readonly_fields(vec!["created_at"])
 			.build()
+			.unwrap()
 	}
 
 	#[rstest]
@@ -319,7 +320,8 @@ mod tests {
 		let admin = ModelAdminConfig::builder()
 			.model_name("TestModel")
 			.list_display(vec!["id", "title"])
-			.build();
+			.build()
+			.unwrap();
 
 		let mut data = HashMap::new();
 		data.insert("title".to_string(), serde_json::json!("Test"));
