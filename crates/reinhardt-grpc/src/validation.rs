@@ -41,6 +41,8 @@
 //! }
 //! ```
 
+use std::borrow::Cow;
+
 /// Trait for validating protobuf messages against declared constraints.
 ///
 /// Implement this trait for protobuf message types that require
@@ -56,60 +58,61 @@ pub trait ProtoValidator {
 /// A field-level validation rule violation.
 ///
 /// Describes a single constraint that a field failed to satisfy.
+/// Uses `Cow<'static, str>` to avoid heap allocations for static messages.
 #[derive(Debug, Clone)]
 pub struct FieldRule {
 	/// The field name that violated the constraint.
-	pub field: String,
+	pub field: Cow<'static, str>,
 	/// A description of the violated constraint.
-	pub constraint: String,
+	pub constraint: Cow<'static, str>,
 }
 
 impl FieldRule {
 	/// Create a rule violation for a required field that is missing or empty.
 	pub fn required(field: &str) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: "field is required".to_string(),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Borrowed("field is required"),
 		}
 	}
 
 	/// Create a rule violation for a numeric field outside its allowed range.
 	pub fn range(field: &str, min: i64, max: i64) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: format!("value must be between {min} and {max}"),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Owned(format!("value must be between {min} and {max}")),
 		}
 	}
 
 	/// Create a rule violation for a string field exceeding its maximum length.
 	pub fn max_length(field: &str, max: usize) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: format!("length must not exceed {max}"),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Owned(format!("length must not exceed {max}")),
 		}
 	}
 
 	/// Create a rule violation for a string field below its minimum length.
 	pub fn min_length(field: &str, min: usize) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: format!("length must be at least {min}"),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Owned(format!("length must be at least {min}")),
 		}
 	}
 
 	/// Create a rule violation for a repeated field exceeding its maximum count.
 	pub fn max_items(field: &str, max: usize) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: format!("number of items must not exceed {max}"),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Owned(format!("number of items must not exceed {max}")),
 		}
 	}
 
 	/// Create a custom rule violation.
 	pub fn custom(field: &str, constraint: &str) -> Self {
 		Self {
-			field: field.to_string(),
-			constraint: constraint.to_string(),
+			field: Cow::Owned(field.to_string()),
+			constraint: Cow::Owned(constraint.to_string()),
 		}
 	}
 }
