@@ -458,8 +458,7 @@ static REVERSE_RELATIONS: OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>
 
 /// Registers a reverse relation during the initialization phase.
 ///
-/// Must be called before `finalize_reverse_relations()`. Panics if called
-/// after finalization.
+/// Must be called before `finalize_reverse_relations()`.
 ///
 /// # Examples
 ///
@@ -473,21 +472,26 @@ static REVERSE_RELATIONS: OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>
 ///     ReverseRelationType::ReverseOneToMany,
 ///     "author",
 /// );
-/// register_reverse_relation(reverse_relation);
+/// register_reverse_relation(reverse_relation).unwrap();
 /// ```
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if called after `finalize_reverse_relations()` has been called.
-pub fn register_reverse_relation(relation: ReverseRelationMetadata) {
+/// Returns [`AppError::RegistryState`] if called after `finalize_reverse_relations()`.
+pub fn register_reverse_relation(
+	relation: ReverseRelationMetadata,
+) -> Result<(), crate::AppError> {
 	if REVERSE_RELATIONS.get().is_some() {
-		panic!("Cannot register reverse relations after finalization");
+		return Err(crate::AppError::RegistryState(
+			"Cannot register reverse relations after finalization".to_string(),
+		));
 	}
 	// Recover from poisoned lock to prevent cascading panics
 	let mut builder = REVERSE_RELATIONS_BUILDER
 		.write()
 		.unwrap_or_else(PoisonError::into_inner);
 	builder.push(relation);
+	Ok(())
 }
 
 /// Finalizes the reverse relations, making them immutable.
