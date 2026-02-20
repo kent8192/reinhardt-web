@@ -677,6 +677,11 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 							&& let syn::Lit::Bool(b) = &lit.lit
 						{
 							disabled = b.value;
+						} else {
+							return Err(Error::new(
+								*span,
+								"'disabled' must be a boolean value (true or false), or use as a flag without a value",
+							));
 						}
 					}
 					"readonly" => {
@@ -684,6 +689,11 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 							&& let syn::Lit::Bool(b) = &lit.lit
 						{
 							readonly = b.value;
+						} else {
+							return Err(Error::new(
+								*span,
+								"'readonly' must be a boolean value (true or false), or use as a flag without a value",
+							));
 						}
 					}
 					"autofocus" => {
@@ -691,6 +701,11 @@ fn extract_display_properties(properties: &[FormFieldProperty]) -> Result<TypedF
 							&& let syn::Lit::Bool(b) = &lit.lit
 						{
 							autofocus = b.value;
+						} else {
+							return Err(Error::new(
+								*span,
+								"'autofocus' must be a boolean value (true or false), or use as a flag without a value",
+							));
 						}
 					}
 					_ => {} // Ignore non-display properties
