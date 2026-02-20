@@ -111,9 +111,7 @@ impl CratesIoClient {
 	/// Returns an error if the client cannot be initialized.
 	pub fn with_user_agent(user_agent: &str) -> PluginResult<Self> {
 		let client = AsyncClient::new(user_agent, std::time::Duration::from_millis(1000))
-			.map_err(|e| {
-				PluginError::Network(format!("Failed to create crates.io client: {e}"))
-			})?;
+			.map_err(|e| PluginError::Network(format!("Failed to create crates.io client: {e}")))?;
 
 		Ok(Self { client })
 	}
