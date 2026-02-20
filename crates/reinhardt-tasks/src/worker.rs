@@ -10,7 +10,7 @@ use crate::{
 use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{Semaphore, broadcast};
 
 /// Worker configuration
 ///
@@ -175,6 +175,8 @@ pub struct Worker {
 	task_lock: Option<Arc<dyn TaskLock>>,
 	result_backend: Option<Arc<dyn ResultBackend>>,
 	webhook_senders: Vec<Arc<dyn WebhookSender>>,
+	/// Semaphore that enforces the configured concurrency limit
+	concurrency_semaphore: Arc<Semaphore>,
 }
 
 impl Worker {
@@ -190,6 +192,7 @@ impl Worker {
 	/// ```
 	pub fn new(config: WorkerConfig) -> Self {
 		let (shutdown_tx, _) = broadcast::channel(1);
+		let concurrency_semaphore = Arc::new(Semaphore::new(config.concurrency));
 
 		// Create webhook senders from configuration
 		let webhook_senders: Vec<Arc<dyn WebhookSender>> = config
@@ -207,6 +210,7 @@ impl Worker {
 			task_lock: None,
 			result_backend: None,
 			webhook_senders,
+			concurrency_semaphore,
 		}
 	}
 
@@ -306,13 +310,30 @@ impl Worker {
 		Ok(())
 	}
 
-	/// Try to process a single task from the backend
+	/// Try to process a single task from the backend.
+	///
+	/// Acquires a concurrency permit before executing the task, ensuring the
+	/// configured concurrency limit is enforced. The permit is released
+	/// when the spawned task completes.
 	async fn try_process_task(&self, backend: Arc<dyn TaskBackend>) {
 		match backend.dequeue().await {
 			Ok(Some(task_id)) => {
+				// Acquire a concurrency permit before executing the task.
+				// This enforces the configured concurrency limit.
+				let permit = match self.concurrency_semaphore.clone().acquire_owned().await {
+					Ok(permit) => permit,
+					Err(_) => {
+						eprintln!(
+							"[{}] Concurrency semaphore closed unexpectedly",
+							self.config.name
+						);
+						return;
+					}
+				};
+
 				println!("[{}] Processing task: {}", self.config.name, task_id);
 
-				// Execute task
+				// Execute task; permit is held for the duration
 				match self.execute_task(task_id, backend.clone()).await {
 					Ok(_) => {
 						println!(
@@ -336,6 +357,9 @@ impl Worker {
 						}
 					}
 				}
+
+				// Permit is dropped here, releasing the concurrency slot
+				drop(permit);
 			}
 			Ok(None) => {
 				// No tasks available - interval will automatically wait before next poll
@@ -527,13 +551,16 @@ impl Worker {
 
 impl Default for Worker {
 	fn default() -> Self {
+		let config = WorkerConfig::default();
+		let concurrency_semaphore = Arc::new(Semaphore::new(config.concurrency));
 		Self {
-			config: WorkerConfig::default(),
+			config,
 			shutdown_tx: broadcast::channel(1).0,
 			registry: None,
 			task_lock: None,
 			result_backend: None,
 			webhook_senders: Vec::new(),
+			concurrency_semaphore,
 		}
 	}
 }
@@ -606,6 +633,7 @@ mod tests {
 			task_lock: None,
 			result_backend: None,
 			webhook_senders: Vec::new(),
+			concurrency_semaphore: worker.concurrency_semaphore.clone(),
 		};
 
 		let handle = tokio::spawn(async move { worker.run(backend).await });
