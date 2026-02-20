@@ -75,18 +75,27 @@ where
 		Ok(response) => response,
 		Err(error) => {
 			let exception_handler = DefaultExceptionHandler;
-			// Create a dummy request for error handling since we consumed the original
-			let dummy_request = Request::builder()
+			// Create a dummy request for error handling since we consumed the original.
+			// Fall back to a plain 500 response if request construction fails to avoid panicking.
+			match Request::builder()
 				.method(hyper::Method::GET)
 				.uri("/")
 				.version(hyper::Version::HTTP_11)
 				.headers(hyper::HeaderMap::new())
 				.body(Bytes::new())
 				.build()
-				.unwrap();
-			exception_handler
-				.handle_exception(&dummy_request, error)
-				.await
+			{
+				Ok(dummy_request) => {
+					exception_handler
+						.handle_exception(&dummy_request, error)
+						.await
+				}
+				Err(_) => {
+					let mut response = Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
+					response.body = Bytes::from("Internal Server Error");
+					response
+				}
+			}
 		}
 	}
 }
