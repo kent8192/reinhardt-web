@@ -880,7 +880,9 @@ impl Request {
 			.map(|(k, v)| (k.clone(), v.clone()))
 			.collect();
 
-		serde_urlencoded::from_str(&serde_urlencoded::to_string(&params).unwrap())
+		let encoded = serde_urlencoded::to_string(&params)
+			.map_err(|e| crate::Error::Http(format!("Failed to encode query parameters: {}", e)))?;
+		serde_urlencoded::from_str(&encoded)
 			.map_err(|e| crate::Error::Http(format!("Failed to parse query parameters: {}", e)))
 	}
 }
