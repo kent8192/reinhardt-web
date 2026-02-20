@@ -21,7 +21,19 @@ pub(crate) struct PathParam {
 /// - `/users/` - Exact match
 /// - `/users/{id}/` - Single path parameter
 /// - `/users/{id}/posts/{post_id}/` - Multiple parameters
-/// - `/static/{path:*}/` - Wildcard matching (rest of path)
+/// - `/static/{path:*}` - Wildcard matching (rest of path)
+///
+/// # Wildcard Behavior
+///
+/// The `{name:*}` wildcard syntax compiles to `(.*)`, which matches **any
+/// character including path separators (`/`)**. This means a pattern like
+/// `/files/{path:*}` will match `/files/a/b/c/d`, capturing `a/b/c/d` as
+/// a single parameter value.
+///
+/// **Security warning:** If the captured wildcard value is used for file
+/// system access, callers must validate the value to prevent path traversal
+/// attacks (e.g., reject `..` segments, absolute paths, and encoded
+/// sequences like `%2e` or `%2f`).
 #[derive(Debug, Clone)]
 pub struct ClientPathPattern {
 	/// The original pattern string.
@@ -128,7 +140,9 @@ impl ClientPathPattern {
 					param_names.push(param.clone());
 
 					if is_wildcard {
-						// Wildcard: match anything including slashes
+						// Wildcard: match anything including path separators (/).
+						// Callers must validate captured values to prevent path
+						// traversal when using them for file system access.
 						regex_str.push_str(&format!("(?P<{}>.*)", param));
 					} else {
 						// Normal: match anything except slashes

@@ -82,8 +82,11 @@ pub fn validate_form(ast: &FormMacro) -> Result<TypedFormMacro> {
 	// Transform client-side validators
 	let client_validators = transform_client_validators(&ast.client_validators, &ast.fields)?;
 
+	// The parser guarantees that `name` is Some after successful parsing.
+	let name = ast.name.clone().expect("form name must be set after parsing");
+
 	Ok(TypedFormMacro {
-		name: ast.name.clone(),
+		name,
 		action,
 		method,
 		styling,
