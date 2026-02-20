@@ -3,6 +3,7 @@ use super::time_provider::{SystemTimeProvider, TimeProvider};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 
@@ -37,10 +38,15 @@ struct WindowEntry {
 	window_secs: u64,
 }
 
+/// Probabilistic eviction runs roughly once per this many increment operations.
+const EVICTION_INTERVAL: u64 = 100;
+
 #[derive(Clone)]
 pub struct MemoryBackend<T: TimeProvider = SystemTimeProvider> {
 	storage: Arc<RwLock<HashMap<String, WindowEntry>>>,
 	time_provider: Arc<T>,
+	/// Counter for probabilistic eviction scheduling
+	ops_counter: Arc<AtomicU64>,
 }
 
 impl MemoryBackend<SystemTimeProvider> {
@@ -58,6 +64,7 @@ impl MemoryBackend<SystemTimeProvider> {
 		Self {
 			storage: Arc::new(RwLock::new(HashMap::new())),
 			time_provider: Arc::new(SystemTimeProvider::new()),
+			ops_counter: Arc::new(AtomicU64::new(0)),
 		}
 	}
 }
@@ -68,7 +75,24 @@ impl<T: TimeProvider> MemoryBackend<T> {
 		Self {
 			storage: Arc::new(RwLock::new(HashMap::new())),
 			time_provider,
+			ops_counter: Arc::new(AtomicU64::new(0)),
 		}
+	}
+
+	/// Evict expired entries from the storage map.
+	///
+	/// Called probabilistically on each increment to bound memory growth
+	/// without adding per-request overhead.
+	async fn maybe_evict_expired(&self) {
+		let count = self.ops_counter.fetch_add(1, Ordering::Relaxed);
+		if count % EVICTION_INTERVAL != 0 {
+			return;
+		}
+		let now = self.time_provider.now();
+		let mut storage = self.storage.write().await;
+		storage.retain(|_, entry| {
+			now.duration_since(entry.window_start) <= Duration::from_secs(entry.window_secs)
+		});
 	}
 }
 
@@ -81,6 +105,9 @@ impl Default for MemoryBackend<SystemTimeProvider> {
 #[async_trait]
 impl<T: TimeProvider> ThrottleBackend for MemoryBackend<T> {
 	async fn increment(&self, key: &str, window_secs: u64) -> Result<usize, String> {
+		// Periodically evict expired entries to prevent unbounded memory growth
+		self.maybe_evict_expired().await;
+
 		let mut storage = self.storage.write().await;
 		let now = self.time_provider.now();
 		let entry = storage.entry(key.to_string()).or_insert(WindowEntry {

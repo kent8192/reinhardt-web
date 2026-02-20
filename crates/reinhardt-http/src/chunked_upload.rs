@@ -10,7 +10,11 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Default session timeout for chunked uploads (1 hour).
+/// Sessions older than this are considered stale and eligible for cleanup.
+const UPLOAD_SESSION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Errors that can occur during chunked upload
 #[derive(Debug, thiserror::Error)]
@@ -150,6 +154,8 @@ pub struct ChunkedUploadSession {
 	pub completed: bool,
 	/// Upload progress tracker
 	progress: UploadProgress,
+	/// When the session was created, used for timeout-based cleanup
+	created_at: Instant,
 }
 
 impl ChunkedUploadSession {
@@ -180,6 +186,7 @@ impl ChunkedUploadSession {
 			temp_dir,
 			completed: false,
 			progress: UploadProgress::new(total_size, total_chunks),
+			created_at: Instant::now(),
 		})
 	}
 
@@ -281,6 +288,9 @@ impl ChunkedUploadManager {
 		total_size: usize,
 		chunk_size: usize,
 	) -> Result<ChunkedUploadSession, ChunkedUploadError> {
+		// Lazily clean up expired sessions to prevent memory exhaustion
+		self.cleanup_expired_sessions();
+
 		// Validate session_id to prevent path traversal attacks.
 		// Session IDs are used to construct directory and file paths.
 		// Check both raw and URL-decoded forms to prevent bypass via
@@ -335,6 +345,9 @@ impl ChunkedUploadManager {
 		chunk_number: usize,
 		data: &[u8],
 	) -> Result<ChunkedUploadSession, ChunkedUploadError> {
+		// Lazily clean up expired sessions to prevent memory exhaustion
+		self.cleanup_expired_sessions();
+
 		let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
 		let session = sessions
 			.get_mut(session_id)
@@ -439,6 +452,22 @@ impl ChunkedUploadManager {
 	pub fn list_sessions(&self) -> Vec<ChunkedUploadSession> {
 		let sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
 		sessions.values().cloned().collect()
+	}
+
+	/// Remove sessions that have exceeded the timeout.
+	///
+	/// Expired sessions have their temporary files cleaned up automatically.
+	/// This is called lazily on `start_session` and `upload_chunk` to prevent
+	/// unbounded memory growth from abandoned uploads.
+	pub fn cleanup_expired_sessions(&self) {
+		let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+		sessions.retain(|_, session| {
+			let expired = session.created_at.elapsed() >= UPLOAD_SESSION_TIMEOUT;
+			if expired && session.temp_dir.exists() {
+				let _ = fs::remove_dir_all(&session.temp_dir);
+			}
+			!expired
+		});
 	}
 }
 
