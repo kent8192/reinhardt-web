@@ -618,15 +618,10 @@ async fn execute_showurls(names: bool, verbosity: u8) -> Result<(), Box<dyn std:
 
 #[cfg(not(feature = "routers"))]
 async fn execute_showurls(_names: bool, _verbosity: u8) -> Result<(), Box<dyn std::error::Error>> {
-	use colored::Colorize;
-	eprintln!(
-		"{}",
-		"showurls command requires 'routers' feature".red().bold()
-	);
-	eprintln!("Enable it in your Cargo.toml:");
-	eprintln!("  [dependencies]");
-	eprintln!("  reinhardt-commands = {{ version = \"0.1.0\", features = [\"routers\"] }}");
-	std::process::exit(1);
+	Err("showurls command requires 'routers' feature. \
+		Enable it in your Cargo.toml: \
+		reinhardt-commands = { version = \"0.1.0\", features = [\"routers\"] }"
+		.into())
 }
 
 /// Execute the generateopenapi command
@@ -688,10 +683,10 @@ async fn execute_generateopenapi(
 			.status()?;
 
 		if !status.success() {
-			eprintln!("{}", "Failed to generate Postman Collection".red().bold());
-			eprintln!("Make sure Node.js and npx are installed:");
-			eprintln!("  npm install -g openapi-to-postmanv2");
-			std::process::exit(1);
+			return Err("Failed to generate Postman Collection. \
+				Make sure Node.js and npx are installed: \
+				npm install -g openapi-to-postmanv2"
+				.into());
 		}
 
 		if verbosity > 0 {
@@ -707,24 +702,17 @@ async fn execute_generateopenapi(
 }
 
 #[cfg(not(feature = "openapi"))]
-#[allow(dead_code)]
+#[allow(dead_code)] // Entry point when openapi feature is disabled
 async fn execute_generateopenapi(
 	_format: String,
 	_output: PathBuf,
 	_postman: bool,
 	_verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	use colored::Colorize;
-	eprintln!(
-		"{}",
-		"generateopenapi command requires 'openapi' feature"
-			.red()
-			.bold()
-	);
-	eprintln!("Enable it in your Cargo.toml:");
-	eprintln!("  [dependencies]");
-	eprintln!("  reinhardt-commands = {{ version = \"0.1.0\", features = [\"openapi\"] }}");
-	std::process::exit(1);
+	Err("generateopenapi command requires 'openapi' feature. \
+		Enable it in your Cargo.toml: \
+		reinhardt-commands = { version = \"0.1.0\", features = [\"openapi\"] }"
+		.into())
 }
 
 // ============================================================================
