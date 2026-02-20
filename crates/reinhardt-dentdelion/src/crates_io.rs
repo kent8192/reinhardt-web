@@ -15,7 +15,7 @@
 //! ```ignore
 //! use reinhardt_dentdelion::crates_io::CratesIoClient;
 //!
-//! let client = CratesIoClient::new()?;
+//! let client = CratesIoClient::new("your-email@your-domain.com")?;
 //!
 //! // Search for plugins
 //! let plugins = client.search_plugins("auth", 10)?;
@@ -75,25 +75,61 @@ pub struct DependencyInfo {
 	pub kind: String,
 }
 
+/// Default rate limit interval for crates.io API requests (1 second).
+const DEFAULT_RATE_LIMIT: std::time::Duration = std::time::Duration::from_millis(1000);
+
 /// Client for interacting with the crates.io API.
 pub struct CratesIoClient {
 	client: crates_io_api::AsyncClient,
 }
 
 impl CratesIoClient {
-	/// Create a new crates.io client.
+	/// Create a new crates.io client with a contact email.
+	///
+	/// The contact email is included in the User-Agent header as required by
+	/// [crates.io crawling policy](https://crates.io/policies#crawlers).
+	/// Placeholder emails (e.g., `example.com` domains) are rejected.
+	///
+	/// # Arguments
+	///
+	/// * `contact` - A valid contact email address for the User-Agent header
 	///
 	/// # Errors
 	///
-	/// Returns an error if the client cannot be initialized.
-	pub fn new() -> PluginResult<Self> {
-		let client = AsyncClient::new(
-			"reinhardt-dentdelion (contact@example.com)",
-			std::time::Duration::from_millis(1000),
-		)
-		.map_err(|e| PluginError::Network(format!("Failed to create crates.io client: {e}")))?;
+	/// Returns an error if the contact email is a placeholder or if the client
+	/// cannot be initialized.
+	pub fn new(contact: &str) -> PluginResult<Self> {
+		Self::validate_contact(contact)?;
+
+		let version = env!("CARGO_PKG_VERSION");
+		let user_agent = format!("reinhardt-dentdelion/{version} (contact: {contact})");
+
+		let client = AsyncClient::new(&user_agent, DEFAULT_RATE_LIMIT)
+			.map_err(|e| PluginError::Network(format!("Failed to create crates.io client: {e}")))?;
 
 		Ok(Self { client })
+	}
+
+	/// Validate that the contact email is not a placeholder.
+	fn validate_contact(contact: &str) -> PluginResult<()> {
+		if contact.is_empty() {
+			return Err(PluginError::ConfigError(
+				"contact email must not be empty for crates.io User-Agent".to_string(),
+			));
+		}
+
+		let lower = contact.to_lowercase();
+		if lower.contains("example.com")
+			|| lower.contains("example.org")
+			|| lower.contains("example.net")
+			|| lower.contains("placeholder")
+		{
+			return Err(PluginError::ConfigError(format!(
+				"contact email must not be a placeholder for crates.io User-Agent: {contact}"
+			)));
+		}
+
+		Ok(())
 	}
 
 	/// Get information about a specific crate.
@@ -443,6 +479,7 @@ impl std::fmt::Debug for CratesIoClient {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	// ==========================================================================
 	// Plugin Naming Tests (existing)
@@ -778,5 +815,98 @@ mod tests {
 	fn test_invalid_version_req_error() {
 		let result = semver::VersionReq::parse("invalid-req");
 		assert!(result.is_err());
+	}
+
+	// ==========================================================================
+	// Contact Email Validation Tests
+	// ==========================================================================
+
+	#[rstest]
+	fn test_validate_contact_rejects_empty_email() {
+		// Arrange
+		let contact = "";
+
+		// Act
+		let result = CratesIoClient::validate_contact(contact);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(matches!(err, PluginError::ConfigError(_)));
+		assert!(err.to_string().contains("must not be empty"));
+	}
+
+	#[rstest]
+	#[case("user@example.com")]
+	#[case("admin@EXAMPLE.COM")]
+	#[case("test@example.org")]
+	#[case("test@example.net")]
+	fn test_validate_contact_rejects_placeholder_emails(#[case] contact: &str) {
+		// Arrange & Act
+		let result = CratesIoClient::validate_contact(contact);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(matches!(err, PluginError::ConfigError(_)));
+		assert!(err.to_string().contains("must not be a placeholder"));
+	}
+
+	#[rstest]
+	fn test_validate_contact_rejects_placeholder_keyword() {
+		// Arrange
+		let contact = "placeholder@myorg.com";
+
+		// Act
+		let result = CratesIoClient::validate_contact(contact);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(matches!(err, PluginError::ConfigError(_)));
+	}
+
+	#[rstest]
+	#[case("admin@mycompany.com")]
+	#[case("dev@reinhardt-project.org")]
+	#[case("support@mydomain.net")]
+	fn test_validate_contact_accepts_valid_emails(#[case] contact: &str) {
+		// Arrange & Act
+		let result = CratesIoClient::validate_contact(contact);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_new_rejects_placeholder_email() {
+		// Arrange
+		let contact = "contact@example.com";
+
+		// Act
+		let result = CratesIoClient::new(contact);
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(matches!(err, PluginError::ConfigError(_)));
+	}
+
+	#[rstest]
+	fn test_new_accepts_valid_email() {
+		// Arrange
+		let contact = "admin@mycompany.com";
+
+		// Act
+		let result = CratesIoClient::new(contact);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn test_default_rate_limit_constant() {
+		// Arrange & Assert
+		assert_eq!(DEFAULT_RATE_LIMIT, std::time::Duration::from_millis(1000));
 	}
 }

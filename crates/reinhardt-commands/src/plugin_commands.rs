@@ -29,6 +29,29 @@ fn get_project_root(ctx: &CommandContext) -> PathBuf {
 		.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
+/// Create a `CratesIoClient` with the contact email from context options.
+///
+/// Reads the `--contact` option from the command context. This option is required
+/// by the crates.io API policy for the User-Agent header.
+fn create_crates_io_client(ctx: &CommandContext) -> CommandResult<CratesIoClient> {
+	let contact = ctx.option("contact").ok_or_else(|| {
+		CommandError::InvalidArguments(
+			"--contact <email> is required for crates.io API access".to_string(),
+		)
+	})?;
+	CratesIoClient::new(contact)
+		.map_err(|e| CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}")))
+}
+
+/// Common `--contact` option definition for commands that access crates.io.
+fn contact_option() -> CommandOption {
+	CommandOption::option(
+		None,
+		"contact",
+		"Contact email for crates.io User-Agent header",
+	)
+}
+
 // =============================================================================
 // Plugin List Command
 // =============================================================================
@@ -165,6 +188,7 @@ impl BaseCommand for PluginInfoCommand {
 		vec![
 			CommandOption::flag(None, "remote", "Fetch info from crates.io instead of local"),
 			CommandOption::option(None, "project-root", "Project root directory"),
+			contact_option(),
 		]
 	}
 
@@ -179,9 +203,7 @@ impl BaseCommand for PluginInfoCommand {
 
 		if ctx.has_option("remote") {
 			// Fetch from crates.io
-			let client = CratesIoClient::new().map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}"))
-			})?;
+			let client = create_crates_io_client(ctx)?;
 
 			let info = client.get_crate_info(name).await.map_err(|e| {
 				CommandError::ExecutionError(format!("Failed to fetch plugin info: {e}"))
@@ -291,6 +313,7 @@ impl BaseCommand for PluginInstallCommand {
 			CommandOption::option(None, "version", "Specific version to install"),
 			CommandOption::flag(Some('y'), "yes", "Skip confirmation prompt"),
 			CommandOption::option(None, "project-root", "Project root directory"),
+			contact_option(),
 		]
 	}
 
@@ -327,9 +350,7 @@ impl BaseCommand for PluginInstallCommand {
 
 		// Get version from crates.io
 		ctx.info(&format!("Fetching {plugin_name} from crates.io..."));
-		let client = CratesIoClient::new().map_err(|e| {
-			CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}"))
-		})?;
+		let client = create_crates_io_client(ctx)?;
 
 		let version = if let Some(v) = ctx.option("version") {
 			v.to_string()
@@ -588,7 +609,10 @@ impl BaseCommand for PluginSearchCommand {
 	}
 
 	fn options(&self) -> Vec<CommandOption> {
-		vec![CommandOption::option(None, "limit", "Maximum number of results").with_default("10")]
+		vec![
+			CommandOption::option(None, "limit", "Maximum number of results").with_default("10"),
+			contact_option(),
+		]
 	}
 
 	fn requires_system_checks(&self) -> bool {
@@ -609,9 +633,7 @@ impl BaseCommand for PluginSearchCommand {
 			"Searching crates.io for '*-delion' plugins matching '{query}'..."
 		));
 
-		let client = CratesIoClient::new().map_err(|e| {
-			CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}"))
-		})?;
+		let client = create_crates_io_client(ctx)?;
 
 		let plugins = client
 			.search_plugins(query, limit)
@@ -668,6 +690,7 @@ impl BaseCommand for PluginUpdateCommand {
 			CommandOption::flag(None, "all", "Update all plugins"),
 			CommandOption::flag(Some('y'), "yes", "Skip confirmation prompt"),
 			CommandOption::option(None, "project-root", "Project root directory"),
+			contact_option(),
 		]
 	}
 
@@ -689,9 +712,7 @@ impl BaseCommand for PluginUpdateCommand {
 			.map_err(|e| CommandError::ExecutionError(format!("Failed to load manifest: {e}")))?;
 
 		let installer = PluginInstaller::new(&project_root);
-		let client = CratesIoClient::new().map_err(|e| {
-			CommandError::ExecutionError(format!("Failed to connect to crates.io: {e}"))
-		})?;
+		let client = create_crates_io_client(ctx)?;
 
 		let plugins_to_update: Vec<_> = if ctx.has_option("all") {
 			manifest.plugins.iter().map(|p| p.name.clone()).collect()
