@@ -217,6 +217,17 @@ impl OnConflictClause {
 	///
 	/// * `condition` - SQL condition expression
 	///
+	/// # Safety
+	///
+	/// This method embeds the `condition` string directly into the generated SQL
+	/// without any escaping or parameterization. The caller **must** ensure that
+	/// the input is trusted and not derived from user-controlled data.
+	///
+	/// # SQL Injection Risk
+	///
+	/// Passing unsanitized user input to this method will result in a SQL injection
+	/// vulnerability. Always use hardcoded or application-controlled expressions.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
