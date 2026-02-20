@@ -106,8 +106,10 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		})
 		.collect();
 
-	// Generate the original function with renamed parameters (to avoid conflict)
-	let original_fn_name = syn::Ident::new(&format!("{}_impl", fn_name), fn_name.span());
+	// Generate the original function with a hygienic internal name.
+	// Uses double-underscore `__reinhardt_` prefix to avoid collisions with user-defined names.
+	let original_fn_name =
+		syn::Ident::new(&format!("__reinhardt_{}_impl", fn_name), fn_name.span());
 	let original_params: Vec<_> = inject_params
 		.iter()
 		.chain(regular_params.iter())

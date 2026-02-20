@@ -436,7 +436,8 @@ impl Worker {
 			};
 
 		let completed_at = Utc::now();
-		let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
+		// Use saturating conversion to prevent overflow on negative or very large durations
+		let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
 
 		// Determine final task status
 		let (task_status, webhook_status) = match &result {
@@ -541,9 +542,11 @@ impl Default for Worker {
 mod tests {
 	use super::*;
 	use crate::{DummyBackend, Task, TaskId, TaskPriority};
+	use rstest::rstest;
 	use std::time::Duration;
 	use tokio::time::sleep;
 
+	// Test helper: unused fields are intentional for trait implementation
 	#[allow(dead_code)]
 	struct TestTask {
 		id: TaskId,
@@ -564,25 +567,36 @@ mod tests {
 		}
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_creation() {
+		// Arrange
 		let config = WorkerConfig::new("test-worker".to_string());
+
+		// Act
 		let worker = Worker::new(config);
+
+		// Assert
 		assert_eq!(worker.config.name, "test-worker");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_config_builder() {
+		// Arrange & Act
 		let config = WorkerConfig::new("test".to_string())
 			.with_concurrency(8)
 			.with_poll_interval(Duration::from_millis(100));
 
+		// Assert
 		assert_eq!(config.concurrency, 8);
 		assert_eq!(config.poll_interval, Duration::from_millis(100));
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_start_and_stop() {
+		// Arrange
 		let worker = Worker::new(WorkerConfig::default());
 		let backend = Arc::new(DummyBackend::new());
 		let worker_clone = Worker {
@@ -599,41 +613,53 @@ mod tests {
 		// Give worker time to start
 		sleep(Duration::from_millis(100)).await;
 
-		// Stop worker
+		// Act
 		worker_clone.stop().await;
 
-		// Wait for worker to finish
+		// Assert - worker should finish within timeout
 		let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
 		assert!(result.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_registry() {
+		// Arrange
 		use crate::registry::TaskRegistry;
-
 		let registry = Arc::new(TaskRegistry::new());
+
+		// Act
 		let worker = Worker::new(WorkerConfig::default()).with_registry(registry);
 
+		// Assert
 		assert!(worker.registry.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_lock() {
+		// Arrange
 		use crate::locking::MemoryTaskLock;
-
 		let lock = Arc::new(MemoryTaskLock::new());
+
+		// Act
 		let worker = Worker::new(WorkerConfig::default()).with_lock(lock);
 
+		// Assert
 		assert!(worker.task_lock.is_some());
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_worker_with_result_backend() {
+		// Arrange
 		use crate::result::MemoryResultBackend;
-
 		let backend = Arc::new(MemoryResultBackend::new());
+
+		// Act
 		let worker = Worker::new(WorkerConfig::default()).with_result_backend(backend);
 
+		// Assert
 		assert!(worker.result_backend.is_some());
 	}
 }

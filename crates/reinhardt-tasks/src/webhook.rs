@@ -714,18 +714,27 @@ mod tests {
 	use rstest::rstest;
 	use std::time::Duration;
 
-	#[test]
+	#[rstest]
 	fn test_task_status_serialization() {
+		// Arrange
 		let status = TaskStatus::Success;
+
+		// Act
 		let json = serde_json::to_string(&status).unwrap();
+
+		// Assert
 		assert_eq!(json, r#""success""#);
 
+		// Act
 		let status: TaskStatus = serde_json::from_str(r#""failed""#).unwrap();
+
+		// Assert
 		assert_eq!(status, TaskStatus::Failed);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_event_serialization() {
+		// Arrange
 		let now = Utc::now();
 		let event = WebhookEvent {
 			task_id: TaskId::new(),
@@ -738,35 +747,48 @@ mod tests {
 			duration_ms: 1000,
 		};
 
+		// Act
 		let json = serde_json::to_string(&event).unwrap();
+
+		// Assert
 		assert!(json.contains("test_task"));
 		assert!(json.contains(r#""status":"success""#));
 
+		// Act
 		let deserialized: WebhookEvent = serde_json::from_str(&json).unwrap();
+
+		// Assert
 		assert_eq!(deserialized.task_name, "test_task");
 		assert_eq!(deserialized.status, TaskStatus::Success);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_retry_config_default() {
+		// Arrange & Act
 		let config = RetryConfig::default();
+
+		// Assert
 		assert_eq!(config.max_retries, 3);
 		assert_eq!(config.initial_backoff, Duration::from_millis(100));
 		assert_eq!(config.max_backoff, Duration::from_secs(30));
 		assert_eq!(config.backoff_multiplier, 2.0);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_config_default() {
+		// Arrange & Act
 		let config = WebhookConfig::default();
+
+		// Assert
 		assert_eq!(config.url, "");
 		assert_eq!(config.method, "POST");
 		assert_eq!(config.timeout, Duration::from_secs(5));
 		assert!(config.headers.is_empty());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_calculate_backoff() {
+		// Arrange
 		let config = WebhookConfig {
 			url: "https://example.com".to_string(),
 			method: "POST".to_string(),
@@ -779,26 +801,26 @@ mod tests {
 				backoff_multiplier: 2.0,
 			},
 		};
-
 		let sender = HttpWebhookSender::new(config);
 
-		// Test exponential backoff
+		// Act - test exponential backoff
 		let backoff0 = sender.calculate_backoff(0);
 		let backoff1 = sender.calculate_backoff(1);
 		let backoff2 = sender.calculate_backoff(2);
 
-		// Verify exponential growth (accounting for jitter)
-		assert!(backoff0.as_millis() >= 75 && backoff0.as_millis() <= 125); // ~100ms ±25%
-		assert!(backoff1.as_millis() >= 150 && backoff1.as_millis() <= 250); // ~200ms ±25%
-		assert!(backoff2.as_millis() >= 300 && backoff2.as_millis() <= 500); // ~400ms ±25%
+		// Assert - verify exponential growth (accounting for jitter)
+		assert!(backoff0.as_millis() >= 75 && backoff0.as_millis() <= 125); // ~100ms +/-25%
+		assert!(backoff1.as_millis() >= 150 && backoff1.as_millis() <= 250); // ~200ms +/-25%
+		assert!(backoff2.as_millis() >= 300 && backoff2.as_millis() <= 500); // ~400ms +/-25%
 
-		// Test max backoff cap
+		// Act & Assert - test max backoff cap
 		let backoff_large = sender.calculate_backoff(100);
 		assert!(backoff_large <= Duration::from_secs(10));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_webhook_error_display() {
+		// Arrange & Act & Assert
 		let error = WebhookError::RequestFailed("Connection timeout".to_string());
 		assert_eq!(
 			error.to_string(),
@@ -815,20 +837,25 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_http_webhook_sender_creation() {
+		// Arrange & Act
 		let config = WebhookConfig::default();
 		let sender = HttpWebhookSender::new(config);
 
-		// Verify sender is created successfully
+		// Assert
 		assert_eq!(sender.config.method, "POST");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_event_creation() {
+		// Arrange
 		let now = Utc::now();
 		let started = now - chrono::Duration::seconds(5);
 
+		// Act
 		let event = WebhookEvent {
 			task_id: TaskId::new(),
 			task_name: "test_task".to_string(),
@@ -840,6 +867,7 @@ mod tests {
 			duration_ms: 5000,
 		};
 
+		// Assert
 		assert_eq!(event.task_name, "test_task");
 		assert_eq!(event.status, TaskStatus::Success);
 		assert!(event.result.is_some());
@@ -847,9 +875,13 @@ mod tests {
 		assert_eq!(event.duration_ms, 5000);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_failed_event() {
+		// Arrange
 		let now = Utc::now();
+
+		// Act
 		let event = WebhookEvent {
 			task_id: TaskId::new(),
 			task_name: "failed_task".to_string(),
@@ -861,6 +893,7 @@ mod tests {
 			duration_ms: 100,
 		};
 
+		// Assert
 		assert_eq!(event.status, TaskStatus::Failed);
 		assert!(event.result.is_none());
 		assert!(event.error.is_some());
@@ -870,12 +903,14 @@ mod tests {
 		);
 	}
 
-	// Integration test with mock HTTP server
+	// Integration test with mock HTTP server.
 	// NOTE: These tests use send_with_retry directly because mockito servers
 	// use HTTP on localhost, which is intentionally blocked by SSRF validation.
 	// SSRF validation is tested separately below.
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_success() {
+		// Arrange
 		let mut server = mockito::Server::new_async().await;
 		let mock = server
 			.mock("POST", "/webhook")
@@ -912,14 +947,18 @@ mod tests {
 			duration_ms: 100,
 		};
 
+		// Act
 		let result = sender.send_with_retry(&event).await;
-		assert!(result.is_ok());
 
+		// Assert
+		assert!(result.is_ok());
 		mock.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_retry_then_success() {
+		// Arrange
 		let mut server = mockito::Server::new_async().await;
 
 		// First two requests fail, third succeeds
@@ -971,16 +1010,20 @@ mod tests {
 			duration_ms: 100,
 		};
 
+		// Act
 		let result = sender.send_with_retry(&event).await;
-		assert!(result.is_ok());
 
+		// Assert
+		assert!(result.is_ok());
 		mock1.assert_async().await;
 		mock2.assert_async().await;
 		mock3.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_send_max_retries_exceeded() {
+		// Arrange
 		let mut server = mockito::Server::new_async().await;
 
 		// All requests fail
@@ -1018,18 +1061,22 @@ mod tests {
 			duration_ms: 100,
 		};
 
+		// Act
 		let result = sender.send_with_retry(&event).await;
+
+		// Assert
 		assert!(result.is_err());
 		assert!(matches!(
 			result.unwrap_err(),
 			WebhookError::MaxRetriesExceeded
 		));
-
 		mock.assert_async().await;
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_webhook_custom_headers() {
+		// Arrange
 		let mut server = mockito::Server::new_async().await;
 
 		let mock = server
@@ -1071,10 +1118,70 @@ mod tests {
 			duration_ms: 100,
 		};
 
+		// Act
 		let result = sender.send_with_retry(&event).await;
-		assert!(result.is_ok());
 
+		// Assert
+		assert!(result.is_ok());
 		mock.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_webhook_retry_loop_sleeps_between_retries() {
+		// Arrange - verify that the retry loop actually sleeps (using backoff delay)
+		// between failed attempts, preventing a tight CPU-spinning retry loop.
+		let mut server = mockito::Server::new_async().await;
+
+		// All requests fail so we go through all retries
+		let _mock = server
+			.mock("POST", "/webhook")
+			.with_status(500)
+			.expect(3) // Initial + 2 retries
+			.create_async()
+			.await;
+
+		let config = WebhookConfig {
+			url: format!("{}/webhook", server.url()),
+			method: "POST".to_string(),
+			headers: HashMap::new(),
+			timeout: Duration::from_secs(5),
+			retry_config: RetryConfig {
+				max_retries: 2,
+				initial_backoff: Duration::from_millis(50),
+				max_backoff: Duration::from_secs(1),
+				backoff_multiplier: 2.0,
+			},
+		};
+
+		let sender = HttpWebhookSender::new(config);
+
+		let now = Utc::now();
+		let event = WebhookEvent {
+			task_id: TaskId::new(),
+			task_name: "test_task".to_string(),
+			status: TaskStatus::Success,
+			result: None,
+			error: None,
+			started_at: now,
+			completed_at: now,
+			duration_ms: 0,
+		};
+
+		// Act - measure elapsed time to verify sleep actually occurs
+		let start = std::time::Instant::now();
+		let result = sender.send_with_retry(&event).await;
+		let elapsed = start.elapsed();
+
+		// Assert - with 2 retries at 50ms and 100ms backoff (plus jitter),
+		// total sleep should be at least ~100ms. Without the sleep call,
+		// elapsed would be near-zero (only network round-trip time).
+		assert!(result.is_err());
+		assert!(
+			elapsed >= Duration::from_millis(80),
+			"Expected at least 80ms delay from retry backoff sleep, got {:?}",
+			elapsed
+		);
 	}
 
 	// SSRF protection tests
