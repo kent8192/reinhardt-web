@@ -26,9 +26,9 @@ use crate::error::DeeplinkError;
 /// # Response Headers
 ///
 /// - `Content-Type: application/json`
-/// - `Cache-Control: max-age=3600, public`
+/// - `Cache-Control: max-age=86400, public` (24 hours; AASA files are static config)
 /// - `X-Content-Type-Options: nosniff`
-/// - `Access-Control-Allow-Origin: *`
+/// - `Access-Control-Allow-Origin: *` (required by Apple Universal Links specification)
 ///
 /// # Example
 ///
@@ -77,10 +77,18 @@ impl AasaHandler {
 
 #[async_trait]
 impl Handler for AasaHandler {
+	/// Serves the pre-computed AASA JSON response.
+	///
+	/// This handler does not inspect the HTTP method because method enforcement
+	/// is handled by the router layer (GET-only route registration). If used
+	/// outside a router context, callers must ensure only GET requests are forwarded.
 	async fn handle(&self, _request: Request) -> Result<Response> {
+		// Access-Control-Allow-Origin: * is required per Apple's Universal Links
+		// specification. AASA files must be publicly accessible without
+		// authentication for iOS to verify app-site associations.
 		Ok(Response::ok()
 			.with_header("Content-Type", "application/json")
-			.with_header("Cache-Control", "max-age=3600, public")
+			.with_header("Cache-Control", "max-age=86400, public")
 			.with_header("X-Content-Type-Options", "nosniff")
 			.with_header("Access-Control-Allow-Origin", "*")
 			.with_body(self.cached_json.clone()))
