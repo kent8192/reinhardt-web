@@ -3,7 +3,7 @@
 //! Provides `#[injectable]` attribute macro that generates `Injectable` trait
 //! implementation for structs with `#[inject]` fields.
 
-use crate::crate_paths::get_reinhardt_di_crate;
+use crate::crate_paths::{get_async_trait_crate, get_reinhardt_di_crate};
 use crate::injectable_common::{
 	DefaultValue, InjectionScope, NoInjectOptions, is_inject_attr, is_no_inject_attr,
 	parse_inject_options, parse_no_inject_options,
@@ -113,8 +113,10 @@ pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStre
 		}
 	}
 
-	// Get dynamic crate path
+	// Get dynamic crate paths
 	let di_crate = get_reinhardt_di_crate();
+	// Fixes #791: Use dynamic resolution instead of hardcoded ::async_trait
+	let async_trait = get_async_trait_crate();
 
 	// Generate injection code for #[inject] fields
 	let mut inject_stmts = Vec::new();
@@ -224,7 +226,7 @@ pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStre
 	let expanded = quote! {
 		#input
 
-		#[::async_trait::async_trait]
+		#[#async_trait::async_trait]
 		impl #generics #di_crate::Injectable for #struct_name #generics #where_clause {
 			async fn inject(__di_ctx: &#di_crate::InjectionContext)
 				-> #di_crate::DiResult<Self>

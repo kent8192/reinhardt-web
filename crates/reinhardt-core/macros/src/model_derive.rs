@@ -32,8 +32,8 @@ use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Result, Typ
 use syn::{Ident, LitStr, bracketed, parenthesized};
 
 use crate::crate_paths::{
-	get_reinhardt_core_crate, get_reinhardt_crate, get_reinhardt_migrations_crate,
-	get_reinhardt_orm_crate,
+	get_linkme_crate, get_reinhardt_core_crate, get_reinhardt_crate,
+	get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
 };
 use crate::rel::RelAttribute;
 
@@ -2763,6 +2763,8 @@ fn generate_relationship_registrations(
 ) -> TokenStream {
 	let reinhardt = get_reinhardt_crate();
 	let _orm_crate = get_reinhardt_orm_crate();
+	// Fixes #793: Use dynamic crate path resolution instead of hardcoded ::linkme
+	let linkme = get_linkme_crate();
 	let mut registrations = Vec::new();
 	let model_name = struct_name.to_string();
 
@@ -2821,7 +2823,7 @@ fn generate_relationship_registrations(
 
 		// Generate registration code for forward relationship
 		registrations.push(quote! {
-			#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+			#[#linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 			static #static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
 				#reinhardt::apps::registry::RelationshipMetadata {
 					from_model: concat!(#app_label, ".", #model_name),
@@ -2857,7 +2859,7 @@ fn generate_relationship_registrations(
 
 			// Generate registration code for reverse relationship
 			registrations.push(quote! {
-				#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+				#[#linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 				static #reverse_static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
 					#reinhardt::apps::registry::RelationshipMetadata {
 						from_model: #target_model_name,
@@ -2932,7 +2934,7 @@ fn generate_relationship_registrations(
 
 		// Generate registration code for forward M2M relationship
 		registrations.push(quote! {
-			#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+			#[#linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 			static #static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
 				#reinhardt::apps::registry::RelationshipMetadata {
 					from_model: concat!(#app_label, ".", #model_name),
@@ -2960,7 +2962,7 @@ fn generate_relationship_registrations(
 
 			// Generate registration code for reverse M2M relationship
 			registrations.push(quote! {
-				#[::linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
+				#[#linkme::distributed_slice(#reinhardt::apps::registry::RELATIONSHIPS)]
 				static #reverse_static_var_name: #reinhardt::apps::registry::RelationshipMetadata =
 					#reinhardt::apps::registry::RelationshipMetadata {
 						from_model: #target_model_name,
