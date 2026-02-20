@@ -30,7 +30,7 @@ const MIN_PASSWORD_LENGTH: usize = 8;
 /// # Errors
 ///
 /// Returns a human-readable error description on invalid input.
-pub fn validate_username(username: &str) -> Result<(), String> {
+pub(crate) fn validate_username(username: &str) -> Result<(), String> {
 	if username.is_empty() {
 		return Err("username must not be empty".into());
 	}
@@ -73,7 +73,7 @@ pub fn validate_username(username: &str) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns a human-readable error description on invalid input.
-pub fn validate_email(email: &str) -> Result<(), String> {
+pub(crate) fn validate_email(email: &str) -> Result<(), String> {
 	if email.is_empty() {
 		return Err("email must not be empty".into());
 	}
@@ -102,7 +102,7 @@ pub fn validate_email(email: &str) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns a human-readable error description on invalid input.
-pub fn validate_password(password: &str) -> Result<(), String> {
+pub(crate) fn validate_password(password: &str) -> Result<(), String> {
 	if password.len() < MIN_PASSWORD_LENGTH {
 		return Err(format!(
 			"password must be at least {} characters",
@@ -117,7 +117,7 @@ pub fn validate_password(password: &str) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 /// Default maximum display length before truncation.
-pub const DEFAULT_DISPLAY_MAX_LENGTH: usize = 50;
+pub(crate) const DEFAULT_DISPLAY_MAX_LENGTH: usize = 50;
 
 /// Truncation indicator appended to long strings.
 const TRUNCATION_MARKER: &str = "...";
@@ -134,7 +134,7 @@ const TRUNCATION_MARKER: &str = "...";
 /// assert_eq!(truncate_for_display("short", 50), "short");
 /// assert_eq!(truncate_for_display("a]".repeat(30).as_str(), 10), "aaaaaaaaaa...");
 /// ```
-pub fn truncate_for_display(value: &str, max_length: usize) -> String {
+pub(crate) fn truncate_for_display(value: &str, max_length: usize) -> String {
 	if value.len() <= max_length {
 		value.to_string()
 	} else {
@@ -156,7 +156,7 @@ pub fn truncate_for_display(value: &str, max_length: usize) -> String {
 /// # Errors
 ///
 /// Returns an error for any value not in the recognised set.
-pub fn parse_bool_strict(value: &str) -> Result<bool, String> {
+pub(crate) fn parse_bool_strict(value: &str) -> Result<bool, String> {
 	match value.to_lowercase().as_str() {
 		"true" | "yes" | "1" => Ok(true),
 		"false" | "no" | "0" => Ok(false),
@@ -180,18 +180,17 @@ pub fn parse_bool_strict(value: &str) -> Result<bool, String> {
 /// # Returns
 ///
 /// A list of `(path, error)` pairs for any writes that failed.
-pub fn rollback_files(
+pub(crate) fn rollback_files(
 	modified_files: &[PathBuf],
 	original_contents: &HashMap<PathBuf, String>,
 ) -> Vec<(PathBuf, std::io::Error)> {
 	let mut errors = Vec::new();
 	for file_path in modified_files {
-		if let Some(original) = original_contents.get(file_path) {
-			if let Err(e) = std::fs::write(file_path, original) {
+		if let Some(original) = original_contents.get(file_path)
+			&& let Err(e) = std::fs::write(file_path, original) {
 				eprintln!("Warning: failed to rollback {}: {}", file_path.display(), e);
 				errors.push((file_path.clone(), e));
 			}
-		}
 	}
 	errors
 }
@@ -200,7 +199,7 @@ pub fn rollback_files(
 ///
 /// If `errors` is non-empty, prints a summary of files that could not
 /// be rolled back.
-pub fn report_rollback_errors(errors: &[(PathBuf, std::io::Error)]) {
+pub(crate) fn report_rollback_errors(errors: &[(PathBuf, std::io::Error)]) {
 	if errors.is_empty() {
 		return;
 	}
@@ -227,7 +226,7 @@ pub fn report_rollback_errors(errors: &[(PathBuf, std::io::Error)]) {
 /// # Errors
 ///
 /// Returns an error if the signal handler could not be registered.
-pub fn install_ctrlc_handler() -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
+pub(crate) fn install_ctrlc_handler() -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
 	let shutdown_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 	let flag_clone = shutdown_flag.clone();
 	ctrlc::set_handler(move || {
@@ -244,7 +243,7 @@ pub fn install_ctrlc_handler() -> Result<std::sync::Arc<std::sync::atomic::Atomi
 /// Mask a path for safe display in error messages.
 ///
 /// Only shows the file name, preventing full path disclosure.
-pub fn mask_path(path: &Path) -> String {
+pub(crate) fn mask_path(path: &Path) -> String {
 	path.file_name()
 		.map(|name| format!("<...>/{}", name.to_string_lossy()))
 		.unwrap_or_else(|| "<file>".to_string())
