@@ -306,6 +306,12 @@ impl ServerFnInfo {
 /// - Not contain fragment identifiers (`#`)
 /// - Not be a full URL (e.g. `http://` or `https://`)
 fn validate_endpoint_path(path: &str) -> Result<(), darling::Error> {
+	if path.contains(char::is_whitespace) {
+		return Err(darling::Error::custom(
+			"endpoint path must not contain whitespace",
+		));
+	}
+
 	if path.starts_with("http://") || path.starts_with("https://") {
 		return Err(darling::Error::custom(
 			"endpoint must be a relative path starting with '/', not a full URL",
