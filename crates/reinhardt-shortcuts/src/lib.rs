@@ -11,9 +11,9 @@
 //! use reinhardt_shortcuts::{render_json, render_html, render_text};
 //! use serde_json::json;
 //!
-//! // Render JSON response
+//! // Render JSON response (returns Result to ensure atomic output on error)
 //! let data = json!({"status": "success"});
-//! let response = render_json(&data);
+//! let response = render_json(&data).unwrap();
 //!
 //! // Render HTML response
 //! let response = render_html("<h1>Hello</h1>");
