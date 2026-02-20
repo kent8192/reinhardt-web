@@ -236,7 +236,7 @@ middleware-rate-limit = [
 reinhardt-pages = { workspace = true, optional = true }
 
 # Server-side dependencies (NOT for WASM)
-reinhardt-core = {workspace = true, features = ["types"]}
+reinhardt-core = { workspace = true, features = ["types"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Core dependencies
 reinhardt-urls = { workspace = true }
@@ -303,10 +303,10 @@ members = [
   "crates/reinhardt-urls",
   "crates/reinhardt-urls/routers-macros",
   "crates/reinhardt-middleware",
-  "crates/reinhardt-pages",                             # WASM frontend framework
-  "crates/reinhardt-pages/macros",              # WASM frontend macros
-  "crates/reinhardt-pages/ast",                        # WASM frontend AST
-  "crates/reinhardt-manouche",                         # DSL definitions for pages macros
+  "crates/reinhardt-pages",                    # WASM frontend framework
+  "crates/reinhardt-pages/macros",             # WASM frontend macros
+  "crates/reinhardt-pages/ast",                # WASM frontend AST
+  "crates/reinhardt-manouche",                 # DSL definitions for pages macros
   "crates/reinhardt-test",
   "crates/reinhardt-tasks",
   "crates/reinhardt-utils",
@@ -314,8 +314,8 @@ members = [
   "crates/reinhardt-rest/openapi-macros",
   "crates/reinhardt-throttling",
   "crates/reinhardt-auth",
-  "crates/reinhardt-admin",                            # Admin panel functionality
-  "crates/reinhardt-admin-cli",                        # Admin CLI tool
+  "crates/reinhardt-admin",                    # Admin panel functionality
+  "crates/reinhardt-admin-cli",                # Admin CLI tool
   "crates/reinhardt-grpc",
   "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
@@ -332,6 +332,9 @@ members = [
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-deeplink",                          # Mobile deep linking
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
+  "crates/reinhardt-taggit",                            # Tagging system
+  "crates/reinhardt-taggit/macros",                     # Tagging macros
+  "crates/reinhardt-taggit/tests",                      # Tagging tests
   # Integration tests
   "tests",
   "tests/integration",
@@ -408,6 +411,8 @@ reinhardt-websockets = { path = "crates/reinhardt-websockets", version = "0.1.0-
 reinhardt-dentdelion = { path = "crates/reinhardt-dentdelion", version = "0.1.0-alpha.11" }
 reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-alpha.3" }
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.13" }
+reinhardt-taggit = { path = "crates/reinhardt-taggit", version = "0.1.0" }
+reinhardt-taggit-macros = { path = "crates/reinhardt-taggit/macros", version = "0.1.0" }
 
 # Query subcrates
 reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-alpha.2" }
@@ -465,7 +470,9 @@ argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
 rand = "0.8"
 rand_core = "0.6"
-getrandom = { version = "0.2", features = ["js"] }  # WASM support with js feature
+getrandom = { version = "0.2", features = [
+  "js",
+] } # WASM support with js feature
 jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 
