@@ -3,6 +3,7 @@
 //! Provides convenient functions for rendering templates and creating HTTP responses.
 
 use bytes::Bytes;
+use hyper::header::HeaderValue;
 use reinhardt_http::Response;
 use serde::Serialize;
 
@@ -47,7 +48,7 @@ pub fn render_json<T: Serialize>(data: &T) -> Result<Response, serde_json::Error
 	response.body = Bytes::from(json_string);
 	response
 		.headers
-		.insert("content-type", "application/json".parse().unwrap());
+		.insert("content-type", HeaderValue::from_static("application/json"));
 
 	Ok(response)
 }
@@ -79,7 +80,7 @@ pub fn render_json_pretty<T: Serialize>(data: &T) -> Result<Response, serde_json
 	response.body = Bytes::from(json_string);
 	response
 		.headers
-		.insert("content-type", "application/json".parse().unwrap());
+		.insert("content-type", HeaderValue::from_static("application/json"));
 
 	Ok(response)
 }
@@ -119,9 +120,10 @@ pub fn render_json_pretty<T: Serialize>(data: &T) -> Result<Response, serde_json
 pub fn render_html(html: impl Into<String>) -> Response {
 	let mut response = Response::ok();
 	response.body = Bytes::from(html.into());
-	response
-		.headers
-		.insert("content-type", "text/html; charset=utf-8".parse().unwrap());
+	response.headers.insert(
+		"content-type",
+		HeaderValue::from_static("text/html; charset=utf-8"),
+	);
 
 	response
 }
@@ -193,9 +195,10 @@ pub fn render_html_safe(content: impl AsRef<str>) -> Response {
 
 	let mut response = Response::ok();
 	response.body = Bytes::from(escaped);
-	response
-		.headers
-		.insert("content-type", "text/html; charset=utf-8".parse().unwrap());
+	response.headers.insert(
+		"content-type",
+		HeaderValue::from_static("text/html; charset=utf-8"),
+	);
 
 	response
 }
@@ -223,9 +226,10 @@ pub fn render_html_safe(content: impl AsRef<str>) -> Response {
 pub fn render_text(text: impl Into<String>) -> Response {
 	let mut response = Response::ok();
 	response.body = Bytes::from(text.into());
-	response
-		.headers
-		.insert("content-type", "text/plain; charset=utf-8".parse().unwrap());
+	response.headers.insert(
+		"content-type",
+		HeaderValue::from_static("text/plain; charset=utf-8"),
+	);
 
 	response
 }
