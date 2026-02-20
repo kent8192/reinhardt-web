@@ -418,11 +418,20 @@ fn transform_redirect(redirect: &Option<syn::LitStr>) -> Result<Option<String>> 
 		));
 	}
 
-	// Path must start with / or be a valid URL (http:// or https://)
-	if !path.starts_with('/') && !path.starts_with("http://") && !path.starts_with("https://") {
+	// Reject insecure HTTP URLs - redirect may leak credentials or session tokens
+	if path.starts_with("http://") {
 		return Err(Error::new(
 			redirect.span(),
-			"redirect_on_success path must start with '/' or be a full URL (http:// or https://)",
+			"redirect_on_success rejects insecure HTTP URLs to prevent credential leakage; \
+			 use HTTPS or a relative path instead",
+		));
+	}
+
+	// Path must start with / or be a valid HTTPS URL
+	if !path.starts_with('/') && !path.starts_with("https://") {
+		return Err(Error::new(
+			redirect.span(),
+			"redirect_on_success path must start with '/' or be a full HTTPS URL (https://)",
 		));
 	}
 
@@ -3521,5 +3530,61 @@ mod tests {
 			status_field.choices_config.as_ref().unwrap().choices_from,
 			"statuses"
 		);
+	}
+
+	#[test]
+	fn test_transform_redirect_rejects_http_url() {
+		let lit = syn::LitStr::new("http://example.com/success", proc_macro2::Span::call_site());
+		let result = transform_redirect(&Some(lit));
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("insecure HTTP"));
+	}
+
+	#[test]
+	fn test_transform_redirect_allows_https_url() {
+		let lit = syn::LitStr::new(
+			"https://example.com/success",
+			proc_macro2::Span::call_site(),
+		);
+		let result = transform_redirect(&Some(lit));
+		assert!(result.is_ok());
+		assert_eq!(
+			result.unwrap(),
+			Some("https://example.com/success".to_string())
+		);
+	}
+
+	#[test]
+	fn test_transform_redirect_allows_relative_path() {
+		let lit = syn::LitStr::new("/dashboard", proc_macro2::Span::call_site());
+		let result = transform_redirect(&Some(lit));
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), Some("/dashboard".to_string()));
+	}
+
+	#[test]
+	fn test_transform_redirect_rejects_empty() {
+		let lit = syn::LitStr::new("", proc_macro2::Span::call_site());
+		let result = transform_redirect(&Some(lit));
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("cannot be empty"));
+	}
+
+	#[test]
+	fn test_transform_redirect_rejects_invalid_scheme() {
+		let lit = syn::LitStr::new("ftp://example.com/file", proc_macro2::Span::call_site());
+		let result = transform_redirect(&Some(lit));
+		assert!(result.is_err());
+		let err = result.unwrap_err().to_string();
+		assert!(err.contains("must start with '/'"));
+	}
+
+	#[test]
+	fn test_transform_redirect_none() {
+		let result = transform_redirect(&None);
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), None);
 	}
 }
