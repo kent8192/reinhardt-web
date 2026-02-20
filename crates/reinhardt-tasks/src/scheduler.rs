@@ -177,7 +177,7 @@ impl Scheduler {
 						let task = Arc::clone(task);
 						tokio::spawn(async move {
 							if let Err(e) = task.execute().await {
-								eprintln!("Task execution failed: {}", e);
+								tracing::error!(error = %e, "Task execution failed");
 							}
 						});
 					} else {

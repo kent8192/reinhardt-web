@@ -640,12 +640,12 @@ impl HttpWebhookSender {
 					}
 
 					let backoff = self.calculate_backoff(retry_count);
-					eprintln!(
-						"Webhook request failed (attempt {}/{}): {}. Retrying in {:?}",
-						retry_count + 1,
-						max_retries + 1,
-						e,
-						backoff
+					tracing::warn!(
+						attempt = retry_count + 1,
+						max_attempts = max_retries + 1,
+						error = %e,
+						backoff = ?backoff,
+						"Webhook request failed, retrying"
 					);
 
 					// Wait before retrying to avoid tight retry loops
