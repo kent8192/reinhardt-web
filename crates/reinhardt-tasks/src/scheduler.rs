@@ -349,4 +349,44 @@ mod tests {
 			execution_count
 		);
 	}
+
+	// Regression test for #754: the scheduler MUST enforce MIN_SLEEP = 100ms to
+	// prevent a busy-loop when next_run falls in the past (or very close to now).
+	// Without MIN_SLEEP the run() loop would spin at CPU speed.
+	#[rstest]
+	#[tokio::test]
+	async fn test_min_sleep_enforced_prevents_busy_loop_regression() {
+		// Arrange - PastSchedule always returns a time 1 hour ago, simulating a
+		// task that is perpetually "overdue". Without MIN_SLEEP the scheduler would
+		// busy-loop and execute the task millions of times per second.
+		let count = Arc::new(AtomicU64::new(0));
+		let task = Arc::new(CountingTask {
+			id: TaskId::new(),
+			count: Arc::clone(&count),
+		});
+
+		let mut scheduler = Scheduler::new();
+		scheduler.add_task(task, Box::new(PastSchedule));
+		let scheduler = Arc::new(scheduler);
+		let scheduler_clone = Arc::clone(&scheduler);
+
+		let handle = tokio::spawn(async move {
+			scheduler_clone.run().await;
+		});
+
+		// Act - observe execution count over exactly 300ms
+		tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+		scheduler.shutdown();
+		let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+
+		// Assert - MIN_SLEEP = 100ms means at most 3 loop iterations in 300ms,
+		// yielding at most ~3-4 executions. A busy-loop without MIN_SLEEP would
+		// produce many thousands of executions in the same window.
+		let execution_count = count.load(Ordering::SeqCst);
+		assert!(
+			execution_count <= 6,
+			"Regression #754: busy-loop guard must cap executions at ~3 in 300ms, got {}",
+			execution_count
+		);
+	}
 }

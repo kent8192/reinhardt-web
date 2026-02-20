@@ -929,4 +929,67 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 	}
+
+	// Regression test for #756: iterative DFS cycle detection must handle chains
+	// of 10,000 nodes without a stack overflow. A naive recursive DFS would exhaust
+	// the default thread stack (typically 8 MiB) for chains this deep.
+	#[rstest]
+	fn test_deep_chain_10k_nodes_does_not_stack_overflow() {
+		// Arrange - linear chain: t0 -> t1 -> ... -> t9999
+		let mut dag = TaskDAG::new();
+		let depth = 10_000;
+		let mut task_ids = Vec::with_capacity(depth);
+
+		for _ in 0..depth {
+			let id = TaskId::new();
+			dag.add_task(id).unwrap();
+			task_ids.push(id);
+		}
+
+		for i in 1..depth {
+			dag.add_dependency(task_ids[i], task_ids[i - 1]).unwrap();
+		}
+
+		// Act - topological sort on the 10k-node chain
+		let order = dag.topological_sort().unwrap();
+
+		// Assert - all nodes present and ordering is preserved
+		assert_eq!(order.len(), depth);
+		for i in 1..depth {
+			let prev_pos = order.iter().position(|&id| id == task_ids[i - 1]).unwrap();
+			let curr_pos = order.iter().position(|&id| id == task_ids[i]).unwrap();
+			assert!(
+				prev_pos < curr_pos,
+				"task_ids[{}] must precede task_ids[{}]",
+				i - 1,
+				i
+			);
+		}
+	}
+
+	// Regression test for #756: cycle detection on a 10k-node chain with a back-edge
+	// must correctly detect the cycle using the iterative algorithm.
+	#[rstest]
+	fn test_deep_chain_10k_nodes_back_edge_detected() {
+		// Arrange - linear chain of 10,000 nodes
+		let mut dag = TaskDAG::new();
+		let depth = 10_000;
+		let mut task_ids = Vec::with_capacity(depth);
+
+		for _ in 0..depth {
+			let id = TaskId::new();
+			dag.add_task(id).unwrap();
+			task_ids.push(id);
+		}
+
+		for i in 1..depth {
+			dag.add_dependency(task_ids[i], task_ids[i - 1]).unwrap();
+		}
+
+		// Act - add a back-edge from the first node to the last node
+		let result = dag.add_dependency(task_ids[0], task_ids[depth - 1]);
+
+		// Assert - cycle must be detected
+		assert!(result.is_err(), "back-edge cycle must be detected in 10k chain");
+	}
 }
