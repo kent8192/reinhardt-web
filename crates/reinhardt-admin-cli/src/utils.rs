@@ -187,10 +187,11 @@ pub(crate) fn rollback_files(
 	let mut errors = Vec::new();
 	for file_path in modified_files {
 		if let Some(original) = original_contents.get(file_path)
-			&& let Err(e) = std::fs::write(file_path, original) {
-				eprintln!("Warning: failed to rollback {}: {}", file_path.display(), e);
-				errors.push((file_path.clone(), e));
-			}
+			&& let Err(e) = std::fs::write(file_path, original)
+		{
+			eprintln!("Warning: failed to rollback {}: {}", file_path.display(), e);
+			errors.push((file_path.clone(), e));
+		}
 	}
 	errors
 }
@@ -226,7 +227,8 @@ pub(crate) fn report_rollback_errors(errors: &[(PathBuf, std::io::Error)]) {
 /// # Errors
 ///
 /// Returns an error if the signal handler could not be registered.
-pub(crate) fn install_ctrlc_handler() -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
+pub(crate) fn install_ctrlc_handler()
+-> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
 	let shutdown_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 	let flag_clone = shutdown_flag.clone();
 	ctrlc::set_handler(move || {
