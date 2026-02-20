@@ -443,7 +443,12 @@ pub struct TranslationGuard {
 impl Drop for TranslationGuard {
 	fn drop(&mut self) {
 		ACTIVE_TRANSLATION.with(|t| {
-			*t.borrow_mut() = self.prev.take();
+			// Use try_borrow_mut to prevent panic on reentrant drop.
+			// If the RefCell is already borrowed (e.g., during a destructor chain),
+			// the translation will be cleaned up when the outer borrow is released.
+			if let Ok(mut guard) = t.try_borrow_mut() {
+				*guard = self.prev.take();
+			}
 		});
 	}
 }
