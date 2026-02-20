@@ -221,7 +221,14 @@ impl Value {
 			Self::Float(None) => "NULL".to_string(),
 			Self::Double(Some(v)) => v.to_string(),
 			Self::Double(None) => "NULL".to_string(),
-			Self::Char(Some(v)) => format!("'{}'", v),
+			Self::Char(Some(v)) => {
+				// Escape single quotes by doubling them
+				if *v == '\'' {
+					"''''".to_string()
+				} else {
+					format!("'{}'", v)
+				}
+			}
 			Self::Char(None) => "NULL".to_string(),
 			Self::String(Some(v)) => {
 				// Escape single quotes by doubling them
