@@ -90,7 +90,7 @@ pub use get_or_404::{
 };
 pub use redirect::{redirect, redirect_permanent, redirect_permanent_to, redirect_to};
 pub use reinhardt_core::security::redirect::RedirectValidationError;
-pub use render::{render_html, render_json, render_json_pretty, render_text};
+pub use render::{escape_html, render_html, render_html_safe, render_json, render_json_pretty, render_text};
 pub use url::{Url, UrlError};
 
 // Re-export ORM functions (feature-gated)
