@@ -26,6 +26,7 @@ impl TestExecutor {
 		}
 	}
 
+	// Test helper method used only in specific test paths
 	#[allow(dead_code)]
 	fn execution_count(&self) -> usize {
 		*self.executed_count.lock().unwrap()

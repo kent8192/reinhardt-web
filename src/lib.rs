@@ -103,6 +103,7 @@ pub mod reinhardt_pages {
 
 #[doc(hidden)]
 pub mod reinhardt_types {
+	// Public API surface glob re-export requires allowing unused imports and unreachable pub
 	#[allow(unused_imports, unreachable_pub)]
 	pub use reinhardt_core::types::*;
 }
