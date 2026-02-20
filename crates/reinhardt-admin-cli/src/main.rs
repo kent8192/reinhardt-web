@@ -24,7 +24,7 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use reinhardt_commands::{
 	BaseCommand, CommandContext, CommandResult, PluginDisableCommand, PluginEnableCommand,
@@ -33,6 +33,27 @@ use reinhardt_commands::{
 };
 use std::process;
 use zeroize::Zeroize;
+
+/// Valid project and app template types.
+///
+/// Restricts the `--template-type` argument to known values,
+/// preventing typos and providing helpful error messages.
+#[derive(Clone, Debug, ValueEnum)]
+enum TemplateType {
+	/// RESTful API project structure
+	Restful,
+	/// Model-Template-View project structure
+	Mtv,
+}
+
+impl std::fmt::Display for TemplateType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			TemplateType::Restful => write!(f, "restful"),
+			TemplateType::Mtv => write!(f, "mtv"),
+		}
+	}
+}
 
 #[derive(Parser)]
 #[command(name = "reinhardt-admin")]
@@ -60,8 +81,8 @@ enum Commands {
 		directory: Option<String>,
 
 		/// Project template type: mtv (Model-Template-View) or restful (RESTful API)
-		#[arg(short = 't', long, default_value = "restful")]
-		template_type: String,
+		#[arg(short = 't', long, value_enum, default_value = "restful")]
+		template_type: TemplateType,
 	},
 
 	/// Create a new Reinhardt app
@@ -75,8 +96,8 @@ enum Commands {
 		directory: Option<String>,
 
 		/// App template type: mtv or restful
-		#[arg(short = 't', long, default_value = "restful")]
-		template_type: String,
+		#[arg(short = 't', long, value_enum, default_value = "restful")]
+		template_type: TemplateType,
 	},
 
 	/// Manage Reinhardt plugins (Dentdelion)
@@ -363,7 +384,7 @@ async fn main() {
 async fn run_startproject(
 	name: String,
 	directory: Option<String>,
-	template_type: String,
+	template_type: TemplateType,
 	verbosity: u8,
 ) -> CommandResult<()> {
 	let mut ctx = CommandContext::default();
@@ -372,7 +393,7 @@ async fn run_startproject(
 	if let Some(dir) = directory {
 		ctx.add_arg(dir);
 	}
-	ctx.set_option("type".to_string(), template_type);
+	ctx.set_option("type".to_string(), template_type.to_string());
 
 	let cmd = StartProjectCommand;
 	cmd.execute(&ctx).await
@@ -381,7 +402,7 @@ async fn run_startproject(
 async fn run_startapp(
 	name: String,
 	directory: Option<String>,
-	template_type: String,
+	template_type: TemplateType,
 	verbosity: u8,
 ) -> CommandResult<()> {
 	let mut ctx = CommandContext::default();
@@ -390,7 +411,7 @@ async fn run_startapp(
 	if let Some(dir) = directory {
 		ctx.add_arg(dir);
 	}
-	ctx.set_option("type".to_string(), template_type);
+	ctx.set_option("type".to_string(), template_type.to_string());
 
 	let cmd = StartAppCommand;
 	cmd.execute(&ctx).await
@@ -1235,20 +1256,28 @@ fn run_fmt_all(
 	Ok(())
 }
 
+/// Maximum number of parent directories to traverse when searching for project root.
+///
+/// Prevents unbounded traversal to the filesystem root, which could
+/// find an unrelated `Cargo.toml` from a different project.
+const MAX_PROJECT_ROOT_DEPTH: usize = 10;
+
 /// Find the project root by searching upward for Cargo.toml.
 ///
 /// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
-/// race conditions in the existence check.
+/// race conditions in the existence check. Traversal is bounded to
+/// `MAX_PROJECT_ROOT_DEPTH` levels to prevent finding unrelated projects.
 fn find_project_root() -> Option<PathBuf> {
 	let current_dir = std::env::current_dir().ok()?;
 	let mut current = current_dir.as_path();
 
-	loop {
+	for _ in 0..MAX_PROJECT_ROOT_DEPTH {
 		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
 			return Some(current.to_path_buf());
 		}
 		current = current.parent()?;
 	}
+	None
 }
 
 /// Find rustfmt.toml by searching upward from a path.

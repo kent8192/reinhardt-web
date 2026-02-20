@@ -43,7 +43,7 @@ impl From<OutputFormatArg> for OutputFormat {
 const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 /// Display configuration file contents
-pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: ShowArgs) -> anyhow::Result<()> {
 	output::info(&format!("Reading configuration file: {:?}", args.file));
 
 	// Check file existence and size in one operation (TOCTOU mitigation)

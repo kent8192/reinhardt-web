@@ -43,7 +43,7 @@ pub(crate) struct EncryptArgs {
 /// 1. Environment variable: `REINHARDT_ENCRYPTION_KEY` (recommended)
 /// 2. Interactive stdin prompt (if terminal available)
 /// 3. `--key` argument (not recommended for security reasons)
-pub(crate) async fn execute(args: EncryptArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: EncryptArgs) -> anyhow::Result<()> {
 	output::info(&format!("Encrypting configuration file: {:?}", args.file));
 
 	// Check file size and existence in one operation (TOCTOU mitigation)

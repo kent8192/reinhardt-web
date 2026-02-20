@@ -44,7 +44,7 @@ pub(crate) struct DecryptArgs {
 /// 1. Environment variable: `REINHARDT_ENCRYPTION_KEY` (recommended)
 /// 2. Interactive stdin prompt (if terminal available)
 /// 3. `--key` argument (not recommended for security reasons)
-pub(crate) async fn execute(args: DecryptArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: DecryptArgs) -> anyhow::Result<()> {
 	output::info(&format!("Decrypting configuration file: {:?}", args.file));
 
 	// Check file size before reading to prevent OOM (handles existence check implicitly)

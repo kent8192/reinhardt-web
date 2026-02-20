@@ -30,7 +30,7 @@ pub(crate) struct SetArgs {
 const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 /// Set a configuration value in a file
-pub(crate) async fn execute(args: SetArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: SetArgs) -> anyhow::Result<()> {
 	output::info(&format!("Setting configuration value in: {:?}", args.file));
 
 	// Try to read file metadata to check existence and size (TOCTOU mitigation)
@@ -188,16 +188,26 @@ fn set_nested_value(value: &mut toml::Value, key: &str, new_value: &str) -> anyh
 	// Set the final value
 	let final_key = parts[parts.len() - 1];
 
-	// Try to parse as different types
-	let parsed_value = if let Ok(b) = new_value.parse::<bool>() {
-		toml::Value::Boolean(b)
+	// Infer type from value string with informational logging.
+	// Values are parsed as boolean, integer, or float before falling
+	// back to string. Use quoting in the value if you need a numeric
+	// string to remain a string (e.g., "123").
+	let (parsed_value, inferred_type) = if let Ok(b) = new_value.parse::<bool>() {
+		(toml::Value::Boolean(b), "boolean")
 	} else if let Ok(i) = new_value.parse::<i64>() {
-		toml::Value::Integer(i)
+		(toml::Value::Integer(i), "integer")
 	} else if let Ok(f) = new_value.parse::<f64>() {
-		toml::Value::Float(f)
+		(toml::Value::Float(f), "float")
 	} else {
-		toml::Value::String(new_value.to_string())
+		(toml::Value::String(new_value.to_string()), "string")
 	};
+
+	if inferred_type != "string" {
+		output::info(&format!(
+			"Value '{}' interpreted as {} (use quotes to force string)",
+			new_value, inferred_type
+		));
+	}
 
 	if let Some(table) = current.as_table_mut() {
 		table.insert(final_key.to_string(), parsed_value);
@@ -236,18 +246,28 @@ fn set_nested_json_value(
 	// Set the final value
 	let final_key = parts[parts.len() - 1];
 
-	// Try to parse as different types
-	let parsed_value = if let Ok(b) = new_value.parse::<bool>() {
-		serde_json::Value::Bool(b)
+	// Infer type from value string with informational logging.
+	let (parsed_value, inferred_type) = if let Ok(b) = new_value.parse::<bool>() {
+		(serde_json::Value::Bool(b), "boolean")
 	} else if let Ok(i) = new_value.parse::<i64>() {
-		serde_json::Value::Number(i.into())
+		(serde_json::Value::Number(i.into()), "integer")
 	} else if let Ok(f) = new_value.parse::<f64>() {
-		serde_json::Number::from_f64(f)
-			.map(serde_json::Value::Number)
-			.unwrap_or_else(|| serde_json::Value::String(new_value.to_string()))
+		(
+			serde_json::Number::from_f64(f)
+				.map(serde_json::Value::Number)
+				.unwrap_or_else(|| serde_json::Value::String(new_value.to_string())),
+			"float",
+		)
 	} else {
-		serde_json::Value::String(new_value.to_string())
+		(serde_json::Value::String(new_value.to_string()), "string")
 	};
+
+	if inferred_type != "string" {
+		output::info(&format!(
+			"Value '{}' interpreted as {} (use quotes to force string)",
+			new_value, inferred_type
+		));
+	}
 
 	if let Some(obj) = current.as_object_mut() {
 		obj.insert(final_key.to_string(), parsed_value);
@@ -266,8 +286,7 @@ mod tests {
 
 	#[cfg(unix)]
 	#[rstest]
-	#[tokio::test]
-	async fn backup_file_has_restrictive_permissions() {
+	fn backup_file_has_restrictive_permissions() {
 		// Arrange
 		let tmp_dir = TempDir::new().unwrap();
 		let config_path = tmp_dir.path().join("config.toml");
@@ -282,7 +301,7 @@ mod tests {
 		};
 
 		// Act
-		execute(args).await.unwrap();
+		execute(args).unwrap();
 
 		// Assert
 		let backup_path = config_path.with_extension("toml.bak");

@@ -29,7 +29,7 @@ pub(crate) struct DiffArgs {
 }
 /// Documentation for `execute`
 ///
-pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	output::info("Comparing configuration files");
 
 	// Load both files
