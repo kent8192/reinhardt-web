@@ -20,6 +20,7 @@
 
 mod ast_formatter;
 mod formatter;
+mod utils;
 
 use std::path::{Path, PathBuf};
 
@@ -997,13 +998,14 @@ fn run_fmt_all(
 
 	let cargo_fmt_result = cmd.output();
 
-	// If cargo fmt fails, restore original files
+	// Track files that were actually modified on disk (for targeted rollback)
+	let modified_on_disk: Vec<PathBuf> = protected_files.iter().map(|(p, _)| p.clone()).collect();
+
+	// If cargo fmt fails, restore only modified files
 	if let Err(e) = &cargo_fmt_result {
 		eprintln!("{} cargo fmt failed: {}", "Error:".red(), e);
-		// Restore original files
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
+		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+		utils::report_rollback_errors(&rollback_errors);
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt failed: {}",
 			e
@@ -1014,10 +1016,8 @@ fn run_fmt_all(
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
 		eprintln!("{} cargo fmt exited with error: {}", "Error:".red(), stderr);
-		// Restore original files
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
+		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+		utils::report_rollback_errors(&rollback_errors);
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt exited with error: {}",
 			stderr
@@ -1103,7 +1103,13 @@ fn run_fmt_all(
 			if check {
 				println!("{} Would format: {}", progress, file_path.display());
 				// Restore original content in check mode
-				let _ = std::fs::write(file_path, original_content);
+				if let Err(e) = std::fs::write(file_path, original_content) {
+					eprintln!(
+						"Warning: failed to restore {} in check mode: {}",
+						file_path.display(),
+						e
+					);
+				}
 			} else if verbosity > 0 {
 				println!(
 					"{} {} {}",
@@ -1119,7 +1125,13 @@ fn run_fmt_all(
 				let backup_path = file_path.with_extension("rs.bak");
 				// Write backup with secure content handling
 				let mut content_copy = original_content.clone();
-				let _ = std::fs::write(&backup_path, &content_copy);
+				if let Err(e) = std::fs::write(&backup_path, &content_copy) {
+					eprintln!(
+						"Warning: failed to create backup for {}: {}",
+						file_path.display(),
+						e
+					);
+				}
 				content_copy.zeroize();
 			}
 		} else {
@@ -1135,11 +1147,11 @@ fn run_fmt_all(
 		}
 	}
 
-	// In check mode, restore all files to original state
+	// In check mode, restore only files that were modified on disk
 	if check {
-		for (file_path, original_content) in &original_contents {
-			let _ = std::fs::write(file_path, original_content);
-		}
+		let all_paths: Vec<PathBuf> = original_contents.keys().cloned().collect();
+		let rollback_errors = utils::rollback_files(&all_paths, &original_contents);
+		utils::report_rollback_errors(&rollback_errors);
 	}
 
 	// Securely clear original contents to prevent sensitive data lingering in memory
