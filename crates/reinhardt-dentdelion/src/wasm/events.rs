@@ -125,9 +125,7 @@ pub struct EventBus {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum EventBusError {
 	/// Per-plugin subscription limit exceeded
-	#[error(
-		"plugin '{plugin}' has reached subscription limit ({limit})"
-	)]
+	#[error("plugin '{plugin}' has reached subscription limit ({limit})")]
 	PerPluginLimitExceeded {
 		/// Plugin that attempted to subscribe
 		plugin: String,
@@ -146,12 +144,20 @@ pub enum EventBusError {
 impl EventBus {
 	/// Create a new event bus with default settings.
 	pub fn new() -> Self {
-		Self::with_limits(10_000, DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN, DEFAULT_MAX_TOTAL_SUBSCRIPTIONS)
+		Self::with_limits(
+			10_000,
+			DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN,
+			DEFAULT_MAX_TOTAL_SUBSCRIPTIONS,
+		)
 	}
 
 	/// Create a new event bus with a custom maximum queue size.
 	pub fn with_max_queue_size(max_queue_size: usize) -> Self {
-		Self::with_limits(max_queue_size, DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN, DEFAULT_MAX_TOTAL_SUBSCRIPTIONS)
+		Self::with_limits(
+			max_queue_size,
+			DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN,
+			DEFAULT_MAX_TOTAL_SUBSCRIPTIONS,
+		)
 	}
 
 	/// Create a new event bus with custom resource limits.
@@ -362,7 +368,10 @@ impl std::fmt::Debug for EventBus {
 		f.debug_struct("EventBus")
 			.field("subscription_count", &subs.len())
 			.field("max_queue_size", &self.max_queue_size)
-			.field("max_subscriptions_per_plugin", &self.max_subscriptions_per_plugin)
+			.field(
+				"max_subscriptions_per_plugin",
+				&self.max_subscriptions_per_plugin,
+			)
 			.field("max_total_subscriptions", &self.max_total_subscriptions)
 			.finish()
 	}
