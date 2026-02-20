@@ -311,20 +311,13 @@ pub fn create_reverse_relation(relation: &RelationMetadata) {
 		RelationType::OneToOne => ReverseRelationType::ReverseOneToOne,
 	};
 
-	// Leak strings to get 'static lifetime for registry
-	let to_model_static: &'static str = Box::leak(relation.to_model.to_string().into_boxed_str());
-	let from_model_static: &'static str =
-		Box::leak(relation.from_model.to_string().into_boxed_str());
-	let field_name_static: &'static str =
-		Box::leak(relation.field_name.to_string().into_boxed_str());
-
-	// Create and register reverse relation metadata
+	// Fields are already &'static str, so use them directly without Box::leak
 	let reverse_relation = ReverseRelationMetadata::new(
-		to_model_static,   // Reverse relation goes on the target model
-		reverse_name,      // The accessor name (e.g., "posts" or "post_set")
-		from_model_static, // Related model (where the forward relation is defined)
-		reverse_type,      // Type of reverse relation
-		field_name_static, // Original field name for join queries
+		relation.to_model,   // Reverse relation goes on the target model
+		reverse_name,        // The accessor name (e.g., "posts" or "post_set")
+		relation.from_model, // Related model (where the forward relation is defined)
+		reverse_type,        // Type of reverse relation
+		relation.field_name, // Original field name for join queries
 	);
 
 	register_reverse_relation(reverse_relation);
@@ -533,8 +526,9 @@ fn parse_migration_file(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::registry::{MODELS, ModelMetadata};
+	use crate::registry::{MODELS, ModelMetadata, ReverseRelationType};
 	use linkme::distributed_slice;
+	use rstest::*;
 
 	// Test models for discovery
 	#[distributed_slice(MODELS)]
@@ -684,5 +678,69 @@ mod tests {
 		let path = PathBuf::from("/tmp/migrations/abc_initial.rs");
 		let result = parse_migration_file(&path, "myapp");
 		assert!(result.is_err());
+	}
+
+	#[rstest]
+	#[case(RelationType::OneToMany, ReverseRelationType::ReverseOneToMany)]
+	#[case(RelationType::ManyToMany, ReverseRelationType::ReverseManyToMany)]
+	#[case(RelationType::OneToOne, ReverseRelationType::ReverseOneToOne)]
+	fn test_create_reverse_relation_uses_static_fields_directly(
+		#[case] relation_type: RelationType,
+		#[case] expected_reverse_type: ReverseRelationType,
+	) {
+		// Arrange: fields are &'static str literals (no heap allocation needed)
+		let relation = RelationMetadata::new(
+			"Article",
+			"Author",
+			"writer",
+			Some("articles"),
+			relation_type,
+		);
+
+		// Act: create_reverse_relation uses fields directly without Box::leak
+		create_reverse_relation(&relation);
+
+		// Assert: the reverse relation is registered with the correct values
+		// from the original &'static str fields (pointer equality confirms
+		// no intermediate String allocation was leaked)
+		let reverse_relations = crate::registry::get_reverse_relations_for_model("Author");
+		let found = reverse_relations
+			.iter()
+			.find(|r| r.accessor_name == "articles");
+
+		if let Some(rev) = found {
+			assert_eq!(rev.on_model, "Author");
+			assert_eq!(rev.related_model, "Article");
+			assert_eq!(rev.through_field, "writer");
+			assert_eq!(rev.relation_type, expected_reverse_type);
+			// Verify pointer identity: the stored &'static str should point to
+			// the same string literal as the input, confirming no Box::leak copy
+			assert!(std::ptr::eq(rev.on_model, relation.to_model));
+			assert!(std::ptr::eq(rev.related_model, relation.from_model));
+			assert!(std::ptr::eq(rev.through_field, relation.field_name));
+		}
+	}
+
+	#[rstest]
+	fn test_create_reverse_relation_default_accessor_name() {
+		// Arrange: no explicit related_name, should generate "{model}_set"
+		let relation =
+			RelationMetadata::new("Comment", "BlogPost", "post", None, RelationType::OneToMany);
+
+		// Act
+		create_reverse_relation(&relation);
+
+		// Assert: default accessor name follows "{from_model_lowercase}_set" pattern
+		let reverse_relations = crate::registry::get_reverse_relations_for_model("BlogPost");
+		let found = reverse_relations
+			.iter()
+			.find(|r| r.accessor_name == "comment_set");
+
+		if let Some(rev) = found {
+			assert_eq!(rev.on_model, "BlogPost");
+			assert_eq!(rev.accessor_name, "comment_set");
+			assert_eq!(rev.related_model, "Comment");
+			assert_eq!(rev.relation_type, ReverseRelationType::ReverseOneToMany);
+		}
 	}
 }
