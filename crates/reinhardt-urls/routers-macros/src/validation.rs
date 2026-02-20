@@ -1,5 +1,7 @@
 //! URL path validation logic for compile-time checks.
 
+use std::collections::HashSet;
+
 /// Errors that can occur during path validation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PathValidationError {
@@ -19,6 +21,10 @@ pub(crate) enum PathValidationError {
 	InvalidCharacter { ch: char, position: usize },
 	/// Nested parameters (e.g., {{inner}})
 	NestedParameters(usize),
+	/// Path traversal sequence '..' detected
+	PathTraversal(usize),
+	/// Duplicate parameter name detected
+	DuplicateParameterName { name: String, position: usize },
 }
 
 /// Validates URL path syntax
@@ -28,10 +34,16 @@ pub(crate) fn validate_path_syntax(path: &str) -> Result<(), PathValidationError
 		return Err(PathValidationError::MustStartWithSlash);
 	}
 
+	// Reject path traversal sequences to prevent directory traversal attacks
+	for (i, _) in path.match_indices("..") {
+		return Err(PathValidationError::PathTraversal(i));
+	}
+
 	// Track parameter brace depth and position
 	let mut brace_depth = 0;
 	let mut param_start: Option<usize> = None;
 	let mut prev_char: Option<char> = None;
+	let mut seen_params: HashSet<String> = HashSet::new();
 
 	for (i, ch) in path.char_indices() {
 		// Check for double slashes
@@ -60,6 +72,14 @@ pub(crate) fn validate_path_syntax(path: &str) -> Result<(), PathValidationError
 						return Err(PathValidationError::EmptyParameterName(start));
 					}
 					validate_parameter_name(param_name, start)?;
+
+					// Check for duplicate parameter names
+					if !seen_params.insert(param_name.to_string()) {
+						return Err(PathValidationError::DuplicateParameterName {
+							name: param_name.to_string(),
+							position: start,
+						});
+					}
 				}
 				param_start = None;
 			}
@@ -223,8 +243,51 @@ mod tests {
 	}
 
 	#[test]
-	fn test_valid_path_with_dots() {
+	fn test_valid_path_with_single_dot() {
+		// Single dots are valid in paths (e.g., file extensions, version numbers)
 		assert!(validate_path_syntax("/files/document.pdf").is_ok());
 		assert!(validate_path_syntax("/api/v1.0/users/").is_ok());
+	}
+
+	#[test]
+	fn test_path_traversal_rejected() {
+		let result = validate_path_syntax("/users/../etc/passwd");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::PathTraversal(_))
+		));
+
+		let result = validate_path_syntax("/../../secret");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::PathTraversal(_))
+		));
+
+		let result = validate_path_syntax("/files/..hidden");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::PathTraversal(_))
+		));
+	}
+
+	#[test]
+	fn test_duplicate_parameter_name_rejected() {
+		let result = validate_path_syntax("/users/{id}/posts/{id}/");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::DuplicateParameterName { .. })
+		));
+
+		let result = validate_path_syntax("/{name}/{name}/");
+		assert!(matches!(
+			result,
+			Err(PathValidationError::DuplicateParameterName { .. })
+		));
+	}
+
+	#[test]
+	fn test_distinct_parameter_names_allowed() {
+		assert!(validate_path_syntax("/users/{user_id}/posts/{post_id}/").is_ok());
+		assert!(validate_path_syntax("/{a}/{b}/{c}/").is_ok());
 	}
 }

@@ -6,7 +6,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use super::env::EnvError;
+use super::env::{EnvError, validate_env_var_name};
 
 /// Environment file loader
 pub struct EnvLoader {
@@ -162,14 +162,41 @@ impl EnvLoader {
 		Ok(true)
 	}
 
-	/// Find the .env file in current or parent directories
+	/// Maximum number of parent directories to traverse when searching for .env files.
+	/// Prevents unbounded traversal to the filesystem root in deeply nested directories.
+	const MAX_TRAVERSAL_DEPTH: usize = 10;
+
+	/// Project root marker files that stop .env file traversal.
+	const ROOT_MARKERS: &[&str] = &[".git", "Cargo.toml", "Cargo.lock"];
+
+	/// Find the .env file in current or parent directories.
+	///
+	/// Traversal stops at:
+	/// - A directory containing a `.env` file (found)
+	/// - A project root marker (`.git`, `Cargo.toml`, `Cargo.lock`)
+	/// - The maximum traversal depth ([`Self::MAX_TRAVERSAL_DEPTH`])
+	/// - The filesystem root
 	fn find_env_file(&self) -> Result<PathBuf, EnvError> {
 		let mut current = env::current_dir()?;
 
-		loop {
+		for _depth in 0..Self::MAX_TRAVERSAL_DEPTH {
 			let env_path = current.join(".env");
 			if env_path.exists() {
 				return Ok(env_path);
+			}
+
+			// Stop at project root markers to avoid loading unintended .env files
+			if Self::ROOT_MARKERS
+				.iter()
+				.any(|marker| current.join(marker).exists())
+			{
+				return Err(EnvError::IoError(std::io::Error::new(
+					std::io::ErrorKind::NotFound,
+					format!(
+						".env file not found (stopped at project root: {})",
+						current.display()
+					),
+				)));
 			}
 
 			match current.parent() {
@@ -182,6 +209,14 @@ impl EnvLoader {
 				}
 			}
 		}
+
+		Err(EnvError::IoError(std::io::Error::new(
+			std::io::ErrorKind::NotFound,
+			format!(
+				".env file not found within {} parent directories",
+				Self::MAX_TRAVERSAL_DEPTH
+			),
+		)))
 	}
 
 	/// Parse .env file content and set environment variables
@@ -204,6 +239,7 @@ impl EnvLoader {
 			// Parse key=value
 			if let Some((key, value)) = line_content.split_once('=') {
 				let key = key.trim();
+				validate_env_var_name(key)?;
 				let mut value = value.trim().to_string();
 
 				// Remove quotes if present

@@ -326,14 +326,17 @@ impl crate::backend::TaskBackend for SqsBackend {
 		task_id: TaskId,
 		status: TaskStatus,
 	) -> Result<(), TaskExecutionError> {
-		let mut store = self.metadata_store.write().await;
+		// Update metadata under write lock, then release before network I/O
+		{
+			let mut store = self.metadata_store.write().await;
 
-		let metadata = store
-			.get_mut(&task_id)
-			.ok_or(TaskExecutionError::NotFound(task_id))?;
+			let metadata = store
+				.get_mut(&task_id)
+				.ok_or(TaskExecutionError::NotFound(task_id))?;
 
-		metadata.status = status;
-		metadata.updated_at = chrono::Utc::now().timestamp();
+			metadata.status = status;
+			metadata.updated_at = chrono::Utc::now().timestamp();
+		} // Write lock released here before any network calls
 
 		// If task is completed (success or failure), delete from SQS
 		// Fixes #789
