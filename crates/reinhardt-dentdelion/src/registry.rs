@@ -456,23 +456,33 @@ impl PluginRegistry {
 
 	/// Enables a single plugin.
 	async fn enable_plugin(&self, name: &str, ctx: &PluginContext) -> PluginResult<()> {
-		// Check dependencies are enabled
-		for dep in self.get_dependencies(name) {
-			if !self.is_enabled(&dep) {
-				return Err(PluginError::MissingDependency {
-					plugin: name.to_string(),
-					dependency: dep,
-				});
-			}
-		}
-
-		// Get lifecycle reference
+		// Acquire all needed locks simultaneously to get a consistent snapshot
+		// and prevent TOCTOU issues between dependency check and lifecycle access
 		let lifecycle = {
 			let plugins = self.plugins.read();
+			let deps = self.dependency_graph.read();
+
+			// Check dependencies are enabled (using already-held plugins lock)
+			if let Some(dependencies) = deps.get(name) {
+				for dep in dependencies {
+					let is_dep_enabled = plugins
+						.get(dep)
+						.is_some_and(|e| e.state == PluginState::Enabled);
+					if !is_dep_enabled {
+						return Err(PluginError::MissingDependency {
+							plugin: name.to_string(),
+							dependency: dep.clone(),
+						});
+					}
+				}
+			}
+
+			// Get lifecycle reference while still holding the lock
 			plugins.get(name).and_then(|e| e.lifecycle.clone())
 		};
 
-		// Call lifecycle hook if available
+		// Call lifecycle hook if available (outside locks to avoid holding
+		// locks across async calls)
 		if let Some(lifecycle) = lifecycle {
 			lifecycle.on_enable(ctx).await?;
 		}
@@ -517,19 +527,38 @@ impl PluginRegistry {
 					)));
 				}
 
-				// First disable all dependents
-				let dependents = registry.get_dependents(name);
-				for dep in dependents {
-					if registry.is_enabled(&dep) {
-						disable_inner(registry, &dep, ctx, visited, depth + 1).await?;
-					}
+				// Acquire both locks simultaneously to get a consistent snapshot
+				// of dependents and their enabled status, plus lifecycle reference
+				let (enabled_dependents, lifecycle) = {
+					let plugins = registry.plugins.read();
+					let reverse = registry.dependents.read();
+
+					let enabled_deps: Vec<String> = reverse
+						.get(name)
+						.map(|deps| {
+							deps.iter()
+								.filter(|dep| {
+									plugins
+										.get(dep.as_str())
+										.is_some_and(|e| e.state == PluginState::Enabled)
+								})
+								.cloned()
+								.collect()
+						})
+						.unwrap_or_default();
+
+					let lc = plugins.get(name).and_then(|e| e.lifecycle.clone());
+
+					(enabled_deps, lc)
+				};
+
+				// Disable all enabled dependents first
+				for dep in enabled_dependents {
+					disable_inner(registry, &dep, ctx, visited, depth + 1).await?;
 				}
 
-				// Get lifecycle reference
-				let lifecycle = {
-					let plugins = registry.plugins.read();
-					plugins.get(name).and_then(|e| e.lifecycle.clone())
-				};
+				// Use the lifecycle reference obtained from the consistent snapshot
+				let lifecycle = lifecycle;
 
 				// Call lifecycle hook if available
 				if let Some(lifecycle) = lifecycle {

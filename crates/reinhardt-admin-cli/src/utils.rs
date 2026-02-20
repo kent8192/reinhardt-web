@@ -4,7 +4,7 @@
 //! files when an error occurs mid-operation.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Restore a set of files to their original contents, logging any errors.
 ///
@@ -45,6 +45,68 @@ pub(crate) fn report_rollback_errors(errors: &[(PathBuf, std::io::Error)]) {
 	);
 	for (path, err) in errors {
 		eprintln!("  - {}: {}", path.display(), err);
+	}
+}
+
+/// Write content to a file atomically by writing to a temporary file first, then renaming.
+///
+/// This prevents data corruption if the write is interrupted (e.g., by a signal or power
+/// failure). The rename operation is atomic on the same filesystem.
+///
+/// Original file permissions are preserved after the write.
+pub(crate) fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
+	// Preserve original permissions before overwrite (if the file exists)
+	let original_perms = std::fs::metadata(path).ok().map(|m| m.permissions());
+
+	// Write to a temporary file in the same directory to ensure same filesystem
+	let tmp_path = path.with_extension("tmp");
+	std::fs::write(&tmp_path, content)?;
+
+	// Atomically rename the temp file over the target
+	if let Err(e) = std::fs::rename(&tmp_path, path) {
+		// Clean up the temp file if rename fails
+		let _ = std::fs::remove_file(&tmp_path);
+		return Err(e);
+	}
+
+	// Restore original file permissions
+	if let Some(perms) = original_perms {
+		std::fs::set_permissions(path, perms)?;
+	}
+
+	Ok(())
+}
+
+/// RAII guard that cleans up a backup file if the operation is not committed.
+///
+/// Call `commit()` to indicate the operation succeeded and the backup should be kept.
+/// If dropped without committing, the backup file is automatically deleted to prevent
+/// orphaned backup files on failure.
+pub(crate) struct BackupGuard {
+	backup_path: PathBuf,
+	committed: bool,
+}
+
+impl BackupGuard {
+	/// Create a new backup guard. The backup file at `backup_path` must already exist.
+	pub(crate) fn new(backup_path: PathBuf) -> Self {
+		Self {
+			backup_path,
+			committed: false,
+		}
+	}
+
+	/// Mark the backup as committed, preventing automatic cleanup on drop.
+	pub(crate) fn commit(&mut self) {
+		self.committed = true;
+	}
+}
+
+impl Drop for BackupGuard {
+	fn drop(&mut self) {
+		if !self.committed {
+			let _ = std::fs::remove_file(&self.backup_path);
+		}
 	}
 }
 

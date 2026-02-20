@@ -246,7 +246,10 @@ impl MySqlContainer {
 		let container = AsyncRunner::start(image)
 			.await
 			.expect("Failed to start MySQL container");
-		let port = container.get_host_port_ipv4(3306).await.unwrap();
+		let port = container
+			.get_host_port_ipv4(3306)
+			.await
+			.expect("MySQL container port should be available after startup");
 
 		Self {
 			container,
@@ -311,7 +314,10 @@ impl RedisContainer {
 		let container = AsyncRunner::start(image)
 			.await
 			.expect("Failed to start Redis container");
-		let port = container.get_host_port_ipv4(6379).await.unwrap();
+		let port = container
+			.get_host_port_ipv4(6379)
+			.await
+			.expect("Redis container port should be available after startup");
 
 		let redis_container = Self {
 			container,
@@ -429,7 +435,10 @@ impl MemcachedContainer {
 		let container = AsyncRunner::start(image)
 			.await
 			.expect("Failed to start Memcached container");
-		let port = container.get_host_port_ipv4(11211).await.unwrap();
+		let port = container
+			.get_host_port_ipv4(11211)
+			.await
+			.expect("Memcached container port should be available after startup");
 
 		let instance = Self {
 			container,
@@ -622,8 +631,14 @@ impl RabbitMQContainer {
 			.expect("Failed to start RabbitMQ container");
 
 		// RabbitMQ AMQP port (5672) and Management UI port (15672)
-		let port = container.get_host_port_ipv4(5672).await.unwrap();
-		let management_port = container.get_host_port_ipv4(15672).await.unwrap();
+		let port = container
+			.get_host_port_ipv4(5672)
+			.await
+			.expect("RabbitMQ AMQP container port should be available after startup");
+		let management_port = container
+			.get_host_port_ipv4(15672)
+			.await
+			.expect("RabbitMQ management container port should be available after startup");
 
 		let rabbitmq_container = Self {
 			container,
@@ -748,8 +763,14 @@ impl MailpitContainer {
 			.expect("Failed to start Mailpit container");
 
 		// Mailpit SMTP port (1025) and HTTP API/UI port (8025)
-		let smtp_port = container.get_host_port_ipv4(1025).await.unwrap();
-		let http_port = container.get_host_port_ipv4(8025).await.unwrap();
+		let smtp_port = container
+			.get_host_port_ipv4(1025)
+			.await
+			.expect("Mailpit SMTP container port should be available after startup");
+		let http_port = container
+			.get_host_port_ipv4(8025)
+			.await
+			.expect("Mailpit HTTP container port should be available after startup");
 
 		let mailpit_container = Self {
 			container,

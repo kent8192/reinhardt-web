@@ -68,7 +68,12 @@ pub(crate) fn permission_required_impl(args: TokenStream, input: ItemFn) -> Resu
 						}
 					}
 				}
-				_ => {}
+				_ => {
+					return Err(Error::new_spanned(
+						&meta,
+						"unknown attribute in permission_required macro",
+					));
+				}
 			}
 		}
 	}

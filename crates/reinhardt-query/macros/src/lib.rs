@@ -135,24 +135,35 @@ fn extract_custom_name(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::
 		}
 		match &attr.meta {
 			syn::Meta::NameValue(name_value) => {
-				if name_value.path.is_ident("iden")
-					&& let syn::Expr::Lit(lit) = &name_value.value
+				if let syn::Expr::Lit(lit) = &name_value.value
 					&& let syn::Lit::Str(lit_str) = &lit.lit
 				{
 					let value = lit_str.value();
 					validate_iden_name(&value, lit_str.span())?;
 					return Ok(Some(value));
 				}
+				return Err(syn::Error::new_spanned(
+					&name_value.value,
+					"#[iden = ...] expects a string literal, e.g., #[iden = \"custom_name\"]",
+				));
 			}
 			syn::Meta::List(list) => {
-				if list.path.is_ident("iden") {
-					let lit: syn::LitStr = list.parse_args()?;
-					let value = lit.value();
-					validate_iden_name(&value, lit.span())?;
-					return Ok(Some(value));
-				}
+				let lit: syn::LitStr = list.parse_args().map_err(|_| {
+					syn::Error::new_spanned(
+						list,
+						"#[iden(...)] expects a single string literal, e.g., #[iden(\"custom_name\")]",
+					)
+				})?;
+				let value = lit.value();
+				validate_iden_name(&value, lit.span())?;
+				return Ok(Some(value));
 			}
-			_ => {}
+			syn::Meta::Path(_) => {
+				return Err(syn::Error::new_spanned(
+					attr,
+					"#[iden] requires a value, use #[iden = \"name\"] or #[iden(\"name\")]",
+				));
+			}
 		}
 	}
 	Ok(None)
@@ -291,9 +302,10 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 
 			// Generate Iden::unquoted match arms
 			// Fixes #792: Use pattern instead of simple variant ident
+			// Iden::unquoted contract: writer is expected to not fail
 			let iden_arms = variant_data.iter().map(|(pattern, iden_name)| {
 				quote! {
-					#pattern => s.write_str(#iden_name).unwrap(),
+					#pattern => s.write_str(#iden_name).expect("write to String is infallible"),
 				}
 			});
 
@@ -329,7 +341,8 @@ fn derive_iden_impl(input: &DeriveInput) -> Result<proc_macro2::TokenStream, syn
 
 				impl reinhardt_query::types::Iden for #name {
 					fn unquoted(&self, s: &mut dyn ::std::fmt::Write) {
-						s.write_str(#iden_name).unwrap();
+						// Iden::unquoted contract: writer is expected to not fail
+						s.write_str(#iden_name).expect("write to String is infallible");
 					}
 				}
 			})

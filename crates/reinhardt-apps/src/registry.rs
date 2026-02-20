@@ -458,8 +458,7 @@ static REVERSE_RELATIONS: OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>
 
 /// Registers a reverse relation during the initialization phase.
 ///
-/// Must be called before `finalize_reverse_relations()`. Panics if called
-/// after finalization.
+/// Must be called before `finalize_reverse_relations()`.
 ///
 /// # Examples
 ///
@@ -473,21 +472,26 @@ static REVERSE_RELATIONS: OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>
 ///     ReverseRelationType::ReverseOneToMany,
 ///     "author",
 /// );
-/// register_reverse_relation(reverse_relation);
+/// register_reverse_relation(reverse_relation).unwrap();
 /// ```
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if called after `finalize_reverse_relations()` has been called.
-pub fn register_reverse_relation(relation: ReverseRelationMetadata) {
+/// Returns [`AppError::RegistryState`] if called after `finalize_reverse_relations()`.
+pub fn register_reverse_relation(
+	relation: ReverseRelationMetadata,
+) -> Result<(), crate::AppError> {
 	if REVERSE_RELATIONS.get().is_some() {
-		panic!("Cannot register reverse relations after finalization");
+		return Err(crate::AppError::RegistryState(
+			"Cannot register reverse relations after finalization".to_string(),
+		));
 	}
 	// Recover from poisoned lock to prevent cascading panics
 	let mut builder = REVERSE_RELATIONS_BUILDER
 		.write()
 		.unwrap_or_else(PoisonError::into_inner);
 	builder.push(relation);
+	Ok(())
 }
 
 /// Finalizes the reverse relations, making them immutable.
@@ -531,6 +535,46 @@ pub fn get_reverse_relations_for_model(model_name: &str) -> Vec<ReverseRelationM
 		.and_then(|m| m.get(model_name))
 		.cloned()
 		.unwrap_or_default()
+}
+
+/// Resets all global registry caches for test isolation.
+///
+/// This clears the `MODEL_CACHE`, `RELATIONSHIP_CACHE`, and `REVERSE_RELATIONS`
+/// `OnceLock` instances so that each test can start with a clean slate.
+/// Also clears the `REVERSE_RELATIONS_BUILDER` `RwLock` vec.
+///
+/// # Safety
+///
+/// This function replaces static `OnceLock` values using `std::ptr::write`.
+/// It is only safe to call from a single-threaded test context (e.g., with
+/// `#[serial]`) where no other thread is concurrently reading these statics.
+#[cfg(test)]
+pub fn reset_global_registry() {
+	use std::sync::PoisonError;
+
+	// Clear the builder vec
+	let mut builder = REVERSE_RELATIONS_BUILDER
+		.write()
+		.unwrap_or_else(PoisonError::into_inner);
+	builder.clear();
+	drop(builder);
+
+	// SAFETY: We replace each OnceLock in-place with a fresh instance.
+	// This is safe only when called from a single-threaded test context
+	// (enforced by #[serial]) where no concurrent readers exist.
+	unsafe {
+		let model_cache_ptr =
+			std::ptr::addr_of!(MODEL_CACHE) as *mut OnceLock<HashMap<&'static str, Vec<&'static ModelMetadata>>>;
+		std::ptr::write(model_cache_ptr, OnceLock::new());
+
+		let rel_cache_ptr =
+			std::ptr::addr_of!(RELATIONSHIP_CACHE) as *mut OnceLock<HashMap<&'static str, Vec<&'static RelationshipMetadata>>>;
+		std::ptr::write(rel_cache_ptr, OnceLock::new());
+
+		let rev_rel_ptr =
+			std::ptr::addr_of!(REVERSE_RELATIONS) as *mut OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>>;
+		std::ptr::write(rev_rel_ptr, OnceLock::new());
+	}
 }
 
 #[cfg(test)]

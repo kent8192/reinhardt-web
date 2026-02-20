@@ -36,6 +36,9 @@ pub enum AppError {
 
 	#[error("Application configuration error: {0}")]
 	ConfigError(String),
+
+	#[error("Registry state error: {0}")]
+	RegistryState(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -428,18 +431,26 @@ impl Apps {
 	}
 
 	/// Check if an application is installed
+	///
+	/// Acquires locks on both `app_names` and `app_configs` before checking,
+	/// ensuring a consistent snapshot and avoiding TOCTOU race conditions
+	/// where state could change between individual lock acquisitions.
 	pub fn is_installed(&self, name: &str) -> bool {
-		self.installed_apps.contains(&name.to_string())
-			|| self
-				.app_names
-				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.contains_key(name)
-			|| self
-				.app_configs
-				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.contains_key(name)
+		if self.installed_apps.contains(&name.to_string()) {
+			return true;
+		}
+
+		// Hold both locks simultaneously for a consistent snapshot
+		let names = self
+			.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		let configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+
+		names.contains_key(name) || configs.contains_key(name)
 	}
 
 	/// Populate the registry with application configurations
@@ -466,14 +477,30 @@ impl Apps {
 			.unwrap_or_else(PoisonError::into_inner) = true;
 
 		// 1. Import and instantiate AppConfig for each installed app
+		// Detect duplicate entries in the installed_apps list itself
+		{
+			let mut seen = std::collections::HashSet::new();
+			for app_name in &self.installed_apps {
+				if !seen.insert(app_name) {
+					return Err(AppError::DuplicateLabel(app_name.clone()));
+				}
+			}
+		}
+
 		for app_name in &self.installed_apps {
 			let app_config = AppConfig::new(app_name.clone(), app_name.clone());
 
-			// Store in registries
-			self.app_configs
+			// Skip apps already registered via register() to avoid overwriting
+			let mut configs = self
+				.app_configs
 				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.insert(app_config.label.clone(), app_config.clone());
+				.unwrap_or_else(PoisonError::into_inner);
+			if configs.contains_key(&app_config.label) {
+				continue;
+			}
+			configs.insert(app_config.label.clone(), app_config.clone());
+			drop(configs);
+
 			self.app_names
 				.lock()
 				.unwrap_or_else(PoisonError::into_inner)
@@ -509,7 +536,7 @@ impl Apps {
 			.lock()
 			.unwrap_or_else(PoisonError::into_inner)
 		{
-			crate::discovery::build_reverse_relations();
+			crate::discovery::build_reverse_relations()?;
 			// Finalize reverse relations to make them immutable
 			crate::registry::finalize_reverse_relations();
 		}

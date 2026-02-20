@@ -552,12 +552,16 @@ fn run_fmt(
 	}
 
 	let files = collect_rust_files(&path).map_err(|e| {
-		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
+		reinhardt_commands::CommandError::ExecutionError(format!(
+			"Failed to collect files in {}: {}",
+			display_path(&path),
+			sanitize_error(&e)
+		))
 	})?;
 
 	if files.is_empty() {
 		if verbosity > 0 {
-			println!("No Rust files found in {:?}", path);
+			println!("No Rust files found in {}", display_path(&path));
 		}
 		return Ok(());
 	}
@@ -576,7 +580,7 @@ fn run_fmt(
 	if verbosity > 0
 		&& let Some(ref p) = resolved_config_path
 	{
-		println!("Using rustfmt config: {}", p.display());
+		println!("Using rustfmt config: {}", display_path(p));
 	}
 
 	let formatter = if let Some(ref config) = resolved_config_path {
@@ -600,7 +604,7 @@ fn run_fmt(
 				"{} {} {}: {}",
 				progress.bright_blue(),
 				"Skipped:".yellow(),
-				file_path.display(),
+				display_path(file_path),
 				e
 			);
 			error_count += 1;
@@ -610,8 +614,8 @@ fn run_fmt(
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
-				file_path.display(),
-				e
+				mask_path(file_path),
+				sanitize_error(&e.to_string())
 			))
 		})?;
 
@@ -623,7 +627,7 @@ fn run_fmt(
 					"{} {} {} (reinhardt-fmt: ignore-all)",
 					progress.bright_blue(),
 					"Ignored:".yellow(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 			continue;
@@ -643,8 +647,8 @@ fn run_fmt(
 						"{} {} {}: rustfmt failed: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e)
 					);
 					error_count += 1;
 					continue;
@@ -663,8 +667,8 @@ fn run_fmt(
 						"{} {} {}: page! format failed: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e.to_string())
 					);
 					error_count += 1;
 					continue;
@@ -689,7 +693,7 @@ fn run_fmt(
 									"{} {} {} ({})",
 									progress.bright_blue(),
 									"Ignored:".yellow(),
-									file_path.display(),
+									display_path(file_path),
 									reason
 								);
 								continue;
@@ -703,8 +707,8 @@ fn run_fmt(
 						"{} {} {}: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e.to_string())
 					);
 					error_count += 1;
 					continue;
@@ -716,12 +720,13 @@ fn run_fmt(
 		if final_result != original_content {
 			if check {
 				// Check mode: report unformatted files
-				println!("{} Would format: {}", progress, file_path.display());
+				println!("{} Would format: {}", progress, display_path(file_path));
 				formatted_count += 1;
 			} else {
-				// Backup if requested
+				// Backup if requested (with RAII guard to clean up on failure)
+				let mut _backup_guard = None;
 				if backup {
-					let backup_path = file_path.with_extension("rs.bak");
+					let backup_path = create_temp_backup_path(file_path);
 					create_secure_backup(file_path, &backup_path).map_err(|e| {
 						reinhardt_commands::CommandError::ExecutionError(format!(
 							"Failed to backup {}: {}",
@@ -729,22 +734,28 @@ fn run_fmt(
 							e
 						))
 					})?;
+					_backup_guard = Some(utils::BackupGuard::new(backup_path));
 				}
 
-				// Format mode: write changes
-				std::fs::write(file_path, &final_result).map_err(|e| {
+				// Format mode: write changes atomically (write to temp, then rename)
+				utils::atomic_write(file_path, &final_result).map_err(|e| {
 					reinhardt_commands::CommandError::ExecutionError(format!(
 						"Failed to write {}: {}",
-						file_path.display(),
-						e
+						mask_path(file_path),
+						sanitize_error(&e.to_string())
 					))
 				})?;
+
+				// Commit the backup guard so the backup is preserved on success
+				if let Some(ref mut guard) = _backup_guard {
+					guard.commit();
+				}
 				// Color output: success in green
 				println!(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Formatted:".green(),
-					file_path.display()
+					display_path(file_path)
 				);
 				formatted_count += 1;
 			}
@@ -755,7 +766,7 @@ fn run_fmt(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Unchanged:".dimmed(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 		}
@@ -851,16 +862,19 @@ fn run_fmt_all(
 	})?;
 
 	if verbosity > 0 {
-		println!("Project root: {}", project_root.display());
+		println!("Project root: {}", display_path(&project_root));
 	}
 
 	let files = collect_rust_files(&project_root).map_err(|e| {
-		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
+		reinhardt_commands::CommandError::ExecutionError(format!(
+			"Failed to collect files: {}",
+			sanitize_error(&e)
+		))
 	})?;
 
 	if files.is_empty() {
 		if verbosity > 0 {
-			println!("No Rust files found in {:?}", project_root);
+			println!("No Rust files found in {}", display_path(&project_root));
 		}
 		return Ok(());
 	}
@@ -902,8 +916,8 @@ fn run_fmt_all(
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
-				file_path.display(),
-				e
+				mask_path(file_path),
+				sanitize_error(&e.to_string())
 			))
 		})?;
 
@@ -926,12 +940,12 @@ fn run_fmt_all(
 		if !protect_result.backups.is_empty() {
 			page_macro_count += protect_result.backups.len();
 
-			// Write protected content to disk (cargo fmt will format it)
-			std::fs::write(file_path, &protect_result.protected_content).map_err(|e| {
+			// Write protected content to disk atomically (cargo fmt will format it)
+			utils::atomic_write(file_path, &protect_result.protected_content).map_err(|e| {
 				reinhardt_commands::CommandError::ExecutionError(format!(
 					"Failed to write protected content to {}: {}",
-					file_path.display(),
-					e
+					mask_path(file_path),
+					sanitize_error(&e.to_string())
 				))
 			})?;
 
@@ -992,8 +1006,9 @@ fn run_fmt_all(
 		}
 	}
 
-	if verbosity > 0 {
-		println!("  Command: {:?}", cmd);
+	if verbosity > 1 {
+		// Only show command details at high verbosity to avoid leaking config paths
+		println!("  Running: cargo fmt --all");
 	}
 
 	let cargo_fmt_result = cmd.output();
@@ -1002,25 +1017,35 @@ fn run_fmt_all(
 	let modified_on_disk: Vec<PathBuf> = protected_files.iter().map(|(p, _)| p.clone()).collect();
 
 	// If cargo fmt fails, restore only modified files
-	if let Err(e) = &cargo_fmt_result {
-		eprintln!("{} cargo fmt failed: {}", "Error:".red(), e);
-		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
-		utils::report_rollback_errors(&rollback_errors);
-		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
-			"cargo fmt failed: {}",
-			e
-		)));
-	}
+	let output = match cargo_fmt_result {
+		Ok(output) => output,
+		Err(e) => {
+			eprintln!(
+				"{} cargo fmt failed: {}",
+				"Error:".red(),
+				sanitize_error(&e.to_string())
+			);
+			let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
+			utils::report_rollback_errors(&rollback_errors);
+			return Err(reinhardt_commands::CommandError::ExecutionError(
+				"cargo fmt failed to execute".to_string(),
+			));
+		}
+	};
 
-	let output = cargo_fmt_result.unwrap();
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
-		eprintln!("{} cargo fmt exited with error: {}", "Error:".red(), stderr);
+		let sanitized_stderr = sanitize_error(&stderr);
+		eprintln!(
+			"{} cargo fmt exited with error: {}",
+			"Error:".red(),
+			sanitized_stderr
+		);
 		let rollback_errors = utils::rollback_files(&modified_on_disk, &original_contents);
 		utils::report_rollback_errors(&rollback_errors);
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt exited with error: {}",
-			stderr
+			sanitized_stderr
 		)));
 	}
 
@@ -1042,8 +1067,8 @@ fn run_fmt_all(
 				eprintln!(
 					"{} Failed to read {}: {}",
 					"Error:".red(),
-					file_path.display(),
-					e
+					display_path(file_path),
+					sanitize_error(&e.to_string())
 				);
 				error_count += 1;
 				continue;
@@ -1060,23 +1085,23 @@ fn run_fmt_all(
 				eprintln!(
 					"{} page! format failed for {}: {}",
 					"Error:".red(),
-					file_path.display(),
-					e
+					display_path(file_path),
+					sanitize_error(&e.to_string())
 				);
 				error_count += 1;
-				// Write restored content anyway (without DSL formatting)
-				let _ = std::fs::write(file_path, &restored);
+				// Write restored content anyway (without DSL formatting), atomically
+				let _ = utils::atomic_write(file_path, &restored);
 				continue;
 			}
 		};
 
-		// Write final result
-		if let Err(e) = std::fs::write(file_path, &final_result) {
+		// Write final result atomically
+		if let Err(e) = utils::atomic_write(file_path, &final_result) {
 			eprintln!(
 				"{} Failed to write {}: {}",
 				"Error:".red(),
-				file_path.display(),
-				e
+				display_path(file_path),
+				sanitize_error(&e.to_string())
 			);
 			error_count += 1;
 		}
@@ -1101,7 +1126,7 @@ fn run_fmt_all(
 
 		if &current_content != original_content {
 			if check {
-				println!("{} Would format: {}", progress, file_path.display());
+				println!("{} Would format: {}", progress, display_path(file_path));
 				// Restore original content in check mode
 				if let Err(e) = std::fs::write(file_path, original_content) {
 					eprintln!(
@@ -1115,24 +1140,29 @@ fn run_fmt_all(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Formatted:".green(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 			formatted_count += 1;
 
-			// Create backup if requested
+			// Create backup if requested (stored in /tmp with restrictive permissions)
+			// BackupGuard ensures cleanup if the write fails
 			if backup && !check {
-				let backup_path = file_path.with_extension("rs.bak");
-				// Write backup with secure content handling
-				let mut content_copy = original_content.clone();
-				if let Err(e) = std::fs::write(&backup_path, &content_copy) {
-					eprintln!(
-						"Warning: failed to create backup for {}: {}",
-						file_path.display(),
-						e
-					);
+				let backup_path = create_temp_backup_path(file_path);
+				match create_secure_backup(file_path, &backup_path) {
+					Ok(()) => {
+						// Commit immediately since the format write already succeeded
+						let mut guard = utils::BackupGuard::new(backup_path);
+						guard.commit();
+					}
+					Err(e) => {
+						eprintln!(
+							"Warning: failed to create backup for {}: {}",
+							mask_path(file_path),
+							e
+						);
+					}
 				}
-				content_copy.zeroize();
 			}
 		} else {
 			unchanged_count += 1;
@@ -1141,7 +1171,7 @@ fn run_fmt_all(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Unchanged:".dimmed(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 		}
@@ -1206,12 +1236,15 @@ fn run_fmt_all(
 }
 
 /// Find the project root by searching upward for Cargo.toml.
+///
+/// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
+/// race conditions in the existence check.
 fn find_project_root() -> Option<PathBuf> {
 	let current_dir = std::env::current_dir().ok()?;
 	let mut current = current_dir.as_path();
 
 	loop {
-		if current.join("Cargo.toml").exists() {
+		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
 			return Some(current.to_path_buf());
 		}
 		current = current.parent()?;
@@ -1219,6 +1252,9 @@ fn find_project_root() -> Option<PathBuf> {
 }
 
 /// Find rustfmt.toml by searching upward from a path.
+///
+/// Uses `std::fs::metadata` instead of `Path::exists()` to avoid TOCTOU
+/// race conditions in the existence check.
 fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 	let mut current = if start_path.is_file() {
 		start_path.parent()
@@ -1228,14 +1264,14 @@ fn find_rustfmt_config(start_path: &Path) -> Option<PathBuf> {
 
 	loop {
 		let config = current.join("rustfmt.toml");
-		if config.exists() {
+		if std::fs::metadata(&config).is_ok() {
 			return Some(config);
 		}
 		let hidden_config = current.join(".rustfmt.toml");
-		if hidden_config.exists() {
+		if std::fs::metadata(&hidden_config).is_ok() {
 			return Some(hidden_config);
 		}
-		if current.join("Cargo.toml").exists() {
+		if std::fs::metadata(current.join("Cargo.toml")).is_ok() {
 			break;
 		}
 		current = current.parent()?;
@@ -1338,6 +1374,22 @@ fn create_secure_backup(source: &Path, backup_path: &Path) -> Result<(), std::io
 	Ok(())
 }
 
+/// Create a backup file path in the system temporary directory.
+///
+/// # Security
+///
+/// Stores backup files in `/tmp` instead of the source directory to prevent
+/// backup files from being committed or exposed in the project tree.
+/// Uses a deterministic name based on the source file name so the backup
+/// can be identified if cleanup is interrupted.
+fn create_temp_backup_path(source: &Path) -> PathBuf {
+	let file_name = source
+		.file_name()
+		.unwrap_or_else(|| std::ffi::OsStr::new("unknown"));
+	let backup_name = format!("reinhardt-fmt-{}.bak", file_name.to_string_lossy());
+	std::env::temp_dir().join(backup_name)
+}
+
 /// Mask sensitive file path in error messages.
 ///
 /// Returns a masked version of the path that only shows the filename,
@@ -1346,6 +1398,54 @@ fn mask_path(path: &Path) -> String {
 	path.file_name()
 		.map(|name| format!("<...>/{}", name.to_string_lossy()))
 		.unwrap_or_else(|| "<file>".to_string())
+}
+
+/// Convert a path to a display-safe relative path.
+///
+/// Attempts to strip the current working directory prefix to show a relative path.
+/// Falls back to showing only the filename via `mask_path` if relativization fails.
+fn display_path(path: &Path) -> String {
+	if let Ok(cwd) = std::env::current_dir() {
+		if let Ok(relative) = path.strip_prefix(&cwd) {
+			return relative.display().to_string();
+		}
+	}
+	mask_path(path)
+}
+
+/// Sanitize error messages to prevent information leakage.
+///
+/// Removes absolute file system paths and sensitive patterns from error messages
+/// to prevent exposing internal system structure to end users.
+fn sanitize_error(error: &str) -> String {
+	use std::sync::LazyLock;
+
+	// Pattern: absolute paths on Unix-like systems (e.g., /home/user/project/file.rs)
+	static PATH_RE: LazyLock<regex::Regex> =
+		LazyLock::new(|| regex::Regex::new(r"(/[a-zA-Z0-9._-]+){3,}").unwrap());
+
+	// Pattern: database connection URLs
+	static DB_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+		regex::Regex::new(r"(?i)(postgres|mysql|sqlite|mongodb|redis)://[^\s]+").unwrap()
+	});
+
+	// Pattern: API keys, tokens, secrets in key=value or key:value format
+	static TOKEN_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+		regex::Regex::new(
+			r"(?i)(api[_\-]?key|token|secret|password|auth)[=:]\s*['\x22]?[a-zA-Z0-9+/=_\-]{8,}",
+		)
+		.unwrap()
+	});
+
+	let sanitized = PATH_RE.replace_all(error, |caps: &regex::Captures| {
+		let matched_path = Path::new(caps.get(0).unwrap().as_str());
+		mask_path(matched_path)
+	});
+
+	let sanitized = DB_RE.replace_all(&sanitized, "[REDACTED_DATABASE_URL]");
+	let sanitized = TOKEN_RE.replace_all(&sanitized, "[REDACTED_CREDENTIAL]");
+
+	sanitized.to_string()
 }
 
 /// Securely clear a HashMap containing sensitive string data.
@@ -1391,21 +1491,22 @@ fn validate_config_path(path: &Path) -> Result<(), String> {
 		));
 	}
 
-	// Check that path exists
-	if !path.exists() {
-		return Err(format!("Config path does not exist: {}", mask_path(path)));
-	}
+	// Use symlink_metadata for a single atomic check (avoids TOCTOU between
+	// exists/is_symlink/is_file calls). symlink_metadata does not follow
+	// symlinks, so a symlink target cannot change between checks.
+	let symlink_meta = std::fs::symlink_metadata(path)
+		.map_err(|e| format!("Config path is not accessible: {} ({})", mask_path(path), e))?;
 
 	// Reject symlinks
-	if path.is_symlink() {
+	if symlink_meta.file_type().is_symlink() {
 		return Err(format!(
 			"Config path is a symlink, which is not allowed: {}",
 			mask_path(path)
 		));
 	}
 
-	// Verify it's a regular file
-	if !path.is_file() {
+	// Verify it's a regular file (not a directory, device, etc.)
+	if !symlink_meta.is_file() {
 		return Err(format!(
 			"Config path is not a regular file: {}",
 			mask_path(path)

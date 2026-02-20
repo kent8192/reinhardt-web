@@ -46,11 +46,15 @@ pub mod router;
 // Re-export main types for convenience
 pub use config::{
 	AndroidConfig, AndroidConfigBuilder, AppClipsConfig, AppLinkComponent, AppLinkDetail,
-	AppLinksConfig, AssetStatement, AssetTarget, CustomScheme, CustomSchemeConfig, DeeplinkConfig,
-	DeeplinkConfigBuilder, IosConfig, IosConfigBuilder, WebCredentialsConfig,
+	AppLinksConfig, AssetStatement, AssetTarget, CustomScheme, CustomSchemeBuilder,
+	CustomSchemeConfig, DeeplinkConfig, DeeplinkConfigBuilder, IosConfig, IosConfigBuilder,
+	WebCredentialsConfig,
 };
 pub use endpoints::{AasaHandler, AssetLinksHandler};
-pub use error::{DeeplinkError, validate_app_id, validate_fingerprint, validate_package_name};
+pub use error::{
+	DeeplinkError, validate_app_id, validate_bundle_id, validate_fingerprint,
+	validate_package_name, validate_scheme_name,
+};
 pub use router::{DeeplinkRouter, DeeplinkRouterExt};
 
 /// Result type for deeplink operations.

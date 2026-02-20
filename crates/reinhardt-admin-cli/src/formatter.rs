@@ -32,22 +32,36 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 	if path.is_file() {
 		// Verify the file is not a symlink before processing
 		if path.is_symlink() {
-			return Err(format!("Refusing to process symlink: {}", path.display()));
+			return Err(format!(
+				"Refusing to process symlink: {}",
+				sanitize_path_for_error(path)
+			));
 		}
 		if path.extension().is_some_and(|ext| ext == "rs") {
 			files.push(path.clone());
 		}
 	} else if path.is_dir() {
 		// Canonicalize the base directory to use as boundary for path validation
-		let base_dir = path
-			.canonicalize()
-			.map_err(|e| format!("Failed to canonicalize base path: {}", e))?;
+		let base_dir = path.canonicalize().map_err(|e| {
+			format!(
+				"Failed to resolve base path: {}",
+				e.kind()
+			)
+		})?;
 
 		for entry in WalkDir::new(path)
 			.follow_links(false) // Do not follow symlinks to prevent symlink attacks
 			.into_iter()
-			.filter_map(|e| e.ok())
-		{
+			.filter_map(|result| match result {
+				Ok(entry) => Some(entry),
+				Err(e) => {
+					eprintln!(
+						"Warning: skipping directory entry due to error: {}",
+						e
+					);
+					None
+				}
+			}) {
 			let entry_path = entry.path();
 
 			// Skip symlinks entirely
@@ -68,10 +82,22 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 			}
 		}
 	} else {
-		return Err(format!("Path does not exist: {}", path.display()));
+		return Err(format!(
+			"Path does not exist: {}",
+			sanitize_path_for_error(path)
+		));
 	}
 
 	Ok(files)
+}
+
+/// Sanitize a path for error messages to prevent information leakage.
+///
+/// Returns only the filename to avoid exposing full file system paths.
+fn sanitize_path_for_error(path: &Path) -> String {
+	path.file_name()
+		.map(|name| format!("<...>/{}", name.to_string_lossy()))
+		.unwrap_or_else(|| "<path>".to_string())
 }
 
 /// Check if a path is within the given base directory.
