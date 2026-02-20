@@ -191,7 +191,7 @@ impl AdminSite {
 	/// let user_admin = ModelAdminConfig::builder()
 	///     .model_name("User")
 	///     .list_display(vec!["id", "username", "email"])
-	///     .build();
+	///     .build()?;
 	///
 	/// admin.register("User", user_admin);
 	/// ```
@@ -201,7 +201,13 @@ impl AdminSite {
 		admin: impl ModelAdmin + 'static,
 	) -> AdminResult<()> {
 		let model_name = model_name.into();
-		self.registry.insert(model_name.clone(), Arc::new(admin));
+		if self.registry.contains_key(&model_name) {
+			return Err(AdminError::ValidationError(format!(
+				"Model '{}' is already registered",
+				model_name
+			)));
+		}
+		self.registry.insert(model_name, Arc::new(admin));
 		Ok(())
 	}
 
@@ -352,7 +358,7 @@ impl AdminSite {
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
 	/// let router = admin.get_router(conn)
-	///     .with_favicon_file("branding/logo.png")
+	///     .with_favicon_file("branding/logo.png")?
 	///     .build();
 	/// # Ok(())
 	/// # }
@@ -524,6 +530,23 @@ mod tests {
 
 		admin.clear();
 		assert_eq!(admin.model_count(), 0);
+	}
+
+	#[rstest]
+	fn test_duplicate_registration_returns_error() {
+		// Arrange
+		let admin = AdminSite::new("Admin");
+		admin
+			.register("User", ModelAdminConfig::new("User"))
+			.unwrap();
+
+		// Act
+		let result = admin.register("User", ModelAdminConfig::new("User"));
+
+		// Assert
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("already registered"));
 	}
 
 	#[rstest]
