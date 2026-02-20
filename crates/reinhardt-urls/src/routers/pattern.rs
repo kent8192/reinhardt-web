@@ -33,7 +33,7 @@ const MAX_REGEX_SIZE: usize = 1 << 20; // 1 MiB
 /// | `str` | `[^/]+` | Any non-slash characters (default) |
 /// | `uuid` | UUID regex | UUID format |
 /// | `slug` | `[a-z0-9]+(?:-[a-z0-9]+)*` | Lowercase slug |
-/// | `path` | `.+` | Any characters including slashes (excludes `..` segments) |
+/// | `path` | `.+` | Any characters **including** path separators (`/`); `..` segments are rejected by post-match validation |
 /// | `bool` | `true\|false\|1\|0` | Boolean literals |
 /// | `email` | Email regex | Email format |
 /// | `date` | `[0-9]{4}-[0-9]{2}-[0-9]{2}` | ISO 8601 date |
@@ -44,7 +44,9 @@ fn type_spec_to_regex(type_spec: &str) -> &'static str {
 		"str" => r"[^/]+",
 		"uuid" => r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
 		"slug" => r"[a-z0-9]+(?:-[a-z0-9]+)*",
-		// Matches any characters including slashes.
+		// Matches any characters including path separators (`/`).
+		// A pattern like `/files/{<path:filepath>}` will match
+		// `/files/a/b/c.txt`, capturing `a/b/c.txt` as a single value.
 		// Directory traversal (`..` segments) is rejected by post-match
 		// validation in extract_params() and match_path_linear().
 		"path" => r".+",
@@ -712,7 +714,7 @@ pub enum RadixRouterError {
 /// Uses matchit's pattern syntax, compatible with Django-style patterns:
 /// - `/users/{id}` - Single parameter
 /// - `/posts/{post_id}/comments/{comment_id}` - Multiple parameters
-/// - `/files/*path` - Catch-all wildcard (matches remaining path)
+/// - `/files/{*path}` - Catch-all wildcard (matches remaining path including `/`)
 ///
 /// # Examples
 ///
