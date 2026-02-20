@@ -35,7 +35,7 @@ pub(crate) fn validate_path_syntax(path: &str) -> Result<(), PathValidationError
 	}
 
 	// Reject path traversal sequences to prevent directory traversal attacks
-	for (i, _) in path.match_indices("..") {
+	if let Some((i, _)) = path.match_indices("..").next() {
 		return Err(PathValidationError::PathTraversal(i));
 	}
 
