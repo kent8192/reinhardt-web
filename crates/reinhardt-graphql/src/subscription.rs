@@ -148,7 +148,7 @@ impl SubscriptionRoot {
 			Err(_) => None,
 		};
 
-		let stream = receiver.map(|rx| receiver_to_stream(rx));
+		let stream = receiver.map(receiver_to_stream);
 		async_stream::stream! {
 			if let Some(stream) = stream {
 				use futures_util::StreamExt;
@@ -171,7 +171,7 @@ impl SubscriptionRoot {
 			Err(_) => None,
 		};
 
-		let stream = receiver.map(|rx| receiver_to_stream(rx));
+		let stream = receiver.map(receiver_to_stream);
 		async_stream::stream! {
 			if let Some(stream) = stream {
 				use futures_util::StreamExt;
@@ -191,7 +191,7 @@ impl SubscriptionRoot {
 			Err(_) => None,
 		};
 
-		let stream = receiver.map(|rx| receiver_to_stream(rx));
+		let stream = receiver.map(receiver_to_stream);
 		async_stream::stream! {
 			if let Some(stream) = stream {
 				use futures_util::StreamExt;

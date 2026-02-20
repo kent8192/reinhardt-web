@@ -547,7 +547,7 @@ fn run_fmt(
 			reinhardt_commands::CommandError::ExecutionError(format!("Invalid config path: {}", e))
 		})?;
 		check_file_size(cp, MAX_CONFIG_FILE_SIZE)
-			.map_err(|e| reinhardt_commands::CommandError::ExecutionError(e))?;
+			.map_err(reinhardt_commands::CommandError::ExecutionError)?;
 	}
 
 	let files = collect_rust_files(&path).map_err(|e| {
@@ -839,7 +839,7 @@ fn run_fmt_all(
 			reinhardt_commands::CommandError::ExecutionError(format!("Invalid config path: {}", e))
 		})?;
 		check_file_size(cp, MAX_CONFIG_FILE_SIZE)
-			.map_err(|e| reinhardt_commands::CommandError::ExecutionError(e))?;
+			.map_err(reinhardt_commands::CommandError::ExecutionError)?;
 	}
 
 	// Find project root
