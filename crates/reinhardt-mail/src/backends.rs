@@ -282,10 +282,10 @@ impl SmtpConfig {
 	/// Checks that email-formatted usernames (containing `@`) are valid email addresses.
 	pub fn validate(&self) -> EmailResult<()> {
 		// Validate username if it looks like an email address
-		if let Some(username) = &self.username {
-			if username.contains('@') {
-				crate::validation::validate_email(username)?;
-			}
+		if let Some(username) = &self.username
+			&& username.contains('@')
+		{
+			crate::validation::validate_email(username)?;
 		}
 		Ok(())
 	}

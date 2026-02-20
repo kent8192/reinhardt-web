@@ -45,7 +45,7 @@ impl Default for ConnectionConfig {
 			idle_timeout: Duration::from_secs(300), // 5 minutes default
 			handshake_timeout: Duration::from_secs(10), // 10 seconds default
 			cleanup_interval: Duration::from_secs(30), // 30 seconds default
-			max_connections: None, // Unlimited by default
+			max_connections: None,                  // Unlimited by default
 		}
 	}
 }
@@ -843,13 +843,13 @@ impl ConnectionTimeoutMonitor {
 	) -> Result<(), WebSocketError> {
 		let mut connections = self.connections.write().await;
 
-		if let Some(max) = self.config.max_connections {
-			if connections.len() >= max {
-				return Err(WebSocketError::Connection(format!(
-					"maximum connection limit reached ({})",
-					max
-				)));
-			}
+		if let Some(max) = self.config.max_connections
+			&& connections.len() >= max
+		{
+			return Err(WebSocketError::Connection(format!(
+				"maximum connection limit reached ({})",
+				max
+			)));
 		}
 
 		connections.insert(connection.id().to_string(), connection);

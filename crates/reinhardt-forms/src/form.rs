@@ -926,6 +926,8 @@ impl Default for Form {
 /// assert!(form.get("nonexistent").is_none());
 /// ```
 impl Form {
+	// Returns &Box<dyn FormField> to match Index<&str> trait's Output type
+	#[allow(clippy::borrowed_box)]
 	pub fn get(&self, name: &str) -> Option<&Box<dyn FormField>> {
 		self.fields.iter().find(|f| f.name() == name)
 	}
