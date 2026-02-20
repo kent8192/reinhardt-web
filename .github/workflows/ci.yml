@@ -14,6 +14,57 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # Check if PR branch is up-to-date with base branch
+  # This job fails when the PR branch is behind the base branch,
+  # causing all dependent CI jobs to be skipped to save CI resources
+  branch-up-to-date:
+    name: Branch Up-to-Date Check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      # Use environment variables to safely handle potentially untrusted inputs
+      BASE_REPO: ${{ github.repository }}
+      BASE_REF: ${{ github.base_ref }}
+      HEAD_REPO: ${{ github.head_repo.full_name }}
+      HEAD_REF: ${{ github.head_ref }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check if PR branch is up-to-date with base branch
+        run: |
+          # Use GitHub Compare API to check if the PR branch is behind
+          # API: GET /repos/{owner}/{repo}/compare/{basehead}
+          # We compare base...head to see commits in PR that are not in base
+          # and base..head to see if head is behind base
+          # Note: Branch names are URL-encoded to handle special characters safely
+          BASE_REF_ENCODED=$(printf '%s' "${BASE_REF}" | jq -sRr @uri)
+          HEAD_REPO_ENCODED=$(printf '%s' "${HEAD_REPO}" | jq -sRr @uri)
+          HEAD_REF_ENCODED=$(printf '%s' "${HEAD_REF}" | jq -sRr @uri)
+
+          COMPARE_URL="https://api.github.com/repos/${BASE_REPO}/compare/${BASE_REF_ENCODED}...${HEAD_REPO_ENCODED}:${HEAD_REF_ENCODED}"
+
+          echo "Comparing ${BASE_REF}...${HEAD_REPO}:${HEAD_REF}"
+          COMPARE_RESULT=$(curl -s -H "Authorization: token ${GH_TOKEN}" -H "Accept: application/vnd.github.v3+json" "${COMPARE_URL}")
+
+          # Check for API error
+          if echo "${COMPARE_RESULT}" | jq -e '.message' > /dev/null 2>&1; then
+            echo "::error::GitHub API error: $(echo "${COMPARE_RESULT}" | jq -r '.message')"
+            exit 1
+          fi
+
+          # Get the behind_by count (commits in base that are not in head)
+          BEHIND_BY=$(echo "${COMPARE_RESULT}" | jq -r '.behind_by // 0')
+
+          echo "Base branch: ${BASE_REF}"
+          echo "PR branch: ${HEAD_REF}"
+          echo "Commits behind: ${BEHIND_BY}"
+
+          if [ "${BEHIND_BY}" -gt 0 ]; then
+            echo "::error::Your branch is ${BEHIND_BY} commit(s) behind ${BASE_REF}. Please update your branch by merging or rebasing onto ${BASE_REF}."
+            exit 1
+          fi
+
+          echo "Branch is up-to-date with ${BASE_REF}"
+
   # Call all reusable workflows
   check:
     name: Check
@@ -46,43 +97,43 @@ jobs:
   unit-test:
     name: Unit Tests
     uses: ./.github/workflows/unit-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   intra-crate-integration-test:
     name: Intra-Crate Integration Tests
     uses: ./.github/workflows/intra-crate-integration-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   cross-crate-integration-test:
     name: Cross-Crate Integration Tests
     uses: ./.github/workflows/cross-crate-integration-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   doc-test:
     name: Documentation Tests
     uses: ./.github/workflows/doc-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   ui-test:
     name: UI Tests
     uses: ./.github/workflows/ui-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   examples-test:
     name: Examples Tests
     uses: ./.github/workflows/examples-test.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   coverage:
     name: Coverage
     uses: ./.github/workflows/coverage.yml
-    needs: [check, fmt, clippy]
+    needs: [branch-up-to-date, check, fmt, clippy]
     secrets: inherit
 
   # All jobs must pass
@@ -91,6 +142,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     needs:
+      - branch-up-to-date
       - check
       - fmt
       - clippy
@@ -106,6 +158,18 @@ jobs:
     steps:
       - name: Verify all required checks passed
         run: |
+          # branch-up-to-date failure means branch is out-of-date
+          # This is expected behavior - user needs to update their branch
+          branch_check="${{ needs.branch-up-to-date.result }}"
+          if [[ "$branch_check" == "failure" ]]; then
+            echo "::error::Branch is out-of-date with base branch. Please update your branch and push again."
+            exit 1
+          fi
+          if [[ "$branch_check" != "success" && "$branch_check" != "skipped" ]]; then
+            echo "::error::Branch up-to-date check had unexpected result: $branch_check"
+            exit 1
+          fi
+
           required_results=(
             "${{ needs.check.result }}"
             "${{ needs.fmt.result }}"

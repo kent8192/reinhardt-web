@@ -166,7 +166,7 @@ async fn test_custom_postgres() {
 
 The following Docker images are used by default:
 
-- **PostgreSQL**: `postgres:16-alpine`
+- **PostgreSQL**: `postgres:17-alpine`
 - **MySQL**: Default from `testcontainers-modules` crate (MySQL 8.x)
 - **Redis**: Default from `testcontainers-modules` crate (Redis 7.x)
 
