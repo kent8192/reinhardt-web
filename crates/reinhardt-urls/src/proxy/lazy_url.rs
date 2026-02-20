@@ -5,7 +5,7 @@
 
 use crate::proxy::url_resolver::UrlResolver;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
 /// A lazy URL that defers resolution until needed
 #[derive(Clone)]
@@ -111,8 +111,8 @@ impl LazyUrl {
 	pub fn is_resolved(&self) -> bool {
 		self.cached_url
 			.read()
-			.map(|guard| guard.is_some())
-			.unwrap_or(false)
+			.unwrap_or_else(PoisonError::into_inner)
+			.is_some()
 	}
 
 	/// Attempts to resolve the URL, returning a `Result` instead of panicking.
@@ -145,12 +145,12 @@ impl LazyUrl {
 	/// assert!(bad_url.try_resolve().is_err());
 	/// ```
 	pub fn try_resolve(&self) -> Result<String, String> {
-		// Check if already cached
+		// Check if already cached (recovers from lock poisoning)
 		{
 			let cached = self
 				.cached_url
 				.read()
-				.map_err(|e| format!("Lock poisoned while reading cache: {}", e))?;
+				.unwrap_or_else(PoisonError::into_inner);
 			if let Some(url) = cached.as_ref() {
 				return Ok(url.clone());
 			}
@@ -162,12 +162,12 @@ impl LazyUrl {
 			.reverse(&self.name, self.kwargs.clone())
 			.map_err(|e| format!("Failed to resolve URL '{}': {}", self.name, e))?;
 
-		// Cache the result
+		// Cache the result (recovers from lock poisoning)
 		{
 			let mut cached = self
 				.cached_url
 				.write()
-				.map_err(|e| format!("Lock poisoned while writing cache: {}", e))?;
+				.unwrap_or_else(PoisonError::into_inner);
 			*cached = Some(url.clone());
 		}
 
@@ -177,12 +177,13 @@ impl LazyUrl {
 	/// Resolves the URL to its string representation.
 	///
 	/// This is a convenience wrapper around [`try_resolve`](Self::try_resolve)
-	/// that panics on failure. Prefer `try_resolve` for error handling.
+	/// that panics on failure. **Prefer `try_resolve` in library and production
+	/// code** to avoid panics. This method is provided for cases where a missing
+	/// URL pattern indicates a programming error that should be caught early.
 	///
 	/// # Panics
 	///
-	/// Panics if URL resolution fails (pattern not found, missing parameters,
-	/// or poisoned lock).
+	/// Panics if URL resolution fails (pattern not found or missing parameters).
 	///
 	/// # Examples
 	///
@@ -215,6 +216,7 @@ impl std::fmt::Display for LazyUrl {
 mod tests {
 	use super::*;
 	use crate::proxy::url_pattern::UrlPattern;
+	use rstest::rstest;
 
 	fn setup_resolver() -> Arc<UrlResolver> {
 		let mut resolver = UrlResolver::new();
@@ -224,116 +226,209 @@ mod tests {
 		Arc::new(resolver)
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_creation() {
+		// Arrange
 		let resolver = setup_resolver();
+
+		// Act
 		let home_url = LazyUrl::new("home", resolver.clone());
+
+		// Assert
 		assert!(!home_url.is_resolved());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_resolve() {
+		// Arrange
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
-		assert_eq!(home_url.resolve(), "/");
+
+		// Act
+		let url = home_url.resolve();
+
+		// Assert
+		assert_eq!(url, "/");
 		assert!(home_url.is_resolved());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_try_resolve_success() {
+		// Arrange
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
 
+		// Act
 		let result = home_url.try_resolve();
+
+		// Assert
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), "/");
 		assert!(home_url.is_resolved());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_try_resolve_pattern_not_found() {
+		// Arrange
 		let resolver = setup_resolver();
 		let invalid_url = LazyUrl::new("nonexistent", resolver.clone());
 
+		// Act
 		let result = invalid_url.try_resolve();
+
+		// Assert
 		assert!(result.is_err());
-		assert!(result.unwrap_err().contains("Failed to resolve URL"));
+		assert_eq!(
+			result.unwrap_err(),
+			"Failed to resolve URL 'nonexistent': URL pattern 'nonexistent' not found"
+		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_try_resolve_missing_parameter() {
+		// Arrange
 		let resolver = setup_resolver();
 		let user_url = LazyUrl::new("user-detail", resolver.clone());
 
+		// Act
 		let result = user_url.try_resolve();
+
+		// Assert
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("Failed to resolve URL"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_with_kwargs() {
+		// Arrange
 		let resolver = setup_resolver();
 		let mut kwargs = HashMap::new();
 		kwargs.insert("id".to_string(), "123".to_string());
 
+		// Act
 		let user_url = LazyUrl::with_kwargs("user-detail", kwargs, resolver.clone());
+
+		// Assert
 		assert_eq!(user_url.resolve(), "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_with_kwargs_try_resolve() {
+		// Arrange
 		let resolver = setup_resolver();
 		let mut kwargs = HashMap::new();
 		kwargs.insert("id".to_string(), "123".to_string());
-
 		let user_url = LazyUrl::with_kwargs("user-detail", kwargs, resolver.clone());
+
+		// Act
 		let result = user_url.try_resolve();
+
+		// Assert
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), "/users/123/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_caching() {
+		// Arrange
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
 
-		// First resolution
+		// Act
 		let url1 = home_url.resolve();
-		assert!(home_url.is_resolved());
-
-		// Second resolution (should use cache)
 		let url2 = home_url.resolve();
+
+		// Assert
+		assert!(home_url.is_resolved());
 		assert_eq!(url1, url2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_display_success() {
+		// Arrange
 		let resolver = setup_resolver();
 		let home_url = LazyUrl::new("home", resolver.clone());
-		assert_eq!(format!("{}", home_url), "/");
+
+		// Act
+		let display = format!("{}", home_url);
+
+		// Assert
+		assert_eq!(display, "/");
 	}
 
-	#[test]
+	#[rstest]
 	fn test_lazy_url_display_failure() {
+		// Arrange
 		let resolver = setup_resolver();
 		let invalid_url = LazyUrl::new("nonexistent", resolver.clone());
+
+		// Act
 		let display = format!("{}", invalid_url);
+
+		// Assert
 		assert!(display.starts_with("<unresolved:"));
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Failed to resolve URL")]
 	fn test_lazy_url_pattern_not_found() {
+		// Arrange
 		let resolver = setup_resolver();
 		let invalid_url = LazyUrl::new("nonexistent", resolver.clone());
+
+		// Act (panics)
 		invalid_url.resolve();
 	}
 
-	#[test]
+	#[rstest]
 	#[should_panic(expected = "Failed to resolve URL")]
 	fn test_lazy_url_missing_parameter() {
+		// Arrange
 		let resolver = setup_resolver();
 		let user_url = LazyUrl::new("user-detail", resolver.clone());
+
+		// Act (panics)
 		user_url.resolve();
+	}
+
+	#[rstest]
+	fn test_try_resolve_recovers_from_poisoned_cache_lock() {
+		// Arrange
+		let resolver = setup_resolver();
+		let lazy_url = LazyUrl::new("home", resolver.clone());
+
+		// Poison the cached_url RwLock by panicking while holding a write guard
+		let cached_clone = lazy_url.cached_url.clone();
+		let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _guard = cached_clone.write().unwrap();
+			panic!("intentional panic to poison lock");
+		}));
+
+		// Act - try_resolve should recover from the poisoned lock
+		let result = lazy_url.try_resolve();
+
+		// Assert
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), "/");
+	}
+
+	#[rstest]
+	fn test_is_resolved_recovers_from_poisoned_cache_lock() {
+		// Arrange
+		let resolver = setup_resolver();
+		let lazy_url = LazyUrl::new("home", resolver.clone());
+
+		// Poison the cached_url RwLock
+		let cached_clone = lazy_url.cached_url.clone();
+		let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _guard = cached_clone.write().unwrap();
+			panic!("intentional panic to poison lock");
+		}));
+
+		// Act - is_resolved should not panic on poisoned lock
+		let resolved = lazy_url.is_resolved();
+
+		// Assert
+		assert!(!resolved);
 	}
 }
