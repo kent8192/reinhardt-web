@@ -8,8 +8,8 @@
 //! - Cross-Origin-Opener-Policy (COOP)
 
 use async_trait::async_trait;
+use hyper::StatusCode;
 use hyper::header::{HeaderValue, LOCATION};
-use hyper::{Method, StatusCode};
 use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
@@ -307,11 +307,8 @@ impl Middleware for SecurityMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
 		let is_secure = self.is_secure(&request);
 
-		// SSL redirect (only for GET and HEAD requests)
-		if self.config.ssl_redirect
-			&& !is_secure
-			&& (request.method == Method::GET || request.method == Method::HEAD)
-		{
+		// SSL redirect for all HTTP methods
+		if self.config.ssl_redirect && !is_secure {
 			let redirect_url = self.build_https_url(&request);
 			let mut response = Response::new(StatusCode::MOVED_PERMANENTLY);
 			response
@@ -334,7 +331,7 @@ impl Middleware for SecurityMiddleware {
 mod tests {
 	use super::*;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Version};
+	use hyper::{HeaderMap, Method, Version};
 
 	struct TestHandler;
 
@@ -492,7 +489,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_ssl_redirect_only_for_get_and_head() {
+	async fn test_ssl_redirect_applies_to_all_methods() {
 		let config = SecurityConfig {
 			hsts_enabled: false,
 			hsts_seconds: 0,
@@ -505,24 +502,48 @@ mod tests {
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
-		let handler = Arc::new(TestHandler);
 
 		let mut headers = HeaderMap::new();
 		headers.insert(hyper::header::HOST, "example.com".parse().unwrap());
 
+		// POST should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
 		let request = Request::builder()
 			.method(Method::POST)
 			.uri("/test")
 			.version(Version::HTTP_11)
-			.headers(headers)
+			.headers(headers.clone())
 			.body(Bytes::new())
 			.build()
 			.unwrap();
-
 		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
 
-		// POST should not be redirected
-		assert_eq!(response.status, StatusCode::OK);
+		// PUT should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
+		let request = Request::builder()
+			.method(Method::PUT)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers.clone())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
+
+		// DELETE should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
+		let request = Request::builder()
+			.method(Method::DELETE)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers.clone())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
 	}
 
 	#[tokio::test]
