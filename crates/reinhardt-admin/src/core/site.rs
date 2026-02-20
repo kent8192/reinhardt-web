@@ -201,14 +201,19 @@ impl AdminSite {
 		admin: impl ModelAdmin + 'static,
 	) -> AdminResult<()> {
 		let model_name = model_name.into();
-		if self.registry.contains_key(&model_name) {
-			return Err(AdminError::ValidationError(format!(
-				"Model '{}' is already registered",
-				model_name
-			)));
+		// Use entry API for atomic check-and-insert to avoid TOCTOU race condition
+		match self.registry.entry(model_name) {
+			dashmap::mapref::entry::Entry::Occupied(entry) => {
+				Err(AdminError::ValidationError(format!(
+					"Model '{}' is already registered",
+					entry.key()
+				)))
+			}
+			dashmap::mapref::entry::Entry::Vacant(entry) => {
+				entry.insert(Arc::new(admin));
+				Ok(())
+			}
 		}
-		self.registry.insert(model_name, Arc::new(admin));
-		Ok(())
 	}
 
 	/// Unregister a model from the admin site
