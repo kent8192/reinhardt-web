@@ -531,13 +531,10 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 
 		// For reinhardt.contrib.* apps, we validate they exist in the crate
 		if parts.first() == Some(&"reinhardt") {
-			let module_check =
-				parts[1..]
-					.iter()
-					.fold(core_crate.clone(), |acc, part| {
-						let part_ident = syn::Ident::new(part, proc_macro2::Span::call_site());
-						quote! { #acc::#part_ident }
-					});
+			let module_check = parts[1..].iter().fold(core_crate.clone(), |acc, part| {
+				let part_ident = syn::Ident::new(part, proc_macro2::Span::call_site());
+				quote! { #acc::#part_ident }
+			});
 
 			quote! {
 				// Compile-time check that the module path resolves

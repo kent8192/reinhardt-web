@@ -651,13 +651,7 @@ impl AstPageFormatter {
 	}
 
 	/// Format an element node.
-	fn format_element(
-		&self,
-		output: &mut String,
-		elem: &PageElement,
-		indent: usize,
-		depth: usize,
-	) {
+	fn format_element(&self, output: &mut String, elem: &PageElement, indent: usize, depth: usize) {
 		let ind = self.make_indent(indent);
 
 		// Check if element is empty (no attrs, events, or children)
@@ -1025,13 +1019,7 @@ impl AstPageFormatter {
 	}
 
 	/// Format an if node inline (for else if chains).
-	fn format_if_inline(
-		&self,
-		output: &mut String,
-		if_node: &PageIf,
-		indent: usize,
-		depth: usize,
-	) {
+	fn format_if_inline(&self, output: &mut String, if_node: &PageIf, indent: usize, depth: usize) {
 		if depth > MAX_FORMAT_DEPTH {
 			output.push_str("/* else-if chain depth limit exceeded */ {}\n");
 			return;

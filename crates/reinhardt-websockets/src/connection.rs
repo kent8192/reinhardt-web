@@ -369,10 +369,7 @@ impl ConnectionConfig {
 			handshake_timeout: Duration::from_secs(5),
 			cleanup_interval: Duration::from_secs(10),
 			max_connections: None,
-			ping_config: PingPongConfig::new(
-				Duration::from_secs(10),
-				Duration::from_secs(5),
-			),
+			ping_config: PingPongConfig::new(Duration::from_secs(10), Duration::from_secs(5)),
 		}
 	}
 
@@ -399,10 +396,7 @@ impl ConnectionConfig {
 			handshake_timeout: Duration::from_secs(30),
 			cleanup_interval: Duration::from_secs(60),
 			max_connections: None,
-			ping_config: PingPongConfig::new(
-				Duration::from_secs(60),
-				Duration::from_secs(30),
-			),
+			ping_config: PingPongConfig::new(Duration::from_secs(60), Duration::from_secs(30)),
 		}
 	}
 }
@@ -1703,10 +1697,7 @@ mod tests {
 	#[rstest]
 	fn test_ping_pong_config_custom() {
 		// Arrange & Act
-		let config = PingPongConfig::new(
-			Duration::from_secs(15),
-			Duration::from_secs(5),
-		);
+		let config = PingPongConfig::new(Duration::from_secs(15), Duration::from_secs(5));
 
 		// Assert
 		assert_eq!(config.ping_interval(), Duration::from_secs(15));
@@ -1731,24 +1722,26 @@ mod tests {
 		let config = ConnectionConfig::new();
 
 		// Assert
-		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(30));
+		assert_eq!(
+			config.ping_config().ping_interval(),
+			Duration::from_secs(30)
+		);
 		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(10));
 	}
 
 	#[rstest]
 	fn test_connection_config_with_custom_ping_config() {
 		// Arrange
-		let ping_config = PingPongConfig::new(
-			Duration::from_secs(15),
-			Duration::from_secs(5),
-		);
+		let ping_config = PingPongConfig::new(Duration::from_secs(15), Duration::from_secs(5));
 
 		// Act
-		let config = ConnectionConfig::new()
-			.with_ping_config(ping_config);
+		let config = ConnectionConfig::new().with_ping_config(ping_config);
 
 		// Assert
-		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(15));
+		assert_eq!(
+			config.ping_config().ping_interval(),
+			Duration::from_secs(15)
+		);
 		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(5));
 	}
 
@@ -1758,7 +1751,10 @@ mod tests {
 		let config = ConnectionConfig::strict();
 
 		// Assert
-		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(10));
+		assert_eq!(
+			config.ping_config().ping_interval(),
+			Duration::from_secs(10)
+		);
 		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(5));
 	}
 
@@ -1768,7 +1764,10 @@ mod tests {
 		let config = ConnectionConfig::permissive();
 
 		// Assert
-		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(60));
+		assert_eq!(
+			config.ping_config().ping_interval(),
+			Duration::from_secs(60)
+		);
 		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(30));
 	}
 

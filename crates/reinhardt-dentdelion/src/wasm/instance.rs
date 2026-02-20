@@ -319,10 +319,7 @@ impl PluginLifecycle for WasmPluginInstance {
 			let host = self.host_state.read();
 			let config_map = host.get_config_all();
 			rmp_serde::to_vec(&config_map).map_err(|e| {
-				PluginError::ConfigError(format!(
-					"failed to serialize plugin config: {}",
-					e
-				))
+				PluginError::ConfigError(format!("failed to serialize plugin config: {}", e))
 			})?
 		};
 

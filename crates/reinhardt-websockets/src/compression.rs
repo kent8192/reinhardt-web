@@ -510,9 +510,9 @@ fn decompress_brotli_limited(data: &[u8], max_size: usize) -> WebSocketResult<Ve
 	let mut buf = [0u8; 8192];
 
 	loop {
-		let n = decompressor.read(&mut buf).map_err(|e| {
-			WebSocketError::Protocol(format!("Brotli decompression failed: {}", e))
-		})?;
+		let n = decompressor
+			.read(&mut buf)
+			.map_err(|e| WebSocketError::Protocol(format!("Brotli decompression failed: {}", e)))?;
 		if n == 0 {
 			break;
 		}
@@ -612,8 +612,7 @@ mod config_tests {
 	#[rstest]
 	fn test_compression_config_custom_max_size() {
 		// Arrange & Act
-		let config = CompressionConfig::new()
-			.with_max_decompressed_size(5 * 1024 * 1024);
+		let config = CompressionConfig::new().with_max_decompressed_size(5 * 1024 * 1024);
 
 		// Assert
 		assert_eq!(config.max_decompressed_size(), 5 * 1024 * 1024);
@@ -813,8 +812,7 @@ mod tests {
 
 		// Act
 		let decompressed =
-			decompress_message_with_config(&compressed, CompressionCodec::Brotli, &config)
-				.unwrap();
+			decompress_message_with_config(&compressed, CompressionCodec::Brotli, &config).unwrap();
 
 		// Assert
 		match decompressed {
@@ -831,12 +829,10 @@ mod tests {
 		let large_text = "A".repeat(1024);
 		let message = Message::text(large_text);
 		let compressed = compress_message(&message, CompressionCodec::Gzip).unwrap();
-		let config = CompressionConfig::new()
-			.with_max_decompressed_size(100); // 100 byte limit
+		let config = CompressionConfig::new().with_max_decompressed_size(100); // 100 byte limit
 
 		// Act
-		let result =
-			decompress_message_with_config(&compressed, CompressionCodec::Gzip, &config);
+		let result = decompress_message_with_config(&compressed, CompressionCodec::Gzip, &config);
 
 		// Assert
 		assert!(result.is_err());
@@ -851,8 +847,7 @@ mod tests {
 		let config = CompressionConfig::new().with_enabled(false);
 
 		// Act
-		let result =
-			decompress_message_with_config(&message, CompressionCodec::Gzip, &config);
+		let result = decompress_message_with_config(&message, CompressionCodec::Gzip, &config);
 
 		// Assert
 		assert!(result.is_err());

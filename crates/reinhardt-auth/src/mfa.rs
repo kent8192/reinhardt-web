@@ -95,7 +95,11 @@ impl MFAAuthentication {
 	/// Checks current time step and adjacent steps (±1) to tolerate
 	/// minor clock skew between client and server.
 	/// The secret must be a valid base32-encoded string.
-	pub async fn verify_totp(&self, username: &str, code: &str) -> Result<bool, AuthenticationError> {
+	pub async fn verify_totp(
+		&self,
+		username: &str,
+		code: &str,
+	) -> Result<bool, AuthenticationError> {
 		let secrets = self.secrets.lock().await;
 
 		if let Some(secret) = secrets.get(username) {
