@@ -1077,15 +1077,15 @@ fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
 		});
 	}
 
-	if let Some(obj) = data.as_object() {
-		if let Some(first_value) = obj.values().next() {
-			return first_value.as_i64().map(|v| v as u64).ok_or_else(|| {
-				AdminError::DatabaseError(format!(
-					"COUNT query returned non-integer value: {}",
-					first_value
-				))
-			});
-		}
+	if let Some(obj) = data.as_object()
+		&& let Some(first_value) = obj.values().next()
+	{
+		return first_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				first_value
+			))
+		});
 	}
 
 	Err(AdminError::DatabaseError(format!(
