@@ -135,10 +135,14 @@ impl ThrottleBackend for RedisThrottleBackend {
 			.await
 			.map_err(|e| e.to_string())?;
 
+		// Safely convert u64 to i64 for Redis EXPIRE command, which requires
+		// a signed integer. Values exceeding i64::MAX are clamped to prevent overflow.
+		let expire_secs = i64::try_from(window).unwrap_or(i64::MAX);
+
 		let script = Script::new(INCREMENT_SCRIPT);
 		let count: usize = script
 			.key(key)
-			.arg(window)
+			.arg(expire_secs)
 			.invoke_async(&mut conn)
 			.await
 			.map_err(|e| e.to_string())?;
