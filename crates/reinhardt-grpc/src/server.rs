@@ -315,7 +315,10 @@ mod tests {
 
 		// Act & Assert
 		assert_eq!(config.max_message_size(), 2 * 1024 * 1024);
-		assert_eq!(config.max_message_size(), config.max_decoding_message_size());
+		assert_eq!(
+			config.max_message_size(),
+			config.max_decoding_message_size()
+		);
 	}
 
 	#[rstest]
@@ -405,9 +408,7 @@ mod tests {
 		let size = 2 * 1024 * 1024; // 2MB
 
 		// Act
-		let config = GrpcServerConfig::builder()
-			.max_message_size(size)
-			.build();
+		let config = GrpcServerConfig::builder().max_message_size(size).build();
 
 		// Assert
 		assert_eq!(config.max_decoding_message_size(), size);

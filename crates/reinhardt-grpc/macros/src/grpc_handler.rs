@@ -160,9 +160,7 @@ fn is_request_type(ty: &Type) -> bool {
 			// Qualified: `tonic::Request<T>`
 			2 => segments[0].ident == "tonic" && segments[1].ident == "Request",
 			// Fully qualified with more segments
-			_ => segments
-				.last()
-				.is_some_and(|seg| seg.ident == "Request"),
+			_ => segments.last().is_some_and(|seg| seg.ident == "Request"),
 		}
 	} else {
 		false

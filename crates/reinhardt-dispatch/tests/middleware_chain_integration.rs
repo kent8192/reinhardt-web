@@ -500,5 +500,8 @@ async fn test_middleware_chain_custom_depth_limit() {
 	let result = chain.add_middleware(Arc::new(CounterMiddleware {
 		counter: Arc::new(AtomicUsize::new(0)),
 	}));
-	assert!(result.is_err(), "Should reject middleware beyond limit of 1");
+	assert!(
+		result.is_err(),
+		"Should reject middleware beyond limit of 1"
+	);
 }

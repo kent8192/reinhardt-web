@@ -444,7 +444,10 @@ impl LayeredCacheStore {
 	where
 		Self: Clone,
 	{
-		let mut handle_guard = self.cleanup_handle.lock().unwrap_or_else(|e| e.into_inner());
+		let mut handle_guard = self
+			.cleanup_handle
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 
 		// Abort any previously running cleanup task to prevent duplicates
 		if let Some(existing) = handle_guard.take() {
@@ -469,7 +472,10 @@ impl LayeredCacheStore {
 	/// After calling this method, no further automatic cleanup will occur
 	/// until `start_auto_cleanup` is called again.
 	pub fn stop_auto_cleanup(&self) {
-		let mut handle_guard = self.cleanup_handle.lock().unwrap_or_else(|e| e.into_inner());
+		let mut handle_guard = self
+			.cleanup_handle
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		if let Some(handle) = handle_guard.take() {
 			handle.abort();
 		}

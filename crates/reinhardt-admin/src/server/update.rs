@@ -69,10 +69,7 @@ pub async fn update_record(
 	let mut sanitized_data = request.data;
 	sanitize_mutation_values(&mut sanitized_data);
 
-	let user_id = auth
-		.user_id()
-		.unwrap_or("unknown")
-		.to_string();
+	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
 	let result = db
 		.update::<AdminRecord>(table_name, pk_field, &id, sanitized_data.clone())
