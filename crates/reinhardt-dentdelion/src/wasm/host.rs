@@ -604,7 +604,14 @@ impl HostState {
 	/// # Returns
 	///
 	/// A unique subscription ID for polling and unsubscribing.
-	pub fn subscribe_events(&self, pattern: &str) -> u64 {
+	///
+	/// # Errors
+	///
+	/// Returns an error if the subscription limit has been reached.
+	pub fn subscribe_events(
+		&self,
+		pattern: &str,
+	) -> Result<u64, crate::wasm::events::EventBusError> {
 		self.event_bus.subscribe(pattern, &self.plugin_name)
 	}
 
@@ -1209,8 +1216,13 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		&mut self,
 		pattern: String,
 	) -> Result<Result<u64, GeneratedPluginError>, anyhow::Error> {
-		let subscription_id = self.subscribe_events(&pattern);
-		Ok(Ok(subscription_id))
+		match self.subscribe_events(&pattern) {
+			Ok(subscription_id) => Ok(Ok(subscription_id)),
+			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
+				429,
+				e.to_string(),
+			)))),
+		}
 	}
 
 	async fn unsubscribe(
@@ -1510,7 +1522,7 @@ mod tests {
 			.build();
 
 		// Consumer subscribes to user events
-		let sub_id = consumer.subscribe_events("user.*");
+		let sub_id = consumer.subscribe_events("user.*").unwrap();
 
 		// Producer emits an event
 		let delivered = producer.emit_event("user.created", vec![1, 2, 3]);
@@ -1530,7 +1542,7 @@ mod tests {
 		let plugin_a = HostState::new("plugin-a");
 		let plugin_b = HostState::new("plugin-b");
 
-		let sub_id = plugin_b.subscribe_events("*");
+		let sub_id = plugin_b.subscribe_events("*").unwrap();
 		plugin_a.emit_event("test.event", vec![]);
 
 		// plugin_b won't see the event because they have different event buses
@@ -1542,7 +1554,7 @@ mod tests {
 	fn test_host_state_event_unsubscribe() {
 		let state = HostState::new("test-plugin");
 
-		let sub_id = state.subscribe_events("*");
+		let sub_id = state.subscribe_events("*").unwrap();
 		assert!(state.unsubscribe_events(sub_id));
 		assert!(!state.unsubscribe_events(sub_id)); // Already unsubscribed
 	}

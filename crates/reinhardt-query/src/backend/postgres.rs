@@ -350,13 +350,13 @@ impl PostgresQueryBuilder {
 			SimpleExpr::AsEnum(name, expr) => {
 				self.write_simple_expr(writer, expr);
 				writer.push("::");
-				writer.push(&name.to_string());
+				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
 				writer.push(" AS ");
-				writer.push(&type_name.to_string());
+				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
 		}
@@ -529,13 +529,13 @@ impl PostgresQueryBuilder {
 			SimpleExpr::AsEnum(name, expr) => {
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push("::");
-				writer.push(&name.to_string());
+				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push(" AS ");
-				writer.push(&type_name.to_string());
+				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
 		}
@@ -1710,7 +1710,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			match body {
 				TriggerBody::PostgresFunction(func_name) => {
 					writer.push("EXECUTE FUNCTION ");
-					writer.push(func_name.as_str());
+					writer.push_identifier(func_name.as_str(), |s| self.escape_iden(s));
 					writer.push("()");
 				}
 				TriggerBody::Single(_) | TriggerBody::Multiple(_) => {
@@ -7394,7 +7394,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "audit_log" AFTER INSERT ON "users" FOR EACH ROW EXECUTE FUNCTION log_user_insert()"#
+			r#"CREATE TRIGGER "audit_log" AFTER INSERT ON "users" FOR EACH ROW EXECUTE FUNCTION "log_user_insert"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -7415,7 +7415,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "update_timestamp" BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE FUNCTION update_modified_at()"#
+			r#"CREATE TRIGGER "update_timestamp" BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE FUNCTION "update_modified_at"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -7436,7 +7436,7 @@ mod tests {
 		let (sql, values) = builder.build_create_trigger(&stmt);
 		assert_eq!(
 			sql,
-			r#"CREATE TRIGGER "audit_delete" AFTER DELETE ON "users" FOR EACH STATEMENT EXECUTE FUNCTION log_bulk_delete()"#
+			r#"CREATE TRIGGER "audit_delete" AFTER DELETE ON "users" FOR EACH STATEMENT EXECUTE FUNCTION "log_bulk_delete"()"#
 		);
 		assert_eq!(values.len(), 0);
 	}
@@ -9083,6 +9083,87 @@ mod tests {
 			.user("app_user");
 
 		builder.build_set_default_role(&stmt);
+	}
+
+	// ==================== SQL identifier escaping tests ====================
+
+	#[rstest]
+	fn test_as_enum_escapes_type_name_with_special_characters() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::val("active").as_enum(Alias::new("user\"status")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: enum type name must be quoted and inner quotes doubled
+		assert!(sql.contains("::\"user\"\"status\""));
+	}
+
+	#[rstest]
+	fn test_cast_escapes_type_name_with_special_characters() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("my\"type")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: cast type name must be quoted and inner quotes doubled
+		assert!(sql.contains("CAST(\"age\" AS \"my\"\"type\")"));
+	}
+
+	#[rstest]
+	fn test_trigger_function_name_is_escaped() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_trigger();
+		stmt.name("test_trigger")
+			.timing(crate::types::TriggerTiming::After)
+			.event(crate::types::TriggerEvent::Insert)
+			.on_table("users")
+			.for_each(crate::types::TriggerScope::Row)
+			.execute_function("my\"func");
+
+		// Act
+		let (sql, _) = builder.build_create_trigger(&stmt);
+
+		// Assert: function name must be quoted and inner quotes doubled
+		assert!(sql.contains("EXECUTE FUNCTION \"my\"\"func\"()"));
+	}
+
+	#[rstest]
+	fn test_as_enum_normal_type_name_is_quoted() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::val("active").as_enum(Alias::new("status")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: even normal identifiers should be quoted
+		assert!(sql.contains("::\"status\""));
+	}
+
+	#[rstest]
+	fn test_cast_normal_type_name_is_quoted() {
+		// Arrange
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::col("age").cast_as(Alias::new("INTEGER")))
+			.from("users");
+
+		// Act
+		let (sql, _) = builder.build_select(&stmt);
+
+		// Assert: cast type name should be quoted
+		assert!(sql.contains("CAST(\"age\" AS \"INTEGER\")"));
 	}
 
 	// ==================== Dollar-quote delimiter safety tests ====================

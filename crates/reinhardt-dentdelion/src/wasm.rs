@@ -48,7 +48,7 @@ mod ssr;
 mod ts_runtime;
 mod types;
 
-pub use events::{Event, EventBus, SharedEventBus};
+pub use events::{Event, EventBus, EventBusError, SharedEventBus};
 pub use host::{HostState, HostStateBuilder};
 pub use instance::WasmPluginInstance;
 pub use loader::WasmPluginLoader;
@@ -61,7 +61,7 @@ pub use sql_validator::{
 };
 pub use ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy, escape_for_script};
 #[cfg(feature = "ts")]
-pub use ts_runtime::{SharedTsRuntime, TsError, TsRuntime};
+pub use ts_runtime::{SharedTsRuntime, TsError, TsResourceLimits, TsRuntime};
 pub use types::{ConfigValue, WitCapability, WitPluginError, WitPluginMetadata};
 
 /// WASM binary magic bytes (\0asm)

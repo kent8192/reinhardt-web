@@ -3,6 +3,8 @@
 //! This module provides the `Parse` trait implementation for `FormMacro`,
 //! allowing it to be parsed from a `TokenStream`.
 
+use std::collections::HashSet;
+
 use proc_macro2::Span;
 use syn::{
 	Expr, ExprClosure, Ident, LitStr, Path, Result, Token, braced,
@@ -307,6 +309,7 @@ fn parse_group_fields(input: ParseStream) -> Result<Vec<FormFieldDef>> {
 /// Parses field properties inside braces.
 fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> {
 	let mut properties = Vec::new();
+	let mut seen_properties: HashSet<String> = HashSet::new();
 
 	while !input.is_empty() {
 		let span = input.span();
@@ -314,6 +317,15 @@ fn parse_field_properties(input: ParseStream) -> Result<Vec<FormFieldProperty>> 
 		// Check for widget keyword
 		if input.peek(Ident) {
 			let name: Ident = input.parse()?;
+
+			// Check for duplicate property
+			let prop_name = name.to_string();
+			if !seen_properties.insert(prop_name.clone()) {
+				return Err(syn::Error::new(
+					name.span(),
+					format!("duplicate property '{}'", prop_name),
+				));
+			}
 
 			if name == "widget" {
 				// widget: WidgetType

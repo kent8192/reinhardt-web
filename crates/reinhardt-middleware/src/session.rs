@@ -92,17 +92,31 @@ impl SessionData {
 	}
 }
 
-/// Session store
+/// Session store with automatic lazy eviction of expired sessions
+///
+/// Performs periodic cleanup of expired sessions to prevent unbounded
+/// memory growth. Cleanup runs automatically when the session count
+/// exceeds a configurable threshold.
 #[derive(Debug, Default)]
 pub struct SessionStore {
 	/// Sessions
 	sessions: RwLock<HashMap<String, SessionData>>,
+	/// Maximum number of sessions before triggering automatic cleanup
+	max_sessions_before_cleanup: std::sync::atomic::AtomicUsize,
 }
 
 impl SessionStore {
+	/// Default cleanup threshold: trigger cleanup when session count exceeds 10,000
+	const DEFAULT_CLEANUP_THRESHOLD: usize = 10_000;
+
 	/// Create a new store
 	pub fn new() -> Self {
-		Self::default()
+		Self {
+			sessions: RwLock::new(HashMap::new()),
+			max_sessions_before_cleanup: std::sync::atomic::AtomicUsize::new(
+				Self::DEFAULT_CLEANUP_THRESHOLD,
+			),
+		}
 	}
 
 	/// Get a session
@@ -111,10 +125,18 @@ impl SessionStore {
 		sessions.get(id).cloned()
 	}
 
-	/// Save a session
+	/// Save a session, with automatic cleanup when threshold is exceeded
 	pub fn save(&self, session: SessionData) {
 		let mut sessions = self.sessions.write().unwrap();
 		sessions.insert(session.id.clone(), session);
+
+		// Lazy eviction: clean up expired sessions when threshold is exceeded
+		let threshold = self
+			.max_sessions_before_cleanup
+			.load(std::sync::atomic::Ordering::Relaxed);
+		if sessions.len() > threshold {
+			sessions.retain(|_, s| s.is_valid());
+		}
 	}
 
 	/// Delete a session
@@ -184,7 +206,7 @@ impl SessionConfig {
 		Self {
 			cookie_name,
 			ttl,
-			secure: false,
+			secure: true,
 			http_only: true,
 			same_site: Some("Lax".to_string()),
 			domain: None,

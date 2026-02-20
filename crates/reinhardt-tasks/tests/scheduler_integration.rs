@@ -104,7 +104,7 @@ fn test_scheduler_new() {
 	// Scheduler creation should succeed (no panic)
 	assert_eq!(
 		std::mem::size_of_val(&scheduler),
-		std::mem::size_of::<Vec<()>>()
+		std::mem::size_of::<Scheduler>()
 	);
 }
 

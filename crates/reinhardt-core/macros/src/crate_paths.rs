@@ -118,6 +118,44 @@ pub(crate) fn get_reinhardt_core_crate() -> TokenStream {
 	quote!(::reinhardt_core)
 }
 
+/// Resolves the path to the reinhardt_auth crate dynamically.
+pub(crate) fn get_reinhardt_auth_crate() -> TokenStream {
+	use proc_macro_crate::{FoundCrate, crate_name};
+
+	// Try direct crate first
+	match crate_name("reinhardt-auth") {
+		Ok(FoundCrate::Itself) => return quote!(crate),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident);
+		}
+		Err(_) => {}
+	}
+
+	// Try via reinhardt crate (when used with `package = "reinhardt-web"`)
+	match crate_name("reinhardt") {
+		Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_auth),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::reinhardt_auth);
+		}
+		Err(_) => {}
+	}
+
+	// Try via reinhardt-web (published package name)
+	match crate_name("reinhardt-web") {
+		Ok(FoundCrate::Itself) => return quote!(crate::reinhardt_auth),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::reinhardt_auth);
+		}
+		Err(_) => {}
+	}
+
+	// Final fallback
+	quote!(::reinhardt_auth)
+}
+
 /// Resolves the path to the reinhardt_openapi crate dynamically.
 pub(crate) fn get_reinhardt_openapi_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};

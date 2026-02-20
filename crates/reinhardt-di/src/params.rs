@@ -104,6 +104,9 @@ pub enum ParamError {
 	#[error("Request body error: {0}")]
 	BodyError(String),
 
+	#[error("Payload too large: {0}")]
+	PayloadTooLarge(String),
+
 	#[cfg(feature = "validation")]
 	#[error("{}", .0.format_error())]
 	ValidationError(Box<ParamErrorContext>),
