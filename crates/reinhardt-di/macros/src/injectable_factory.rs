@@ -58,6 +58,18 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 		}
 	}
 
+	// Reject non-inject parameters with a clear compile error.
+	// The generated wrapper function only receives an InjectionContext, so non-inject
+	// parameters would be undefined in the generated code.
+	if !regular_params.is_empty() {
+		return Err(syn::Error::new_spanned(
+			&input.sig,
+			"#[injectable_factory] functions must have all parameters marked with #[inject]. \
+			 Non-inject parameters are not supported because the generated wrapper function \
+			 only receives an InjectionContext.",
+		));
+	}
+
 	// Generate dependency resolution code
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
@@ -124,7 +136,7 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 			#(#inject_resolutions)*
 
 			// Call the original function
-			let result = #original_fn_name(#(#inject_param_names),* #(#regular_param_names),*).await;
+			let result = #original_fn_name(#(#inject_param_names,)* #(#regular_param_names),*).await;
 			Ok(result)
 		}
 
