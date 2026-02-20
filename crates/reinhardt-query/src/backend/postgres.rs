@@ -3515,69 +3515,69 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	// 	fn build_drop_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::DropMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("DROP MATERIALIZED VIEW");
-	//
-	// 		// IF EXISTS
-	// 		if stmt.if_exists {
-	// 			writer.push_keyword("IF EXISTS");
-	// 		}
-	//
-	// 		// View names
-	// 		writer.push_space();
-	// 		writer.push_list(&stmt.names, ", ", |w, name| {
-	// 			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		});
-	//
-	// 		// CASCADE or RESTRICT
-	// 		if stmt.cascade {
-	// 			writer.push_keyword("CASCADE");
-	// 		} else if stmt.restrict {
-	// 			writer.push_keyword("RESTRICT");
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
-	// 	fn build_refresh_materialized_view(
-	// 		&self,
-	// 		stmt: &crate::query::RefreshMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		use crate::types::Iden;
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push_keyword("REFRESH MATERIALIZED VIEW");
-	//
-	// 		// CONCURRENTLY
-	// 		if stmt.concurrently {
-	// 			writer.push_keyword("CONCURRENTLY");
-	// 		}
-	//
-	// 		// View name
-	// 		if let Some(ref name) = stmt.name {
-	// 			writer.push_space();
-	// 			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// WITH [NO] DATA
-	// 		if let Some(with_data) = stmt.with_data {
-	// 			writer.push_space();
-	// 			if with_data {
-	// 				writer.push_keyword("WITH DATA");
-	// 			} else {
-	// 				writer.push_keyword("WITH NO DATA");
-	// 			}
-	// 		}
-	//
-	// 		writer.finish()
-	// 	}
-	//
+	fn build_drop_materialized_view(
+		&self,
+		stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("DROP MATERIALIZED VIEW");
+
+		// IF EXISTS
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		// View names
+		writer.push_space();
+		writer.push_list(&stmt.names, ", ", |w, name| {
+			w.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		});
+
+		// CASCADE or RESTRICT
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		use crate::types::Iden;
+		let mut writer = SqlWriter::new();
+
+		writer.push_keyword("REFRESH MATERIALIZED VIEW");
+
+		// CONCURRENTLY
+		if stmt.concurrently {
+			writer.push_keyword("CONCURRENTLY");
+		}
+
+		// View name
+		if let Some(ref name) = stmt.name {
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(name.as_ref()), |s| self.escape_iden(s));
+		}
+
+		// WITH [NO] DATA
+		if let Some(with_data) = stmt.with_data {
+			writer.push_space();
+			if with_data {
+				writer.push_keyword("WITH DATA");
+			} else {
+				writer.push_keyword("WITH NO DATA");
+			}
+		}
+
+		writer.finish()
+	}
+
 	fn build_create_procedure(
 		&self,
 		stmt: &crate::query::CreateProcedureStatement,
@@ -4411,7 +4411,8 @@ mod tests {
 		let select = Query::select()
 			.column("name")
 			.column("email")
-			.from("temp_users");
+			.from("temp_users")
+			.to_owned();
 
 		// Create an INSERT with subquery
 		let mut stmt = Query::insert();
@@ -4436,7 +4437,8 @@ mod tests {
 			.column("name")
 			.column("email")
 			.from("temp_users")
-			.and_where(Expr::col("active").eq(true));
+			.and_where(Expr::col("active").eq(true))
+			.to_owned();
 
 		// Create an INSERT with subquery
 		let mut stmt = Query::insert();

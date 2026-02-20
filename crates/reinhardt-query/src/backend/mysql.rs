@@ -3436,7 +3436,8 @@ mod tests {
 		let select = Query::select()
 			.column("name")
 			.column("email")
-			.from("temp_users");
+			.from("temp_users")
+			.to_owned();
 
 		// Create an INSERT with subquery
 		let mut stmt = Query::insert();
@@ -3461,7 +3462,8 @@ mod tests {
 			.column("name")
 			.column("email")
 			.from("temp_users")
-			.and_where(Expr::col("active").eq(true));
+			.and_where(Expr::col("active").eq(true))
+			.to_owned();
 
 		// Create an INSERT with subquery
 		let mut stmt = Query::insert();

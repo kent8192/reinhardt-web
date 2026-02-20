@@ -130,7 +130,7 @@ pub use drop_view::DropViewStatement;
 pub use event::{AlterEventStatement, CreateEventStatement, DropEventStatement};
 pub use foreign_key::{ForeignKey, ForeignKeyCreateStatement};
 pub use function::{AlterFunctionStatement, CreateFunctionStatement, DropFunctionStatement};
-pub use insert::InsertStatement;
+pub use insert::{InsertSource, InsertStatement};
 pub use maintenance::{AnalyzeStatement, CheckTableStatement, OptimizeTableStatement, RepairTableStatement, VacuumStatement};
 pub use materialized_view::{
 	AlterMaterializedViewStatement, CreateMaterializedViewStatement, DropMaterializedViewStatement,
