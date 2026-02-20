@@ -69,6 +69,14 @@ impl UploadProgress {
 	fn update(&mut self, chunk_size: usize) {
 		self.chunks_uploaded += 1;
 		self.bytes_uploaded += chunk_size;
+
+		// On the final chunk, update total_bytes to reflect actual cumulative
+		// byte count, which may differ from the declared total_size if the
+		// last chunk is smaller than chunk_size.
+		if self.chunks_uploaded >= self.total_chunks {
+			self.total_bytes = self.bytes_uploaded;
+		}
+
 		self.percentage = if self.total_bytes > 0 {
 			(self.bytes_uploaded as f64 / self.total_bytes as f64) * 100.0
 		} else {
