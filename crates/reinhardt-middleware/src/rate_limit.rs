@@ -116,8 +116,13 @@ impl RateLimitStore {
 		}
 	}
 
-	/// Clean up old request history
+	/// Clean up old request history and stale rate limit buckets
+	///
+	/// Removes request history entries older than `max_age` and evicts
+	/// rate limit buckets that have not been refilled within `max_age`,
+	/// preventing unbounded memory growth from accumulated stale entries.
 	pub fn cleanup(&self, max_age: Duration) {
+		// Prune old history entries
 		let mut history = self.history.write().unwrap();
 		let cutoff = Utc::now() - chrono::Duration::from_std(max_age).unwrap();
 
@@ -126,6 +131,12 @@ impl RateLimitStore {
 		}
 
 		history.retain(|_, requests| !requests.is_empty());
+		drop(history);
+
+		// Evict stale buckets that have not been accessed within max_age
+		let mut buckets = self.buckets.write().unwrap();
+		let now = Instant::now();
+		buckets.retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
 	}
 
 	/// Reset the store

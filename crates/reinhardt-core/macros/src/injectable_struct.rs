@@ -138,8 +138,11 @@ pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStre
 									#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
 								}
 								.map_err(|e| {
-									eprintln!("Dependency injection failed for {} in {}: {:?}",
-										stringify!(#name), stringify!(#struct_name), e);
+									tracing::debug!(
+										field = stringify!(#name),
+										target_type = stringify!(#struct_name),
+										"dependency injection resolution failed"
+									);
 									e
 								})?;
 								let value = (*__injected).clone();
@@ -158,8 +161,11 @@ pub(crate) fn injectable_struct_impl(mut input: DeriveInput) -> Result<TokenStre
 								#di_crate::Injected::<#ty>::resolve_uncached(__di_ctx).await
 							}
 							.map_err(|e| {
-								eprintln!("Dependency injection failed for {} in {}: {:?}",
-									stringify!(#name), stringify!(#struct_name), e);
+								tracing::debug!(
+									field = stringify!(#name),
+									target_type = stringify!(#struct_name),
+									"dependency injection resolution failed"
+								);
 								e
 							})?;
 							(*__injected).clone()

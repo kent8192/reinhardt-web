@@ -15,6 +15,18 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct CspNonce(pub String);
 
+/// Validate that a nonce contains only base64 characters [A-Za-z0-9+/=].
+///
+/// Returns `true` if the nonce is non-empty and contains only valid base64
+/// characters. This prevents header injection via malicious nonce values
+/// containing characters like newlines, semicolons, or other special chars.
+fn is_valid_nonce(nonce: &str) -> bool {
+	!nonce.is_empty()
+		&& nonce
+			.bytes()
+			.all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=')
+}
+
 /// CSP directive configuration
 #[derive(Debug, Clone)]
 pub struct CspConfig {
@@ -244,18 +256,24 @@ impl CspMiddleware {
 	}
 
 	/// Build CSP header value with optional nonce
+	///
+	/// Nonce values are validated to contain only base64 characters before
+	/// embedding in the header to prevent header injection attacks.
 	fn build_csp_header(&self, nonce: Option<&str>) -> String {
 		let mut parts = Vec::new();
+
+		// Only use the nonce if it passes validation
+		let validated_nonce = nonce.filter(|n| is_valid_nonce(n));
 
 		for (directive, values) in &self.config.directives {
 			let mut directive_values = values.clone();
 
 			// Add nonce to script-src and style-src if enabled
 			if self.config.include_nonce
-				&& nonce.is_some()
 				&& (directive == "script-src" || directive == "style-src")
+				&& let Some(n) = validated_nonce
 			{
-				directive_values.push(format!("'nonce-{}'", nonce.unwrap()));
+				directive_values.push(format!("'nonce-{}'", n));
 			}
 
 			parts.push(format!("{} {}", directive, directive_values.join(" ")));
@@ -752,6 +770,48 @@ mod tests {
 			16,
 			"Nonce should be exactly 16 bytes (128 bits)"
 		);
+	}
+
+	#[rstest]
+	fn test_is_valid_nonce_accepts_base64() {
+		// Arrange & Act & Assert
+		assert!(is_valid_nonce("YWJjZGVmZw=="));
+		assert!(is_valid_nonce("abc123+/="));
+		assert!(is_valid_nonce("ABCDEFGHIJKLMNOP"));
+	}
+
+	#[rstest]
+	fn test_is_valid_nonce_rejects_invalid_chars() {
+		// Arrange & Act & Assert
+		assert!(!is_valid_nonce(""));
+		assert!(!is_valid_nonce("abc\ndef"));
+		assert!(!is_valid_nonce("abc;def"));
+		assert!(!is_valid_nonce("abc def"));
+		assert!(!is_valid_nonce("abc'def"));
+		assert!(!is_valid_nonce("abc\rdef"));
+	}
+
+	#[rstest]
+	fn test_build_csp_header_rejects_invalid_nonce() {
+		// Arrange
+		let mut directives = HashMap::new();
+		directives.insert("script-src".to_string(), vec!["'self'".to_string()]);
+		let config = CspConfig {
+			directives,
+			report_only: false,
+			include_nonce: true,
+		};
+		let middleware = CspMiddleware::with_config(config);
+
+		// Act - nonce with header injection attempt (newline + semicolon)
+		let csp = middleware.build_csp_header(Some("abc\r\ndef;injected"));
+
+		// Assert - invalid nonce should be silently dropped
+		assert!(
+			!csp.contains("nonce-"),
+			"Invalid nonce should not be embedded in header"
+		);
+		assert!(csp.contains("script-src 'self'"));
 	}
 
 	#[rstest]

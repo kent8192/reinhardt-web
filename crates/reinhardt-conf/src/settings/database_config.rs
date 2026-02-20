@@ -254,6 +254,38 @@ impl DatabaseConfig {
 	}
 }
 
+impl fmt::Display for DatabaseConfig {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Display a sanitized representation that never exposes credentials
+		let scheme = if self.engine.contains("sqlite") {
+			"sqlite"
+		} else if self.engine.contains("postgresql") || self.engine.contains("postgres") {
+			"postgresql"
+		} else if self.engine.contains("mysql") {
+			"mysql"
+		} else {
+			"unknown"
+		};
+
+		match scheme {
+			"sqlite" => write!(f, "sqlite:{}", self.name),
+			_ => {
+				write!(f, "{}://", scheme)?;
+				if self.user.is_some() || self.password.is_some() {
+					write!(f, "***@")?;
+				}
+				if let Some(host) = &self.host {
+					write!(f, "{}", host)?;
+				}
+				if let Some(port) = self.port {
+					write!(f, ":{}", port)?;
+				}
+				write!(f, "/{}", self.name)
+			}
+		}
+	}
+}
+
 impl Default for DatabaseConfig {
 	fn default() -> Self {
 		Self::sqlite("db.sqlite3".to_string())
@@ -390,6 +422,34 @@ mod tests {
 
 		// Assert
 		assert_eq!(url, "postgresql://user:pass@localhost:5432/mydb");
+	}
+
+	#[rstest]
+	fn test_display_output_masks_credentials() {
+		// Arrange
+		let db = DatabaseConfig::postgresql("mydb", "admin", "s3cr3t!", "db.example.com", 5432);
+
+		// Act
+		let display_output = format!("{}", db);
+
+		// Assert
+		assert!(!display_output.contains("admin"));
+		assert!(!display_output.contains("s3cr3t!"));
+		assert!(display_output.contains("***@"));
+		assert!(display_output.contains("db.example.com"));
+		assert!(display_output.contains("mydb"));
+	}
+
+	#[rstest]
+	fn test_display_output_sqlite() {
+		// Arrange
+		let db = DatabaseConfig::sqlite("app.db");
+
+		// Act
+		let display_output = format!("{}", db);
+
+		// Assert
+		assert_eq!(display_output, "sqlite:app.db");
 	}
 
 	#[rstest]

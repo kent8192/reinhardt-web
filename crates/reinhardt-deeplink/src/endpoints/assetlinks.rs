@@ -37,7 +37,8 @@ use crate::error::DeeplinkError;
 /// let config = AndroidConfig::builder()
 ///     .package_name("com.example.app")
 ///     .sha256_fingerprint("FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C")
-///     .build();
+///     .build()
+///     .unwrap();
 ///
 /// let handler = AssetLinksHandler::new(config).unwrap();
 /// ```
@@ -68,8 +69,9 @@ impl AssetLinksHandler {
 
 	/// Returns the cached JSON content as a string slice.
 	pub fn json(&self) -> &str {
-		// SAFETY: JSON serialization always produces valid UTF-8
-		std::str::from_utf8(&self.cached_json).unwrap()
+		std::str::from_utf8(&self.cached_json).expect(
+			"cached_json was serialized from valid UTF-8 strings and cannot be invalid UTF-8",
+		)
 	}
 }
 
@@ -107,6 +109,7 @@ mod tests {
 			.package_name("com.example.app")
 			.sha256_fingerprint(VALID_FINGERPRINT)
 			.build()
+			.unwrap()
 	}
 
 	#[rstest]

@@ -3,6 +3,20 @@ use matchit::Router as MatchitRouter;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
+/// Maximum allowed length for a URL pattern string in bytes.
+/// Patterns exceeding this limit are rejected to prevent ReDoS attacks
+/// from excessively long or complex regex patterns.
+const MAX_PATTERN_LENGTH: usize = 1024;
+
+/// Maximum allowed number of path segments in a URL pattern.
+/// Patterns with more segments than this are rejected to prevent
+/// resource exhaustion from deeply nested URL structures.
+const MAX_PATH_SEGMENTS: usize = 32;
+
+/// Maximum allowed size for compiled regex (in bytes).
+/// This limits the compiled regex DFA size to prevent memory exhaustion.
+const MAX_REGEX_SIZE: usize = 1 << 20; // 1 MiB
+
 /// Convert a type specifier to its corresponding regex pattern
 ///
 /// This function maps type specifiers from `{<type:name>}` syntax
@@ -140,7 +154,7 @@ pub(crate) fn validate_reverse_param(value: &str) -> bool {
 
 /// Path pattern for URL matching
 /// Similar to Django's URL patterns but using composition
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PathPattern {
 	/// Original pattern string (may contain type specifiers)
 	pattern: String,
@@ -186,8 +200,32 @@ impl PathPattern {
 	/// ```
 	pub fn new(pattern: impl Into<String>) -> Result<Self, String> {
 		let pattern = pattern.into();
+
+		// Reject patterns exceeding the maximum length to prevent ReDoS
+		if pattern.len() > MAX_PATTERN_LENGTH {
+			return Err(format!(
+				"Pattern length {} exceeds maximum allowed length of {} bytes",
+				pattern.len(),
+				MAX_PATTERN_LENGTH
+			));
+		}
+
+		// Reject patterns with excessive path segments to prevent resource exhaustion
+		let segment_count = pattern.split('/').count();
+		if segment_count > MAX_PATH_SEGMENTS {
+			return Err(format!(
+				"Pattern has {} path segments, exceeding maximum of {}",
+				segment_count, MAX_PATH_SEGMENTS
+			));
+		}
+
 		let parse_result = Self::parse_pattern(&pattern)?;
-		let regex = Regex::new(&parse_result.regex_str).map_err(|e| e.to_string())?;
+
+		// Use RegexBuilder with size limits to prevent memory exhaustion
+		let regex = regex::RegexBuilder::new(&parse_result.regex_str)
+			.size_limit(MAX_REGEX_SIZE)
+			.build()
+			.map_err(|e| format!("Failed to compile pattern regex: {}", e))?;
 
 		// Build Aho-Corasick automaton for URL reversal if there are parameters
 		let aho_corasick = if !parse_result.param_names.is_empty() {
@@ -1468,5 +1506,96 @@ mod tests {
 		assert!(!validate_reverse_param("foo%3fbar"));
 		assert!(!validate_reverse_param("foo%23bar"));
 		assert!(!validate_reverse_param("foo%00bar"));
+	}
+
+	// ===================================================================
+	// ReDoS prevention tests (Issue #430)
+	// ===================================================================
+
+	#[test]
+	fn test_pattern_rejects_excessive_length() {
+		// Arrange: a pattern exceeding MAX_PATTERN_LENGTH (1024 bytes)
+		let long_pattern = "/".to_string() + &"a".repeat(1025);
+
+		// Act
+		let result = PathPattern::new(long_pattern);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(
+			result
+				.unwrap_err()
+				.contains("exceeds maximum allowed length")
+		);
+	}
+
+	#[test]
+	fn test_pattern_accepts_within_length_limit() {
+		// Arrange: a pattern within the limit
+		let pattern = "/users/{id}/posts/{post_id}/";
+
+		// Act
+		let result = PathPattern::new(pattern);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_pattern_rejects_at_boundary() {
+		// Arrange: a pattern at exactly the boundary + 1
+		let pattern = "/".to_string() + &"a/".repeat(512) + "end";
+		if pattern.len() > MAX_PATTERN_LENGTH {
+			// Act
+			let result = PathPattern::new(pattern);
+
+			// Assert
+			assert!(result.is_err());
+		}
+	}
+
+	// ===================================================================
+	// Path segment count limit tests (Issue #431)
+	// ===================================================================
+
+	#[test]
+	fn test_pattern_rejects_excessive_segments() {
+		// Arrange: a pattern with more than MAX_PATH_SEGMENTS segments
+		let segments: Vec<&str> = (0..35).map(|_| "seg").collect();
+		let pattern = format!("/{}/", segments.join("/"));
+
+		// Act
+		let result = PathPattern::new(pattern);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(result.unwrap_err().contains("exceeding maximum"));
+	}
+
+	#[test]
+	fn test_pattern_accepts_within_segment_limit() {
+		// Arrange: a pattern with few segments
+		let pattern = "/a/b/c/d/e/";
+
+		// Act
+		let result = PathPattern::new(pattern);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_pattern_accepts_at_segment_boundary() {
+		// Arrange: a pattern at exactly the maximum segment count
+		let segments: Vec<String> = (0..MAX_PATH_SEGMENTS - 2)
+			.map(|i| format!("s{}", i))
+			.collect();
+		let pattern = format!("/{}/", segments.join("/"));
+
+		// Act
+		let result = PathPattern::new(&pattern);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 }

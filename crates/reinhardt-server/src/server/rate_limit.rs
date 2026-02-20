@@ -189,9 +189,21 @@ impl RateLimitHandler {
 	}
 
 	/// Check if a request is allowed for the given IP
+	///
+	/// Also performs periodic eviction of stale entries to prevent
+	/// unbounded memory growth from accumulated per-IP state.
 	async fn is_allowed(&self, ip: IpAddr) -> bool {
 		let now = Instant::now();
 		let mut limits = self.limits.write().await;
+
+		// Periodically evict stale entries (entries whose window has expired)
+		// to prevent unbounded memory growth. Run every 256 requests by checking
+		// if the total entry count exceeds a threshold.
+		if limits.len() > 1024 {
+			limits.retain(|_, entry| {
+				now.duration_since(entry.window_start) < self.config.window_duration * 2
+			});
+		}
 
 		let entry = limits.entry(ip).or_insert(RateLimitEntry {
 			count: 0,

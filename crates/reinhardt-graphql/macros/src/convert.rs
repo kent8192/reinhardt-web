@@ -15,6 +15,24 @@ struct FieldConfig {
 	proto_name: Option<String>,
 }
 
+/// Characters allowed in skip_if function path names.
+///
+/// Only allows Rust path syntax: alphanumeric, underscores, colons (for paths),
+/// and angle brackets (for generic types). Rejects arbitrary expressions
+/// to prevent code injection via macro attributes.
+fn is_valid_skip_if_path(path: &str) -> bool {
+	if path.is_empty() {
+		return false;
+	}
+	// Must be a simple function path like "Option::is_none" or "String::is_empty"
+	// Reject anything that looks like an expression (containing operators, parens, etc.)
+	path.chars()
+		.all(|c| c.is_alphanumeric() || c == '_' || c == ':' || c == '<' || c == '>')
+		&& !path.contains(";;")
+		&& !path.contains("//")
+		&& !path.contains("/*")
+}
+
 impl FieldConfig {
 	fn from_field(field: &Field) -> Result<Self> {
 		let mut config = FieldConfig::default();
@@ -29,7 +47,17 @@ impl FieldConfig {
 					} else if meta.path.is_ident("skip_if") {
 						let value = meta.value()?;
 						let condition: LitStr = value.parse()?;
-						config.skip_if = Some(condition.value());
+						let path = condition.value();
+						// Validate that skip_if value is a simple function path,
+						// not an arbitrary expression
+						if !is_valid_skip_if_path(&path) {
+							return Err(syn::Error::new_spanned(
+								&condition,
+								"skip_if must be a simple function path (e.g., \"Option::is_none\"), \
+								 arbitrary expressions are not allowed for security reasons",
+							));
+						}
+						config.skip_if = Some(path);
 					}
 					Ok(())
 				})?;
@@ -276,5 +304,50 @@ mod tests {
 
 		let result = expand_derive(input);
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_skip_if_rejects_arbitrary_expression() {
+		let input: DeriveInput = parse_quote! {
+			struct User {
+				id: String,
+				#[graphql(skip_if = "|| { std::process::exit(1) }")]
+				email: Option<String>,
+			}
+		};
+
+		let result = expand_derive(input);
+		assert!(
+			result.is_err(),
+			"should reject arbitrary expressions in skip_if"
+		);
+	}
+
+	#[test]
+	fn test_skip_if_accepts_valid_function_path() {
+		let input: DeriveInput = parse_quote! {
+			struct User {
+				id: String,
+				#[graphql(skip_if = "Option::is_none")]
+				email: Option<String>,
+			}
+		};
+
+		let result = expand_derive(input);
+		assert!(
+			result.is_ok(),
+			"should accept valid function path in skip_if"
+		);
+	}
+
+	#[test]
+	fn test_valid_skip_if_path_validation() {
+		assert!(is_valid_skip_if_path("Option::is_none"));
+		assert!(is_valid_skip_if_path("String::is_empty"));
+		assert!(is_valid_skip_if_path("my_module::my_func"));
+		assert!(!is_valid_skip_if_path(""));
+		assert!(!is_valid_skip_if_path("|| true"));
+		assert!(!is_valid_skip_if_path("fn() { }"));
+		assert!(!is_valid_skip_if_path("std::process::exit(1)"));
 	}
 }

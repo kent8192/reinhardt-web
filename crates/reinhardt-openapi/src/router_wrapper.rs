@@ -177,12 +177,35 @@ impl<H> OpenApiRouter<H> {
 		if !self.enabled {
 			return Some(Response::not_found());
 		}
-		if let Some(ref guard) = self.auth_guard {
-			if !guard(request) {
-				return Some(Response::forbidden());
-			}
+		if let Some(ref guard) = self.auth_guard
+			&& !guard(request)
+		{
+			return Some(Response::forbidden());
 		}
 		None
+	}
+
+	/// Apply security headers to documentation endpoint responses.
+	///
+	/// Adds Content-Security-Policy, X-Frame-Options, X-Content-Type-Options,
+	/// and Cache-Control headers to prevent clickjacking, MIME sniffing,
+	/// and stale cache attacks on documentation pages.
+	// Fixes #830
+	fn apply_security_headers(response: Response) -> Response {
+		response
+			.with_header(
+				"Content-Security-Policy",
+				"default-src 'none'; \
+				 script-src 'unsafe-inline' https://unpkg.com https://cdn.redoc.ly; \
+				 style-src 'unsafe-inline' https://unpkg.com; \
+				 img-src 'self' data:; \
+				 connect-src 'self'; \
+				 font-src https://fonts.gstatic.com; \
+				 frame-ancestors 'none'",
+			)
+			.with_header("X-Frame-Options", "DENY")
+			.with_header("X-Content-Type-Options", "nosniff")
+			.with_header("Cache-Control", "no-store")
 	}
 }
 
@@ -205,27 +228,29 @@ impl<H: Handler> Handler for OpenApiRouter<H> {
 				if let Some(denied) = self.check_access(&request) {
 					return Ok(denied);
 				}
-				match request.uri.path() {
+				// Fixes #830: Apply security headers to all docs responses
+				let response = match request.uri.path() {
 					"/api/openapi.json" => {
 						let json = (*self.openapi_json).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "application/json; charset=utf-8")
-							.with_body(json))
+							.with_body(json)
 					}
 					"/api/docs" => {
 						let html = (*self.swagger_html).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html))
+							.with_body(html)
 					}
 					"/api/redoc" => {
 						let html = (*self.redoc_html).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html))
+							.with_body(html)
 					}
 					_ => unreachable!(),
-				}
+				};
+				Ok(Self::apply_security_headers(response))
 			}
 			_ => {
 				// Delegate to base handler
@@ -288,27 +313,29 @@ where
 				if let Some(denied) = self.check_access(&request) {
 					return Ok(denied);
 				}
-				match request.uri.path() {
+				// Fixes #830: Apply security headers to all docs responses
+				let response = match request.uri.path() {
 					"/api/openapi.json" => {
 						let json = (*self.openapi_json).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "application/json; charset=utf-8")
-							.with_body(json))
+							.with_body(json)
 					}
 					"/api/docs" => {
 						let html = (*self.swagger_html).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html))
+							.with_body(html)
 					}
 					"/api/redoc" => {
 						let html = (*self.redoc_html).clone();
-						Ok(Response::ok()
+						Response::ok()
 							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html))
+							.with_body(html)
 					}
 					_ => unreachable!(),
-				}
+				};
+				Ok(Self::apply_security_headers(response))
 			}
 			_ => {
 				// Delegate to base router's route() method
