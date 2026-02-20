@@ -148,6 +148,8 @@ fn format_error_message(error: &PathValidationError) -> String {
                  - Hyphens (-)\n\
                  - Underscores (_)\n\
                  - Slashes (/)\n\
+                 - Dots (.)\n\
+                 - Wildcards (*)\n\
                  - Curly braces for parameters ({{, }})",
 				ch, position
 			)
@@ -156,6 +158,22 @@ fn format_error_message(error: &PathValidationError) -> String {
 			format!(
 				"Nested parameter at position {}\n\
                  Parameters cannot be nested: use {{outer}} instead of {{{{inner}}}}",
+				pos
+			)
+		}
+		PathValidationError::ConsecutiveParameters(pos) => {
+			format!(
+				"Consecutive parameters without separator at position {}\n\
+                 Parameters must be separated by a static segment (e.g., '/')\n\
+                 Example: /{{id}}/{{name}}/ instead of /{{id}}{{name}}/",
+				pos
+			)
+		}
+		PathValidationError::WildcardNotAtEnd(pos) => {
+			format!(
+				"Wildcard '*' at position {} must appear only in the last path segment\n\
+                 Wildcards can only be used at the end of a path\n\
+                 Example: /static/* instead of /*/files",
 				pos
 			)
 		}
