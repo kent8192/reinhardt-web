@@ -10,7 +10,7 @@
 use crate::signals;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use thiserror::Error as ThisError;
 
 /// Errors that can occur when working with the application registry
@@ -290,17 +290,23 @@ impl Apps {
 
 	/// Check if the registry is fully ready
 	pub fn is_ready(&self) -> bool {
-		*self.ready.lock().unwrap()
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Check if app configurations are ready
 	pub fn is_apps_ready(&self) -> bool {
-		*self.apps_ready.lock().unwrap()
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Check if models are ready
 	pub fn is_models_ready(&self) -> bool {
-		*self.models_ready.lock().unwrap()
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Register an application configuration
@@ -308,8 +314,14 @@ impl Apps {
 		// Validate the configuration
 		config.validate_label()?;
 
-		let mut configs = self.app_configs.lock().unwrap();
-		let mut names = self.app_names.lock().unwrap();
+		let mut configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		let mut names = self
+			.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
 
 		// Check for duplicate label
 		if configs.contains_key(&config.label) {
@@ -332,7 +344,7 @@ impl Apps {
 	pub fn get_app_config(&self, label: &str) -> AppResult<AppConfig> {
 		self.app_configs
 			.lock()
-			.unwrap()
+			.unwrap_or_else(PoisonError::into_inner)
 			.get(label)
 			.cloned()
 			.ok_or_else(|| AppError::NotFound(label.to_string()))
@@ -340,14 +352,27 @@ impl Apps {
 
 	/// Get all registered application configurations
 	pub fn get_app_configs(&self) -> Vec<AppConfig> {
-		self.app_configs.lock().unwrap().values().cloned().collect()
+		self.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.values()
+			.cloned()
+			.collect()
 	}
 
 	/// Check if an application is installed
 	pub fn is_installed(&self, name: &str) -> bool {
 		self.installed_apps.contains(&name.to_string())
-			|| self.app_names.lock().unwrap().contains_key(name)
-			|| self.app_configs.lock().unwrap().contains_key(name)
+			|| self
+				.app_names
+				.lock()
+				.unwrap_or_else(PoisonError::into_inner)
+				.contains_key(name)
+			|| self
+				.app_configs
+				.lock()
+				.unwrap_or_else(PoisonError::into_inner)
+				.contains_key(name)
 	}
 
 	/// Populate the registry with application configurations
@@ -368,7 +393,10 @@ impl Apps {
 	/// ```
 	pub fn populate(&self) -> AppResult<()> {
 		// Mark as apps_ready
-		*self.apps_ready.lock().unwrap() = true;
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = true;
 
 		// 1. Import and instantiate AppConfig for each installed app
 		for app_name in &self.installed_apps {
@@ -377,16 +405,19 @@ impl Apps {
 			// Store in registries
 			self.app_configs
 				.lock()
-				.unwrap()
+				.unwrap_or_else(PoisonError::into_inner)
 				.insert(app_config.label.clone(), app_config.clone());
 			self.app_names
 				.lock()
-				.unwrap()
+				.unwrap_or_else(PoisonError::into_inner)
 				.insert(app_name.clone(), app_config.label.clone());
 		}
 
 		// 2. Call ready() method on each AppConfig and send signals
-		let configs = self.app_configs.lock().unwrap();
+		let configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
 		for app_config in configs.values() {
 			// Call the ready hook
 			app_config.ready().map_err(|e| {
@@ -406,26 +437,45 @@ impl Apps {
 		// which automatically registers them at construction time
 
 		// 4. Build reverse relations between models
-		if !*self.models_ready.lock().unwrap() {
+		if !*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+		{
 			crate::discovery::build_reverse_relations();
 			// Finalize reverse relations to make them immutable
 			crate::registry::finalize_reverse_relations();
 		}
 
 		// Mark as models_ready
-		*self.models_ready.lock().unwrap() = true;
-		*self.ready.lock().unwrap() = true;
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = true;
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner) = true;
 
 		Ok(())
 	}
 
 	/// Clear all cached data (for testing)
 	pub fn clear_cache(&self) {
-		self.app_configs.lock().unwrap().clear();
-		self.app_names.lock().unwrap().clear();
-		*self.ready.lock().unwrap() = false;
-		*self.apps_ready.lock().unwrap() = false;
-		*self.models_ready.lock().unwrap() = false;
+		self.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.clear();
+		self.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.clear();
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner) = false;
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = false;
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = false;
 	}
 }
 
