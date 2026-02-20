@@ -188,9 +188,13 @@ impl RelationMetadata {
 /// use reinhardt_apps::discovery::build_reverse_relations;
 ///
 /// // Build reverse relations for all models
-/// build_reverse_relations();
+/// build_reverse_relations().unwrap();
 /// ```
-pub fn build_reverse_relations() {
+///
+/// # Errors
+///
+/// Returns [`AppError::RegistryState`] if reverse relations have already been finalized.
+pub fn build_reverse_relations() -> Result<(), crate::AppError> {
 	// Step 1: Get all registered models
 	let models = get_registered_models();
 
@@ -204,8 +208,10 @@ pub fn build_reverse_relations() {
 
 	// Step 3: Build reverse relation descriptors
 	for relation in &relations {
-		create_reverse_relation(relation);
+		create_reverse_relation(relation)?;
 	}
+
+	Ok(())
 }
 
 /// Extract relationship metadata from a model
@@ -296,11 +302,15 @@ fn extract_model_relations(model: &ModelMetadata) -> Vec<RelationMetadata> {
 /// );
 ///
 /// // This creates User.posts reverse accessor
-/// create_reverse_relation(&relation);
+/// create_reverse_relation(&relation).unwrap();
 ///
 /// // Later: user.posts().all() returns QuerySet<Post>
 /// ```
-pub fn create_reverse_relation(relation: &RelationMetadata) {
+///
+/// # Errors
+///
+/// Returns [`AppError::RegistryState`] if called after reverse relations have been finalized.
+pub fn create_reverse_relation(relation: &RelationMetadata) -> Result<(), crate::AppError> {
 	// Use reverse_name() which handles both explicit and default naming
 	let reverse_name = relation.reverse_name().into_owned();
 
@@ -320,7 +330,7 @@ pub fn create_reverse_relation(relation: &RelationMetadata) {
 		relation.field_name, // Original field name for join queries
 	);
 
-	register_reverse_relation(reverse_relation);
+	register_reverse_relation(reverse_relation)
 }
 
 /// Migration metadata
@@ -698,7 +708,7 @@ mod tests {
 		);
 
 		// Act: create_reverse_relation uses fields directly without Box::leak
-		create_reverse_relation(&relation);
+		create_reverse_relation(&relation).expect("reverse relation registration should succeed");
 
 		// Assert: the reverse relation is registered with the correct values
 		// from the original &'static str fields (pointer equality confirms
@@ -728,7 +738,7 @@ mod tests {
 			RelationMetadata::new("Comment", "BlogPost", "post", None, RelationType::OneToMany);
 
 		// Act
-		create_reverse_relation(&relation);
+		create_reverse_relation(&relation).expect("reverse relation registration should succeed");
 
 		// Assert: default accessor name follows "{from_model_lowercase}_set" pattern
 		let reverse_relations = crate::registry::get_reverse_relations_for_model("BlogPost");

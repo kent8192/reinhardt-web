@@ -36,6 +36,9 @@ pub enum AppError {
 
 	#[error("Application configuration error: {0}")]
 	ConfigError(String),
+
+	#[error("Registry state error: {0}")]
+	RegistryState(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -509,7 +512,7 @@ impl Apps {
 			.lock()
 			.unwrap_or_else(PoisonError::into_inner)
 		{
-			crate::discovery::build_reverse_relations();
+			crate::discovery::build_reverse_relations()?;
 			// Finalize reverse relations to make them immutable
 			crate::registry::finalize_reverse_relations();
 		}
