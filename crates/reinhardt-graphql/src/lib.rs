@@ -7,6 +7,7 @@
 //! - **graphql-grpc**: GraphQL facade over gRPC for Query/Mutation
 //! - **subscription**: gRPC-based Subscriptions (Rust 2024 compatible)
 //! - **di**: Dependency injection support for GraphQL resolvers
+//! - **playground**: GraphQL developer tools (GraphiQL, SDL export)
 //! - **full**: All features enabled
 //!
 //! # Dependency Injection
@@ -80,6 +81,9 @@ pub mod di;
 #[cfg(feature = "graphql-grpc")]
 pub mod grpc_service;
 
+#[cfg(feature = "playground")]
+pub mod playground;
+
 pub use context::{ContextError, DataLoader, GraphQLContext, LoaderError};
 pub use schema::{
 	AppSchema, CreateUserInput, Mutation, Query, QueryLimits, User, UserStorage, create_schema,
@@ -103,3 +107,6 @@ pub use di::{GraphQLContextExt, SchemaBuilderExt};
 
 #[cfg(feature = "di")]
 pub use reinhardt_graphql_macros::graphql_handler;
+
+#[cfg(feature = "playground")]
+pub use playground::{export_sdl, graphiql_html, graphiql_html_with_title};

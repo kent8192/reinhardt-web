@@ -456,6 +456,7 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
+	#[derive(Debug)]
 	struct TestLoader;
 
 	#[async_trait]

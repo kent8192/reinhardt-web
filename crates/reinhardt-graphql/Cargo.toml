@@ -25,8 +25,10 @@ subscription = [
 ]
 # Dependency injection support
 di = ["dep:reinhardt-di", "dep:reinhardt-graphql-macros"]
+# GraphQL developer tools (GraphiQL, SDL export)
+playground = []
 # All features enabled
-full = ["graphql-grpc", "subscription", "di"]
+full = ["graphql-grpc", "subscription", "di", "playground"]
 
 [dependencies]
 # Core dependencies (merged from graphql-core)
