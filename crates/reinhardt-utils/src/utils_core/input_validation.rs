@@ -123,8 +123,8 @@ pub fn validate_redirect_url(url: &str) -> bool {
 pub fn sanitize_log_input(input: &str, max_length: usize) -> String {
 	let mut result = String::with_capacity(input.len().min(max_length));
 
-	for ch in input.chars() {
-		if result.len() >= max_length {
+	for (char_count, ch) in input.chars().enumerate() {
+		if char_count >= max_length {
 			break;
 		}
 
@@ -411,6 +411,33 @@ mod tests {
 	// ===================================================================
 	// IdentifierError Display tests
 	// ===================================================================
+
+	#[rstest]
+	fn test_sanitize_log_input_multibyte_truncation_does_not_panic() {
+		// Fixes #762: Use character count instead of byte length for truncation
+		// to prevent cutting in the middle of multi-byte UTF-8 characters.
+		let input = "あいうえおかきくけこ"; // 10 chars, 30 bytes
+
+		// Act
+		let result = sanitize_log_input(input, 5);
+
+		// Assert
+		assert_eq!(result.chars().count(), 5);
+		assert_eq!(result, "あいうえお");
+	}
+
+	#[rstest]
+	fn test_sanitize_log_input_mixed_multibyte_truncation() {
+		// Fixes #762: Mixed ASCII and multibyte characters
+		let input = "aあbいcうdえeお";
+
+		// Act
+		let result = sanitize_log_input(input, 6);
+
+		// Assert
+		assert_eq!(result.chars().count(), 6);
+		assert_eq!(result, "aあbいcう");
+	}
 
 	#[rstest]
 	fn test_identifier_error_display_messages() {
