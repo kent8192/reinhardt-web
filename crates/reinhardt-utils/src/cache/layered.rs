@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
+use tokio::task::AbortHandle;
 
 /// Active sampler configuration and state
 struct ActiveSampler {
@@ -74,6 +75,8 @@ pub struct LayeredCacheStore {
 	ttl_index: Arc<RwLock<TtlIndex>>,
 	/// Active sampler state (Layer 2)
 	active_sampler: ActiveSampler,
+	/// Handle for cancelling the background cleanup task
+	cleanup_handle: Arc<std::sync::Mutex<Option<AbortHandle>>>,
 }
 
 impl LayeredCacheStore {
@@ -83,6 +86,7 @@ impl LayeredCacheStore {
 			store: Arc::new(RwLock::new(HashMap::new())),
 			ttl_index: Arc::new(RwLock::new(HashMap::new())),
 			active_sampler: ActiveSampler::default(),
+			cleanup_handle: Arc::new(std::sync::Mutex::new(None)),
 		}
 	}
 
@@ -109,6 +113,7 @@ impl LayeredCacheStore {
 				sample_size,
 				threshold,
 			},
+			cleanup_handle: Arc::new(std::sync::Mutex::new(None)),
 		}
 	}
 
@@ -439,14 +444,35 @@ impl LayeredCacheStore {
 	where
 		Self: Clone,
 	{
+		let mut handle_guard = self.cleanup_handle.lock().unwrap_or_else(|e| e.into_inner());
+
+		// Abort any previously running cleanup task to prevent duplicates
+		if let Some(existing) = handle_guard.take() {
+			existing.abort();
+		}
+
 		let store = self.clone();
-		tokio::spawn(async move {
+		let abort_handle = tokio::spawn(async move {
 			let mut interval_timer = tokio::time::interval(interval);
 			loop {
 				interval_timer.tick().await;
 				store.cleanup().await;
 			}
-		});
+		})
+		.abort_handle();
+
+		*handle_guard = Some(abort_handle);
+	}
+
+	/// Stop the background auto-cleanup task if one is running.
+	///
+	/// After calling this method, no further automatic cleanup will occur
+	/// until `start_auto_cleanup` is called again.
+	pub fn stop_auto_cleanup(&self) {
+		let mut handle_guard = self.cleanup_handle.lock().unwrap_or_else(|e| e.into_inner());
+		if let Some(handle) = handle_guard.take() {
+			handle.abort();
+		}
 	}
 }
 
@@ -459,6 +485,7 @@ impl Clone for LayeredCacheStore {
 				sample_size: self.active_sampler.sample_size,
 				threshold: self.active_sampler.threshold,
 			},
+			cleanup_handle: Arc::clone(&self.cleanup_handle),
 		}
 	}
 }
