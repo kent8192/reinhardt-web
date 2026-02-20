@@ -1,4 +1,5 @@
 use super::backend::{MemoryBackend, ThrottleBackend};
+use super::key_validation::validate_key_component;
 use super::{Throttle, ThrottleResult};
 use async_trait::async_trait;
 
@@ -66,6 +67,7 @@ impl<B: ThrottleBackend> AnonRateThrottle<B> {
 #[async_trait]
 impl<B: ThrottleBackend> Throttle for AnonRateThrottle<B> {
 	async fn allow_request(&self, key: &str) -> ThrottleResult<bool> {
+		validate_key_component(key)?;
 		let throttle_key = format!("throttle:anon:{}", key);
 		let count = self
 			.backend
@@ -75,6 +77,7 @@ impl<B: ThrottleBackend> Throttle for AnonRateThrottle<B> {
 		Ok(count <= self.rate)
 	}
 	async fn wait_time(&self, key: &str) -> ThrottleResult<Option<u64>> {
+		validate_key_component(key)?;
 		let throttle_key = format!("throttle:anon:{}", key);
 		let count = self
 			.backend
