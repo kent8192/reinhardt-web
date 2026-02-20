@@ -4,6 +4,7 @@
 //! - HSTS (HTTP Strict Transport Security)
 //! - SSL/HTTPS redirects
 //! - X-Content-Type-Options
+//! - X-Frame-Options
 //! - Referrer-Policy
 //! - Cross-Origin-Opener-Policy (COOP)
 
@@ -33,6 +34,8 @@ pub struct SecurityConfig {
 	pub referrer_policy: Option<String>,
 	/// Cross-Origin-Opener-Policy value
 	pub cross_origin_opener_policy: Option<String>,
+	/// X-Frame-Options value (e.g., "DENY", "SAMEORIGIN")
+	pub x_frame_options: Option<String>,
 	/// Proxy SSL header name and expected value for identifying secure requests
 	/// Example: Some(("HTTP_X_FORWARDED_PROTO".to_string(), "https".to_string()))
 	pub secure_proxy_ssl_header: Option<(String, String)>,
@@ -49,6 +52,7 @@ impl Default for SecurityConfig {
 			content_type_nosniff: true,
 			referrer_policy: Some("same-origin".to_string()),
 			cross_origin_opener_policy: None,
+			x_frame_options: Some("DENY".to_string()),
 			secure_proxy_ssl_header: None,
 		}
 	}
@@ -156,6 +160,7 @@ impl SecurityMiddleware {
 	///     content_type_nosniff: true,
 	///     referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
 	///     cross_origin_opener_policy: Some("same-origin".to_string()),
+	///     x_frame_options: Some("DENY".to_string()),
 	///     secure_proxy_ssl_header: None,
 	/// };
 	///
@@ -293,6 +298,13 @@ impl SecurityMiddleware {
 				.headers
 				.insert("Cross-Origin-Opener-Policy", policy.parse().unwrap());
 		}
+
+		// X-Frame-Options
+		if let Some(ref value) = self.config.x_frame_options {
+			response
+				.headers
+				.insert("X-Frame-Options", value.parse().unwrap());
+		}
 	}
 }
 
@@ -356,6 +368,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -393,6 +406,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -434,6 +448,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -465,6 +480,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -502,6 +518,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -558,6 +575,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -591,6 +609,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: Some("same-origin".to_string()),
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -624,6 +643,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: Some("no-referrer".to_string()),
 			cross_origin_opener_policy: Some("same-origin-allow-popups".to_string()),
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -750,6 +770,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: Some(("X-Custom-Proto".to_string(), "https".to_string())),
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -790,6 +811,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: Some(("X-Custom-Proto".to_string(), "https".to_string())),
 		};
 		let middleware = SecurityMiddleware::with_config(config);
