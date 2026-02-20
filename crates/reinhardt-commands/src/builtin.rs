@@ -768,7 +768,12 @@ impl BaseCommand for MakeMigrationsCommand {
 							Vec::new() // Initial migration has no dependencies
 						} else {
 							// Get previous migration number
-							let prev_number_int = migration_number.parse::<u32>().unwrap() - 1;
+							let prev_number_int = migration_number.parse::<u32>().map_err(|e| {
+								CommandError::ParseError(format!(
+									"invalid migration number '{}': {}",
+									migration_number, e
+								))
+							})? - 1;
 							let prev_number = format!("{:04}", prev_number_int);
 							// Find the previous migration by scanning the directory
 							let prev_migration_name = if let Ok(entries) =
