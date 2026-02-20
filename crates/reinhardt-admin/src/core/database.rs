@@ -494,6 +494,10 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
+		// SELECT * is intentional: admin panel operates on dynamic schemas where
+		// the column set is not known at compile time. Each ModelAdmin defines
+		// list_display fields, and column filtering is applied at the application
+		// layer after fetching all columns.
 		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
@@ -555,6 +559,10 @@ impl AdminDatabase {
 		offset: u64,
 		limit: u64,
 	) -> AdminResult<Vec<HashMap<String, serde_json::Value>>> {
+		// SELECT * is intentional: admin panel operates on dynamic schemas where
+		// the column set is not known at compile time. Each ModelAdmin defines
+		// list_display fields, and column filtering is applied at the application
+		// layer after fetching all columns.
 		let mut query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)
@@ -705,6 +713,9 @@ impl AdminDatabase {
 			Value::String(Some(Box::new(id.to_string())))
 		};
 
+		// SELECT * is intentional: admin detail view displays all fields from the
+		// model. The admin panel operates on dynamic schemas where the column set
+		// is determined by the ModelAdmin configuration at runtime.
 		let query = Query::select()
 			.from(Alias::new(table_name))
 			.column(ColumnRef::Asterisk)

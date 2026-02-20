@@ -48,7 +48,10 @@ pub fn main() -> Result<(), JsValue> {
 		});
 		app_clone.set_inner_html(&view.render_to_string());
 	});
-	// Leak the effect - WASM apps don't terminate, so this is intentional
+	// Intentional memory leak: WASM entry points run for the entire application
+	// lifetime and never terminate. The Effect must persist to keep reactive
+	// re-renders working. Dropping it would disable route-change rendering.
+	// See: https://rustwasm.github.io/wasm-bindgen/reference/weak-references.html
 	std::mem::forget(_effect);
 
 	// Set up navigation event listeners
