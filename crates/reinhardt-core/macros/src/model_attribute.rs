@@ -38,9 +38,7 @@ pub(crate) fn model_attribute_impl(
 			) {
 				return paths.iter().any(|path| {
 					// Match exact "Model" or paths ending in "Model" (e.g., reinhardt::macros::Model)
-					path.segments
-						.last()
-						.is_some_and(|seg| seg.ident == "Model")
+					path.segments.last().is_some_and(|seg| seg.ident == "Model")
 				});
 			}
 			return false;
