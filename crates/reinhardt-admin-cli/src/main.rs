@@ -1405,10 +1405,10 @@ fn mask_path(path: &Path) -> String {
 /// Attempts to strip the current working directory prefix to show a relative path.
 /// Falls back to showing only the filename via `mask_path` if relativization fails.
 fn display_path(path: &Path) -> String {
-	if let Ok(cwd) = std::env::current_dir() {
-		if let Ok(relative) = path.strip_prefix(&cwd) {
-			return relative.display().to_string();
-		}
+	if let Ok(cwd) = std::env::current_dir()
+		&& let Ok(relative) = path.strip_prefix(&cwd)
+	{
+		return relative.display().to_string();
 	}
 	mask_path(path)
 }
