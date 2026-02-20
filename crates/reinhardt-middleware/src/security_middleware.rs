@@ -8,8 +8,8 @@
 //! - Cross-Origin-Opener-Policy (COOP)
 
 use async_trait::async_trait;
-use hyper::header::{HeaderValue, LOCATION};
 use hyper::StatusCode;
+use hyper::header::{HeaderValue, LOCATION};
 use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
