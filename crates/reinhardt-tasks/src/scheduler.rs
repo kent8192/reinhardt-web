@@ -191,9 +191,12 @@ impl Scheduler {
 				}
 			}
 
-			// Sleep until the next scheduled task, or break on shutdown
+			// Sleep until the next scheduled task, or break on shutdown.
+			// Enforce a minimum sleep of 100ms to prevent busy-looping when
+			// next_run is in the past or very close to the current time.
+			const MIN_SLEEP: Duration = Duration::from_millis(100);
 			let sleep_duration = if let Some(next) = next_check {
-				(next - now).to_std().unwrap_or(Duration::from_secs(1))
+				(next - now).to_std().unwrap_or(MIN_SLEEP).max(MIN_SLEEP)
 			} else {
 				// No tasks scheduled, check again in 60 seconds
 				Duration::from_secs(60)
