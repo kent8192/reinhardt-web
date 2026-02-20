@@ -70,7 +70,7 @@ pub fn profile_view(user_id: Uuid) -> View {
 	// Clone user_id for use in page! macro
 	let user_id_str = user_id.to_string();
 
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, profile_signal: Signal<Option<ProfileResponse>>, user_id_str: String| {
+	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, profile_signal: Signal < Option < ProfileResponse> >, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto",
 			watch {
@@ -78,7 +78,7 @@ pub fn profile_view(user_id: Uuid) -> View {
 					div {
 						class: "flex flex-col items-center justify-center py-16",
 						div {
-							class: "spinner-lg mb-4"
+							class: "spinner-lg mb-4",
 						}
 						p {
 							class: "text-content-secondary text-sm",
@@ -102,39 +102,34 @@ pub fn profile_view(user_id: Uuid) -> View {
 										d: "M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z",
 									}
 								}
-								span { { error_signal.get().unwrap_or_default() } }
+								span {
+									{ error_signal.get().unwrap_or_default() }
+								}
 							}
 						}
 					}
 				} else if profile_signal.get().is_some() {
 					div {
 						class: "card overflow-hidden animate-fade-in",
-						// Cover image area
 						div {
-							class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative"
+							class: "h-32 sm:h-48 bg-gradient-to-r from-brand to-brand-dark relative",
 						}
-						// Profile info section
 						div {
 							class: "px-4 pb-4",
-							// Avatar and edit button row
 							div {
 								class: "flex justify-between items-end -mt-12 sm:-mt-16 mb-4",
-								// Avatar - using initial letter (framework constraint: dynamic img src not allowed)
 								div {
 									class: "avatar-xl sm:w-32 sm:h-32 rounded-full border-4 border-surface-primary bg-surface-tertiary flex items-center justify-center text-3xl sm:text-4xl font-bold text-content-secondary",
-									// Display user icon as fallback since ProfileResponse doesn't have username
 									span {
 										"👤"
 									}
 								}
-								// Edit button
 								a {
 									href: format!("/profile/{}/edit", user_id_str),
 									class: "btn-outline",
 									"Edit profile"
 								}
 							}
-							// Username section
 							div {
 								class: "mb-4",
 								h1 {
@@ -142,7 +137,6 @@ pub fn profile_view(user_id: Uuid) -> View {
 									"@user"
 								}
 							}
-							// Bio
 							if let Some(ref data) = profile_signal.get() {
 								if data.bio.is_some() {
 									p {
@@ -151,11 +145,9 @@ pub fn profile_view(user_id: Uuid) -> View {
 									}
 								}
 							}
-							// Meta info (location, website)
 							div {
 								class: "flex flex-wrap gap-4 text-content-secondary text-sm",
 								if let Some(ref data) = profile_signal.get() {
-									// Location
 									if data.location.is_some() {
 										div {
 											class: "flex items-center gap-1",
@@ -168,13 +160,13 @@ pub fn profile_view(user_id: Uuid) -> View {
 													stroke_linecap: "round",
 													stroke_linejoin: "round",
 													stroke_width: "2",
-													d: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+													d: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z",
 												}
 												path {
 													stroke_linecap: "round",
 													stroke_linejoin: "round",
 													stroke_width: "2",
-													d: "M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+													d: "M15 11a3 3 0 11-6 0 3 3 0 016 0z",
 												}
 											}
 											span {
@@ -182,7 +174,6 @@ pub fn profile_view(user_id: Uuid) -> View {
 											}
 										}
 									}
-									// Website
 									if data.website.is_some() {
 										a {
 											class: "flex items-center gap-1 text-brand hover:underline",
@@ -198,7 +189,7 @@ pub fn profile_view(user_id: Uuid) -> View {
 													stroke_linecap: "round",
 													stroke_linejoin: "round",
 													stroke_width: "2",
-													d: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+													d: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1",
 												}
 											}
 											span {
@@ -208,7 +199,6 @@ pub fn profile_view(user_id: Uuid) -> View {
 									}
 								}
 							}
-							// Stats section
 							div {
 								class: "flex gap-6 mt-4 pt-4 border-t border-border",
 								div {
@@ -376,7 +366,7 @@ pub fn profile_edit(user_id: Uuid) -> View {
 
 	// Render custom UI using page! macro
 	// form! handles Signal management, page! handles custom layout
-	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, success_signal: Signal<bool>, form_view: View, user_id_str: String| {
+	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, success_signal: Signal < bool >, form_view: View, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto p-4",
 			div {

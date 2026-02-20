@@ -324,8 +324,12 @@ fn detect_raw_string_start(s: &str, quote_offset: usize) -> Option<usize> {
 /// Skip past the contents of a raw string starting after the opening '"'.
 /// Returns the byte offset just past the closing '"' + hashes.
 fn skip_raw_string(s: &str, start_after_quote: usize, hash_count: usize) -> Option<usize> {
-	let closing_pattern: String = std::iter::once('"').chain(std::iter::repeat('#').take(hash_count)).collect();
-	s[start_after_quote..].find(&closing_pattern).map(|pos| start_after_quote + pos + closing_pattern.len())
+	let closing_pattern: String = std::iter::once('"')
+		.chain(std::iter::repeat('#').take(hash_count))
+		.collect();
+	s[start_after_quote..]
+		.find(&closing_pattern)
+		.map(|pos| start_after_quote + pos + closing_pattern.len())
 }
 
 /// Check if a '\'' at chars[idx] starts a char literal (not a lifetime).
@@ -357,7 +361,6 @@ fn is_char_literal(chars: &[(usize, char)], idx: usize) -> bool {
 	// Otherwise, it's a lifetime ('a in type position, no closing quote)
 	false
 }
-
 
 /// Maximum recursion depth for formatting nested nodes.
 ///
@@ -846,7 +849,8 @@ impl AstPageFormatter {
 		// Match generic type opening: Result <T> -> Result<T>
 		// Only matches when followed by an identifier (not =, <, > which indicate operators)
 		static IDENT_ANGLE: LazyLock<Regex> = LazyLock::new(|| {
-			Regex::new(r"([\w:>)]+) <([A-Za-z_&'\[(\*])").expect("Failed to compile IDENT_ANGLE regex")
+			Regex::new(r"([\w:>)]+) <([A-Za-z_&'\[(\*])")
+				.expect("Failed to compile IDENT_ANGLE regex")
 		});
 		// Match generic type closing: String > -> String>
 		// Only matches when preceded by an identifier/closing bracket and not followed by =, >, <

@@ -585,7 +585,7 @@ mod tests {
 	#[rstest]
 	fn test_truncate_param_ascii_then_multibyte_split_regression() {
 		// Arrange - 10 ASCII chars then many 3-byte CJK chars
-		let input = format!("{}{}",  "abcdefghij", "あ".repeat(200));
+		let input = format!("{}{}", "abcdefghij", "あ".repeat(200));
 
 		// Act
 		let result = truncate_param(&input, 30);
