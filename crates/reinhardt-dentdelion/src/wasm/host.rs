@@ -1220,7 +1220,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 			Ok(subscription_id) => Ok(Ok(subscription_id)),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
 				429,
-				&e.to_string(),
+				e.to_string(),
 			)))),
 		}
 	}

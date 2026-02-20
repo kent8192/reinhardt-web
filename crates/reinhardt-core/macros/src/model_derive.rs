@@ -79,8 +79,17 @@ fn validate_sql_expression(sql: &str, attr_name: &str) -> Result<()> {
 
 	// Reject DDL/DML keywords that should never appear in check/generated/condition
 	const BLOCKED_KEYWORDS: &[&str] = &[
-		"DROP ", "DELETE ", "INSERT ", "UPDATE ", "ALTER ", "TRUNCATE ", "EXEC ",
-		"EXECUTE ", "CREATE ", "GRANT ", "REVOKE ",
+		"DROP ",
+		"DELETE ",
+		"INSERT ",
+		"UPDATE ",
+		"ALTER ",
+		"TRUNCATE ",
+		"EXEC ",
+		"EXECUTE ",
+		"CREATE ",
+		"GRANT ",
+		"REVOKE ",
 	];
 	for keyword in BLOCKED_KEYWORDS {
 		if upper.contains(keyword) {

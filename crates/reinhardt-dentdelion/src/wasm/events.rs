@@ -33,9 +33,10 @@ pub struct Event {
 impl Event {
 	/// Create a new event with the current timestamp.
 	pub fn new(name: impl Into<String>, payload: Vec<u8>, source: impl Into<String>) -> Self {
+		// Use unwrap_or_default to avoid panic when system clock precedes Unix epoch.
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("System time before UNIX epoch")
+			.unwrap_or_default()
 			.as_millis() as u64;
 
 		Self {
@@ -124,9 +125,7 @@ pub struct EventBus {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum EventBusError {
 	/// Per-plugin subscription limit exceeded
-	#[error(
-		"plugin '{plugin}' has reached subscription limit ({limit})"
-	)]
+	#[error("plugin '{plugin}' has reached subscription limit ({limit})")]
 	PerPluginLimitExceeded {
 		/// Plugin that attempted to subscribe
 		plugin: String,
@@ -145,12 +144,20 @@ pub enum EventBusError {
 impl EventBus {
 	/// Create a new event bus with default settings.
 	pub fn new() -> Self {
-		Self::with_limits(10_000, DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN, DEFAULT_MAX_TOTAL_SUBSCRIPTIONS)
+		Self::with_limits(
+			10_000,
+			DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN,
+			DEFAULT_MAX_TOTAL_SUBSCRIPTIONS,
+		)
 	}
 
 	/// Create a new event bus with a custom maximum queue size.
 	pub fn with_max_queue_size(max_queue_size: usize) -> Self {
-		Self::with_limits(max_queue_size, DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN, DEFAULT_MAX_TOTAL_SUBSCRIPTIONS)
+		Self::with_limits(
+			max_queue_size,
+			DEFAULT_MAX_SUBSCRIPTIONS_PER_PLUGIN,
+			DEFAULT_MAX_TOTAL_SUBSCRIPTIONS,
+		)
 	}
 
 	/// Create a new event bus with custom resource limits.
@@ -245,7 +252,11 @@ impl EventBus {
 			});
 		}
 
-		let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+		// Wrapping addition is the default behavior of AtomicU64::fetch_add.
+		// With u64 range (~1.8 * 10^19), overflow is practically unreachable.
+		// If it ever wraps, the subscription map insertion will overwrite any
+		// stale entry with the same ID, which is acceptable.
+		let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 		let subscription = Subscription {
 			pattern: pattern.to_string(),
 			queue: VecDeque::new(),
@@ -357,7 +368,10 @@ impl std::fmt::Debug for EventBus {
 		f.debug_struct("EventBus")
 			.field("subscription_count", &subs.len())
 			.field("max_queue_size", &self.max_queue_size)
-			.field("max_subscriptions_per_plugin", &self.max_subscriptions_per_plugin)
+			.field(
+				"max_subscriptions_per_plugin",
+				&self.max_subscriptions_per_plugin,
+			)
 			.field("max_total_subscriptions", &self.max_total_subscriptions)
 			.finish()
 	}

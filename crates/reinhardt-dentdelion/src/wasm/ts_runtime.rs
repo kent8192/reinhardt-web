@@ -212,9 +212,9 @@ impl TsRuntime {
 				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
 					timeout: self.limits.execution_timeout,
 				},
-				mpsc::RecvTimeoutError::Disconnected => TsError::EvalFailed(
-					"Runtime thread terminated during evaluation".to_string(),
-				),
+				mpsc::RecvTimeoutError::Disconnected => {
+					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
+				}
 			})?
 	}
 
@@ -238,9 +238,9 @@ impl TsRuntime {
 				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
 					timeout: self.limits.execution_timeout,
 				},
-				mpsc::RecvTimeoutError::Disconnected => TsError::EvalFailed(
-					"Runtime thread terminated during evaluation".to_string(),
-				),
+				mpsc::RecvTimeoutError::Disconnected => {
+					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
+				}
 			})?
 	}
 
@@ -309,9 +309,9 @@ impl TsRuntime {
 				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
 					timeout: self.limits.execution_timeout,
 				},
-				mpsc::RecvTimeoutError::Disconnected => TsError::RenderFailed(
-					"Runtime thread terminated during rendering".to_string(),
-				),
+				mpsc::RecvTimeoutError::Disconnected => {
+					TsError::RenderFailed("Runtime thread terminated during rendering".to_string())
+				}
 			})?
 	}
 
@@ -686,7 +686,10 @@ mod tests {
 		let result = runtime.eval(&oversized_code);
 
 		// Assert
-		assert!(matches!(result, Err(TsError::SourceTooLarge { size: 128, max: 64 })));
+		assert!(matches!(
+			result,
+			Err(TsError::SourceTooLarge { size: 128, max: 64 })
+		));
 	}
 
 	#[rstest]
@@ -755,10 +758,7 @@ mod tests {
 		let result = runtime.eval(infinite_loop);
 
 		// Assert
-		assert!(matches!(
-			result,
-			Err(TsError::ExecutionTimeout { .. })
-		));
+		assert!(matches!(result, Err(TsError::ExecutionTimeout { .. })));
 	}
 
 	#[rstest]

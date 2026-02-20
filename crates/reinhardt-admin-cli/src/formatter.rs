@@ -32,10 +32,7 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 	if path.is_file() {
 		// Verify the file is not a symlink before processing
 		if path.is_symlink() {
-			return Err(format!(
-				"Refusing to process symlink: {}",
-				path.display()
-			));
+			return Err(format!("Refusing to process symlink: {}", path.display()));
 		}
 		if path.extension().is_some_and(|ext| ext == "rs") {
 			files.push(path.clone());

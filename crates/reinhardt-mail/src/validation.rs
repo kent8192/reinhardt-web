@@ -268,7 +268,11 @@ mod tests {
 		let result = validate_email(email);
 
 		// Assert
-		assert!(result.is_err(), "Expected header injection rejection for: {:?}", email);
+		assert!(
+			result.is_err(),
+			"Expected header injection rejection for: {:?}",
+			email
+		);
 	}
 
 	#[rstest]
@@ -279,11 +283,7 @@ mod tests {
 		let domain_label = "b".repeat(63);
 		// Build domain to reach exactly 254 total: local(64) + @(1) + domain(189) = 254
 		let domain_part_len = MAX_EMAIL_LENGTH - local.len() - 1; // subtract local and @
-		let domain = format!(
-			"{}.{}",
-			"b".repeat(domain_part_len - 4),
-			"com"
-		);
+		let domain = format!("{}.{}", "b".repeat(domain_part_len - 4), "com");
 		let email_at_limit = format!("{}@{}", local, domain);
 		assert_eq!(email_at_limit.len(), MAX_EMAIL_LENGTH);
 
@@ -291,7 +291,11 @@ mod tests {
 		let result = validate_email(&email_at_limit);
 
 		// Assert
-		assert!(result.is_ok(), "Email at exactly {} chars should be valid", MAX_EMAIL_LENGTH);
+		assert!(
+			result.is_ok(),
+			"Email at exactly {} chars should be valid",
+			MAX_EMAIL_LENGTH
+		);
 	}
 
 	#[rstest]
@@ -300,11 +304,7 @@ mod tests {
 		// 255 characters exceeds the maximum
 		let local = "a".repeat(64);
 		let domain_part_len = MAX_EMAIL_LENGTH - local.len(); // one more than allowed
-		let domain = format!(
-			"{}.{}",
-			"b".repeat(domain_part_len - 4),
-			"com"
-		);
+		let domain = format!("{}.{}", "b".repeat(domain_part_len - 4), "com");
 		let email_over_limit = format!("{}@{}", local, domain);
 		assert!(email_over_limit.len() > MAX_EMAIL_LENGTH);
 
@@ -312,7 +312,11 @@ mod tests {
 		let result = validate_email(&email_over_limit);
 
 		// Assert
-		assert!(result.is_err(), "Email over {} chars should be rejected", MAX_EMAIL_LENGTH);
+		assert!(
+			result.is_err(),
+			"Email over {} chars should be rejected",
+			MAX_EMAIL_LENGTH
+		);
 		let err_msg = result.unwrap_err().to_string();
 		assert!(
 			err_msg.contains("maximum length"),
@@ -452,6 +456,9 @@ mod tests {
 	#[rstest]
 	fn test_max_email_length_constant() {
 		// Assert
-		assert_eq!(MAX_EMAIL_LENGTH, 254, "RFC 5321 max email length should be 254");
+		assert_eq!(
+			MAX_EMAIL_LENGTH, 254,
+			"RFC 5321 max email length should be 254"
+		);
 	}
 }

@@ -185,13 +185,13 @@ impl<T: FormModel> ModelFormSet<T> {
 	///
 	/// Returns an error if adding the form would exceed `max_num`.
 	pub fn add_form(&mut self, form: ModelForm<T>) -> Result<(), String> {
-		if let Some(max) = self.max_num {
-			if self.forms.len() >= max {
-				return Err(format!(
-					"Cannot add form: maximum number of forms ({}) reached",
-					max
-				));
-			}
+		if let Some(max) = self.max_num
+			&& self.forms.len() >= max
+		{
+			return Err(format!(
+				"Cannot add form: maximum number of forms ({}) reached",
+				max
+			));
 		}
 		self.forms.push(form);
 		Ok(())

@@ -281,14 +281,29 @@ impl PluginRegistry {
 				}
 
 				// Validate version requirement
-				let plugin_metadata = plugins.get(plugin_name).unwrap().plugin.metadata();
-				let dep_spec = plugin_metadata
+				// These lookups may fail if the dependency graph is inconsistent
+				// with the plugins map (e.g., due to concurrent modification).
+				let Some(plugin_entry) = plugins.get(plugin_name) else {
+					continue;
+				};
+				let plugin_metadata = plugin_entry.plugin.metadata();
+				let Some(dep_spec) = plugin_metadata
 					.dependencies
 					.iter()
 					.find(|d| &d.name == dep_name)
-					.unwrap();
+				else {
+					continue;
+				};
 
-				let actual_version = &plugins.get(dep_name).unwrap().plugin.metadata().version;
+				let actual_version = &plugins
+					.get(dep_name)
+					.ok_or_else(|| PluginError::MissingDependency {
+						plugin: plugin_name.clone(),
+						dependency: dep_name.clone(),
+					})?
+					.plugin
+					.metadata()
+					.version;
 				if !dep_spec.version_req.matches(actual_version) {
 					return Err(PluginError::IncompatibleVersion {
 						plugin: plugin_name.clone(),

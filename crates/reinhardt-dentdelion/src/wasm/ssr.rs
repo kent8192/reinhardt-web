@@ -107,9 +107,9 @@ impl From<TsError> for SsrError {
 			TsError::ExecutionTimeout { timeout } => {
 				SsrError::RenderFailed(format!("execution timed out after {timeout:?}"))
 			}
-			TsError::SourceTooLarge { size, max } => {
-				SsrError::RenderFailed(format!("source size ({size} bytes) exceeds limit ({max} bytes)"))
-			}
+			TsError::SourceTooLarge { size, max } => SsrError::RenderFailed(format!(
+				"source size ({size} bytes) exceeds limit ({max} bytes)"
+			)),
 		}
 	}
 }

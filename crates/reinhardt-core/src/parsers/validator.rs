@@ -169,12 +169,7 @@ impl ParserValidator for ContentTypeValidator {
 		if let Some(ct) = content_type {
 			// Extract the media type (before any parameters like charset)
 			// e.g., "application/json; charset=utf-8" -> "application/json"
-			let media_type = ct
-				.split(';')
-				.next()
-				.unwrap_or(ct)
-				.trim()
-				.to_lowercase();
+			let media_type = ct.split(';').next().unwrap_or(ct).trim().to_lowercase();
 
 			// Use exact matching on the media type portion instead of
 			// substring matching to prevent bypass via crafted content types

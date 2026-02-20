@@ -544,14 +544,10 @@ fn run_fmt(
 	// Validate config path if provided
 	if let Some(ref cp) = config_path {
 		validate_config_path(cp).map_err(|e| {
-			reinhardt_commands::CommandError::ExecutionError(format!(
-				"Invalid config path: {}",
-				e
-			))
+			reinhardt_commands::CommandError::ExecutionError(format!("Invalid config path: {}", e))
 		})?;
-		check_file_size(cp, MAX_CONFIG_FILE_SIZE).map_err(|e| {
-			reinhardt_commands::CommandError::ExecutionError(e)
-		})?;
+		check_file_size(cp, MAX_CONFIG_FILE_SIZE)
+			.map_err(reinhardt_commands::CommandError::ExecutionError)?;
 	}
 
 	let files = collect_rust_files(&path).map_err(|e| {
@@ -840,14 +836,10 @@ fn run_fmt_all(
 	// Validate config path if provided
 	if let Some(ref cp) = config_path {
 		validate_config_path(cp).map_err(|e| {
-			reinhardt_commands::CommandError::ExecutionError(format!(
-				"Invalid config path: {}",
-				e
-			))
+			reinhardt_commands::CommandError::ExecutionError(format!("Invalid config path: {}", e))
 		})?;
-		check_file_size(cp, MAX_CONFIG_FILE_SIZE).map_err(|e| {
-			reinhardt_commands::CommandError::ExecutionError(e)
-		})?;
+		check_file_size(cp, MAX_CONFIG_FILE_SIZE)
+			.map_err(reinhardt_commands::CommandError::ExecutionError)?;
 	}
 
 	// Find project root
@@ -1377,7 +1369,10 @@ fn validate_config_path(path: &Path) -> Result<(), String> {
 
 	// Reject special device paths
 	#[cfg(unix)]
-	if path_str.starts_with("/dev/") || path_str.starts_with("/proc/") || path_str.starts_with("/sys/") {
+	if path_str.starts_with("/dev/")
+		|| path_str.starts_with("/proc/")
+		|| path_str.starts_with("/sys/")
+	{
 		return Err(format!(
 			"Config path refers to a special device: {}",
 			mask_path(path)
