@@ -719,23 +719,14 @@ mod tests {
 	fn test_sanitize_mutation_values_safe_strings_unchanged() {
 		// Arrange
 		let mut data = HashMap::new();
-		data.insert(
-			"name".to_string(),
-			serde_json::json!("Alice Johnson"),
-		);
-		data.insert(
-			"email".to_string(),
-			serde_json::json!("alice@example.com"),
-		);
+		data.insert("name".to_string(), serde_json::json!("Alice Johnson"));
+		data.insert("email".to_string(), serde_json::json!("alice@example.com"));
 
 		// Act
 		sanitize_mutation_values(&mut data);
 
 		// Assert
-		assert_eq!(
-			data.get("name").unwrap().as_str().unwrap(),
-			"Alice Johnson"
-		);
+		assert_eq!(data.get("name").unwrap().as_str().unwrap(), "Alice Johnson");
 		assert_eq!(
 			data.get("email").unwrap().as_str().unwrap(),
 			"alice@example.com"

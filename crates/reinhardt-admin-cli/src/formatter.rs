@@ -42,12 +42,9 @@ pub(crate) fn collect_rust_files(path: &PathBuf) -> Result<Vec<PathBuf>, String>
 		}
 	} else if path.is_dir() {
 		// Canonicalize the base directory to use as boundary for path validation
-		let base_dir = path.canonicalize().map_err(|e| {
-			format!(
-				"Failed to resolve base path: {}",
-				e.kind()
-			)
-		})?;
+		let base_dir = path
+			.canonicalize()
+			.map_err(|e| format!("Failed to resolve base path: {}", e.kind()))?;
 
 		for entry in WalkDir::new(path)
 			.follow_links(false) // Do not follow symlinks to prevent symlink attacks

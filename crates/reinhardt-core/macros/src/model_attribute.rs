@@ -33,12 +33,12 @@ pub(crate) fn model_attribute_impl(
 			&& let syn::Meta::List(meta_list) = &attr.meta
 		{
 			// Parse the token stream as a punctuated list of paths
-			if let Ok(paths) = meta_list
-				.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
-			{
+			if let Ok(paths) = meta_list.parse_args_with(
+				syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+			) {
 				return paths.iter().any(|path| {
 					// Match exact "Model" or paths ending in "Model" (e.g., reinhardt::macros::Model)
-					path.segments.last().map_or(false, |seg| seg.ident == "Model")
+					path.segments.last().is_some_and(|seg| seg.ident == "Model")
 				});
 			}
 			return false;
@@ -65,7 +65,7 @@ pub(crate) fn model_attribute_impl(
 					return paths.iter().any(|path| {
 						path.segments
 							.last()
-							.map_or(false, |seg| seg.ident == trait_name)
+							.is_some_and(|seg| seg.ident == trait_name)
 					});
 				}
 				return false;

@@ -314,11 +314,7 @@ fn validate_enum_attr(
 
 	if !enum_spec.valid_values.contains(&str_value.as_str()) {
 		// Use .first() for safe access instead of direct indexing
-		let example_value = enum_spec
-			.valid_values
-			.first()
-			.copied()
-			.unwrap_or("...");
+		let example_value = enum_spec.valid_values.first().copied().unwrap_or("...");
 		return Err(syn::Error::new(
 			span,
 			format!(

@@ -280,10 +280,10 @@ impl GraphQLSubscriptionBridge {
 					.map_err(|e| SignalError::new(format!("Serialization error: {}", e)))?;
 
 				let streams_read = streams.read();
-				if let Some(stream) = streams_read.get(&subscription_name) {
-					if let Err(e) = stream.send(json) {
-						eprintln!("Failed to send GraphQL subscription event: {}", e);
-					}
+				if let Some(stream) = streams_read.get(&subscription_name)
+					&& let Err(e) = stream.send(json)
+				{
+					eprintln!("Failed to send GraphQL subscription event: {}", e);
 				}
 
 				Ok(())

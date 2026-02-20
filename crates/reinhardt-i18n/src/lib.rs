@@ -70,8 +70,8 @@ pub mod utils;
 
 pub use catalog::MessageCatalog;
 pub use lazy::LazyString;
-pub use locale::{activate, activate_with_catalog, deactivate, get_locale};
 use locale::validate_locale;
+pub use locale::{activate, activate_with_catalog, deactivate, get_locale};
 pub use translation::{gettext, gettext_lazy, ngettext, ngettext_lazy, npgettext, pgettext};
 
 // Re-export get_locale as get_language for compatibility

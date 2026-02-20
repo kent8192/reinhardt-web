@@ -474,9 +474,15 @@ mod tests {
 		let config = TokenRotationConfig::new().grace_period(300);
 		let manager = AutoTokenRotationManager::new(config);
 
-		manager.record_rotation(TokenRotationRecord::new("old1", "new1", 1000)).await;
-		manager.record_rotation(TokenRotationRecord::new("old2", "new2", 2000)).await;
-		manager.record_rotation(TokenRotationRecord::new("old3", "new3", 3000)).await;
+		manager
+			.record_rotation(TokenRotationRecord::new("old1", "new1", 1000))
+			.await;
+		manager
+			.record_rotation(TokenRotationRecord::new("old2", "new2", 2000))
+			.await;
+		manager
+			.record_rotation(TokenRotationRecord::new("old3", "new3", 3000))
+			.await;
 
 		assert_eq!(manager.rotation_count().await, 3);
 
@@ -494,12 +500,16 @@ mod tests {
 		let config = TokenRotationConfig::new().grace_period(300);
 		let manager = AutoTokenRotationManager::new(config);
 
-		manager.record_rotation(
-			TokenRotationRecord::new("token1_v1", "token1_v2", 1000).with_user_id(1),
-		).await;
-		manager.record_rotation(
-			TokenRotationRecord::new("token2_v1", "token2_v2", 1100).with_user_id(2),
-		).await;
+		manager
+			.record_rotation(
+				TokenRotationRecord::new("token1_v1", "token1_v2", 1000).with_user_id(1),
+			)
+			.await;
+		manager
+			.record_rotation(
+				TokenRotationRecord::new("token2_v1", "token2_v2", 1100).with_user_id(2),
+			)
+			.await;
 
 		assert_eq!(
 			manager.get_rotated_token("token1_v1", 1200).await,

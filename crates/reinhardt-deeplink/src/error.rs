@@ -227,7 +227,9 @@ pub fn validate_package_name(name: &str) -> Result<(), DeeplinkError> {
 		}
 
 		// Each segment must start with a letter
-		let first_char = segment.chars().next()
+		let first_char = segment
+			.chars()
+			.next()
 			.expect("segment is non-empty after the emptiness check above");
 		if !first_char.is_ascii_alphabetic() {
 			return Err(DeeplinkError::InvalidPackageName(name.to_string()));

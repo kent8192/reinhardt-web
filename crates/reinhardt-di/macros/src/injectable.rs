@@ -219,28 +219,12 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 						if use_cache {
 							quote! {
 								#di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
-									.await
-									.map_err(|e| {
-										tracing::debug!(
-									field = stringify!(#name),
-									target_type = stringify!(#struct_name),
-									"dependency injection resolution failed"
-								);
-										e
-									})?
+									.await?
 							}
 						} else {
 							quote! {
 								#di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
-									.await
-									.map_err(|e| {
-										tracing::debug!(
-									field = stringify!(#name),
-									target_type = stringify!(#struct_name),
-									"dependency injection resolution failed"
-								);
-										e
-									})?
+									.await?
 							}
 						}
 					}

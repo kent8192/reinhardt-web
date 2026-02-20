@@ -96,7 +96,10 @@ impl Logger {
 	}
 
 	pub async fn add_handler(&self, handler: Arc<dyn LogHandler>) {
-		self.handlers.lock().unwrap_or_else(|e| e.into_inner()).push(handler);
+		self.handlers
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.push(handler);
 	}
 
 	pub async fn set_level(&self, level: LogLevel) {

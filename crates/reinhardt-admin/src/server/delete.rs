@@ -53,10 +53,7 @@ pub async fn delete_record(
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
 
-	let user_id = auth
-		.user_id()
-		.unwrap_or("unknown")
-		.to_string();
+	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
 	let result = db
 		.delete::<AdminRecord>(table_name, pk_field, &id)
@@ -119,10 +116,7 @@ pub async fn bulk_delete_records(
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
 
-	let user_id = auth
-		.user_id()
-		.unwrap_or("unknown")
-		.to_string();
+	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
 	let ids = request.ids;
 	let result = db

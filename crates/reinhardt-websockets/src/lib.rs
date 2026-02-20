@@ -176,8 +176,6 @@ pub use compression::{
 	CompressionCodec, CompressionConfig, compress_message, decompress_message,
 	decompress_message_with_config,
 };
-#[cfg(not(feature = "compression"))]
-pub use compression::CompressionConfig;
 pub use connection::{
 	ConnectionConfig, ConnectionTimeoutMonitor, HeartbeatConfig, HeartbeatMonitor, Message,
 	PingPongConfig, WebSocketConnection, WebSocketError, WebSocketResult,

@@ -157,9 +157,10 @@ impl ConsumerContext {
 	where
 		T: Injectable + Clone + Send + Sync + 'static,
 	{
-		let ctx = self.di_context.as_ref().ok_or_else(|| {
-			WebSocketError::Internal("DI context not available".to_string())
-		})?;
+		let ctx = self
+			.di_context
+			.as_ref()
+			.ok_or_else(|| WebSocketError::Internal("DI context not available".to_string()))?;
 
 		Injected::<T>::resolve(ctx)
 			.await
@@ -188,9 +189,10 @@ impl ConsumerContext {
 	where
 		T: Injectable + Clone + Send + Sync + 'static,
 	{
-		let ctx = self.di_context.as_ref().ok_or_else(|| {
-			WebSocketError::Internal("DI context not available".to_string())
-		})?;
+		let ctx = self
+			.di_context
+			.as_ref()
+			.ok_or_else(|| WebSocketError::Internal("DI context not available".to_string()))?;
 
 		Injected::<T>::resolve_uncached(ctx)
 			.await

@@ -531,10 +531,7 @@ async fn execute_collectstatic(
 					),
 				)
 				.with_value("debug", Value::Bool(true))
-				.with_value(
-					"secret_key",
-					Value::String(default_secret_key),
-				)
+				.with_value("secret_key", Value::String(default_secret_key))
 				.with_value("allowed_hosts", Value::Array(vec![]))
 				.with_value("installed_apps", Value::Array(vec![]))
 				.with_value("databases", serde_json::json!({}))

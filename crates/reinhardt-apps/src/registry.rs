@@ -478,9 +478,7 @@ static REVERSE_RELATIONS: OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>
 /// # Errors
 ///
 /// Returns [`AppError::RegistryState`] if called after `finalize_reverse_relations()`.
-pub fn register_reverse_relation(
-	relation: ReverseRelationMetadata,
-) -> Result<(), crate::AppError> {
+pub fn register_reverse_relation(relation: ReverseRelationMetadata) -> Result<(), crate::AppError> {
 	if REVERSE_RELATIONS.get().is_some() {
 		return Err(crate::AppError::RegistryState(
 			"Cannot register reverse relations after finalization".to_string(),
@@ -563,16 +561,16 @@ pub fn reset_global_registry() {
 	// This is safe only when called from a single-threaded test context
 	// (enforced by #[serial]) where no concurrent readers exist.
 	unsafe {
-		let model_cache_ptr =
-			std::ptr::addr_of!(MODEL_CACHE) as *mut OnceLock<HashMap<&'static str, Vec<&'static ModelMetadata>>>;
+		let model_cache_ptr = std::ptr::addr_of!(MODEL_CACHE)
+			as *mut OnceLock<HashMap<&'static str, Vec<&'static ModelMetadata>>>;
 		std::ptr::write(model_cache_ptr, OnceLock::new());
 
-		let rel_cache_ptr =
-			std::ptr::addr_of!(RELATIONSHIP_CACHE) as *mut OnceLock<HashMap<&'static str, Vec<&'static RelationshipMetadata>>>;
+		let rel_cache_ptr = std::ptr::addr_of!(RELATIONSHIP_CACHE)
+			as *mut OnceLock<HashMap<&'static str, Vec<&'static RelationshipMetadata>>>;
 		std::ptr::write(rel_cache_ptr, OnceLock::new());
 
-		let rev_rel_ptr =
-			std::ptr::addr_of!(REVERSE_RELATIONS) as *mut OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>>;
+		let rev_rel_ptr = std::ptr::addr_of!(REVERSE_RELATIONS)
+			as *mut OnceLock<HashMap<String, Vec<ReverseRelationMetadata>>>;
 		std::ptr::write(rev_rel_ptr, OnceLock::new());
 	}
 }

@@ -188,7 +188,9 @@ fn test_template_context_empty_string(mut empty_template_context: TemplateContex
 /// **Verifies**: Unicode values are preserved
 #[rstest]
 fn test_template_context_unicode(mut empty_template_context: TemplateContext) {
-	empty_template_context.insert("greeting", "こんにちは").unwrap();
+	empty_template_context
+		.insert("greeting", "こんにちは")
+		.unwrap();
 	empty_template_context.insert("emoji", "🦀").unwrap();
 
 	let tera_ctx: tera::Context = empty_template_context.into();
@@ -206,7 +208,9 @@ fn test_template_context_unicode(mut empty_template_context: TemplateContext) {
 /// **Verifies**: Special characters are preserved (not HTML escaped by default)
 #[rstest]
 fn test_template_context_special_characters(mut empty_template_context: TemplateContext) {
-	empty_template_context.insert("special", "<script>alert('xss')</script>").unwrap();
+	empty_template_context
+		.insert("special", "<script>alert('xss')</script>")
+		.unwrap();
 
 	let tera_ctx: tera::Context = empty_template_context.into();
 	let mut tera = tera::Tera::default();
@@ -226,7 +230,9 @@ fn test_template_context_special_characters(mut empty_template_context: Template
 #[rstest]
 fn test_template_context_null_value(mut empty_template_context: TemplateContext) {
 	let null_value: Option<String> = None;
-	empty_template_context.insert("nullable", null_value).unwrap();
+	empty_template_context
+		.insert("nullable", null_value)
+		.unwrap();
 
 	let tera_ctx: tera::Context = empty_template_context.into();
 	let mut tera = tera::Tera::default();
