@@ -79,9 +79,9 @@ impl Alternative {
 		&self.content
 	}
 
-	/// Get the content as string (if valid UTF-8)
-	pub fn content_as_string(&self) -> Option<String> {
-		String::from_utf8(self.content.clone()).ok()
+	/// Get the content as a string slice (if valid UTF-8)
+	pub fn content_as_string(&self) -> Option<&str> {
+		std::str::from_utf8(&self.content).ok()
 	}
 }
 

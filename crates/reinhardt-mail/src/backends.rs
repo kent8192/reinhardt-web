@@ -514,15 +514,16 @@ impl SmtpBackend {
 			}
 		}
 
-		// Build the body
+		// Build the body - convert body to String once to avoid repeated allocation
 		let has_html = email.html_body().is_some();
 		let has_attachments = !email.attachments().is_empty();
+		let body = email.body().to_string();
 
 		let message = if has_html && has_attachments {
 			// HTML with plain text alternative AND attachments
 			// Structure: mixed( alternative(text, html), attachment1, attachment2, ... )
 			let alternative = MultiPart::alternative()
-				.singlepart(SinglePart::plain(email.body().to_string()))
+				.singlepart(SinglePart::plain(body))
 				.singlepart(SinglePart::html(email.html_body().unwrap().to_string()));
 
 			let mut mixed = MultiPart::mixed().multipart(alternative);
@@ -555,7 +556,7 @@ impl SmtpBackend {
 		} else if has_html {
 			// HTML with plain text alternative (no attachments)
 			let multipart = MultiPart::alternative()
-				.singlepart(SinglePart::plain(email.body().to_string()))
+				.singlepart(SinglePart::plain(body))
 				.singlepart(SinglePart::html(email.html_body().unwrap().to_string()));
 
 			builder
@@ -564,7 +565,7 @@ impl SmtpBackend {
 		} else if has_attachments {
 			// Plain text with attachments
 			let mut multipart =
-				MultiPart::mixed().singlepart(SinglePart::plain(email.body().to_string()));
+				MultiPart::mixed().singlepart(SinglePart::plain(body));
 
 			for attachment in email.attachments() {
 				let content_type = header::ContentType::parse(attachment.mime_type())
@@ -596,7 +597,7 @@ impl SmtpBackend {
 		} else {
 			// Plain text only
 			builder
-				.body(email.body().to_string())
+				.body(body)
 				.map_err(|e| EmailError::BackendError(format!("Failed to build message: {}", e)))?
 		};
 
