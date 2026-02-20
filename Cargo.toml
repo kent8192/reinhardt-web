@@ -236,7 +236,7 @@ middleware-rate-limit = [
 reinhardt-pages = { workspace = true, optional = true }
 
 # Server-side dependencies (NOT for WASM)
-reinhardt-core = {workspace = true, features = ["types"]}
+reinhardt-core = { workspace = true, features = ["types"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Core dependencies
 reinhardt-urls = { workspace = true }
@@ -314,8 +314,8 @@ members = [
   "crates/reinhardt-rest/openapi-macros",
   "crates/reinhardt-throttling",
   "crates/reinhardt-auth",
-  "crates/reinhardt-admin",                            # Admin panel functionality
-  "crates/reinhardt-admin-cli",                        # Admin CLI tool
+  "crates/reinhardt-admin",                    # Admin panel functionality
+  "crates/reinhardt-admin-cli",                # Admin CLI tool
   "crates/reinhardt-grpc",
   "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
@@ -331,6 +331,7 @@ members = [
   "crates/reinhardt-websockets",
   "crates/reinhardt-dentdelion",                        # Plugin system
   "crates/reinhardt-deeplink",                          # Mobile deep linking
+  "crates/reinhardt-tables",                            # Data table rendering utilities
   "crates/reinhardt-openapi",                           # OpenAPI router wrapper
   # Integration tests
   "tests",
@@ -380,6 +381,7 @@ reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.1.0-
 reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.1.0-alpha.15" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.1.0-alpha.7" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.1.0-alpha.3" }
+reinhardt-tables = { path = "crates/reinhardt-tables", version = "0.1.0-alpha.1" }
 reinhardt-manouche = { path = "crates/reinhardt-manouche", version = "0.1.0-alpha.1" }
 reinhardt-forms = { path = "crates/reinhardt-forms", version = "0.1.0-alpha.6" }
 reinhardt-test = { path = "crates/reinhardt-test" }
@@ -465,7 +467,9 @@ argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
 rand = "0.8"
 rand_core = "0.6"
-getrandom = { version = "0.2", features = ["js"] }  # WASM support with js feature
+getrandom = { version = "0.2", features = [
+  "js",
+] } # WASM support with js feature
 jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 
