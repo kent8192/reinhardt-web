@@ -35,6 +35,8 @@ pub struct ConnectionConfig {
 	idle_timeout: Duration,
 	handshake_timeout: Duration,
 	cleanup_interval: Duration,
+	/// Maximum number of concurrent connections allowed (None for unlimited)
+	max_connections: Option<usize>,
 }
 
 impl Default for ConnectionConfig {
@@ -43,6 +45,7 @@ impl Default for ConnectionConfig {
 			idle_timeout: Duration::from_secs(300), // 5 minutes default
 			handshake_timeout: Duration::from_secs(10), // 10 seconds default
 			cleanup_interval: Duration::from_secs(30), // 30 seconds default
+			max_connections: None, // Unlimited by default
 		}
 	}
 }
@@ -146,6 +149,32 @@ impl ConnectionConfig {
 		self.cleanup_interval
 	}
 
+	/// Set the maximum number of concurrent connections
+	///
+	/// # Arguments
+	///
+	/// * `max` - Maximum number of connections allowed. Use `None` for unlimited.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::connection::ConnectionConfig;
+	///
+	/// let config = ConnectionConfig::new()
+	///     .with_max_connections(Some(1000));
+	///
+	/// assert_eq!(config.max_connections(), Some(1000));
+	/// ```
+	pub fn with_max_connections(mut self, max: Option<usize>) -> Self {
+		self.max_connections = max;
+		self
+	}
+
+	/// Get the maximum number of concurrent connections
+	pub fn max_connections(&self) -> Option<usize> {
+		self.max_connections
+	}
+
 	/// Create a configuration with no idle timeout (connections never time out)
 	///
 	/// # Examples
@@ -162,6 +191,7 @@ impl ConnectionConfig {
 			idle_timeout: Duration::MAX,
 			handshake_timeout: Duration::MAX,
 			cleanup_interval: Duration::from_secs(30),
+			max_connections: None,
 		}
 	}
 
@@ -187,6 +217,7 @@ impl ConnectionConfig {
 			idle_timeout: Duration::from_secs(30),
 			handshake_timeout: Duration::from_secs(5),
 			cleanup_interval: Duration::from_secs(10),
+			max_connections: None,
 		}
 	}
 
@@ -212,6 +243,7 @@ impl ConnectionConfig {
 			idle_timeout: Duration::from_secs(3600),
 			handshake_timeout: Duration::from_secs(30),
 			cleanup_interval: Duration::from_secs(60),
+			max_connections: None,
 		}
 	}
 }
@@ -782,7 +814,7 @@ impl WebSocketConnection {
 ///
 /// let (tx, _rx) = mpsc::unbounded_channel();
 /// let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
-/// monitor.register(conn).await;
+/// monitor.register(conn).await.unwrap();
 ///
 /// assert_eq!(monitor.connection_count().await, 1);
 /// # });
@@ -802,11 +834,26 @@ impl ConnectionTimeoutMonitor {
 	}
 
 	/// Registers a connection for timeout monitoring.
-	pub async fn register(&self, connection: Arc<WebSocketConnection>) {
-		self.connections
-			.write()
-			.await
-			.insert(connection.id().to_string(), connection);
+	///
+	/// Returns `Ok(())` if the connection was registered, or `Err` if the
+	/// maximum connection limit has been reached.
+	pub async fn register(
+		&self,
+		connection: Arc<WebSocketConnection>,
+	) -> Result<(), WebSocketError> {
+		let mut connections = self.connections.write().await;
+
+		if let Some(max) = self.config.max_connections {
+			if connections.len() >= max {
+				return Err(WebSocketError::Connection(format!(
+					"maximum connection limit reached ({})",
+					max
+				)));
+			}
+		}
+
+		connections.insert(connection.id().to_string(), connection);
+		Ok(())
 	}
 
 	/// Unregisters a connection from timeout monitoring.
@@ -1110,7 +1157,7 @@ mod tests {
 		let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
 
 		// Act
-		monitor.register(conn).await;
+		monitor.register(conn).await.unwrap();
 
 		// Assert
 		assert_eq!(monitor.connection_count().await, 1);
@@ -1124,7 +1171,7 @@ mod tests {
 		let monitor = ConnectionTimeoutMonitor::new(config);
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
-		monitor.register(conn).await;
+		monitor.register(conn).await.unwrap();
 
 		// Act
 		monitor.unregister("conn_1").await;
@@ -1154,8 +1201,8 @@ mod tests {
 			ConnectionConfig::new().with_idle_timeout(Duration::from_secs(300)),
 		));
 
-		monitor.register(conn1).await;
-		monitor.register(conn2.clone()).await;
+		monitor.register(conn1).await.unwrap();
+		monitor.register(conn2.clone()).await.unwrap();
 
 		// Act - wait for idle timeout to expire
 		tokio::time::sleep(Duration::from_millis(60)).await;
@@ -1189,7 +1236,7 @@ mod tests {
 		let (tx, _rx) = mpsc::unbounded_channel();
 		let conn = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx));
 		conn.close().await.unwrap();
-		monitor.register(conn).await;
+		monitor.register(conn).await.unwrap();
 
 		// Act
 		let timed_out = monitor.check_idle_connections().await;
@@ -1215,7 +1262,7 @@ mod tests {
 			tx,
 			ConnectionConfig::new().with_idle_timeout(Duration::from_millis(30)),
 		));
-		monitor.register(conn).await;
+		monitor.register(conn).await.unwrap();
 
 		// Act - start background monitor
 		let handle = monitor.start();
@@ -1232,5 +1279,27 @@ mod tests {
 
 		// Cleanup
 		handle.abort();
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_timeout_monitor_rejects_when_max_connections_reached() {
+		// Arrange
+		let config = ConnectionConfig::new().with_max_connections(Some(1));
+		let monitor = ConnectionTimeoutMonitor::new(config);
+
+		let (tx1, _rx1) = mpsc::unbounded_channel();
+		let conn1 = Arc::new(WebSocketConnection::new("conn_1".to_string(), tx1));
+
+		let (tx2, _rx2) = mpsc::unbounded_channel();
+		let conn2 = Arc::new(WebSocketConnection::new("conn_2".to_string(), tx2));
+
+		// Act
+		monitor.register(conn1).await.unwrap();
+		let result = monitor.register(conn2).await;
+
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(monitor.connection_count().await, 1);
 	}
 }
