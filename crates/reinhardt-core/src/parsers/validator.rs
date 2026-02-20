@@ -167,10 +167,20 @@ impl ParserValidator for ContentTypeValidator {
 		use crate::exception::Error;
 
 		if let Some(ct) = content_type {
-			// Check if content type matches any allowed type
-			let ct_lower = ct.to_lowercase();
+			// Extract the media type (before any parameters like charset)
+			// e.g., "application/json; charset=utf-8" -> "application/json"
+			let media_type = ct
+				.split(';')
+				.next()
+				.unwrap_or(ct)
+				.trim()
+				.to_lowercase();
+
+			// Use exact matching on the media type portion instead of
+			// substring matching to prevent bypass via crafted content types
+			// (e.g., "application/not-json-at-all" should not match "json")
 			for allowed in &self.allowed_types {
-				if ct_lower.contains(&allowed.to_lowercase()) {
+				if media_type == allowed.to_lowercase() {
 					return Ok(());
 				}
 			}
