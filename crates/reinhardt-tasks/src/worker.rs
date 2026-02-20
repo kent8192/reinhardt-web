@@ -393,17 +393,17 @@ impl Worker {
 			}
 		}
 
-		// Get task name from backend
-		let task_name = match backend.get_task_data(task_id).await? {
-			Some(serialized_task) => serialized_task.name().to_string(),
-			None => "unknown_task".to_string(),
-		};
+		// Fetch task data once and reuse for both name extraction and execution
+		let serialized_task = backend.get_task_data(task_id).await?;
+		let task_name = serialized_task
+			.as_ref()
+			.map(|t| t.name().to_string())
+			.unwrap_or_else(|| "unknown_task".to_string());
 
 		// Execute task with registry if available
 		let result: Result<(), Box<dyn std::error::Error + Send + Sync>> =
 			if let Some(ref registry) = self.registry {
-				// Get serialized task data from backend
-				match backend.get_task_data(task_id).await? {
+				match serialized_task {
 					Some(serialized_task) => {
 						println!(
 							"[{}] Executing task {} with registry",
