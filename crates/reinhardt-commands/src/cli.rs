@@ -511,6 +511,10 @@ async fn execute_collectstatic(
 		env::current_dir().map_err(|e| format!("Failed to get current directory: {e}"))?;
 	let settings_dir = base_dir.join("settings");
 
+	// Generate a random secret key for the default to avoid shipping a
+	// hardcoded value that could be reused across deployments.
+	let default_secret_key = generate_random_secret_key();
+
 	let merged = SettingsBuilder::new()
 		.profile(profile)
 		.add_source(
@@ -529,7 +533,7 @@ async fn execute_collectstatic(
 				.with_value("debug", Value::Bool(true))
 				.with_value(
 					"secret_key",
-					Value::String("insecure-dev-key-change-in-production".to_string()),
+					Value::String(default_secret_key),
 				)
 				.with_value("allowed_hosts", Value::Array(vec![]))
 				.with_value("installed_apps", Value::Array(vec![]))
@@ -798,4 +802,22 @@ async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	// No router registration needed when routers feature is disabled
 	Ok(())
+}
+
+/// Generate a cryptographically random secret key for fallback use.
+///
+/// Produces a 50-character hex string (200 bits of entropy). This is used
+/// as the default `SECRET_KEY` when no explicit key is configured, ensuring
+/// that each process gets a unique key rather than a shared hardcoded value.
+fn generate_random_secret_key() -> String {
+	use rand::Rng;
+	use std::fmt::Write;
+
+	let mut rng = rand::thread_rng();
+	let bytes: [u8; 25] = rng.r#gen();
+	let mut hex_string = String::with_capacity(50);
+	for b in bytes {
+		let _ = write!(hex_string, "{:02x}", b);
+	}
+	hex_string
 }
