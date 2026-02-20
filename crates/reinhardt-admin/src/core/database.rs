@@ -1199,6 +1199,30 @@ mod tests {
 		assert_eq!(result, "normal text");
 	}
 
+	// ==================== escape_like_pattern regression tests (#632) ====================
+
+	/// Regression tests for issue #632: LIKE wildcard injection via unescaped metacharacters.
+	/// Verifies that percent, underscore, and backslash in user input are always escaped
+	/// so they cannot be used as LIKE wildcards or escape prefix injections.
+	#[rstest]
+	#[case("%wildcard%", "\\%wildcard\\%")]
+	#[case("under_score", "under\\_score")]
+	#[case("back\\slash", "back\\\\slash")]
+	#[case("%_%", "\\%\\_\\%")]
+	fn test_escape_like_pattern_sanitizes_special_chars(
+		#[case] input: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange: user-supplied string containing LIKE metacharacters
+		// Act
+		let escaped = escape_like_pattern(input);
+		// Assert: output exactly matches fully-escaped form with no unescaped metacharacters
+		assert_eq!(
+			escaped, expected,
+			"input={input:?} was not correctly escaped"
+		);
+	}
+
 	// ==================== build_composite_filter_condition tests ====================
 
 	#[test]
