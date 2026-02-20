@@ -456,7 +456,9 @@ impl EmailMessageBuilder {
 	/// subject/header values for header injection attacks before
 	/// constructing the message. Returns an error if any validation fails.
 	pub fn build(self) -> crate::EmailResult<EmailMessage> {
-		use crate::validation::{check_header_injection, validate_email, validate_email_list};
+		use crate::validation::{
+			check_header_injection, validate_email, validate_email_list, validate_header_name,
+		};
 
 		// Validate from_email if provided
 		if !self.from_email.is_empty() {
@@ -472,9 +474,9 @@ impl EmailMessageBuilder {
 		// Validate subject for header injection
 		check_header_injection(&self.subject)?;
 
-		// Validate custom header values for header injection
+		// Validate custom header names and values
 		for (name, value) in &self.headers {
-			check_header_injection(name)?;
+			validate_header_name(name)?;
 			check_header_injection(value)?;
 		}
 

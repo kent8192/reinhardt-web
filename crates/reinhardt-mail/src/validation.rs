@@ -197,6 +197,39 @@ pub fn sanitize_email_list(emails: &[impl AsRef<str>]) -> EmailResult<Vec<String
 	emails.iter().map(|e| sanitize_email(e.as_ref())).collect()
 }
 
+/// Validates a header field name according to RFC 2822 Section 2.2
+///
+/// Header field names consist of printable US-ASCII characters (values 33 through 126),
+/// except colon (':').
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_mail::validation::validate_header_name;
+///
+/// assert!(validate_header_name("X-Custom-Header").is_ok());
+/// assert!(validate_header_name("").is_err());
+/// assert!(validate_header_name("Invalid Header").is_err());
+/// assert!(validate_header_name("Invalid:Header").is_err());
+/// ```
+pub fn validate_header_name(name: &str) -> EmailResult<()> {
+	if name.is_empty() {
+		return Err(EmailError::InvalidHeader(
+			"header name cannot be empty".to_string(),
+		));
+	}
+	for ch in name.chars() {
+		// RFC 2822: header field name is printable US-ASCII except ':'
+		if !ch.is_ascii_graphic() || ch == ':' {
+			return Err(EmailError::InvalidHeader(format!(
+				"invalid character '{}' in header name '{}'",
+				ch, name
+			)));
+		}
+	}
+	Ok(())
+}
+
 /// Checks if a string contains potential header injection attempts
 ///
 /// # Examples
