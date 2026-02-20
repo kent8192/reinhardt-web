@@ -85,7 +85,7 @@ impl<T: TimeProvider> MemoryBackend<T> {
 	/// without adding per-request overhead.
 	async fn maybe_evict_expired(&self) {
 		let count = self.ops_counter.fetch_add(1, Ordering::Relaxed);
-		if count % EVICTION_INTERVAL != 0 {
+		if !count.is_multiple_of(EVICTION_INTERVAL) {
 			return;
 		}
 		let now = self.time_provider.now();
