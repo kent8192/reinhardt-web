@@ -145,8 +145,8 @@ pub use fields::{
 	BooleanField, CharField, ChoiceField, ColorField, ComboField, DateField, DateTimeField,
 	DecimalField, DurationField, EmailField, FileField, FloatField, GenericIPAddressField,
 	IPProtocol, ImageField, IntegerField, JSONField, ModelChoiceField, ModelMultipleChoiceField,
-	MultiValueField, MultipleChoiceField, PasswordField, RegexField, SlugField, SplitDateTimeField,
-	TimeField, URLField, UUIDField,
+	MultiValueField, MultipleChoiceField, PASSWORD_REDACTED, PasswordField, RegexField, SlugField,
+	SplitDateTimeField, TimeField, URLField, UUIDField,
 };
 pub use form::{Form, FormError, FormResult};
 pub use formset::FormSet;
