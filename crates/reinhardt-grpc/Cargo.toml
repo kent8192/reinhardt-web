@@ -22,11 +22,13 @@ tracing = { workspace = true }
 # DI support (optional)
 reinhardt-di = { workspace = true, optional = true }
 reinhardt-grpc-macros = { workspace = true, optional = true }
+tonic-reflection = { version = "0.14", optional = true }
 
 [features]
 default = []
-full = ["di"]
+full = ["di", "reflection"]
 di = ["reinhardt-di", "reinhardt-grpc-macros"]
+reflection = ["tonic-reflection"]
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"

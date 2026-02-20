@@ -12,6 +12,7 @@
 //! - Protobuf message nesting depth limits
 //! - Protobuf field constraint validation
 //! - Dependency injection support (with `di` feature)
+//! - Server reflection support for grpcurl/grpcui (with `reflection` feature)
 //!
 //! # Security
 //!
@@ -71,6 +72,9 @@ pub mod validation;
 #[cfg(feature = "di")]
 pub mod di;
 
+#[cfg(feature = "reflection")]
+pub mod reflection;
+
 // Generated Protobuf code (common types provided by the framework)
 pub mod proto {
 	pub mod common {
@@ -93,3 +97,6 @@ pub use di::GrpcRequestExt;
 
 #[cfg(feature = "di")]
 pub use reinhardt_grpc_macros::grpc_handler;
+
+#[cfg(feature = "reflection")]
+pub use reflection::{FILE_DESCRIPTOR_SET, ReflectionServiceBuilder};
