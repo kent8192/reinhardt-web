@@ -573,7 +573,7 @@ mod tests {
 	use std::time::Duration;
 	use tokio::time::sleep;
 
-	// Test helper: unused fields are intentional for trait implementation
+	// Fields are used indirectly through Task trait implementation in tests
 	#[allow(dead_code)]
 	struct TestTask {
 		id: TaskId,

@@ -140,7 +140,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 	// Build field conversions for From<proto> for GraphQL
 	let from_proto_fields: Vec<TokenStream> = field_data
 		.iter()
-		.map(|(field_name, config)| {
+		.map(|(field_name, config)| -> Result<TokenStream> {
 			let proto_field = if let Some(proto_name) = &config.proto_name {
 				let proto_ident = Ident::new(proto_name, field_name.span());
 				quote! { #proto_ident }
@@ -149,28 +149,32 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 			};
 
 			if let Some(skip_condition) = &config.skip_if {
-				// Parse skip condition as TokenStream
-				let condition: TokenStream =
-					skip_condition.parse().unwrap_or_else(|_| quote! { false });
-				quote! {
+				// Fixes #816
+				let condition: TokenStream = skip_condition.parse().map_err(|_| {
+					syn::Error::new(
+						field_name.span(),
+						format!("invalid skip_if expression: `{}`", skip_condition),
+					)
+				})?;
+				Ok(quote! {
 					#field_name: if #condition(&proto.#proto_field) {
 						Default::default()
 					} else {
 						proto.#proto_field.into()
 					}
-				}
+				})
 			} else {
-				quote! {
+				Ok(quote! {
 					#field_name: proto.#proto_field.into()
-				}
+				})
 			}
 		})
-		.collect();
+		.collect::<Result<_>>()?;
 
 	// Build field conversions for From<GraphQL> for proto
 	let into_proto_fields: Vec<TokenStream> = field_data
 		.iter()
-		.map(|(field_name, config)| {
+		.map(|(field_name, config)| -> Result<TokenStream> {
 			let proto_field = if let Some(proto_name) = &config.proto_name {
 				let proto_ident = Ident::new(proto_name, field_name.span());
 				quote! { #proto_ident }
@@ -179,22 +183,27 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream> {
 			};
 
 			if let Some(skip_condition) = &config.skip_if {
-				let condition: TokenStream =
-					skip_condition.parse().unwrap_or_else(|_| quote! { false });
-				quote! {
+				// Fixes #816
+				let condition: TokenStream = skip_condition.parse().map_err(|_| {
+					syn::Error::new(
+						field_name.span(),
+						format!("invalid skip_if expression: `{}`", skip_condition),
+					)
+				})?;
+				Ok(quote! {
 					#proto_field: if #condition(&graphql.#field_name) {
 						Default::default()
 					} else {
 						graphql.#field_name.into()
 					}
-				}
+				})
 			} else {
-				quote! {
+				Ok(quote! {
 					#proto_field: graphql.#field_name.into()
-				}
+				})
 			}
 		})
-		.collect();
+		.collect::<Result<_>>()?;
 
 	// Implementation of From<proto> for GraphQL
 	let from_proto = quote! {

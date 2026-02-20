@@ -148,6 +148,7 @@ impl FileCache {
 	}
 
 	/// Load the cache index from filesystem
+	// Reserved for future cache persistence recovery
 	#[allow(dead_code)]
 	async fn load_index(&self) -> Result<()> {
 		let mut index = self.index.write().await;
