@@ -149,9 +149,9 @@ impl RestAuthentication for CompositeAuthentication {
 			match backend.authenticate(request).await {
 				Ok(Some(user)) => return Ok(Some(user)),
 				Ok(None) => continue,
-				Err(e) => {
+				Err(_) => {
 					// Log error but continue to next backend
-					eprintln!("Authentication backend error: {}", e);
+					tracing::warn!("Authentication backend error");
 					continue;
 				}
 			}
@@ -176,9 +176,9 @@ impl AuthenticationBackend for CompositeAuthentication {
 			match backend.get_user(user_id).await {
 				Ok(Some(user)) => return Ok(Some(user)),
 				Ok(None) => continue,
-				Err(e) => {
+				Err(_) => {
 					// Log error but continue to next backend
-					eprintln!("get_user backend error: {}", e);
+					tracing::warn!("get_user backend error");
 					continue;
 				}
 			}
