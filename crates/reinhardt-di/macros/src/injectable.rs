@@ -38,10 +38,46 @@ enum InjectionType {
 	OptionalInjected(Type),
 }
 
+/// Check whether a type path likely originates from the `reinhardt_di` crate.
+///
+/// In proc-macro context, full path resolution is not available. This heuristic
+/// inspects the path segments preceding the terminal identifier for known
+/// `reinhardt_di` / `reinhardt` prefixes. When the type is referenced with a
+/// bare identifier (single segment, e.g. `Injected<T>`), we accept it because
+/// the user likely has `use reinhardt_di::Injected` in scope. Multi-segment
+/// paths that do NOT contain a recognized prefix are rejected to prevent
+/// accidental misclassification of user-defined types with the same name.
+fn is_likely_reinhardt_di_path(
+	segments: &syn::punctuated::Punctuated<syn::PathSegment, syn::token::PathSep>,
+) -> bool {
+	// Single-segment path (e.g. `Injected<T>`) — assume it was imported from
+	// `reinhardt_di`. This is the normal usage pattern.
+	if segments.len() <= 1 {
+		return true;
+	}
+
+	// Multi-segment path: check that at least one prefix segment matches a known
+	// reinhardt crate module name.
+	let known_prefixes = ["reinhardt_di", "reinhardt", "crate"];
+	segments.iter().rev().skip(1).any(|seg| {
+		let ident_str = seg.ident.to_string();
+		known_prefixes.contains(&ident_str.as_str())
+	})
+}
+
 /// Extract inner type from `Injected<T>` or `OptionalInjected<T>`
 ///
 /// Returns `Some(InjectionType)` if the type is a valid injection type,
 /// `None` otherwise.
+///
+/// # Path qualification
+///
+/// This function matches on the terminal identifier (`Injected`,
+/// `OptionalInjected`, `Option`) and additionally validates that multi-segment
+/// paths contain a recognized `reinhardt_di` prefix. This prevents user-defined
+/// types with the same leaf name from being misclassified as DI wrapper types.
+/// Single-segment paths are accepted because the typical usage is via
+/// `use reinhardt_di::Injected;`.
 fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 	if let Type::Path(type_path) = ty {
 		let segments = &type_path.path.segments;
@@ -54,6 +90,7 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 
 		// Check for Injected<T>
 		if ident == "Injected"
+			&& is_likely_reinhardt_di_path(segments)
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
 			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
 		{
@@ -63,6 +100,7 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 		// Check for OptionalInjected<T> (type alias for Option<Injected<T>>)
 		// Also check for Option<Injected<T>> directly
 		if ident == "OptionalInjected"
+			&& is_likely_reinhardt_di_path(segments)
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
 			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
 		{
@@ -74,10 +112,11 @@ fn classify_injection_type(ty: &Type) -> Option<InjectionType> {
 			&& let PathArguments::AngleBracketed(args) = &last_segment.arguments
 			&& let Some(GenericArgument::Type(inner_ty)) = args.args.first()
 		{
-			// Check if inner type is Injected<T>
+			// Check if inner type is Injected<T> with path validation
 			if let Type::Path(inner_path) = inner_ty
 				&& let Some(inner_seg) = inner_path.path.segments.last()
 				&& inner_seg.ident == "Injected"
+				&& is_likely_reinhardt_di_path(&inner_path.path.segments)
 				&& let PathArguments::AngleBracketed(inner_args) = &inner_seg.arguments
 				&& let Some(GenericArgument::Type(innermost_ty)) = inner_args.args.first()
 			{
