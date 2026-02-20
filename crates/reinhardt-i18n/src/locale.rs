@@ -9,6 +9,11 @@ use crate::{
 };
 use std::sync::Arc;
 
+/// Maximum length for locale strings.
+/// BCP 47 / ISO 639 locale identifiers are at most 35 characters;
+/// 64 provides a generous upper bound.
+const MAX_LOCALE_LEN: usize = 64;
+
 /// Validate locale string format
 pub(crate) fn validate_locale(locale: &str) -> Result<(), I18nError> {
 	// Basic validation: locale should contain only alphanumeric characters, hyphens, and underscores
@@ -16,6 +21,14 @@ pub(crate) fn validate_locale(locale: &str) -> Result<(), I18nError> {
 		return Err(I18nError::InvalidLocale(
 			"Locale cannot be empty".to_string(),
 		));
+	}
+
+	if locale.len() > MAX_LOCALE_LEN {
+		return Err(I18nError::InvalidLocale(format!(
+			"Locale too long ({} bytes, maximum is {})",
+			locale.len(),
+			MAX_LOCALE_LEN
+		)));
 	}
 
 	if !locale
@@ -265,6 +278,30 @@ mod tests {
 		assert!(activate("en US").is_err());
 		assert!(activate("en-US").is_ok());
 		assert!(activate("ja").is_ok());
+	}
+
+	#[rstest]
+	fn test_validate_locale_rejects_too_long_string() {
+		// Arrange: locale string exceeding MAX_LOCALE_LEN (64)
+		let long_locale = "a".repeat(65);
+
+		// Act
+		let result = validate_locale(&long_locale);
+
+		// Assert
+		assert!(result.is_err());
+	}
+
+	#[rstest]
+	fn test_validate_locale_accepts_max_length_string() {
+		// Arrange: locale string exactly at MAX_LOCALE_LEN (64)
+		let max_locale = "a".repeat(64);
+
+		// Act
+		let result = validate_locale(&max_locale);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
 	#[rstest]

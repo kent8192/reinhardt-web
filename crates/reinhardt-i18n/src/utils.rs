@@ -2,6 +2,10 @@
 
 use chrono::{DateTime, Utc};
 
+/// Maximum length for date format strings to prevent CPU exhaustion
+/// from pathological strftime patterns
+const MAX_FORMAT_LEN: usize = 128;
+
 /// Format a date according to the current locale
 ///
 /// # Example
@@ -14,6 +18,10 @@ use chrono::{DateTime, Utc};
 /// assert!(!formatted.is_empty());
 /// ```
 pub fn format_date(date: &DateTime<Utc>, format: &str) -> String {
+	if format.len() > MAX_FORMAT_LEN {
+		// Fall back to a safe default format for overly long format strings
+		return date.format("%Y-%m-%d").to_string();
+	}
 	date.format(format).to_string()
 }
 
@@ -33,6 +41,18 @@ pub fn format_date(date: &DateTime<Utc>, format: &str) -> String {
 /// assert_eq!(negative, "-123,456.78");
 /// ```
 pub fn format_number(number: f64, decimal_places: usize) -> String {
+	// Handle IEEE 754 special values explicitly
+	if number.is_nan() {
+		return "NaN".to_string();
+	}
+	if number.is_infinite() {
+		return if number.is_sign_positive() {
+			"\u{221E}".to_string()
+		} else {
+			"-\u{221E}".to_string()
+		};
+	}
+
 	let is_negative = number.is_sign_negative() && number != 0.0;
 	let abs_value = number.abs();
 	let formatted = format!("{:.1$}", abs_value, decimal_places);
@@ -109,6 +129,42 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_format_number_nan() {
+		// Arrange
+		let number = f64::NAN;
+
+		// Act
+		let result = format_number(number, 2);
+
+		// Assert
+		assert_eq!(result, "NaN");
+	}
+
+	#[rstest]
+	fn test_format_number_positive_infinity() {
+		// Arrange
+		let number = f64::INFINITY;
+
+		// Act
+		let result = format_number(number, 2);
+
+		// Assert
+		assert_eq!(result, "\u{221E}");
+	}
+
+	#[rstest]
+	fn test_format_number_negative_infinity() {
+		// Arrange
+		let number = f64::NEG_INFINITY;
+
+		// Act
+		let result = format_number(number, 2);
+
+		// Assert
+		assert_eq!(result, "-\u{221E}");
+	}
+
+	#[rstest]
 	fn test_format_number_negative_zero() {
 		// Arrange: negative zero should be formatted as positive zero
 		let number = -0.0;
@@ -130,5 +186,32 @@ mod tests {
 
 		// Assert
 		assert!(!formatted.is_empty());
+	}
+
+	#[rstest]
+	fn test_format_date_rejects_long_format_string() {
+		// Arrange: format string exceeding MAX_FORMAT_LEN (128)
+		let date = Utc::now();
+		let long_format = "%Y-".repeat(50); // 200 characters
+
+		// Act
+		let formatted = format_date(&date, &long_format);
+
+		// Assert: should fall back to safe default "%Y-%m-%d"
+		assert_eq!(formatted, date.format("%Y-%m-%d").to_string());
+	}
+
+	#[rstest]
+	fn test_format_date_accepts_max_length_format() {
+		// Arrange: format string exactly at MAX_FORMAT_LEN (128)
+		let date = Utc::now();
+		let format = "a".repeat(128);
+
+		// Act: should not fall back (128 == MAX_FORMAT_LEN, not exceeded)
+		let result = format_date(&date, &format);
+
+		// Assert: should not be the fallback format
+		// (the output will be the literal characters since they are not format specifiers)
+		assert_eq!(result, format);
 	}
 }
