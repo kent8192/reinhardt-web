@@ -94,6 +94,12 @@ impl EnvLoader {
 	}
 	/// Load environment variables from the .env file
 	///
+	/// # Thread Safety
+	///
+	/// This method calls `env::set_var` internally, which is not thread-safe.
+	/// It MUST only be called during single-threaded application startup,
+	/// before any worker threads are spawned.
+	///
 	/// # Examples
 	///
 	/// ```rust
@@ -129,6 +135,12 @@ impl EnvLoader {
 		Ok(())
 	}
 	/// Try to load the .env file, but don't fail if it doesn't exist
+	///
+	/// # Thread Safety
+	///
+	/// This method calls `env::set_var` internally, which is not thread-safe.
+	/// It MUST only be called during single-threaded application startup,
+	/// before any worker threads are spawned.
 	///
 	/// # Examples
 	///
@@ -259,8 +271,15 @@ impl EnvLoader {
 
 				// Set or skip based on overwrite setting
 				if self.overwrite || env::var(key).is_err() {
-					// SAFETY: This is safe within the context of loading environment configuration
-					// during application startup before multi-threading begins
+					// SAFETY: `env::set_var` is not thread-safe per POSIX and Rust 2024
+					// edition marks it as unsafe. This call is safe because:
+					// 1. EnvLoader is designed to run during single-threaded application
+					//    startup (before any worker threads are spawned).
+					// 2. Callers MUST NOT invoke `parse_and_set` from multi-threaded
+					//    contexts. The public API (`load`, `load_optional`) documents
+					//    this startup-only constraint.
+					// 3. If env mutation is needed after startup, callers should store
+					//    values in a thread-safe map (e.g., `RwLock<HashMap>`) instead.
 					unsafe {
 						env::set_var(key, value);
 					}
