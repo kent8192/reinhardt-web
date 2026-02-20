@@ -1,6 +1,44 @@
 //! PostgreSQL query builder backend
 //!
 //! This module implements the SQL generation backend for PostgreSQL.
+//!
+//! # SQL Identifier Quoting
+//!
+//! PostgreSQL uses **double quotes** (`"`) for SQL identifiers (table names, column names,
+//! index names, etc.). This is different from string literals, which use single quotes (`'`).
+//!
+//! ## Quoting Behavior
+//!
+//! - All identifiers are automatically wrapped in double quotes
+//! - Double quotes within identifiers are escaped by doubling (`"` becomes `""`)
+//! - Case sensitivity is preserved when identifiers are quoted
+//!
+//! ## Examples
+//!
+//! | Input Identifier | Quoted Output |
+//! |-----------------|---------------|
+//! | `users` | `"users"` |
+//! | `user_name` | `"user_name"` |
+//! | `column"with"quotes` | `"column""with""quotes"` |
+//!
+//! ## Testing Generated SQL
+//!
+//! When writing tests for generated SQL, ensure you account for identifier quoting:
+//!
+//! ```rust,ignore
+//! use reinhardt_query::backend::{PostgresQueryBuilder, QueryBuilder};
+//! use reinhardt_query::prelude::*;
+//!
+//! let builder = PostgresQueryBuilder::new();
+//! let stmt = Query::select().column("name").from("users");
+//! let (sql, _) = builder.build_select(&stmt);
+//!
+//! // Note the double quotes around identifiers
+//! assert_eq!(sql, r#"SELECT "name" FROM "users""#);
+//! ```
+//!
+//! For more details on SQL syntax, see the
+//! [PostgreSQL Documentation](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS).
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
