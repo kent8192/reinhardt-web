@@ -68,10 +68,9 @@ impl std::str::FromStr for CompressionCodec {
 			"gzip" => Ok(Self::Gzip),
 			"deflate" => Ok(Self::Deflate),
 			"br" | "brotli" => Ok(Self::Brotli),
-			_ => Err(WebSocketError::Protocol(format!(
-				"Unknown compression codec: {}",
-				s
-			))),
+			_ => Err(WebSocketError::Protocol(
+				"unsupported compression codec".to_string(),
+			)),
 		}
 	}
 }
@@ -169,10 +168,10 @@ fn compress_gzip(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
 	encoder
 		.write_all(data)
-		.map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))?;
 	encoder
 		.finish()
-		.map_err(|e| WebSocketError::Protocol(format!("Gzip compression failed: {}", e)))
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))
 }
 
 #[cfg(feature = "compression")]
@@ -184,7 +183,7 @@ fn decompress_gzip(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut decompressed = Vec::new();
 	decoder
 		.read_to_end(&mut decompressed)
-		.map_err(|e| WebSocketError::Protocol(format!("Gzip decompression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("decompression failed".to_string()))?;
 	Ok(decompressed)
 }
 
@@ -197,10 +196,10 @@ fn compress_deflate(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
 	encoder
 		.write_all(data)
-		.map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))?;
 	encoder
 		.finish()
-		.map_err(|e| WebSocketError::Protocol(format!("Deflate compression failed: {}", e)))
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))
 }
 
 #[cfg(feature = "compression")]
@@ -212,7 +211,7 @@ fn decompress_deflate(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut decompressed = Vec::new();
 	decoder
 		.read_to_end(&mut decompressed)
-		.map_err(|e| WebSocketError::Protocol(format!("Deflate decompression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("decompression failed".to_string()))?;
 	Ok(decompressed)
 }
 
@@ -224,10 +223,10 @@ fn compress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut compressor = brotli::CompressorWriter::new(&mut compressed, 4096, 11, 22);
 	compressor
 		.write_all(data)
-		.map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))?;
 	compressor
 		.flush()
-		.map_err(|e| WebSocketError::Protocol(format!("Brotli compression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("compression failed".to_string()))?;
 	drop(compressor);
 	Ok(compressed)
 }
@@ -240,7 +239,7 @@ fn decompress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 	let mut decompressed = Vec::new();
 	decompressor
 		.read_to_end(&mut decompressed)
-		.map_err(|e| WebSocketError::Protocol(format!("Brotli decompression failed: {}", e)))?;
+		.map_err(|_| WebSocketError::Protocol("decompression failed".to_string()))?;
 	Ok(decompressed)
 }
 
@@ -253,7 +252,7 @@ fn decompress_brotli(data: &[u8]) -> WebSocketResult<Vec<u8>> {
 #[cfg(not(feature = "compression"))]
 pub fn compress_message(_message: &Message, _codec: CompressionCodec) -> WebSocketResult<Message> {
 	Err(WebSocketError::Protocol(
-		"Compression feature not enabled. Add 'compression' feature to Cargo.toml.".to_string(),
+		"compression not available".to_string(),
 	))
 }
 
@@ -269,7 +268,7 @@ pub fn decompress_message(
 	_codec: CompressionCodec,
 ) -> WebSocketResult<Message> {
 	Err(WebSocketError::Protocol(
-		"Compression feature not enabled. Add 'compression' feature to Cargo.toml.".to_string(),
+		"compression not available".to_string(),
 	))
 }
 

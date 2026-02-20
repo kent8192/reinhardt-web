@@ -16,11 +16,11 @@ pub type RouteResult = Result<(), RouteError>;
 /// Routing errors
 #[derive(Debug, thiserror::Error)]
 pub enum RouteError {
-	#[error("Route not found: {0}")]
+	#[error("Route not found")]
 	NotFound(String),
-	#[error("Route already exists: {0}")]
+	#[error("Route already exists")]
 	AlreadyExists(String),
-	#[error("Invalid route pattern: {0}")]
+	#[error("Invalid route pattern")]
 	InvalidPattern(String),
 }
 

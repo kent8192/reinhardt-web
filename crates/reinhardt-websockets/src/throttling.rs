@@ -31,11 +31,11 @@ use tokio::sync::RwLock;
 /// Throttling errors
 #[derive(Debug, thiserror::Error)]
 pub enum ThrottleError {
-	#[error("Rate limit exceeded: {0}")]
+	#[error("Rate limit exceeded")]
 	RateLimitExceeded(String),
-	#[error("Too many connections from {0}")]
+	#[error("Too many connections")]
 	TooManyConnections(String),
-	#[error("Connection rate exceeded for {0}")]
+	#[error("Connection rate exceeded")]
 	ConnectionRateExceeded(String),
 }
 

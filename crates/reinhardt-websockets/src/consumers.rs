@@ -158,21 +158,13 @@ impl ConsumerContext {
 		T: Injectable + Clone + Send + Sync + 'static,
 	{
 		let ctx = self.di_context.as_ref().ok_or_else(|| {
-			WebSocketError::Internal(
-				"DI context not set. Ensure the WebSocket router is configured with DI".to_string(),
-			)
+			WebSocketError::Internal("DI context not available".to_string())
 		})?;
 
 		Injected::<T>::resolve(ctx)
 			.await
 			.map(|injected| injected.into_inner())
-			.map_err(|e| {
-				WebSocketError::Internal(format!(
-					"Dependency injection failed for {}: {:?}",
-					std::any::type_name::<T>(),
-					e
-				))
-			})
+			.map_err(|_| WebSocketError::Internal("dependency resolution failed".to_string()))
 	}
 
 	/// Resolve a dependency without caching
@@ -197,21 +189,13 @@ impl ConsumerContext {
 		T: Injectable + Clone + Send + Sync + 'static,
 	{
 		let ctx = self.di_context.as_ref().ok_or_else(|| {
-			WebSocketError::Internal(
-				"DI context not set. Ensure the WebSocket router is configured with DI".to_string(),
-			)
+			WebSocketError::Internal("DI context not available".to_string())
 		})?;
 
 		Injected::<T>::resolve_uncached(ctx)
 			.await
 			.map(|injected| injected.into_inner())
-			.map_err(|e| {
-				WebSocketError::Internal(format!(
-					"Dependency injection failed for {}: {:?}",
-					std::any::type_name::<T>(),
-					e
-				))
-			})
+			.map_err(|_| WebSocketError::Internal("dependency resolution failed".to_string()))
 	}
 
 	/// Try to resolve a dependency, returning None if DI context is not available
