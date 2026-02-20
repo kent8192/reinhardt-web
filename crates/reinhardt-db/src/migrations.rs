@@ -246,6 +246,14 @@ pub enum MigrationError {
 	/// be resolved before the migration can proceed.
 	#[error("Foreign key violation: {0}")]
 	ForeignKeyViolation(String),
+
+	/// Path traversal attempt detected in migration path components
+	///
+	/// This error occurs when an app label or migration name contains
+	/// path traversal sequences (e.g., `..`) that could escape the
+	/// migration root directory.
+	#[error("Path traversal detected: {0}")]
+	PathTraversal(String),
 }
 
 pub type Result<T> = std::result::Result<T, MigrationError>;
