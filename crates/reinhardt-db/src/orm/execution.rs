@@ -139,11 +139,26 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		// JSON - convert to string
 		SV::Json(_) => QueryValue::String(format!("{:?}", value)),
 
-		// Decimal - convert to f64
-		SV::Decimal(Some(d)) => QueryValue::Float(d.to_f64().unwrap_or(0.0)),
+		// Decimal - convert to f64 with fallback through string parsing
+		SV::Decimal(Some(d)) => {
+			let f = d.to_f64().unwrap_or_else(|| {
+				tracing::warn!(
+					decimal = %d,
+					"Decimal cannot be directly represented as f64, falling back to string parsing"
+				);
+				d.to_string().parse::<f64>().unwrap_or(0.0)
+			});
+			QueryValue::Float(f)
+		}
 		SV::BigDecimal(Some(d)) => {
-			// Convert BigDecimal to f64 via string parsing
-			QueryValue::Float(d.to_string().parse::<f64>().unwrap_or(0.0))
+			let f = d.to_string().parse::<f64>().unwrap_or_else(|_| {
+				tracing::warn!(
+					big_decimal = %d,
+					"BigDecimal cannot be represented as f64"
+				);
+				0.0
+			});
+			QueryValue::Float(f)
 		}
 
 		// UUID
