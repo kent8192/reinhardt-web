@@ -54,7 +54,7 @@ docker run -d \
   -e POSTGRES_PASSWORD=reinhardt_dev \
   -e POSTGRES_DB=reinhardt_examples \
   -p 5432:5432 \
-  postgres:16
+  postgres:17
 ```
 
 #### MySQL
