@@ -197,6 +197,40 @@ pub fn sanitize_email_list(emails: &[impl AsRef<str>]) -> EmailResult<Vec<String
 	emails.iter().map(|e| sanitize_email(e.as_ref())).collect()
 }
 
+/// Validates a custom header name against RFC 2822 field name rules.
+///
+/// RFC 2822 Section 2.2 defines a field name as one or more printable US-ASCII
+/// characters (values 33-126) except the colon (`:`, value 58).
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_mail::validation::validate_header_name;
+///
+/// assert!(validate_header_name("X-Custom-Header").is_ok());
+/// assert!(validate_header_name("").is_err());
+/// assert!(validate_header_name("Invalid Header").is_err());   // space
+/// assert!(validate_header_name("Invalid:Header").is_err());   // colon
+/// ```
+pub fn validate_header_name(name: &str) -> EmailResult<()> {
+	if name.is_empty() {
+		return Err(EmailError::InvalidHeader(
+			"Header name cannot be empty".to_string(),
+		));
+	}
+	for ch in name.chars() {
+		// RFC 2822: printable ASCII (33-126) except colon
+		if !ch.is_ascii() || ch.is_ascii_control() || ch == ':' || ch == ' ' {
+			return Err(EmailError::InvalidHeader(format!(
+				"Invalid character '{}' (U+{:04X}) in header name",
+				ch.escape_debug(),
+				ch as u32
+			)));
+		}
+	}
+	Ok(())
+}
+
 /// Checks if a string contains potential header injection attempts
 ///
 /// # Examples
@@ -459,6 +493,52 @@ mod tests {
 		assert_eq!(
 			MAX_EMAIL_LENGTH, 254,
 			"RFC 5321 max email length should be 254"
+		);
+	}
+
+	#[rstest]
+	#[case("X-Custom-Header", true)]
+	#[case("Content-Type", true)]
+	#[case("X-Mailer", true)]
+	#[case("Accept", true)]
+	fn test_validate_header_name_valid(#[case] name: &str, #[case] expected_valid: bool) {
+		// Arrange
+		// (input provided by case parameters)
+
+		// Act
+		let result = validate_header_name(name);
+
+		// Assert
+		assert_eq!(
+			result.is_ok(),
+			expected_valid,
+			"Header name '{}': expected valid={}, got {:?}",
+			name,
+			expected_valid,
+			result
+		);
+	}
+
+	#[rstest]
+	#[case("", "empty")]
+	#[case("Invalid Header", "space")]
+	#[case("Invalid:Header", "colon")]
+	#[case("Invalid\tHeader", "control character")]
+	#[case("Invalid\x00Header", "null byte")]
+	#[case("H\u{00e9}ader", "non-ASCII character")]
+	fn test_validate_header_name_invalid(#[case] name: &str, #[case] reason: &str) {
+		// Arrange
+		// (input provided by case parameters)
+
+		// Act
+		let result = validate_header_name(name);
+
+		// Assert
+		assert!(
+			result.is_err(),
+			"Header name {:?} should be rejected ({})",
+			name,
+			reason
 		);
 	}
 }
