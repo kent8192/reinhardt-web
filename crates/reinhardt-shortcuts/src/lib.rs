@@ -96,7 +96,7 @@ pub mod url;
 pub mod orm;
 
 // Re-export core functions
-pub use context::TemplateContext;
+pub use context::{ContextError, TemplateContext};
 pub use get_or_404::{
 	GetError, exists_or_404_response, get_list_or_404_response, get_or_404_response,
 };

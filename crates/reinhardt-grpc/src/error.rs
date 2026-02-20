@@ -13,6 +13,7 @@
 //! "Internal server error" message. In debug mode, the original error
 //! message is preserved for development convenience.
 
+use std::borrow::Cow;
 use thiserror::Error;
 
 /// Pattern fragments that indicate an error message contains internal details.
@@ -166,9 +167,12 @@ impl ErrorSanitizer {
 	/// If the message contains patterns that look like internal details
 	/// (file paths, stack traces, type names), it is replaced with a
 	/// generic message in production mode.
-	pub fn sanitize_message(&self, message: &str) -> String {
+	///
+	/// Returns `Cow::Borrowed` for static replacement messages to avoid
+	/// heap allocations on error paths.
+	pub fn sanitize_message<'a>(&self, message: &'a str) -> Cow<'a, str> {
 		if self.debug_mode {
-			return message.to_string();
+			return Cow::Borrowed(message);
 		}
 
 		if contains_sensitive_pattern(message) {
@@ -176,9 +180,9 @@ impl ErrorSanitizer {
 				original_message = %message,
 				"Sanitized error message containing sensitive information"
 			);
-			"Internal server error".to_string()
+			Cow::Borrowed("Internal server error")
 		} else {
-			message.to_string()
+			Cow::Borrowed(message)
 		}
 	}
 }

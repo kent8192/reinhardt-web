@@ -135,7 +135,7 @@ mod tests {
 		// Act
 		let extracted = request
 			.get_di_context::<Arc<InjectionContext>>()
-			.expect("DI context should exist");
+			.expect("DI context should be extractable from request extensions after insertion");
 
 		// Assert
 		assert!(Arc::ptr_eq(&injection_ctx, &extracted));
