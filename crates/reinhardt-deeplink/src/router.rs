@@ -26,7 +26,7 @@ use crate::error::DeeplinkError;
 /// let config = DeeplinkConfig::builder()
 ///     .ios(
 ///         IosConfig::builder()
-///             .app_id("TEAM.bundle")
+///             .app_id("TEAM.com.example")
 ///             .paths(&["/"])
 ///             .build()
 ///     )
@@ -129,7 +129,7 @@ impl DeeplinkRouter {
 /// let config = DeeplinkConfig::builder()
 ///     .ios(
 ///         IosConfig::builder()
-///             .app_id("TEAM.bundle")
+///             .app_id("TEAM.com.example")
 ///             .paths(&["/"])
 ///             .build()
 ///     )
