@@ -532,7 +532,10 @@ impl TaskDAG {
 		Ok(sorted)
 	}
 
-	/// Detect if there's a cycle in the graph using DFS
+	/// Detect if there's a cycle in the graph using iterative DFS
+	///
+	/// Uses an explicit stack instead of recursion to avoid stack overflow
+	/// on deeply nested dependency graphs.
 	///
 	/// # Errors
 	///
@@ -541,40 +544,50 @@ impl TaskDAG {
 		let mut visited = HashSet::new();
 		let mut rec_stack = HashSet::new();
 
-		for &task_id in self.nodes.keys() {
-			if !visited.contains(&task_id) {
-				self.detect_cycle_util(task_id, &mut visited, &mut rec_stack)?;
+		for &start_id in self.nodes.keys() {
+			if visited.contains(&start_id) {
+				continue;
 			}
-		}
 
-		Ok(())
-	}
+			// Explicit stack: (task_id, dependency_index, is_entering)
+			// is_entering=true means we are visiting this node for the first time
+			let mut stack: Vec<(TaskId, usize, bool)> = vec![(start_id, 0, true)];
 
-	/// Helper function for cycle detection using DFS
-	fn detect_cycle_util(
-		&self,
-		task_id: TaskId,
-		visited: &mut HashSet<TaskId>,
-		rec_stack: &mut HashSet<TaskId>,
-	) -> TaskResult<()> {
-		visited.insert(task_id);
-		rec_stack.insert(task_id);
+			while let Some((task_id, dep_idx, is_entering)) = stack.last_mut() {
+				if *is_entering {
+					visited.insert(*task_id);
+					rec_stack.insert(*task_id);
+					*is_entering = false;
+				}
 
-		// Visit all dependencies
-		if let Some(node) = self.nodes.get(&task_id) {
-			for &dep_id in node.dependencies() {
-				if !visited.contains(&dep_id) {
-					self.detect_cycle_util(dep_id, visited, rec_stack)?;
-				} else if rec_stack.contains(&dep_id) {
-					return Err(TaskError::ExecutionFailed(format!(
-						"Cycle detected: {} -> {}",
-						task_id, dep_id
-					)));
+				let deps = self
+					.nodes
+					.get(task_id)
+					.map(|n| n.dependencies())
+					.unwrap_or(&[]);
+
+				if *dep_idx < deps.len() {
+					let dep_id = deps[*dep_idx];
+					*dep_idx += 1;
+
+					if rec_stack.contains(&dep_id) {
+						return Err(TaskError::ExecutionFailed(format!(
+							"Cycle detected: {} -> {}",
+							task_id, dep_id
+						)));
+					}
+
+					if !visited.contains(&dep_id) {
+						stack.push((dep_id, 0, true));
+					}
+				} else {
+					// All dependencies processed, backtrack
+					rec_stack.remove(task_id);
+					stack.pop();
 				}
 			}
 		}
 
-		rec_stack.remove(&task_id);
 		Ok(())
 	}
 }
