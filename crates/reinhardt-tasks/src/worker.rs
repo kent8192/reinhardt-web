@@ -437,9 +437,7 @@ impl Worker {
 
 		let completed_at = Utc::now();
 		// Use saturating conversion to prevent overflow on negative or very large durations
-		let duration_ms = (completed_at - started_at)
-			.num_milliseconds()
-			.max(0) as u64;
+		let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
 
 		// Determine final task status
 		let (task_status, webhook_status) = match &result {
