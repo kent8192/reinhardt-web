@@ -21,9 +21,9 @@ use crate::{
 		DropDatabaseStatement, DropFunctionStatement, DropIndexStatement,
 		DropMaterializedViewStatement, DropProcedureStatement, DropSchemaStatement,
 		DropSequenceStatement, DropTableStatement, DropTriggerStatement, DropTypeStatement,
-		DropViewStatement, InsertStatement, OptimizeTableStatement, RefreshMaterializedViewStatement,
-		ReindexStatement, RepairTableStatement, SelectStatement, TruncateTableStatement,
-		UpdateStatement, VacuumStatement,
+		DropViewStatement, InsertStatement, OptimizeTableStatement,
+		RefreshMaterializedViewStatement, ReindexStatement, RepairTableStatement, SelectStatement,
+		TruncateTableStatement, UpdateStatement, VacuumStatement,
 	},
 	value::Values,
 };

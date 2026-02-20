@@ -456,6 +456,9 @@ mod tests {
 
 		assert!(query.table.is_some());
 		assert_eq!(query.columns.len(), 2);
-		assert!(query.get_values().is_none(), "should not have values when using subquery");
+		assert!(
+			query.get_values().is_none(),
+			"should not have values when using subquery"
+		);
 	}
 }
