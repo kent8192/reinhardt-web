@@ -23,6 +23,7 @@
 //!             .package_name("com.example.app")
 //!             .sha256_fingerprint("FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C")
 //!             .build()
+//!             .unwrap()
 //!     )
 //!     .build();
 //! ```
@@ -49,7 +50,7 @@ pub use config::{
 	DeeplinkConfigBuilder, IosConfig, IosConfigBuilder, WebCredentialsConfig,
 };
 pub use endpoints::{AasaHandler, AssetLinksHandler};
-pub use error::{DeeplinkError, validate_app_id, validate_fingerprint};
+pub use error::{DeeplinkError, validate_app_id, validate_fingerprint, validate_package_name};
 pub use router::{DeeplinkRouter, DeeplinkRouterExt};
 
 /// Result type for deeplink operations.
