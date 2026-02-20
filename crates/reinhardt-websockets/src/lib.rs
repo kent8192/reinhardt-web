@@ -172,10 +172,15 @@ pub use channels::{
 	InMemoryChannelLayer,
 };
 #[cfg(feature = "compression")]
-pub use compression::{CompressionCodec, compress_message, decompress_message};
+pub use compression::{
+	CompressionCodec, CompressionConfig, compress_message, decompress_message,
+	decompress_message_with_config,
+};
+#[cfg(not(feature = "compression"))]
+pub use compression::CompressionConfig;
 pub use connection::{
 	ConnectionConfig, ConnectionTimeoutMonitor, HeartbeatConfig, HeartbeatMonitor, Message,
-	WebSocketConnection, WebSocketError, WebSocketResult,
+	PingPongConfig, WebSocketConnection, WebSocketError, WebSocketResult,
 };
 pub use consumers::{
 	BroadcastConsumer, ConsumerChain, ConsumerContext, EchoConsumer, JsonConsumer,

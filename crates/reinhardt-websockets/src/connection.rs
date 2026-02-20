@@ -4,6 +4,121 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 
+/// Ping/pong keepalive configuration for WebSocket connections.
+///
+/// Controls how frequently ping frames are sent and how long
+/// the server waits for a pong response before considering
+/// the connection dead.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_websockets::connection::PingPongConfig;
+/// use std::time::Duration;
+///
+/// // Use defaults (30s ping interval, 10s pong timeout)
+/// let config = PingPongConfig::default();
+/// assert_eq!(config.ping_interval(), Duration::from_secs(30));
+/// assert_eq!(config.pong_timeout(), Duration::from_secs(10));
+///
+/// // Custom configuration
+/// let config = PingPongConfig::new(
+///     Duration::from_secs(15),
+///     Duration::from_secs(5),
+/// );
+/// assert_eq!(config.ping_interval(), Duration::from_secs(15));
+/// assert_eq!(config.pong_timeout(), Duration::from_secs(5));
+/// ```
+#[derive(Debug, Clone)]
+pub struct PingPongConfig {
+	/// Interval between ping frames sent to the client
+	ping_interval: Duration,
+	/// Maximum time to wait for a pong response before closing
+	pong_timeout: Duration,
+}
+
+impl Default for PingPongConfig {
+	fn default() -> Self {
+		Self {
+			ping_interval: Duration::from_secs(30),
+			pong_timeout: Duration::from_secs(10),
+		}
+	}
+}
+
+impl PingPongConfig {
+	/// Creates a new ping/pong configuration with the given intervals.
+	///
+	/// # Arguments
+	///
+	/// * `ping_interval` - How often to send ping frames
+	/// * `pong_timeout` - How long to wait for a pong response
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::connection::PingPongConfig;
+	/// use std::time::Duration;
+	///
+	/// let config = PingPongConfig::new(
+	///     Duration::from_secs(20),
+	///     Duration::from_secs(8),
+	/// );
+	/// assert_eq!(config.ping_interval(), Duration::from_secs(20));
+	/// assert_eq!(config.pong_timeout(), Duration::from_secs(8));
+	/// ```
+	pub fn new(ping_interval: Duration, pong_timeout: Duration) -> Self {
+		Self {
+			ping_interval,
+			pong_timeout,
+		}
+	}
+
+	/// Returns the ping interval duration.
+	pub fn ping_interval(&self) -> Duration {
+		self.ping_interval
+	}
+
+	/// Returns the pong timeout duration.
+	pub fn pong_timeout(&self) -> Duration {
+		self.pong_timeout
+	}
+
+	/// Sets the ping interval duration.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::connection::PingPongConfig;
+	/// use std::time::Duration;
+	///
+	/// let config = PingPongConfig::default()
+	///     .with_ping_interval(Duration::from_secs(60));
+	/// assert_eq!(config.ping_interval(), Duration::from_secs(60));
+	/// ```
+	pub fn with_ping_interval(mut self, interval: Duration) -> Self {
+		self.ping_interval = interval;
+		self
+	}
+
+	/// Sets the pong timeout duration.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::connection::PingPongConfig;
+	/// use std::time::Duration;
+	///
+	/// let config = PingPongConfig::default()
+	///     .with_pong_timeout(Duration::from_secs(15));
+	/// assert_eq!(config.pong_timeout(), Duration::from_secs(15));
+	/// ```
+	pub fn with_pong_timeout(mut self, timeout: Duration) -> Self {
+		self.pong_timeout = timeout;
+		self
+	}
+}
+
 /// Connection timeout configuration
 ///
 /// This struct defines the timeout settings for WebSocket connections
@@ -37,6 +152,8 @@ pub struct ConnectionConfig {
 	cleanup_interval: Duration,
 	/// Maximum number of concurrent connections allowed (None for unlimited)
 	max_connections: Option<usize>,
+	/// Ping/pong keepalive configuration
+	ping_config: PingPongConfig,
 }
 
 impl Default for ConnectionConfig {
@@ -46,6 +163,7 @@ impl Default for ConnectionConfig {
 			handshake_timeout: Duration::from_secs(10), // 10 seconds default
 			cleanup_interval: Duration::from_secs(30), // 30 seconds default
 			max_connections: None,                  // Unlimited by default
+			ping_config: PingPongConfig::default(),
 		}
 	}
 }
@@ -175,6 +293,38 @@ impl ConnectionConfig {
 		self.max_connections
 	}
 
+	/// Set the ping/pong keepalive configuration.
+	///
+	/// # Arguments
+	///
+	/// * `config` - The ping/pong configuration to use
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_websockets::connection::{ConnectionConfig, PingPongConfig};
+	/// use std::time::Duration;
+	///
+	/// let ping_config = PingPongConfig::new(
+	///     Duration::from_secs(15),
+	///     Duration::from_secs(5),
+	/// );
+	/// let config = ConnectionConfig::new()
+	///     .with_ping_config(ping_config);
+	///
+	/// assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(15));
+	/// assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(5));
+	/// ```
+	pub fn with_ping_config(mut self, config: PingPongConfig) -> Self {
+		self.ping_config = config;
+		self
+	}
+
+	/// Get the ping/pong keepalive configuration.
+	pub fn ping_config(&self) -> &PingPongConfig {
+		&self.ping_config
+	}
+
 	/// Create a configuration with no idle timeout (connections never time out)
 	///
 	/// # Examples
@@ -192,6 +342,7 @@ impl ConnectionConfig {
 			handshake_timeout: Duration::MAX,
 			cleanup_interval: Duration::from_secs(30),
 			max_connections: None,
+			ping_config: PingPongConfig::default(),
 		}
 	}
 
@@ -218,6 +369,10 @@ impl ConnectionConfig {
 			handshake_timeout: Duration::from_secs(5),
 			cleanup_interval: Duration::from_secs(10),
 			max_connections: None,
+			ping_config: PingPongConfig::new(
+				Duration::from_secs(10),
+				Duration::from_secs(5),
+			),
 		}
 	}
 
@@ -244,6 +399,10 @@ impl ConnectionConfig {
 			handshake_timeout: Duration::from_secs(30),
 			cleanup_interval: Duration::from_secs(60),
 			max_connections: None,
+			ping_config: PingPongConfig::new(
+				Duration::from_secs(60),
+				Duration::from_secs(30),
+			),
 		}
 	}
 }
@@ -286,6 +445,9 @@ impl WebSocketError {
 			Self::Internal(_) => "Internal server error",
 			Self::Timeout(_) => "Connection timed out",
 			Self::ReconnectFailed(_) => "Reconnection failed",
+			Self::BinaryPayload(_) => "Invalid message format",
+			Self::HeartbeatTimeout(_) => "Connection timed out",
+			Self::SlowConsumer(_) => "Server overloaded",
 		}
 	}
 
@@ -302,6 +464,9 @@ impl WebSocketError {
 			Self::Internal(msg) => format!("Internal error: {}", msg),
 			Self::Timeout(d) => format!("Connection timeout: idle for {:?}", d),
 			Self::ReconnectFailed(n) => format!("Reconnection failed after {} attempts", n),
+			Self::BinaryPayload(msg) => format!("Invalid binary payload: {}", msg),
+			Self::HeartbeatTimeout(d) => format!("Heartbeat timeout: no pong within {:?}", d),
+			Self::SlowConsumer(d) => format!("Slow consumer: send timed out after {:?}", d),
 		}
 	}
 }
@@ -1523,6 +1688,88 @@ mod tests {
 
 		// Cleanup
 		handle.abort();
+	}
+
+	#[rstest]
+	fn test_ping_pong_config_default() {
+		// Arrange & Act
+		let config = PingPongConfig::default();
+
+		// Assert
+		assert_eq!(config.ping_interval(), Duration::from_secs(30));
+		assert_eq!(config.pong_timeout(), Duration::from_secs(10));
+	}
+
+	#[rstest]
+	fn test_ping_pong_config_custom() {
+		// Arrange & Act
+		let config = PingPongConfig::new(
+			Duration::from_secs(15),
+			Duration::from_secs(5),
+		);
+
+		// Assert
+		assert_eq!(config.ping_interval(), Duration::from_secs(15));
+		assert_eq!(config.pong_timeout(), Duration::from_secs(5));
+	}
+
+	#[rstest]
+	fn test_ping_pong_config_builder() {
+		// Arrange & Act
+		let config = PingPongConfig::default()
+			.with_ping_interval(Duration::from_secs(60))
+			.with_pong_timeout(Duration::from_secs(20));
+
+		// Assert
+		assert_eq!(config.ping_interval(), Duration::from_secs(60));
+		assert_eq!(config.pong_timeout(), Duration::from_secs(20));
+	}
+
+	#[rstest]
+	fn test_connection_config_has_default_ping_config() {
+		// Arrange & Act
+		let config = ConnectionConfig::new();
+
+		// Assert
+		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(30));
+		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(10));
+	}
+
+	#[rstest]
+	fn test_connection_config_with_custom_ping_config() {
+		// Arrange
+		let ping_config = PingPongConfig::new(
+			Duration::from_secs(15),
+			Duration::from_secs(5),
+		);
+
+		// Act
+		let config = ConnectionConfig::new()
+			.with_ping_config(ping_config);
+
+		// Assert
+		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(15));
+		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(5));
+	}
+
+	#[rstest]
+	fn test_strict_config_has_aggressive_ping() {
+		// Arrange & Act
+		let config = ConnectionConfig::strict();
+
+		// Assert
+		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(10));
+		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(5));
+	}
+
+	#[rstest]
+	fn test_permissive_config_has_relaxed_ping() {
+		// Arrange & Act
+		let config = ConnectionConfig::permissive();
+
+		// Assert
+		assert_eq!(config.ping_config().ping_interval(), Duration::from_secs(60));
+		assert_eq!(config.ping_config().pong_timeout(), Duration::from_secs(30));
 	}
 
 	#[rstest]
