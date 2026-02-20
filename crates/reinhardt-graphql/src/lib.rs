@@ -84,7 +84,7 @@ pub use schema::{
 	AppSchema, CreateUserInput, Mutation, Query, QueryLimits, User, UserStorage, create_schema,
 	create_schema_with_limits,
 };
-pub use subscription::{EventBroadcaster, SubscriptionRoot, UserEvent};
+pub use subscription::{DEFAULT_CHANNEL_CAPACITY, EventBroadcaster, SubscriptionRoot, UserEvent};
 
 #[cfg(feature = "graphql-grpc")]
 pub use grpc_service::GraphQLGrpcService;
