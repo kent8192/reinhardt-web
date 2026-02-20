@@ -173,8 +173,11 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 								#di_crate::Injected::<#inner_ty>::resolve(__di_ctx)
 									.await
 									.map_err(|e| {
-										eprintln!("Dependency injection failed for {} in {}: {:?}",
-											stringify!(#name), stringify!(#struct_name), e);
+										tracing::debug!(
+									field = stringify!(#name),
+									target_type = stringify!(#struct_name),
+									"dependency injection resolution failed"
+								);
 										e
 									})?
 							}
@@ -183,8 +186,11 @@ pub(crate) fn injectable_impl(args: TokenStream, input: DeriveInput) -> Result<T
 								#di_crate::Injected::<#inner_ty>::resolve_uncached(__di_ctx)
 									.await
 									.map_err(|e| {
-										eprintln!("Dependency injection failed for {} in {}: {:?}",
-											stringify!(#name), stringify!(#struct_name), e);
+										tracing::debug!(
+									field = stringify!(#name),
+									target_type = stringify!(#struct_name),
+									"dependency injection resolution failed"
+								);
 										e
 									})?
 							}
