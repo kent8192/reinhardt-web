@@ -11,7 +11,7 @@ use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::routers::DefaultRouter;
 use std::sync::Arc;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use crate::DispatchError;
 
@@ -67,14 +67,18 @@ impl BaseHandler {
 
 		// Emit request_started signal
 		let event = RequestStartedEvent::new();
-		let _ = request_started().send(event).await;
+		if let Err(e) = request_started().send(event).await {
+			warn!("Failed to send request_started signal: {}", e);
+		}
 
 		// Get response with router
 		let response = Self::get_response_async(request, self.router.as_ref()).await;
 
 		// Emit request_finished signal
 		let event = RequestFinishedEvent::new();
-		let _ = request_finished().send(event).await;
+		if let Err(e) = request_finished().send(event).await {
+			warn!("Failed to send request_finished signal: {}", e);
+		}
 
 		response
 	}
