@@ -206,7 +206,7 @@ impl SessionConfig {
 		Self {
 			cookie_name,
 			ttl,
-			secure: false,
+			secure: true,
 			http_only: true,
 			same_site: Some("Lax".to_string()),
 			domain: None,
