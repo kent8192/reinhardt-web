@@ -204,10 +204,7 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	// 3. Validate element nesting
 	validate_element_nesting(elem, parent_tags)?;
 
-	// 4. Validate required attributes (using typed attrs)
-	validate_required_attributes(&tag, &typed_attrs, elem.span)?;
-
-	// 5. Recursively transform children
+	// 4. Recursively transform children
 	let mut child_tags = parent_tags.to_vec();
 	child_tags.push(tag.clone());
 	let typed_children = transform_nodes(&elem.children, &child_tags)?;
@@ -809,42 +806,6 @@ fn validate_element_nesting(elem: &PageElement, parent_tags: &[String]) -> Resul
 	Ok(())
 }
 
-/// Validates required attributes for certain elements.
-///
-/// # Rules
-///
-/// - img elements must have an alt attribute (accessibility requirement)
-/// - img elements must have a src attribute with a non-empty string literal
-///
-/// # Errors
-///
-/// Returns a compilation error if required attributes are missing or invalid.
-fn validate_required_attributes(tag: &str, attrs: &[TypedPageAttr], span: Span) -> Result<()> {
-	// img requires alt and src attributes
-	if tag == "img" {
-		// Check alt attribute (accessibility)
-		let has_alt = attrs.iter().any(|attr| attr.name == "alt");
-		if !has_alt {
-			return Err(syn::Error::new(
-				span,
-				"Element <img> requires 'alt' attribute for accessibility",
-			));
-		}
-
-		// Check src attribute (required for img)
-		let has_src = attrs.iter().any(|attr| attr.name == "src");
-		if !has_src {
-			return Err(syn::Error::new(
-				span,
-				"Element <img> requires 'src' attribute",
-			));
-		}
-
-		// Note: src type validation (must be string literal, non-empty) is done in validate_attr_type()
-	}
-
-	Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -952,23 +913,6 @@ mod tests {
 				.unwrap_err()
 				.to_string()
 				.contains("cannot be nested inside another interactive element")
-		);
-	}
-
-	#[test]
-	fn test_img_missing_alt() {
-		let elem = PageElement::new(
-			syn::Ident::new("img", proc_macro2::Span::call_site()),
-			proc_macro2::Span::call_site(),
-		);
-
-		let result = validate_required_attributes("img", &[], elem.span);
-		assert!(result.is_err());
-		assert!(
-			result
-				.unwrap_err()
-				.to_string()
-				.contains("requires 'alt' attribute")
 		);
 	}
 
