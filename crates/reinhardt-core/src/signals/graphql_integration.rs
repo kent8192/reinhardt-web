@@ -281,7 +281,9 @@ impl GraphQLSubscriptionBridge {
 
 				let streams_read = streams.read();
 				if let Some(stream) = streams_read.get(&subscription_name) {
-					let _ = stream.send(json);
+					if let Err(e) = stream.send(json) {
+						eprintln!("Failed to send GraphQL subscription event: {}", e);
+					}
 				}
 
 				Ok(())

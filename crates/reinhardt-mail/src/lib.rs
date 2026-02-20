@@ -231,4 +231,16 @@ pub enum EmailError {
 	HeaderInjection(String),
 }
 
+impl EmailError {
+	/// Returns true if this is a transient error that can be safely suppressed
+	/// by fail_silently mode.
+	///
+	/// Configuration errors, authentication failures, and security errors
+	/// are never considered transient and will always propagate even when
+	/// fail_silently is enabled.
+	pub fn is_transient(&self) -> bool {
+		matches!(self, EmailError::IoError(_) | EmailError::SmtpError(_))
+	}
+}
+
 pub type EmailResult<T> = std::result::Result<T, EmailError>;

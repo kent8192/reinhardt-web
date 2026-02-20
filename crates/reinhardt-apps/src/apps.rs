@@ -469,14 +469,30 @@ impl Apps {
 			.unwrap_or_else(PoisonError::into_inner) = true;
 
 		// 1. Import and instantiate AppConfig for each installed app
+		// Detect duplicate entries in the installed_apps list itself
+		{
+			let mut seen = std::collections::HashSet::new();
+			for app_name in &self.installed_apps {
+				if !seen.insert(app_name) {
+					return Err(AppError::DuplicateLabel(app_name.clone()));
+				}
+			}
+		}
+
 		for app_name in &self.installed_apps {
 			let app_config = AppConfig::new(app_name.clone(), app_name.clone());
 
-			// Store in registries
-			self.app_configs
+			// Skip apps already registered via register() to avoid overwriting
+			let mut configs = self
+				.app_configs
 				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.insert(app_config.label.clone(), app_config.clone());
+				.unwrap_or_else(PoisonError::into_inner);
+			if configs.contains_key(&app_config.label) {
+				continue;
+			}
+			configs.insert(app_config.label.clone(), app_config.clone());
+			drop(configs);
+
 			self.app_names
 				.lock()
 				.unwrap_or_else(PoisonError::into_inner)

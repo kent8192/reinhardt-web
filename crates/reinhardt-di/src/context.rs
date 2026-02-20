@@ -546,9 +546,11 @@ impl InjectionContext {
 			register_type_name::<T>(type_name);
 
 			// [Fast path] Skip circular detection on cache hit
-			let scope = registry
-				.get_scope::<T>()
-				.unwrap_or(DependencyScope::Singleton);
+			let scope = registry.get_scope::<T>().ok_or_else(|| {
+				crate::DiError::DependencyNotRegistered {
+					type_name: type_name.to_string(),
+				}
+			})?;
 			match scope {
 				DependencyScope::Singleton => {
 					if let Some(cached) = self.get_singleton::<T>() {
