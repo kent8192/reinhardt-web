@@ -109,9 +109,9 @@ impl DevelopmentErrorHandler {
 			let mut current = Some(source);
 			while let Some(err) = current {
 				html.push_str(&format!(
-				"        <li>{}</li>\n",
-				escape_html(&err.to_string())
-			));
+					"        <li>{}</li>\n",
+					escape_html(&err.to_string())
+				));
 				current = err.source();
 			}
 

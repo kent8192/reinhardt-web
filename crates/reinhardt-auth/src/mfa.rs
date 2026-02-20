@@ -285,8 +285,7 @@ mod tests {
 			.unwrap();
 
 		// Act - generate SHA-1 TOTP (old algorithm)
-		let totp_sha1 =
-			totp_lite::totp_custom::<totp_lite::Sha1>(30, 6, &secret_bytes, time_step);
+		let totp_sha1 = totp_lite::totp_custom::<totp_lite::Sha1>(30, 6, &secret_bytes, time_step);
 
 		// SHA-256 code for comparison
 		let totp_sha256 =
@@ -323,7 +322,10 @@ mod tests {
 				totp_lite::totp_custom::<totp_lite::Sha256>(30, 6, &secret_bytes, time_step - 1);
 			let result = mfa.verify_totp("alice", &totp_prev);
 			assert!(result.is_ok());
-			assert!(result.unwrap(), "Previous time step TOTP should be accepted");
+			assert!(
+				result.unwrap(),
+				"Previous time step TOTP should be accepted"
+			);
 		}
 
 		// Act & Assert - next time step should be accepted

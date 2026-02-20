@@ -159,5 +159,19 @@ fn format_error_message(error: &PathValidationError) -> String {
 				pos
 			)
 		}
+		PathValidationError::PathTraversal(pos) => {
+			format!(
+				"Path traversal sequence '..' detected at position {}\n\
+                 URL paths must not contain '..' to prevent directory traversal attacks",
+				pos
+			)
+		}
+		PathValidationError::DuplicateParameterName { name, position } => {
+			format!(
+				"Duplicate parameter name '{}' at position {}\n\
+                 Each parameter name must be unique within the path",
+				name, position
+			)
+		}
 	}
 }

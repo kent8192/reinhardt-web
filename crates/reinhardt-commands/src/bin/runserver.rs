@@ -13,9 +13,9 @@ use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
 use reinhardt_pages::component::Component;
 use reinhardt_pages::ssr::SsrRenderer;
+use reinhardt_utils::safe_path_join;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};
-use reinhardt_utils::safe_path_join;
 use std::convert::Infallible;
 use std::env;
 use std::fs::File;
@@ -161,7 +161,7 @@ fn load_settings() -> Settings {
 				.with_value("debug", serde_json::json!(true))
 				.with_value(
 					"secret_key",
-					serde_json::json!("insecure-dev-key-change-in-production"),
+					serde_json::json!(generate_random_secret_key()),
 				)
 				.with_value("allowed_hosts", serde_json::json!([]))
 				.with_value("installed_apps", serde_json::json!([]))
@@ -367,6 +367,24 @@ fn generate_self_signed_cert() -> Result<
 		vec![rustls::pki_types::CertificateDer::from(cert_der)],
 		rustls::pki_types::PrivateKeyDer::try_from(key_der)?,
 	))
+}
+
+/// Generate a cryptographically random secret key for fallback use.
+///
+/// Produces a 50-character hex string (200 bits of entropy). This is used
+/// as the default `SECRET_KEY` when no explicit key is configured, ensuring
+/// that each process gets a unique key rather than a shared hardcoded value.
+fn generate_random_secret_key() -> String {
+	use rand::Rng;
+	use std::fmt::Write;
+
+	let mut rng = rand::thread_rng();
+	let bytes: [u8; 25] = rng.r#gen();
+	let mut hex_string = String::with_capacity(50);
+	for b in bytes {
+		let _ = write!(hex_string, "{:02x}", b);
+	}
+	hex_string
 }
 
 #[tokio::main]

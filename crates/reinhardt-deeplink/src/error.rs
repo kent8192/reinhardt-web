@@ -20,6 +20,14 @@ pub enum DeeplinkError {
 	#[error("invalid iOS app ID format: {0}. Expected format: TEAM_ID.bundle_identifier")]
 	InvalidAppId(String),
 
+	/// Invalid Android package name format.
+	///
+	/// Package names must follow Java package naming conventions.
+	#[error(
+		"invalid Android package name: {0}. Expected Java package format (e.g., com.example.app)"
+	)]
+	InvalidPackageName(String),
+
 	/// Invalid Android SHA256 fingerprint format.
 	///
 	/// Fingerprints must be 32 colon-separated hex bytes (e.g., `FA:C6:17:...`).
@@ -190,6 +198,53 @@ pub fn validate_scheme_name(scheme: &str) -> Result<(), DeeplinkError> {
 	Ok(())
 }
 
+/// Validates an Android package name format.
+///
+/// Android package names must follow Java package naming conventions:
+/// - Must contain at least one dot separator
+/// - Each segment must start with a letter
+/// - Only letters, digits, and underscores are allowed in each segment
+/// - Must not be empty
+///
+/// # Errors
+///
+/// Returns `DeeplinkError::InvalidPackageName` if the format is invalid.
+pub fn validate_package_name(name: &str) -> Result<(), DeeplinkError> {
+	if name.is_empty() {
+		return Err(DeeplinkError::InvalidPackageName(name.to_string()));
+	}
+
+	// Must contain at least one dot
+	if !name.contains('.') {
+		return Err(DeeplinkError::InvalidPackageName(name.to_string()));
+	}
+
+	let segments: Vec<&str> = name.split('.').collect();
+	for segment in &segments {
+		// Each segment must not be empty
+		if segment.is_empty() {
+			return Err(DeeplinkError::InvalidPackageName(name.to_string()));
+		}
+
+		// Each segment must start with a letter
+		let first_char = segment.chars().next()
+			.expect("segment is non-empty after the emptiness check above");
+		if !first_char.is_ascii_alphabetic() {
+			return Err(DeeplinkError::InvalidPackageName(name.to_string()));
+		}
+
+		// Each segment can only contain letters, digits, and underscores
+		if !segment
+			.chars()
+			.all(|c| c.is_ascii_alphanumeric() || c == '_')
+		{
+			return Err(DeeplinkError::InvalidPackageName(name.to_string()));
+		}
+	}
+
+	Ok(())
+}
+
 /// Validates an Android SHA256 fingerprint format.
 ///
 /// Valid format: 32 colon-separated hex bytes (e.g., `FA:C6:17:45:...`).
@@ -344,6 +399,24 @@ mod tests {
 	}
 
 	// -- validate_fingerprint --
+
+	#[rstest]
+	#[case("com.example.app", true)]
+	#[case("com.example.myapp", true)]
+	#[case("org.company.product", true)]
+	#[case("com.example.app_v2", true)]
+	#[case("", false)] // empty
+	#[case("nopackage", false)] // no dot
+	#[case(".com.example", false)] // starts with dot (empty first segment)
+	#[case("com.example.", false)] // ends with dot (empty last segment)
+	#[case("123.invalid.name", false)] // segment starts with digit
+	#[case("com.123.app", false)] // segment starts with digit
+	#[case("com.exam ple.app", false)] // contains space
+	#[case("com.exam-ple.app", false)] // contains hyphen
+	fn test_validate_package_name(#[case] name: &str, #[case] expected_valid: bool) {
+		let result = validate_package_name(name);
+		assert_eq!(result.is_ok(), expected_valid, "package_name: {}", name);
+	}
 
 	#[rstest]
 	#[case(

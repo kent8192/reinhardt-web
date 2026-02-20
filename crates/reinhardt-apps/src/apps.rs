@@ -10,7 +10,7 @@
 use crate::signals;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use thiserror::Error as ThisError;
 
 /// Errors that can occur when working with the application registry
@@ -81,10 +81,77 @@ impl AppConfig {
 		self
 	}
 
-	/// Set the path for the application
-	pub fn with_path(mut self, path: impl Into<String>) -> Self {
-		self.path = Some(path.into());
-		self
+	/// Set the path for the application.
+	///
+	/// The path is validated to reject path traversal sequences (`..`),
+	/// absolute paths (starting with `/` or a Windows drive letter), and
+	/// null bytes. These restrictions prevent path traversal attacks when
+	/// the path is later used to locate application resources on disk.
+	///
+	/// # Errors
+	///
+	/// Returns [`AppError::ConfigError`] if the path contains disallowed
+	/// sequences.
+	pub fn with_path(mut self, path: impl Into<String>) -> AppResult<Self> {
+		let path = path.into();
+		Self::validate_path(&path)?;
+		self.path = Some(path);
+		Ok(self)
+	}
+
+	/// Validates an application path to prevent path traversal and injection.
+	///
+	/// Rejects paths that contain:
+	/// - Path traversal sequences (`..`)
+	/// - Absolute paths (starting with `/` or a Windows drive letter like `C:\`)
+	/// - Null bytes (`\0`)
+	/// - Control characters
+	fn validate_path(path: &str) -> AppResult<()> {
+		if path.is_empty() {
+			return Err(AppError::ConfigError(
+				"application path cannot be empty".to_string(),
+			));
+		}
+
+		// Reject null bytes
+		if path.contains('\0') {
+			return Err(AppError::ConfigError(
+				"application path must not contain null bytes".to_string(),
+			));
+		}
+
+		// Reject control characters (prevents log injection)
+		if path.chars().any(|c| c.is_control()) {
+			return Err(AppError::ConfigError(
+				"application path must not contain control characters".to_string(),
+			));
+		}
+
+		// Reject absolute paths (Unix-style or Windows-style)
+		if path.starts_with('/') || path.starts_with('\\') {
+			return Err(AppError::ConfigError(
+				"application path must be relative, not absolute".to_string(),
+			));
+		}
+
+		// Reject Windows drive letter paths (e.g., C:\, D:/)
+		if path.len() >= 2 && path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes()[1] == b':'
+		{
+			return Err(AppError::ConfigError(
+				"application path must be relative, not absolute".to_string(),
+			));
+		}
+
+		// Reject path traversal sequences
+		for component in path.split(['/', '\\']) {
+			if component == ".." {
+				return Err(AppError::ConfigError(
+					"application path must not contain path traversal sequences".to_string(),
+				));
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Set the default auto field for the application
@@ -290,17 +357,23 @@ impl Apps {
 
 	/// Check if the registry is fully ready
 	pub fn is_ready(&self) -> bool {
-		*self.ready.lock().unwrap()
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Check if app configurations are ready
 	pub fn is_apps_ready(&self) -> bool {
-		*self.apps_ready.lock().unwrap()
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Check if models are ready
 	pub fn is_models_ready(&self) -> bool {
-		*self.models_ready.lock().unwrap()
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
 	}
 
 	/// Register an application configuration
@@ -308,8 +381,14 @@ impl Apps {
 		// Validate the configuration
 		config.validate_label()?;
 
-		let mut configs = self.app_configs.lock().unwrap();
-		let mut names = self.app_names.lock().unwrap();
+		let mut configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		let mut names = self
+			.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
 
 		// Check for duplicate label
 		if configs.contains_key(&config.label) {
@@ -332,7 +411,7 @@ impl Apps {
 	pub fn get_app_config(&self, label: &str) -> AppResult<AppConfig> {
 		self.app_configs
 			.lock()
-			.unwrap()
+			.unwrap_or_else(PoisonError::into_inner)
 			.get(label)
 			.cloned()
 			.ok_or_else(|| AppError::NotFound(label.to_string()))
@@ -340,14 +419,27 @@ impl Apps {
 
 	/// Get all registered application configurations
 	pub fn get_app_configs(&self) -> Vec<AppConfig> {
-		self.app_configs.lock().unwrap().values().cloned().collect()
+		self.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.values()
+			.cloned()
+			.collect()
 	}
 
 	/// Check if an application is installed
 	pub fn is_installed(&self, name: &str) -> bool {
 		self.installed_apps.contains(&name.to_string())
-			|| self.app_names.lock().unwrap().contains_key(name)
-			|| self.app_configs.lock().unwrap().contains_key(name)
+			|| self
+				.app_names
+				.lock()
+				.unwrap_or_else(PoisonError::into_inner)
+				.contains_key(name)
+			|| self
+				.app_configs
+				.lock()
+				.unwrap_or_else(PoisonError::into_inner)
+				.contains_key(name)
 	}
 
 	/// Populate the registry with application configurations
@@ -368,7 +460,10 @@ impl Apps {
 	/// ```
 	pub fn populate(&self) -> AppResult<()> {
 		// Mark as apps_ready
-		*self.apps_ready.lock().unwrap() = true;
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = true;
 
 		// 1. Import and instantiate AppConfig for each installed app
 		for app_name in &self.installed_apps {
@@ -377,16 +472,19 @@ impl Apps {
 			// Store in registries
 			self.app_configs
 				.lock()
-				.unwrap()
+				.unwrap_or_else(PoisonError::into_inner)
 				.insert(app_config.label.clone(), app_config.clone());
 			self.app_names
 				.lock()
-				.unwrap()
+				.unwrap_or_else(PoisonError::into_inner)
 				.insert(app_name.clone(), app_config.label.clone());
 		}
 
 		// 2. Call ready() method on each AppConfig and send signals
-		let configs = self.app_configs.lock().unwrap();
+		let configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
 		for app_config in configs.values() {
 			// Call the ready hook
 			app_config.ready().map_err(|e| {
@@ -406,26 +504,45 @@ impl Apps {
 		// which automatically registers them at construction time
 
 		// 4. Build reverse relations between models
-		if !*self.models_ready.lock().unwrap() {
+		if !*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+		{
 			crate::discovery::build_reverse_relations();
 			// Finalize reverse relations to make them immutable
 			crate::registry::finalize_reverse_relations();
 		}
 
 		// Mark as models_ready
-		*self.models_ready.lock().unwrap() = true;
-		*self.ready.lock().unwrap() = true;
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = true;
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner) = true;
 
 		Ok(())
 	}
 
 	/// Clear all cached data (for testing)
 	pub fn clear_cache(&self) {
-		self.app_configs.lock().unwrap().clear();
-		self.app_names.lock().unwrap().clear();
-		*self.ready.lock().unwrap() = false;
-		*self.apps_ready.lock().unwrap() = false;
-		*self.models_ready.lock().unwrap() = false;
+		self.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.clear();
+		self.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.clear();
+		*self.ready.lock().unwrap_or_else(PoisonError::into_inner) = false;
+		*self
+			.apps_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = false;
+		*self
+			.models_ready
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner) = false;
 	}
 }
 
@@ -451,105 +568,207 @@ mod di_integration {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_app_config_creation() {
+		// Arrange & Act
 		let config = AppConfig::new("myapp", "myapp")
 			.with_verbose_name("My Application")
 			.with_default_auto_field("BigAutoField");
 
+		// Assert
 		assert_eq!(config.name, "myapp");
 		assert_eq!(config.label, "myapp");
 		assert_eq!(config.verbose_name, Some("My Application".to_string()));
 		assert_eq!(config.default_auto_field, Some("BigAutoField".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_app_config_validation() {
+		// Arrange
 		let valid = AppConfig::new("myapp", "myapp");
-		assert!(valid.validate_label().is_ok());
-
 		let invalid = AppConfig::new("myapp", "my-app");
-		assert!(invalid.validate_label().is_err());
-
 		let empty = AppConfig::new("myapp", "");
+
+		// Act & Assert
+		assert!(valid.validate_label().is_ok());
+		assert!(invalid.validate_label().is_err());
 		assert!(empty.validate_label().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apps_registry() {
+		// Arrange
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 
+		// Act & Assert
 		assert!(apps.is_installed("myapp"));
 		assert!(apps.is_installed("anotherapp"));
 		assert!(!apps.is_installed("notinstalled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_app() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		let config = AppConfig::new("myapp", "myapp");
 
+		// Act & Assert
 		assert!(apps.register(config).is_ok());
 		assert!(apps.get_app_config("myapp").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_duplicate_registration() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		let config1 = AppConfig::new("myapp", "myapp");
 		let config2 = AppConfig::new("myapp", "myapp");
-
 		apps.register(config1).unwrap();
+
+		// Act
 		let result = apps.register(config2);
 
+		// Assert
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_app_configs() {
+		// Arrange
 		let apps = Apps::new(vec![]);
-
 		apps.register(AppConfig::new("app1", "app1")).unwrap();
 		apps.register(AppConfig::new("app2", "app2")).unwrap();
 
+		// Act
 		let configs = apps.get_app_configs();
+
+		// Assert
 		assert_eq!(configs.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		assert!(!apps.is_ready());
 
+		// Act
 		apps.populate().unwrap();
 
+		// Assert
 		assert!(apps.is_ready());
 		assert!(apps.is_apps_ready());
 		assert!(apps.is_models_ready());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate_with_installed_apps() {
+		// Arrange
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 		assert!(!apps.is_ready());
 
-		// Populate should create AppConfig for each installed app
+		// Act
 		let result = apps.populate();
-		assert!(result.is_ok());
 
-		// Verify apps are ready
+		// Assert
+		assert!(result.is_ok());
 		assert!(apps.is_ready());
 		assert!(apps.is_apps_ready());
 		assert!(apps.is_models_ready());
-
-		// Verify AppConfigs were created
 		assert!(apps.get_app_config("myapp").is_ok());
 		assert!(apps.get_app_config("anotherapp").is_ok());
-
-		// Verify app configs contain correct labels
 		let myapp_config = apps.get_app_config("myapp").unwrap();
 		assert_eq!(myapp_config.label, "myapp");
+	}
+
+	// ==========================================================================
+	// Path Validation Tests
+	// ==========================================================================
+
+	#[rstest]
+	#[case("apps/myapp")]
+	#[case("myapp")]
+	#[case("src/apps/myapp")]
+	#[case("my_app")]
+	#[case("my-app")]
+	fn test_with_path_accepts_valid_relative_paths(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		assert!(result.is_ok(), "expected valid path: {path}");
+		assert_eq!(result.unwrap().path, Some(path.to_string()));
+	}
+
+	#[rstest]
+	fn test_with_path_rejects_empty() {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path("");
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("cannot be empty"));
+	}
+
+	#[rstest]
+	#[case("../etc/passwd")]
+	#[case("apps/../../../etc/shadow")]
+	#[case("apps/..")]
+	fn test_with_path_rejects_traversal(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("path traversal"),
+			"expected traversal error for '{path}', got: {err}"
+		);
+	}
+
+	#[rstest]
+	#[case("/etc/passwd")]
+	#[case("/absolute/path")]
+	#[case("\\windows\\path")]
+	#[case("C:\\Windows\\System32")]
+	#[case("D:/data")]
+	fn test_with_path_rejects_absolute(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("relative, not absolute"),
+			"expected absolute path error for '{path}', got: {err}"
+		);
+	}
+
+	#[rstest]
+	fn test_with_path_rejects_null_bytes() {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path("apps/my\0app");
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("null bytes"));
+	}
+
+	#[rstest]
+	#[case("apps/my\napp")]
+	#[case("apps/my\rapp")]
+	fn test_with_path_rejects_control_chars(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("control characters"),
+			"expected control char error for path, got: {err}"
+		);
 	}
 }
 

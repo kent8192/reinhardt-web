@@ -63,6 +63,9 @@ web-sys-full = [
 # Documentation
 aquamarine = "0.5"
 
+# Constant-time comparison for CSRF token verification
+subtle = { workspace = true }
+
 # Core types (Page, PageElement, Head, etc.)
 
 # Reactive system

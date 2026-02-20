@@ -829,10 +829,7 @@ mod tests {
 		);
 
 		let failed = ReconnectionState::Failed { total_attempts: 5 };
-		assert_eq!(
-			failed,
-			ReconnectionState::Failed { total_attempts: 5 }
-		);
+		assert_eq!(failed, ReconnectionState::Failed { total_attempts: 5 });
 
 		let disabled = ReconnectionState::Disabled;
 		assert_eq!(disabled, ReconnectionState::Disabled);
@@ -948,8 +945,8 @@ mod tests {
 		let config = ReconnectionConfig::default()
 			.with_max_attempts(3)
 			.with_jitter_factor(0.0);
-		let handler = AutoReconnectHandler::new(config)
-			.with_on_state_change(Box::new(move |_state| {
+		let handler =
+			AutoReconnectHandler::new(config).with_on_state_change(Box::new(move |_state| {
 				callback_fired_clone.store(true, std::sync::atomic::Ordering::SeqCst);
 			}));
 

@@ -140,8 +140,12 @@ impl JSONField {
 			return false;
 		}
 		match value {
-			Value::Array(arr) => arr.iter().all(|v| Self::depth_check_recursive(v, current + 1, max)),
-			Value::Object(map) => map.values().all(|v| Self::depth_check_recursive(v, current + 1, max)),
+			Value::Array(arr) => arr
+				.iter()
+				.all(|v| Self::depth_check_recursive(v, current + 1, max)),
+			Value::Object(map) => map
+				.values()
+				.all(|v| Self::depth_check_recursive(v, current + 1, max)),
 			_ => true,
 		}
 	}
@@ -163,8 +167,8 @@ impl JSONField {
 				.error_messages
 				.get("missing_keys")
 				.cloned()
-				.unwrap_or_else(|| format!("Missing required keys: {:?}", missing_keys));
-			return Err(FieldError::validation(Some(&self.name), &error_msg));
+				.unwrap_or_else(|| "Missing required keys.".to_string());
+			return Err(FieldError::validation(None, &error_msg));
 		}
 
 		Ok(())
@@ -209,7 +213,7 @@ impl FormField for JSONField {
 					.get("required")
 					.cloned()
 					.unwrap_or_else(|| "This field is required.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 			return Ok(Value::Null);
 		}
@@ -222,7 +226,7 @@ impl FormField for JSONField {
 					.get("invalid")
 					.cloned()
 					.unwrap_or_else(|| "Enter valid JSON.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 		};
 
@@ -234,7 +238,7 @@ impl FormField for JSONField {
 					.get("required")
 					.cloned()
 					.unwrap_or_else(|| "This field is required.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 			return Ok(Value::Null);
 		}
@@ -248,18 +252,15 @@ impl FormField for JSONField {
 					.get("invalid")
 					.cloned()
 					.unwrap_or_else(|| "Enter valid JSON.".to_string());
-				return Err(FieldError::validation(Some(&self.name), &error_msg));
+				return Err(FieldError::validation(None, &error_msg));
 			}
 		};
 
 		// Check nesting depth to prevent stack overflow from deeply nested payloads
 		if !Self::check_depth(&parsed, self.max_depth) {
 			return Err(FieldError::validation(
-				Some(&self.name),
-				&format!(
-					"JSON nesting depth exceeds the maximum allowed depth of {}.",
-					self.max_depth
-				),
+				None,
+				"JSON structure is too deeply nested.",
 			));
 		}
 
@@ -270,7 +271,7 @@ impl FormField for JSONField {
 				.get("invalid_type")
 				.cloned()
 				.unwrap_or_else(|| "JSON must be an object.".to_string());
-			return Err(FieldError::validation(Some(&self.name), &error_msg));
+			return Err(FieldError::validation(None, &error_msg));
 		}
 
 		if self.require_array && !parsed.is_array() {
@@ -279,7 +280,7 @@ impl FormField for JSONField {
 				.get("invalid_type")
 				.cloned()
 				.unwrap_or_else(|| "JSON must be an array.".to_string());
-			return Err(FieldError::validation(Some(&self.name), &error_msg));
+			return Err(FieldError::validation(None, &error_msg));
 		}
 
 		// Validate required keys for objects

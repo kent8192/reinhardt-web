@@ -13,11 +13,11 @@ pub type MiddlewareResult<T> = Result<T, MiddlewareError>;
 /// Middleware errors
 #[derive(Debug, thiserror::Error)]
 pub enum MiddlewareError {
-	#[error("Connection rejected: {0}")]
+	#[error("Connection rejected")]
 	ConnectionRejected(String),
-	#[error("Message rejected: {0}")]
+	#[error("Message rejected")]
 	MessageRejected(String),
-	#[error("Middleware error: {0}")]
+	#[error("Middleware error")]
 	Error(String),
 }
 

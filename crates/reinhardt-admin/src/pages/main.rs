@@ -30,6 +30,8 @@ pub fn main() -> Result<(), JsValue> {
 	router::init_global_router();
 
 	// Initial render
+	// SAFETY(XSS): render_to_string() HTML-escapes all dynamic text content
+	// and attribute values via html_escape(), preventing XSS injection.
 	let view = router::with_router(|r| r.render_current());
 	app_element.set_inner_html(&view.render_to_string());
 
@@ -37,6 +39,8 @@ pub fn main() -> Result<(), JsValue> {
 	// Effect will automatically re-render when route changes
 	let app_clone = app_element.clone();
 	let _effect = Effect::new(move || {
+		// SAFETY(XSS): render_to_string() HTML-escapes all dynamic text content
+		// and attribute values via html_escape(), preventing XSS injection.
 		let view = router::with_router(|r| {
 			// Subscribe to current_params to trigger re-render on route change
 			let _ = r.current_params().get();
