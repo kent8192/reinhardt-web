@@ -78,6 +78,14 @@ impl DecimalField {
 			return Err("Enter a valid number".to_string());
 		}
 
+		// Reject leading zeros (e.g., "007", "00.5") to avoid ambiguous input.
+		// Allowed patterns: "0", "0.5", "-0", "-0.5"
+		let integer_part = s.trim_start_matches('-');
+		let digits_before_dot = integer_part.split('.').next().unwrap_or(integer_part);
+		if digits_before_dot.len() > 1 && digits_before_dot.starts_with('0') {
+			return Err("Enter a number without leading zeros".to_string());
+		}
+
 		// Check total digits
 		if let Some(max_digits) = self.max_digits {
 			let parts: Vec<&str> = s.split('.').collect();
@@ -222,6 +230,7 @@ impl FormField for DecimalField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_decimalfield_basic() {
@@ -463,5 +472,44 @@ mod tests {
 	fn test_decimalfield_widget() {
 		let field = DecimalField::new("amount".to_string());
 		assert!(matches!(field.widget(), &Widget::NumberInput));
+	}
+
+	#[rstest]
+	#[case("007", true)]
+	#[case("00.5", true)]
+	#[case("00", true)]
+	#[case("01", true)]
+	#[case("0123.45", true)]
+	#[case("0", false)]
+	#[case("0.5", false)]
+	#[case("7", false)]
+	#[case("123", false)]
+	#[case("10.5", false)]
+	#[case("-0", false)]
+	#[case("-0.5", false)]
+	#[case("-007", true)]
+	fn test_decimalfield_leading_zeros(#[case] input: &str, #[case] should_reject: bool) {
+		// Arrange
+		let field = DecimalField::new("amount".to_string());
+
+		// Act
+		let result = field.clean(Some(&serde_json::json!(input)));
+
+		// Assert
+		if should_reject {
+			assert!(
+				matches!(result, Err(FieldError::Validation(ref msg)) if msg.contains("leading zeros")),
+				"Expected leading zeros rejection for input '{}', got: {:?}",
+				input,
+				result,
+			);
+		} else {
+			assert!(
+				result.is_ok(),
+				"Expected valid input '{}' to succeed, got: {:?}",
+				input,
+				result,
+			);
+		}
 	}
 }
