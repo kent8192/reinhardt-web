@@ -551,12 +551,16 @@ fn run_fmt(
 	}
 
 	let files = collect_rust_files(&path).map_err(|e| {
-		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
+		reinhardt_commands::CommandError::ExecutionError(format!(
+			"Failed to collect files in {}: {}",
+			display_path(&path),
+			sanitize_error(&e)
+		))
 	})?;
 
 	if files.is_empty() {
 		if verbosity > 0 {
-			println!("No Rust files found in {:?}", path);
+			println!("No Rust files found in {}", display_path(&path));
 		}
 		return Ok(());
 	}
@@ -575,7 +579,7 @@ fn run_fmt(
 	if verbosity > 0
 		&& let Some(ref p) = resolved_config_path
 	{
-		println!("Using rustfmt config: {}", p.display());
+		println!("Using rustfmt config: {}", display_path(p));
 	}
 
 	let formatter = if let Some(ref config) = resolved_config_path {
@@ -599,7 +603,7 @@ fn run_fmt(
 				"{} {} {}: {}",
 				progress.bright_blue(),
 				"Skipped:".yellow(),
-				file_path.display(),
+				display_path(file_path),
 				e
 			);
 			error_count += 1;
@@ -609,8 +613,8 @@ fn run_fmt(
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
-				file_path.display(),
-				e
+				mask_path(file_path),
+				sanitize_error(&e.to_string())
 			))
 		})?;
 
@@ -622,7 +626,7 @@ fn run_fmt(
 					"{} {} {} (reinhardt-fmt: ignore-all)",
 					progress.bright_blue(),
 					"Ignored:".yellow(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 			continue;
@@ -642,8 +646,8 @@ fn run_fmt(
 						"{} {} {}: rustfmt failed: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e)
 					);
 					error_count += 1;
 					continue;
@@ -662,8 +666,8 @@ fn run_fmt(
 						"{} {} {}: page! format failed: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e.to_string())
 					);
 					error_count += 1;
 					continue;
@@ -688,7 +692,7 @@ fn run_fmt(
 									"{} {} {} ({})",
 									progress.bright_blue(),
 									"Ignored:".yellow(),
-									file_path.display(),
+									display_path(file_path),
 									reason
 								);
 								continue;
@@ -702,8 +706,8 @@ fn run_fmt(
 						"{} {} {}: {}",
 						progress.bright_blue(),
 						"Error".red(),
-						file_path.display(),
-						e
+						display_path(file_path),
+						sanitize_error(&e.to_string())
 					);
 					error_count += 1;
 					continue;
@@ -715,7 +719,7 @@ fn run_fmt(
 		if final_result != original_content {
 			if check {
 				// Check mode: report unformatted files
-				println!("{} Would format: {}", progress, file_path.display());
+				println!("{} Would format: {}", progress, display_path(file_path));
 				formatted_count += 1;
 			} else {
 				// Backup if requested
@@ -734,8 +738,8 @@ fn run_fmt(
 				std::fs::write(file_path, &final_result).map_err(|e| {
 					reinhardt_commands::CommandError::ExecutionError(format!(
 						"Failed to write {}: {}",
-						file_path.display(),
-						e
+						mask_path(file_path),
+						sanitize_error(&e.to_string())
 					))
 				})?;
 				// Color output: success in green
@@ -743,7 +747,7 @@ fn run_fmt(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Formatted:".green(),
-					file_path.display()
+					display_path(file_path)
 				);
 				formatted_count += 1;
 			}
@@ -754,7 +758,7 @@ fn run_fmt(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Unchanged:".dimmed(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 		}
@@ -850,16 +854,19 @@ fn run_fmt_all(
 	})?;
 
 	if verbosity > 0 {
-		println!("Project root: {}", project_root.display());
+		println!("Project root: {}", display_path(&project_root));
 	}
 
 	let files = collect_rust_files(&project_root).map_err(|e| {
-		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
+		reinhardt_commands::CommandError::ExecutionError(format!(
+			"Failed to collect files: {}",
+			sanitize_error(&e)
+		))
 	})?;
 
 	if files.is_empty() {
 		if verbosity > 0 {
-			println!("No Rust files found in {:?}", project_root);
+			println!("No Rust files found in {}", display_path(&project_root));
 		}
 		return Ok(());
 	}
@@ -901,8 +908,8 @@ fn run_fmt_all(
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
-				file_path.display(),
-				e
+				mask_path(file_path),
+				sanitize_error(&e.to_string())
 			))
 		})?;
 
@@ -929,8 +936,8 @@ fn run_fmt_all(
 			std::fs::write(file_path, &protect_result.protected_content).map_err(|e| {
 				reinhardt_commands::CommandError::ExecutionError(format!(
 					"Failed to write protected content to {}: {}",
-					file_path.display(),
-					e
+					mask_path(file_path),
+					sanitize_error(&e.to_string())
 				))
 			})?;
 
@@ -991,36 +998,45 @@ fn run_fmt_all(
 		}
 	}
 
-	if verbosity > 0 {
-		println!("  Command: {:?}", cmd);
+	if verbosity > 1 {
+		// Only show command details at high verbosity to avoid leaking config paths
+		println!("  Running: cargo fmt --all");
 	}
 
 	let cargo_fmt_result = cmd.output();
 
 	// If cargo fmt fails, restore original files
 	if let Err(e) = &cargo_fmt_result {
-		eprintln!("{} cargo fmt failed: {}", "Error:".red(), e);
+		eprintln!(
+			"{} cargo fmt failed: {}",
+			"Error:".red(),
+			sanitize_error(&e.to_string())
+		);
 		// Restore original files
 		for (file_path, original_content) in &original_contents {
 			let _ = std::fs::write(file_path, original_content);
 		}
-		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
-			"cargo fmt failed: {}",
-			e
-		)));
+		return Err(reinhardt_commands::CommandError::ExecutionError(
+			"cargo fmt failed to execute".to_string(),
+		));
 	}
 
 	let output = cargo_fmt_result.unwrap();
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
-		eprintln!("{} cargo fmt exited with error: {}", "Error:".red(), stderr);
+		let sanitized_stderr = sanitize_error(&stderr);
+		eprintln!(
+			"{} cargo fmt exited with error: {}",
+			"Error:".red(),
+			sanitized_stderr
+		);
 		// Restore original files
 		for (file_path, original_content) in &original_contents {
 			let _ = std::fs::write(file_path, original_content);
 		}
 		return Err(reinhardt_commands::CommandError::ExecutionError(format!(
 			"cargo fmt exited with error: {}",
-			stderr
+			sanitized_stderr
 		)));
 	}
 
@@ -1042,8 +1058,8 @@ fn run_fmt_all(
 				eprintln!(
 					"{} Failed to read {}: {}",
 					"Error:".red(),
-					file_path.display(),
-					e
+					display_path(file_path),
+					sanitize_error(&e.to_string())
 				);
 				error_count += 1;
 				continue;
@@ -1060,8 +1076,8 @@ fn run_fmt_all(
 				eprintln!(
 					"{} page! format failed for {}: {}",
 					"Error:".red(),
-					file_path.display(),
-					e
+					display_path(file_path),
+					sanitize_error(&e.to_string())
 				);
 				error_count += 1;
 				// Write restored content anyway (without DSL formatting)
@@ -1075,8 +1091,8 @@ fn run_fmt_all(
 			eprintln!(
 				"{} Failed to write {}: {}",
 				"Error:".red(),
-				file_path.display(),
-				e
+				display_path(file_path),
+				sanitize_error(&e.to_string())
 			);
 			error_count += 1;
 		}
@@ -1101,7 +1117,7 @@ fn run_fmt_all(
 
 		if &current_content != original_content {
 			if check {
-				println!("{} Would format: {}", progress, file_path.display());
+				println!("{} Would format: {}", progress, display_path(file_path));
 				// Restore original content in check mode
 				let _ = std::fs::write(file_path, original_content);
 			} else if verbosity > 0 {
@@ -1109,7 +1125,7 @@ fn run_fmt_all(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Formatted:".green(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 			formatted_count += 1;
@@ -1129,7 +1145,7 @@ fn run_fmt_all(
 					"{} {} {}",
 					progress.bright_blue(),
 					"Unchanged:".dimmed(),
-					file_path.display()
+					display_path(file_path)
 				);
 			}
 		}
@@ -1334,6 +1350,54 @@ fn mask_path(path: &Path) -> String {
 	path.file_name()
 		.map(|name| format!("<...>/{}", name.to_string_lossy()))
 		.unwrap_or_else(|| "<file>".to_string())
+}
+
+/// Convert a path to a display-safe relative path.
+///
+/// Attempts to strip the current working directory prefix to show a relative path.
+/// Falls back to showing only the filename via `mask_path` if relativization fails.
+fn display_path(path: &Path) -> String {
+	if let Ok(cwd) = std::env::current_dir() {
+		if let Ok(relative) = path.strip_prefix(&cwd) {
+			return relative.display().to_string();
+		}
+	}
+	mask_path(path)
+}
+
+/// Sanitize error messages to prevent information leakage.
+///
+/// Removes absolute file system paths and sensitive patterns from error messages
+/// to prevent exposing internal system structure to end users.
+fn sanitize_error(error: &str) -> String {
+	use std::sync::LazyLock;
+
+	// Pattern: absolute paths on Unix-like systems (e.g., /home/user/project/file.rs)
+	static PATH_RE: LazyLock<regex::Regex> =
+		LazyLock::new(|| regex::Regex::new(r"(/[a-zA-Z0-9._-]+){3,}").unwrap());
+
+	// Pattern: database connection URLs
+	static DB_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+		regex::Regex::new(r"(?i)(postgres|mysql|sqlite|mongodb|redis)://[^\s]+").unwrap()
+	});
+
+	// Pattern: API keys, tokens, secrets in key=value or key:value format
+	static TOKEN_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+		regex::Regex::new(
+			r"(?i)(api[_\-]?key|token|secret|password|auth)[=:]\s*['\x22]?[a-zA-Z0-9+/=_\-]{8,}",
+		)
+		.unwrap()
+	});
+
+	let sanitized = PATH_RE.replace_all(error, |caps: &regex::Captures| {
+		let matched_path = Path::new(caps.get(0).unwrap().as_str());
+		mask_path(matched_path)
+	});
+
+	let sanitized = DB_RE.replace_all(&sanitized, "[REDACTED_DATABASE_URL]");
+	let sanitized = TOKEN_RE.replace_all(&sanitized, "[REDACTED_CREDENTIAL]");
+
+	sanitized.to_string()
 }
 
 /// Securely clear a HashMap containing sensitive string data.
