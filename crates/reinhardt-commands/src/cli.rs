@@ -507,7 +507,8 @@ async fn execute_collectstatic(
 	let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
 	let profile = Profile::parse(&profile_str);
 
-	let base_dir = env::current_dir().expect("Failed to get current directory");
+	let base_dir =
+		env::current_dir().map_err(|e| format!("Failed to get current directory: {e}"))?;
 	let settings_dir = base_dir.join("settings");
 
 	let merged = SettingsBuilder::new()
@@ -519,7 +520,9 @@ async fn execute_collectstatic(
 					Value::String(
 						base_dir
 							.to_str()
-							.expect("base_dir contains invalid UTF-8")
+							.ok_or_else(|| {
+								format!("base_dir contains invalid UTF-8: {}", base_dir.display())
+							})?
 							.to_string(),
 					),
 				)
