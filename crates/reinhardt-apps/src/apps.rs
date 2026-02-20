@@ -431,18 +431,26 @@ impl Apps {
 	}
 
 	/// Check if an application is installed
+	///
+	/// Acquires locks on both `app_names` and `app_configs` before checking,
+	/// ensuring a consistent snapshot and avoiding TOCTOU race conditions
+	/// where state could change between individual lock acquisitions.
 	pub fn is_installed(&self, name: &str) -> bool {
-		self.installed_apps.contains(&name.to_string())
-			|| self
-				.app_names
-				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.contains_key(name)
-			|| self
-				.app_configs
-				.lock()
-				.unwrap_or_else(PoisonError::into_inner)
-				.contains_key(name)
+		if self.installed_apps.contains(&name.to_string()) {
+			return true;
+		}
+
+		// Hold both locks simultaneously for a consistent snapshot
+		let names = self
+			.app_names
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		let configs = self
+			.app_configs
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+
+		names.contains_key(name) || configs.contains_key(name)
 	}
 
 	/// Populate the registry with application configurations
