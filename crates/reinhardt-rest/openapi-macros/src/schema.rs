@@ -260,25 +260,27 @@ pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> Result<FieldAttri
 
 	// Fixes #841: Validate that constraints are not contradictory
 	if let (Some(min), Some(max)) = (field_attrs.minimum, field_attrs.maximum)
-		&& min > max {
-			return Err(syn::Error::new(
-				Span::call_site(),
-				format!(
-					"contradictory constraints: minimum ({}) > maximum ({})",
-					min, max
-				),
-			));
-		}
+		&& min > max
+	{
+		return Err(syn::Error::new(
+			Span::call_site(),
+			format!(
+				"contradictory constraints: minimum ({}) > maximum ({})",
+				min, max
+			),
+		));
+	}
 	if let (Some(min), Some(max)) = (field_attrs.min_length, field_attrs.max_length)
-		&& min > max {
-			return Err(syn::Error::new(
-				Span::call_site(),
-				format!(
-					"contradictory constraints: min_length ({}) > max_length ({})",
-					min, max
-				),
-			));
-		}
+		&& min > max
+	{
+		return Err(syn::Error::new(
+			Span::call_site(),
+			format!(
+				"contradictory constraints: min_length ({}) > max_length ({})",
+				min, max
+			),
+		));
+	}
 
 	Ok(field_attrs)
 }
