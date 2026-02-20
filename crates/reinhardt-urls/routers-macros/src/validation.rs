@@ -281,22 +281,13 @@ mod tests {
 	#[test]
 	fn test_path_traversal_rejected() {
 		let result = validate_path_syntax("/users/../etc/passwd");
-		assert!(matches!(
-			result,
-			Err(PathValidationError::PathTraversal(_))
-		));
+		assert!(matches!(result, Err(PathValidationError::PathTraversal(_))));
 
 		let result = validate_path_syntax("/../../secret");
-		assert!(matches!(
-			result,
-			Err(PathValidationError::PathTraversal(_))
-		));
+		assert!(matches!(result, Err(PathValidationError::PathTraversal(_))));
 
 		let result = validate_path_syntax("/files/..hidden");
-		assert!(matches!(
-			result,
-			Err(PathValidationError::PathTraversal(_))
-		));
+		assert!(matches!(result, Err(PathValidationError::PathTraversal(_))));
 	}
 
 	#[test]

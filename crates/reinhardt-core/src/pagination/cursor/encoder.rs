@@ -114,8 +114,8 @@ impl Base64CursorEncoder {
 
 	/// Compute HMAC-SHA256 over the given message using the encoder's secret key
 	fn compute_hmac(&self, message: &[u8]) -> Vec<u8> {
-		let mut mac = HmacSha256::new_from_slice(&self.secret_key)
-			.expect("HMAC accepts any key length");
+		let mut mac =
+			HmacSha256::new_from_slice(&self.secret_key).expect("HMAC accepts any key length");
 		mac.update(message);
 		mac.finalize().into_bytes().to_vec()
 	}
@@ -171,8 +171,8 @@ impl CursorEncoder for Base64CursorEncoder {
 
 		// Verify HMAC-SHA256 signature
 		let payload = format!("{}:{}", position, timestamp);
-		let mut mac = HmacSha256::new_from_slice(&self.secret_key)
-			.expect("HMAC accepts any key length");
+		let mut mac =
+			HmacSha256::new_from_slice(&self.secret_key).expect("HMAC accepts any key length");
 		mac.update(payload.as_bytes());
 		mac.verify_slice(&provided_hmac)
 			.map_err(|_| Error::InvalidPage("Cursor integrity check failed".to_string()))?;

@@ -45,7 +45,7 @@ impl Default for ConnectionConfig {
 			idle_timeout: Duration::from_secs(300), // 5 minutes default
 			handshake_timeout: Duration::from_secs(10), // 10 seconds default
 			cleanup_interval: Duration::from_secs(30), // 30 seconds default
-			max_connections: None, // Unlimited by default
+			max_connections: None,                  // Unlimited by default
 		}
 	}
 }

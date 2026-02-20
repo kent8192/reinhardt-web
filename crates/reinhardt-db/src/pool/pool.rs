@@ -552,7 +552,10 @@ mod tests {
 
 		// Assert
 		assert_eq!(masked, "postgresql://user:***@localhost:5432/mydb");
-		assert!(!masked.contains("p%40ss"), "Password should be fully masked");
+		assert!(
+			!masked.contains("p%40ss"),
+			"Password should be fully masked"
+		);
 	}
 
 	#[rstest]
@@ -564,6 +567,9 @@ mod tests {
 		let masked = mask_url_password(non_url);
 
 		// Assert
-		assert_eq!(masked, non_url, "Non-URL strings should pass through unchanged");
+		assert_eq!(
+			masked, non_url,
+			"Non-URL strings should pass through unchanged"
+		);
 	}
 }

@@ -116,8 +116,7 @@ fn extract_literal_value(expr: &Expr) -> String {
 fn validate_meta_element(attrs: &[TypedHeadAttr], span: proc_macro2::Span) -> Result<()> {
 	// Normalize attribute names: convert underscores to hyphens for HTML attribute matching
 	let has_refresh = attrs.iter().any(|a| {
-		(a.name == "http_equiv" || a.name == "httpEquiv")
-			&& a.value.eq_ignore_ascii_case("refresh")
+		(a.name == "http_equiv" || a.name == "httpEquiv") && a.value.eq_ignore_ascii_case("refresh")
 	});
 
 	if has_refresh {

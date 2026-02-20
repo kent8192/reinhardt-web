@@ -156,9 +156,7 @@ impl FormField for DecimalField {
 					(n, s.to_string())
 				} else if let Some(f) = v.as_f64() {
 					if !f.is_finite() {
-						return Err(FieldError::Validation(
-							"Enter a valid number".to_string(),
-						));
+						return Err(FieldError::Validation("Enter a valid number".to_string()));
 					}
 					(f, format!("{}", f))
 				} else if let Some(i) = v.as_i64() {
