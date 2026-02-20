@@ -298,22 +298,30 @@ impl PluginMetadataBuilder {
 	}
 
 	/// Adds a dependency on another plugin.
+	///
+	/// # Panics
+	///
+	/// Panics if the plugin name or version requirement is invalid.
 	pub fn depends_on(mut self, name: impl Into<String>, version_req: impl AsRef<str>) -> Self {
-		if let Ok(dep) = PluginDependency::new(name, version_req) {
-			self.dependencies.push(dep);
-		}
+		let dep = PluginDependency::new(name, version_req)
+			.expect("invalid plugin dependency specification");
+		self.dependencies.push(dep);
 		self
 	}
 
 	/// Adds an optional dependency on another plugin.
+	///
+	/// # Panics
+	///
+	/// Panics if the plugin name or version requirement is invalid.
 	pub fn optionally_depends_on(
 		mut self,
 		name: impl Into<String>,
 		version_req: impl AsRef<str>,
 	) -> Self {
-		if let Ok(dep) = PluginDependency::optional(name, version_req) {
-			self.dependencies.push(dep);
-		}
+		let dep = PluginDependency::optional(name, version_req)
+			.expect("invalid optional plugin dependency specification");
+		self.dependencies.push(dep);
 		self
 	}
 
