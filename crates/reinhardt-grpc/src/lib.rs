@@ -8,7 +8,7 @@
 //! - GraphQL over gRPC types (GraphQLRequest, GraphQLResponse, SubscriptionEvent)
 //! - gRPC error handling with production-safe error sanitization
 //! - gRPC service adapter trait
-//! - Server configuration with message size limits
+//! - Server configuration with message size limits, request timeouts, and connection limits
 //! - Protobuf message nesting depth limits
 //! - Protobuf field constraint validation
 //! - Dependency injection support (with `di` feature)
