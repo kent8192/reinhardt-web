@@ -66,28 +66,32 @@ impl<P: FormModel, C: FormModel> InlineFormSet<P, C> {
 		&self.child_forms
 	}
 
-	/// Save the formset and all related child instances
+	/// Save the formset and all related child instances.
 	///
-	/// This method saves the parent model first, then iterates through all child forms,
-	/// sets the foreign key reference, and saves each child.
+	/// This method saves the parent model first, retrieves the parent's primary
+	/// key, sets the foreign key on each child instance, then saves each child.
 	///
 	/// # Errors
 	///
-	/// Returns an error if any save operation fails.
+	/// Returns an error if any save operation fails or if the parent model
+	/// does not have an `id` field after saving.
 	pub fn save(&mut self) -> Result<(), FormError> {
 		// Save parent first
 		self.parent
 			.save()
 			.map_err(|e| FormError::Validation(format!("Failed to save parent: {}", e)))?;
 
-		// Get parent ID to ensure parent has been saved
-		let _parent_id = self.parent.get_field("id").ok_or_else(|| {
+		// Get parent ID to set as foreign key on child instances
+		let parent_id = self.parent.get_field("id").ok_or_else(|| {
 			FormError::Validation("Parent model does not have an 'id' field".to_string())
 		})?;
 
-		// Save each child with the foreign key set
+		// Save each child with the foreign key set to the parent ID
+		let fk_field = self.fk_field.clone();
 		for child_form in &mut self.child_forms {
-			// Save the child (save method handles instance internally)
+			// Set the foreign key on the child instance before saving
+			child_form.set_field_value(&fk_field, parent_id.clone());
+
 			child_form
 				.save()
 				.map_err(|e| FormError::Validation(format!("Failed to save child: {}", e)))?;

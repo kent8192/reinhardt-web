@@ -4,12 +4,13 @@
 //! - HSTS (HTTP Strict Transport Security)
 //! - SSL/HTTPS redirects
 //! - X-Content-Type-Options
+//! - X-Frame-Options
 //! - Referrer-Policy
 //! - Cross-Origin-Opener-Policy (COOP)
 
 use async_trait::async_trait;
+use hyper::StatusCode;
 use hyper::header::{HeaderValue, LOCATION};
-use hyper::{Method, StatusCode};
 use reinhardt_conf::Settings;
 use reinhardt_http::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
@@ -33,6 +34,8 @@ pub struct SecurityConfig {
 	pub referrer_policy: Option<String>,
 	/// Cross-Origin-Opener-Policy value
 	pub cross_origin_opener_policy: Option<String>,
+	/// X-Frame-Options value (e.g., "DENY", "SAMEORIGIN")
+	pub x_frame_options: Option<String>,
 	/// Proxy SSL header name and expected value for identifying secure requests
 	/// Example: Some(("HTTP_X_FORWARDED_PROTO".to_string(), "https".to_string()))
 	pub secure_proxy_ssl_header: Option<(String, String)>,
@@ -49,6 +52,7 @@ impl Default for SecurityConfig {
 			content_type_nosniff: true,
 			referrer_policy: Some("same-origin".to_string()),
 			cross_origin_opener_policy: None,
+			x_frame_options: Some("DENY".to_string()),
 			secure_proxy_ssl_header: None,
 		}
 	}
@@ -156,6 +160,7 @@ impl SecurityMiddleware {
 	///     content_type_nosniff: true,
 	///     referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
 	///     cross_origin_opener_policy: Some("same-origin".to_string()),
+	///     x_frame_options: Some("DENY".to_string()),
 	///     secure_proxy_ssl_header: None,
 	/// };
 	///
@@ -293,6 +298,13 @@ impl SecurityMiddleware {
 				.headers
 				.insert("Cross-Origin-Opener-Policy", policy.parse().unwrap());
 		}
+
+		// X-Frame-Options
+		if let Some(ref value) = self.config.x_frame_options {
+			response
+				.headers
+				.insert("X-Frame-Options", value.parse().unwrap());
+		}
 	}
 }
 
@@ -307,11 +319,8 @@ impl Middleware for SecurityMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
 		let is_secure = self.is_secure(&request);
 
-		// SSL redirect (only for GET and HEAD requests)
-		if self.config.ssl_redirect
-			&& !is_secure
-			&& (request.method == Method::GET || request.method == Method::HEAD)
-		{
+		// SSL redirect for all HTTP methods
+		if self.config.ssl_redirect && !is_secure {
 			let redirect_url = self.build_https_url(&request);
 			let mut response = Response::new(StatusCode::MOVED_PERMANENTLY);
 			response
@@ -334,7 +343,7 @@ impl Middleware for SecurityMiddleware {
 mod tests {
 	use super::*;
 	use bytes::Bytes;
-	use hyper::{HeaderMap, Version};
+	use hyper::{HeaderMap, Method, Version};
 
 	struct TestHandler;
 
@@ -356,6 +365,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -393,6 +403,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -434,6 +445,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -465,6 +477,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -492,7 +505,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_ssl_redirect_only_for_get_and_head() {
+	async fn test_ssl_redirect_applies_to_all_methods() {
 		let config = SecurityConfig {
 			hsts_enabled: false,
 			hsts_seconds: 0,
@@ -502,27 +515,52 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
-		let handler = Arc::new(TestHandler);
 
 		let mut headers = HeaderMap::new();
 		headers.insert(hyper::header::HOST, "example.com".parse().unwrap());
 
+		// POST should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
 		let request = Request::builder()
 			.method(Method::POST)
 			.uri("/test")
 			.version(Version::HTTP_11)
-			.headers(headers)
+			.headers(headers.clone())
 			.body(Bytes::new())
 			.build()
 			.unwrap();
-
 		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
 
-		// POST should not be redirected
-		assert_eq!(response.status, StatusCode::OK);
+		// PUT should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
+		let request = Request::builder()
+			.method(Method::PUT)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers.clone())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
+
+		// DELETE should also be redirected to HTTPS
+		let handler = Arc::new(TestHandler);
+		let request = Request::builder()
+			.method(Method::DELETE)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers.clone())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+		let response = middleware.process(request, handler).await.unwrap();
+		assert_eq!(response.status, StatusCode::MOVED_PERMANENTLY);
 	}
 
 	#[tokio::test]
@@ -558,6 +596,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -591,6 +630,7 @@ mod tests {
 			content_type_nosniff: false,
 			referrer_policy: None,
 			cross_origin_opener_policy: Some("same-origin".to_string()),
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -624,6 +664,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: Some("no-referrer".to_string()),
 			cross_origin_opener_policy: Some("same-origin-allow-popups".to_string()),
+			x_frame_options: None,
 			secure_proxy_ssl_header: None,
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -750,6 +791,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: Some(("X-Custom-Proto".to_string(), "https".to_string())),
 		};
 		let middleware = SecurityMiddleware::with_config(config);
@@ -790,6 +832,7 @@ mod tests {
 			content_type_nosniff: true,
 			referrer_policy: None,
 			cross_origin_opener_policy: None,
+			x_frame_options: None,
 			secure_proxy_ssl_header: Some(("X-Custom-Proto".to_string(), "https".to_string())),
 		};
 		let middleware = SecurityMiddleware::with_config(config);

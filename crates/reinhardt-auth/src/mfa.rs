@@ -5,8 +5,9 @@
 use crate::{AuthenticationBackend, AuthenticationError, SimpleUser, User};
 use reinhardt_http::Request;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use subtle::ConstantTimeEq;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// MFA authentication backend
@@ -57,14 +58,16 @@ impl MFAAuthentication {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```no_run
 	/// use reinhardt_auth::MfaManager;
 	///
+	/// # async fn example() {
 	/// let mfa = MfaManager::new("MyApp");
-	/// mfa.register_user("alice", "SECRET_BASE32");
+	/// mfa.register_user("alice", "SECRET_BASE32").await;
+	/// # }
 	/// ```
-	pub fn register_user(&self, username: impl Into<String>, secret: impl Into<String>) {
-		let mut secrets = self.secrets.lock().unwrap();
+	pub async fn register_user(&self, username: impl Into<String>, secret: impl Into<String>) {
+		let mut secrets = self.secrets.lock().await;
 		secrets.insert(username.into(), secret.into());
 	}
 
@@ -92,8 +95,12 @@ impl MFAAuthentication {
 	/// Checks current time step and adjacent steps (±1) to tolerate
 	/// minor clock skew between client and server.
 	/// The secret must be a valid base32-encoded string.
-	pub fn verify_totp(&self, username: &str, code: &str) -> Result<bool, AuthenticationError> {
-		let secrets = self.secrets.lock().unwrap();
+	pub async fn verify_totp(
+		&self,
+		username: &str,
+		code: &str,
+	) -> Result<bool, AuthenticationError> {
+		let secrets = self.secrets.lock().await;
 
 		if let Some(secret) = secrets.get(username) {
 			// Decode base32 secret
@@ -140,8 +147,8 @@ impl MFAAuthentication {
 	/// Get the secret for a user (for testing purposes)
 	///
 	/// Returns the stored TOTP secret for the given user, or None if not registered.
-	pub fn get_secret(&self, username: &str) -> Option<String> {
-		let secrets = self.secrets.lock().unwrap();
+	pub async fn get_secret(&self, username: &str) -> Option<String> {
+		let secrets = self.secrets.lock().await;
 		secrets.get(username).cloned()
 	}
 }
@@ -170,7 +177,7 @@ impl AuthenticationBackend for MFAAuthentication {
 
 		match (username, code) {
 			(Some(user), Some(mfa_code)) => {
-				if self.verify_totp(user, mfa_code)? {
+				if self.verify_totp(user, mfa_code).await? {
 					Ok(Some(Box::new(SimpleUser {
 						id: Uuid::new_v4(),
 						username: user.to_string(),
@@ -190,7 +197,7 @@ impl AuthenticationBackend for MFAAuthentication {
 
 	async fn get_user(&self, user_id: &str) -> Result<Option<Box<dyn User>>, AuthenticationError> {
 		// Check if user exists in our secrets store
-		let secrets = self.secrets.lock().unwrap();
+		let secrets = self.secrets.lock().await;
 		if secrets.contains_key(user_id) {
 			Ok(Some(Box::new(SimpleUser {
 				id: Uuid::new_v4(),
@@ -215,15 +222,16 @@ mod tests {
 	use rstest::rstest;
 
 	#[rstest]
-	fn test_mfa_registration() {
+	#[tokio::test]
+	async fn test_mfa_registration() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 
 		// Act
-		mfa.register_user("alice", "JBSWY3DPEHPK3PXP");
+		mfa.register_user("alice", "JBSWY3DPEHPK3PXP").await;
 
 		// Assert
-		let secrets = mfa.secrets.lock().unwrap();
+		let secrets = mfa.secrets.lock().await;
 		assert!(secrets.contains_key("alice"));
 	}
 
@@ -243,11 +251,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_verify_totp_uses_sha256() {
+	#[tokio::test]
+	async fn test_verify_totp_uses_sha256() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
-		mfa.register_user("alice", secret);
+		mfa.register_user("alice", secret).await;
 
 		let current_time = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
@@ -261,7 +270,7 @@ mod tests {
 		// Act - generate SHA-256 TOTP and verify it matches
 		let totp_sha256 =
 			totp_lite::totp_custom::<totp_lite::Sha256>(30, 6, &secret_bytes, time_step);
-		let result = mfa.verify_totp("alice", &totp_sha256);
+		let result = mfa.verify_totp("alice", &totp_sha256).await;
 
 		// Assert - SHA-256 code should be accepted
 		assert!(result.is_ok());
@@ -269,11 +278,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_verify_totp_rejects_sha1_code() {
+	#[tokio::test]
+	async fn test_verify_totp_rejects_sha1_code() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
-		mfa.register_user("alice", secret);
+		mfa.register_user("alice", secret).await;
 
 		let current_time = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
@@ -294,18 +304,19 @@ mod tests {
 		// Assert - SHA-1 and SHA-256 produce different codes (unless by coincidence)
 		// If they happen to match, this test is still valid since both would be accepted
 		if totp_sha1 != totp_sha256 {
-			let result = mfa.verify_totp("alice", &totp_sha1);
+			let result = mfa.verify_totp("alice", &totp_sha1).await;
 			assert!(result.is_ok());
 			assert!(!result.unwrap());
 		}
 	}
 
 	#[rstest]
-	fn test_verify_totp_time_skew_tolerance() {
+	#[tokio::test]
+	async fn test_verify_totp_time_skew_tolerance() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
-		mfa.register_user("alice", secret);
+		mfa.register_user("alice", secret).await;
 
 		let current_time = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
@@ -320,7 +331,7 @@ mod tests {
 		if time_step > 0 {
 			let totp_prev =
 				totp_lite::totp_custom::<totp_lite::Sha256>(30, 6, &secret_bytes, time_step - 1);
-			let result = mfa.verify_totp("alice", &totp_prev);
+			let result = mfa.verify_totp("alice", &totp_prev).await;
 			assert!(result.is_ok());
 			assert!(
 				result.unwrap(),
@@ -331,20 +342,21 @@ mod tests {
 		// Act & Assert - next time step should be accepted
 		let totp_next =
 			totp_lite::totp_custom::<totp_lite::Sha256>(30, 6, &secret_bytes, time_step + 1);
-		let result = mfa.verify_totp("alice", &totp_next);
+		let result = mfa.verify_totp("alice", &totp_next).await;
 		assert!(result.is_ok());
 		assert!(result.unwrap(), "Next time step TOTP should be accepted");
 	}
 
 	#[rstest]
-	fn test_verify_totp_invalid_code() {
+	#[tokio::test]
+	async fn test_verify_totp_invalid_code() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
-		mfa.register_user("alice", secret);
+		mfa.register_user("alice", secret).await;
 
 		// Act
-		let result = mfa.verify_totp("alice", "000000");
+		let result = mfa.verify_totp("alice", "000000").await;
 
 		// Assert
 		assert!(result.is_ok());
@@ -352,12 +364,13 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_verify_totp_unregistered_user() {
+	#[tokio::test]
+	async fn test_verify_totp_unregistered_user() {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 
 		// Act
-		let result = mfa.verify_totp("alice", "123456");
+		let result = mfa.verify_totp("alice", "123456").await;
 
 		// Assert
 		assert!(result.is_err());
@@ -369,7 +382,7 @@ mod tests {
 		// Arrange
 		let mfa = MFAAuthentication::new("TestApp");
 		let secret = "JBSWY3DPEHPK3PXP";
-		mfa.register_user("alice", secret);
+		mfa.register_user("alice", secret).await;
 
 		let current_time = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)

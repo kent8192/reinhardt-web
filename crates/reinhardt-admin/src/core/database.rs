@@ -670,14 +670,8 @@ impl AdminDatabase {
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
@@ -768,11 +762,18 @@ impl AdminDatabase {
 			.into_table(Alias::new(table_name))
 			.to_owned();
 
-		// Build column and value lists
+		// Sort keys for deterministic column ordering in generated SQL.
+		// HashMap iteration order is non-deterministic, which causes
+		// flaky tests and non-reproducible query plans.
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build column and value lists in sorted order
 		let mut columns = Vec::new();
 		let mut values = Vec::new();
 
-		for (key, value) in data {
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			columns.push(Alias::new(&key));
 
 			let sea_value = match value {
@@ -846,8 +847,13 @@ impl AdminDatabase {
 	) -> AdminResult<u64> {
 		let mut query = Query::update().table(Alias::new(table_name)).to_owned();
 
-		// Build SET clauses
-		for (key, value) in data {
+		// Sort keys for deterministic SET clause ordering in generated SQL
+		let mut sorted_keys: Vec<String> = data.keys().cloned().collect();
+		sorted_keys.sort();
+
+		// Build SET clauses in sorted order
+		for key in sorted_keys {
+			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			let sea_value = match value {
 				serde_json::Value::String(s) => Value::String(Some(Box::new(s))),
 				serde_json::Value::Number(n) => {
@@ -1058,18 +1064,46 @@ impl AdminDatabase {
 			.await
 			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
-		// Extract count from result
-		let count = if let Some(count_value) = row.data.get("count") {
-			count_value.as_i64().unwrap_or(0) as u64
-		} else if let Some(obj) = row.data.as_object() {
-			// COUNT(*) result may be in the first column
-			obj.values().next().and_then(|v| v.as_i64()).unwrap_or(0) as u64
-		} else {
-			0
-		};
+		// Extract count from result, propagating errors for unexpected formats
+		let count = extract_count_from_row(&row.data)?;
 
 		Ok(count)
 	}
+}
+
+/// Extract count value from a query result row
+///
+/// Attempts to extract an integer count from the query result in the following order:
+/// 1. Look for a "count" key in the JSON object
+/// 2. Take the first value from the JSON object
+///
+/// Returns an error if the data format is unexpected or the value cannot be
+/// interpreted as an integer.
+fn extract_count_from_row(data: &serde_json::Value) -> AdminResult<u64> {
+	if let Some(count_value) = data.get("count") {
+		return count_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				count_value
+			))
+		});
+	}
+
+	if let Some(obj) = data.as_object()
+		&& let Some(first_value) = obj.values().next()
+	{
+		return first_value.as_i64().map(|v| v as u64).ok_or_else(|| {
+			AdminError::DatabaseError(format!(
+				"COUNT query returned non-integer value: {}",
+				first_value
+			))
+		});
+	}
+
+	Err(AdminError::DatabaseError(format!(
+		"COUNT query returned unexpected data format: {}",
+		data
+	)))
 }
 
 /// Injectable trait implementation for AdminDatabase

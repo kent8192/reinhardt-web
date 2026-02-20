@@ -144,11 +144,11 @@ pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> FieldAttributes {
 			{
 				match nested_meta {
 					Meta::NameValue(nv) => {
-						let ident = nv
-							.path
-							.get_ident()
-							.expect("Expected identifier")
-							.to_string();
+						let Some(ident) = nv.path.get_ident() else {
+							// Non-identifier paths are silently skipped
+							continue;
+						};
+						let ident = ident.to_string();
 
 						match ident.as_str() {
 							"description" => {

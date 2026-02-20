@@ -18,10 +18,6 @@ pub(crate) struct ShowArgs {
 	#[arg(short = 'f', long, value_enum, default_value = "text")]
 	pub format: OutputFormatArg,
 
-	/// Profile to use
-	#[arg(short, long)]
-	pub profile: Option<String>,
-
 	/// Show sensitive values without redaction (passwords, keys, tokens)
 	#[arg(long)]
 	pub show_secrets: bool,
@@ -43,15 +39,25 @@ impl From<OutputFormatArg> for OutputFormat {
 		}
 	}
 }
-/// Documentation for `execute`
-///
+/// Maximum configuration file size for show command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
+/// Display configuration file contents
 pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
 	output::info(&format!("Reading configuration file: {:?}", args.file));
 
-	// Check if file exists
-	if !args.file.exists() {
-		output::error("Configuration file not found");
-		return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+	// Check file existence and size in one operation (TOCTOU mitigation)
+	let metadata = std::fs::metadata(&args.file).map_err(|e| {
+		output::error("Configuration file not found or inaccessible");
+		anyhow::anyhow!("Cannot access file {:?}: {}", args.file, e)
+	})?;
+
+	if metadata.len() > MAX_CONFIG_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Configuration file exceeds maximum size ({} bytes, limit {} bytes)",
+			metadata.len(),
+			MAX_CONFIG_FILE_SIZE
+		));
 	}
 
 	// Determine file type and load
@@ -80,7 +86,7 @@ pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
 				if let Some((key, value)) = line.split_once('=') {
 					env_map.insert(
 						key.trim().to_string(),
-						serde_json::Value::String(value.trim().to_string()),
+						serde_json::Value::String(strip_env_quotes(value.trim()).to_string()),
 					);
 				}
 			}
@@ -126,4 +132,17 @@ pub(crate) async fn execute(args: ShowArgs) -> anyhow::Result<()> {
 	}
 
 	Ok(())
+}
+
+/// Strip surrounding quotes (double or single) from an .env file value.
+fn strip_env_quotes(raw: &str) -> &str {
+	let raw = raw.trim();
+	if raw.len() >= 2
+		&& ((raw.starts_with('"') && raw.ends_with('"'))
+			|| (raw.starts_with('\'') && raw.ends_with('\'')))
+	{
+		&raw[1..raw.len() - 1]
+	} else {
+		raw
+	}
 }
