@@ -1398,4 +1398,77 @@ mod tests {
 			WebhookError::BlockedIpAddress(_)
 		));
 	}
+
+	// Regression tests for #742: the retry loop MUST call tokio::time::sleep between
+	// each failed attempt. Without the sleep, retries would spin at CPU speed and
+	// flood the upstream server. The parametrized cases cover 1, 2, and 3 retries
+	// with a fixed initial_backoff so elapsed time is predictable.
+
+	// The minimum elapsed time accounts for jitter (±25%) on initial_backoff:
+	//   case_1: 1 retry × 50ms × 0.75 = ~37ms  → assert ≥ 30ms
+	//   case_2: 2 retries × (50ms + 100ms) × 0.75 ≈ 112ms → assert ≥ 80ms
+	//   case_3: 3 retries × (50+100+200)ms × 0.75 ≈ 262ms → assert ≥ 200ms
+	#[rstest]
+	#[case(1, Duration::from_millis(30), Duration::from_millis(50))]
+	#[case(2, Duration::from_millis(80), Duration::from_millis(50))]
+	#[case(3, Duration::from_millis(200), Duration::from_millis(50))]
+	#[tokio::test]
+	async fn test_webhook_retry_sleep_is_called_between_attempts(
+		#[case] max_retries: u32,
+		#[case] min_elapsed: Duration,
+		#[case] initial_backoff: Duration,
+	) {
+		// Arrange - all server responses fail so the full retry sequence is exercised.
+		let mut server = mockito::Server::new_async().await;
+
+		// Expect initial attempt + max_retries retries
+		let _mock = server
+			.mock("POST", "/webhook")
+			.with_status(500)
+			.expect((max_retries + 1) as usize)
+			.create_async()
+			.await;
+
+		let config = WebhookConfig {
+			url: format!("{}/webhook", server.url()),
+			method: "POST".to_string(),
+			headers: HashMap::new(),
+			timeout: Duration::from_secs(5),
+			retry_config: RetryConfig {
+				max_retries,
+				initial_backoff,
+				max_backoff: Duration::from_secs(1),
+				backoff_multiplier: 2.0,
+			},
+		};
+
+		let sender = HttpWebhookSender::new(config);
+		let now = Utc::now();
+		let event = WebhookEvent {
+			task_id: TaskId::new(),
+			task_name: "regression_742".to_string(),
+			status: TaskStatus::Success,
+			result: None,
+			error: None,
+			started_at: now,
+			completed_at: now,
+			duration_ms: 0,
+		};
+
+		// Act - measure total elapsed time across all retries
+		let start = std::time::Instant::now();
+		let result = sender.send_with_retry(&event).await;
+		let elapsed = start.elapsed();
+
+		// Assert - at least one backoff sleep must have occurred, so elapsed time
+		// must exceed min_elapsed. Without sleep the loop would complete in near-zero
+		// wall time (only network round-trip overhead from mockito).
+		assert!(result.is_err(), "expected MaxRetriesExceeded after all retries");
+		assert!(
+			elapsed >= min_elapsed,
+			"Regression #742: expected sleep between retries (>={:?}), got {:?}",
+			min_elapsed,
+			elapsed
+		);
+	}
 }
