@@ -292,6 +292,31 @@ impl Default for DatabaseConfig {
 	}
 }
 
+/// Recognized database URL schemes for connection validation.
+pub(crate) const VALID_DATABASE_SCHEMES: &[&str] = &[
+	"postgres://",
+	"postgresql://",
+	"sqlite://",
+	"sqlite:",
+	"mysql://",
+	"mariadb://",
+];
+
+/// Validate that a database URL starts with a recognized scheme.
+///
+/// Returns `Ok(())` if the URL starts with one of the supported schemes,
+/// or `Err` with a descriptive message listing the accepted schemes.
+pub(crate) fn validate_database_url_scheme(url: &str) -> Result<(), String> {
+	if VALID_DATABASE_SCHEMES.iter().any(|s| url.starts_with(s)) {
+		Ok(())
+	} else {
+		Err(format!(
+			"Invalid database URL: unrecognized scheme. Expected one of: {}",
+			VALID_DATABASE_SCHEMES.join(", ")
+		))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -464,5 +489,32 @@ mod tests {
 		assert_eq!(password.expose_secret(), "my-secret-pw");
 		// Display should not reveal the password
 		assert_eq!(format!("{}", password), "[REDACTED]");
+	}
+
+	#[rstest]
+	#[case("postgres://localhost/db")]
+	#[case("postgresql://user:pass@localhost:5432/db")]
+	#[case("sqlite::memory:")]
+	#[case("sqlite:///path/to/db")]
+	#[case("mysql://root@localhost/db")]
+	#[case("mariadb://root@localhost/db")]
+	fn test_valid_database_url_schemes(#[case] url: &str) {
+		// Act / Assert
+		assert!(validate_database_url_scheme(url).is_ok());
+	}
+
+	#[rstest]
+	#[case("http://localhost/db")]
+	#[case("ftp://localhost/db")]
+	#[case("redis://localhost")]
+	#[case("")]
+	#[case("not-a-url")]
+	fn test_invalid_database_url_schemes(#[case] url: &str) {
+		// Act
+		let result = validate_database_url_scheme(url);
+
+		// Assert
+		assert!(result.is_err());
+		assert!(result.unwrap_err().contains("Invalid database URL"));
 	}
 }
