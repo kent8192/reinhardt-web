@@ -286,6 +286,9 @@ impl WebSocketError {
 			Self::Internal(_) => "Internal server error",
 			Self::Timeout(_) => "Connection timed out",
 			Self::ReconnectFailed(_) => "Reconnection failed",
+			Self::BinaryPayload(_) => "Invalid message format",
+			Self::HeartbeatTimeout(_) => "Connection timed out",
+			Self::SlowConsumer(_) => "Message delivery failed",
 		}
 	}
 
@@ -302,6 +305,9 @@ impl WebSocketError {
 			Self::Internal(msg) => format!("Internal error: {}", msg),
 			Self::Timeout(d) => format!("Connection timeout: idle for {:?}", d),
 			Self::ReconnectFailed(n) => format!("Reconnection failed after {} attempts", n),
+			Self::BinaryPayload(msg) => format!("Invalid binary payload: {}", msg),
+			Self::HeartbeatTimeout(d) => format!("Heartbeat timeout: no pong within {:?}", d),
+			Self::SlowConsumer(d) => format!("Slow consumer: send timed out after {:?}", d),
 		}
 	}
 }
