@@ -24,6 +24,16 @@ struct AuthStateMarker;
 /// The struct contains a private field to prevent external construction
 /// via struct literal syntax. Use the provided constructors instead.
 ///
+/// # Security Note
+///
+/// If this state is serialized and sent to client-side code (e.g., in
+/// a WASM SPA), the permission checks (`is_authenticated()`,
+/// `is_admin()`, `is_active()`) should only be used for **UI display
+/// purposes** (showing/hiding elements). An attacker can modify
+/// client-side state, so all authorization decisions must be enforced
+/// server-side through authentication middleware and permission
+/// classes (see `reinhardt-auth`).
+///
 /// # Example
 ///
 /// ```rust,no_run
