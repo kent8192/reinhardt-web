@@ -154,6 +154,7 @@ pub mod handler;
 pub mod integration;
 pub mod metrics;
 pub mod middleware;
+pub mod origin;
 pub mod protocol;
 pub mod reconnection;
 #[cfg(feature = "redis-channel")]
@@ -190,6 +191,9 @@ pub use middleware::{
 	ConnectionContext, ConnectionMiddleware, IpFilterMiddleware, LoggingMiddleware,
 	MessageMiddleware, MessageSizeLimitMiddleware, MiddlewareChain, MiddlewareError,
 	MiddlewareResult,
+};
+pub use origin::{
+	OriginPolicy, OriginValidationConfig, OriginValidationMiddleware, validate_origin,
 };
 pub use protocol::{
 	DEFAULT_MAX_FRAME_SIZE, DEFAULT_MAX_MESSAGE_SIZE, default_websocket_config,

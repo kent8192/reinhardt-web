@@ -285,50 +285,53 @@ impl LayeredCacheStore {
 	/// # }
 	/// ```
 	pub async fn cleanup_active_sampling(&self) {
-		let keys = {
-			let store = self.store.read().await;
-			store.keys().cloned().collect::<Vec<_>>()
-		};
+		/// Maximum number of sampling rounds to prevent runaway iteration
+		const MAX_ROUNDS: usize = 100;
 
-		if keys.is_empty() {
-			return;
-		}
+		for _ in 0..MAX_ROUNDS {
+			let keys = {
+				let store = self.store.read().await;
+				store.keys().cloned().collect::<Vec<_>>()
+			};
 
-		// Sample random keys
-		let sample_size = self.active_sampler.sample_size.min(keys.len());
-		let sample: Vec<_> = {
-			let mut rng = rand::rng();
-			keys.choose_multiple(&mut rng, sample_size)
-				.cloned()
-				.collect()
-		};
+			if keys.is_empty() {
+				return;
+			}
 
-		// Count expired entries in sample
-		let mut expired_keys = Vec::new();
-		{
-			let store = self.store.read().await;
-			for key in &sample {
-				if let Some(entry) = store.get::<String>(key)
-					&& entry.is_expired()
-				{
-					expired_keys.push(key.clone());
+			// Sample random keys
+			let sample_size = self.active_sampler.sample_size.min(keys.len());
+			let sample: Vec<_> = {
+				let mut rng = rand::rng();
+				keys.choose_multiple(&mut rng, sample_size)
+					.cloned()
+					.collect()
+			};
+
+			// Count expired entries in sample
+			let mut expired_keys = Vec::new();
+			{
+				let store = self.store.read().await;
+				for key in &sample {
+					if let Some(entry) = store.get::<String>(key)
+						&& entry.is_expired()
+					{
+						expired_keys.push(key.clone());
+					}
 				}
 			}
-		}
 
-		let expired_count = expired_keys.len();
-		let expired_ratio = expired_count as f32 / sample.len() as f32;
+			let expired_ratio = expired_keys.len() as f32 / sample.len() as f32;
 
-		// If more than threshold are expired, delete them and repeat
-		if expired_ratio > self.active_sampler.threshold {
-			let mut store = self.store.write().await;
-			for key in expired_keys {
-				store.remove(&key);
+			if expired_ratio > self.active_sampler.threshold {
+				// Delete expired keys and continue to next sampling round
+				let mut store = self.store.write().await;
+				for key in expired_keys {
+					store.remove(&key);
+				}
+			} else {
+				// Below threshold, stop sampling
+				return;
 			}
-
-			// Recursively sample again if threshold exceeded
-			drop(store); // Release lock before recursion
-			Box::pin(self.cleanup_active_sampling()).await;
 		}
 	}
 

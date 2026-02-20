@@ -603,6 +603,9 @@ impl RoomManager {
 
 	/// Get or create a room
 	///
+	/// This method uses a single write lock to avoid TOCTOU race conditions
+	/// that could occur with separate get and create operations.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -618,11 +621,15 @@ impl RoomManager {
 	/// # });
 	/// ```
 	pub async fn get_or_create_room(&self, id: String) -> Arc<Room> {
-		if let Some(room) = self.get_room(&id).await {
-			return room;
+		let mut rooms = self.rooms.write().await;
+
+		if let Some(room) = rooms.get(&id) {
+			return room.clone();
 		}
 
-		self.create_room(id).await
+		let room = Arc::new(Room::new(id.clone()));
+		rooms.insert(id, room.clone());
+		room
 	}
 
 	/// Delete a room
