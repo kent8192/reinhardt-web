@@ -119,8 +119,7 @@ impl BrowsableApiMiddleware {
 			.find_map(|cookie| {
 				cookie.split(';').next().and_then(|kv| {
 					let (name, value) = kv.trim().split_once('=')?;
-					
-					
+
 					if name == "csrftoken" {
 						Some(value.to_string())
 					} else {

@@ -269,10 +269,12 @@ impl CspMiddleware {
 			let mut directive_values = values.clone();
 
 			// Add nonce to script-src and style-src if enabled
-			if self.config.include_nonce && (directive == "script-src" || directive == "style-src")
-				&& let Some(n) = validated_nonce {
-					directive_values.push(format!("'nonce-{}'", n));
-				}
+			if self.config.include_nonce
+				&& (directive == "script-src" || directive == "style-src")
+				&& let Some(n) = validated_nonce
+			{
+				directive_values.push(format!("'nonce-{}'", n));
+			}
 
 			parts.push(format!("{} {}", directive, directive_values.join(" ")));
 		}

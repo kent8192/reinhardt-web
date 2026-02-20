@@ -844,12 +844,13 @@ impl ConnectionTimeoutMonitor {
 		let mut connections = self.connections.write().await;
 
 		if let Some(max) = self.config.max_connections
-			&& connections.len() >= max {
-				return Err(WebSocketError::Connection(format!(
-					"maximum connection limit reached ({})",
-					max
-				)));
-			}
+			&& connections.len() >= max
+		{
+			return Err(WebSocketError::Connection(format!(
+				"maximum connection limit reached ({})",
+				max
+			)));
+		}
 
 		connections.insert(connection.id().to_string(), connection);
 		Ok(())
