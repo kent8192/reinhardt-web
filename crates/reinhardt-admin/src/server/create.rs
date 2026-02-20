@@ -9,6 +9,8 @@ use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
+use super::audit;
+#[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
 #[cfg(not(target_arch = "wasm32"))]
 use super::security::sanitize_mutation_values;
@@ -76,10 +78,20 @@ pub async fn create_record(
 	let mut sanitized_data = request.data;
 	sanitize_mutation_values(&mut sanitized_data);
 
-	let affected = db
-		.create::<AdminRecord>(table_name, sanitized_data)
+	let user_id = current_user
+		.id()
+		.map(|id| id.to_string())
+		.unwrap_or_else(|_| "unknown".to_string());
+
+	let result = db
+		.create::<AdminRecord>(table_name, sanitized_data.clone())
 		.await
-		.map_server_fn_error()?;
+		.map_server_fn_error();
+
+	let success = result.is_ok();
+	audit::log_create(&user_id, &model_name, &sanitized_data, success);
+
+	let affected = result?;
 
 	Ok(MutationResponse {
 		success: true,

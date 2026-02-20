@@ -44,6 +44,7 @@ pub mod limits;
 pub mod list;
 pub mod update;
 
+pub mod audit;
 pub mod security;
 
 // Server-side only modules
