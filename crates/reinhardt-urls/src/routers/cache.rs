@@ -213,12 +213,27 @@ impl std::fmt::Debug for RouteCache {
 ///
 /// This uses a HashMap for O(1) lookups combined with a min-heap (BinaryHeap)
 /// for efficient O(log n) LRU eviction tracking.
+///
+/// # Memory Considerations
+///
+/// The heap accumulates stale entries as keys are accessed repeatedly (lazy cleanup
+/// strategy). To prevent unbounded heap growth, the heap is compacted whenever it
+/// exceeds `HEAP_COMPACTION_FACTOR` times the number of live map entries. The live
+/// entry count is bounded by `capacity`, so total heap memory is bounded by
+/// `capacity * HEAP_COMPACTION_FACTOR` entries at all times.
 struct LruCache {
 	capacity: usize,
 	map: HashMap<String, (RouteCacheEntry, usize)>, // (entry, access_order)
 	heap: BinaryHeap<Reverse<(usize, String)>>,     // min-heap of (access_order, key)
 	access_counter: usize,
 }
+
+/// Maximum ratio of heap size to map size before compacting stale heap entries.
+///
+/// When `heap.len() > map.len() * HEAP_COMPACTION_FACTOR`, a full heap
+/// compaction is triggered, removing all stale entries in O(n) time. This
+/// bounds total heap memory while amortizing compaction cost.
+const HEAP_COMPACTION_FACTOR: usize = 4;
 
 impl LruCache {
 	fn new(capacity: usize) -> Self {
@@ -253,6 +268,25 @@ impl LruCache {
 		self.access_counter += 1;
 		self.heap.push(Reverse((self.access_counter, path.clone())));
 		self.map.insert(path, (entry, self.access_counter));
+
+		// Compact the heap when it grows too large relative to the live entry count
+		// to prevent unbounded heap memory growth from accumulated stale entries.
+		if self.heap.len() > self.map.len().saturating_mul(HEAP_COMPACTION_FACTOR) {
+			self.compact_heap();
+		}
+	}
+
+	/// Rebuild the heap containing only live (non-stale) entries.
+	///
+	/// This runs in O(n log n) time where n is the number of live entries, which
+	/// is bounded by `capacity`. It is invoked lazily only when the heap has grown
+	/// beyond `HEAP_COMPACTION_FACTOR` times the live entry count.
+	fn compact_heap(&mut self) {
+		let mut new_heap = BinaryHeap::with_capacity(self.map.len());
+		for (key, (_, access_time)) in &self.map {
+			new_heap.push(Reverse((*access_time, key.clone())));
+		}
+		self.heap = new_heap;
 	}
 
 	/// Evict the least recently used entry
