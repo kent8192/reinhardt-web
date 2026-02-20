@@ -81,10 +81,77 @@ impl AppConfig {
 		self
 	}
 
-	/// Set the path for the application
-	pub fn with_path(mut self, path: impl Into<String>) -> Self {
-		self.path = Some(path.into());
-		self
+	/// Set the path for the application.
+	///
+	/// The path is validated to reject path traversal sequences (`..`),
+	/// absolute paths (starting with `/` or a Windows drive letter), and
+	/// null bytes. These restrictions prevent path traversal attacks when
+	/// the path is later used to locate application resources on disk.
+	///
+	/// # Errors
+	///
+	/// Returns [`AppError::ConfigError`] if the path contains disallowed
+	/// sequences.
+	pub fn with_path(mut self, path: impl Into<String>) -> AppResult<Self> {
+		let path = path.into();
+		Self::validate_path(&path)?;
+		self.path = Some(path);
+		Ok(self)
+	}
+
+	/// Validates an application path to prevent path traversal and injection.
+	///
+	/// Rejects paths that contain:
+	/// - Path traversal sequences (`..`)
+	/// - Absolute paths (starting with `/` or a Windows drive letter like `C:\`)
+	/// - Null bytes (`\0`)
+	/// - Control characters
+	fn validate_path(path: &str) -> AppResult<()> {
+		if path.is_empty() {
+			return Err(AppError::ConfigError(
+				"application path cannot be empty".to_string(),
+			));
+		}
+
+		// Reject null bytes
+		if path.contains('\0') {
+			return Err(AppError::ConfigError(
+				"application path must not contain null bytes".to_string(),
+			));
+		}
+
+		// Reject control characters (prevents log injection)
+		if path.chars().any(|c| c.is_control()) {
+			return Err(AppError::ConfigError(
+				"application path must not contain control characters".to_string(),
+			));
+		}
+
+		// Reject absolute paths (Unix-style or Windows-style)
+		if path.starts_with('/') || path.starts_with('\\') {
+			return Err(AppError::ConfigError(
+				"application path must be relative, not absolute".to_string(),
+			));
+		}
+
+		// Reject Windows drive letter paths (e.g., C:\, D:/)
+		if path.len() >= 2 && path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes()[1] == b':'
+		{
+			return Err(AppError::ConfigError(
+				"application path must be relative, not absolute".to_string(),
+			));
+		}
+
+		// Reject path traversal sequences
+		for component in path.split(['/', '\\']) {
+			if component == ".." {
+				return Err(AppError::ConfigError(
+					"application path must not contain path traversal sequences".to_string(),
+				));
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Set the default auto field for the application
@@ -501,105 +568,207 @@ mod di_integration {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_app_config_creation() {
+		// Arrange & Act
 		let config = AppConfig::new("myapp", "myapp")
 			.with_verbose_name("My Application")
 			.with_default_auto_field("BigAutoField");
 
+		// Assert
 		assert_eq!(config.name, "myapp");
 		assert_eq!(config.label, "myapp");
 		assert_eq!(config.verbose_name, Some("My Application".to_string()));
 		assert_eq!(config.default_auto_field, Some("BigAutoField".to_string()));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_app_config_validation() {
+		// Arrange
 		let valid = AppConfig::new("myapp", "myapp");
-		assert!(valid.validate_label().is_ok());
-
 		let invalid = AppConfig::new("myapp", "my-app");
-		assert!(invalid.validate_label().is_err());
-
 		let empty = AppConfig::new("myapp", "");
+
+		// Act & Assert
+		assert!(valid.validate_label().is_ok());
+		assert!(invalid.validate_label().is_err());
 		assert!(empty.validate_label().is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_apps_registry() {
+		// Arrange
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 
+		// Act & Assert
 		assert!(apps.is_installed("myapp"));
 		assert!(apps.is_installed("anotherapp"));
 		assert!(!apps.is_installed("notinstalled"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_register_app() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		let config = AppConfig::new("myapp", "myapp");
 
+		// Act & Assert
 		assert!(apps.register(config).is_ok());
 		assert!(apps.get_app_config("myapp").is_ok());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_duplicate_registration() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		let config1 = AppConfig::new("myapp", "myapp");
 		let config2 = AppConfig::new("myapp", "myapp");
-
 		apps.register(config1).unwrap();
+
+		// Act
 		let result = apps.register(config2);
 
+		// Assert
 		assert!(result.is_err());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_get_app_configs() {
+		// Arrange
 		let apps = Apps::new(vec![]);
-
 		apps.register(AppConfig::new("app1", "app1")).unwrap();
 		apps.register(AppConfig::new("app2", "app2")).unwrap();
 
+		// Act
 		let configs = apps.get_app_configs();
+
+		// Assert
 		assert_eq!(configs.len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate() {
+		// Arrange
 		let apps = Apps::new(vec![]);
 		assert!(!apps.is_ready());
 
+		// Act
 		apps.populate().unwrap();
 
+		// Assert
 		assert!(apps.is_ready());
 		assert!(apps.is_apps_ready());
 		assert!(apps.is_models_ready());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_populate_with_installed_apps() {
+		// Arrange
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 		assert!(!apps.is_ready());
 
-		// Populate should create AppConfig for each installed app
+		// Act
 		let result = apps.populate();
-		assert!(result.is_ok());
 
-		// Verify apps are ready
+		// Assert
+		assert!(result.is_ok());
 		assert!(apps.is_ready());
 		assert!(apps.is_apps_ready());
 		assert!(apps.is_models_ready());
-
-		// Verify AppConfigs were created
 		assert!(apps.get_app_config("myapp").is_ok());
 		assert!(apps.get_app_config("anotherapp").is_ok());
-
-		// Verify app configs contain correct labels
 		let myapp_config = apps.get_app_config("myapp").unwrap();
 		assert_eq!(myapp_config.label, "myapp");
+	}
+
+	// ==========================================================================
+	// Path Validation Tests
+	// ==========================================================================
+
+	#[rstest]
+	#[case("apps/myapp")]
+	#[case("myapp")]
+	#[case("src/apps/myapp")]
+	#[case("my_app")]
+	#[case("my-app")]
+	fn test_with_path_accepts_valid_relative_paths(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		assert!(result.is_ok(), "expected valid path: {path}");
+		assert_eq!(result.unwrap().path, Some(path.to_string()));
+	}
+
+	#[rstest]
+	fn test_with_path_rejects_empty() {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path("");
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("cannot be empty"));
+	}
+
+	#[rstest]
+	#[case("../etc/passwd")]
+	#[case("apps/../../../etc/shadow")]
+	#[case("apps/..")]
+	fn test_with_path_rejects_traversal(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("path traversal"),
+			"expected traversal error for '{path}', got: {err}"
+		);
+	}
+
+	#[rstest]
+	#[case("/etc/passwd")]
+	#[case("/absolute/path")]
+	#[case("\\windows\\path")]
+	#[case("C:\\Windows\\System32")]
+	#[case("D:/data")]
+	fn test_with_path_rejects_absolute(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("relative, not absolute"),
+			"expected absolute path error for '{path}', got: {err}"
+		);
+	}
+
+	#[rstest]
+	fn test_with_path_rejects_null_bytes() {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path("apps/my\0app");
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(err.to_string().contains("null bytes"));
+	}
+
+	#[rstest]
+	#[case("apps/my\napp")]
+	#[case("apps/my\rapp")]
+	fn test_with_path_rejects_control_chars(#[case] path: &str) {
+		// Act
+		let result = AppConfig::new("myapp", "myapp").with_path(path);
+
+		// Assert
+		let err = result.unwrap_err();
+		assert!(
+			err.to_string().contains("control characters"),
+			"expected control char error for path, got: {err}"
+		);
 	}
 }
 
