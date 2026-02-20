@@ -22,7 +22,7 @@ fn message_input(
 	let input_for_change = input_signal.clone();
 	let input_for_click = input_signal.clone();
 
-	page!(|input_for_display: Signal<String>, input_for_change: Signal<String>, input_for_click: Signal<String>| {
+	page!(|input_for_display: Signal < String >, input_for_change: Signal < String >, input_for_click: Signal < String >| {
 		div {
 			class: "dm-input-container flex gap-2 p-4 border-t border-surface-tertiary",
 			input {
@@ -260,7 +260,7 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 	let last_activity = room.last_activity.clone();
 	let unread_count = room.unread_count;
 
-	page!(|room_id: Uuid, name: String, last_message: Option<String>, last_activity: Option<String>, unread_count: i32| {
+	page!(|room_id: Uuid, name: String, last_message: Option < String >, last_activity: Option < String >, unread_count: i32| {
 		div {
 			class: "room-item flex items-center gap-3 p-4 hover:bg-surface-secondary cursor-pointer transition-colors border-b border-surface-tertiary",
 			@click: {
@@ -298,7 +298,7 @@ fn room_item(room: &RoomInfo, on_select: impl Fn(Uuid) + Clone + 'static) -> Vie
 					}
 				}
 			}
-			if unread_count>0 {
+			if unread_count> 0 {
 				div {
 					class: "flex-shrink-0",
 					span {
@@ -333,7 +333,7 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> View {
 	let is_loading_signal = room_list.is_loading.clone();
 	let error_signal = room_list.error.clone();
 
-	page!(|rooms_signal: Signal<Vec<RoomInfo>>, is_loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+	page!(|rooms_signal: Signal < Vec < RoomInfo> >, is_loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
 		div {
 			class: "dm-room-list h-full flex flex-col",
 			div {
@@ -395,7 +395,7 @@ pub fn dm_room_list(on_room_select: impl Fn(Uuid) + Clone + 'static) -> View {
 						}
 					} else {
 						div {
-							{ View::fragment(rooms_signal.get().iter().map(|r| { room_item(r, on_room_select.clone()) }).collect ::<Vec<_>>()) }
+							{ View::fragment(rooms_signal.get().iter().map(|r| { room_item(r, on_room_select.clone()) }).collect::< Vec < _> >()) }
 						}
 					}
 				}

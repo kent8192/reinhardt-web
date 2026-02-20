@@ -46,7 +46,7 @@ pub fn follow_button(target_user_id: Uuid, is_following_initial: bool) -> View {
 		let loading_clone = loading.clone();
 		let error_clone = error.clone();
 
-		page!(|is_following_signal: Signal<bool>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+		page!(|is_following_signal: Signal < bool >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
 			div {
 				watch {
 					if loading_signal.get() {
@@ -333,7 +333,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> View {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|title: String, empty_message: String, empty_icon: String, users_signal: Signal<Vec<UserInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
+	page!(|title: String, empty_message: String, empty_icon: String, users_signal: Signal < Vec < UserInfo> >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
 		div {
 			class: "animate-fade-in",
 			div {
@@ -417,7 +417,7 @@ pub fn user_list(user_id: Uuid, list_type: UserListType) -> View {
 				} else {
 					div {
 						class: "card overflow-hidden",
-						{ View::fragment(users_signal.get().iter().map(|u| user_card(u)).collect ::<Vec<_>>()) }
+						{ View::fragment(users_signal.get().iter().map(|u| user_card(u)).collect::< Vec < _> >()) }
 					}
 				}
 			}
