@@ -541,6 +541,19 @@ fn run_fmt(
 	use ast_formatter::{AstPageFormatter, RustfmtOptions};
 	use formatter::collect_rust_files;
 
+	// Validate config path if provided
+	if let Some(ref cp) = config_path {
+		validate_config_path(cp).map_err(|e| {
+			reinhardt_commands::CommandError::ExecutionError(format!(
+				"Invalid config path: {}",
+				e
+			))
+		})?;
+		check_file_size(cp, MAX_CONFIG_FILE_SIZE).map_err(|e| {
+			reinhardt_commands::CommandError::ExecutionError(e)
+		})?;
+	}
+
 	let files = collect_rust_files(&path).map_err(|e| {
 		reinhardt_commands::CommandError::ExecutionError(format!("Failed to collect files: {}", e))
 	})?;
@@ -583,6 +596,20 @@ fn run_fmt(
 
 	for (index, file_path) in files.iter().enumerate() {
 		let progress = format!("[{}/{}]", index + 1, total_files);
+
+		// Check file size before reading to prevent OOM
+		if let Err(e) = check_file_size(file_path, MAX_SOURCE_FILE_SIZE) {
+			eprintln!(
+				"{} {} {}: {}",
+				progress.bright_blue(),
+				"Skipped:".yellow(),
+				file_path.display(),
+				e
+			);
+			error_count += 1;
+			continue;
+		}
+
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
@@ -810,6 +837,19 @@ fn run_fmt_all(
 	use std::collections::HashMap;
 	use std::process::{Command, Stdio};
 
+	// Validate config path if provided
+	if let Some(ref cp) = config_path {
+		validate_config_path(cp).map_err(|e| {
+			reinhardt_commands::CommandError::ExecutionError(format!(
+				"Invalid config path: {}",
+				e
+			))
+		})?;
+		check_file_size(cp, MAX_CONFIG_FILE_SIZE).map_err(|e| {
+			reinhardt_commands::CommandError::ExecutionError(e)
+		})?;
+	}
+
 	// Find project root
 	let project_root = find_project_root().ok_or_else(|| {
 		reinhardt_commands::CommandError::ExecutionError(
@@ -834,6 +874,15 @@ fn run_fmt_all(
 
 	let formatter = AstPageFormatter::new();
 
+	// Acquire a lock file to prevent concurrent format operations (TOCTOU mitigation)
+	let lock_path = project_root.join(".reinhardt-fmt.lock");
+	let _lock_file = acquire_format_lock(&lock_path).map_err(|e| {
+		reinhardt_commands::CommandError::ExecutionError(format!(
+			"Failed to acquire format lock: {}. Another format operation may be in progress.",
+			e
+		))
+	})?;
+
 	// Store original contents for comparison and rollback
 	let mut original_contents: HashMap<PathBuf, String> = HashMap::new();
 	// Store backup info for protected files
@@ -851,6 +900,12 @@ fn run_fmt_all(
 	}
 
 	for file_path in &files {
+		// Check file size before reading to prevent OOM
+		if let Err(e) = check_file_size(file_path, MAX_SOURCE_FILE_SIZE) {
+			eprintln!("{} Skipping oversized file: {}", "Warning:".yellow(), e);
+			continue;
+		}
+
 		let original_content = std::fs::read_to_string(file_path).map_err(|e| {
 			reinhardt_commands::CommandError::ExecutionError(format!(
 				"Failed to read {}: {}",
@@ -1300,4 +1355,133 @@ fn secure_clear_hashmap(map: &mut std::collections::HashMap<PathBuf, String>) {
 		value.zeroize();
 	}
 	map.clear();
+}
+
+/// Validate a config path argument to prevent path traversal and special file attacks.
+///
+/// # Security
+///
+/// - Rejects paths containing traversal sequences (`..`)
+/// - Verifies the path exists and is a regular file (not a directory, device, etc.)
+/// - Rejects symlinks to prevent symlink-based attacks
+/// - Rejects special device paths (e.g., `/dev/stdin`, `/dev/null`)
+fn validate_config_path(path: &Path) -> Result<(), String> {
+	// Check for path traversal sequences
+	let path_str = path.to_string_lossy();
+	if path_str.contains("..") {
+		return Err(format!(
+			"Config path contains path traversal sequence: {}",
+			mask_path(path)
+		));
+	}
+
+	// Reject special device paths
+	#[cfg(unix)]
+	if path_str.starts_with("/dev/") || path_str.starts_with("/proc/") || path_str.starts_with("/sys/") {
+		return Err(format!(
+			"Config path refers to a special device: {}",
+			mask_path(path)
+		));
+	}
+
+	// Check that path exists
+	if !path.exists() {
+		return Err(format!("Config path does not exist: {}", mask_path(path)));
+	}
+
+	// Reject symlinks
+	if path.is_symlink() {
+		return Err(format!(
+			"Config path is a symlink, which is not allowed: {}",
+			mask_path(path)
+		));
+	}
+
+	// Verify it's a regular file
+	if !path.is_file() {
+		return Err(format!(
+			"Config path is not a regular file: {}",
+			mask_path(path)
+		));
+	}
+
+	Ok(())
+}
+
+/// Maximum file size for configuration files (10 MB).
+///
+/// Prevents OOM from processing extremely large files.
+const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Maximum file size for Rust source files (5 MB).
+///
+/// Prevents OOM from processing extremely large source files.
+const MAX_SOURCE_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
+/// Check file size before reading to prevent OOM.
+///
+/// # Errors
+///
+/// Returns an error if the file exceeds the given maximum size.
+fn check_file_size(path: &Path, max_size: u64) -> Result<(), String> {
+	match std::fs::metadata(path) {
+		Ok(metadata) => {
+			if metadata.len() > max_size {
+				Err(format!(
+					"File {} exceeds maximum allowed size ({} bytes, limit {} bytes)",
+					mask_path(path),
+					metadata.len(),
+					max_size
+				))
+			} else {
+				Ok(())
+			}
+		}
+		Err(e) => Err(format!(
+			"Failed to check file size for {}: {}",
+			mask_path(path),
+			e
+		)),
+	}
+}
+
+/// Acquire an exclusive lock file to prevent concurrent format operations.
+///
+/// # Security
+///
+/// Uses `OpenOptions::create_new(true)` for atomic lock creation (TOCTOU mitigation).
+/// The lock file is automatically removed when the returned guard is dropped.
+///
+/// # Errors
+///
+/// Returns an error if the lock file already exists (another operation is in progress)
+/// or if the file cannot be created.
+fn acquire_format_lock(lock_path: &Path) -> Result<FormatLockGuard, std::io::Error> {
+	use std::fs::OpenOptions;
+
+	// Atomic create-or-fail: prevents TOCTOU race between check and create
+	let file = OpenOptions::new()
+		.write(true)
+		.create_new(true)
+		.open(lock_path)?;
+
+	// Write PID to lock file for debugging
+	use std::io::Write;
+	let mut file = file;
+	let _ = writeln!(file, "{}", std::process::id());
+
+	Ok(FormatLockGuard {
+		path: lock_path.to_path_buf(),
+	})
+}
+
+/// RAII guard that removes the lock file on drop.
+struct FormatLockGuard {
+	path: PathBuf,
+}
+
+impl Drop for FormatLockGuard {
+	fn drop(&mut self) {
+		let _ = std::fs::remove_file(&self.path);
+	}
 }
