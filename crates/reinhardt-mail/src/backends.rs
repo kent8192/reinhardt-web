@@ -564,8 +564,7 @@ impl SmtpBackend {
 				.map_err(|e| EmailError::BackendError(format!("Failed to build message: {}", e)))?
 		} else if has_attachments {
 			// Plain text with attachments
-			let mut multipart =
-				MultiPart::mixed().singlepart(SinglePart::plain(body));
+			let mut multipart = MultiPart::mixed().singlepart(SinglePart::plain(body));
 
 			for attachment in email.attachments() {
 				let content_type = header::ContentType::parse(attachment.mime_type())

@@ -1463,7 +1463,10 @@ mod tests {
 		// Assert - at least one backoff sleep must have occurred, so elapsed time
 		// must exceed min_elapsed. Without sleep the loop would complete in near-zero
 		// wall time (only network round-trip overhead from mockito).
-		assert!(result.is_err(), "expected MaxRetriesExceeded after all retries");
+		assert!(
+			result.is_err(),
+			"expected MaxRetriesExceeded after all retries"
+		);
 		assert!(
 			elapsed >= min_elapsed,
 			"Regression #742: expected sleep between retries (>={:?}), got {:?}",

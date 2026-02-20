@@ -806,7 +806,6 @@ fn validate_element_nesting(elem: &PageElement, parent_tags: &[String]) -> Resul
 	Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;

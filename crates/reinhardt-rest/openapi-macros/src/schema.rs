@@ -58,9 +58,7 @@ impl FieldAttributes {
 /// syntax is malformed.
 ///
 /// Fixes #842: Propagate parse errors instead of silently ignoring them.
-pub(crate) fn extract_field_attributes(
-	attrs: &[Attribute],
-) -> Result<FieldAttributes, syn::Error> {
+pub(crate) fn extract_field_attributes(attrs: &[Attribute]) -> Result<FieldAttributes, syn::Error> {
 	let mut field_attrs = FieldAttributes::default();
 
 	for attr in attrs {
@@ -261,22 +259,26 @@ pub(crate) fn extract_field_attributes(
 	}
 
 	// Fixes #841: Validate that constraints are not contradictory
-	if let (Some(min), Some(max)) = (field_attrs.minimum, field_attrs.maximum) {
-		if min > max {
+	if let (Some(min), Some(max)) = (field_attrs.minimum, field_attrs.maximum)
+		&& min > max {
 			return Err(syn::Error::new(
 				Span::call_site(),
-				format!("contradictory constraints: minimum ({}) > maximum ({})", min, max),
+				format!(
+					"contradictory constraints: minimum ({}) > maximum ({})",
+					min, max
+				),
 			));
 		}
-	}
-	if let (Some(min), Some(max)) = (field_attrs.min_length, field_attrs.max_length) {
-		if min > max {
+	if let (Some(min), Some(max)) = (field_attrs.min_length, field_attrs.max_length)
+		&& min > max {
 			return Err(syn::Error::new(
 				Span::call_site(),
-				format!("contradictory constraints: min_length ({}) > max_length ({})", min, max),
+				format!(
+					"contradictory constraints: min_length ({}) > max_length ({})",
+					min, max
+				),
 			));
 		}
-	}
 
 	Ok(field_attrs)
 }

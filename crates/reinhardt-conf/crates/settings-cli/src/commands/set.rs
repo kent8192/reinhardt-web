@@ -137,13 +137,12 @@ pub(crate) fn execute(args: SetArgs) -> anyhow::Result<()> {
 					continue;
 				}
 				// Split on first '=' and trim spaces around key/value
-				if let Some((key, _)) = trimmed.split_once('=') {
-					if key.trim() == args.key {
+				if let Some((key, _)) = trimmed.split_once('=')
+					&& key.trim() == args.key {
 						*line = new_line.clone();
 						found = true;
 						break;
 					}
-				}
 			}
 
 			if !found {

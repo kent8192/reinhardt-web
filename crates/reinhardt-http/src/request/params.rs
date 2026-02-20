@@ -262,7 +262,7 @@ impl Request {
 		self.headers
 			.get(COOKIE)
 			.and_then(|h| h.to_str().ok())
-			.and_then(|cookies| Self::parse_cookies(cookies))
+			.and_then(Self::parse_cookies)
 			.and_then(|parsed| {
 				parsed.into_iter().find_map(|(name, value)| {
 					if name == cookie_name {
@@ -312,16 +312,15 @@ impl Request {
 		name.chars().all(|c| {
 			// Must be a visible ASCII character (0x21-0x7E) excluding separators
 			let code = c as u32;
-			code >= 0x21
-				&& code <= 0x7E
+			(0x21..=0x7E).contains(&code)
 				&& !matches!(
 					c,
-					'(' | ')' | '<' | '>'
-						| '@' | ',' | ';'
-						| ':' | '\\' | '"'
-						| '/' | '[' | ']'
-						| '?' | '=' | '{'
-						| '}' | ' ' | '\t'
+					'(' | ')'
+						| '<' | '>' | '@' | ','
+						| ';' | ':' | '\\' | '"'
+						| '/' | '[' | ']' | '?'
+						| '=' | '{' | '}' | ' '
+						| '\t'
 				)
 		})
 	}

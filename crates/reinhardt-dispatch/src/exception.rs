@@ -101,8 +101,7 @@ where
 						.await
 				}
 				Err(_) => {
-					let mut response =
-						Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
+					let mut response = Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
 					response.body = Bytes::from("Internal Server Error");
 					response
 				}

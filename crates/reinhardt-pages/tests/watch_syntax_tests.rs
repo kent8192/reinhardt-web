@@ -56,7 +56,7 @@ fn test_watch_with_if_condition(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
 	// Create view with watch block containing if condition
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -91,7 +91,7 @@ fn test_watch_with_if_condition(bool_signal: Signal<bool>) {
 fn test_watch_with_if_else(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -126,7 +126,7 @@ fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 	let outer = bool_signal.clone();
 	let inner = Signal::new(true);
 
-	let view = page!(|outer: Signal<bool>, inner: Signal<bool>| {
+	let view = page!(|outer: Signal < bool >, inner: Signal < bool >| {
 		div {
 			watch {
 				if outer.get() {
@@ -165,7 +165,7 @@ fn test_watch_with_nested_if(bool_signal: Signal<bool>) {
 fn test_watch_with_element_child(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -200,7 +200,7 @@ fn test_watch_with_element_child(bool_signal: Signal<bool>) {
 fn test_watch_with_text_content(string_signal: Signal<String>) {
 	let signal = string_signal.clone();
 
-	let view = page!(|signal: Signal<String>| {
+	let view = page!(|signal: Signal < String >| {
 		div {
 			watch {
 				{ signal.get() }
@@ -225,7 +225,7 @@ fn test_watch_with_text_content(string_signal: Signal<String>) {
 fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 	let signal = counter_signal.clone();
 
-	let view = page!(|signal: Signal<i32>| {
+	let view = page!(|signal: Signal < i32 >| {
 		div {
 			watch {
 				{ format!("Count: {}", signal.get()) }
@@ -250,7 +250,7 @@ fn test_watch_with_expression_node(counter_signal: Signal<i32>) {
 fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 	let signal = list_signal.clone();
 
-	let view = page!(|signal: Signal<Vec<String>>| {
+	let view = page!(|signal: Signal < Vec < String> >| {
 		ul {
 			watch {
 				for item in signal.get().iter() {
@@ -279,7 +279,7 @@ fn test_watch_with_for_loop(list_signal: Signal<Vec<String>>) {
 fn test_watch_nested_in_element(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			class: "outer",
 			section {
@@ -319,7 +319,7 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 	let loading = bool_signal.clone();
 	let error = error_signal.clone();
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>| {
+	let view = page!(|loading: Signal < bool >, error: Signal < Option < String> >| {
 		div {
 			watch {
 				if loading.get() {
@@ -360,7 +360,7 @@ fn test_multiple_watch_blocks(bool_signal: Signal<bool>, error_signal: Signal<Op
 fn test_watch_deeply_nested(bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			div {
 				div {
@@ -397,7 +397,7 @@ fn test_watch_deeply_nested(bool_signal: Signal<bool>) {
 fn test_watch_with_unicode() {
 	let text = Signal::new("日本語テスト 🎉 emoji".to_string());
 
-	let view = page!(|text: Signal<String>| {
+	let view = page!(|text: Signal < String >| {
 		div {
 			watch {
 				{ text.get() }
@@ -422,7 +422,7 @@ fn test_watch_with_unicode() {
 fn test_watch_with_empty_string() {
 	let text = Signal::new("".to_string());
 
-	let view = page!(|text: Signal<String>| {
+	let view = page!(|text: Signal < String >| {
 		div {
 			watch {
 				{ text.get() }
@@ -447,10 +447,10 @@ fn test_watch_with_empty_string() {
 fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 	let items = list_signal.clone();
 
-	let view = page!(|items: Signal<Vec<String>>| {
+	let view = page!(|items: Signal < Vec < String> >| {
 		div {
 			watch {
-				{ Page::fragment(items.get().iter().map(|i| { Page::text(i.clone()) }).collect ::<Vec<Page>>()) }
+				{ Page::fragment(items.get().iter().map(|i| { Page::text(i.clone()) }).collect::< Vec < Page> >()) }
 			}
 		}
 	})(items.clone());
@@ -472,10 +472,10 @@ fn test_watch_with_fragment_result(list_signal: Signal<Vec<String>>) {
 fn test_watch_with_data_attributes(counter_signal: Signal<i32>) {
 	let signal = counter_signal.clone();
 
-	let view = page!(|signal: Signal<i32>| {
+	let view = page!(|signal: Signal < i32 >| {
 		div {
 			watch {
-				if signal.get()>0 {
+				if signal.get()> 0 {
 					span {
 						data_count: signal.get().to_string(),
 						"Has data"
@@ -504,7 +504,7 @@ fn test_watch_with_data_attributes(counter_signal: Signal<i32>) {
 fn test_watch_condition_boolean_partitions(#[case] initial_value: bool) {
 	let signal = Signal::new(initial_value);
 
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -541,7 +541,7 @@ fn test_watch_nesting_depth(#[case] depth: usize, bool_signal: Signal<bool>) {
 	let signal = bool_signal.clone();
 
 	// Create view with varying nesting depth
-	let view = page!(|signal: Signal<bool>| {
+	let view = page!(|signal: Signal < bool >| {
 		div {
 			watch {
 				if signal.get() {
@@ -575,7 +575,7 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 	let signal = Signal::new(condition);
 
 	let view = if content_type == "text" {
-		page!(|signal: Signal<bool>| {
+		page!(|signal: Signal < bool >| {
 			div {
 				watch {
 					if signal.get() {
@@ -587,7 +587,7 @@ fn test_watch_condition_content_matrix(#[case] condition: bool, #[case] content_
 			}
 		})(signal.clone())
 	} else {
-		page!(|signal: Signal<bool>| {
+		page!(|signal: Signal < bool >| {
 			div {
 				watch {
 					if signal.get() {
@@ -661,7 +661,7 @@ fn test_watch_complex_state_machine() {
 	let error = Signal::<Option<String>>::new(None);
 	let data = Signal::new(vec!["item1".to_string()]);
 
-	let view = page!(|loading: Signal<bool>, error: Signal<Option<String>>, data: Signal<Vec<String>>| {
+	let view = page!(|loading: Signal < bool >, error: Signal < Option < String> >, data: Signal < Vec < String> >| {
 		div {
 			class: "container",
 			watch {
