@@ -4,7 +4,7 @@
 //! implementation for the return type of a function, enabling the function
 //! to be used as a factory/provider for dependency injection.
 
-use crate::crate_paths::get_reinhardt_di_crate;
+use crate::crate_paths::{get_async_trait_crate, get_reinhardt_di_crate};
 use crate::injectable_common::{InjectionScope, is_inject_attr, parse_inject_options};
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -98,8 +98,10 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 		}
 	}
 
-	// Get dynamic crate path
+	// Get dynamic crate paths
 	let di_crate = get_reinhardt_di_crate();
+	// Fixes #791: Use dynamic resolution instead of hardcoded ::async_trait
+	let async_trait = get_async_trait_crate();
 
 	// Generate resolve statements with scope support
 	let resolve_stmts: Vec<_> = inject_params
@@ -199,7 +201,7 @@ pub(crate) fn injectable_fn_impl(_args: TokenStream, input: ItemFn) -> Result<To
 		}
 
 		// Injectable trait implementation for the return type
-		#[::async_trait::async_trait]
+		#[#async_trait::async_trait]
 		impl #di_crate::Injectable for #return_type {
 			async fn inject(__di_ctx: &#di_crate::InjectionContext)
 				-> #di_crate::DiResult<Self>

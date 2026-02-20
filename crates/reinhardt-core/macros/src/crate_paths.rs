@@ -545,6 +545,46 @@ pub(crate) fn get_reinhardt_admin_adapters_crate() -> TokenStream {
 	quote!(::reinhardt_admin_adapters)
 }
 
+/// Resolves the path to the linkme crate dynamically.
+///
+/// Fixes #793: Use dynamic resolution instead of hardcoded `::linkme` path.
+pub(crate) fn get_linkme_crate() -> TokenStream {
+	use proc_macro_crate::{FoundCrate, crate_name};
+
+	// Try direct crate first
+	match crate_name("linkme") {
+		Ok(FoundCrate::Itself) => return quote!(crate),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident);
+		}
+		Err(_) => {}
+	}
+
+	// Try via reinhardt crate (when used with `package = "reinhardt-web"`)
+	match crate_name("reinhardt") {
+		Ok(FoundCrate::Itself) => return quote!(crate::linkme),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::linkme);
+		}
+		Err(_) => {}
+	}
+
+	// Try via reinhardt-web (published package name)
+	match crate_name("reinhardt-web") {
+		Ok(FoundCrate::Itself) => return quote!(crate::linkme),
+		Ok(FoundCrate::Name(name)) => {
+			let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+			return quote!(::#ident::linkme);
+		}
+		Err(_) => {}
+	}
+
+	// Final fallback
+	quote!(::linkme)
+}
+
 /// Resolves the path to the inventory crate dynamically.
 pub(crate) fn get_inventory_crate() -> TokenStream {
 	use proc_macro_crate::{FoundCrate, crate_name};

@@ -185,6 +185,47 @@ impl<H> OpenApiRouter<H> {
 		None
 	}
 
+	/// Try to serve an OpenAPI documentation endpoint.
+	///
+	/// Returns `Some(Ok(Response))` if the request path matches an OpenAPI
+	/// endpoint and access control checks pass, `Some(Ok(denied))` if access
+	/// is denied, or `None` if the path does not match any documentation
+	/// endpoint.
+	///
+	/// Fixes #831: Deduplicate route handling between Handler and Router.
+	fn try_serve_openapi(&self, request: &Request) -> Option<Result<Response>> {
+		match request.uri.path() {
+			"/api/openapi.json" | "/api/docs" | "/api/redoc" => {
+				if let Some(denied) = self.check_access(request) {
+					return Some(Ok(denied));
+				}
+				let response = match request.uri.path() {
+					"/api/openapi.json" => {
+						let json = (*self.openapi_json).clone();
+						Response::ok()
+							.with_header("Content-Type", "application/json; charset=utf-8")
+							.with_body(json)
+					}
+					"/api/docs" => {
+						let html = (*self.swagger_html).clone();
+						Response::ok()
+							.with_header("Content-Type", "text/html; charset=utf-8")
+							.with_body(html)
+					}
+					"/api/redoc" => {
+						let html = (*self.redoc_html).clone();
+						Response::ok()
+							.with_header("Content-Type", "text/html; charset=utf-8")
+							.with_body(html)
+					}
+					_ => unreachable!(),
+				};
+				Some(Ok(Self::apply_security_headers(response)))
+			}
+			_ => None,
+		}
+	}
+
 	/// Apply security headers to documentation endpoint responses.
 	///
 	/// Adds Content-Security-Policy, X-Frame-Options, X-Content-Type-Options,
@@ -221,42 +262,11 @@ impl<H: Handler> Handler for OpenApiRouter<H> {
 	/// auth guard. Disabled endpoints return 404, unauthorized requests
 	/// return 403.
 	async fn handle(&self, request: Request) -> Result<Response> {
-		// Match OpenAPI endpoints first
-		match request.uri.path() {
-			"/api/openapi.json" | "/api/docs" | "/api/redoc" => {
-				// Fixes #828: Check access control before serving docs
-				if let Some(denied) = self.check_access(&request) {
-					return Ok(denied);
-				}
-				// Fixes #830: Apply security headers to all docs responses
-				let response = match request.uri.path() {
-					"/api/openapi.json" => {
-						let json = (*self.openapi_json).clone();
-						Response::ok()
-							.with_header("Content-Type", "application/json; charset=utf-8")
-							.with_body(json)
-					}
-					"/api/docs" => {
-						let html = (*self.swagger_html).clone();
-						Response::ok()
-							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html)
-					}
-					"/api/redoc" => {
-						let html = (*self.redoc_html).clone();
-						Response::ok()
-							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html)
-					}
-					_ => unreachable!(),
-				};
-				Ok(Self::apply_security_headers(response))
-			}
-			_ => {
-				// Delegate to base handler
-				self.inner.handle(request).await
-			}
+		// Fixes #831: Use shared OpenAPI serving logic
+		if let Some(response) = self.try_serve_openapi(&request) {
+			return response;
 		}
+		self.inner.handle(request).await
 	}
 }
 
@@ -306,42 +316,11 @@ where
 	/// auth guard. Disabled endpoints return 404, unauthorized requests
 	/// return 403.
 	async fn route(&self, request: Request) -> Result<Response> {
-		// Match OpenAPI endpoints first
-		match request.uri.path() {
-			"/api/openapi.json" | "/api/docs" | "/api/redoc" => {
-				// Fixes #828: Check access control before serving docs
-				if let Some(denied) = self.check_access(&request) {
-					return Ok(denied);
-				}
-				// Fixes #830: Apply security headers to all docs responses
-				let response = match request.uri.path() {
-					"/api/openapi.json" => {
-						let json = (*self.openapi_json).clone();
-						Response::ok()
-							.with_header("Content-Type", "application/json; charset=utf-8")
-							.with_body(json)
-					}
-					"/api/docs" => {
-						let html = (*self.swagger_html).clone();
-						Response::ok()
-							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html)
-					}
-					"/api/redoc" => {
-						let html = (*self.redoc_html).clone();
-						Response::ok()
-							.with_header("Content-Type", "text/html; charset=utf-8")
-							.with_body(html)
-					}
-					_ => unreachable!(),
-				};
-				Ok(Self::apply_security_headers(response))
-			}
-			_ => {
-				// Delegate to base router's route() method
-				self.inner.route(request).await
-			}
+		// Fixes #831: Use shared OpenAPI serving logic
+		if let Some(response) = self.try_serve_openapi(&request) {
+			return response;
 		}
+		self.inner.route(request).await
 	}
 }
 

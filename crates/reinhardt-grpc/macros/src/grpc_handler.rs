@@ -222,6 +222,14 @@ fn strip_inject_attrs(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<FnArg> {
 
 /// Generate wrapper function with DI support
 pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
+	// Fixes #822: Validate that the function is async before proceeding
+	if input.sig.asyncness.is_none() {
+		return Err(Error::new_spanned(
+			&input.sig.fn_token,
+			"#[grpc_handler] can only be applied to async functions",
+		));
+	}
+
 	let inject_params = detect_inject_params(&input.sig.inputs)?;
 
 	// If no #[inject] parameters, return the function as-is
@@ -234,8 +242,12 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	// Original function name
 	let original_fn_name = &input.sig.ident;
 
-	// Create new name for the original function
-	let impl_fn_name = syn::Ident::new(&format!("{}_impl", original_fn_name), Span::call_site());
+	// Fixes #823: Use less common prefix to avoid name collisions and use
+	// original span for better error diagnostics
+	let impl_fn_name = syn::Ident::new(
+		&format!("__reinhardt_grpc_impl_{}", original_fn_name),
+		original_fn_name.span(),
+	);
 
 	// Function visibility, attributes (excluding #[grpc_handler]), return type, etc.
 	let vis = &input.vis;
