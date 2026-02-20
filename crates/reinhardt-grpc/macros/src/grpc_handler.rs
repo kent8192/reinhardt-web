@@ -225,7 +225,7 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	// Fixes #822: Validate that the function is async before proceeding
 	if input.sig.asyncness.is_none() {
 		return Err(Error::new_spanned(
-			&input.sig.fn_token,
+			input.sig.fn_token,
 			"#[grpc_handler] can only be applied to async functions",
 		));
 	}

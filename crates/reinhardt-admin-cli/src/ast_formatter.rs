@@ -325,7 +325,7 @@ fn detect_raw_string_start(s: &str, quote_offset: usize) -> Option<usize> {
 /// Returns the byte offset just past the closing '"' + hashes.
 fn skip_raw_string(s: &str, start_after_quote: usize, hash_count: usize) -> Option<usize> {
 	let closing_pattern: String = std::iter::once('"')
-		.chain(std::iter::repeat('#').take(hash_count))
+		.chain(std::iter::repeat_n('#', hash_count))
 		.collect();
 	s[start_after_quote..]
 		.find(&closing_pattern)
@@ -345,8 +345,8 @@ fn is_char_literal(chars: &[(usize, char)], idx: usize) -> bool {
 	// Pattern: '\...' (escaped char literal)
 	if remaining[0].1 == '\\' {
 		// Look for closing quote within the next few chars
-		for j in 2..remaining.len().min(5) {
-			if remaining[j].1 == '\'' {
+		for item in remaining.iter().take(remaining.len().min(5)).skip(2) {
+			if item.1 == '\'' {
 				return true;
 			}
 		}
