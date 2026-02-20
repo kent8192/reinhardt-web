@@ -407,7 +407,7 @@ pub fn is_same_domain(domain1: &str, domain2: &str) -> bool {
 pub fn get_token_timestamp() -> u64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
+		.unwrap_or_default()
 		.as_secs()
 }
 

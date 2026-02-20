@@ -15,6 +15,7 @@ use reinhardt_pages::component::Component;
 use reinhardt_pages::ssr::SsrRenderer;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};
+use reinhardt_utils::safe_path_join;
 use std::convert::Infallible;
 use std::env;
 use std::fs::File;
@@ -65,13 +66,6 @@ struct Args {
 	/// Generate and use a self-signed certificate for development (enables HTTPS)
 	#[arg(long)]
 	self_signed: bool,
-}
-
-/// Check if a path is safe (prevents directory traversal attacks)
-fn is_safe_path(path: &Path) -> bool {
-	// Convert to string and check for path traversal attempts
-	// Return true if path is safe (does NOT contain "..")
-	!path.to_string_lossy().contains("..")
 }
 
 /// Get MIME type based on file extension
@@ -263,8 +257,12 @@ async fn handle_request(
 		let mut found_files: Vec<PathBuf> = Vec::new();
 
 		for dir in settings.staticfiles_dirs.iter().rev() {
-			let file_path = dir.join(relative_path);
-			if file_path.exists() && file_path.is_file() && is_safe_path(&file_path) {
+			// Use safe_path_join to prevent path traversal attacks
+			let file_path = match safe_path_join(dir, relative_path) {
+				Ok(p) => p,
+				Err(_) => continue,
+			};
+			if file_path.exists() && file_path.is_file() {
 				found_files.push(file_path);
 			}
 		}

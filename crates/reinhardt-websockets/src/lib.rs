@@ -195,7 +195,9 @@ pub use protocol::{
 	DEFAULT_MAX_FRAME_SIZE, DEFAULT_MAX_MESSAGE_SIZE, default_websocket_config,
 	websocket_config_with_limits,
 };
-pub use reconnection::{ReconnectionConfig, ReconnectionStrategy};
+pub use reconnection::{
+	AutoReconnectHandler, ReconnectionConfig, ReconnectionState, ReconnectionStrategy,
+};
 #[cfg(feature = "redis-channel")]
 pub use redis_channel::{RedisChannelLayer, RedisConfig};
 pub use room::{BroadcastResult, Room, RoomError, RoomManager, RoomResult};

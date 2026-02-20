@@ -72,7 +72,7 @@ fn generate_totp_for_secret(secret: &str, time_window: u64) -> Option<String> {
 		.as_secs();
 	let time_step = current_time / time_window;
 
-	Some(totp_lite::totp_custom::<totp_lite::Sha1>(
+	Some(totp_lite::totp_custom::<totp_lite::Sha256>(
 		time_window,
 		6,
 		&secret_bytes,
