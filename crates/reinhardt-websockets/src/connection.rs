@@ -250,19 +250,19 @@ impl ConnectionConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebSocketError {
-	#[error("Connection error: {0}")]
+	#[error("Connection error")]
 	Connection(String),
-	#[error("Send error: {0}")]
+	#[error("Send failed")]
 	Send(String),
-	#[error("Receive error: {0}")]
+	#[error("Receive failed")]
 	Receive(String),
-	#[error("Protocol error: {0}")]
+	#[error("Protocol error")]
 	Protocol(String),
-	#[error("Internal error: {0}")]
+	#[error("Internal error")]
 	Internal(String),
-	#[error("Connection timeout: idle for {0:?}")]
+	#[error("Connection timed out")]
 	Timeout(Duration),
-	#[error("Reconnection failed after {0} attempts")]
+	#[error("Reconnection failed")]
 	ReconnectFailed(u32),
 	#[error("Invalid binary payload: {0}")]
 	BinaryPayload(String),
@@ -270,6 +270,40 @@ pub enum WebSocketError {
 	HeartbeatTimeout(Duration),
 	#[error("Slow consumer: send timed out after {0:?}")]
 	SlowConsumer(Duration),
+}
+
+impl WebSocketError {
+	/// Returns a sanitized error message safe for client-facing communication.
+	///
+	/// Internal details (buffer sizes, queue depths, connection state, type names)
+	/// are stripped to prevent information leakage.
+	pub fn client_message(&self) -> &'static str {
+		match self {
+			Self::Connection(_) => "Connection error",
+			Self::Send(_) => "Failed to send message",
+			Self::Receive(_) => "Failed to receive message",
+			Self::Protocol(_) => "Protocol error",
+			Self::Internal(_) => "Internal server error",
+			Self::Timeout(_) => "Connection timed out",
+			Self::ReconnectFailed(_) => "Reconnection failed",
+		}
+	}
+
+	/// Returns the internal detail message for logging purposes.
+	///
+	/// This MUST NOT be sent to clients as it may contain sensitive
+	/// internal state information.
+	pub fn internal_detail(&self) -> String {
+		match self {
+			Self::Connection(msg) => format!("Connection error: {}", msg),
+			Self::Send(msg) => format!("Send error: {}", msg),
+			Self::Receive(msg) => format!("Receive error: {}", msg),
+			Self::Protocol(msg) => format!("Protocol error: {}", msg),
+			Self::Internal(msg) => format!("Internal error: {}", msg),
+			Self::Timeout(d) => format!("Connection timeout: idle for {:?}", d),
+			Self::ReconnectFailed(n) => format!("Reconnection failed after {} attempts", n),
+		}
+	}
 }
 
 pub type WebSocketResult<T> = Result<T, WebSocketError>;
@@ -879,10 +913,9 @@ impl ConnectionTimeoutMonitor {
 		if let Some(max) = self.config.max_connections
 			&& connections.len() >= max
 		{
-			return Err(WebSocketError::Connection(format!(
-				"maximum connection limit reached ({})",
-				max
-			)));
+			return Err(WebSocketError::Connection(
+				"maximum connection limit reached".to_string(),
+			));
 		}
 
 		connections.insert(connection.id().to_string(), connection);

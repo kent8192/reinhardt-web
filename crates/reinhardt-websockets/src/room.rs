@@ -13,15 +13,15 @@ use tokio::sync::RwLock;
 /// Error types for room operations
 #[derive(Debug, thiserror::Error)]
 pub enum RoomError {
-	#[error("Client not found: {0}")]
+	#[error("Client not found")]
 	ClientNotFound(String),
-	#[error("Room not found: {0}")]
+	#[error("Room not found")]
 	RoomNotFound(String),
-	#[error("Client already exists: {0}")]
+	#[error("Client already exists")]
 	ClientAlreadyExists(String),
-	#[error("WebSocket error: {0}")]
+	#[error("WebSocket error")]
 	WebSocket(#[from] WebSocketError),
-	#[error("Metadata error: {0}")]
+	#[error("Metadata error")]
 	Metadata(String),
 }
 
