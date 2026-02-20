@@ -313,6 +313,12 @@ fn validate_enum_attr(
 	};
 
 	if !enum_spec.valid_values.contains(&str_value.as_str()) {
+		// Use .first() for safe access instead of direct indexing
+		let example_value = enum_spec
+			.valid_values
+			.first()
+			.copied()
+			.unwrap_or("...");
 		return Err(syn::Error::new(
 			span,
 			format!(
@@ -326,7 +332,7 @@ fn validate_enum_attr(
 				element_tag,
 				enum_spec.valid_values.join("\", \""),
 				attr_name,
-				enum_spec.valid_values[0],
+				example_value,
 				attr_name,
 				str_value
 			),
