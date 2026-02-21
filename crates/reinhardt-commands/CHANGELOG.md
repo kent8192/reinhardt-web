@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.17...reinhardt-commands@v0.1.0-alpha.18) - 2026-02-21
+
+### Fixed
+
+- return Result instead of process::exit in library code
+- propagate serialization errors from TemplateContext::insert
+- add panic prevention for command registry and argument parsing
+- remove map_err on non-Result OpenApiRouter::wrap return value
+- return Result from OpenApiRouter::wrap instead of panicking
+- prevent email header injection via address validation
+
+### Security
+
+- escape PO format characters and add checked arithmetic for MO offsets
+- replace hardcoded default secret key with random generation
+- redact sensitive values in error messages and env validation
+- strengthen path traversal protection in runserver
+
+### Changed
+
+- remove unused media_root field from Settings
+- replace unsafe pointer manipulation with Option pattern
+- remove unused `middleware` string list from Settings
+- remove unused `root_urlconf` field from Settings
+
+### Styling
+
+- apply formatting to files introduced by merge from main
+- apply rustfmt to pre-existing formatting violations in 16 files
+- apply rustfmt formatting to workspace files
+
 ## [0.1.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.1.0-alpha.16...reinhardt-commands@v0.1.0-alpha.17) - 2026-02-16
 
 ### Maintenance

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.3...reinhardt-pages-ast@v0.1.0-alpha.4) - 2026-02-21
+
+### Fixed
+
+- replace unreachable!() with proper syn::Error in parse_if_node
+- detect duplicate properties in form field parsing
+- add max nesting depth to page parser
+- add max nesting depth to SVG icon parser
+- return Option from FormFieldProperty::name instead of panicking
+
+### Changed
+
+- replace magic string with Option<Ident> for FormMacro name
+
 ## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.1.0-alpha.2...reinhardt-pages-ast@v0.1.0-alpha.3) - 2026-02-05
 
 ### Fixed
