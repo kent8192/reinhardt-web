@@ -299,14 +299,18 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	// Generate compile-time type assertions for injected types
 	// This ensures all #[inject] types implement Injectable at compile time
 	// rather than failing at runtime with confusing errors
-	// Use unique const names to avoid conflicts when macro is used inside impl blocks
+	// Use unique const names with function name prefix to avoid conflicts
+	// when multiple #[grpc_handler] functions are in the same impl block
+	let fn_name_str = original_fn_name.to_string();
 	let type_assertions: Vec<_> = inject_params
 		.iter()
 		.enumerate()
 		.map(|(idx, param)| {
 			let ty = &param.ty;
-			let const_name =
-				syn::Ident::new(&format!("__ASSERT_INJECTABLE_{}", idx), Span::call_site());
+			let const_name = syn::Ident::new(
+				&format!("__ASSERT_{}_INJECTABLE_{}", fn_name_str.to_uppercase(), idx),
+				Span::call_site(),
+			);
 			quote! {
 				const #const_name: () = {
 					// Compile-time assertion: #[inject] parameter type must implement Injectable
