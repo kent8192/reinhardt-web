@@ -1,10 +1,8 @@
 name: Test Examples
 
 on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '0 9 * * *'  # 09:00 UTC daily
+  pull_request:
+  workflow_dispatch:
 
 env:
   RUST_BACKTRACE: 1
@@ -91,25 +89,3 @@ jobs:
       - name: Doc Test
         working-directory: examples/${{ matrix.example }}
         run: cargo test --doc --all-features
-
-  compatibility-report:
-    name: Compatibility Report
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    needs: [test-local-examples]
-    steps:
-      - name: Report Success
-        run: echo "✅ All examples compatible"
-
-      - name: Create Issue on Failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: 'Daily Compatibility Check Failed',
-              body: `Daily compatibility check failed. Please investigate.\n\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
-              labels: ['compatibility', 'bug']
-            })
