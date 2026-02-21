@@ -51,24 +51,30 @@ gh issue list --state closed --search "leak"
 ### IC-3 (MUST): Use Issue Templates
 
 Issues MUST be created using the appropriate issue template:
-- Bug Report (`1-bug.yml`)
-- Feature Request (`2-feature.yml`)
-- Documentation (`3-documentation.yml`)
-- Question (`4-question.yml`)
-- Performance Issue (`5-performance.yml`)
-- CI/CD Issue (`6-ci_cd.yml`)
-- Security Vulnerability (`7-security.yml`)
+- Bug Report (`.github/ISSUE_TEMPLATE/1-bug_report.yml`)
+- Feature Request (`.github/ISSUE_TEMPLATE/2-feature_request.yml`)
+- Documentation (`.github/ISSUE_TEMPLATE/3-documentation.yml`)
+- Question (`.github/ISSUE_TEMPLATE/4-question.yml`)
+- Performance Issue (`.github/ISSUE_TEMPLATE/5-performance.yml`)
+- CI/CD Issue (`.github/ISSUE_TEMPLATE/6-ci_cd.yml`)
+- Security Vulnerability (Use GitHub Security Advisories)
 
 **Template Selection:**
-| Issue Type | Template | Label Applied |
-|------------|----------|---------------|
-| Bug report | `1-bug.yml` | `bug` |
-| New feature | `2-feature.yml` | `enhancement` |
-| Documentation | `3-documentation.yml` | `documentation` |
-| Question | `4-question.yml` | `question` |
-| Performance | `5-performance.yml` | `performance` |
-| CI/CD | `6-ci_cd.yml` | `ci-cd` |
-| Security | `7-security.yml` | `security`, `critical` |
+| Issue Type | Template File | Label Applied |
+|------------|--------------|---------------|
+| Bug report | `.github/ISSUE_TEMPLATE/1-bug_report.yml` | `bug` |
+| Feature request | `.github/ISSUE_TEMPLATE/2-feature_request.yml` | `enhancement` |
+| Documentation | `.github/ISSUE_TEMPLATE/3-documentation.yml` | `documentation` |
+| Question | `.github/ISSUE_TEMPLATE/4-question.yml` | `question` |
+| Performance | `.github/ISSUE_TEMPLATE/5-performance.yml` | `performance` |
+| CI/CD | `.github/ISSUE_TEMPLATE/6-ci_cd.yml` | `ci-cd` |
+| Security | Use GitHub Security Advisories | `security`, `critical` |
+
+**CLI Template Usage:**
+
+When creating issues via `gh issue create`, GitHub CLI does not automatically apply templates like the Web UI. Read the appropriate template file from `.github/ISSUE_TEMPLATE/` and include its structure in your `--body` content.
+
+**Note:** For security vulnerabilities, ALWAYS use GitHub Security Advisories instead of public issues.
 
 ---
 
@@ -227,7 +233,7 @@ Issue titles MUST be:
 
 ## Issue Types and Templates
 
-### Bug Report (`1-bug.yml`)
+### Bug Report (`.github/ISSUE_TEMPLATE/1-bug_report.yml`)
 
 **Use When:**
 - Unexpected behavior or error
@@ -243,7 +249,7 @@ Issue titles MUST be:
 
 **Label Applied:** `bug`
 
-### Feature Request (`2-feature.yml`)
+### Feature Request (`.github/ISSUE_TEMPLATE/2-feature_request.yml`)
 
 **Use When:**
 - Requesting new functionality
@@ -258,7 +264,7 @@ Issue titles MUST be:
 
 **Label Applied:** `enhancement`
 
-### Documentation (`3-documentation.yml`)
+### Documentation (`.github/ISSUE_TEMPLATE/3-documentation.yml`)
 
 **Use When:**
 - Documentation is missing or unclear
@@ -272,7 +278,7 @@ Issue titles MUST be:
 
 **Label Applied:** `documentation`
 
-### Question (`4-question.yml`)
+### Question (`.github/ISSUE_TEMPLATE/4-question.yml`)
 
 **Use When:**
 - Asking how to use a feature
@@ -283,7 +289,7 @@ Issue titles MUST be:
 
 **Label Applied:** `question`
 
-### Performance Issue (`5-performance.yml`)
+### Performance Issue (`.github/ISSUE_TEMPLATE/5-performance.yml`)
 
 **Use When:**
 - Slow query execution
@@ -299,7 +305,7 @@ Issue titles MUST be:
 
 **Label Applied:** `performance`
 
-### CI/CD Issue (`6-ci_cd.yml`)
+### CI/CD Issue (`.github/ISSUE_TEMPLATE/6-ci_cd.yml`)
 
 **Use When:**
 - CI workflow failures
