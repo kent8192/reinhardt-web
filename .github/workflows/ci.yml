@@ -4,6 +4,10 @@ on:
   pull_request:
     # Run CI on PRs targeting any branch
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -103,6 +107,7 @@ jobs:
       - doc-test
       - examples-test
       - ui-test
+      - coverage
     steps:
       - name: Verify all required checks passed
         run: |
@@ -118,6 +123,7 @@ jobs:
             "${{ needs.doc-test.result }}"
             "${{ needs.examples-test.result }}"
             "${{ needs.ui-test.result }}"
+            "${{ needs.coverage.result }}"
           )
           for result in "${required_results[@]}"; do
             if [[ "$result" != "success" ]]; then
