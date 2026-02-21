@@ -55,20 +55,22 @@ EOF
 
 ### PC-2 (MUST): Branch Naming
 
-- Branch names SHOULD follow the pattern: `<type>/<scope>/<short-description>`
+- Branch names SHOULD follow the pattern: `<type>/<scope>-<short-description>`
 - Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 - Scope: Module or component name
 - Short description: Kebab-case brief summary
 
 **Examples:**
 ```
-feat/auth/jwt-validation
-fix/orm/connection-pool-race-condition
-refactor/http/middleware-pipeline
-docs/api/openapi-spec
-test/database/integration-tests
-chore/ci/github-actions-update
+feat/auth-jwt-validation
+fix/orm-connection-pool-race-condition
+refactor/http-middleware-pipeline
+docs/api-openapi-spec
+test/database-integration-tests
+chore/ci-github-actions-update
 ```
+
+**Exception:** Release branches follow the format `release/<crate>/vX.Y.Z` for compatibility with automated workflows.
 
 ### PC-3 (SHOULD): Draft PRs for Work in Progress
 
