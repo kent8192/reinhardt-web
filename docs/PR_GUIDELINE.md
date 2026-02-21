@@ -32,6 +32,12 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - **NEVER** use web browser UI for PR creation when MCP or CLI is available
 - MCP and CLI both ensure consistency and can be automated
 
+**PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
+
+When creating PRs via `gh pr create`, the `--body` content MUST follow the PR template structure defined in `.github/PULL_REQUEST_TEMPLATE.md`.
+
+**CLI Note:** GitHub CLI (`gh pr create`) does not automatically apply the PR template like the Web UI. You must manually include the template structure in the `--body` content. See PC-2 for the complete template structure and example.
+
 **Example:**
 ```bash
 gh pr create --title "feat(auth): add JWT token validation" \
@@ -53,7 +59,70 @@ EOF
 )"
 ```
 
-### PC-2 (MUST): Branch Naming
+### PC-2 (MUST): Follow PR Template Structure
+
+**PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
+
+When creating PRs via `gh pr create`, the `--body` content MUST follow the PR template structure:
+
+**Required Sections:**
+1. **Summary** - Brief bullet points describing the changes
+2. **Type of Change** - One of: Bug fix, New feature, Breaking change, Documentation, Refactoring, Performance, CI/CD
+3. **Motivation and Context** - Why is this change needed? What problem does it solve?
+4. **How Was This Tested** - Test cases, manual testing, verification steps
+5. **Checklist** - Confirmation items (tests pass, docs updated, etc.)
+
+**Example using `gh pr create` with template:**
+```bash
+gh pr create --title "feat(auth): add JWT token validation" \
+  --body "$(cat <<'EOF'
+## Summary
+
+- Implement JWT token validation with RS256 algorithm
+- Add token expiration checking
+- Include unit tests for edge cases
+
+## Type of Change
+
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [x] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update (changes to documentation files only)
+- [ ] Refactoring (improving code structure without changing functionality)
+- [ ] Performance improvement (optimization without changing functionality)
+- [ ] CI/CD changes (changes to build, test, or deployment processes)
+
+## Motivation and Context
+
+This change is needed to enable secure API authentication. The current implementation lacks token validation, which exposes the API to unauthorized access.
+
+## How Was This Tested
+
+- [x] Unit tests for valid token validation
+- [x] Unit tests for expired token rejection
+- [x] Unit tests for malformed token handling
+- [x] Integration tests with real JWT provider
+- [x] Manual testing with Postman
+
+## Checklist
+
+- [x] My code follows the style guidelines of this project
+- [x] I have performed a self-review of my code
+- [x] I have commented my code, particularly in hard-to-understand areas
+- [x] I have made corresponding changes to the documentation
+- [x] My changes generate no new warnings
+- [x] I have added tests that prove my fix is effective or that my feature works
+- [x] New and existing unit tests pass locally with my changes
+- [x] Any dependent changes have been merged and published
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+**CLI Note:** GitHub CLI (`gh pr create`) does not automatically apply the PR template like the Web UI. You must manually include the template structure in the `--body` content.
+
+### PC-3 (MUST): Branch Naming
 
 - Branch names SHOULD follow the pattern: `<type>/<scope>/<short-description>`
 - Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
@@ -70,7 +139,7 @@ test/database/integration-tests
 chore/ci/github-actions-update
 ```
 
-### PC-3 (SHOULD): Draft PRs for Work in Progress
+### PC-4 (SHOULD): Draft PRs for Work in Progress
 
 - Use draft PRs for incomplete work
 - Convert to ready for review when all tests pass
@@ -81,7 +150,7 @@ chore/ci/github-actions-update
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 ```
 
-### PC-4 (MUST): PR Labels
+### PC-5 (MUST): PR Labels
 
 - **MUST** add appropriate labels to every PR
 - Labels help categorize, prioritize, and track PRs
@@ -270,64 +339,220 @@ feat(api)!: change response format to JSON:API specification
 
 ### DF-1 (MUST): Standard Structure
 
-PR descriptions MUST follow this structure:
+PR descriptions MUST follow the structure defined in `.github/PULL_REQUEST_TEMPLATE.md`:
 
 ```markdown
 ## Summary
 
-- Bullet point 1: Brief description of change
-- Bullet point 2: Another change
-- Bullet point 3: Additional context
+<!-- Briefly describe the changes made in this pull request. -->
 
-## Test plan
+This PR addresses:
 
-- [ ] Test case 1
-- [ ] Test case 2
-- [ ] Test case 3
-- [ ] Manual testing notes
+-
 
-## Breaking Changes (if applicable)
+## Type of Change
 
-- Breaking change 1: Migration path
-- Breaking change 2: Impact and solution
+<!-- Check all that apply -->
 
-## Related Issues (if applicable)
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Refactoring (code change that neither fixes a bug nor adds a feature)
+- [ ] Documentation update
+- [ ] Performance improvement
+- [ ] Code quality improvements
+- [ ] CI/CD changes
+- [ ] Other (please describe):
 
-Fixes #123
-Closes #456
-Refs #789
+## Motivation and Context
+
+<!-- Why is this change necessary? What problem does it solve? -->
+
+-
+
+<!-- If this fixes an open issue, link to it here. -->
+
+Fixes #
+
+<!-- If this is related to other issues or PRs, link them here. -->
+
+Related to: #
+
+## How Was This Tested?
+
+<!-- Describe the tests you ran and how to reproduce them. -->
+
+-
+
+## Performance Impact
+
+<!-- For performance-related changes, describe the performance impact. -->
+
+<!-- If this is a performance improvement, provide benchmarks. -->
+
+-
+
+<!-- If this is NOT a performance-related change, you can remove this section. -->
+
+## Breaking Changes
+
+<!-- If this is a breaking change, describe the impact and migration path. -->
+
+-
+
+**Migration Guide:**
+
+<!-- If applicable, provide a step-by-step migration guide for users. -->
+
+-
+
+<!-- If this is NOT a breaking change, you can remove this section. -->
+
+## Screenshots
+
+<!-- For UI changes, provide screenshots showing the before/after. -->
+
+<!-- If this is NOT a UI change, you can remove this section. -->
+
+### Before
+
+-
+
+### After
+
+-
+
+## Checklist
+
+<!-- Before submitting, verify that you have: -->
+
+- [ ] I have followed the [Contributing Guidelines](../blob/main/CONTRIBUTING.md)
+- [ ] I have followed the [Commit Guidelines](../blob/main/docs/COMMIT_GUIDELINE.md)
+- [ ] I have updated the documentation (if applicable)
+- [ ] My changes generate no new warnings
+- [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] New and existing unit tests pass locally with my changes
+- [ ] I have tested with all affected database backends (if applicable)
+- [ ] I have formatted the code with `cargo make fmt-fix`
+- [ ] I have checked the code with `cargo make clippy-check`
+
+## Related Issues
+
+<!-- List any related issues, PRs, or external references. -->
+
+-
+
+## Labels to Apply
+
+<!-- Please apply appropriate labels to help with triage and organization. -->
+
+### Type Label (select one)
+- [ ] `bug` - Bug fix
+- [ ] `enhancement` - New feature or improvement
+- [ ] `documentation` - Documentation update
+- [ ] `performance` - Performance improvement
+- [ ] `refactoring` - Code refactoring
+- [ ] `code-quality` - Code quality improvements
+- [ ] `breaking-change` - Breaking change (also select in "Type of Change" above)
+
+### Scope Label (select all that apply)
+- [ ] `database` - Database layer, schema, migrations
+- [ ] `auth` - Authentication, authorization, sessions
+- [ ] `orm` - ORM layer, models, query builder
+- [ ] `http` - HTTP layer, handlers, middleware
+- [ ] `routing` - URL routing, path matching
+- [ ] `api` - REST API, serializers, views
+- [ ] `admin` - Admin interface, admin panels
+- [ ] `forms` - Form handling, validation, rendering
+- [ ] `graphql` - GraphQL schema, resolvers
+- [ ] `websockets` - WebSocket connections, handlers
+- [ ] `i18n` - Internationalization, localization
+- [ ] `ci-cd` - CI/CD workflow changes
+
+---
+
+**Additional Context:**
+
+<!-- Any other information that may be helpful for reviewers. -->
+
+-
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-**Requirements:**
+**Required Sections:**
 
-1. **Summary Section** (REQUIRED)
-   - Use bullet points for clarity
-   - List key changes in logical order
-   - Be specific about what changed and why
-   - Mention new features, bug fixes, or improvements
+1. **Summary** (REQUIRED)
+   - Brief bullet points describing the changes
+   - Use "This PR addresses:" format with bullet items
 
-2. **Test Plan Section** (REQUIRED)
-   - List all verification steps
-   - Include automated test commands
-   - Note manual testing performed
-   - Use checkboxes (`- [ ]` or `- [x]`) for tracking
+2. **Type of Change** (REQUIRED)
+   - Check all that apply from the provided options
+   - At least one type must be selected
 
-3. **Breaking Changes Section** (REQUIRED for breaking changes)
-   - List all API changes that break compatibility
-   - Provide migration path for each change
-   - Explain impact on existing code
+3. **Motivation and Context** (REQUIRED)
+   - Why is this change necessary?
+   - What problem does it solve?
+   - Link to related issues (Fixes #, Related to #)
 
-4. **Related Issues Section** (OPTIONAL)
-   - Link related issues using GitHub keywords
-   - Use `Fixes #123` to auto-close issues
-   - Use `Refs #123` for related but not closed issues
+4. **How Was This Tested?** (REQUIRED)
+   - Describe the tests you ran
+   - Include verification steps
 
-5. **Footer** (REQUIRED)
-   - Include Claude Code attribution for AI-assisted PRs
+5. **Checklist** (REQUIRED)
+   - Verify all items before submitting
+   - At minimum: tests pass, no new warnings, documentation updated
 
-### DF-2 (SHOULD): Additional Context
+6. **Labels to Apply** (REQUIRED)
+   - Type label (select one)
+   - Scope labels (select all that apply)
+   - Priority labels (applied by maintainers during triage)
+
+**Optional Sections:**
+
+- **Performance Impact** - For performance-related changes
+- **Breaking Changes** - For breaking changes with migration guide
+- **Screenshots** - For UI changes
+- **Related Issues** - List any related issues, PRs, or external references
+- **Additional Context** - Any other helpful information
+
+**Footer** (REQUIRED for AI-assisted PRs)
+- Include Claude Code attribution
+
+### DF-2 (MUST): Linking PRs to Issues
+
+PRs should be linked to related issues using GitHub's supported keywords. When a linked PR is merged into the default branch, the linked issues are automatically closed.
+
+**Supported Keywords:**
+- `close`, `closes`, `closed`
+- `fix`, `fixes`, `fixed`
+- `resolve`, `resolves`, `resolved`
+
+**Syntax for Linking:**
+
+| Linked Issue | Syntax | Example |
+|--------------|--------|---------|
+| Issue in same repository | `KEYWORD #ISSUE-NUMBER` | `Closes #10` |
+| Issue in different repository | `KEYWORD OWNER/REPOSITORY#ISSUE-NUMBER` | `Fixes octo-org/octo-repo#100` |
+| Multiple issues | Use full syntax for each | `Resolves #10, resolves #123` |
+
+**Examples:**
+```markdown
+## Related Issues
+
+Fixes #42
+Closes #43, closes #44
+Refs #50 (related but not closed)
+```
+
+**Important Notes:**
+- Keywords only work when PR targets the **default branch** (main)
+- Up to 10 issues can be manually linked via the sidebar
+- Use `Refs #N` for related issues that should NOT be auto-closed
+
+**Reference:** [GitHub Docs - Linking a PR to an Issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+
+### DF-3 (SHOULD): Additional Context
 
 Include additional sections when relevant:
 
@@ -503,16 +728,20 @@ docs(readme): add installation instructions
 ### ✅ MUST DO
 - Write all PR content in English
 - Use GitHub MCP (`create_pull_request`) or `gh pr create` for creating PRs
+- Follow PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Follow Conventional Commits format for titles
-- Include Summary and Test plan sections
+- Include Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist sections
+- Include Labels to Apply section with appropriate type and scope labels
 - Run all checks before requesting review
 - Address all review comments
 - Ensure all CI checks pass before merge
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
+- Create PRs without following PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Create PRs without proper description
-- Skip test plan section
+- Skip required sections (Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist)
+- Skip Labels to Apply section
 - Merge with failing CI checks
 - Leave unresolved review comments
 - Force push after review has started (unless explicitly requested)
