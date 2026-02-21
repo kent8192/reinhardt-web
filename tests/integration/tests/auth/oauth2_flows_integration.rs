@@ -207,19 +207,25 @@ async fn test_token_revocation(token_store: Arc<InMemoryOAuth2Store>) {
 async fn test_client_validation(oauth2_with_app: OAuth2Authentication) {
 	// Valid credentials
 	assert!(
-		oauth2_with_app.validate_client("test_client", "test_secret_12345").await,
+		oauth2_with_app
+			.validate_client("test_client", "test_secret_12345")
+			.await,
 		"Valid credentials should be accepted"
 	);
 
 	// Invalid secret
 	assert!(
-		!oauth2_with_app.validate_client("test_client", "wrong_secret").await,
+		!oauth2_with_app
+			.validate_client("test_client", "wrong_secret")
+			.await,
 		"Invalid secret should be rejected"
 	);
 
 	// Unknown client
 	assert!(
-		!oauth2_with_app.validate_client("unknown_client", "any_secret").await,
+		!oauth2_with_app
+			.validate_client("unknown_client", "any_secret")
+			.await,
 		"Unknown client should be rejected"
 	);
 }
@@ -413,7 +419,9 @@ async fn test_token_lifecycle_states(oauth2_with_app: OAuth2Authentication) {
 async fn test_application_registration_state(oauth2_auth: OAuth2Authentication) {
 	// State 1: Unregistered client
 	assert!(
-		!oauth2_auth.validate_client("new_client", "new_secret").await,
+		!oauth2_auth
+			.validate_client("new_client", "new_secret")
+			.await,
 		"Unregistered client should not validate"
 	);
 
@@ -428,7 +436,9 @@ async fn test_application_registration_state(oauth2_auth: OAuth2Authentication) 
 
 	// State 2: Registered client
 	assert!(
-		oauth2_auth.validate_client("new_client", "new_secret").await,
+		oauth2_auth
+			.validate_client("new_client", "new_secret")
+			.await,
 		"Registered client should validate"
 	);
 }

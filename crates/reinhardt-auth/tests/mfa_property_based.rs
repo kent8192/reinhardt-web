@@ -458,7 +458,9 @@ mod sanity_tests {
 	#[tokio::test]
 	async fn test_verification_with_invalid_secret_errors(mfa_manager: MfaManager) {
 		// Register with invalid base32
-		mfa_manager.register_user("alice", "NOT_VALID_BASE32!").await;
+		mfa_manager
+			.register_user("alice", "NOT_VALID_BASE32!")
+			.await;
 
 		let result = mfa_manager.verify_totp("alice", "123456").await;
 
