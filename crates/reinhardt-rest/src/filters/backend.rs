@@ -34,11 +34,12 @@
 //! # }
 //! ```
 
-use super::{FilterBackend, FilterError, FilterResult};
+use super::{DatabaseDialect, FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
 use reinhardt_query::SimpleExpr;
 use reinhardt_query::prelude::{
-	Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, Order, Query, QueryStatementBuilder,
+	Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -215,6 +216,7 @@ impl FilterBackend for CustomFilterBackend {
 pub struct SimpleSearchBackend {
 	param_name: String,
 	fields: Vec<String>,
+	dialect: DatabaseDialect,
 }
 
 impl SimpleSearchBackend {
@@ -237,6 +239,7 @@ impl SimpleSearchBackend {
 		Self {
 			param_name: param_name.into(),
 			fields: Vec::new(),
+			dialect: DatabaseDialect::default(),
 		}
 	}
 
@@ -255,6 +258,27 @@ impl SimpleSearchBackend {
 	/// ```
 	pub fn with_field(mut self, field: impl Into<String>) -> Self {
 		self.fields.push(field.into());
+		self
+	}
+
+	/// Set the database dialect for query generation
+	///
+	/// Different databases use different identifier quoting styles.
+	/// MySQL uses backticks (`column`) while PostgreSQL uses double quotes ("column").
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_rest::filters::{SimpleSearchBackend, DatabaseDialect};
+	///
+	/// let backend = SimpleSearchBackend::new("search")
+	///     .with_field("title")
+	///     .with_dialect(DatabaseDialect::PostgreSQL);
+	/// // Verify backend is configured for PostgreSQL
+	/// let _: SimpleSearchBackend = backend;
+	/// ```
+	pub fn with_dialect(mut self, dialect: DatabaseDialect) -> Self {
+		self.dialect = dialect;
 		self
 	}
 
@@ -311,10 +335,17 @@ impl FilterBackend for SimpleSearchBackend {
 
 			// Build a minimal SELECT query to extract the WHERE clause
 			// SeaQuery properly escapes values when generating SQL
-			let query = Query::select()
-				.expr(Expr::val(1))
-				.cond_where(condition)
-				.to_string(MySqlQueryBuilder);
+			// Use the appropriate QueryBuilder based on dialect
+			let query = match self.dialect {
+				DatabaseDialect::MySQL => Query::select()
+					.expr(Expr::val(1))
+					.cond_where(condition)
+					.to_string(MySqlQueryBuilder),
+				DatabaseDialect::PostgreSQL => Query::select()
+					.expr(Expr::val(1))
+					.cond_where(condition)
+					.to_string(PostgresQueryBuilder),
+			};
 
 			// Extract just the WHERE condition portion (after "WHERE ")
 			let condition_str = if let Some(idx) = query.find("WHERE ") {
@@ -529,6 +560,23 @@ mod tests {
 		let result = backend.filter_queryset(&params, sql).await;
 
 		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_simple_search_backend_postgres() {
+		let backend = SimpleSearchBackend::new("search")
+			.with_field("title")
+			.with_dialect(DatabaseDialect::PostgreSQL);
+
+		let mut params = HashMap::new();
+		params.insert("search".to_string(), "rust".to_string());
+
+		let sql = "SELECT * FROM articles".to_string();
+		let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+		assert!(result.contains("WHERE"));
+		// PostgreSQL uses double quotes for identifiers
+		assert!(result.contains("\"title\" LIKE '%rust%'"));
 	}
 
 	#[tokio::test]

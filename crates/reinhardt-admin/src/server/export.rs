@@ -8,6 +8,8 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::{AdminAuth, MapServerFnError};
+#[cfg(not(target_arch = "wasm32"))]
+use super::limits::MAX_EXPORT_RECORDS;
 
 /// Export model data in various formats
 ///
@@ -48,9 +50,9 @@ pub async fn export_data(
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	let table_name = model_admin.table_name();
 
-	// Fetch all records (no pagination for export)
+	// Fetch records with export limit to prevent memory exhaustion
 	let results = db
-		.list::<AdminRecord>(table_name, vec![], 0, u64::MAX)
+		.list::<AdminRecord>(table_name, vec![], 0, MAX_EXPORT_RECORDS)
 		.await
 		.map_server_fn_error()?;
 
@@ -108,14 +110,15 @@ pub async fn export_data(
 				"text/tab-separated-values",
 			)
 		}
-		// Allow: Excel/XML exports are permanently excluded features
-		#[allow(clippy::unimplemented)]
 		ExportFormat::Excel => {
-			unimplemented!("Excel export is permanently excluded")
+			return Err(ServerFnError::application(
+				"Excel export format is not supported",
+			));
 		}
-		#[allow(clippy::unimplemented)]
 		ExportFormat::XML => {
-			unimplemented!("XML export is permanently excluded")
+			return Err(ServerFnError::application(
+				"XML export format is not supported",
+			));
 		}
 	};
 

@@ -83,7 +83,7 @@ password = "postgres"
 **Docker setup (for local development):**
 
 ```bash
-docker run --name postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+docker run --name postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17
 ```
 
 ### MySQL Setup

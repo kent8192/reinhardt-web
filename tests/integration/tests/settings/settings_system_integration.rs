@@ -211,7 +211,9 @@ fn test_required_settings_present() {
 
 	// Verify required fields are present
 	assert!(!settings.secret_key.is_empty());
-	assert!(!settings.installed_apps.is_empty());
+	assert!(settings.installed_apps.is_empty());
+	assert!(settings.middleware.is_empty());
+
 	assert!(!settings.databases.is_empty());
 }
 

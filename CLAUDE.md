@@ -320,6 +320,18 @@ gh repo view
 gh api repos/{owner}/{repo}/pulls
 ```
 
+**PR/Issue Template Compliance:**
+
+- **PR Template:** `.github/PULL_REQUEST_TEMPLATE.md` (see @docs/PR_GUIDELINE.md for details)
+- **Issue Templates:** `.github/ISSUE_TEMPLATE/*.yml` (see @docs/ISSUE_GUIDELINES.md for details)
+- **Note:** GitHub CLI does not auto-apply templates; include template structure in `--body`
+
+**Linking PRs to Issues:**
+
+Use keywords to auto-close issues on merge: `Fixes #N`, `Closes #N`, `Resolves #N`
+- Use `Refs #N` for related issues (no auto-close)
+- See [GitHub Docs](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) for details
+
 **CRITICAL: This project uses Docker for TestContainers integration, NOT Podman.**
 
 - **MUST** ensure Docker Desktop is installed and running
@@ -422,6 +434,7 @@ Before submitting code:
 - Apply at least one type label to every issue
 - Report security vulnerabilities privately via GitHub Security Advisories
 - Use `.github/labels.yml` as source of truth for label definitions
+- Follow PR/Issue template structure when creating via `gh` CLI
 - Use 1 PR = 1 crate x 1 fix pattern as the basic work unit for batch issue handling
 - Create preceding PRs for cross-crate shared changes before per-crate fix PRs
 - Organize batch work into phases by severity and parallelize across independent crates
@@ -495,6 +508,7 @@ Before submitting code:
 - Include absolute local paths in GitHub comments (`/Users/...`, `/home/...`)
 - Post vague or non-actionable GitHub comments
 - Skip Claude Code attribution footer on GitHub comments
+- Create PRs/Issues without following template structure
 
 ### 📚 Detailed Standards
 

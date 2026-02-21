@@ -52,8 +52,12 @@ use syn::{Expr, ExprClosure, Ident, LitStr, Path};
 /// SSR and CSR rendering targets.
 #[derive(Debug, Clone)]
 pub struct FormMacro {
-	/// Form struct name (required, e.g., `name: LoginForm`)
-	pub name: Ident,
+	/// Form struct name (required, e.g., `name: LoginForm`).
+	///
+	/// `None` indicates the name has not been parsed yet. The parser
+	/// validates that a name is provided before returning, so downstream
+	/// consumers can safely unwrap this value.
+	pub name: Option<Ident>,
 	/// Form action configuration
 	pub action: FormAction,
 	/// HTTP method (defaults to Post)
@@ -485,43 +489,15 @@ impl IconChild {
 impl FormFieldProperty {
 	/// Returns the property name for named properties and flags.
 	///
-	/// # Panics
-	///
-	/// Panics if called on a Widget, Wrapper, Icon, IconPosition, Attrs, or Bind property.
-	pub fn name(&self) -> &Ident {
+	/// Returns `None` for structural properties (Widget, Wrapper, Icon,
+	/// IconPosition, Attrs, Bind, InitialFrom, ChoicesFrom, ChoiceValue,
+	/// ChoiceLabel) that do not have a direct name identifier.
+	pub fn name(&self) -> Option<&Ident> {
 		match self {
-			FormFieldProperty::Named { name, .. } => name,
-			FormFieldProperty::Flag { name, .. } => name,
-			FormFieldProperty::Widget { .. } => {
-				panic!("Widget property has no direct name")
+			FormFieldProperty::Named { name, .. } | FormFieldProperty::Flag { name, .. } => {
+				Some(name)
 			}
-			FormFieldProperty::Wrapper { .. } => {
-				panic!("Wrapper property has no direct name")
-			}
-			FormFieldProperty::Icon { .. } => {
-				panic!("Icon property has no direct name")
-			}
-			FormFieldProperty::IconPosition { .. } => {
-				panic!("IconPosition property has no direct name")
-			}
-			FormFieldProperty::Attrs { .. } => {
-				panic!("Attrs property has no direct name")
-			}
-			FormFieldProperty::Bind { .. } => {
-				panic!("Bind property has no direct name")
-			}
-			FormFieldProperty::InitialFrom { .. } => {
-				panic!("InitialFrom property has no direct name")
-			}
-			FormFieldProperty::ChoicesFrom { .. } => {
-				panic!("ChoicesFrom property has no direct name")
-			}
-			FormFieldProperty::ChoiceValue { .. } => {
-				panic!("ChoiceValue property has no direct name")
-			}
-			FormFieldProperty::ChoiceLabel { .. } => {
-				panic!("ChoiceLabel property has no direct name")
-			}
+			_ => None,
 		}
 	}
 
@@ -919,7 +895,10 @@ impl FormSlots {
 
 impl FormMacro {
 	/// Creates a new FormMacro with the given name and span.
-	pub fn new(name: Ident, span: Span) -> Self {
+	///
+	/// Pass `None` for `name` when creating a placeholder before parsing.
+	/// The parser will set the name when the `name:` property is encountered.
+	pub fn new(name: Option<Ident>, span: Span) -> Self {
 		Self {
 			name,
 			action: FormAction::None,
@@ -1255,10 +1234,102 @@ mod tests {
 	}
 
 	#[rstest]
+	fn test_form_field_property_name_returns_some_for_named() {
+		// Arrange
+		let prop = FormFieldProperty::Named {
+			name: Ident::new("max_length", Span::call_site()),
+			value: syn::parse_quote!(100),
+			span: Span::call_site(),
+		};
+
+		// Act
+		let result = prop.name();
+
+		// Assert
+		assert_eq!(result.unwrap().to_string(), "max_length");
+	}
+
+	#[rstest]
+	fn test_form_field_property_name_returns_some_for_flag() {
+		// Arrange
+		let prop = FormFieldProperty::Flag {
+			name: Ident::new("required", Span::call_site()),
+			span: Span::call_site(),
+		};
+
+		// Act
+		let result = prop.name();
+
+		// Assert
+		assert_eq!(result.unwrap().to_string(), "required");
+	}
+
+	#[rstest]
+	fn test_form_field_property_name_returns_none_for_structural_variants() {
+		// Arrange
+		let widget = FormFieldProperty::Widget {
+			widget_type: Ident::new("PasswordInput", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let wrapper = FormFieldProperty::Wrapper {
+			element: WrapperElement {
+				tag: Ident::new("div", Span::call_site()),
+				attrs: Vec::new(),
+				span: Span::call_site(),
+			},
+			span: Span::call_site(),
+		};
+		let icon = FormFieldProperty::Icon {
+			element: IconElement::new(Span::call_site()),
+			span: Span::call_site(),
+		};
+		let icon_position = FormFieldProperty::IconPosition {
+			position: IconPosition::Left,
+			span: Span::call_site(),
+		};
+		let attrs = FormFieldProperty::Attrs {
+			attrs: Vec::new(),
+			span: Span::call_site(),
+		};
+		let bind = FormFieldProperty::Bind {
+			enabled: true,
+			span: Span::call_site(),
+		};
+		let initial_from = FormFieldProperty::InitialFrom {
+			field_name: LitStr::new("username", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choices_from = FormFieldProperty::ChoicesFrom {
+			field_name: LitStr::new("choices", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choice_value = FormFieldProperty::ChoiceValue {
+			path: LitStr::new("id", Span::call_site()),
+			span: Span::call_site(),
+		};
+		let choice_label = FormFieldProperty::ChoiceLabel {
+			path: LitStr::new("label", Span::call_site()),
+			span: Span::call_site(),
+		};
+
+		// Act & Assert
+		assert!(widget.name().is_none());
+		assert!(wrapper.name().is_none());
+		assert!(icon.name().is_none());
+		assert!(icon_position.name().is_none());
+		assert!(attrs.name().is_none());
+		assert!(bind.name().is_none());
+		assert!(initial_from.name().is_none());
+		assert!(choices_from.name().is_none());
+		assert!(choice_value.name().is_none());
+		assert!(choice_label.name().is_none());
+	}
+
+	#[rstest]
 	fn test_form_macro_uses_server_fn() {
 		// Arrange
 		let mut form = FormMacro::new(
-			Ident::new("LoginForm", Span::call_site()),
+			Some(Ident::new("LoginForm", Span::call_site())),
 			Span::call_site(),
 		);
 

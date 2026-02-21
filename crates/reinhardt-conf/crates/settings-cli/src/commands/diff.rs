@@ -22,10 +22,14 @@ pub(crate) struct DiffArgs {
 	/// Show values (otherwise just show keys)
 	#[arg(short = 'v', long)]
 	pub show_values: bool,
+
+	/// Show sensitive values without redaction (passwords, keys, tokens)
+	#[arg(long)]
+	pub show_secrets: bool,
 }
 /// Documentation for `execute`
 ///
-pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
+pub(crate) fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	output::info("Comparing configuration files");
 
 	// Load both files
@@ -47,13 +51,22 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	for key in all_keys {
 		let val1 = map1.get(&key);
 		let val2 = map2.get(&key);
+		let is_sensitive = !args.show_secrets && output::is_sensitive_key(&key);
 
 		match (val1, val2) {
 			(Some(v1), Some(v2)) if v1 == v2 => {
 				// Same value
 				if !args.only_differences {
 					if args.show_values {
-						output::print_diff(&key, Some(v1), Some(v2));
+						if is_sensitive {
+							output::print_diff(
+								&key,
+								Some(output::REDACTED),
+								Some(output::REDACTED),
+							);
+						} else {
+							output::print_diff(&key, Some(v1), Some(v2));
+						}
 					} else {
 						output::print_diff(&key, None, None);
 					}
@@ -63,7 +76,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Different values
 				differences += 1;
 				if args.show_values {
-					output::print_diff(&key, Some(v1), Some(v2));
+					if is_sensitive {
+						output::print_diff(&key, Some(output::REDACTED), Some(output::REDACTED));
+					} else {
+						output::print_diff(&key, Some(v1), Some(v2));
+					}
 				} else {
 					output::print_diff(&key, Some("*"), Some("*"));
 				}
@@ -72,7 +89,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Only in file1 (deleted in file2)
 				deletions += 1;
 				if args.show_values {
-					output::print_diff(&key, Some(v1), None);
+					if is_sensitive {
+						output::print_diff(&key, Some(output::REDACTED), None);
+					} else {
+						output::print_diff(&key, Some(v1), None);
+					}
 				} else {
 					output::print_diff(&key, Some("*"), None);
 				}
@@ -81,7 +102,11 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 				// Only in file2 (added in file2)
 				additions += 1;
 				if args.show_values {
-					output::print_diff(&key, None, Some(v2));
+					if is_sensitive {
+						output::print_diff(&key, None, Some(output::REDACTED));
+					} else {
+						output::print_diff(&key, None, Some(v2));
+					}
 				} else {
 					output::print_diff(&key, None, Some("*"));
 				}
@@ -103,9 +128,21 @@ pub(crate) async fn execute(args: DiffArgs) -> anyhow::Result<()> {
 	Ok(())
 }
 
+/// Maximum configuration file size for diff command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 fn load_config_file(path: &PathBuf) -> anyhow::Result<serde_json::Value> {
-	if !path.exists() {
-		return Err(anyhow::anyhow!("File not found: {:?}", path));
+	// Check file existence and size in one operation (TOCTOU mitigation)
+	let metadata = std::fs::metadata(path)
+		.map_err(|e| anyhow::anyhow!("Cannot access file {:?}: {}", path, e))?;
+
+	if metadata.len() > MAX_CONFIG_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Configuration file {:?} exceeds maximum size ({} bytes, limit {} bytes)",
+			path,
+			metadata.len(),
+			MAX_CONFIG_FILE_SIZE
+		));
 	}
 
 	let extension = path.extension().and_then(|s| s.to_str());
@@ -133,13 +170,26 @@ fn load_config_file(path: &PathBuf) -> anyhow::Result<serde_json::Value> {
 				if let Some((key, value)) = line.split_once('=') {
 					env_map.insert(
 						key.trim().to_string(),
-						serde_json::Value::String(value.trim().to_string()),
+						serde_json::Value::String(strip_env_quotes(value.trim()).to_string()),
 					);
 				}
 			}
 			Ok(serde_json::Value::Object(env_map))
 		}
 		_ => Err(anyhow::anyhow!("Unsupported file format: {:?}", extension)),
+	}
+}
+
+/// Strip surrounding quotes (double or single) from an .env file value.
+fn strip_env_quotes(raw: &str) -> &str {
+	let raw = raw.trim();
+	if raw.len() >= 2
+		&& ((raw.starts_with('"') && raw.ends_with('"'))
+			|| (raw.starts_with('\'') && raw.ends_with('\'')))
+	{
+		&raw[1..raw.len() - 1]
+	} else {
+		raw
 	}
 }
 

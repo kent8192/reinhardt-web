@@ -15,6 +15,8 @@ use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use super::error::MapServerFnError;
 #[cfg(not(target_arch = "wasm32"))]
+use super::limits::MAX_PAGE_SIZE;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::server::type_inference::{
 	get_field_metadata, infer_admin_field_type, infer_filter_type,
 };
@@ -137,8 +139,19 @@ pub async fn get_list(
 	}
 
 	// Build additional filters (AND logic)
+	// Only accept filter fields that are explicitly defined in model_admin.list_filter()
+	let allowed_filter_fields = model_admin.list_filter();
 	let mut additional_filters = Vec::new();
 	for (field, value) in params.filters.iter() {
+		if !allowed_filter_fields.contains(&field.as_str()) {
+			return Err(ServerFnError::server(
+				400,
+				format!(
+					"Unknown filter field '{}'. Allowed filter fields: {:?}",
+					field, allowed_filter_fields
+				),
+			));
+		}
 		additional_filters.push(Filter::new(
 			field.clone(),
 			FilterOperator::Eq,
@@ -152,11 +165,12 @@ pub async fn get_list(
 		.as_deref()
 		.or_else(|| model_admin.ordering().first().copied());
 
-	// Calculate pagination
+	// Calculate pagination with upper bound enforcement
 	let page = params.page.unwrap_or(1).max(1); // Ensure page is at least 1
 	let page_size = params
 		.page_size
-		.unwrap_or_else(|| model_admin.list_per_page().unwrap_or(25) as u64);
+		.unwrap_or_else(|| model_admin.list_per_page().unwrap_or(25) as u64)
+		.min(MAX_PAGE_SIZE); // Enforce maximum page size to prevent memory exhaustion
 	let offset = (page - 1) * page_size;
 
 	// Fetch data

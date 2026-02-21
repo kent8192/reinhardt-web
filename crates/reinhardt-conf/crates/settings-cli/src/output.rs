@@ -12,6 +12,60 @@ pub(crate) enum OutputFormat {
 	Toml,
 }
 
+/// Redacted placeholder for sensitive values
+pub(crate) const REDACTED: &str = "[REDACTED]";
+
+/// Sensitive key name patterns used to detect credentials and secrets
+const SENSITIVE_PATTERNS: &[&str] = &[
+	"password",
+	"passwd",
+	"pwd",
+	"secret",
+	"token",
+	"api_key",
+	"apikey",
+	"credential",
+	"private_key",
+	"connection_string",
+	"database_url",
+	"auth",
+];
+
+/// Check whether a key name indicates a sensitive value
+///
+/// Checks the last segment of a dotted key path (e.g., "database.password"
+/// checks "password") against known sensitive patterns.
+pub(crate) fn is_sensitive_key(key: &str) -> bool {
+	let lower = key.to_lowercase();
+	// Check the last segment of a dotted key path
+	let segment = lower.rsplit('.').next().unwrap_or(&lower);
+	SENSITIVE_PATTERNS
+		.iter()
+		.any(|pattern| segment.contains(pattern))
+}
+
+/// Recursively redact sensitive values in a JSON value tree
+///
+/// Object keys matching sensitive patterns will have their values replaced
+/// with `[REDACTED]`.
+pub(crate) fn redact_sensitive_values(value: &Value) -> Value {
+	match value {
+		Value::Object(map) => {
+			let mut new_map = serde_json::Map::new();
+			for (key, val) in map {
+				if is_sensitive_key(key) {
+					new_map.insert(key.clone(), Value::String(REDACTED.to_string()));
+				} else {
+					new_map.insert(key.clone(), redact_sensitive_values(val));
+				}
+			}
+			Value::Object(new_map)
+		}
+		Value::Array(arr) => Value::Array(arr.iter().map(redact_sensitive_values).collect()),
+		other => other.clone(),
+	}
+}
+
 // Note: OutputFormat::parse() was removed as clap's ValueEnum is used instead
 // See OutputFormatArg in commands/show.rs
 /// Print a success message
@@ -111,5 +165,93 @@ pub(crate) fn print_diff(key: &str, old_value: Option<&str>, new_value: Option<&
 			);
 		}
 		_ => {}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case("password", true)]
+	#[case("database.password", true)]
+	#[case("secret_key", true)]
+	#[case("api_key", true)]
+	#[case("apikey", true)]
+	#[case("auth_token", true)]
+	#[case("private_key", true)]
+	#[case("database_url", true)]
+	#[case("connection_string", true)]
+	#[case("credential", true)]
+	#[case("DATABASE_PASSWORD", true)]
+	#[case("host", false)]
+	#[case("database.host", false)]
+	#[case("port", false)]
+	#[case("name", false)]
+	#[case("debug", false)]
+	fn is_sensitive_key_detects_sensitive_patterns(#[case] key: &str, #[case] expected: bool) {
+		// Act
+		let result = is_sensitive_key(key);
+
+		// Assert
+		assert_eq!(result, expected, "key '{}' sensitivity mismatch", key);
+	}
+
+	#[rstest]
+	fn redact_sensitive_values_replaces_secret_fields() {
+		// Arrange
+		let value = serde_json::json!({
+			"database": {
+				"host": "localhost",
+				"port": 5432,
+				"password": "super_secret"
+			},
+			"api_key": "ak_12345",
+			"debug": true
+		});
+
+		// Act
+		let redacted = redact_sensitive_values(&value);
+
+		// Assert
+		assert_eq!(
+			redacted["database"]["host"],
+			serde_json::Value::String("localhost".to_string())
+		);
+		assert_eq!(
+			redacted["database"]["port"],
+			serde_json::Value::Number(5432.into())
+		);
+		assert_eq!(
+			redacted["database"]["password"],
+			serde_json::Value::String(REDACTED.to_string())
+		);
+		assert_eq!(
+			redacted["api_key"],
+			serde_json::Value::String(REDACTED.to_string())
+		);
+		assert_eq!(redacted["debug"], serde_json::Value::Bool(true));
+	}
+
+	#[rstest]
+	fn redact_sensitive_values_handles_nested_objects() {
+		// Arrange
+		let value = serde_json::json!({
+			"services": {
+				"db": {
+					"connection_string": "postgres://user:pass@host/db"
+				}
+			}
+		});
+
+		// Act
+		let redacted = redact_sensitive_values(&value);
+
+		// Assert
+		assert_eq!(
+			redacted["services"]["db"]["connection_string"],
+			serde_json::Value::String(REDACTED.to_string())
+		);
 	}
 }

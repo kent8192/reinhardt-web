@@ -12,8 +12,8 @@
 //! - Edge cases: Boundary TOTP codes, special characters in usernames
 //! - Decision table: Verification outcomes based on conditions
 
-use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
 use reinhardt_auth::AuthenticationError;
+use reinhardt_auth::mfa::MFAAuthentication as MfaManager;
 use reinhardt_test::fixtures::auth::TestUser;
 use rstest::*;
 use std::collections::HashSet;

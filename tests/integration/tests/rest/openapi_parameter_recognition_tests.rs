@@ -263,12 +263,14 @@ fn test_json_output_includes_path_parameters(
 ) {
 	// Arrange
 	let paths = inspector.extract_paths(&user_viewset, "/api/users");
-	let gen = SchemaGenerator::new()
+	let generator = SchemaGenerator::new()
 		.title("Path Param Test")
 		.version("1.0.0");
 
 	// Manually add viewset paths to generator for JSON output
-	let schema = gen.generate().expect("Schema generation should succeed");
+	let schema = generator
+		.generate()
+		.expect("Schema generation should succeed");
 	let json_str = serde_json::to_string_pretty(&schema).expect("JSON serialization");
 	let json: serde_json::Value =
 		serde_json::from_str(&json_str).expect("JSON parsing should succeed");

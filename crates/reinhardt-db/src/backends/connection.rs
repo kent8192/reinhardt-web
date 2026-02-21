@@ -528,7 +528,7 @@ impl DatabaseConnection {
 								password: db_map
 									.get("password")
 									.and_then(|v| v.as_str())
-									.map(|s| s.to_string()),
+									.map(reinhardt_conf::settings::secret_types::SecretString::new),
 								host: db_map
 									.get("host")
 									.and_then(|v| v.as_str())

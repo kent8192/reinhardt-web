@@ -32,6 +32,12 @@ This file defines the pull request (PR) policy for the Reinhardt project. These 
 - **NEVER** use web browser UI for PR creation when MCP or CLI is available
 - MCP and CLI both ensure consistency and can be automated
 
+**PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
+
+When creating PRs via `gh pr create`, the `--body` content MUST follow the PR template structure defined in `.github/PULL_REQUEST_TEMPLATE.md`.
+
+**CLI Note:** GitHub CLI (`gh pr create`) does not automatically apply the PR template like the Web UI. You must manually include the template structure in the `--body` content. See PC-2 for the complete template structure and example.
+
 **Example:**
 ```bash
 gh pr create --title "feat(auth): add JWT token validation" \
@@ -53,7 +59,15 @@ EOF
 )"
 ```
 
-### PC-2 (MUST): Branch Naming
+### PC-2 (MUST): Follow PR Template Structure
+
+**PR Template Location:** `.github/PULL_REQUEST_TEMPLATE.md`
+
+When creating PRs via `gh pr create`, the `--body` content MUST follow the PR template structure defined in `.github/PULL_REQUEST_TEMPLATE.md`.
+
+**CLI Note:** GitHub CLI does not automatically apply the PR template like the Web UI. Read the template file and include its structure in your `--body` content.
+
+### PC-3 (MUST): Branch Naming
 
 - Branch names SHOULD follow the pattern: `<type>/<scope>-<short-description>`
 - Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
@@ -72,7 +86,7 @@ chore/ci-github-actions-update
 
 **Exception:** Release branches follow the format `release/<crate>/vX.Y.Z` for compatibility with automated workflows.
 
-### PC-3 (SHOULD): Draft PRs for Work in Progress
+### PC-4 (SHOULD): Draft PRs for Work in Progress
 
 - Use draft PRs for incomplete work
 - Convert to ready for review when all tests pass
@@ -83,7 +97,7 @@ chore/ci-github-actions-update
 gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
 ```
 
-### PC-4 (MUST): PR Labels
+### PC-5 (MUST): PR Labels
 
 - **MUST** add appropriate labels to every PR
 - Labels help categorize, prioritize, and track PRs
@@ -272,64 +286,50 @@ feat(api)!: change response format to JSON:API specification
 
 ### DF-1 (MUST): Standard Structure
 
-PR descriptions MUST follow this structure:
+PR descriptions MUST follow the structure defined in `.github/PULL_REQUEST_TEMPLATE.md`.
 
+**Required Sections:** Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist, Labels to Apply
+
+**Optional Sections:** Performance Impact, Breaking Changes, Screenshots, Related Issues, Additional Context
+
+**Footer:** Include Claude Code attribution for AI-assisted PRs
+
+**See:** `.github/PULL_REQUEST_TEMPLATE.md` for the complete template structure.
+
+### DF-2 (MUST): Linking PRs to Issues
+
+PRs should be linked to related issues using GitHub's supported keywords. When a linked PR is merged into the default branch, the linked issues are automatically closed.
+
+**Supported Keywords:**
+- `close`, `closes`, `closed`
+- `fix`, `fixes`, `fixed`
+- `resolve`, `resolves`, `resolved`
+
+**Syntax for Linking:**
+
+| Linked Issue | Syntax | Example |
+|--------------|--------|---------|
+| Issue in same repository | `KEYWORD #ISSUE-NUMBER` | `Closes #10` |
+| Issue in different repository | `KEYWORD OWNER/REPOSITORY#ISSUE-NUMBER` | `Fixes octo-org/octo-repo#100` |
+| Multiple issues | Use full syntax for each | `Resolves #10, resolves #123` |
+
+**Examples:**
 ```markdown
-## Summary
+## Related Issues
 
-- Bullet point 1: Brief description of change
-- Bullet point 2: Another change
-- Bullet point 3: Additional context
-
-## Test plan
-
-- [ ] Test case 1
-- [ ] Test case 2
-- [ ] Test case 3
-- [ ] Manual testing notes
-
-## Breaking Changes (if applicable)
-
-- Breaking change 1: Migration path
-- Breaking change 2: Impact and solution
-
-## Related Issues (if applicable)
-
-Fixes #123
-Closes #456
-Refs #789
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+Fixes #42
+Closes #43, closes #44
+Refs #50 (related but not closed)
 ```
 
-**Requirements:**
+**Important Notes:**
+- Keywords only work when PR targets the **default branch** (main)
+- Up to 10 issues can be manually linked via the sidebar
+- Use `Refs #N` for related issues that should NOT be auto-closed
 
-1. **Summary Section** (REQUIRED)
-   - Use bullet points for clarity
-   - List key changes in logical order
-   - Be specific about what changed and why
-   - Mention new features, bug fixes, or improvements
+**Reference:** [GitHub Docs - Linking a PR to an Issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
 
-2. **Test Plan Section** (REQUIRED)
-   - List all verification steps
-   - Include automated test commands
-   - Note manual testing performed
-   - Use checkboxes (`- [ ]` or `- [x]`) for tracking
-
-3. **Breaking Changes Section** (REQUIRED for breaking changes)
-   - List all API changes that break compatibility
-   - Provide migration path for each change
-   - Explain impact on existing code
-
-4. **Related Issues Section** (OPTIONAL)
-   - Link related issues using GitHub keywords
-   - Use `Fixes #123` to auto-close issues
-   - Use `Refs #123` for related but not closed issues
-
-5. **Footer** (REQUIRED)
-   - Include Claude Code attribution for AI-assisted PRs
-
-### DF-2 (SHOULD): Additional Context
+### DF-3 (SHOULD): Additional Context
 
 Include additional sections when relevant:
 
@@ -505,16 +505,20 @@ docs(readme): add installation instructions
 ### ✅ MUST DO
 - Write all PR content in English
 - Use GitHub MCP (`create_pull_request`) or `gh pr create` for creating PRs
+- Follow PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Follow Conventional Commits format for titles
-- Include Summary and Test plan sections
+- Include Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist sections
+- Include Labels to Apply section with appropriate type and scope labels
 - Run all checks before requesting review
 - Address all review comments
 - Ensure all CI checks pass before merge
 
 ### ❌ NEVER DO
 - Write PR titles or descriptions in non-English languages
+- Create PRs without following PR template structure from `.github/PULL_REQUEST_TEMPLATE.md`
 - Create PRs without proper description
-- Skip test plan section
+- Skip required sections (Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist)
+- Skip Labels to Apply section
 - Merge with failing CI checks
 - Leave unresolved review comments
 - Force push after review has started (unless explicitly requested)

@@ -52,38 +52,7 @@ where
 
 /// Home page view
 pub fn home_page_view() -> Page {
-	page!(|| {
-		div {
-			class: "min-h-screen flex items-center justify-center bg-surface-secondary px-4",
-			div {
-				class: "max-w-md w-full text-center",
-				div {
-					class: "mb-8",
-					h1 {
-						class: "text-4xl font-bold text-content-primary mb-3",
-						"Twitter Clone"
-					}
-					p {
-						class: "text-lg text-content-secondary leading-relaxed",
-						"Welcome to the Twitter Clone! Join the conversation and connect with people."
-					}
-				}
-				div {
-					class: "flex flex-col gap-3",
-					a {
-						href: "/register",
-						class: "btn-primary btn-lg w-full",
-						"Sign up"
-					}
-					a {
-						href: "/login",
-						class: "btn-outline btn-lg w-full",
-						"Log in"
-					}
-				}
-			}
-		}
-	})()
+	__reinhardt_placeholder__!(/*0*/)()
 }
 
 /// Login page view
@@ -120,20 +89,7 @@ pub fn timeline_page_view() -> Page {
 	let form_view = tweet_form();
 	let list_view = tweet_list(None);
 
-	page!(|form_view: Page, list_view: Page| {
-		div {
-			class: "max-w-2xl mx-auto px-4 py-6",
-			h1 {
-				class: "text-2xl font-bold text-content-primary mb-6",
-				"Timeline"
-			}
-			{ form_view }
-			div {
-				class: "divider",
-			}
-			{ list_view }
-		}
-	})(form_view, list_view)
+	__reinhardt_placeholder__!(/*1*/)(form_view, list_view)
 }
 
 /// DM chat page view
@@ -145,32 +101,5 @@ pub fn dm_chat_page_view(room_id: String) -> Page {
 
 /// Not found page view
 pub fn not_found_page_view() -> Page {
-	page!(|| {
-		div {
-			class: "min-h-screen flex items-center justify-center bg-surface-secondary px-4",
-			div {
-				class: "max-w-md w-full text-center",
-				div {
-					class: "mb-8",
-					h1 {
-						class: "text-6xl font-bold text-content-primary mb-3",
-						"404"
-					}
-					p {
-						class: "text-xl text-content-secondary mb-2",
-						"Page Not Found"
-					}
-					p {
-						class: "text-content-tertiary",
-						"The page you are looking for does not exist."
-					}
-				}
-				a {
-					href: "/",
-					class: "btn-primary btn-lg",
-					"Go Home"
-				}
-			}
-		}
-	})()
+	__reinhardt_placeholder__!(/*2*/)()
 }

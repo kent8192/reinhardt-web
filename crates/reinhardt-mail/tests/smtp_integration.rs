@@ -41,6 +41,7 @@ impl MailpitAddress {
 }
 
 #[derive(Debug, serde::Deserialize)]
+// Struct fields used for JSON deserialization
 #[allow(dead_code)]
 struct MessagesResponse {
 	total: usize,

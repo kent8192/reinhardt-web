@@ -4,7 +4,7 @@ mod commands;
 mod output;
 
 use clap::{Parser, Subcommand};
-use commands::*;
+use commands::{decrypt, diff, encrypt, set, show, validate};
 
 #[derive(Parser)]
 #[command(name = "reinhardt-settings")]
@@ -35,16 +35,15 @@ enum Commands {
 	Decrypt(decrypt::DecryptArgs),
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
 	let cli = Cli::parse();
 
 	match cli.command {
-		Commands::Validate(args) => validate::execute(args).await,
-		Commands::Show(args) => show::execute(args).await,
-		Commands::Set(args) => set::execute(args).await,
-		Commands::Diff(args) => diff::execute(args).await,
-		Commands::Encrypt(args) => encrypt::execute(args).await,
-		Commands::Decrypt(args) => decrypt::execute(args).await,
+		Commands::Validate(args) => validate::execute(args),
+		Commands::Show(args) => show::execute(args),
+		Commands::Set(args) => set::execute(args),
+		Commands::Diff(args) => diff::execute(args),
+		Commands::Encrypt(args) => encrypt::execute(args),
+		Commands::Decrypt(args) => decrypt::execute(args),
 	}
 }

@@ -2,7 +2,7 @@
 
 use crate::output;
 use clap::Args;
-use reinhardt_conf::settings::prelude::*;
+use reinhardt_conf::settings::prelude::{Profile, SettingsValidator};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -16,15 +16,25 @@ pub(crate) struct ValidateArgs {
 	#[arg(short, long)]
 	pub profile: Option<String>,
 }
-/// Documentation for `execute`
-///
-pub(crate) async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
+/// Maximum configuration file size for validate command (50 MB).
+const MAX_CONFIG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
+/// Validate a configuration file for syntax and profile-specific rules
+pub(crate) fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 	output::info(&format!("Validating configuration file: {:?}", args.file));
 
-	// Check if file exists
-	if !args.file.exists() {
-		output::error("Configuration file not found");
-		return Err(anyhow::anyhow!("File not found: {:?}", args.file));
+	// Check file existence and size in one operation (TOCTOU mitigation)
+	let metadata = std::fs::metadata(&args.file).map_err(|e| {
+		output::error("Configuration file not found or inaccessible");
+		anyhow::anyhow!("Cannot access file {:?}: {}", args.file, e)
+	})?;
+
+	if metadata.len() > MAX_CONFIG_FILE_SIZE {
+		return Err(anyhow::anyhow!(
+			"Configuration file exceeds maximum size ({} bytes, limit {} bytes)",
+			metadata.len(),
+			MAX_CONFIG_FILE_SIZE
+		));
 	}
 
 	// Determine file type and load
@@ -47,21 +57,55 @@ pub(crate) async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
 			Some(json_to_hashmap(&json_value))
 		}
 		Some("env") => {
-			// Validate .env file
+			// Validate .env file with comprehensive checks
 			let content = std::fs::read_to_string(&args.file)?;
+			let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+			let mut has_warnings = false;
+
 			for (line_num, line) in content.lines().enumerate() {
 				let line = line.trim();
 				if line.is_empty() || line.starts_with('#') {
 					continue;
 				}
+
+				// Check for missing '=' separator
 				if !line.contains('=') {
 					output::warning(&format!(
 						"Line {} might be invalid: missing '=' separator",
 						line_num + 1
 					));
+					has_warnings = true;
+					continue;
+				}
+
+				// Validate key name format
+				if let Some((key, _)) = line.split_once('=') {
+					let key = key.trim();
+					if key.is_empty() {
+						output::warning(&format!("Line {}: empty key name", line_num + 1));
+						has_warnings = true;
+					} else if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+						output::warning(&format!(
+							"Line {}: key '{}' contains invalid characters (only alphanumeric and underscore allowed)",
+							line_num + 1,
+							key
+						));
+						has_warnings = true;
+					}
+
+					// Check for duplicate keys
+					if !key.is_empty() && !seen_keys.insert(key.to_string()) {
+						output::warning(&format!("Line {}: duplicate key '{}'", line_num + 1, key));
+						has_warnings = true;
+					}
 				}
 			}
-			output::success(".env file format is valid");
+
+			if has_warnings {
+				output::warning(".env file has validation warnings (see above)");
+			} else {
+				output::success(".env file format is valid");
+			}
 			None
 		}
 		_ => {

@@ -320,6 +320,7 @@ members = [
   "crates/reinhardt-grpc/macros",
   "crates/reinhardt-commands",
   "crates/reinhardt-db",
+  "crates/reinhardt-db-macros",
   "crates/reinhardt-dispatch",
   "crates/reinhardt-shortcuts",
   "crates/reinhardt-forms",
@@ -394,6 +395,7 @@ reinhardt-grpc-macros = { path = "crates/reinhardt-grpc/macros", version = "0.1.
 reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version = "0.1.0-alpha.2" }
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alpha.17" }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.13" }
+reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.1.0-alpha.1" }
 reinhardt-query = { path = "crates/reinhardt-query", version = "0.1.0-alpha.3" }
 reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
 reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
@@ -454,6 +456,10 @@ sqlx = { version = "0.8", features = [
   "rust_decimal",
 ] }
 
+# TLS
+# Pin to avoid build failure in native-tls 0.2.17 (non-exhaustive pattern in openssl.rs)
+native-tls = "=0.2.14"
+
 # Authentication & Security
 argon2 = { version = "0.5", features = ["std"] }
 password-hash = "0.5"
@@ -503,6 +509,7 @@ proc-macro2 = "1.0"
 aes-gcm = "0.10"
 sha2 = "0.10.9"
 hmac = "0.12"
+subtle = "2.6"
 
 # Image Processing
 image = "0.25.8"

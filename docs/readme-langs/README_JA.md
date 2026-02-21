@@ -14,6 +14,7 @@
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
 </div>
@@ -1037,6 +1038,16 @@ Reinhardtはコミュニティ駆動のプロジェクトです。ヘルプが�
 - [開発セットアップ](../../CONTRIBUTING.md#development-setup)
 - [テストガイドライン](../../CONTRIBUTING.md#testing-guidelines)
 - [コミットガイドライン](../../CONTRIBUTING.md#commit-guidelines)
+
+## ⭐ スター履歴
+
+<a href="https://star-history.com/#kent8192/reinhardt-web&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=kent8192/reinhardt-web&type=Date" width="600" />
+ </picture>
+</a>
 
 ## ライセンス
 

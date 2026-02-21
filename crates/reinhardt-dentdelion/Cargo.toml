@@ -94,3 +94,4 @@ reinhardt-db = {workspace = true, features = ["backends"], optional = true}
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = { workspace = true }
+rstest = { workspace = true }

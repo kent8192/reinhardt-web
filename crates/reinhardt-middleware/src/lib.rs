@@ -218,11 +218,15 @@ mod tests {
 
 		let middleware = CorsMiddleware::new(config);
 		let handler = Arc::new(TestHandler);
+
+		let mut headers = HeaderMap::new();
+		headers.insert("origin", "http://example.com".parse().unwrap());
+
 		let request = Request::builder()
 			.method(Method::GET)
 			.uri("/test")
 			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
+			.headers(headers)
 			.body(Bytes::new())
 			.build()
 			.unwrap();
@@ -249,11 +253,15 @@ mod tests {
 
 		let middleware = CorsMiddleware::new(config);
 		let handler = Arc::new(TestHandler);
+
+		let mut headers = HeaderMap::new();
+		headers.insert("origin", "http://example.com".parse().unwrap());
+
 		let request = Request::builder()
 			.method(Method::OPTIONS)
 			.uri("/test")
 			.version(Version::HTTP_11)
-			.headers(HeaderMap::new())
+			.headers(headers)
 			.body(Bytes::new())
 			.build()
 			.unwrap();
