@@ -324,6 +324,7 @@ Refs #50 (related but not closed)
 - Keywords only work when PR targets the **default branch** (main)
 - Up to 10 issues can be manually linked via the sidebar
 - Use `Refs #N` for related issues that should NOT be auto-closed
+- **WARNING:** `Fixes #xxx, #yyy` only closes #xxx. You MUST repeat the keyword for each issue: `Fixes #xxx, fixes #yyy`
 
 **Reference:** [GitHub Docs - Linking a PR to an Issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
 

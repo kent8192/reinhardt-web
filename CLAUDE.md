@@ -330,6 +330,7 @@ gh api repos/{owner}/{repo}/pulls
 
 Use keywords to auto-close issues on merge: `Fixes #N`, `Closes #N`, `Resolves #N`
 - Use `Refs #N` for related issues (no auto-close)
+- **WARNING:** `Fixes #xxx, #yyy` only closes #xxx. Repeat keyword: `Fixes #xxx, fixes #yyy`
 - See [GitHub Docs](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) for details
 
 **CRITICAL: This project uses Docker for TestContainers integration, NOT Podman.**
