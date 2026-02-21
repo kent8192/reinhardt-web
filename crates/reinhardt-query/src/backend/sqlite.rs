@@ -774,6 +774,8 @@ impl QueryBuilder for SqliteQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+		use crate::query::insert::InsertSource;
+
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
@@ -797,18 +799,29 @@ impl QueryBuilder for SqliteQueryBuilder {
 			writer.push(")");
 		}
 
-		// VALUES clause
-		if !stmt.values.is_empty() {
-			writer.push_keyword("VALUES");
-			writer.push_space();
+		// VALUES clause or SELECT subquery
+		match &stmt.source {
+			InsertSource::Values(values) if !values.is_empty() => {
+				writer.push_keyword("VALUES");
+				writer.push_space();
 
-			writer.push_list(&stmt.values, ", ", |w, row| {
-				w.push("(");
-				w.push_list(row, ", ", |w2, value| {
-					w2.push_value(value.clone(), |_i| self.placeholder(0));
+				writer.push_list(values, ", ", |w, row| {
+					w.push("(");
+					w.push_list(row, ", ", |w2, value| {
+						w2.push_value(value.clone(), |_i| self.placeholder(0));
+					});
+					w.push(")");
 				});
-				w.push(")");
-			});
+			}
+			InsertSource::Subquery(select) => {
+				writer.push_space();
+				let (select_sql, select_values) = self.build_select(select);
+				writer.push(&select_sql);
+				writer.append_values(&select_values);
+			}
+			_ => {
+				// Empty values - this is valid SQL in some contexts
+			}
 		}
 
 		// ON CONFLICT clause
@@ -1675,44 +1688,44 @@ impl QueryBuilder for SqliteQueryBuilder {
 			"SQLite does not support DROP DATABASE. Database files are removed via filesystem operations."
 		);
 	}
-	//
-	// 	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-	// 		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
-	// 	}
 
-	// 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
-	// 		panic!(
-	// 			"SQLite VACUUM has different syntax (no table specification). Not supported via this builder."
-	// 		);
-	// 	}
+	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
+	}
 
-	// 	fn build_create_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::CreateMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("SQLite does not support materialized views.");
-	// 	}
+	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		panic!(
+			"SQLite VACUUM has different syntax (no table specification). Not supported via this builder."
+		);
+	}
 
-	// 	fn build_alter_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::AlterMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("SQLite does not support materialized views.");
-	// 	}
+	fn build_create_materialized_view(
+		&self,
+		_stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
 
-	// 	fn build_drop_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::DropMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("SQLite does not support materialized views.");
-	// 	}
+	fn build_alter_materialized_view(
+		&self,
+		_stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
 
-	// 	fn build_refresh_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::RefreshMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("SQLite does not support materialized views.");
-	// 	}
+	fn build_drop_materialized_view(
+		&self,
+		_stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		_stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("SQLite does not support materialized views.");
+	}
 
 	fn build_create_procedure(
 		&self,
@@ -2070,6 +2083,57 @@ mod tests {
 		let (sql, values) = builder.build_insert(&stmt);
 		assert!(sql.contains("RETURNING *"));
 		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_from_subquery() {
+		let builder = SqliteQueryBuilder::new();
+
+		// Create a SELECT subquery
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("\"name\", \"email\""));
+		assert!(sql.contains("SELECT \"name\", \"email\" FROM \"temp_users\""));
+		assert!(!sql.contains("VALUES"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_from_subquery_with_where() {
+		let builder = SqliteQueryBuilder::new();
+
+		// Create a SELECT subquery with WHERE clause
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.and_where(Expr::col("active").eq(true))
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO \"users\""));
+		assert!(sql.contains("SELECT"));
+		assert!(sql.contains("FROM \"temp_users\""));
+		assert!(sql.contains("WHERE"));
+		assert_eq!(values.len(), 1); // true value from WHERE clause
 	}
 
 	#[test]

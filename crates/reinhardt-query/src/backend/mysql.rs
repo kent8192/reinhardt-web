@@ -800,6 +800,8 @@ impl QueryBuilder for MySqlQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+		use crate::query::insert::InsertSource;
+
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
@@ -823,18 +825,29 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push(")");
 		}
 
-		// VALUES clause
-		if !stmt.values.is_empty() {
-			writer.push_keyword("VALUES");
-			writer.push_space();
+		// VALUES clause or SELECT subquery
+		match &stmt.source {
+			InsertSource::Values(values) if !values.is_empty() => {
+				writer.push_keyword("VALUES");
+				writer.push_space();
 
-			writer.push_list(&stmt.values, ", ", |w, row| {
-				w.push("(");
-				w.push_list(row, ", ", |w2, value| {
-					w2.push_value(value.clone(), |_i| self.placeholder(0));
+				writer.push_list(values, ", ", |w, row| {
+					w.push("(");
+					w.push_list(row, ", ", |w2, value| {
+						w2.push_value(value.clone(), |_i| self.placeholder(0));
+					});
+					w.push(")");
 				});
-				w.push(")");
-			});
+			}
+			InsertSource::Subquery(select) => {
+				writer.push_space();
+				let (select_sql, select_values) = self.build_select(select);
+				writer.push(&select_sql);
+				writer.append_values(&select_values);
+			}
+			_ => {
+				// Empty values - this is valid SQL in some contexts
+			}
 		}
 
 		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
@@ -2844,130 +2857,45 @@ impl QueryBuilder for MySqlQueryBuilder {
 			"MySQL does not support COMMENT ON statement. Use table/column COMMENT attribute instead."
 		);
 	}
-	//
-	// 	fn build_alter_database(
-	// 		&self,
-	// 		_stmt: &crate::query::AlterDatabaseStatement,
-	// 	) -> (String, Values) {
-	// 		panic!(
-	// 			"MySQL does not support full ALTER DATABASE syntax. Use ALTER DATABASE name CHARACTER SET charset or ALTER DATABASE name COLLATE collation instead."
-	// 		);
-	// 	}
-	//
-	// 	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-	// 		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
-	// 	}
-	//
-	// 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
-	// 		panic!("MySQL does not support VACUUM. Use OPTIMIZE TABLE instead.");
-	// 	}
-	//
-	// 	fn build_optimize_table(&self, stmt: &crate::query::OptimizeTableStatement) -> (String, Values) {
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push("OPTIMIZE TABLE ");
-	//
-	// 		// Write table names
-	// 		for (i, table) in stmt.tables.iter().enumerate() {
-	// 			if i > 0 {
-	// 				writer.push(", ");
-	// 			}
-	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		(writer.result(), Values::default())
-	// 	}
-	//
-	// 	fn build_repair_table(&self, stmt: &crate::query::RepairTableStatement) -> (String, Values) {
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push("REPAIR TABLE ");
-	//
-	// 		// Write table names
-	// 		for (i, table) in stmt.tables.iter().enumerate() {
-	// 			if i > 0 {
-	// 				writer.push(", ");
-	// 			}
-	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// Add options
-	// 		if stmt.quick {
-	// 			writer.push(" QUICK");
-	// 		}
-	// 		if stmt.extended {
-	// 			writer.push(" EXTENDED");
-	// 		}
-	// 		if stmt.use_frm {
-	// 			writer.push(" USE_FRM");
-	// 		}
-	//
-	// 		(writer.result(), Values::default())
-	// 	}
-	//
-	// 	fn build_check_table(&self, stmt: &crate::query::CheckTableStatement) -> (String, Values) {
-	// 		let mut writer = SqlWriter::new();
-	//
-	// 		writer.push("CHECK TABLE ");
-	//
-	// 		// Write table names
-	// 		for (i, table) in stmt.tables.iter().enumerate() {
-	// 			if i > 0 {
-	// 				writer.push(", ");
-	// 			}
-	// 			writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
-	// 		}
-	//
-	// 		// Add options
-	// 		if stmt.quick {
-	// 			writer.push(" QUICK");
-	// 		}
-	// 		if stmt.fast {
-	// 			writer.push(" FAST");
-	// 		}
-	// 		if stmt.medium {
-	// 			writer.push(" MEDIUM");
-	// 		}
-	// 		if stmt.extended {
-	// 			writer.push(" EXTENDED");
-	// 		}
-	// 		if stmt.changed {
-	// 			writer.push(" CHANGED");
-	// 		}
-	//
-	// 		(writer.result(), Values::default())
-	// 	}
-	//
-	// 	fn build_create_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::CreateMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!(
-	// 			"MySQL does not support materialized views natively. Use regular views or tables with triggers."
-	// 		);
-	// 	}
-	//
-	// 	fn build_alter_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::AlterMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("MySQL does not support materialized views.");
-	// 	}
-	//
-	// 	fn build_drop_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::DropMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("MySQL does not support materialized views.");
-	// 	}
-	//
-	// 	fn build_refresh_materialized_view(
-	// 		&self,
-	// 		_stmt: &crate::query::RefreshMaterializedViewStatement,
-	// 	) -> (String, Values) {
-	// 		panic!("MySQL does not support materialized views.");
-	// 	}
-	//
+
+	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
+		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+	}
+
+	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
+		panic!("MySQL does not support VACUUM. Use OPTIMIZE TABLE instead.");
+	}
+
+	fn build_create_materialized_view(
+		&self,
+		_stmt: &crate::query::CreateMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!(
+			"MySQL does not support materialized views natively. Use regular views or tables with triggers."
+		);
+	}
+
+	fn build_alter_materialized_view(
+		&self,
+		_stmt: &crate::query::AlterMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("MySQL does not support materialized views.");
+	}
+
+	fn build_drop_materialized_view(
+		&self,
+		_stmt: &crate::query::DropMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("MySQL does not support materialized views.");
+	}
+
+	fn build_refresh_materialized_view(
+		&self,
+		_stmt: &crate::query::RefreshMaterializedViewStatement,
+	) -> (String, Values) {
+		panic!("MySQL does not support materialized views.");
+	}
+
 	fn build_create_procedure(
 		&self,
 		stmt: &crate::query::CreateProcedureStatement,
@@ -3498,6 +3426,57 @@ mod tests {
 			.returning(["id", "created_at"]);
 
 		let _ = builder.build_insert(&stmt);
+	}
+
+	#[test]
+	fn test_insert_from_subquery() {
+		let builder = MySqlQueryBuilder::new();
+
+		// Create a SELECT subquery
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO `users`"));
+		assert!(sql.contains("`name`, `email`"));
+		assert!(sql.contains("SELECT `name`, `email` FROM `temp_users`"));
+		assert!(!sql.contains("VALUES"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_insert_from_subquery_with_where() {
+		let builder = MySqlQueryBuilder::new();
+
+		// Create a SELECT subquery with WHERE clause
+		let select = Query::select()
+			.column("name")
+			.column("email")
+			.from("temp_users")
+			.and_where(Expr::col("active").eq(true))
+			.to_owned();
+
+		// Create an INSERT with subquery
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name", "email"])
+			.from_subquery(select);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert!(sql.contains("INSERT INTO `users`"));
+		assert!(sql.contains("SELECT"));
+		assert!(sql.contains("FROM `temp_users`"));
+		assert!(sql.contains("WHERE"));
+		assert_eq!(values.len(), 1); // true value from WHERE clause
 	}
 
 	#[test]
