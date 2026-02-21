@@ -183,10 +183,10 @@ async fn test_websocket_global_broadcast_integration(websocket_manager: Arc<Room
 
 	// Global broadcast
 	let global_message = Message::text("Server maintenance in 5 minutes".to_string());
-	manager
+	let result = manager
 		.broadcast_to_all(global_message.clone())
-		.await
-		.unwrap();
+		.await;
+	assert!(result.is_complete_success(), "Broadcast should succeed");
 
 	// All users should receive the message
 	let msg1 = timeout(Duration::from_millis(100), rx1.recv())
