@@ -72,31 +72,7 @@ Issues MUST be created using the appropriate issue template:
 
 **CLI Template Usage:**
 
-When creating issues via `gh issue create`, GitHub CLI does not automatically apply templates like the Web UI. You must include the template structure in your `--body` content.
-
-**Example (Bug Report via CLI):**
-```bash
-gh issue create --title "Bug: Connection pool leak" --label bug --body "$(cat <<'EOF'
-## Description
-[Describe the bug]
-
-## Steps to Reproduce
-1. [First step]
-2. [Second step]
-
-## Expected Behavior
-[What you expected to happen]
-
-## Actual Behavior
-[What actually happened]
-
-## Environment
-- Rust version: [e.g., 1.75.0]
-- OS: [e.g., macOS 14.0]
-- Reinhardt version: [e.g., 0.1.0]
-EOF
-)"
-```
+When creating issues via `gh issue create`, GitHub CLI does not automatically apply templates like the Web UI. Read the appropriate template file from `.github/ISSUE_TEMPLATE/` and include its structure in your `--body` content.
 
 **Note:** For security vulnerabilities, ALWAYS use GitHub Security Advisories instead of public issues.
 

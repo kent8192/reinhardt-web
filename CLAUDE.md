@@ -320,36 +320,17 @@ gh repo view
 gh api repos/{owner}/{repo}/pulls
 ```
 
-**PR Template Compliance:**
+**PR/Issue Template Compliance:**
 
-When creating PRs via `gh pr create`, follow the PR template structure:
-- Template location: `.github/PULL_REQUEST_TEMPLATE.md`
-- Required sections: Summary, Type of Change, Motivation and Context, How Was This Tested, Checklist
-- Use `--body` with template content filled in
-
-**Issue Template Compliance:**
-
-Issues MUST be created using the appropriate template structure:
-| Issue Type | Template File | Label Applied |
-|------------|--------------|---------------|
-| Bug report | `.github/ISSUE_TEMPLATE/1-bug_report.yml` | `bug` |
-| Feature request | `.github/ISSUE_TEMPLATE/2-feature_request.yml` | `enhancement` |
-| Documentation | `.github/ISSUE_TEMPLATE/3-documentation.yml` | `documentation` |
-| Question | `.github/ISSUE_TEMPLATE/4-question.yml` | `question` |
-| Performance | `.github/ISSUE_TEMPLATE/5-performance.yml` | `performance` |
-| CI/CD | `.github/ISSUE_TEMPLATE/6-ci_cd.yml` | `ci-cd` |
-| Security | Use GitHub Security Advisories | `security`, `critical` |
+- **PR Template:** `.github/PULL_REQUEST_TEMPLATE.md` (see @docs/PR_GUIDELINE.md for details)
+- **Issue Templates:** `.github/ISSUE_TEMPLATE/*.yml` (see @docs/ISSUE_GUIDELINES.md for details)
+- **Note:** GitHub CLI does not auto-apply templates; include template structure in `--body`
 
 **Linking PRs to Issues:**
 
-Use GitHub keywords to link PRs to issues for automatic closure on merge:
-- Keywords: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`
-- Single issue: `Fixes #42`
-- Multiple issues: `Closes #10, closes #123`
-- Related only (no auto-close): `Refs #50`
-- Maximum: 10 issues per PR
-
-**Reference:** [GitHub Docs - Linking PRs to Issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+Use keywords to auto-close issues on merge: `Fixes #N`, `Closes #N`, `Resolves #N`
+- Use `Refs #N` for related issues (no auto-close)
+- See [GitHub Docs](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) for details
 
 **CRITICAL: This project uses Docker for TestContainers integration, NOT Podman.**
 
