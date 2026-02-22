@@ -539,6 +539,7 @@ mod tests {
 	use crate::registry::{MODELS, ModelMetadata, ReverseRelationType};
 	use linkme::distributed_slice;
 	use rstest::*;
+	use serial_test::serial;
 
 	// Test models for discovery
 	#[distributed_slice(MODELS)]
@@ -694,10 +695,14 @@ mod tests {
 	#[case(RelationType::OneToMany, ReverseRelationType::ReverseOneToMany)]
 	#[case(RelationType::ManyToMany, ReverseRelationType::ReverseManyToMany)]
 	#[case(RelationType::OneToOne, ReverseRelationType::ReverseOneToOne)]
+	#[serial(apps_registry)]
 	fn test_create_reverse_relation_uses_static_fields_directly(
 		#[case] relation_type: RelationType,
 		#[case] expected_reverse_type: ReverseRelationType,
 	) {
+		// Arrange - Reset global state before test
+		crate::registry::reset_global_registry();
+
 		// Arrange: fields are &'static str literals (no heap allocation needed)
 		let relation = RelationMetadata::new(
 			"Article",
@@ -732,7 +737,11 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(apps_registry)]
 	fn test_create_reverse_relation_default_accessor_name() {
+		// Arrange - Reset global state before test
+		crate::registry::reset_global_registry();
+
 		// Arrange: no explicit related_name, should generate "{model}_set"
 		let relation =
 			RelationMetadata::new("Comment", "BlogPost", "post", None, RelationType::OneToMany);

@@ -30,22 +30,22 @@ fn main() {
 	let _grade = page!(|score: i32| {
 		div {
 			class: "grade",
-			if score >= 90 {
+			if score>= 90 {
 				span {
 					class: "a",
 					"A"
 				}
-			} else if score >= 80 {
+			} else if score>= 80 {
 				span {
 					class: "b",
 					"B"
 				}
-			} else if score >= 70 {
+			} else if score>= 70 {
 				span {
 					class: "c",
 					"C"
 				}
-			} else if score >= 60 {
+			} else if score>= 60 {
 				span {
 					class: "d",
 					"D"

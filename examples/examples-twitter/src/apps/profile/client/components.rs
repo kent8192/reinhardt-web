@@ -70,7 +70,7 @@ pub fn profile_view(user_id: Uuid) -> View {
 	// Clone user_id for use in page! macro
 	let user_id_str = user_id.to_string();
 
-	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, profile_signal: Signal < Option < ProfileResponse> >, user_id_str: String| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, profile_signal: Signal<Option<ProfileResponse>>, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto",
 			watch {
@@ -366,7 +366,7 @@ pub fn profile_edit(user_id: Uuid) -> View {
 
 	// Render custom UI using page! macro
 	// form! handles Signal management, page! handles custom layout
-	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, success_signal: Signal < bool >, form_view: View, user_id_str: String| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, success_signal: Signal<bool>, form_view: View, user_id_str: String| {
 		div {
 			class: "max-w-2xl mx-auto p-4",
 			div {

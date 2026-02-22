@@ -353,7 +353,7 @@ pub fn text_input(
 	#[cfg(client)]
 	{
 		let value_clone = value.clone();
-		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal < String >, required: bool| {
+		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal<String>, required: bool| {
 			div {
 				class: "mb-4",
 				label {
@@ -395,7 +395,7 @@ pub fn text_input(
 
 	#[cfg(server)]
 	{
-		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal < String >, required: bool| {
+		page!(|id_owned: String, label_owned: String, input_type_owned: String, placeholder_owned: String, value_signal: Signal<String>, required: bool| {
 			div {
 				class: "mb-4",
 				label {
@@ -466,7 +466,7 @@ pub fn textarea(
 	#[cfg(client)]
 	{
 		let value_clone = value.clone();
-		page!(|id_owned: String, label_owned: String, rows_str: String, placeholder_owned: String, value_signal: Signal < String >, value_signal_for_count: Signal < String >, maxlength_attr: String, show_count: bool, max_length: usize| {
+		page!(|id_owned: String, label_owned: String, rows_str: String, placeholder_owned: String, value_signal: Signal<String>, value_signal_for_count: Signal<String>, maxlength_attr: String, show_count: bool, max_length: usize| {
 			div {
 				class: "mb-4",
 				label {

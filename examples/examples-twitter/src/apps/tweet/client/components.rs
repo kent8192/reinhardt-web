@@ -36,7 +36,7 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> View {
 	let liked_for_click_else = liked.clone();
 	let like_count_for_click_else = like_count.clone();
 
-	page!(|liked_signal: Signal < bool >, like_count_signal: Signal < i32 >, like_count_signal_else: Signal < i32 >, liked_for_click_if: Signal < bool >, like_count_for_click_if: Signal < i32 >, liked_for_click_else: Signal < bool >, like_count_for_click_else: Signal < i32 >| {
+	page!(|liked_signal: Signal<bool>, like_count_signal: Signal<i32>, like_count_signal_else: Signal<i32>, liked_for_click_if: Signal<bool>, like_count_for_click_if: Signal<i32>, liked_for_click_else: Signal<bool>, like_count_for_click_else: Signal<i32>| {
 		watch {
 			if liked_signal.get() {
 				button {
@@ -128,7 +128,7 @@ fn like_button(liked: Signal<bool>, like_count: Signal<i32>) -> View {
 fn error_display(error_signal: Signal<Option<String>>) -> View {
 	let error_for_watch = error_signal.clone();
 
-	page!(|error_for_watch: Signal < Option < String> >| {
+	page!(|error_for_watch: Signal<Option<String>>| {
 		watch {
 			if error_for_watch.get().is_some() {
 				div {
@@ -167,7 +167,7 @@ pub fn tweet_card(tweet: &TweetInfo, show_delete: bool) -> View {
 	let content = tweet.content.clone();
 	let created_at = tweet.created_at.clone();
 
-	page!(|deleted_signal: Signal < bool >, error_signal_for_display: Signal < Option < String> >, show_delete: bool, username: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal < bool >, like_count_signal: Signal < i32 >| {
+	page!(|deleted_signal: Signal<bool>, error_signal_for_display: Signal<Option<String>>, show_delete: bool, username: String, content: String, created_at: String, tweet_id: Uuid, liked_signal: Signal<bool>, like_count_signal: Signal<i32>| {
 		watch {
 			if deleted_signal.get() {
 				div {
@@ -514,7 +514,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> View {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|tweets_signal: Signal < Vec < TweetInfo> >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
+	page!(|tweets_signal: Signal<Vec<TweetInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
 			watch {
 				if loading_signal.get() {
@@ -578,7 +578,7 @@ pub fn tweet_list(user_id: Option<Uuid>) -> View {
 				} else {
 					div {
 						class: "card overflow-hidden",
-						{ View::fragment(tweets_signal.get().iter().map(|t| tweet_card(t, false)).collect::< Vec < _> >()) }
+						{ View::fragment(tweets_signal.get().iter().map(|t| tweet_card(t, false)).collect ::<Vec<_>>()) }
 					}
 				}
 			}
