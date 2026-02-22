@@ -837,7 +837,7 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(err.to_string().contains("exceeds maximum size limit"));
+		assert!(err.internal_detail().contains("exceeds maximum size limit"));
 	}
 
 	#[test]
