@@ -197,15 +197,16 @@ pub fn gettext_lazy(message: &str) -> LazyString {
 /// let lazy_msg = ngettext_lazy("apple", "apples", 7);
 ///
 /// // Set up catalog with plural forms
+/// // Polish requires 3 forms: form 0 (n==1), form 1 (n%10 in 2..4), form 2 (other)
 /// let mut ctx = TranslationContext::new("pl", "en-US");
 /// let mut catalog = MessageCatalog::new("pl");
-/// catalog.add_plural_str("apple", "apples", vec!["jabłko", "jabłka"]);
+/// catalog.add_plural_str("apple", "apples", vec!["jabłko", "jabłka", "jabłek"]);
 /// ctx.add_catalog("pl", catalog).unwrap();
 ///
 /// let _guard = set_active_translation(Arc::new(ctx));
 ///
 /// // Translation happens when evaluated
-/// assert_eq!(lazy_msg.to_string(), "jabłka");
+/// assert_eq!(lazy_msg.to_string(), "jabłek");
 /// ```
 pub fn ngettext_lazy(singular: &str, plural: &str, count: usize) -> LazyString {
 	LazyString::new_plural(singular.to_string(), plural.to_string(), count, None)
