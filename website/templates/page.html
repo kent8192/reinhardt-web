@@ -7,16 +7,16 @@
 
 {% block content %}
 <div class="page-layout container">
-  <article class="page-content" aria-label="{{ page.title }}">
-    <header class="page-header">
-      <h1>{{ page.title }}</h1>
-      {% if page.description %}
-      <p class="page-description">{{ page.description }}</p>
-      {% endif %}
-    </header>
-    <div class="prose">
-      {{ page.content | safe }}
-    </div>
-  </article>
+	<article class="page-content" aria-label="{{ page.title }}">
+		<header class="page-header">
+			<h1>{{ page.title }}</h1>
+			{% if page.description %}
+			<p class="page-description">{{ page.description }}</p>
+			{% endif %}
+		</header>
+		<div class="prose">
+			{{ page.content | safe }}
+		</div>
+	</article>
 </div>
 {% endblock content %}
