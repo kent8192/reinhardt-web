@@ -344,5 +344,5 @@ impl Middleware for LoggingMiddleware {
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [From Django](./from-django.en.md)
-- [From Actix-web](./from-actix.en.md)
+- [From Django](./from-django.md)
+- [From Actix-web](./from-actix.md)

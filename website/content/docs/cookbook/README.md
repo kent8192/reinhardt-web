@@ -8,12 +8,12 @@ Practical tutorials and recipes for the Reinhardt framework.
 
 ## Table of Contents
 
-- [Serving Static Files](./static-files.en.md)
-- [CORS Configuration](./cors.en.md)
-- [Middleware Creation](./middleware-creation.en.md)
-- [Pagination](./pagination.en.md)
-- [Request Body Parsing](./request-body-parsing.en.md)
-- [Response Serialization](./response-serialization.en.md)
+- [Serving Static Files](./static-files.md)
+- [CORS Configuration](./cors.md)
+- [Middleware Creation](./middleware-creation.md)
+- [Pagination](./pagination.md)
+- [Request Body Parsing](./request-body-parsing.md)
+- [Response Serialization](./response-serialization.md)
 
 ## Overview
 

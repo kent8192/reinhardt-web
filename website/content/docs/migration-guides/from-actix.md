@@ -324,5 +324,5 @@ async fn handler(req: Request) -> Response {
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [From Django](./from-django.en.md)
-- [From Axum](./from-axum.en.md)
+- [From Django](./from-django.md)
+- [From Axum](./from-axum.md)

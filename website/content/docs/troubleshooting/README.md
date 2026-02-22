@@ -8,8 +8,8 @@ Solutions to common issues.
 
 ## Table of Contents
 
-- [Common Errors](./common-errors.en.md)
-- [Performance Optimization](./performance-optimization.en.md)
+- [Common Errors](./common-errors.md)
+- [Performance Optimization](./performance-optimization.md)
 
 ## Overview
 

@@ -312,5 +312,5 @@ async fn delete_resource() -> Response {
 
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
-- [Pagination](./pagination.en.md)
-- [Request Body Parsing](./request-body-parsing.en.md)
+- [Pagination](./pagination.md)
+- [Request Body Parsing](./request-body-parsing.md)

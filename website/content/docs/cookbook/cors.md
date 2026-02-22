@@ -234,5 +234,5 @@ let router = ServerRouter::new()
 
 ## See Also
 
-- [Middleware Creation](./middleware-creation.en.md)
+- [Middleware Creation](./middleware-creation.md)
 - [Security Headers](https://docs.rs/reinhardt-middleware/latest/reinhardt_middleware/struct.SecurityMiddleware.html)

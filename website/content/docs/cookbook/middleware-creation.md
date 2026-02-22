@@ -314,7 +314,7 @@ Reinhardt includes 30+ built-in middleware components.
 
 ## See Also
 
-- [CORS Configuration](./cors.en.md)
-- [Serving Static Files](./static-files.en.md)
+- [CORS Configuration](./cors.md)
+- [Serving Static Files](./static-files.md)
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)

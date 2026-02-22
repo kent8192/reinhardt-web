@@ -313,6 +313,6 @@ let router = ServerRouter::new()
 
 ## See Also
 
-- [CORS Configuration](./cors.en.md)
-- [Middleware Creation](./middleware-creation.en.md)
+- [CORS Configuration](./cors.md)
+- [Middleware Creation](./middleware-creation.md)
 - [Media Files](https://docs.rs/reinhardt-utils/latest/reinhardt_utils/static/index.html)

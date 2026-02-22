@@ -326,4 +326,4 @@ let count_query = Query::select()
 
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
-- [Response Serialization](./response-serialization.en.md)
+- [Response Serialization](./response-serialization.md)
