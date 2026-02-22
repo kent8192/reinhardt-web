@@ -1332,6 +1332,7 @@ impl AnalyzeBuilder {
 mod tests {
 	use super::*;
 	use crate::backends::backend::DatabaseBackend;
+	use crate::backends::error::DatabaseError;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::rstest;
 
@@ -2530,7 +2531,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, super::error::DatabaseError::SyntaxError(_)));
+		assert!(matches!(err, DatabaseError::SyntaxError(_)));
 	}
 
 	#[rstest]
@@ -2551,7 +2552,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, super::error::DatabaseError::SyntaxError(_)));
+		assert!(matches!(err, DatabaseError::SyntaxError(_)));
 	}
 
 	#[rstest]
@@ -2569,7 +2570,7 @@ mod tests {
 		// Assert: Should return NotSupported error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, super::error::DatabaseError::NotSupported(_)));
+		assert!(matches!(err, DatabaseError::NotSupported(_)));
 	}
 
 	#[rstest]
@@ -2588,7 +2589,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, super::error::DatabaseError::SyntaxError(_)));
+		assert!(matches!(err, DatabaseError::SyntaxError(_)));
 	}
 
 	#[rstest]
@@ -2607,7 +2608,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, super::error::DatabaseError::SyntaxError(_)));
+		assert!(matches!(err, DatabaseError::SyntaxError(_)));
 	}
 
 	#[rstest]

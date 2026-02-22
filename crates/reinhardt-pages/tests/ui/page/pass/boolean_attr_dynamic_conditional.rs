@@ -18,7 +18,7 @@ fn main() {
 			}
 			input {
 				r#type: "text",
-				required: count < 10 &&condition,
+				required: count<10 &&condition,
 			}
 		}
 	});

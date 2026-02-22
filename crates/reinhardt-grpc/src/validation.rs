@@ -174,7 +174,7 @@ fn format_violations(violations: &[FieldRule]) -> String {
 /// use reinhardt_grpc::validation::ValidationRuleSet;
 ///
 /// let result = ValidationRuleSet::new()
-///     .require_non_empty("name", "")
+///     .require_non_empty("name", "Alice")
 ///     .require_range("count", 5, 0, 100)
 ///     .require_max_length("description", "hello", 1000)
 ///     .validate();
