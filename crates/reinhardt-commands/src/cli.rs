@@ -952,4 +952,29 @@ mod tests {
 		// Assert
 		assert!(!result);
 	}
+
+	#[cfg(feature = "routers")]
+	#[rstest]
+	#[tokio::test]
+	async fn test_auto_register_router_returns_error_with_lib_bin_hint_when_no_routes() {
+		// Arrange: no #[routes] registered in test binary
+		// (test binaries do not include application inventory::submit! side effects)
+
+		// Act
+		let result = auto_register_router().await;
+
+		// Assert: must fail because no routes are registered
+		assert!(result.is_err(), "Expected error when no routes are registered");
+		let error_msg = result.unwrap_err().to_string();
+		assert!(
+			error_msg.contains("No URL patterns registered"),
+			"Expected 'No URL patterns registered' in error, got: {}",
+			error_msg
+		);
+		assert!(
+			error_msg.contains("library/binary split"),
+			"Expected lib+bin hint in error message, got: {}",
+			error_msg
+		);
+	}
 }
