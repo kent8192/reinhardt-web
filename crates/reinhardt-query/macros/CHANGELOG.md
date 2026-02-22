@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query-macros@v0.1.0-alpha.2...reinhardt-query-macros@v0.1.0-alpha.3) - 2026-02-21
+
+### Fixed
+
+- add compile-time Debug assertion for derive(Iden)
+- emit errors for invalid #[iden] attribute arguments
+- replace write_str unwrap with expect documenting infallibility
+- validate identifier names and handle enum variants with data
+
 ## [0.1.0-alpha.1](https://github.com/kent8192/reinhardt-web/releases/tag/reinhardt-query-macros@v0.1.0-alpha.1) - 2026-02-14
 
 ### Added
