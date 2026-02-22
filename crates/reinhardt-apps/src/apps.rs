@@ -596,6 +596,7 @@ mod di_integration {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use serial_test::serial;
 
 	#[rstest]
 	fn test_app_config_creation() {
@@ -676,7 +677,11 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(apps_registry)]
 	fn test_populate() {
+		// Arrange - Reset global state before test
+		crate::registry::reset_global_registry();
+
 		// Arrange
 		let apps = Apps::new(vec![]);
 		assert!(!apps.is_ready());
@@ -691,7 +696,11 @@ mod tests {
 	}
 
 	#[rstest]
+	#[serial(apps_registry)]
 	fn test_populate_with_installed_apps() {
+		// Arrange - Reset global state before test
+		crate::registry::reset_global_registry();
+
 		// Arrange
 		let apps = Apps::new(vec!["myapp".to_string(), "anotherapp".to_string()]);
 		assert!(!apps.is_ready());
