@@ -157,7 +157,11 @@ impl BaseCommand for MigrateCommand {
 				all_migrations.into_iter().collect()
 			};
 			if migrations_to_apply.is_empty() {
-				ctx.info("No migrations to apply");
+				ctx.info(
+					"No migrations to apply. \
+					 (Migration files must be .rs files in the migrations/<app_label>/ directory. \
+					 Use `makemigrations` to generate them.)",
+				);
 				return Ok(());
 			}
 
