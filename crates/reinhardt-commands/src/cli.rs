@@ -760,13 +760,17 @@ async fn auto_register_router() -> Result<(), Box<dyn std::error::Error>> {
 	match registrations.len() {
 		0 => {
 			return Err("No URL patterns registered.\n\
-				 Add the #[routes] attribute to your routes function in src/config/urls.rs:\n\n\
+				 Add the `#[routes]` attribute to your routes function in src/config/urls.rs:\n\n\
 				 #[routes]\n\
 				 pub fn routes() -> UnifiedRouter {\n\
 				     UnifiedRouter::new()\n\
-				 }"
-			.to_string()
-			.into());
+				 }\n\n\
+				 If your project uses a library/binary split (src/lib.rs + src/bin/manage.rs),\n\
+				 the linker may silently discard route registrations from the library crate.\n\
+				 Fix: add `use your_crate_name as _;` to src/bin/manage.rs to force-link\n\
+				 the library and preserve its side-effectful route registrations."
+				.to_string()
+				.into());
 		}
 		1 => {
 			// Expected case: exactly one registration
