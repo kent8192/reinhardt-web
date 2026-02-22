@@ -25,8 +25,7 @@
 
 use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::migrations::{
-	ColumnDefinition, Constraint, FieldType, Migration, Operation,
-	executor::DatabaseMigrationExecutor,
+	ColumnDefinition, FieldType, Migration, Operation, executor::DatabaseMigrationExecutor,
 };
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
@@ -119,13 +118,16 @@ async fn test_create_enum_type(
 		"testapp",
 		"0001_create_enum",
 		vec![Operation::RunSQL {
-			sql: format!("CREATE TYPE {} AS ENUM ('pending', 'processing', 'shipped', 'delivered');", enum_name),
+			sql: format!(
+				"CREATE TYPE {} AS ENUM ('pending', 'processing', 'shipped', 'delivered');",
+				enum_name
+			),
 			reverse_sql: Some(format!("DROP TYPE {};", enum_name)),
 		}],
 	);
 
 	// Act
-	let result = executor.apply_migration(&migration, &pool).await;
+	let result = executor.apply_migrations(&[migration.clone()]).await;
 
 	// Assert
 	assert!(
@@ -152,8 +154,14 @@ async fn test_create_enum_type(
 	.await
 	.expect("Should retrieve ENUM values");
 
-	let values: Vec<String> = rows.iter().map(|r| r.get::<String, _>("enumlabel")).collect();
-	assert_eq!(values, vec!["pending", "processing", "shipped", "delivered"]);
+	let values: Vec<String> = rows
+		.iter()
+		.map(|r| r.get::<String, _>("enumlabel"))
+		.collect();
+	assert_eq!(
+		values,
+		vec!["pending", "processing", "shipped", "delivered"]
+	);
 }
 
 // ============================================================================
@@ -188,7 +196,10 @@ async fn test_create_table_with_enum_column(
 		"testapp",
 		"0001_create_enum",
 		vec![Operation::RunSQL {
-			sql: format!("CREATE TYPE {} AS ENUM ('low', 'medium', 'high', 'urgent');", enum_name),
+			sql: format!(
+				"CREATE TYPE {} AS ENUM ('low', 'medium', 'high', 'urgent');",
+				enum_name
+			),
 			reverse_sql: Some(format!("DROP TYPE {};", enum_name)),
 		}],
 	);
@@ -204,16 +215,19 @@ async fn test_create_table_with_enum_column(
 				create_basic_column("priority", FieldType::Custom(enum_name.to_string())),
 			],
 			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
 		}],
 	);
 
 	// Act
 	executor
-		.apply_migration(&create_enum_migration, &pool)
+		.apply_migrations(&[create_enum_migration.clone()])
 		.await
 		.expect("ENUM creation should succeed");
 	executor
-		.apply_migration(&create_table_migration, &pool)
+		.apply_migrations(&[create_table_migration.clone()])
 		.await
 		.expect("Table creation should succeed");
 
@@ -286,7 +300,7 @@ async fn test_add_enum_value(
 	);
 
 	executor
-		.apply_migration(&create_migration, &pool)
+		.apply_migrations(&[create_migration.clone()])
 		.await
 		.expect("ENUM creation should succeed");
 
@@ -300,7 +314,9 @@ async fn test_add_enum_value(
 		}],
 	);
 
-	let result = executor.apply_migration(&add_value_migration, &pool).await;
+	let result = executor
+		.apply_migrations(&[add_value_migration.clone()])
+		.await;
 
 	// Assert
 	assert!(
@@ -318,7 +334,10 @@ async fn test_add_enum_value(
 	.await
 	.expect("Should retrieve ENUM values");
 
-	let values: Vec<String> = rows.iter().map(|r| r.get::<String, _>("enumlabel")).collect();
+	let values: Vec<String> = rows
+		.iter()
+		.map(|r| r.get::<String, _>("enumlabel"))
+		.collect();
 	assert_eq!(values, vec!["active", "inactive", "suspended"]);
 }
 
@@ -362,7 +381,10 @@ async fn test_remove_enum_value_type_recreation(
 		"testapp",
 		"0001_create_enum",
 		vec![Operation::RunSQL {
-			sql: format!("CREATE TYPE {} AS ENUM ('pending', 'active', 'suspended', 'deleted');", enum_name),
+			sql: format!(
+				"CREATE TYPE {} AS ENUM ('pending', 'active', 'suspended', 'deleted');",
+				enum_name
+			),
 			reverse_sql: Some(format!("DROP TYPE {};", enum_name)),
 		}],
 	);
@@ -381,19 +403,21 @@ async fn test_remove_enum_value_type_recreation(
 	);
 
 	executor
-		.apply_migration(&create_enum_migration, &pool)
+		.apply_migrations(&[create_enum_migration.clone()])
 		.await
 		.expect("ENUM creation should succeed");
 	executor
-		.apply_migration(&create_table_migration, &pool)
+		.apply_migrations(&[create_table_migration.clone()])
 		.await
 		.expect("Table creation should succeed");
 
 	// Insert test data
-	sqlx::query("INSERT INTO users (name, status) VALUES ('User1', 'active'), ('User2', 'pending')")
-		.execute(pool.as_ref())
-		.await
-		.expect("Insert should succeed");
+	sqlx::query(
+		"INSERT INTO users (name, status) VALUES ('User1', 'active'), ('User2', 'pending')",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("Insert should succeed");
 
 	// Act: Remove 'deleted' value by recreating type
 	let remove_value_migration = create_test_migration(
@@ -402,13 +426,22 @@ async fn test_remove_enum_value_type_recreation(
 		vec![
 			// Step 1: Create new ENUM type without 'deleted'
 			Operation::RunSQL {
-				sql: format!("CREATE TYPE {} AS ENUM ('pending', 'active', 'suspended');", temp_enum_name),
+				sql: format!(
+					"CREATE TYPE {} AS ENUM ('pending', 'active', 'suspended');",
+					temp_enum_name
+				),
 				reverse_sql: Some(format!("DROP TYPE {};", temp_enum_name)),
 			},
 			// Step 2: Alter column to use new ENUM type (casting existing values)
 			Operation::RunSQL {
-				sql: format!("ALTER TABLE {} ALTER COLUMN status TYPE {} USING status::text::{};", table_name, temp_enum_name, temp_enum_name),
-				reverse_sql: Some(format!("ALTER TABLE {} ALTER COLUMN status TYPE {} USING status::text::{};", table_name, enum_name, enum_name)),
+				sql: format!(
+					"ALTER TABLE {} ALTER COLUMN status TYPE {} USING status::text::{};",
+					table_name, temp_enum_name, temp_enum_name
+				),
+				reverse_sql: Some(format!(
+					"ALTER TABLE {} ALTER COLUMN status TYPE {} USING status::text::{};",
+					table_name, enum_name, enum_name
+				)),
 			},
 			// Step 3: Drop old ENUM type
 			Operation::RunSQL {
@@ -418,7 +451,9 @@ async fn test_remove_enum_value_type_recreation(
 		],
 	);
 
-	let result = executor.apply_migration(&remove_value_migration, &pool).await;
+	let result = executor
+		.apply_migrations(&[remove_value_migration.clone()])
+		.await;
 
 	// Assert
 	assert!(
@@ -436,7 +471,10 @@ async fn test_remove_enum_value_type_recreation(
 	.await
 	.expect("Should retrieve ENUM values");
 
-	let values: Vec<String> = rows.iter().map(|r| r.get::<String, _>("enumlabel")).collect();
+	let values: Vec<String> = rows
+		.iter()
+		.map(|r| r.get::<String, _>("enumlabel"))
+		.collect();
 	assert_eq!(values, vec!["pending", "active", "suspended"]);
 	assert!(!values.contains(&"deleted".to_string()));
 
@@ -484,7 +522,10 @@ async fn test_rename_enum_type(
 		"0001_create",
 		vec![
 			Operation::RunSQL {
-				sql: format!("CREATE TYPE {} AS ENUM ('draft', 'published', 'archived');", old_enum_name),
+				sql: format!(
+					"CREATE TYPE {} AS ENUM ('draft', 'published', 'archived');",
+					old_enum_name
+				),
 				reverse_sql: Some(format!("DROP TYPE {};", old_enum_name)),
 			},
 			Operation::RunSQL {
@@ -498,7 +539,7 @@ async fn test_rename_enum_type(
 	);
 
 	executor
-		.apply_migration(&create_migration, &pool)
+		.apply_migrations(&[create_migration.clone()])
 		.await
 		.expect("Creation should succeed");
 
@@ -508,11 +549,14 @@ async fn test_rename_enum_type(
 		"0002_rename_enum",
 		vec![Operation::RunSQL {
 			sql: format!("ALTER TYPE {} RENAME TO {};", old_enum_name, new_enum_name),
-			reverse_sql: Some(format!("ALTER TYPE {} RENAME TO {};", new_enum_name, old_enum_name)),
+			reverse_sql: Some(format!(
+				"ALTER TYPE {} RENAME TO {};",
+				new_enum_name, old_enum_name
+			)),
 		}],
 	);
 
-	let result = executor.apply_migration(&rename_migration, &pool).await;
+	let result = executor.apply_migrations(&[rename_migration.clone()]).await;
 
 	// Assert
 	assert!(
@@ -528,7 +572,10 @@ async fn test_rename_enum_type(
 		.await
 		.expect("Query should succeed");
 
-	assert!(!old_exists.get::<bool, _>("exists"), "Old enum name should not exist");
+	assert!(
+		!old_exists.get::<bool, _>("exists"),
+		"Old enum name should not exist"
+	);
 
 	// Verify new type name exists
 	let new_exists = sqlx::query("SELECT EXISTS(SELECT 1 FROM pg_type WHERE typname = $1)")
@@ -537,7 +584,10 @@ async fn test_rename_enum_type(
 		.await
 		.expect("Query should succeed");
 
-	assert!(new_exists.get::<bool, _>("exists"), "New enum name should exist");
+	assert!(
+		new_exists.get::<bool, _>("exists"),
+		"New enum name should exist"
+	);
 
 	// Verify column still works
 	sqlx::query("INSERT INTO documents (title, status) VALUES ('Doc1', 'published')")
@@ -586,7 +636,10 @@ async fn test_enum_type_multiple_columns(
 		"0001_create",
 		vec![
 			Operation::RunSQL {
-				sql: format!("CREATE TYPE {} AS ENUM ('low', 'medium', 'high');", enum_name),
+				sql: format!(
+					"CREATE TYPE {} AS ENUM ('low', 'medium', 'high');",
+					enum_name
+				),
 				reverse_sql: Some(format!("DROP TYPE {};", enum_name)),
 			},
 			Operation::CreateTable {
@@ -594,16 +647,25 @@ async fn test_enum_type_multiple_columns(
 				columns: vec![
 					create_column_with_constraints("id", FieldType::Integer, true, true),
 					create_basic_column("name", FieldType::VarChar(255)),
-					create_basic_column("initial_priority", FieldType::Custom(enum_name.to_string())),
-					create_basic_column("current_priority", FieldType::Custom(enum_name.to_string())),
+					create_basic_column(
+						"initial_priority",
+						FieldType::Custom(enum_name.to_string()),
+					),
+					create_basic_column(
+						"current_priority",
+						FieldType::Custom(enum_name.to_string()),
+					),
 				],
 				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
 			},
 		],
 	);
 
 	// Act
-	let result = executor.apply_migration(&create_migration, &pool).await;
+	let result = executor.apply_migrations(&[create_migration.clone()]).await;
 
 	// Assert
 	assert!(
@@ -618,10 +680,12 @@ async fn test_enum_type_multiple_columns(
 		.await
 		.expect("Insert should succeed");
 
-	let row = sqlx::query("SELECT initial_priority, current_priority FROM projects WHERE name = 'Project1'")
-		.fetch_one(pool.as_ref())
-		.await
-		.expect("Query should succeed");
+	let row = sqlx::query(
+		"SELECT initial_priority, current_priority FROM projects WHERE name = 'Project1'",
+	)
+	.fetch_one(pool.as_ref())
+	.await
+	.expect("Query should succeed");
 
 	let initial: String = row.get("initial_priority");
 	let current: String = row.get("current_priority");
