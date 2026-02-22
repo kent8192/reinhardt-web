@@ -21,7 +21,7 @@ internal_level = "warn"
 
 [extra]
 og_image    = "https://reinhardt-web.dev/og-image.png"
-github_repo = "https://github.com/kent8192/reinhardt-rs"
+github_repo = "https://github.com/kent8192/reinhardt-web"
 crates_io   = "https://crates.io/crates/reinhardt-web"
 docs_rs     = "https://docs.rs/reinhardt-web"
-changelog   = "https://github.com/kent8192/reinhardt-rs/blob/main/CHANGELOG.md"
+changelog   = "https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md"

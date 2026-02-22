@@ -12,7 +12,7 @@ weight = 90
 
 ### Primary: GitHub Security Advisories (Preferred)
 
-[Report a vulnerability via GitHub Security Advisories](https://github.com/kent8192/reinhardt-rs/security/advisories/new)
+[Report a vulnerability via GitHub Security Advisories](https://github.com/kent8192/reinhardt-web/security/advisories/new)
 
 This ensures your report is kept confidential until a fix is released.
 

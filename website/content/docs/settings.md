@@ -927,4 +927,4 @@ Reinhardt's settings system is:
 
 ---
 
-**Questions or feedback:** https://github.com/kent8192/reinhardt-rs/issues
+**Questions or feedback:** https://github.com/kent8192/reinhardt-web/issues

@@ -6,4 +6,4 @@ weight = 80
 
 The Reinhardt changelog is maintained in the repository.
 
-→ [View full CHANGELOG.md on GitHub](https://github.com/kent8192/reinhardt-rs/blob/main/CHANGELOG.md)
+→ [View full CHANGELOG.md on GitHub](https://github.com/kent8192/reinhardt-web/blob/main/CHANGELOG.md)
