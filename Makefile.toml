@@ -103,6 +103,16 @@ args = [
   "-D", "clippy::dbg_macro",
 ]
 
+[tasks.placeholder-check]
+description = "Check for formatter placeholder macros left in source files"
+script_runner = "sh"
+script = '''
+set -e
+echo "Scanning for __reinhardt_placeholder__! in source files..."
+docker run --rm -v "$(pwd):/src" semgrep/semgrep \
+  semgrep scan --config /src/.semgrep/placeholder-check.yml --error --metrics off /src
+'''
+
 [tasks.fmt-page-only]
 description = "Format page! macro DSL only (without rustfmt)"
 command = "cargo"
