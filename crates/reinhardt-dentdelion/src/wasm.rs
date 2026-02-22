@@ -43,7 +43,7 @@ mod loader;
 mod models;
 mod runtime;
 mod sql_validator;
-mod ssr;
+pub mod ssr;
 #[cfg(feature = "ts")]
 mod ts_runtime;
 mod types;
