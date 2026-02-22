@@ -64,11 +64,11 @@ fn token_store() -> Arc<InMemoryOAuth2Store> {
 
 /// Creates an OAuth2 auth instance with registered test application
 #[fixture]
-fn oauth2_with_app(
+async fn oauth2_with_app(
 	oauth2_auth: OAuth2Authentication,
 	test_application: OAuth2Application,
 ) -> OAuth2Authentication {
-	oauth2_auth.register_application(test_application);
+	oauth2_auth.register_application(test_application).await;
 	oauth2_auth
 }
 
