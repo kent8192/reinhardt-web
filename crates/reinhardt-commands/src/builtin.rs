@@ -2015,13 +2015,14 @@ fn sync_database_url_to_env(
 	} else if let Some(env_url) = env_database_url {
 		// Both env var and settings exist - warn if they differ
 		if let Ok(settings_url) = get_database_url_from_settings()
-			&& env_url != settings_url {
-				ctx.warning(&format!(
-					"⚠️ DATABASE_URL mismatch: env var ({}) differs from settings ({}). Using env var.",
-					sanitize_database_url(env_url),
-					sanitize_database_url(&settings_url),
-				));
-			}
+			&& env_url != settings_url
+		{
+			ctx.warning(&format!(
+				"⚠️ DATABASE_URL mismatch: env var ({}) differs from settings ({}). Using env var.",
+				sanitize_database_url(env_url),
+				sanitize_database_url(&settings_url),
+			));
+		}
 	}
 }
 
