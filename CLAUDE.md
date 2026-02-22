@@ -32,7 +32,7 @@ See README.md for project details.
 **MUST use `module.rs` + `module/` directory structure (Rust 2024 Edition)**
 **NEVER use `mod.rs` files** (deprecated)
 
-See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
+See instructions/MODULE_SYSTEM.md for comprehensive module system standards including:
 - Basic module patterns (small, medium, large)
 - Visibility control with `pub use`
 - Anti-patterns to avoid
@@ -47,7 +47,7 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - NO deletion record comments in code
 - NO relative paths beyond `../` (use absolute paths)
 - Mark ALL placeholders with `todo!()` or `// TODO:` comment
-- Document ALL `#[allow(...)]` attributes with explanatory comments (see @docs/ANTI_PATTERNS.md)
+- Document ALL `#[allow(...)]` attributes with explanatory comments (see @instructions/ANTI_PATTERNS.md)
 
 **Unimplemented Features Notation:**
 - `todo!()` - Features that WILL be implemented
@@ -64,7 +64,7 @@ See docs/MODULE_SYSTEM.md for comprehensive module system standards including:
 - `cargo make clippy-todo-check` enforces `clippy::todo`, `clippy::unimplemented`, and `clippy::dbg_macro` as deny lints
 - Local pre-check: `semgrep scan --config .semgrep/ --error --metrics off`
 
-See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
+See instructions/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 ### Testing
 
@@ -81,7 +81,7 @@ See docs/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 - Use strict assertions (`assert_eq!`) instead of loose matching (`contains`)
 - Follow Arrange-Act-Assert (AAA) pattern for test structure
 
-See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
+See instructions/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
 - Test organization (TO-1, TO-2)
 - Test implementation (TI-1 ~ TI-6)
@@ -109,7 +109,7 @@ See docs/TESTING_STANDARDS.md for comprehensive testing standards including:
   - Avoid phrases like "User requested...", "As requested by...", "User asked..."
   - Focus on the "why" (technical rationale) not the "who asked"
 
-See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
+See instructions/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 
 ### Git Workflow
 
@@ -142,13 +142,13 @@ See docs/DOCUMENTATION_STANDARDS.md for comprehensive documentation standards.
 - Comments MUST reference specific code locations with repository-relative paths
 - Comments MUST NOT contain user requests, AI interactions, or absolute local paths
 
-See docs/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
+See instructions/GITHUB_INTERACTION.md for comprehensive GitHub interaction guidelines including:
 - Posting authorization policy (PP-1 ~ PP-3)
 - PR review response format (RR-1 ~ RR-3)
 - Issue discussion guidelines (ID-1 ~ ID-2)
 - Agent context provision (AC-1 ~ AC-2)
 
-See docs/COMMIT_GUIDELINE.md for detailed commit guidelines including:
+See instructions/COMMIT_GUIDELINE.md for detailed commit guidelines including:
 - Commit execution policy (CE-1 ~ CE-5)
 - Commit message format (CM-1 ~ CM-3)
 - Commit message style guide
@@ -216,11 +216,11 @@ This project uses [release-plz](https://release-plz.ieni.dev/) for automated rel
 **Key Warnings (Lessons Learned):**
 - **NEVER** create circular publish dependency chains (functional crates must not dev-depend on other Reinhardt crates)
 - **NEVER** add `version` field to `reinhardt-test` workspace dependency (causes publish failure; see cargo#15151)
-- **MUST** follow RP-1 recovery procedure for partial release failures (see docs/RELEASE_PROCESS.md)
+- **MUST** follow RP-1 recovery procedure for partial release failures (see instructions/RELEASE_PROCESS.md)
 - **NEVER** change `pr_branch_prefix` from `"release-plz-"` (breaks two-step release workflow)
 - `publish_no_verify = true` is required because dev-dependencies reference unpublished workspace crates
 
-See docs/RELEASE_PROCESS.md for detailed release procedures.
+See instructions/RELEASE_PROCESS.md for detailed release procedures.
 
 ### Workflow Best Practices
 
@@ -241,7 +241,7 @@ See docs/RELEASE_PROCESS.md for detailed release procedures.
 - Same-crate related issues MAY be combined into a single PR (WU-2)
 - Cross-crate shared changes MUST be preceding PRs, merged before per-crate fix PRs (WU-3)
 
-See docs/ISSUE_HANDLING.md for comprehensive issue handling principles including:
+See instructions/ISSUE_HANDLING.md for comprehensive issue handling principles including:
 - Handling approach (HA-1 ~ HA-4)
 - Work unit principles (WU-1 ~ WU-3)
 - Workflow examples
@@ -322,8 +322,8 @@ gh api repos/{owner}/{repo}/pulls
 
 **PR/Issue Template Compliance:**
 
-- **PR Template:** `.github/PULL_REQUEST_TEMPLATE.md` (see @docs/PR_GUIDELINE.md for details)
-- **Issue Templates:** `.github/ISSUE_TEMPLATE/*.yml` (see @docs/ISSUE_GUIDELINES.md for details)
+- **PR Template:** `.github/PULL_REQUEST_TEMPLATE.md` (see @instructions/PR_GUIDELINE.md for details)
+- **Issue Templates:** `.github/ISSUE_TEMPLATE/*.yml` (see @instructions/ISSUE_GUIDELINES.md for details)
 - **Note:** GitHub CLI does not auto-apply templates; include template structure in `--body`
 
 **Linking PRs to Issues:**
@@ -385,13 +385,13 @@ Before submitting code:
 2. **Iterate until all issues resolved**
 
 3. **Review compliance with standards:**
-   - [ ] Module system (@docs/MODULE_SYSTEM.md)
-   - [ ] Testing standards (@docs/TESTING_STANDARDS.md)
-   - [ ] No anti-patterns (@docs/ANTI_PATTERNS.md)
-   - [ ] Documentation updated (@docs/DOCUMENTATION_STANDARDS.md)
-   - [ ] Git commit policy (@docs/COMMIT_GUIDELINE.md)
-   - [ ] GitHub interaction policy (@docs/GITHUB_INTERACTION.md)
-   - [ ] Issue handling principles (@docs/ISSUE_HANDLING.md)
+   - [ ] Module system (@instructions/MODULE_SYSTEM.md)
+   - [ ] Testing standards (@instructions/TESTING_STANDARDS.md)
+   - [ ] No anti-patterns (@instructions/ANTI_PATTERNS.md)
+   - [ ] Documentation updated (@instructions/DOCUMENTATION_STANDARDS.md)
+   - [ ] Git commit policy (@instructions/COMMIT_GUIDELINE.md)
+   - [ ] GitHub interaction policy (@instructions/GITHUB_INTERACTION.md)
+   - [ ] Issue handling principles (@instructions/ISSUE_HANDLING.md)
    - [ ] No unresolved TODO/FIXME comments in new code (TODO Check CI)
 
 ---
@@ -427,7 +427,7 @@ Before submitting code:
 - Review Release PRs created by release-plz before merging
 - Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
 - Keep `reinhardt-test` workspace dependency without `version` field (unpublished crate; cargo#15151)
-- Follow RP-1 procedure in docs/RELEASE_PROCESS.md for partial release failures
+- Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
 - Use GitHub CLI (`gh`) for all GitHub operations (PR, issues, releases)
 - Search existing issues before creating new ones
 - Use appropriate issue templates for all issues
@@ -513,15 +513,15 @@ Before submitting code:
 ### 📚 Detailed Standards
 
 For comprehensive guidelines, see:
-- **Module System**: docs/MODULE_SYSTEM.md
-- **Testing**: docs/TESTING_STANDARDS.md
-- **Anti-Patterns**: docs/ANTI_PATTERNS.md
-- **Documentation**: docs/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: docs/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
-- **Release Process**: docs/RELEASE_PROCESS.md
-- **Issues**: docs/ISSUE_GUIDELINES.md
-- **Issue Handling**: docs/ISSUE_HANDLING.md
-- **GitHub Interactions**: docs/GITHUB_INTERACTION.md
+- **Module System**: instructions/MODULE_SYSTEM.md
+- **Testing**: instructions/TESTING_STANDARDS.md
+- **Anti-Patterns**: instructions/ANTI_PATTERNS.md
+- **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
+- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines)
+- **Release Process**: instructions/RELEASE_PROCESS.md
+- **Issues**: instructions/ISSUE_GUIDELINES.md
+- **Issue Handling**: instructions/ISSUE_HANDLING.md
+- **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md
 - **Label Definitions**: .github/labels.yml
@@ -529,4 +529,4 @@ For comprehensive guidelines, see:
 
 ---
 
-**Note**: This CLAUDE.md focuses on core rules and quick reference. All detailed standards, examples, and comprehensive guides are in the `docs/` directory. Always review CLAUDE.md before starting work, and consult detailed documentation as needed.
+**Note**: This CLAUDE.md focuses on core rules and quick reference. All detailed standards, examples, and comprehensive guides are in the `instructions/` directory. Always review CLAUDE.md before starting work, and consult detailed documentation as needed.
