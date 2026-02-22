@@ -37,7 +37,7 @@
       </ul>
     </nav>
   </aside>
-  <main class="section-main" id="main-content">
+  <div class="section-main">
     {% if section.content %}
     <div class="prose">
       {{ section.content | safe }}
@@ -56,6 +56,6 @@
       {% endfor %}
     </ul>
     {% endif %}
-  </main>
+  </div>
 </div>
 {% endblock content %}
