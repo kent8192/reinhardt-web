@@ -232,11 +232,31 @@ pub enum Commands {
 /// }
 /// ```
 pub async fn execute_from_command_line() -> Result<(), Box<dyn std::error::Error>> {
-	// Automatically discover and register URL patterns
-	auto_register_router().await?;
-
 	let cli = Cli::parse();
+
+	// Only register router for commands that serve HTTP traffic.
+	// DB-only commands (migrate, makemigrations) and utility commands
+	// (shell, check, collectstatic) must not require route registration.
+	if requires_router(&cli.command) {
+		auto_register_router().await?;
+	}
+
 	run_command(cli.command, cli.verbosity).await
+}
+
+/// Returns `true` for commands that require HTTP route registration.
+///
+/// Only HTTP-serving commands (`runserver`, `showurls`, `generateopenapi`)
+/// need URL patterns registered. DB-only and utility commands work without
+/// a `#[routes]` function being present.
+fn requires_router(command: &Commands) -> bool {
+	match command {
+		Commands::Runserver { .. } => true,
+		Commands::Showurls { .. } => true,
+		#[cfg(feature = "openapi")]
+		Commands::Generateopenapi { .. } => true,
+		_ => false,
+	}
 }
 
 /// Execute a command with the given verbosity level
@@ -805,4 +825,127 @@ fn generate_random_secret_key() -> String {
 		let _ = write!(hex_string, "{:02x}", b);
 	}
 	hex_string
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_requires_router_for_runserver() {
+		// Arrange
+		let command = Commands::Runserver {
+			address: "127.0.0.1:8000".to_string(),
+			noreload: false,
+			insecure: false,
+			no_docs: false,
+			with_pages: false,
+			static_dir: "dist".to_string(),
+			no_spa: false,
+		};
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn test_requires_router_for_showurls() {
+		// Arrange
+		let command = Commands::Showurls { names: false };
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(result);
+	}
+
+	#[rstest]
+	fn test_does_not_require_router_for_migrate() {
+		// Arrange
+		let command = Commands::Migrate {
+			app_label: None,
+			migration_name: None,
+			database: None,
+			fake: false,
+			fake_initial: false,
+			plan: false,
+		};
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn test_does_not_require_router_for_shell() {
+		// Arrange
+		let command = Commands::Shell { command: None };
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn test_does_not_require_router_for_check() {
+		// Arrange
+		let command = Commands::Check {
+			app_label: None,
+			deploy: false,
+		};
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[rstest]
+	fn test_does_not_require_router_for_collectstatic() {
+		// Arrange
+		let command = Commands::Collectstatic {
+			clear: false,
+			no_input: false,
+			dry_run: false,
+			link: false,
+			ignore: vec![],
+		};
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn test_does_not_require_router_for_makemigrations() {
+		// Arrange
+		let command = Commands::Makemigrations {
+			app_labels: vec![],
+			dry_run: false,
+			name: None,
+			check: false,
+			empty: false,
+			force_empty_state: false,
+			migration_dir: std::path::PathBuf::from("./migrations"),
+		};
+
+		// Act
+		let result = requires_router(&command);
+
+		// Assert
+		assert!(!result);
+	}
 }
