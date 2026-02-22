@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.13...reinhardt-openapi@v0.1.0-alpha.14) - 2026-02-21
+
+### Fixed
+
+- remove map_err on non-Result OpenApiRouter::wrap return value
+- resolve clippy collapsible_if warnings after merge with main
+- add enabled flag and optional auth guard for docs endpoints
+- return Result from OpenApiRouter::wrap instead of panicking
+
+### Security
+
+- add security headers to documentation endpoints
+
+### Changed
+
+- extract shared OpenAPI route handling logic
+
 ## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.12...reinhardt-openapi@v0.1.0-alpha.13) - 2026-02-16
 
 ### Maintenance
