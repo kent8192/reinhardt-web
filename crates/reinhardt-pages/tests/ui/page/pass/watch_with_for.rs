@@ -7,7 +7,7 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Watch with for loop
-	let _with_for = page!(|items: Signal < Vec < String> >| {
+	let _with_for = page!(|items: Signal<Vec<String>>| {
 		ul {
 			watch {
 				for item in items.get().iter() {
@@ -20,7 +20,7 @@ fn main() {
 	});
 
 	// Watch with for loop and conditional
-	let _for_with_condition = page!(|data: Signal < Vec < i32> >| {
+	let _for_with_condition = page!(|data: Signal<Vec<i32>>| {
 		div {
 			watch {
 				if data.get().is_empty() {

@@ -8,7 +8,7 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Watch with if-else using Signal
-	let _if_else = page!(|loading: Signal < bool >| {
+	let _if_else = page!(|loading: Signal<bool>| {
 		div {
 			watch {
 				if loading.get() {
@@ -25,7 +25,7 @@ fn main() {
 	});
 
 	// Watch with if-else-if chain
-	let _if_else_if = page!(|status: Signal < i32 >| {
+	let _if_else_if = page!(|status: Signal<i32>| {
 		div {
 			watch {
 				if status.get() == 0 {

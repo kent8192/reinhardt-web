@@ -869,6 +869,14 @@ impl AstPageFormatter {
 			.replace(" )", ")")
 			.replace(" ()", "()")
 
+			// Generic type angle brackets: Vec < String > -> Vec<String>
+			// These handle spaces around < and > in generic type parameters
+			// Note: We don't use ".replace("> ", ">")" because it would incorrectly
+			// affect arrow operators like "-> Result" turning them into "->Result"
+			.replace("< ", "<")
+			.replace(" <", "<")
+			.replace(" >", ">")
+
 			// New: Path separator (std::vec::Vec)
 			.replace(" :: ", "::")
 
