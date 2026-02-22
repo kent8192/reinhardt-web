@@ -64,12 +64,25 @@ fn token_store() -> Arc<InMemoryOAuth2Store> {
 
 /// Creates an OAuth2 auth instance with registered test application
 #[fixture]
-async fn oauth2_with_app(
+fn oauth2_with_app(
 	oauth2_auth: OAuth2Authentication,
 	test_application: OAuth2Application,
 ) -> OAuth2Authentication {
-	oauth2_auth.register_application(test_application).await;
-	oauth2_auth
+	// Run async registration in a separate thread to avoid blocking the tokio test runtime.
+	// rstest 0.23 does not properly handle async fixtures with sub-fixture parameters,
+	// so we use a sync fixture with an isolated tokio runtime.
+	std::thread::spawn(move || {
+		tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.expect("failed to build runtime")
+			.block_on(async move {
+				oauth2_auth.register_application(test_application).await;
+				oauth2_auth
+			})
+	})
+	.join()
+	.expect("thread panicked")
 }
 
 // =============================================================================
@@ -432,7 +445,7 @@ async fn test_application_registration_state(oauth2_auth: OAuth2Authentication) 
 		redirect_uris: vec!["https://new.example.com/callback".to_string()],
 		grant_types: vec![GrantType::AuthorizationCode],
 	};
-	oauth2_auth.register_application(app);
+	oauth2_auth.register_application(app).await;
 
 	// State 2: Registered client
 	assert!(
@@ -512,7 +525,7 @@ async fn test_multiple_applications(oauth2_auth: OAuth2Authentication) {
 	];
 
 	for app in apps {
-		oauth2_auth.register_application(app);
+		oauth2_auth.register_application(app).await;
 	}
 
 	// Each app should validate with its own credentials
@@ -646,7 +659,7 @@ async fn test_exchange_decision_table(
 		redirect_uris: vec!["https://dt.example.com/callback".to_string()],
 		grant_types: vec![GrantType::AuthorizationCode],
 	};
-	auth.register_application(app);
+	auth.register_application(app).await;
 
 	// Generate valid code
 	let real_code = auth
@@ -749,7 +762,8 @@ async fn test_use_case_multiple_concurrent_authorizations() {
 			client_secret: secret.to_string(),
 			redirect_uris: vec![redirect.to_string()],
 			grant_types: vec![GrantType::AuthorizationCode],
-		});
+		})
+		.await;
 	}
 
 	// User authorizes both services
@@ -802,7 +816,7 @@ async fn test_use_case_refresh_token_presence() {
 		redirect_uris: vec!["https://refresh.example.com/callback".to_string()],
 		grant_types: vec![GrantType::AuthorizationCode, GrantType::RefreshToken],
 	};
-	auth.register_application(app);
+	auth.register_application(app).await;
 
 	let code = auth
 		.generate_authorization_code(
