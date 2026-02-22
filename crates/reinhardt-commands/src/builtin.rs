@@ -1312,26 +1312,7 @@ impl RunServerCommand {
 					// Sync DATABASE_URL to environment so all connection paths use the same URL.
 					// This prevents divergence where the ORM uses settings.toml but other code
 					// (e.g., sqlx::AnyPool, ModelViewSetHandler) reads DATABASE_URL directly.
-					if env_database_url.is_none() {
-						// SAFETY: Called before spawning server threads. The tokio runtime is
-						// running but no request-handling tasks have been spawned yet, so no
-						// concurrent reads of this env var are possible at this point.
-						unsafe {
-							std::env::set_var("DATABASE_URL", &url);
-						}
-						ctx.verbose("Synced DATABASE_URL from settings configuration");
-					} else if let Some(ref env_url) = env_database_url {
-						// Both env var and settings exist - warn if they differ
-						if let Ok(settings_url) = get_database_url_from_settings()
-							&& *env_url != settings_url
-						{
-							ctx.warning(&format!(
-								"⚠️ DATABASE_URL mismatch: env var ({}) differs from settings ({}). Using env var.",
-								sanitize_database_url(env_url),
-								sanitize_database_url(&settings_url),
-							));
-						}
-					}
+					sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
 
 					// Initialize ORM global database first, which also creates the connection pool
 					match reinhardt_db::orm::init_database(&url).await {
@@ -2009,6 +1990,39 @@ impl CheckCommand {
 		}
 
 		passed
+	}
+}
+
+/// Syncs the `DATABASE_URL` environment variable from the resolved settings URL when
+/// it is not already set, or warns if the environment value differs from settings.
+///
+/// This ensures that all database connection paths (ORM, sqlx pools, etc.) use the
+/// same URL derived from a single configuration source.
+#[cfg(feature = "reinhardt-db")]
+fn sync_database_url_to_env(
+	env_database_url: Option<&str>,
+	resolved_url: &str,
+	ctx: &CommandContext,
+) {
+	if env_database_url.is_none() {
+		// SAFETY: Called before spawning server threads. The tokio runtime is
+		// running but no request-handling tasks have been spawned yet, so no
+		// concurrent reads of this env var are possible at this point.
+		unsafe {
+			std::env::set_var("DATABASE_URL", resolved_url);
+		}
+		ctx.verbose("Synced DATABASE_URL from settings configuration");
+	} else if let Some(env_url) = env_database_url {
+		// Both env var and settings exist - warn if they differ
+		if let Ok(settings_url) = get_database_url_from_settings() {
+			if env_url != settings_url {
+				ctx.warning(&format!(
+					"⚠️ DATABASE_URL mismatch: env var ({}) differs from settings ({}). Using env var.",
+					sanitize_database_url(env_url),
+					sanitize_database_url(&settings_url),
+				));
+			}
+		}
 	}
 }
 
@@ -3009,6 +3023,61 @@ port = 5432
 			// Cleanup
 			unsafe { std::env::remove_var("DATABASE_URL") };
 			std::env::set_current_dir(original_dir).unwrap();
+		}
+
+		#[rstest]
+		#[serial(env_database_url)]
+		fn test_sync_database_url_to_env_sets_env_when_not_present() {
+			// Arrange: DATABASE_URL not set
+			let original_db_url = std::env::var("DATABASE_URL").ok();
+			unsafe { std::env::remove_var("DATABASE_URL") };
+
+			let resolved_url = "postgresql://user:pass@localhost:5432/testdb";
+			let ctx = CommandContext::default();
+
+			// Act
+			sync_database_url_to_env(None, resolved_url, &ctx);
+
+			// Assert: DATABASE_URL is now set to resolved_url
+			let result = std::env::var("DATABASE_URL");
+			assert!(result.is_ok(), "DATABASE_URL should be set after sync");
+			assert_eq!(result.unwrap(), resolved_url);
+
+			// Cleanup
+			unsafe { std::env::remove_var("DATABASE_URL") };
+			if let Some(url) = original_db_url {
+				unsafe { std::env::set_var("DATABASE_URL", url) };
+			}
+		}
+
+		#[rstest]
+		#[serial(env_database_url)]
+		fn test_sync_database_url_to_env_does_not_override_existing_env_var() {
+			// Arrange: DATABASE_URL already set - env var takes precedence
+			let original_db_url = std::env::var("DATABASE_URL").ok();
+			let existing_env_url = "postgresql://envuser:envpass@envhost:5433/envdb";
+			unsafe { std::env::set_var("DATABASE_URL", existing_env_url) };
+
+			let resolved_url = "postgresql://settingsuser:settingspass@localhost:5432/settingsdb";
+			let ctx = CommandContext::default();
+
+			// Act
+			sync_database_url_to_env(Some(existing_env_url), resolved_url, &ctx);
+
+			// Assert: DATABASE_URL remains unchanged (env var takes precedence)
+			let result = std::env::var("DATABASE_URL");
+			assert!(result.is_ok());
+			assert_eq!(
+				result.unwrap(),
+				existing_env_url,
+				"DATABASE_URL should not be changed when env var is already set"
+			);
+
+			// Cleanup
+			unsafe { std::env::remove_var("DATABASE_URL") };
+			if let Some(url) = original_db_url {
+				unsafe { std::env::set_var("DATABASE_URL", url) };
+			}
 		}
 	}
 
