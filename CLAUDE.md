@@ -282,6 +282,12 @@ docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/
 docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep scan --config .semgrep/ --baseline-commit origin/main --error --metrics off
 ```
 
+**Placeholder Check (formatter artifact detection):**
+```bash
+# Check for __reinhardt_placeholder__! left in source files after page! macro formatting
+cargo make placeholder-check
+```
+
 **Database Tests:**
 ```bash
 # Database tests use TestContainers automatically (no external database needed)
