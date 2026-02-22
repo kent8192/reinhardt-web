@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.12...reinhardt-urls@v0.1.0-alpha.13) - 2026-02-21
+
+### Fixed
+
+- add memory-bounded eviction to LRU route cache
+- bound LRU heap growth via periodic compaction
+- prevent double substitution in UrlPattern::build_url
+- handle lock poisoning and improve error handling in router and URL resolution
+- replace Box::leak with Arc to prevent memory leak
+- add path traversal prevention with input validation
+
+### Security
+
+- add compile-time validation for paths, SQL, and crate references
+- fix path validation for ambiguous params and wildcards
+- add input validation for route paths and SQL expressions
+- add ReDoS prevention and input validation
+- prevent path traversal and parameter injection
+
+### Changed
+
+- remove incorrect dead_code annotations from proxy fields
+
+### Styling
+
+- apply rustfmt to pre-existing unformatted files
+- replace never-looping for with if-let per clippy::never_loop
+- apply rustfmt formatting to workspace files
+- apply code formatting to security fix files
+
+### Documentation
+
+- document wildcard pattern cross-segment matching behavior
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.1.0-alpha.11...reinhardt-urls@v0.1.0-alpha.12) - 2026-02-16
 
 ### Maintenance
