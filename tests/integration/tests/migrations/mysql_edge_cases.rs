@@ -179,7 +179,8 @@ async fn test_mysql_ddl_implicit_commit_partial_state(
 	// Verify error message mentions foreign key issue
 	let error_msg = format!("{:?}", result.err());
 	assert!(
-		error_msg.contains("Foreign key") || error_msg.contains("constraint")
+		error_msg.contains("Foreign key")
+			|| error_msg.contains("constraint")
 			|| error_msg.contains("nonexistent")
 			|| error_msg.contains("referenced"),
 		"Error message should indicate foreign key constraint issue: {}",
@@ -315,7 +316,9 @@ async fn test_mysql_partial_state_error_message(
 
 	// Error should mention the operation that failed
 	assert!(
-		error_msg.contains("does_not_exist") || error_msg.contains("table") || error_msg.contains("Table"),
+		error_msg.contains("does_not_exist")
+			|| error_msg.contains("table")
+			|| error_msg.contains("Table"),
 		"Error message should mention the missing table or operation: {}",
 		error_msg
 	);
@@ -410,19 +413,29 @@ async fn test_mysql_multiple_ddl_statements(
 
 	// Verify all three tables exist
 	async fn check_table(pool: &sqlx::MySqlPool, name: &str) -> i64 {
-		sqlx::query(
-			"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
-		)
-		.bind(name)
-		.fetch_one(pool)
-		.await
-		.expect("Failed to check table")
-		.get::<i64, _>(0)
+		sqlx::query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?")
+			.bind(name)
+			.fetch_one(pool)
+			.await
+			.expect("Failed to check table")
+			.get::<i64, _>(0)
 	}
 
-	assert_eq!(check_table(pool.as_ref(), "table_one").await, 1, "table_one should exist");
-	assert_eq!(check_table(pool.as_ref(), "table_two").await, 1, "table_two should exist");
-	assert_eq!(check_table(pool.as_ref(), "table_three").await, 1, "table_three should exist");
+	assert_eq!(
+		check_table(pool.as_ref(), "table_one").await,
+		1,
+		"table_one should exist"
+	);
+	assert_eq!(
+		check_table(pool.as_ref(), "table_two").await,
+		1,
+		"table_two should exist"
+	);
+	assert_eq!(
+		check_table(pool.as_ref(), "table_three").await,
+		1,
+		"table_three should exist"
+	);
 
 	// Cleanup
 	for table in ["table_one", "table_two", "table_three"] {
