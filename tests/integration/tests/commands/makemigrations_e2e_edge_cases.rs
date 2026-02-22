@@ -9,14 +9,16 @@
 
 use super::fixtures::{TempMigrationDir, temp_migration_dir};
 use reinhardt_commands::{BaseCommand, CommandContext, MakeMigrationsCommand};
-use reinhardt_db::migrations::{FilesystemRepository, FilesystemSource, Migration, Operation};
+use reinhardt_db::migrations::{
+	FilesystemRepository, FilesystemSource, Migration, MigrationRepository, MigrationSource,
+	Operation,
+};
 use reinhardt_query::prelude::*;
 use rstest::*;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
 // ============================================================================
@@ -70,7 +72,7 @@ pub fn migration() -> Migration {{
 }
 
 /// Helper to get the next migration number for an app
-async fn get_next_migration_number(migrations_dir: &PathBuf, app_label: &str) -> u32 {
+async fn get_next_migration_number(migrations_dir: &PathBuf, app_label: &str) -> String {
 	use reinhardt_db::migrations::MigrationNumbering;
 
 	MigrationNumbering::next_number(migrations_dir, app_label)
@@ -131,7 +133,7 @@ pub fn migration() -> Migration {
 
 	// Create source and verify it can load Japanese identifiers
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("unicode_app").await;
+	let result = source.migrations_for_app("unicode_app").await;
 
 	// Assert
 	assert!(
@@ -210,7 +212,7 @@ pub fn migration() -> Migration {{
 
 	// Act - Load and verify
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("emoji_app").await;
+	let result = source.migrations_for_app("emoji_app").await;
 
 	// Assert
 	assert!(
@@ -290,7 +292,7 @@ pub fn migration() -> Migration {{
 
 	// Act
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("mixed_unicode").await;
+	let result = source.migrations_for_app("mixed_unicode").await;
 
 	// Assert
 	assert!(
@@ -335,9 +337,13 @@ async fn ec_mm_02_01_numbering_9998_to_9999() {
 
 	// Act - Get next migration number
 	let next_number = get_next_migration_number(&migrations_path, "overflow_test").await;
+	let next_number_parsed: u32 = next_number.parse().unwrap();
 
 	// Assert
-	assert_eq!(next_number, 9999, "Next migration number should be 9999");
+	assert_eq!(
+		next_number_parsed, 9999,
+		"Next migration number should be 9999"
+	);
 
 	// Verify migration 9999 can be created
 	create_valid_migration_file(
@@ -364,7 +370,7 @@ async fn ec_mm_02_01_numbering_9998_to_9999() {
 
 	// Verify correct sorting
 	let source = FilesystemSource::new(migrations_path.clone());
-	let migrations = source.load_for_app("overflow_test").await.unwrap();
+	let migrations = source.migrations_for_app("overflow_test").await.unwrap();
 
 	assert_eq!(migrations.len(), 2);
 	assert_eq!(migrations[0].name, "9998_migration_a");
@@ -399,10 +405,11 @@ async fn ec_mm_02_02_numbering_9999_to_10000() {
 
 	// Act - Get next migration number (should be 10000)
 	let next_number = get_next_migration_number(&migrations_path, "overflow_test").await;
+	let next_number_parsed: u32 = next_number.parse().unwrap();
 
 	// Assert
 	assert_eq!(
-		next_number, 10000,
+		next_number_parsed, 10000,
 		"Next migration number should be 10000 (overflow)"
 	);
 
@@ -431,7 +438,7 @@ async fn ec_mm_02_02_numbering_9999_to_10000() {
 
 	// Verify correct sorting (4-digit should come before 5-digit)
 	let source = FilesystemSource::new(migrations_path.clone());
-	let migrations = source.load_for_app("overflow_test").await.unwrap();
+	let migrations = source.migrations_for_app("overflow_test").await.unwrap();
 
 	assert_eq!(migrations.len(), 2);
 	assert_eq!(migrations[0].name, "9999_last_four_digit");
@@ -479,7 +486,7 @@ async fn ec_mm_02_03_large_number_sorting() {
 
 	// Act - Load all migrations
 	let source = FilesystemSource::new(migrations_path.clone());
-	let migrations = source.load_for_app("sort_test").await.unwrap();
+	let migrations = source.migrations_for_app("sort_test").await.unwrap();
 
 	// Assert
 	assert_eq!(
@@ -527,7 +534,7 @@ async fn ec_mm_03_01_concurrent_migration_creation() {
 		let handle = tokio::spawn(async move {
 			// Simulate concurrent migration creation
 			let repo_dir = temp_dir.path().join("migrations");
-			let repository = FilesystemRepository::new(repo_dir);
+			let mut repository = FilesystemRepository::new(repo_dir);
 
 			// Try to save migration (may race with other tasks)
 			let migration = Migration {
@@ -541,7 +548,7 @@ async fn ec_mm_03_01_concurrent_migration_creation() {
 				..Default::default()
 			};
 
-			let result = repository.save_migration(&migration).await;
+			let result = repository.save(&migration).await;
 			(result, migration.name.clone())
 		});
 
@@ -571,7 +578,7 @@ async fn ec_mm_03_01_concurrent_migration_creation() {
 
 	// Verify the filesystem state is consistent
 	let source = FilesystemSource::new((*migrations_path).clone());
-	let migrations = source.load_for_app("concurrent_app").await.unwrap();
+	let migrations = source.migrations_for_app("concurrent_app").await.unwrap();
 
 	// The number of migrations should match successful saves
 	assert_eq!(
@@ -608,7 +615,8 @@ async fn ec_mm_03_02_concurrent_read_during_write() {
 		}],
 	);
 
-	let mut handles = vec![];
+	let mut writer_handles = vec![];
+	let mut reader_handles = vec![];
 
 	// Spawn writer tasks
 	for i in 0..3 {
@@ -625,7 +633,7 @@ async fn ec_mm_03_02_concurrent_read_during_write() {
 				}],
 			);
 		});
-		handles.push(handle);
+		writer_handles.push(handle);
 	}
 
 	// Spawn reader tasks
@@ -634,22 +642,34 @@ async fn ec_mm_03_02_concurrent_read_during_write() {
 		let handle = tokio::spawn(async move {
 			tokio::time::sleep(Duration::from_millis(15)).await;
 			let source = FilesystemSource::new((*migrations_path).clone());
-			source.load_for_app("rw_app").await
+			source.migrations_for_app("rw_app").await
 		});
-		handles.push(handle);
+		reader_handles.push(handle);
 	}
 
-	// Act - Wait for all tasks
-	for handle in handles {
+	// Act - Wait for all writer tasks
+	for handle in writer_handles {
 		let result = timeout(Duration::from_secs(5), handle).await;
-		assert!(result.is_ok(), "Task should complete without timeout");
-		// The inner result should also be Ok (no crashes)
-		assert!(result.unwrap().is_ok(), "Task should succeed");
+		assert!(
+			result.is_ok(),
+			"Writer task should complete without timeout"
+		);
+		assert!(result.unwrap().is_ok(), "Writer task should succeed");
+	}
+
+	// Act - Wait for all reader tasks
+	for handle in reader_handles {
+		let result = timeout(Duration::from_secs(5), handle).await;
+		assert!(
+			result.is_ok(),
+			"Reader task should complete without timeout"
+		);
+		assert!(result.unwrap().is_ok(), "Reader task should succeed");
 	}
 
 	// Assert - Final state should be consistent
 	let source = FilesystemSource::new((*migrations_path).clone());
-	let migrations = source.load_for_app("rw_app").await.unwrap();
+	let migrations = source.migrations_for_app("rw_app").await.unwrap();
 
 	// Should have initial + at least one of the writes
 	assert!(
@@ -701,7 +721,7 @@ async fn ec_mm_04_01_read_only_migrations_directory() {
 	}
 
 	// Act - Try to save a new migration
-	let repository = FilesystemRepository::new(migrations_path.clone());
+	let mut repository = FilesystemRepository::new(migrations_path.clone());
 	let new_migration = Migration {
 		app_label: "readonly_app".to_string(),
 		name: "0002_should_fail".to_string(),
@@ -713,7 +733,7 @@ async fn ec_mm_04_01_read_only_migrations_directory() {
 		..Default::default()
 	};
 
-	let result = repository.save_migration(&new_migration).await;
+	let result = repository.save(&new_migration).await;
 
 	// Assert - Should fail on read-only filesystem
 	#[cfg(unix)]
@@ -750,7 +770,7 @@ async fn ec_mm_04_02_non_existent_migrations_directory() {
 
 	// Act - Try to load from non-existent directory
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("some_app").await;
+	let result = source.migrations_for_app("some_app").await;
 
 	// Assert - Should handle gracefully (empty result or error)
 	// The implementation should either return empty vec or an error
@@ -846,7 +866,7 @@ pub fn migration() -> Migration {
 
 	// Act - Try to load the corrupted migration
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("corrupted_app").await;
+	let result = source.migrations_for_app("corrupted_app").await;
 
 	// Assert - Should handle the error gracefully
 	// The file may fail to compile or load
@@ -857,7 +877,7 @@ pub fn migration() -> Migration {
 
 	// If loading succeeded, verify the operations are parsed (even with invalid SQL)
 	if result.is_ok() {
-		let migrations = result.unwrap();
+		let _migrations = result.unwrap();
 		// The file content may be loaded but SQL validation may fail elsewhere
 	}
 }
@@ -897,7 +917,7 @@ pub fn migration() -> Migration {
 
 	// Act
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("incomplete_app").await;
+	let result = source.migrations_for_app("incomplete_app").await;
 
 	// Assert - Should handle empty app_label
 	assert!(
@@ -987,7 +1007,7 @@ pub fn migration() -> Migration {
 
 	// Act - Load migrations
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("circular_app").await;
+	let result = source.migrations_for_app("circular_app").await;
 
 	// Assert - Should load all three migrations
 	// Circular dependency detection may or may not happen at load time
@@ -1038,7 +1058,7 @@ async fn ec_mm_05_04_empty_migration_file() {
 
 	// Act
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("empty_app").await;
+	let result = source.migrations_for_app("empty_app").await;
 
 	// Assert - Should handle empty file gracefully
 	assert!(
@@ -1047,7 +1067,7 @@ async fn ec_mm_05_04_empty_migration_file() {
 	);
 
 	if result.is_ok() {
-		let migrations = result.unwrap();
+		let _migrations = result.unwrap();
 		// Empty file should either not be loaded or result in empty migration
 	}
 }
@@ -1076,7 +1096,7 @@ async fn ec_mm_05_05_binary_file_content() {
 
 	// Act
 	let source = FilesystemSource::new(migrations_path.clone());
-	let result = source.load_for_app("binary_app").await;
+	let result = source.migrations_for_app("binary_app").await;
 
 	// Assert - Should handle binary content gracefully
 	assert!(
