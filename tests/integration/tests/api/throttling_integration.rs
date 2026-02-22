@@ -427,15 +427,12 @@ async fn test_get_cache_key_raises_not_implemented_error() {
 }
 
 #[tokio::test]
-async fn test_allow_request_returns_true_if_key_is_none() {
-	// Test behavior with empty or None-like keys
+async fn test_allow_request_returns_error_if_key_is_empty() {
+	// Test behavior with empty key - should return error per key validation rules
 
 	let throttle = AnonRateThrottle::new(3, 60).unwrap();
 
-	// Empty string key should still work
-	for _ in 0..3 {
-		assert!(throttle.allow_request("").await.unwrap());
-	}
-
-	assert!(!throttle.allow_request("").await.unwrap());
+	// Empty string key should return error (key component must not be empty)
+	let result = throttle.allow_request("").await;
+	assert!(result.is_err());
 }
