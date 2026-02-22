@@ -227,9 +227,8 @@ pub mod utils {
 		let mut query = Query::insert();
 		query.into_table(Alias::new(table));
 
-		for col in columns {
-			query.columns([Alias::new(*col)]);
-		}
+		let cols: Vec<Alias> = columns.iter().map(|c| Alias::new(*c)).collect();
+		query.columns(cols);
 
 		let exprs: Vec<sea_query::SimpleExpr> =
 			values.iter().map(|v| Expr::cust(v.to_string())).collect();

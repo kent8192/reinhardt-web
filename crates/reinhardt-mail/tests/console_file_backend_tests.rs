@@ -347,7 +347,7 @@ fn test_attachment_mime_type_auto_detection() {
 	let png = Attachment::new("logo.png", b"png content".to_vec());
 	let txt = Attachment::new("readme.txt", b"text content".to_vec());
 	let html = Attachment::new("page.html", b"<html>".to_vec());
-	let unknown = Attachment::new("data.xyz", b"unknown".to_vec());
+	let unknown = Attachment::new("data.unknownext99", b"unknown".to_vec());
 
 	// Assert
 	assert_eq!(pdf.mime_type(), "application/pdf");

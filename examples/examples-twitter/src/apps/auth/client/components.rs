@@ -98,7 +98,7 @@ pub fn login_form() -> View {
 	let form_view = login_form.into_view();
 
 	// Render custom UI using page! macro
-	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, form_view: View| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: View| {
 		div {
 			class: "min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
 			div {
@@ -331,7 +331,7 @@ pub fn register_form() -> View {
 	let form_view = register_form.into_view();
 
 	// Render custom UI using page! macro
-	page!(|loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, form_view: View| {
+	page!(|loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, form_view: View| {
 		div {
 			class: "min-h-screen flex items-center justify-center px-4 py-12 bg-surface-secondary",
 			div {

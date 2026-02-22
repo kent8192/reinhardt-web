@@ -50,7 +50,7 @@ pub fn polls_index() -> View {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|questions_signal: Signal < Vec < QuestionInfo> >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
+	page!(|questions_signal: Signal<Vec<QuestionInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			h1 {
@@ -86,7 +86,7 @@ pub fn polls_index() -> View {
 				} else {
 					div {
 						class: "space-y-2",
-						{ View::fragment(questions_signal.get().iter().map(|question| { let href = format!("/polls/{}/", question.id); let question_text = question.question_text.clone(); let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string(); page!(|href : String, question_text : String, pub_date : String| { a { href : href, class : "block p-4 border rounded hover:bg-gray-50 transition-colors", div { class : "flex w-full justify-between", h5 { class : "mb-1", { question_text } } small { { pub_date } } } } }) (href, question_text, pub_date) }).collect::< Vec < _> >()) }
+						{ View::fragment(questions_signal.get().iter().map(|question| { let href = format!("/polls/{}/", question.id); let question_text = question.question_text.clone(); let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string(); page!(|href : String, question_text : String, pub_date : String| { a { href : href, class : "block p-4 border rounded hover:bg-gray-50 transition-colors", div { class : "flex w-full justify-between", h5 { class : "mb-1", { question_text } } small { { pub_date } } } } }) (href, question_text, pub_date) }).collect ::<Vec<_>>()) }
 					}
 				}
 			}
@@ -156,7 +156,7 @@ pub fn polls_detail(question_id: i64) -> View {
 			},
 			error_display: |form| {
 				let err = form.error().get();
-				page!(|err: Option < String >| {
+				page!(|err: Option<String>| {
 					watch {
 						if let Some(e) = err.clone() {
 							div {
@@ -170,10 +170,10 @@ pub fn polls_detail(question_id: i64) -> View {
 			success_navigation: |form| {
 				let is_loading = form.loading().get();
 				let err = form.error().get();
-				page!(|is_loading: bool, err: Option < String >| {
+				page!(|is_loading: bool, err: Option<String>| {
 					watch {
 						if ! is_loading &&err.is_none() {
-							# [cfg(target_arch = "wasm32")] { if let Some(window) = web_sys::window() { let pathname = window.location().pathname().ok(); if let Some(path) = pathname { let parts : Vec < &str> = path.split('/').collect(); if parts.len() >= 3 &&parts [1] == "polls" { if let Ok(question_id) = parts [2].parse::< i64 >() { let results_url = format!("/polls/{}/results/", question_id); let _ = window.location().set_href(&results_url); } } } } }
+							# [cfg(target_arch = "wasm32")] { if let Some(window) = web_sys::window() { let pathname = window.location().pathname().ok(); if let Some(path) = pathname { let parts : Vec<&str> = path.split('/').collect(); if parts.len()>= 3 &&parts [1] == "polls" { if let Ok(question_id) = parts [2].parse ::<i64>() { let results_url = format!("/polls/{}/results/", question_id); let _ = window.location().set_href(&results_url); } } } } }
 						}
 					}
 				})(is_loading, err)
@@ -331,7 +331,7 @@ pub fn polls_results(question_id: i64) -> View {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|question_signal: Signal < Option < QuestionInfo> >, choices_signal: Signal < Vec < ChoiceInfo> >, total_signal: Signal < i32 >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >, question_id: i64| {
+	page!(|question_signal: Signal<Option<QuestionInfo>>, choices_signal: Signal<Vec<ChoiceInfo>>, total_signal: Signal<i32>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>, question_id: i64| {
 		div {
 			watch {
 				if loading_signal.get() {
@@ -376,7 +376,7 @@ pub fn polls_results(question_id: i64) -> View {
 								}
 								div {
 									class: "divide-y divide-gray-200",
-									{ View::fragment(choices_signal.get().iter().map(|choice| { let total = total_signal.get(); let percentage = if total> 0 { (choice.votes as f64 / total as f64 * 100.0) as i32 } else { 0 }; let choice_text = choice.choice_text.clone(); let votes = choice.votes; page!(|choice_text : String, votes : i32, percentage : i32| { div { class : "py-4", div { class : "flex justify-between items-center mb-2", strong { { choice_text } } span { class : "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white", { format!("{} votes", votes) } } } div { class : "w-full bg-gray-200 rounded-full h-2.5", div { class : "bg-brand h-2.5 rounded-full", role : "progressbar", style : format!("width: {}%", percentage), aria_valuenow : percentage.to_string(), aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } } } } }) (choice_text, votes, percentage) }).collect::< Vec < _> >()) }
+									{ View::fragment(choices_signal.get().iter().map(|choice| { let total = total_signal.get(); let percentage = if total> 0 { (choice.votes as f64 / total as f64 * 100.0) as i32 } else { 0 }; let choice_text = choice.choice_text.clone(); let votes = choice.votes; page!(|choice_text : String, votes : i32, percentage : i32| { div { class : "py-4", div { class : "flex justify-between items-center mb-2", strong { { choice_text } } span { class : "inline-flex items-center bg-brand rounded-full px-2.5 py-0.5 text-xs font-medium text-white", { format!("{} votes", votes) } } } div { class : "w-full bg-gray-200 rounded-full h-2.5", div { class : "bg-brand h-2.5 rounded-full", role : "progressbar", style : format!("width: {}%", percentage), aria_valuenow : percentage.to_string(), aria_valuemin : "0", aria_valuemax : "100", { format!("{}%", percentage) } } } } }) (choice_text, votes, percentage) }).collect ::<Vec<_>>()) }
 								}
 								div {
 									class: "mt-3",
@@ -460,7 +460,7 @@ pub fn polls_index_with_logo() -> View {
 	let loading_signal = loading.clone();
 	let error_signal = error.clone();
 
-	page!(|questions_signal: Signal < Vec < QuestionInfo> >, loading_signal: Signal < bool >, error_signal: Signal < Option < String> >| {
+	page!(|questions_signal: Signal<Vec<QuestionInfo>>, loading_signal: Signal<bool>, error_signal: Signal<Option<String>>| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
@@ -504,7 +504,7 @@ pub fn polls_index_with_logo() -> View {
 				} else {
 					div {
 						class: "space-y-2",
-						{ View::fragment(questions_signal.get().iter().map(|question| { let href = format!("/polls/{}/", question.id); let question_text = question.question_text.clone(); let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string(); page!(|href : String, question_text : String, pub_date : String| { a { href : href, class : "block p-4 border rounded hover:bg-gray-50 transition-colors", div { class : "flex w-full justify-between items-center", img { src : "/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3" } div { class : "flex-1", h5 { class : "mb-1", { question_text } } } small { { pub_date } } } } }) (href, question_text, pub_date) }).collect::< Vec < _> >()) }
+						{ View::fragment(questions_signal.get().iter().map(|question| { let href = format!("/polls/{}/", question.id); let question_text = question.question_text.clone(); let pub_date = question.pub_date.format("%Y-%m-%d %H:%M").to_string(); page!(|href : String, question_text : String, pub_date : String| { a { href : href, class : "block p-4 border rounded hover:bg-gray-50 transition-colors", div { class : "flex w-full justify-between items-center", img { src : "/static/images/poll-icon.svg", alt : "Poll", class : "w-8 h-8 mr-3" } div { class : "flex-1", h5 { class : "mb-1", { question_text } } } small { { pub_date } } } } }) (href, question_text, pub_date) }).collect ::<Vec<_>>()) }
 					}
 				}
 			}

@@ -8,7 +8,7 @@ use reinhardt_pages::page;
 
 fn main() {
 	// Watch with if condition using Signal parameter
-	let _with_if = page!(|show: Signal < bool >| {
+	let _with_if = page!(|show: Signal<bool>| {
 		div {
 			watch {
 				if show.get() {
