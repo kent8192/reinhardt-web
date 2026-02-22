@@ -964,7 +964,10 @@ mod tests {
 		let result = auto_register_router().await;
 
 		// Assert: must fail because no routes are registered
-		assert!(result.is_err(), "Expected error when no routes are registered");
+		assert!(
+			result.is_err(),
+			"Expected error when no routes are registered"
+		);
 		let error_msg = result.unwrap_err().to_string();
 		assert!(
 			error_msg.contains("No URL patterns registered"),
