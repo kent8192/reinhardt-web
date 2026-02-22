@@ -34,7 +34,14 @@
         <img src="/logo.png" alt="" width="28" height="28" aria-hidden="true">
         <span>Reinhardt&#8482;</span>
       </a>
-      <ul class="nav-links" role="list">
+      <button class="hamburger" type="button"
+              aria-expanded="false" aria-controls="nav-links"
+              aria-label="Toggle navigation">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
+      <ul class="nav-links" id="nav-links" role="list">
         <li><a href="/docs/">Docs</a></li>
         <li><a href="/quickstart/">Quickstart</a></li>
         <li><a href="/changelog/">Changelog</a></li>
@@ -101,6 +108,31 @@
         var isDark = html.getAttribute('data-theme') === 'dark';
         html.setAttribute('data-theme', isDark ? 'light' : 'dark');
         localStorage.setItem('rw-theme', isDark ? 'light' : 'dark');
+      });
+    })();
+  </script>
+  <script>
+    (function() {
+      var btn = document.querySelector('.hamburger');
+      var nav = document.getElementById('nav-links');
+      if (!btn || !nav) return;
+      btn.addEventListener('click', function() {
+        var expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!expanded));
+        nav.classList.toggle('nav-open');
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && nav.classList.contains('nav-open')) {
+          btn.setAttribute('aria-expanded', 'false');
+          nav.classList.remove('nav-open');
+          btn.focus();
+        }
+      });
+      document.addEventListener('click', function(e) {
+        if (!btn.contains(e.target) && !nav.contains(e.target)) {
+          btn.setAttribute('aria-expanded', 'false');
+          nav.classList.remove('nav-open');
+        }
       });
     })();
   </script>
