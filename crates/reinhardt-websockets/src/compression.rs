@@ -852,6 +852,6 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(err.to_string().contains("disabled"));
+		assert!(err.internal_detail().contains("disabled"));
 	}
 }

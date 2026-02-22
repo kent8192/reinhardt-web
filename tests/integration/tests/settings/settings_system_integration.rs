@@ -173,7 +173,9 @@ fn test_settings_deserialization() {
         "csrf_cookie_secure": false,
         "append_slash": true,
         "admins": [],
-        "managers": []
+        "managers": [],
+        "middleware": [],
+        "root_urlconf": ""
     }"#;
 
 	let settings: Settings = serde_json::from_str(json).unwrap();
