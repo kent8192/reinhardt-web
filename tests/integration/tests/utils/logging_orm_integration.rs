@@ -305,7 +305,10 @@ async fn test_savepoint_object() {
 	assert_eq!(savepoint.depth, 1);
 	assert_eq!(savepoint.to_sql(), "SAVEPOINT \"test_sp\"");
 	assert_eq!(savepoint.release_sql(), "RELEASE SAVEPOINT \"test_sp\"");
-	assert_eq!(savepoint.rollback_sql(), "ROLLBACK TO SAVEPOINT \"test_sp\"");
+	assert_eq!(
+		savepoint.rollback_sql(),
+		"ROLLBACK TO SAVEPOINT \"test_sp\""
+	);
 }
 
 #[tokio::test]

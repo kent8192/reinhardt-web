@@ -23,8 +23,8 @@
 
 use bytes::Bytes;
 use hyper::{
-	header::{HeaderValue, CONTENT_TYPE},
 	HeaderMap, Method, StatusCode, Version,
+	header::{CONTENT_TYPE, HeaderValue},
 };
 use reinhardt_core::macros::model;
 use reinhardt_http::Request;
