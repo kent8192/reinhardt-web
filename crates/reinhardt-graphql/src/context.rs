@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::RwLock;
 
 /// Error types for context operations
 #[derive(Debug, thiserror::Error)]
@@ -130,7 +130,7 @@ impl GraphQLContext {
 	/// assert_eq!(context.get_data("user_id"), Some(json!("123")));
 	/// ```
 	pub fn set_data(&self, key: String, value: Value) {
-		let mut data = self.custom_data.blocking_write();
+		let mut data = self.custom_data.write().unwrap();
 		data.insert(key, value);
 	}
 
@@ -153,7 +153,7 @@ impl GraphQLContext {
 	/// assert_eq!(context.get_data("nonexistent"), None);
 	/// ```
 	pub fn get_data(&self, key: &str) -> Option<Value> {
-		let data = self.custom_data.blocking_read();
+		let data = self.custom_data.read().unwrap();
 		data.get(key).cloned()
 	}
 
@@ -203,7 +203,7 @@ impl GraphQLContext {
 	/// assert_eq!(context.get_data("temp"), None);
 	/// ```
 	pub fn remove_data(&self, key: &str) -> Option<Value> {
-		let mut data = self.custom_data.blocking_write();
+		let mut data = self.custom_data.write().unwrap();
 		data.remove(key)
 	}
 
@@ -225,7 +225,7 @@ impl GraphQLContext {
 	/// assert_eq!(context.get_data("key2"), None);
 	/// ```
 	pub fn clear_data(&self) {
-		let mut data = self.custom_data.blocking_write();
+		let mut data = self.custom_data.write().unwrap();
 		data.clear();
 	}
 
@@ -262,7 +262,7 @@ impl GraphQLContext {
 	/// assert!(retrieved.is_some());
 	/// ```
 	pub fn add_data_loader<T: DataLoader>(&self, loader: Arc<T>) {
-		let mut loaders = self.data_loaders.blocking_write();
+		let mut loaders = self.data_loaders.write().unwrap();
 		loaders.insert(TypeId::of::<T>(), Box::new(loader));
 	}
 
@@ -304,7 +304,7 @@ impl GraphQLContext {
 	/// assert!(retrieved.is_some());
 	/// ```
 	pub fn get_data_loader<T: DataLoader>(&self) -> Option<Arc<T>> {
-		let loaders = self.data_loaders.blocking_read();
+		let loaders = self.data_loaders.read().unwrap();
 		loaders
 			.get(&TypeId::of::<T>())
 			.and_then(|loader| loader.downcast_ref::<Arc<T>>().cloned())
@@ -390,7 +390,7 @@ impl GraphQLContext {
 	/// assert!(context.get_data_loader::<RemovableLoader>().is_none());
 	/// ```
 	pub fn remove_data_loader<T: DataLoader>(&self) {
-		let mut loaders = self.data_loaders.blocking_write();
+		let mut loaders = self.data_loaders.write().unwrap();
 		loaders.remove(&TypeId::of::<T>());
 	}
 
@@ -440,7 +440,7 @@ impl GraphQLContext {
 	/// assert!(context.get_data_loader::<Loader2>().is_none());
 	/// ```
 	pub fn clear_loaders(&self) {
-		let mut loaders = self.data_loaders.blocking_write();
+		let mut loaders = self.data_loaders.write().unwrap();
 		loaders.clear();
 	}
 }
