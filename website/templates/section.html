@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }}{% endblock %}
+{% block description %}{{ section.description | default(value=config.description) }}{% endblock %}
+
+{% block content %}
+<div class="section-layout container">
+  <aside class="sidebar" aria-label="Documentation navigation">
+    <nav aria-label="Docs sections">
+      <ul role="list">
+        {% for page in section.pages %}
+        <li>
+          <a href="{{ page.permalink | safe }}"
+             {% if page.permalink == current_url %}aria-current="page"{% endif %}>
+            {{ page.title }}
+          </a>
+        </li>
+        {% endfor %}
+        {% for subsection in section.subsections %}
+        {% set sub = get_section(path=subsection) %}
+        <li>
+          <a href="{{ sub.permalink | safe }}">{{ sub.title }}</a>
+          {% if sub.pages %}
+          <ul role="list">
+            {% for subpage in sub.pages %}
+            <li>
+              <a href="{{ subpage.permalink | safe }}"
+                 {% if subpage.permalink == current_url %}aria-current="page"{% endif %}>
+                {{ subpage.title }}
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </aside>
+  <main class="section-main" id="main-content">
+    {% if section.content %}
+    <div class="prose">
+      {{ section.content | safe }}
+    </div>
+    {% else %}
+    <h1>{{ section.title }}</h1>
+    {% if section.description %}
+    <p>{{ section.description }}</p>
+    {% endif %}
+    <ul class="page-list" role="list">
+      {% for page in section.pages %}
+      <li>
+        <a href="{{ page.permalink | safe }}">{{ page.title }}</a>
+        {% if page.description %}— {{ page.description }}{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </main>
+</div>
+{% endblock content %}
