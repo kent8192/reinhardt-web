@@ -251,7 +251,8 @@ async fn test_create_table_with_enum_column(
 		.await
 		.expect("Insert should succeed");
 
-	let row = sqlx::query("SELECT priority FROM tasks WHERE title = 'Task 1'")
+	// Cast ENUM to text since sqlx cannot decode custom ENUM type OIDs as String
+	let row = sqlx::query("SELECT priority::text FROM tasks WHERE title = 'Task 1'")
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Query should succeed");
@@ -479,7 +480,8 @@ async fn test_remove_enum_value_type_recreation(
 	assert!(!values.contains(&"deleted".to_string()));
 
 	// Verify existing data is still accessible
-	let row = sqlx::query("SELECT status FROM users WHERE name = 'User1'")
+	// Cast ENUM to text since sqlx cannot decode custom ENUM type OIDs as String
+	let row = sqlx::query("SELECT status::text FROM users WHERE name = 'User1'")
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Query should succeed");
@@ -595,7 +597,8 @@ async fn test_rename_enum_type(
 		.await
 		.expect("Insert should succeed");
 
-	let row = sqlx::query("SELECT status FROM documents WHERE title = 'Doc1'")
+	// Cast ENUM to text since sqlx cannot decode custom ENUM type OIDs as String
+	let row = sqlx::query("SELECT status::text FROM documents WHERE title = 'Doc1'")
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("Query should succeed");
@@ -680,8 +683,9 @@ async fn test_enum_type_multiple_columns(
 		.await
 		.expect("Insert should succeed");
 
+	// Cast ENUM columns to text since sqlx cannot decode custom ENUM type OIDs as String
 	let row = sqlx::query(
-		"SELECT initial_priority, current_priority FROM projects WHERE name = 'Project1'",
+		"SELECT initial_priority::text, current_priority::text FROM projects WHERE name = 'Project1'",
 	)
 	.fetch_one(pool.as_ref())
 	.await
