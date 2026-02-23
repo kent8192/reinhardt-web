@@ -152,6 +152,25 @@ impl MigrationSource for FilesystemSource {
 			}
 		}
 
+		// Sort by numeric prefix for deterministic ordering (#1335)
+		migrations.sort_by(|a, b| {
+			let num_a = a
+				.name
+				.chars()
+				.take_while(|c| c.is_ascii_digit())
+				.collect::<String>()
+				.parse::<u32>()
+				.unwrap_or(0);
+			let num_b = b
+				.name
+				.chars()
+				.take_while(|c| c.is_ascii_digit())
+				.collect::<String>()
+				.parse::<u32>()
+				.unwrap_or(0);
+			num_a.cmp(&num_b).then_with(|| a.name.cmp(&b.name))
+		});
+
 		Ok(migrations)
 	}
 }
