@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.11...reinhardt-dispatch@v0.1.0-alpha.12) - 2026-02-23
+
+### Maintenance
+
+- updated the following local packages: reinhardt-middleware, reinhardt-views, reinhardt-urls
+
 ## [0.1.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.1.0-alpha.10...reinhardt-dispatch@v0.1.0-alpha.11) - 2026-02-21
 
 ### Fixed
