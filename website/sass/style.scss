@@ -89,7 +89,7 @@ a {
 .nav-brand {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.35rem;
 	text-decoration: none;
 	font-weight: 700;
 	font-size: 1.1rem;
@@ -97,6 +97,8 @@ a {
 
 	img {
 		flex-shrink: 0;
+		width: 32px;
+		height: 32px;
 	}
 }
 
