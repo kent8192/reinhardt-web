@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.14...reinhardt-db@v0.1.0-alpha.15) - 2026-02-23
+
+### Maintenance
+
+- updated the following local packages: reinhardt-query, reinhardt-conf
+
+## [0.1.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.13...reinhardt-db@v0.1.0-alpha.14) - 2026-02-21
+
+### Added
+
+- add Repository<T> for type-safe ODM CRUD operations
+- implement IndexModel with builder pattern and MongoDB conversion
+- add core Document trait for ODM layer
+- add ODM-specific error types for validation and operation failures
+
+### Fixed
+
+- add safe numeric conversions with proper error handling
+- adapt DatabaseConfig.password usage to SecretString type
+- use parameterized queries and escape identifiers to prevent SQL injection
+- add BackendError variant and proper error mapping in repository
+- make bson an optional dependency
+- use bson::error::Error for deserialization
+
+### Security
+
+- document raw SQL injection surface in query builder APIs
+- replace panics with error returns and use checked integer conversion
+- fix path traversal and credential masking
+- fix savepoint name injection in orm transaction module
+
+### Changed
+
+- update references for flattened examples structure
+- clean up unused fixtures and fix documentation
+- remove unnecessary async_trait from Document trait
+- reorganize re-exports for ODM and low-level API separation
+- make bson dependency always available for ODM support
+
+### Styling
+
+- fix pre-existing clippy warnings and apply rustfmt
+- collapse nested if statements per clippy::collapsible_if
+- apply rustfmt formatting to workspace files
+- apply code formatting to security fix files
+- format code with rustfmt
+
+### Maintenance
+
+- mark implicit TODOs for NoSQL ODM completion
+- remove unused ValidationError import
+
 ## [0.1.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.1.0-alpha.11...reinhardt-db@v0.1.0-alpha.12) - 2026-02-15
 
 ### Maintenance
