@@ -116,7 +116,7 @@ All features enabled, best for learning and rapid prototyping:
 ```toml
 [dependencies]
 # Default behavior - all features enabled
-reinhardt = "0.1.0-alpha.1"
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 ```
@@ -130,7 +130,7 @@ Balanced setup for most production projects:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 ```
@@ -143,7 +143,7 @@ For microservices and simple APIs:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 ```
@@ -184,7 +184,7 @@ Edit `hello/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::ViewResult;
+use reinhardt::get;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -192,12 +192,13 @@ pub struct HelloResponse {
     message: String,
 }
 
-pub async fn hello_world(_req: Request) -> ViewResult<Response> {
+#[get("/hello", name = "hello_world")]
+pub async fn hello_world() -> Result<Response> {
     let response_data = HelloResponse {
         message: "Hello, Reinhardt!".to_string(),
     };
-    let json = serde_json::to_string(&response_data)?;
-    Ok(Response::new(StatusCode::OK).with_body(json))
+    Response::ok()
+        .with_json(&response_data)
 }
 ```
 
@@ -223,19 +224,35 @@ use reinhardt::viewsets::ModelViewSet;
 use crate::models::Todo;
 use crate::serializers::TodoSerializer;
 
-pub struct TodoViewSet;
-
-impl TodoViewSet {
-    pub fn new() -> ModelViewSet<Todo, TodoSerializer> {
-        ModelViewSet::new("todo")
-    }
+pub fn todo_viewset() -> ModelViewSet<Todo, TodoSerializer> {
+    ModelViewSet::new("todo")
 }
 ```
 
 Register in `todos/urls.rs`:
 
 ```rust
-UnifiedRouter::new().viewset("/todos", Arc::new(TodoViewSet::new()))
+use reinhardt::routers::UnifiedRouter;
+use std::sync::Arc;
+use crate::views::todo_viewset;
+
+pub fn url_patterns() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .register_viewset("/todos", Arc::new(todo_viewset()))
+}
+```
+
+Then wire it up in `config/urls.rs`:
+
+```rust
+use reinhardt::prelude::*;
+use reinhardt::routes;
+
+#[routes]
+pub fn routes() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .mount("/api/", todos::urls::url_patterns())
+}
 ```
 
 This automatically creates all CRUD endpoints (GET, POST, PUT, DELETE).
@@ -331,7 +348,7 @@ To use a database instead of in-memory storage:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "db-postgres"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "db-postgres"] }
 ```
 
 Check out the [ORM documentation](/docs/api/) for more details.
@@ -340,7 +357,8 @@ Check out the [ORM documentation](/docs/api/) for more details.
 
 ## Getting Help
 
-- 📖 [API Reference](https://docs.rs/reinhardt)
+- 📖 [API Reference](https://docs.rs/reinhardt-web/latest/reinhardt_web/)
+- 🗺️ [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 - 💬 [GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 [Report Issues](https://github.com/kent8192/reinhardt-web/issues)
 
