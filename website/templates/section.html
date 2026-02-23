@@ -1,49 +1,23 @@
 {% extends "base.html" %}
+{% import "macros/sidebar.html" as macros %}
 
 {% block title %}{{ section.title }}{% endblock %}
 {% block description %}{{ section.description | default(value=config.description) }}{% endblock %}
 
 {% block content %}
+{# Determine the root section path for the sidebar.
+   section.path has leading slash: "/quickstart/", "/docs/", "/quickstart/tutorials/", etc.
+   section.ancestors contains relative_paths: ["_index.md", "quickstart/_index.md", ...] #}
+{% set_global root_path = "" %}
+{% if section.path is starting_with("/quickstart") %}
+	{% set_global root_path = "quickstart/_index.md" %}
+{% elif section.path is starting_with("/docs") %}
+	{% set_global root_path = "docs/_index.md" %}
+{% endif %}
+
+{% if root_path %}
 <div class="section-layout container">
-	<aside class="sidebar" aria-label="Documentation navigation">
-		<nav aria-label="Docs sections">
-			<ul role="list">
-				{# Unified weight-based ordering: interleave pages and subsections #}
-				{% for w in range(end=100, step_by=10) %}
-					{% for page in section.pages %}
-						{% if page.extra.sidebar_weight is defined and page.extra.sidebar_weight == w %}
-						<li>
-							<a href="{{ page.permalink | safe }}"
-								{% if page.permalink == current_url %}aria-current="page"{% endif %}>
-								{{ page.title }}
-							</a>
-						</li>
-						{% endif %}
-					{% endfor %}
-					{% for subsection in section.subsections %}
-						{% set sub = get_section(path=subsection) %}
-						{% if sub.extra.sidebar_weight is defined and sub.extra.sidebar_weight == w %}
-						<li>
-							<a href="{{ sub.permalink | safe }}">{{ sub.title }}</a>
-							{% if sub.pages %}
-							<ul role="list">
-								{% for subpage in sub.pages %}
-								<li>
-									<a href="{{ subpage.permalink | safe }}"
-										{% if subpage.permalink == current_url %}aria-current="page"{% endif %}>
-										{{ subpage.title }}
-									</a>
-								</li>
-								{% endfor %}
-							</ul>
-							{% endif %}
-						</li>
-						{% endif %}
-					{% endfor %}
-				{% endfor %}
-			</ul>
-		</nav>
-	</aside>
+	{{ macros::sidebar(root_path=root_path, current_url=current_url) }}
 	<div class="section-main">
 		{% if section.content %}
 		<div class="prose">
@@ -65,4 +39,21 @@
 		{% endif %}
 	</div>
 </div>
+{% else %}
+{# Fallback for non-quickstart/docs sections (e.g. changelog, security) #}
+<div class="section-layout container">
+	<div class="section-main">
+		{% if section.content %}
+		<div class="prose">
+			{{ section.content | safe }}
+		</div>
+		{% else %}
+		<h1>{{ section.title }}</h1>
+		{% if section.description %}
+		<p>{{ section.description }}</p>
+		{% endif %}
+		{% endif %}
+	</div>
+</div>
+{% endif %}
 {% endblock content %}
