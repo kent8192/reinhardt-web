@@ -4,7 +4,7 @@ description = "A composable full-stack API framework for Rust. Polylithic batter
 default_language = "en"
 compile_sass = true
 generate_sitemap = true
-minify_html = false
+minify_html = true
 
 [markdown]
 external_links_target_blank = true

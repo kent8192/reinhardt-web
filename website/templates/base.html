@@ -5,6 +5,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>{% block title %}{{ config.title }}{% endblock %} — Reinhardt&#8482;</title>
 	<meta name="description" content="{% block description %}{{ config.description }}{% endblock %}">
+	<meta name="theme-color" content="#ce422b" id="meta-theme-color">
 	<link rel="canonical" href="{{ current_url | safe }}">
 
 	{# OGP #}
@@ -24,6 +25,7 @@
 
 	<link rel="sitemap" type="application/xml" href="/sitemap.xml">
 	{# Favicon #}
+	<link rel="icon" href="/favicon.ico" sizes="any">
 	<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
 	<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
 	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -36,14 +38,37 @@
 
 	{# highlight.js — light/dark themes #}
 	<link id="hljs-light" rel="stylesheet"
-				href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+				href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css"
+				integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L"
+				crossorigin="anonymous">
 	<link id="hljs-dark" rel="stylesheet"
 				href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+				integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH"
+				crossorigin="anonymous"
 				disabled>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/rust.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/toml.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"
+					integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU"
+					crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/rust.min.js"
+					integrity="sha384-kENps59cKQW5DV3vOEzpSp6tfGzWGpPYKz748i4gGziVSjieRtupNNu/WEwG3s8n"
+					crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/toml.min.js"
+					integrity="sha384-ZSs6LKr2GoUPDyHrN+rCQgyHL1yUyok5xMniSrgeRG7rUvA6vTmxronM1eZOfjgz"
+					crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"
+					integrity="sha384-BbT8tZtvkh8HPXIvL5RtzuljBwI3gR5KIdYxZyYSyI5C/+KNAGdzAiexvmxuroag"
+					crossorigin="anonymous"></script>
+
+	{# Prevent FOUC: apply saved/system theme before paint #}
+	<script>
+	(function(){
+		var s=localStorage.getItem('rw-theme');
+		var d=window.matchMedia('(prefers-color-scheme:dark)').matches;
+		if(s==='dark'||(!s&&d)){
+			document.documentElement.setAttribute('data-theme','dark');
+		}
+	})();
+	</script>
 </head>
 <body>
 	<a href="#main-content" class="skip-link">Skip to main content</a>
@@ -121,6 +146,7 @@
 			var html = document.documentElement;
 			var stored = localStorage.getItem('rw-theme');
 			var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+			var metaColor = document.getElementById('meta-theme-color');
 
 			function syncHljsTheme(isDark) {
 				var light = document.getElementById('hljs-light');
@@ -131,15 +157,26 @@
 				}
 			}
 
-			if (stored === 'dark' || (!stored && prefersDark)) {
-				html.setAttribute('data-theme', 'dark');
-				syncHljsTheme(true);
+			function syncToggleIcon(isDark) {
+				var icon = toggle.querySelector('span');
+				if (icon) icon.textContent = isDark ? '\u2600' : '\u263E';
+				toggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+				if (metaColor) metaColor.setAttribute('content', isDark ? '#0f0f0f' : '#ce422b');
 			}
+
+			var isDark = stored === 'dark' || (!stored && prefersDark);
+			if (isDark) {
+				html.setAttribute('data-theme', 'dark');
+			}
+			syncHljsTheme(isDark);
+			syncToggleIcon(isDark);
+
 			toggle.addEventListener('click', function() {
-				var isDark = html.getAttribute('data-theme') === 'dark';
-				html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-				localStorage.setItem('rw-theme', isDark ? 'light' : 'dark');
-				syncHljsTheme(!isDark);
+				var wasDark = html.getAttribute('data-theme') === 'dark';
+				html.setAttribute('data-theme', wasDark ? 'light' : 'dark');
+				localStorage.setItem('rw-theme', wasDark ? 'light' : 'dark');
+				syncHljsTheme(!wasDark);
+				syncToggleIcon(!wasDark);
 			});
 		})();
 	</script>
