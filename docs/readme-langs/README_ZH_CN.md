@@ -1019,8 +1019,8 @@ Reinhardt提供可混合搭配的模块化组件:
 Reinhardt是一个社区驱动的项目。以下是获取帮助的途径:
 
 - 💬 **Discord**: 加入我们的Discord服务器进行实时聊天（即将推出）
-- 💭 **GitHub Discussions**: [提问和分享想法](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [报告bug](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [提问和分享想法](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [报告bug](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **文档**: [阅读指南](../)
 
 提问前，请查看:

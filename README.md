@@ -1020,8 +1020,8 @@ Reinhardt offers modular components you can mix and match:
 Reinhardt is a community-driven project. Here's where you can get help:
 
 - 💬 **Discord**: Join our Discord server for real-time chat (coming soon)
-- 💭 **GitHub Discussions**: [Ask questions and share ideas](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [Report bugs](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [Ask questions and share ideas](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [Report bugs](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **Documentation**: [Read the guides](docs/)
 
 Before asking, please check:

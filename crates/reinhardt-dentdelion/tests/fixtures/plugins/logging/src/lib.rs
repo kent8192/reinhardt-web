@@ -20,8 +20,8 @@ impl Guest for LoggingPlugin {
 			description: Some("Test plugin for logging API".to_string()),
 			authors: vec!["Reinhardt Contributors".to_string()],
 			license: Some("BSD-3-Clause".to_string()),
-			repository: Some("https://github.com/kent8192/reinhardt-rs".to_string()),
-			homepage: Some("https://github.com/kent8192/reinhardt-rs".to_string()),
+			repository: Some("https://github.com/kent8192/reinhardt-web".to_string()),
+			homepage: Some("https://github.com/kent8192/reinhardt-web".to_string()),
 		}
 	}
 

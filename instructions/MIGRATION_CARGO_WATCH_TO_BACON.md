@@ -247,6 +247,6 @@ If you encounter any issues during migration, please:
 
 1. Check the [bacon documentation](https://dystroy.org/bacon/)
 2. Open an issue on
-   [Reinhardt GitHub](https://github.com/kent8192/reinhardt-rs/issues)
+   [Reinhardt GitHub](https://github.com/kent8192/reinhardt-web/issues)
 3. Ask in
-   [Reinhardt Discussions](https://github.com/kent8192/reinhardt-rs/discussions)
+   [Reinhardt Discussions](https://github.com/kent8192/reinhardt-web/discussions)

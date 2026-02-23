@@ -960,14 +960,14 @@ fn validate_email(email: &str) -> ValidationResult {
 - [Getting Started Guide](../GETTING_STARTED.md)
 - [Tutorials](../tutorials/README.md)
 - [Feature Flags](../FEATURE_FLAGS.md)
-- [GitHub Repository](https://github.com/kent8192/reinhardt-rs)
+- [GitHub Repository](https://github.com/kent8192/reinhardt-web)
 
 ## Contributing
 
 Found an error in the documentation? Want to improve it?
 
-- [Report documentation issues](https://github.com/kent8192/reinhardt-rs/issues)
-- [Contribute to docs](https://github.com/kent8192/reinhardt-rs/blob/main/CONTRIBUTING.md)
+- [Report documentation issues](https://github.com/kent8192/reinhardt-web/issues)
+- [Contribute to docs](https://github.com/kent8192/reinhardt-web/blob/main/CONTRIBUTING.md)
 
 ---
 

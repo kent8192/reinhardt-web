@@ -34,7 +34,7 @@ Thank you for your interest in contributing to Reinhardt! This document provides
    ```
 3. Add the upstream repository:
    ```bash
-   git remote add upstream https://github.com/kent8192/reinhardt-rs.git
+   git remote add upstream https://github.com/kent8192/reinhardt-web.git
    ```
 
 ### Building the Project
@@ -148,7 +148,7 @@ pub mod routing;
 
 - **DELETE obsolete code immediately** - don't leave commented-out code
 - **NO comments documenting deleted code** - Git history is the record
-- Extract important notes to `docs/IMPLEMENTATION_NOTES.md` if needed
+- Extract important notes to `instructions/IMPLEMENTATION_NOTES.md` if needed
 
 ### TODO and Placeholder Policy
 
@@ -552,7 +552,7 @@ For detailed commit guidelines, see [COMMIT_GUIDELINE.md](instructions/COMMIT_GU
 
 - **README.md**: Project-level overview
 - **Crate README.md**: Individual crate documentation
-- **docs/** directory: Detailed guides and tutorials
+- **instructions/** directory: Detailed guides and standards
 
 ### Documentation Consistency
 
@@ -580,8 +580,8 @@ Update documentation for:
 
 ### Resources
 
-- [Getting Started Guide](docs/GETTING_STARTED.md)
-- [Feature Flags Guide](docs/FEATURE_FLAGS.md)
+- [Getting Started Guide](/quickstart/getting-started/)
+- [Feature Flags Guide](/docs/feature-flags/)
 - [Issue Guidelines](instructions/ISSUE_GUIDELINES.md) - Issue creation and management
 - [Pull Request Guidelines](instructions/PR_GUIDELINE.md) - PR policies and procedures
 - [Security Policy](SECURITY.md) - Security vulnerability reporting
@@ -594,7 +594,7 @@ Update documentation for:
 
 Please check:
 
--  [Getting Started Guide](docs/GETTING_STARTED.md)
+-  [Getting Started Guide](/quickstart/getting-started/)
 -  [Issue Guidelines](instructions/ISSUE_GUIDELINES.md)
 -  [Pull Request Guidelines](instructions/PR_GUIDELINE.md)
 -  [Examples](examples/)

@@ -443,12 +443,12 @@ Bare URLs in doc comments trigger "bare URL" warnings. Wrap them properly.
 ```rust
 // ✅ CORRECT
 /// See <https://docs.rs/reinhardt> for API documentation
-/// Documentation at `https://github.com/kent8192/reinhardt-rs`
+/// Documentation at `https://github.com/kent8192/reinhardt-web`
 /// Visit [our docs](https://docs.rs/reinhardt) for more info
 
 // ❌ INCORRECT (causes "bare URL" warnings)
 /// See https://docs.rs/reinhardt for API documentation
-/// Documentation at https://github.com/kent8192/reinhardt-rs
+/// Documentation at https://github.com/kent8192/reinhardt-web
 ```
 
 **URL formatting options:**

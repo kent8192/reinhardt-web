@@ -1019,8 +1019,8 @@ Reinhardt提供可混合搭配的模組化元件:
 Reinhardt是一個社群驅動的專案。以下是取得幫助的途徑:
 
 - 💬 **Discord**: 加入我們的Discord伺服器進行即時聊天（即將推出）
-- 💭 **GitHub Discussions**: [提問和分享想法](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [報告bug](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [提問和分享想法](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [報告bug](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **文檔**: [閱讀指南](../)
 
 提問前，請查看:

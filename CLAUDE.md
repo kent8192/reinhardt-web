@@ -12,7 +12,7 @@ For detailed standards, see documentation in `docs/` directory.
 
 See README.md for project details.
 
-**Repository URL**: https://github.com/kent8192/reinhardt-rs
+**Repository URL**: https://github.com/kent8192/reinhardt-web
 
 ---
 

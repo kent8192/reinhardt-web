@@ -1019,8 +1019,8 @@ Reinhardtは組み合わせ可能なモジュラーコンポーネントを提�
 Reinhardtはコミュニティ駆動のプロジェクトです。ヘルプが必要な場合:
 
 - 💬 **Discord**: Discordサーバーでリアルタイムチャット（近日公開）
-- 💭 **GitHub Discussions**: [質問やアイデアを共有](https://github.com/kent8192/reinhardt-rs/discussions)
-- 🐛 **Issues**: [バグを報告](https://github.com/kent8192/reinhardt-rs/issues)
+- 💭 **GitHub Discussions**: [質問やアイデアを共有](https://github.com/kent8192/reinhardt-web/discussions)
+- 🐛 **Issues**: [バグを報告](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **ドキュメント**: [ガイドを読む](../)
 
 質問する前に、以下を確認してください:
