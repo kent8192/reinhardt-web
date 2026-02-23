@@ -889,7 +889,7 @@ Rust (Reinhardt):
 ```toml
 # Cargo.toml - Enable framework features
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web", features = ["auth", "admin"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["auth", "admin"] }
 ```
 
 ```rust
@@ -929,7 +929,7 @@ via `installed_apps!`. Instead, they are enabled through Cargo feature flags.
 # Cargo.toml
 [dependencies]
 reinhardt = {
-    version = "0.1.0-alpha.1",
+    version = "0.1.0-alpha.18",
     package = "reinhardt-web",
     default-features = false,
     features = ["standard"]  # Includes auth, database, REST API

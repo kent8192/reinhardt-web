@@ -52,7 +52,7 @@ database server and stores data in a single file.
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-sqlite"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-sqlite"] }
 ```
 
 **settings/base.toml:**
@@ -72,7 +72,7 @@ for production use.
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard"] }
 # db-postgres is automatically included with "standard"
 ```
 
@@ -100,7 +100,7 @@ docker run --name postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgre
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-mysql"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-mysql"] }
 ```
 
 **settings/base.toml:**
@@ -868,7 +868,7 @@ Add the admin dependency to `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "admin"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "admin"] }
 ```
 
 Register your models in `polls/admin.rs`:

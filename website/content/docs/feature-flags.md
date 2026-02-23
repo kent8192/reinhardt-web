@@ -48,7 +48,7 @@ Reinhardt employs a **highly granular feature flag system** with **70+ features*
 
 ```toml
 [dependencies]
-reinhardt = "0.1.0-alpha.1"  # Enables full bundle (all features)
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web" }  # Enables full bundle (all features)
 ```
 
 **Note**: The default has changed from `standard` to `full`. See [Migration Guide](#migration-guide) for details.
@@ -60,7 +60,8 @@ For a balanced setup without all features:
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.0-alpha.1",
+	version = "0.1.0-alpha.18",
+	package = "reinhardt-web",
 	default-features = false,
 	features = ["standard"]
 }
@@ -71,7 +72,8 @@ reinhardt = {
 ```toml
 [dependencies]
 reinhardt = {
-	version = "0.1.0-alpha.1",
+	version = "0.1.0-alpha.18",
+	package = "reinhardt-web",
 	default-features = false,
 	features = ["minimal", "database", "db-postgres", "auth-jwt"]
 }
@@ -92,7 +94,7 @@ reinhardt = {
 - URL routing (always included)
 
 ```toml
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Binary**: ~5-10 MB | **Compile**: Very fast
@@ -113,7 +115,7 @@ Balanced configuration for most projects. ⚠️ PostgreSQL is now included by d
 - Templates, Signals
 
 ```toml
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard"] }
 ```
 
 **Binary**: ~20-30 MB | **Compile**: Medium
@@ -129,9 +131,9 @@ All features enabled (batteries-included).
 **Includes**: `standard` + admin, graphql, websockets, cache, i18n, mail, sessions, static-files, storage
 
 ```toml
-reinhardt = "0.1.0-alpha.1"  # default enables full
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web" }  # default enables full
 # Or explicitly:
-reinhardt = { version = "0.1.0-alpha.1", features = ["full"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["full"] }
 ```
 
 **Binary**: ~50+ MB | **Compile**: Slow
@@ -164,7 +166,7 @@ Reinhardt implements a **recursive feature flag system** where each crate level 
 
 ```toml
 # Root level
-reinhardt = { features = ["full"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["full"] }
 # ↓ enables
 # reinhardt-db/database-full
 # ↓ enables
@@ -193,14 +195,15 @@ You can directly use module-specific `-full` features for fine-grained control:
 
 ```toml
 # Enable only database functionality with all sub-features
-reinhardt-db = { version = "0.1.0-alpha.1", features = ["database-full"] }
+reinhardt-db = { version = "0.1.0-alpha.18", features = ["database-full"] }
 
 # Enable only REST API functionality with all sub-features
-reinhardt-rest = { version = "0.1.0-alpha.1", features = ["rest-full"] }
+reinhardt-rest = { version = "0.1.0-alpha.18", features = ["rest-full"] }
 
 # Combine multiple module-full features
 reinhardt = {
-    version = "0.1.0-alpha.1",
+    version = "0.1.0-alpha.18",
+    package = "reinhardt-web",
     default-features = false,
     features = [
         "minimal",
@@ -277,8 +280,8 @@ features = ["database"]  # Includes: ORM, migrations, contenttypes
 
 **Workaround for subcrate-only features**:
 ```toml
-reinhardt = { version = "0.1.0-alpha.1", features = ["cache"] }
-reinhardt-cache = { version = "0.1.0-alpha.1", features = ["redis-cluster"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["cache"] }
+reinhardt-cache = { version = "0.1.0-alpha.18", features = ["redis-cluster"] }
 ```
 
 ---
@@ -372,7 +375,7 @@ reinhardt-dentdelion = { version = "0.1", features = ["wasm"] }
 reinhardt-dentdelion = { version = "0.1", features = ["full"] }
 ```
 
-See [`reinhardt plugin`](../crates/reinhardt-commands/README.md#plugin-command-system) commands for managing plugins.
+See [`reinhardt plugin`](https://github.com/kent8192/reinhardt-web/blob/main/crates/reinhardt-commands/README.md#plugin-command-system) commands for managing plugins.
 
 ---
 
@@ -410,7 +413,7 @@ reinhardt-admin startapp myfeature --with-pages
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["admin"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["admin"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]  # cdylib for WASM, rlib for server
@@ -452,7 +455,7 @@ cargo run --bin manage runserver --with-pages --static-dir build
 cargo run --bin manage runserver --with-pages --no-spa
 ```
 
-See [examples/examples-twitter](../examples/examples-twitter) for a complete implementation.
+See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
 
 ---
 
@@ -480,7 +483,7 @@ reinhardt-tasks = { version = "0.1", features = ["rabbitmq-backend"] }
 reinhardt-tasks = { version = "0.1", features = ["database-backend"] }
 ```
 
-See [Task Backends Documentation](../crates/reinhardt-tasks/README.md#backend-comparison) for detailed comparison.
+See [Task Backends Documentation](https://github.com/kent8192/reinhardt-web/blob/main/crates/reinhardt-tasks/README.md#backend-comparison) for detailed comparison.
 
 ---
 
@@ -551,12 +554,12 @@ See [Task Backends Documentation](../crates/reinhardt-tasks/README.md#backend-co
 
 **Before (v0.1.0-alpha.1):**
 ```toml
-reinhardt = "0.1.0-alpha.1"  # Enabled: standard bundle
+reinhardt = { version = "0.1.0-alpha.1", package = "reinhardt-web" }  # Enabled: standard bundle
 ```
 
 **Now (v0.1.0-alpha.2):**
 ```toml
-reinhardt = "0.1.0-alpha.1"  # Enables: full bundle (all features)
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web" }  # Enables: full bundle (all features)
 ```
 
 **Impact:**
@@ -566,7 +569,7 @@ reinhardt = "0.1.0-alpha.1"  # Enables: full bundle (all features)
 
 **To keep previous behavior:**
 ```toml
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard"] }
 ```
 
 #### 2. `minimal` Feature Now Includes Core Functionality
@@ -608,10 +611,10 @@ features = ["standard"]  # Includes db-postgres explicitly
 **For other databases:**
 ```toml
 # MySQL
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-mysql"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-mysql"] }
 
 # SQLite
-reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["standard", "db-sqlite"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["standard", "db-sqlite"] }
 ```
 
 #### 4. Removed Features
