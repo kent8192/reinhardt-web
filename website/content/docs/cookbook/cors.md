@@ -24,7 +24,7 @@ Guide to configuring Cross-Origin Resource Sharing (CORS).
 Use `CorsMiddleware` to configure CORS.
 
 ```rust
-use reinhardt_middleware::{CorsMiddleware, cors::CorsConfig};
+use reinhardt::{CorsMiddleware, cors::CorsConfig};
 
 let config = CorsConfig {
     allow_origins: vec!["https://example.com".to_string()],
@@ -60,7 +60,7 @@ let middleware = CorsMiddleware::new(config);
 `CorsMiddleware` automatically handles preflight requests (OPTIONS method).
 
 ```rust
-use reinhardt_middleware::CorsMiddleware;
+use reinhardt::CorsMiddleware;
 
 let middleware = CorsMiddleware::permissive();
 
@@ -91,7 +91,7 @@ Access-Control-Allow-Credentials: true
 Use `permissive()` to allow all origins in development.
 
 ```rust
-use reinhardt_middleware::CorsMiddleware;
+use reinhardt::CorsMiddleware;
 
 // Allow all (development only)
 let middleware = CorsMiddleware::permissive();
@@ -100,7 +100,7 @@ let middleware = CorsMiddleware::permissive();
 This is equivalent to:
 
 ```rust
-use reinhardt_middleware::cors::CorsConfig;
+use reinhardt::cors::CorsConfig;
 
 let config = CorsConfig {
     allow_origins: vec!["*".to_string()],
@@ -127,7 +127,7 @@ let config = CorsConfig {
 Allow only a specific origin.
 
 ```rust
-use reinhardt_middleware::cors::CorsConfig;
+use reinhardt::cors::CorsConfig;
 
 let config = CorsConfig {
     allow_origins: vec!["https://app.example.com".to_string()],
@@ -143,7 +143,7 @@ let config = CorsConfig {
 Allow multiple origins (comma-separated).
 
 ```rust
-use reinhardt_middleware::cors::CorsConfig;
+use reinhardt::cors::CorsConfig;
 
 let config = CorsConfig {
     allow_origins: vec![
@@ -161,7 +161,7 @@ Allow requests with cookies and authentication headers.
 **Note**: When `allow_credentials: true`, you cannot use `"*"` in `allow_origins`.
 
 ```rust
-use reinhardt_middleware::cors::CorsConfig;
+use reinhardt::cors::CorsConfig;
 
 let config = CorsConfig {
     // Cannot use wildcard with credentials
@@ -184,8 +184,8 @@ let config = CorsConfig {
 ### Apply at Router Level
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::CorsMiddleware;
+use reinhardt::ServerRouter;
+use reinhardt::CorsMiddleware;
 
 let router = ServerRouter::new()
     .with_middleware(CorsMiddleware::permissive());
@@ -194,11 +194,11 @@ let router = ServerRouter::new()
 ### Apply to Specific Routes
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 use hyper::Method;
 
-async fn api_handler(_req: reinhardt_http::Request) -> reinhardt_http::Result<reinhardt_http::Response> {
-    Ok(reinhardt_http::Response::ok())
+async fn api_handler(_req: reinhardt::Request) -> reinhardt::Result<reinhardt::Response> {
+    Ok(reinhardt::Response::ok())
 }
 let router = ServerRouter::new()
     .function("/api/data", Method::GET, api_handler)
@@ -220,8 +220,8 @@ CORS middleware should be applied as early as possible.
 5. Other middleware...
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::{
+use reinhardt::ServerRouter;
+use reinhardt::{
     CorsMiddleware, LoggingMiddleware, SecurityMiddleware
 };
 
@@ -235,5 +235,5 @@ let router = ServerRouter::new()
 
 ## See Also
 
-- [Middleware Creation](./middleware-creation.md)
+- [Middleware Creation](../middleware-creation/)
 - [Security Headers](https://docs.rs/reinhardt-middleware/latest/reinhardt_middleware/struct.SecurityMiddleware.html)

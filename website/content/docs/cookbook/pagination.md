@@ -24,8 +24,8 @@ Guide to paginating large datasets.
 Traditional page number-based pagination.
 
 ```rust
-use reinhardt_core::pagination::{PageNumberPagination, Page};
-use reinhardt_di::params::{Query, Path};
+use reinhardt::pagination::{PageNumberPagination, Page};
+use reinhardt::{Query, Path};
 
 #[derive(serde::Deserialize)]
 struct PageQuery {
@@ -35,7 +35,7 @@ struct PageQuery {
 
 async fn list_users(
     Query(query): Query<PageQuery>,
-) -> reinhardt_http::Response {
+) -> reinhardt::Response {
     let page = query.page.unwrap_or(1);
     let page_size = query.page_size.unwrap_or(10);
 
@@ -63,20 +63,20 @@ async fn list_users(
     };
 
     let response = PaginatedResponse::new(users, metadata);
-    reinhardt_http::Response::ok().with_json(&response).unwrap()
+    reinhardt::Response::ok().with_json(&response).unwrap()
 }
 ```
 
 ### Page Number Validation
 
 ```rust
-use reinhardt_core::pagination::PageNumberPagination;
+use reinhardt::pagination::PageNumberPagination;
 
 let pagination = PageNumberPagination::new(page, page_size)
     .with_max_page_size(100); // Maximum 100 items
 
 if let Err(e) = pagination.validate() {
-    return reinhardt_http::Response::bad_request()
+    return reinhardt::Response::bad_request()
         .with_json(&serde_json::json!({
             "error": "Invalid page parameters",
             "details": e.to_string()
@@ -94,7 +94,7 @@ if let Err(e) = pagination.validate() {
 Flexible limit/offset-based pagination.
 
 ```rust
-use reinhardt_core::pagination::{LimitOffsetPagination, PaginatedResponse};
+use reinhardt::pagination::{LimitOffsetPagination, PaginatedResponse};
 
 #[derive(serde::Deserialize)]
 struct OffsetQuery {
@@ -104,7 +104,7 @@ struct OffsetQuery {
 
 async fn list_items(
     Query(query): Query<OffsetQuery>,
-) -> reinhardt_http::Response {
+) -> reinhardt::Response {
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
 
@@ -129,7 +129,7 @@ async fn list_items(
     };
 
     let response = PaginatedResponse::new(items, metadata);
-    reinhardt_http::Response::ok().with_json(&response).unwrap()
+    reinhardt::Response::ok().with_json(&response).unwrap()
 }
 ```
 
@@ -142,7 +142,7 @@ async fn list_items(
 Best for infinite scroll or real-time feeds.
 
 ```rust
-use reinhardt_core::pagination::{CursorPagination, Cursor};
+use reinhardt::pagination::{CursorPagination, Cursor};
 
 #[derive(serde::Deserialize, Serialize)]
 struct ItemCursor {
@@ -152,7 +152,7 @@ struct ItemCursor {
 
 async fn feed(
     Query(query): Query<serde_json::Value>,
-) -> reinhardt_http::Response {
+) -> reinhardt::Response {
     let cursor = query.get("cursor")
         .and_then(|v| v.as_str())
         .map(|s| Cursor::new(s.to_string()));
@@ -173,14 +173,14 @@ async fn feed(
         "has_more": has_more
     });
 
-    reinhardt_http::Response::ok().with_json(&response).unwrap()
+    reinhardt::Response::ok().with_json(&response).unwrap()
 }
 ```
 
 ### Encoded Cursors
 
 ```rust
-use reinhardt_core::pagination::{Cursor, CursorPagination};
+use reinhardt::pagination::{Cursor, CursorPagination};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 // Encode cursor
@@ -201,7 +201,7 @@ let cursor_data = String::from_utf8(decoded).unwrap();
 Standard paginated response format.
 
 ```rust
-use reinhardt_core::pagination::{PaginatedResponse, PaginationMetadata};
+use reinhardt::pagination::{PaginatedResponse, PaginationMetadata};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -231,7 +231,7 @@ let response = PaginatedResponse {
 Contains detailed page information.
 
 ```rust
-use reinhardt_core::pagination::Page;
+use reinhardt::pagination::Page;
 
 let page = Page::new(
     items,
@@ -297,7 +297,7 @@ async fn get_count_with_cache(key: &str) -> usize {
 ### Efficient Queries
 
 ```rust
-use reinhardt_query::prelude::{Query, Postgres};
+use reinhardt::query::prelude::{Query, Postgres};
 
 // Efficient pagination query (PostgreSQL)
 let (limit, offset) = (page_size, (page - 1) * page_size);
@@ -327,4 +327,4 @@ let count_query = Query::select()
 
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
-- [Response Serialization](./response-serialization.md)
+- [Response Serialization](../response-serialization/)

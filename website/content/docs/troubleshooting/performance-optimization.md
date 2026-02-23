@@ -33,7 +33,7 @@ let router = ServerRouter::new()
 ### Route Registration Best Practices
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 
 // ✅ Use hierarchical routing
 let api_router = ServerRouter::new()
@@ -69,7 +69,7 @@ router.register_all_routes();
 ### Efficient Queries with reinhardt-query
 
 ```rust
-use reinhardt_query::prelude::{Query, Postgres, Expr, Func, Order};
+use reinhardt::query::prelude::{Query, Postgres, Expr, Func, Order};
 
 // ✅ Query using indexes
 let (limit, offset) = (page_size, (page - 1) * page_size);
@@ -94,7 +94,7 @@ let count_query = Query::select()
 ### Avoid N+1 Problem
 
 ```rust
-use reinhardt_db::QuerySet;
+use reinhardt::QuerySet;
 
 // ❌ N+1 problem
 let posts = Post::objects().all().await?;
@@ -118,7 +118,7 @@ let posts = Post::objects()
 HTTP caching using `CacheControlMiddleware`.
 
 ```rust
-use reinhardt_utils::staticfiles::{CacheControlMiddleware, CacheControlConfig};
+use reinhardt::staticfiles::{CacheControlMiddleware, CacheControlConfig};
 
 let config = CacheControlConfig {
     public: true,
@@ -134,7 +134,7 @@ let router = ServerRouter::new()
 ### Cache Directives
 
 ```rust
-use reinhardt_utils::staticfiles::CacheDirective;
+use reinhardt::staticfiles::CacheDirective;
 
 // Versioned files (cache for 1 year)
 let immutable = CacheDirective::public()
@@ -153,7 +153,7 @@ let no_cache = CacheDirective::no_cache();
 ### ETag Conditional Requests
 
 ```rust
-use reinhardt_middleware::ETagMiddleware;
+use reinhardt::ETagMiddleware;
 
 let router = ServerRouter::new()
     .with_middleware(ETagMiddleware::new(ETagConfig::default()));
@@ -169,7 +169,7 @@ let router = ServerRouter::new()
 ### GZip Compression
 
 ```rust
-use reinhardt_middleware::{GZipMiddleware, GZipConfig};
+use reinhardt::{GZipMiddleware, GZipConfig};
 
 let config = GZipConfig {
     level: 6,  // Compression level (1-9, default 6)
@@ -183,7 +183,7 @@ let router = ServerRouter::new()
 ### Brotli Compression
 
 ```rust
-use reinhardt_middleware::{BrotliMiddleware, BrotliConfig};
+use reinhardt::{BrotliMiddleware, BrotliConfig};
 
 let config = BrotliConfig {
     quality: BrotliQuality::Medium,  // Compression quality
@@ -220,7 +220,7 @@ let router = ServerRouter::new()
 ### Measuring Request Time
 
 ```rust
-use reinhardt_middleware::{MetricsMiddleware, MetricsConfig};
+use reinhardt::{MetricsMiddleware, MetricsConfig};
 use std::time::Instant;
 
 async fn timed_handler(req: Request) -> Response {
@@ -239,7 +239,7 @@ async fn timed_handler(req: Request) -> Response {
 ### Metrics Collection
 
 ```rust
-use reinhardt_middleware::{MetricsMiddleware, MetricsStore};
+use reinhardt::{MetricsMiddleware, MetricsStore};
 
 let store = MetricsStore::new();
 let middleware = MetricsMiddleware::new(MetricsConfig::default());
@@ -253,5 +253,5 @@ let router = ServerRouter::new()
 ## See Also
 
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [Serving Static Files](../cookbook/static-files.md)
-- [Middleware Creation](../cookbook/middleware-creation.md)
+- [Serving Static Files](/docs/cookbook/static-files/)
+- [Middleware Creation](/docs/cookbook/middleware-creation/)

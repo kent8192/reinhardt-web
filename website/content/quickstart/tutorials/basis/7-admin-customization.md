@@ -563,8 +563,8 @@ You've completed the Reinhardt Basis Tutorial! You now know how to:
 
 Now that you've learned the basics, you might want to explore:
 
-- **[REST API Tutorial](../rest/quickstart.md)** - Learn to build REST APIs with Reinhardt
-- **[Feature Flags Guide](../../../FEATURE_FLAGS.md)** - Optimize your build configuration
+- **[REST API Tutorial](../rest/quickstart/)** - Learn to build REST APIs with Reinhardt
+- **[Feature Flags Guide](/docs/feature-flags/)** - Optimize your build configuration
 - **Individual Crate Documentation** - Deep dive into specific components
 - **Production Deployment** - Learn about deploying Reinhardt applications
 

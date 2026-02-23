@@ -24,7 +24,7 @@ Guide to extracting data from request bodies and converting to type-safe structs
 Extracts and deserializes JSON from request body.
 
 ```rust
-use reinhardt_di::params::Json;
+use reinhardt::Json;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -33,8 +33,8 @@ struct CreateUser {
     email: String,
 }
 
-async fn create_user(Json(user): Json<CreateUser>) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok()
+async fn create_user(Json(user): Json<CreateUser>) -> reinhardt::Response {
+    reinhardt::Response::ok()
         .with_json(&serde_json::json!({
             "username": user.username,
             "email": user.email
@@ -46,7 +46,7 @@ async fn create_user(Json(user): Json<CreateUser>) -> reinhardt_http::Response {
 ### Nested JSON
 
 ```rust
-use reinhardt_di::params::Json;
+use reinhardt::Json;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -61,8 +61,8 @@ struct CreateUser {
     address: Address,
 }
 
-async fn create_user(Json(user): Json<CreateUser>) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok().with_json(&user).unwrap()
+async fn create_user(Json(user): Json<CreateUser>) -> reinhardt::Response {
+    reinhardt::Response::ok().with_json(&user).unwrap()
 }
 ```
 
@@ -75,7 +75,7 @@ async fn create_user(Json(user): Json<CreateUser>) -> reinhardt_http::Response {
 Extracts `application/x-www-form-urlencoded` data.
 
 ```rust
-use reinhardt_di::params::Form;
+use reinhardt::Form;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -85,8 +85,8 @@ struct ContactForm {
     message: String,
 }
 
-async fn contact(Form(form): Form<ContactForm>) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok()
+async fn contact(Form(form): Form<ContactForm>) -> reinhardt::Response {
+    reinhardt::Response::ok()
         .with_json(&serde_json::json!({
             "message": "Thank you for contacting us!"
         }))
@@ -97,7 +97,7 @@ async fn contact(Form(form): Form<ContactForm>) -> reinhardt_http::Response {
 ### Form Validation
 
 ```rust
-use reinhardt_di::params::{Form, Validation};
+use reinhardt::{Form, Validation};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -113,14 +113,14 @@ struct ContactForm {
     message: String,
 }
 
-async fn contact(Form(form): Form<ContactForm>) -> reinhardt_http::Response {
+async fn contact(Form(form): Form<ContactForm>) -> reinhardt::Response {
     if let Err(errors) = form.validate() {
-        return reinhardt_http::Response::bad_request()
+        return reinhardt::Response::bad_request()
             .with_json(&serde_json::json!({ "errors": errors }))
             .unwrap();
     }
 
-    reinhardt_http::Response::ok()
+    reinhardt::Response::ok()
         .with_json(&serde_json::json!({ "status": "success" }))
         .unwrap()
 }
@@ -135,9 +135,10 @@ async fn contact(Form(form): Form<ContactForm>) -> reinhardt_http::Response {
 Extracts `multipart/form-data` (used for file uploads).
 
 ```rust
-use reinhardt_di::params::{Multipart, MultipartField};
+use reinhardt::Body;
+use multer::Field;
 
-async fn upload_file(mut multipart: Multipart) -> reinhardt_http::Response {
+async fn upload_file(mut multipart: Multipart) -> reinhardt::Response {
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("unknown").to_string();
 
@@ -145,7 +146,7 @@ async fn upload_file(mut multipart: Multipart) -> reinhardt_http::Response {
             // Get file data
             let data = field.bytes().await.unwrap();
 
-            return reinhardt_http::Response::ok()
+            return reinhardt::Response::ok()
                 .with_json(&serde_json::json!({
                     "size": data.len(),
                     "name": name
@@ -154,16 +155,16 @@ async fn upload_file(mut multipart: Multipart) -> reinhardt_http::Response {
         }
     }
 
-    reinhardt_http::Response::bad_request()
+    reinhardt::Response::bad_request()
 }
 ```
 
 ### Multiple Fields and Files
 
 ```rust
-use reinhardt_di::params::Multipart;
+use reinhardt::Multipart;
 
-async fn upload_with_metadata(mut multipart: Multipart) -> reinhardt_http::Response {
+async fn upload_with_metadata(mut multipart: Multipart) -> reinhardt::Response {
     let mut title = None;
     let mut file_data = None;
 
@@ -183,7 +184,7 @@ async fn upload_with_metadata(mut multipart: Multipart) -> reinhardt_http::Respo
         }
     }
 
-    reinhardt_http::Response::ok()
+    reinhardt::Response::ok()
         .with_json(&serde_json::json!({
             "title": title,
             "file_size": file_data.map(|d| d.len())
@@ -201,11 +202,11 @@ async fn upload_with_metadata(mut multipart: Multipart) -> reinhardt_http::Respo
 Extracts raw request body as `Bytes`.
 
 ```rust
-use reinhardt_di::params::Body;
+use reinhardt::Body;
 use bytes::Bytes;
 
-async fn echo_raw(Body(body): Body) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok().with_body(body)
+async fn echo_raw(Body(body): Body) -> reinhardt::Response {
+    reinhardt::Response::ok().with_body(body)
 }
 ```
 
@@ -214,11 +215,11 @@ async fn echo_raw(Body(body): Body) -> reinhardt_http::Response {
 Extract the raw body and convert to `String`.
 
 ```rust
-use reinhardt_di::params::Body;
+use reinhardt::Body;
 
-async fn process_text(Body(body): Body) -> reinhardt_http::Response {
+async fn process_text(Body(body): Body) -> reinhardt::Response {
     let text = String::from_utf8_lossy(&body).to_uppercase();
-    reinhardt_http::Response::ok().with_body(text)
+    reinhardt::Response::ok().with_body(text)
 }
 ```
 
@@ -231,7 +232,7 @@ async fn process_text(Body(body): Body) -> reinhardt_http::Response {
 JSON parse errors are automatically handled with detailed error messages.
 
 ```rust
-use reinhardt_di::params::Json;
+use reinhardt::Json;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -245,20 +246,20 @@ struct User {
 //   "error": "Failed to deserialize JSON as User",
 //   "details": "missing field `username` at line 1 column 10"
 // }
-async fn create_user(Json(user): Json<User>) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok().with_json(&user).unwrap()
+async fn create_user(Json(user): Json<User>) -> reinhardt::Response {
+    reinhardt::Response::ok().with_json(&user).unwrap()
 }
 ```
 
 ### Custom Error Handling
 
 ```rust
-use reinhardt_di::params::Json;
-use reinhardt_http::{Request, Response};
-use reinhardt_di::ParamContext;
+use reinhardt::Json;
+use reinhardt::{Request, Response};
+use reinhardt::di::ParamContext;
 
-async fn create_user_manual(req: Request) -> reinhardt_http::Result<Response> {
-    use reinhardt_di::params::extract::FromRequest;
+async fn create_user_manual(req: Request) -> reinhardt::Result<Response> {
+    use reinhardt::extract::FromRequest;
 
     let ctx = ParamContext::new();
 
@@ -285,7 +286,7 @@ async fn create_user_manual(req: Request) -> reinhardt_http::Result<Response> {
 ### Combining Multiple Extractors
 
 ```rust
-use reinhardt_di::params::{Json, Path, Query};
+use reinhardt::{Json, Path, Query};
 
 #[derive(serde::Deserialize)]
 struct UpdateUser {
@@ -301,8 +302,8 @@ async fn update_user(
     Path(id): Path<u32>,
     Query(filter): Query<Filter>,
     Json(update): Json<UpdateUser>,
-) -> reinhardt_http::Response {
-    reinhardt_http::Response::ok()
+) -> reinhardt::Response {
+    reinhardt::Response::ok()
         .with_json(&serde_json::json!({
             "id": id,
             "update": update,
@@ -317,5 +318,5 @@ async fn update_user(
 ## See Also
 
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
-- [Response Serialization](./response-serialization.md)
+- [Response Serialization](../response-serialization/)
 - [Path Parameters](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)

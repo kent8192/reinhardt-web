@@ -230,7 +230,7 @@ ORM layer for database abstraction with reinhardt-query integration.
 
 ```rust
 use reinhardt::db::orm::{Model, Manager};
-use reinhardt_query::prelude::{Query, Expr, PostgresQueryBuilder};
+use reinhardt::query::prelude::{Query, Expr, PostgresQueryBuilder};
 
 // Model definition (currently manual implementation)
 struct User {
@@ -247,7 +247,7 @@ let query = Query::select()
     .column(User::username)
     .column(User::email)
     .and_where(Expr::col(User::age).gte(18))
-    .order_by(User::created, reinhardt_query::prelude::Order::Desc)
+    .order_by(User::created, reinhardt::query::prelude::Order::Desc)
     .limit(10)
     .to_owned();
 
@@ -495,7 +495,7 @@ Authentication backends and permission system.
 **Example:**
 
 ```rust
-use reinhardt::auth::{JwtAuth, IsAuthenticated};
+use reinhardt::{JwtAuth, IsAuthenticated};
 
 // Configure JWT authentication
 let secret_key = b"your-secret-key";
@@ -912,34 +912,25 @@ Main package that re-exports all components based on feature flags.
 - [Main documentation](https://docs.rs/reinhardt) (available after crates.io publish)
 - [Feature Flags Guide](/docs/feature-flags/)
 
-### reinhardt-micro
-
-Lightweight version for microservices.
-
-**Documentation:**
-
-- [Module documentation](https://docs.rs/reinhardt-micro) (available after crates.io publish)
-
 ## Common Patterns
 
 ### Error Handling
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::http::{Request, Response};
+use reinhardt::{Request, Response};
 use reinhardt::core::exception::Error;
 
 async fn my_handler() -> Result<Response, Error> {
     let data = fetch_data().await?;
-    Ok(Response::json(data))
+    Ok(Response::ok().with_json(&data)?)
 }
 ```
 
 ### Middleware
 
 ```rust
-use reinhardt::middleware::Middleware;
-use reinhardt::http::{Request, Response};
+use reinhardt::{Middleware, Request, Response};
 use async_trait::async_trait;
 
 struct LoggingMiddleware;

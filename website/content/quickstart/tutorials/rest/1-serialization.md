@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 ```
 
-**Note:** Reinhardt uses feature flags to control which components are included in your build. The `standard` feature includes serializers, ORM, authentication, and other common API development tools. For more granular control, see the [Feature Flags Guide](../../../FEATURE_FLAGS.md).
+**Note:** Reinhardt uses feature flags to control which components are included in your build. The `standard` feature includes serializers, ORM, authentication, and other common API development tools. For more granular control, see the [Feature Flags Guide](/docs/feature-flags/).
 
 ## Basic Serialization with Serde
 
@@ -91,17 +91,17 @@ Use field validators for specific field constraints:
 use reinhardt::prelude::*;
 
 // String field with length constraints
-let title_field = CharField::new()
+let title_field = CharField::new("title".to_string())
     .min_length(1)
     .max_length(100);
 
 // Integer field with range constraints
-let age_field = IntegerField::new()
+let age_field = IntegerField::new("age".to_string())
     .min_value(0)
     .max_value(150);
 
 // Email validation
-let email_field = EmailField::new();
+let email_field = EmailField::new("email".to_string());
 
 // Validate values
 title_field.validate(&"My Snippet".to_string()).unwrap();
@@ -433,4 +433,4 @@ In this tutorial, you learned:
 6. Handling nested data structures
 7. Complete validation workflow in API views
 
-Next tutorial: [Tutorial 2: Requests and Responses](2-requests-and-responses.md)
+Next tutorial: [Tutorial 2: Requests and Responses](../2-requests-and-responses/)

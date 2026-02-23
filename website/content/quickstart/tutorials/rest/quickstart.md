@@ -125,7 +125,7 @@ pub async fn create_user(
 }
 ```
 
-**Note**: ViewSets (like Django REST framework's ViewSets) are now available! For building complex APIs with less code, see [Tutorial 6: ViewSets and Routers](6-viewsets-and-routers.md). This quickstart focuses on function-based endpoints using HTTP method decorators like `#[get]`, `#[post]`, etc.
+**Note**: ViewSets (like Django REST framework's ViewSets) are now available! For building complex APIs with less code, see [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/). This quickstart focuses on function-based endpoints using HTTP method decorators like `#[get]`, `#[post]`, etc.
 
 ## Routing
 
@@ -317,4 +317,4 @@ In this quickstart, you learned:
 3. Creating CRUD APIs with ViewSets
 4. Automatic URL generation with routers
 
-For more detailed information, see the [tutorials](1-serialization.md).
+For more detailed information, see the [tutorials](../1-serialization/).

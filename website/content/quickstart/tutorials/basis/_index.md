@@ -52,49 +52,49 @@ As an administrator, you'll be able to:
 
 This tutorial is divided into seven parts:
 
-### [Part 1: Project Setup](1-project-setup.md)
+### [Part 1: Project Setup](1-project-setup/)
 
 - Install Reinhardt
 - Create a new project
 - Run the development server
 - Create your first view and URL configuration
 
-### [Part 2: Models and Database](2-models-and-database.md)
+### [Part 2: Models and Database](2-models-and-database/)
 
 - Set up the database
 - Create models (Question and Choice)
 - Use the database API
 - Introduction to the Reinhardt admin
 
-### [Part 3: Views and URLs](3-views-and-urls.md)
+### [Part 3: Views and URLs](3-views-and-urls/)
 
 - Write more views
 - Connect views to URLs
 - Use templates to render HTML
 - Implement shortcut functions
 
-### [Part 4: Forms and Generic Views](4-forms-and-generic-views.md)
+### [Part 4: Forms and Generic Views](4-forms-and-generic-views/)
 
 - Create HTML forms
 - Process form submissions
 - Use generic views to reduce code
 - Implement the voting functionality
 
-### [Part 5: Testing](5-testing.md)
+### [Part 5: Testing](5-testing/)
 
 - Write automated tests
 - Test models and views
 - Use the test client
 - Follow testing best practices
 
-### [Part 6: Static Files](6-static-files.md)
+### [Part 6: Static Files](6-static-files/)
 
 - Add stylesheets (CSS)
 - Include images
 - Organize static files
 - Configure static file serving
 
-### [Part 7: Admin Customization](7-admin-customization.md)
+### [Part 7: Admin Customization](7-admin-customization/)
 
 - Customize the admin form
 - Add related objects
@@ -116,7 +116,7 @@ If you encounter issues while following this tutorial:
 
 ## Comparison with REST Tutorial
 
-If you're also interested in building REST APIs, check out the [REST Tutorial](../rest/quickstart.md). The key differences are:
+If you're also interested in building REST APIs, check out the [REST Tutorial](../rest/quickstart/). The key differences are:
 
 - **Basis Tutorial**: Focuses on full-stack web applications with server-rendered templates
 - **REST Tutorial**: Focuses on building APIs with JSON responses and serializers
@@ -125,4 +125,4 @@ Both tutorials teach fundamental Reinhardt concepts, so learning one will help y
 
 ## Let's Get Started!
 
-Ready to begin? Head over to [Part 1: Project Setup](1-project-setup.md) to create your first Reinhardt project!
+Ready to begin? Head over to [Part 1: Project Setup](1-project-setup/) to create your first Reinhardt project!

@@ -15,8 +15,8 @@ Solutions to common issues.
 
 ## Table of Contents
 
-- [Common Errors](./common-errors.md)
-- [Performance Optimization](./performance-optimization.md)
+- [Common Errors](common-errors/)
+- [Performance Optimization](performance-optimization/)
 
 ## Overview
 

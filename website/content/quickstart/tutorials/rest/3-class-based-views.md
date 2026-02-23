@@ -92,7 +92,7 @@ let readonly_viewset = ReadOnlyModelViewSet::<Snippet, SnippetSerializer>::new("
 - ✅ `ReadOnlyModelViewSet` - Read-only operations (list, retrieve)
 - ✅ `GenericViewSet` - Base class for custom ViewSets
 
-For detailed examples and advanced usage, see [Tutorial 6: ViewSets and Routers](6-viewsets-and-routers.md).
+For detailed examples and advanced usage, see [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/).
 
 ## Summary
 
@@ -102,4 +102,4 @@ In this tutorial, you learned:
 2. Differences between single and combined operation views
 3. Moving to ViewSets
 
-Next tutorial: [Tutorial 4: Authentication and Permissions](4-authentication-and-permissions.md)
+Next tutorial: [Tutorial 4: Authentication and Permissions](../4-authentication-and-permissions/)

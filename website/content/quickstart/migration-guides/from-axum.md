@@ -39,8 +39,8 @@ async fn get_user(
 ### Reinhardt Handlers
 
 ```rust
-use reinhardt_di::params::{Path, Query};
-use reinhardt_http::Response;
+use reinhardt::{Path, Query};
+use reinhardt::Response;
 
 async fn get_user(
     Path(id): Path<u32>,
@@ -51,7 +51,7 @@ async fn get_user(
 }
 
 // Or implement Handler trait for stateful handlers
-use reinhardt_http::Handler;
+use reinhardt::Handler;
 use async_trait::async_trait;
 
 struct UserHandler {
@@ -94,7 +94,7 @@ async fn get_user(
 ### Reinhardt DI Context
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 // Get dependencies from request via DI context
 async fn get_user(req: Request) -> Response {
@@ -129,8 +129,8 @@ let app = Router::new()
 ### Reinhardt Middleware
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::LoggingMiddleware;
+use reinhardt::ServerRouter;
+use reinhardt::LoggingMiddleware;
 
 let router = ServerRouter::new()
     .with_middleware(LoggingMiddleware::new())
@@ -159,7 +159,7 @@ let app = Router::new()
 ### Reinhardt Router
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 use hyper::Method;
 
 let router = ServerRouter::new()
@@ -192,8 +192,8 @@ async fn handler(
 ### Reinhardt DI Params
 
 ```rust
-use reinhardt_di::params::{Path, Query, Json};
-use reinhardt_http::Response;
+use reinhardt::{Path, Query, Json};
+use reinhardt::Response;
 
 async fn handler(
     Path(id): Path<u32>,
@@ -236,8 +236,8 @@ async fn get_user(Path(id): Path<u32>) -> impl IntoResponse {
 ### Reinhardt
 
 ```rust
-use reinhardt_di::params::Path;
-use reinhardt_http::Response;
+use reinhardt::Path;
+use reinhardt::Response;
 
 async fn get_user(Path(id): Path<u32>) -> Response {
     let user = fetch_user(id).await;
@@ -273,7 +273,7 @@ impl IntoResponse for AppError {
 ### Reinhardt
 
 ```rust
-use reinhardt_http::{Error, Response};
+use reinhardt::{Error, Response};
 
 impl From<AppError> for Response {
     fn from(err: AppError) -> Self {
@@ -313,7 +313,7 @@ let app = Router::new()
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response};
+use reinhardt::{Handler, Middleware, Request, Response};
 
 pub struct LoggingMiddleware;
 
@@ -345,5 +345,5 @@ impl Middleware for LoggingMiddleware {
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [From Django](./from-django.md)
-- [From Actix-web](./from-actix.md)
+- [From Django](../from-django/)
+- [From Actix-web](../from-actix/)

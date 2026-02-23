@@ -667,6 +667,5 @@ Reinhardt provides **70+ features** with **3 granularity levels** (bundle, group
 - **Bundle Features**: See Bundle Features section above
 - **Feature Categories**: See Feature Categories section above
 - **Usage Scenarios**: See Usage Scenarios section above
-- [README.md](../README.md) - Project overview
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Getting started guide
-- [CLAUDE.md](../CLAUDE.md) - Developer guidelines
+- [Project Overview](https://github.com/kent8192/reinhardt-web) - Repository and README
+- [Getting Started Guide](/quickstart/getting-started/) - Getting started guide

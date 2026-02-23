@@ -289,4 +289,4 @@ In this tutorial, you learned:
 7. Handling many-to-many relationships
 8. Benefits of hyperlinked APIs
 
-Next tutorial: [Tutorial 6: ViewSets and Routers](6-viewsets-and-routers.md)
+Next tutorial: [Tutorial 6: ViewSets and Routers](../6-viewsets-and-routers/)

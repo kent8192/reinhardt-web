@@ -1251,4 +1251,4 @@ In this tutorial, you learned:
 
 In the next tutorial, we'll explore form processing and validation in reinhardt-pages applications.
 
-Continue to [Part 4: Forms and Generic Views](4-forms-and-generic-views.md).
+Continue to [Part 4: Forms and Generic Views](../4-forms-and-generic-views/).

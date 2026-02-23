@@ -321,8 +321,8 @@ You can now build production-ready RESTful APIs with this knowledge!
 
 ## Next Steps
 
-- For more advanced topics, see the [API Reference](../../../api/README.md)
-- Learn about [Dependency Injection](../../07-dependency-injection.md)
-- Check out the [Feature Flags Guide](../../../FEATURE_FLAGS.md) for customization
-- Try the working example in [examples-tutorial-rest](../../../examples/examples-tutorial-rest/)
+- For more advanced topics, see the [API Reference](/docs/api/)
+- Learn about Dependency Injection (documentation coming soon)
+- Check out the [Feature Flags Guide](/docs/feature-flags/) for customization
+- Try the working example in [examples-tutorial-rest](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-tutorial-rest)
 - Join the community to ask questions

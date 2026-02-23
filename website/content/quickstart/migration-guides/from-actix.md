@@ -33,15 +33,14 @@ async fn get_user(path: web::Path<u32>) -> HttpResponse {
 ### Reinhardt Handlers
 
 ```rust
-use reinhardt_di::params::Path;
-use reinhardt_http::Response;
+use reinhardt::{Path, Response};
 
 async fn get_user(Path(id): Path<u32>) -> Response {
     Response::ok().with_json(&id).unwrap()
 }
 
 // Or implement Handler trait for stateful handlers
-use reinhardt_http::Handler;
+use reinhardt::Handler;
 use async_trait::async_trait;
 
 struct UserHandler {
@@ -78,7 +77,7 @@ async fn create_user(user: web::Json<User>) -> HttpResponse {
 ### Reinhardt DI Params
 
 ```rust
-use reinhardt_di::params::{Json, Path};
+use reinhardt::{Json, Path};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -124,7 +123,7 @@ where
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response};
+use reinhardt::{Handler, Middleware, Request, Response};
 
 pub struct LoggingMiddleware;
 
@@ -169,8 +168,8 @@ async fn main() -> std::io::Result<()> {
 ### Reinhardt DI Context
 
 ```rust
-use reinhardt_di::{InjectionContext, SingletonScope};
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::di::{InjectionContext, SingletonScope};
+use reinhardt::ServerRouter;
 
 // Set up DI context
 let singleton_scope = Arc::new(SingletonScope::new());
@@ -219,7 +218,7 @@ async fn main() -> std::io::Result<()> {
 ### Reinhardt Routing
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 use hyper::Method;
 
 let router = ServerRouter::new()
@@ -258,7 +257,7 @@ HttpResponse::NotFound()
 ### Reinhardt
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 Response::ok()
     .with_json(&data)
@@ -325,5 +324,5 @@ async fn handler(req: Request) -> Response {
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [From Django](./from-django.md)
-- [From Axum](./from-axum.md)
+- [From Django](../from-django/)
+- [From Axum](../from-axum/)

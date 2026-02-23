@@ -62,8 +62,8 @@ urlpatterns = [
 
 ```rust
 // routes.rs
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_views::View;
+use reinhardt::ServerRouter;
+use reinhardt::View;
 use hyper::Method;
 
 pub fn user_routes() -> ServerRouter {
@@ -92,7 +92,7 @@ url = reverse('user-detail', kwargs={'id': 123})
 #### Reinhardt
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 
 let mut router = user_routes();
 router.register_all_routes();
@@ -128,7 +128,7 @@ user.delete()
 ### Reinhardt ORM
 
 ```rust
-use reinhardt_db::QuerySet;
+use reinhardt::QuerySet;
 
 // QuerySet API
 let users = User::objects()
@@ -174,29 +174,27 @@ DATABASES = {
 
 ### Reinhardt Settings
 
-Reinhardt uses environment variables and structured configuration:
+Reinhardt uses a built-in settings system with multiple sources:
 
 ```rust
 // config.rs
-use serde::Deserialize;
+use reinhardt::{Settings, SettingsBuilder, EnvSource, DefaultSource};
 
-#[derive(Deserialize)]
-pub struct Config {
-    pub debug: bool,
-    pub secret_key: String,
-    pub database_url: String,
-}
-
-impl Config {
-    pub fn from_env() -> Result<Self, envy::Error> {
-        envy::prefixed("APP_")
-            .from_env()
-            .init()
-    }
+pub fn get_settings() -> Settings {
+    SettingsBuilder::new()
+        .add_source(DefaultSource::new())
+        .add_source(EnvSource::new().with_prefix("APP_"))
+        .build()
+        .expect("Failed to build settings")
+        .into_typed()
+        .expect("Failed to convert settings")
 }
 
 // main.rs
-let config = Config::from_env()?;
+let settings = get_settings();
+let debug = settings.get::<bool>("debug").unwrap_or(false);
+let secret_key = settings.get::<String>("secret_key").unwrap();
+let database_url = settings.get::<String>("database_url").unwrap();
 ```
 
 ---
@@ -265,10 +263,7 @@ class UserListView(View):
 
 ```rust
 // views.rs
-use reinhardt_views::View;
-use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_views::viewsets::Action;
-use reinhardt_http::{Request, Response};
+use reinhardt::{View, EndpointMetadata, Request, Response};
 
 pub struct UserListView;
 
@@ -280,8 +275,8 @@ impl View for UserListView {
     }
 }
 
-// EndpointInfo for route configuration
-impl EndpointInfo for UserListView {
+// EndpointMetadata for route configuration
+impl EndpointMetadata for UserListView {
     fn path() -> &'static str { "/users/" }
     fn method() -> Method { Method::GET }
     fn name() -> &'static str { "user-list" }
@@ -321,7 +316,7 @@ struct UserForm {
 }
 
 // In handler
-use reinhardt_di::params::Json;
+use reinhardt::Json;
 
 async fn create_user(Json(form): Json<UserForm>) -> Response {
     if let Err(errors) = form.validate() {
@@ -362,7 +357,7 @@ class CustomMiddleware:
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response};
+use reinhardt::{Handler, Middleware, Request, Response};
 
 pub struct CustomMiddleware;
 
@@ -398,5 +393,5 @@ impl Middleware for CustomMiddleware {
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [From Actix-web](./from-actix.md)
-- [From Axum](./from-axum.md)
+- [From Actix-web](../from-actix/)
+- [From Axum](../from-axum/)

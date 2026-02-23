@@ -61,4 +61,4 @@ Before starting, you should have:
 
 - Check the [Getting Started Guide](../getting-started/)
 - Review the [Feature Flags Guide](../../docs/feature-flags/)
-- Visit the [GitHub Repository](https://github.com/kent8192/reinhardt-rs)
+- Visit the [GitHub Repository](https://github.com/kent8192/reinhardt-web)

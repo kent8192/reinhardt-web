@@ -392,8 +392,7 @@ If you want to manage configuration using only environment variables without
 TOML files, use `EnvSource`:
 
 ```rust
-use reinhardt_conf::settings::prelude::*;
-use reinhardt_settings::Settings;
+use reinhardt::{Settings, SettingsBuilder, EnvSource, DefaultSource};
 
 pub fn get_settings() -> Settings {
     SettingsBuilder::new()
@@ -415,8 +414,7 @@ pub fn get_settings() -> Settings {
 `src/config/settings.rs`:
 
 ```rust
-use reinhardt_conf::settings::prelude::*;
-use reinhardt_settings::Settings;
+use reinhardt::{Settings, SettingsBuilder, EnvSource, DefaultSource, TomlFileSource, Profile};
 use std::env;
 use std::path::PathBuf;
 
@@ -518,11 +516,10 @@ export REINHARDT_DATABASE_PASSWORD="actual-db-password"
 
 #### Option 2: Secret Management Systems
 
-```rust
-// TODO: Once the secrets module of reinhardt-settings is implemented,
-// add implementation examples for loading secrets from
-// AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, etc.
-```
+For production deployments, integrate with secret management systems such as
+AWS Secrets Manager, HashiCorp Vault, or Azure Key Vault by implementing a
+custom `ConfigSource` that fetches secrets at startup. See
+[Implementing Custom Sources](#implementing-custom-sources) for details.
 
 ---
 
@@ -598,7 +595,7 @@ pub fn get_settings() -> Settings {
 ### Using JSON Format
 
 ```rust
-use reinhardt_conf::settings::sources::JsonFileSource;
+use reinhardt::settings::sources::JsonFileSource;
 
 pub fn get_settings() -> Settings {
     SettingsBuilder::new()
@@ -614,7 +611,7 @@ pub fn get_settings() -> Settings {
 ### Implementing Custom Sources
 
 ```rust
-use reinhardt_settings::sources::{ConfigSource, SourceError};
+use reinhardt::settings::sources::{ConfigSource, SourceError};
 use indexmap::IndexMap;
 use serde_json::Value;
 
@@ -812,7 +809,7 @@ pub struct Settings {
 
 **Note:** This example shows runtime feature flags (application settings). For
 compile-time feature flags (Cargo features), see the
-[Feature Flags Guide](FEATURE_FLAGS.md).
+[Feature Flags Guide](/docs/feature-flags/).
 
 ```toml
 # base.toml
@@ -923,8 +920,8 @@ Reinhardt's settings system is:
 
 ## Next Steps
 
-- [Getting Started Guide](GETTING_STARTED.md) - Basic usage of Reinhardt
-- [Example Projects](../examples/) - Real project examples
+- [Getting Started Guide](/quickstart/getting-started/) - Basic usage of Reinhardt
+- [Example Projects](https://github.com/kent8192/reinhardt-web/tree/main/examples) - Real project examples
 - [reinhardt-settings API Documentation](https://docs.rs/reinhardt-settings) -
   Detailed API specification
 

@@ -29,11 +29,11 @@ Reinhardt provides standard permission implementations that you can use out of t
 
 ### Using Standard Permissions (Recommended)
 
-Reinhardt includes common permission classes in `reinhardt_auth::core`:
+Reinhardt includes common permission classes:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::auth::{IsAuthenticated, AllowAny};
+use reinhardt::{IsAuthenticated, AllowAny};
 
 // Use the standard IsAuthenticated permission
 let permissions = vec![
@@ -80,14 +80,14 @@ pub struct PermissionContext<'a> {
 
 ## Standard Permission Classes
 
-Reinhardt provides the following standard permission classes in `reinhardt_auth::core`:
+Reinhardt provides the following standard permission classes:
 
 ### AllowAny
 
 Allows access to any user (authenticated or not). This is the default permission:
 
 ```rust
-use reinhardt::auth::AllowAny;
+use reinhardt::AllowAny;
 
 let permission = Box::new(AllowAny) as Box<dyn Permission>;
 ```
@@ -97,7 +97,7 @@ let permission = Box::new(AllowAny) as Box<dyn Permission>;
 Only authenticated users can access:
 
 ```rust
-use reinhardt::auth::IsAuthenticated;
+use reinhardt::IsAuthenticated;
 
 let permission = Box::new(IsAuthenticated) as Box<dyn Permission>;
 ```
@@ -121,7 +121,7 @@ Admin-only permission (implementation planned):
 
 ```rust
 // Future implementation - not yet available
-use reinhardt::auth::IsAdminUser;
+use reinhardt::IsAdminUser;
 
 let permission = Box::new(IsAdminUser) as Box<dyn Permission>;
 ```
@@ -229,7 +229,7 @@ Full authentication and permission workflow using standard and custom permission
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::auth::IsAuthenticated;
+use reinhardt::IsAuthenticated;
 use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 use hyper::Method;
@@ -292,4 +292,4 @@ In this tutorial, you learned:
 6. Combining multiple permissions
 7. Applying permissions to ViewSets
 
-Next tutorial: [Tutorial 5: Relationships and Hyperlinked APIs](5-relationships-and-hyperlinked-apis.md)
+Next tutorial: [Tutorial 5: Relationships and Hyperlinked APIs](../5-relationships-and-hyperlinked-apis/)

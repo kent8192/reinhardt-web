@@ -103,7 +103,7 @@ Visit `http://127.0.0.1:8000/` in your browser.
 - `cargo make wasm-build-dev` - Build WASM only (debug)
 - `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
-See [examples/examples-twitter](../examples/examples-twitter) for a complete implementation.
+See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
 
 ### Step 3: Choose Your Flavor
 
@@ -143,10 +143,6 @@ For microservices and simple APIs:
 
 ```toml
 [dependencies]
-# Standalone crate
-reinhardt-micro = "0.1.0-alpha.1"
-
-# Or via main crate
 reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -191,7 +187,7 @@ Edit `hello/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt_http::ViewResult;
+use reinhardt::ViewResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -310,7 +306,7 @@ reinhardt-admin startapp myapp
 ```
 
 For more details, see the
-[reinhardt-commands documentation](#).
+reinhardt-commands documentation.
 
 ## Next Steps
 
@@ -329,7 +325,7 @@ next:
 - **Dependency Injection** - FastAPI-style DI (Tutorial coming soon)
 - [Feature Flags Guide](/docs/feature-flags/) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
-- [Management Commands](#) - Django-style
+- Management Commands - Django-style
   CLI
 
 ### 🔌 Database Integration
@@ -338,8 +334,7 @@ To use a database instead of in-memory storage:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "database"] }
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
+reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "db-postgres"] }
 ```
 
 Check out the [ORM documentation](/docs/api/) for more details.

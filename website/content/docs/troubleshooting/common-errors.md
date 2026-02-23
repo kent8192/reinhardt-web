@@ -33,7 +33,7 @@ Need to determine whether to return 404 (Not Found) or 405 (Method Not Allowed) 
 Reinhardt's router automatically distinguishes between 404 and 405:
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 use hyper::Method;
 
 let router = ServerRouter::new()
@@ -49,7 +49,7 @@ let router = ServerRouter::new()
 ### Custom Handlers
 
 ```rust
-use reinhardt_http::{Error, Response};
+use reinhardt::{Error, Response};
 
 async fn handle_route_not_found() -> Response {
     Response::not_found()
@@ -88,9 +88,9 @@ Path parameters are not being extracted correctly.
 ### Solution
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
+use reinhardt::ServerRouter;
 use hyper::Method;
-use reinhardt_di::params::Path;
+use reinhardt::Path;
 
 // Parameter name in route registration
 let router = ServerRouter::new()
@@ -133,8 +133,8 @@ Cannot access dependencies in handler because DI context is not configured.
 ### Solution
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_di::{InjectionContext, SingletonScope};
+use reinhardt::ServerRouter;
+use reinhardt::di::{InjectionContext, SingletonScope};
 use std::sync::Arc;
 
 let singleton_scope = Arc::new(SingletonScope::new());
@@ -144,7 +144,7 @@ let router = ServerRouter::new()
     .with_di_context(di_ctx);
 
 // Get DI context in handler
-async fn handler_with_di(req: reinhardt_http::Request) -> Response {
+async fn handler_with_di(req: reinhardt::Request) -> Response {
     if let Some(ctx) = req.get_di_context::<InjectionContext>() {
         // Use DI context
         Response::ok()
@@ -157,14 +157,14 @@ async fn handler_with_di(req: reinhardt_http::Request) -> Response {
 ### Typed DI Parameters
 
 ```rust
-use reinhardt_di::params::Di;
+use reinhardt::Depends;
 
 #[derive(Clone)]
 struct Database {
     // ...
 }
 
-async fn handler_with_db(Di(db): Di<Arc<Database>>) -> Response {
+async fn handler_with_db(Depends(db): Depends<Arc<Database>>) -> Response {
     // Use db for database operations
     Response::ok()
 }
@@ -188,8 +188,8 @@ Middleware not working as expected due to incorrect order.
 Recommended middleware order:
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::*;
+use reinhardt::ServerRouter;
+use reinhardt::middleware::*;
 
 let router = ServerRouter::new()
     .with_middleware(RequestIdMiddleware::new())       // 1. Request ID
@@ -220,7 +220,7 @@ Preflight requests (OPTIONS) are failing.
 ### Solution
 
 ```rust
-use reinhardt_middleware::{CorsMiddleware, cors::CorsConfig};
+use reinhardt::{CorsMiddleware, cors::CorsConfig};
 
 let config = CorsConfig {
     allow_origins: vec!["https://app.example.com".to_string()],
@@ -263,4 +263,4 @@ Access-Control-Max-Age: 3600
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
 - [Router API](https://docs.rs/reinhardt-urls/latest/reinhardt_urls/routers/struct.ServerRouter.html)
-- [CORS Configuration](../cookbook/cors.md)
+- [CORS Configuration](/docs/cookbook/cors/)

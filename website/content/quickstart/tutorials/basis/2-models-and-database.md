@@ -115,7 +115,7 @@ user = "root"
 password = "root"
 ```
 
-For more database options and configurations, see the [Feature Flags Guide](../../../FEATURE_FLAGS.md).
+For more database options and configurations, see the [Feature Flags Guide](/docs/feature-flags/).
 
 ### Configuration for This Tutorial
 
@@ -905,4 +905,4 @@ Now that our models are set up, we can start building views that display this
 data to users. In the next tutorial, we'll create views that show poll questions
 and their details.
 
-Continue to [Part 3: Views and URLs](3-views-and-urls.md).
+Continue to [Part 3: Views and URLs](../3-views-and-urls/).

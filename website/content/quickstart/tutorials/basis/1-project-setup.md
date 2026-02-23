@@ -99,9 +99,9 @@ my-app/
 - `cargo make wasm-build-dev` - Build WASM only (debug)
 - `cargo make wasm-build-release` - Build WASM only (release, with wasm-opt)
 
-See [examples/examples-twitter](../../../examples/examples-twitter) for a complete implementation.
+See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete implementation.
 
-**Note**: This tutorial focuses on the **reinhardt-pages (WASM + SSR)** architecture with server functions. For building RESTful APIs instead, see the [REST API Tutorial](../rest/0-http-macros.md).
+**Note**: This tutorial focuses on the **reinhardt-pages (WASM + SSR)** architecture with server functions. For building RESTful APIs instead, see the [REST API Tutorial](../rest/0-http-macros/).
 
 ## Understanding the Project Structure
 
@@ -157,9 +157,9 @@ If you're building backend APIs for separate frontends (React, Vue, mobile apps)
 - **WASM + SSR** (this tutorial): When building full-stack applications with integrated UI
 - **RESTful API**: When building APIs for multiple clients
 
-For RESTful API development, see the [REST API Tutorial](../rest/0-http-macros.md).
+For RESTful API development, see the [REST API Tutorial](../rest/0-http-macros/).
 
-See [examples/examples-twitter](../../../examples/examples-twitter) for a complete WASM + SSR implementation.
+See [examples/examples-twitter](https://github.com/kent8192/reinhardt-web/tree/main/examples/examples-twitter) for a complete WASM + SSR implementation.
 
 ## Understanding reinhardt-pages Architecture
 
@@ -917,11 +917,11 @@ via `installed_apps!`. Instead, they are enabled through Cargo feature flags.
 
 | Feature | Cargo.toml | Import |
 |---------|------------|--------|
-| Authentication | `features = ["auth"]` | `use reinhardt::auth::*;` |
+| Authentication | `features = ["auth"]` | `use reinhardt::{IsAuthenticated, AllowAny, JwtAuth};` |
 | Admin Panel | `features = ["admin"]` | `use reinhardt::admin::*;` |
-| Sessions | `features = ["sessions"]` | `use reinhardt::auth::sessions::*;` |
+| Sessions | `features = ["sessions"]` | `use reinhardt::sessions::*;` |
 | REST API | `features = ["rest"]` | `use reinhardt::rest::*;` |
-| Database | `features = ["database"]` | `use reinhardt::db::*;` |
+| Database | `features = ["database"]` | `use reinhardt::{QuerySet, DatabaseConnection};` |
 
 **Example Configuration**:
 
@@ -936,7 +936,7 @@ reinhardt = {
 }
 ```
 
-For a complete list of available features, see the [Feature Flags Guide](../../FEATURE_FLAGS.md).
+For a complete list of available features, see the [Feature Flags Guide](/docs/feature-flags/).
 
 **Why This Design?**
 
@@ -1141,7 +1141,7 @@ the next tutorial, we'll set up a database and create models to store poll
 questions and choices.
 
 When you're ready, move on to
-[Part 2: Models and Database](2-models-and-database.md).
+[Part 2: Models and Database](../2-models-and-database/).
 
 ## Summary
 

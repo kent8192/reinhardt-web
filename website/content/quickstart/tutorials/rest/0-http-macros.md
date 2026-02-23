@@ -21,7 +21,7 @@ HTTP method decorators provide a FastAPI-inspired approach to defining API endpo
 - Traditional HTTP request-response patterns
 - Server-side only applications (no WASM)
 
-**For full-stack applications**, consider using [reinhardt-pages with server functions](../basis/1-project-setup.md) instead.
+**For full-stack applications**, consider using [reinhardt-pages with server functions](../basis/1-project-setup/) instead.
 
 ---
 
@@ -402,27 +402,30 @@ pub async fn get_user(
 HTTP decorators work seamlessly with Reinhardt middleware:
 
 ```rust
-use reinhardt::middleware::{Middleware, MiddlewareChain};
+use reinhardt::{Middleware, MiddlewareChain, Handler, Request, Response};
+use std::sync::Arc;
 
 pub struct AuthMiddleware;
 
 #[async_trait]
 impl Middleware for AuthMiddleware {
-    async fn process(&self, req: Request, next: MiddlewareChain) -> Result<Response> {
+    async fn process(&self, req: Request, next: Arc<dyn Handler>) -> Result<Response> {
         // Check authentication
         if !req.session().has("user_id") {
-            return Response::new(StatusCode::UNAUTHORIZED)
-                .with_body("Unauthorized");
+            return Ok(Response::new(StatusCode::UNAUTHORIZED)
+                .with_body("Unauthorized"));
         }
 
-        next.call(req).await
+        next.handle(req).await
     }
 }
 
 // Apply to routes
 let router = UnifiedRouter::new()
-    .function("/protected", Method::GET, protected_handler)
-    .middleware(AuthMiddleware);
+    .function("/protected", Method::GET, protected_handler);
+
+let app = MiddlewareChain::new(Arc::new(router))
+    .with_middleware(Arc::new(AuthMiddleware));
 ```
 
 ---
@@ -494,6 +497,6 @@ HTTP method decorators provide a powerful, type-safe way to build RESTful APIs i
 - Traditional HTTP request-response patterns
 
 **Alternative:**
-- For full-stack applications, see [reinhardt-pages with server functions](../basis/1-project-setup.md)
+- For full-stack applications, see [reinhardt-pages with server functions](../basis/1-project-setup/)
 
-For more examples, see the [REST API Tutorial](1-serialization.md).
+For more examples, see the [REST API Tutorial](../1-serialization/).

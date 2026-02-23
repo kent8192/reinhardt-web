@@ -355,4 +355,4 @@ In this tutorial, you learned:
 5. Error handling
 6. Complete request/response workflow
 
-Next tutorial: [Tutorial 3: Class-Based Views](3-class-based-views.md)
+Next tutorial: [Tutorial 3: Class-Based Views](../3-class-based-views/)

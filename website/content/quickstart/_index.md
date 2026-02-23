@@ -19,12 +19,22 @@ reinhardt = { version = "0.1.0-alpha", package = "reinhardt-web" }
 ## 2. Create your first app
 
 ```rust
-use reinhardt::prelude::*;
+use reinhardt::{ServerRouter, DefaultRouter, get, Response};
+
+#[get("/")]
+async fn index() -> Response {
+    Response::ok().with_body("Hello, Reinhardt!")
+}
 
 #[tokio::main]
 async fn main() {
-    let app = Reinhardt::new();
-    app.run("0.0.0.0:8000").await.unwrap();
+    let router = DefaultRouter::new()
+        .register(index);
+
+    ServerRouter::bind("0.0.0.0:8000")
+        .serve(router)
+        .await
+        .unwrap();
 }
 ```
 

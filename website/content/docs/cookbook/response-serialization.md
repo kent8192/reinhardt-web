@@ -24,7 +24,7 @@ Guide to serializing data as JSON or other formats in responses.
 Return JSON responses using `Response::with_json()`.
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -52,7 +52,7 @@ async fn get_user() -> Response {
 Use macro for simple JSON responses.
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 use serde_json::json;
 
 async fn health_check() -> Response {
@@ -72,7 +72,7 @@ async fn health_check() -> Response {
 ### Created (201 Created)
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn create_user() -> Response {
     Response::created()
@@ -87,7 +87,7 @@ async fn create_user() -> Response {
 ### Error Response (400 Bad Request)
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn invalid_request() -> Response {
     Response::bad_request()
@@ -102,7 +102,7 @@ async fn invalid_request() -> Response {
 ### Not Found (404 Not Found)
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn not_found() -> Response {
     Response::not_found()
@@ -123,7 +123,7 @@ async fn not_found() -> Response {
 Stream large or chunked data.
 
 ```rust
-use reinhardt_http::StreamingResponse;
+use reinhardt::StreamingResponse;
 use futures::stream;
 use bytes::Bytes;
 
@@ -142,7 +142,7 @@ async fn stream_data() -> StreamingResponse<impl Stream<Item = Result<Bytes, Box
 ### Server-Sent Events
 
 ```rust
-use reinhardt_http::StreamingResponse;
+use reinhardt::StreamingResponse;
 use futures::stream;
 use std::time::Duration;
 
@@ -169,7 +169,7 @@ async fn sse_events() -> StreamingResponse<impl Stream<Item = Result<Bytes, Box<
 Use `From<Error>` implementation.
 
 ```rust
-use reinhardt_http::{Error, Response};
+use reinhardt::{Error, Response};
 
 async fn handle_result() -> Response {
     let result = fetch_data().await;
@@ -184,7 +184,7 @@ async fn handle_result() -> Response {
 ### Custom Error Responses
 
 ```rust
-use reinhardt_http::{Error, Response};
+use reinhardt::{Error, Response};
 
 #[derive(Debug)]
 enum ApiError {
@@ -219,8 +219,8 @@ impl From<ApiError> for Response {
 Return paginated data.
 
 ```rust
-use reinhardt_core::pagination::{PaginatedResponse, PaginationMetadata, Page};
-use reinhardt_http::Response;
+use reinhardt::pagination::{PaginatedResponse, PaginationMetadata, Page};
+use reinhardt::Response;
 
 async fn list_users(page: usize) -> Response {
     let page_data = fetch_users_page(page).await;
@@ -247,7 +247,7 @@ async fn list_users(page: usize) -> Response {
 ### `Page` Struct
 
 ```rust
-use reinhardt_core::pagination::Page;
+use reinhardt::pagination::Page;
 
 let page = Page::new(
     vec!["item1", "item2", "item3"], // results
@@ -269,7 +269,7 @@ assert!(page.has_next());
 ### Adding Custom Headers
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn with_custom_headers() -> Response {
     Response::ok()
@@ -283,7 +283,7 @@ async fn with_custom_headers() -> Response {
 ### Explicit Content-Type
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn custom_content_type() -> Response {
     Response::ok()
@@ -299,7 +299,7 @@ async fn custom_content_type() -> Response {
 ### 204 No Content
 
 ```rust
-use reinhardt_http::Response;
+use reinhardt::Response;
 
 async fn delete_resource() -> Response {
     // Delete resource...
@@ -313,5 +313,5 @@ async fn delete_resource() -> Response {
 
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)
-- [Pagination](./pagination.md)
-- [Request Body Parsing](./request-body-parsing.md)
+- [Pagination](../pagination/)
+- [Request Body Parsing](../request-body-parsing/)

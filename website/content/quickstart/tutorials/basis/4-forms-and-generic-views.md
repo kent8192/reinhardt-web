@@ -1035,4 +1035,4 @@ In the next tutorial, we'll write automated tests for our reinhardt-pages applic
 - Server function testing
 - Integration testing with browser automation
 
-Continue to [Part 5: Testing](5-testing.md).
+Continue to [Part 5: Testing](../5-testing/).

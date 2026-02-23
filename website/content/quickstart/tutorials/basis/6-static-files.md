@@ -1363,4 +1363,4 @@ Your polls app now has a clean, professional appearance with custom styling!
 
 In the final tutorial, we'll explore the Reinhardt admin interface and learn how to customize it for managing poll data. Note that the admin panel uses a different rendering approach, so concepts from this tutorial will be adapted accordingly.
 
-Continue to [Part 7: Admin Customization](7-admin-customization.md).
+Continue to [Part 7: Admin Customization](../7-admin-customization/).

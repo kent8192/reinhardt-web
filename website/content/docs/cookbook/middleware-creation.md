@@ -24,7 +24,7 @@ All middleware must implement the `Middleware` trait.
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response, Result};
+use reinhardt::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 #[async_trait]
@@ -47,7 +47,7 @@ pub trait Middleware: Send + Sync {
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response, Result};
+use reinhardt::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 pub struct LoggingMiddleware;
@@ -70,7 +70,7 @@ impl Middleware for LoggingMiddleware {
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response, Result};
+use reinhardt::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 pub struct CustomHeaderMiddleware {
@@ -113,7 +113,7 @@ Execute middleware only under certain conditions.
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response, Result};
+use reinhardt::{Handler, Middleware, Request, Response, Result};
 use std::sync::Arc;
 
 pub struct AdminOnlyMiddleware;
@@ -146,7 +146,7 @@ impl Middleware for AdminOnlyMiddleware {
 
 ```rust
 use async_trait::async_trait;
-use reinhardt_http::{Handler, Middleware, Request, Response, Result};
+use reinhardt::{Handler, Middleware, Request, Response, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -225,8 +225,8 @@ Middleware execution order matters. A typical recommended order:
 10. Application handlers
 
 ```rust
-use reinhardt_urls::routers::ServerRouter;
-use reinhardt_middleware::{
+use reinhardt::ServerRouter;
+use reinhardt::{
     LoggingMiddleware, SecurityMiddleware, CorsMiddleware,
     SessionMiddleware, CsrfMiddleware, RateLimitMiddleware
 };
@@ -315,7 +315,7 @@ Reinhardt includes 30+ built-in middleware components.
 
 ## See Also
 
-- [CORS Configuration](./cors.md)
-- [Serving Static Files](./static-files.md)
+- [CORS Configuration](../cors/)
+- [Serving Static Files](../static-files/)
 - [Request API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Request.html)
 - [Response API](https://docs.rs/reinhardt-http/latest/reinhardt_http/struct.Response.html)

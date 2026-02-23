@@ -170,7 +170,7 @@ async fn test_user(
 }
 ```
 
-For more details on testing infrastructure, see [Testing Standards](../../../TESTING_STANDARDS.md).
+For more details on testing infrastructure, see the project's testing standards documentation.
 
 ## Testing with Database using rstest + TestContainers
 
@@ -630,4 +630,4 @@ In this tutorial, you learned:
 
 Now that we have a well-tested application, let's add static files (CSS, JavaScript, images) to improve the user interface.
 
-Continue to [Part 6: Static Files](6-static-files.md).
+Continue to [Part 6: Static Files](../6-static-files/).
