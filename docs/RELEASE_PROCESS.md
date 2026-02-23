@@ -252,7 +252,6 @@ The following packages are excluded from release:
 - `reinhardt-integration-tests` - Integration tests
 - `reinhardt-benchmarks` - Benchmark tests
 - `examples-*` - Example projects
-- `reinhardt-settings-cli` - Internal CLI tool
 
 ### Configuration Rationale
 

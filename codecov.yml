@@ -27,7 +27,6 @@ coverage:
     - "crates/reinhardt-urls/routers-macros/**"
     # CLI tools
     - "crates/reinhardt-admin-cli/**"
-    - "crates/reinhardt-conf/crates/settings-cli/**"
     # Test infrastructure
     - "crates/reinhardt-test/**"
     - "tests/**"

@@ -291,7 +291,6 @@ members = [
   "crates/reinhardt-query/macros",
   "crates/reinhardt-apps",
   "crates/reinhardt-conf",
-  "crates/reinhardt-conf/crates/settings-cli",
   "crates/reinhardt-core",
   "crates/reinhardt-core/macros",
   "crates/reinhardt-di",
@@ -368,7 +367,6 @@ reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.17" 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.11" }
 reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.14" }
-reinhardt-settings-cli = { path = "crates/reinhardt-conf/crates/settings-cli", version = "0.1.0-alpha.1" }
 reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-alpha.7" }
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-alpha.8" }
 reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-alpha.8" }
@@ -396,8 +394,6 @@ reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.1.0-alph
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.1.0-alpha.15" }
 reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.1.0-alpha.2" }
 reinhardt-query = { path = "crates/reinhardt-query", version = "0.1.0-alpha.4" }
-reinhardt-postgres = { path = "crates/reinhardt-postgres", version = "0.1.0-alpha.1" }
-reinhardt-events = { path = "crates/reinhardt-events", version = "0.1.0-alpha.1" }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.1.0-alpha.13" }
 reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.1.0-alpha.12" }
 reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.1.0-alpha.6" }
