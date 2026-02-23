@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.6...reinhardt-graphql@v0.1.0-alpha.7) - 2026-02-23
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
 ## [0.1.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.1.0-alpha.5...reinhardt-graphql@v0.1.0-alpha.6) - 2026-02-21
 
 ### Fixed
