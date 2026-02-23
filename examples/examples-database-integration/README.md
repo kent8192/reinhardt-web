@@ -365,5 +365,4 @@ cargo run --bin manage migrate --fake-initial
 
 ## License
 
-This example is provided as part of the Reinhardt project under MIT/Apache-2.0
-license.
+This example is provided as part of the Reinhardt project under the BSD 3-Clause License.

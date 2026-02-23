@@ -686,7 +686,7 @@ cargo make clippy-fix
 
 ## License
 
-By contributing to Reinhardt, you agree that your contributions will be licensed under both the MIT License and Apache License 2.0.
+By contributing to Reinhardt, you agree that your contributions will be licensed under the BSD 3-Clause License.
 
 ---
 
