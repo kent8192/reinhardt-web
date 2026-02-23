@@ -8,31 +8,38 @@
 	<aside class="sidebar" aria-label="Documentation navigation">
 		<nav aria-label="Docs sections">
 			<ul role="list">
-				{% for page in section.pages %}
-				<li>
-					<a href="{{ page.permalink | safe }}"
-						 {% if page.permalink == current_url %}aria-current="page"{% endif %}>
-						{{ page.title }}
-					</a>
-				</li>
-				{% endfor %}
-				{% for subsection in section.subsections %}
-				{% set sub = get_section(path=subsection) %}
-				<li>
-					<a href="{{ sub.permalink | safe }}">{{ sub.title }}</a>
-					{% if sub.pages %}
-					<ul role="list">
-						{% for subpage in sub.pages %}
+				{# Unified weight-based ordering: interleave pages and subsections #}
+				{% for w in range(end=100, step_by=10) %}
+					{% for page in section.pages %}
+						{% if page.extra.sidebar_weight is defined and page.extra.sidebar_weight == w %}
 						<li>
-							<a href="{{ subpage.permalink | safe }}"
-								 {% if subpage.permalink == current_url %}aria-current="page"{% endif %}>
-								{{ subpage.title }}
+							<a href="{{ page.permalink | safe }}"
+								{% if page.permalink == current_url %}aria-current="page"{% endif %}>
+								{{ page.title }}
 							</a>
 						</li>
-						{% endfor %}
-					</ul>
-					{% endif %}
-				</li>
+						{% endif %}
+					{% endfor %}
+					{% for subsection in section.subsections %}
+						{% set sub = get_section(path=subsection) %}
+						{% if sub.extra.sidebar_weight is defined and sub.extra.sidebar_weight == w %}
+						<li>
+							<a href="{{ sub.permalink | safe }}">{{ sub.title }}</a>
+							{% if sub.pages %}
+							<ul role="list">
+								{% for subpage in sub.pages %}
+								<li>
+									<a href="{{ subpage.permalink | safe }}"
+										{% if subpage.permalink == current_url %}aria-current="page"{% endif %}>
+										{{ subpage.title }}
+									</a>
+								</li>
+								{% endfor %}
+							</ul>
+							{% endif %}
+						</li>
+						{% endif %}
+					{% endfor %}
 				{% endfor %}
 			</ul>
 		</nav>
