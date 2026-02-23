@@ -16,8 +16,8 @@ First, add Reinhardt to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "serializers"] }
-# Or for minimal setup: reinhardt = { version = "0.1.0-alpha.1", default-features = false, features = ["minimal", "serializers"] }
+reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", features = ["standard", "serializers"] }
+# Or for minimal setup: reinhardt = { version = "0.1.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal", "serializers"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
@@ -252,7 +252,7 @@ pub struct CreateUserInput {
 impl Mutation {
     async fn create_user(&self, input: CreateUserInput) -> Result<User> {
         // GraphQL handles deserialization automatically
-        User::create(input.username, input.email, input.age).await
+        User::objects().create(input.username, input.email, input.age).await
     }
 }
 ```
@@ -392,24 +392,21 @@ Typical validation workflow in an API view with Reinhardt:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::post;
+use reinhardt::{post, Json};
 
 #[post("/snippets", name = "create_snippet")]
-async fn create_snippet(request: Request) -> Result<Response> {
-    // 1. Parse JSON from request body (automatic deserialization)
-    let snippet: Snippet = request.json()?;
-
-    // 2. Validate the data
+async fn create_snippet(Json(snippet): Json<Snippet>) -> Result<Response> {
+    // 1. Validate the data
     let validator = SnippetSerializer;
     if let Err(errors) = validator.validate(&snippet) {
         return Response::bad_request()
             .with_json(&errors);
     }
 
-    // 3. Save to database (using Reinhardt ORM)
+    // 2. Save to database (using Reinhardt ORM)
     snippet.save(&conn).await?;
 
-    // 4. Return response with created status
+    // 3. Return response with created status
     Response::new(201)
         .with_json(&snippet)
 }

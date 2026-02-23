@@ -87,7 +87,7 @@ Implement API endpoints using HTTP method decorators. Add to `users/views.rs`:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::{get, post};
+use reinhardt::{get, post, Json};
 use reinhardt::db::DatabaseConnection;
 use std::sync::Arc;
 use crate::models::User;
@@ -105,17 +105,16 @@ pub async fn list_users(
     Response::ok()
         .with_json(&serialized)
 }
+```
 
 **Note**: The `#[inject]` attribute enables automatic dependency injection. For detailed information, see [HTTP Method Decorators Guide - Dependency Injection](0-http-macros.md#dependency-injection-with-inject).
 
+```rust
 #[post("/users", name = "create_user")]
 pub async fn create_user(
-    request: Request,
+    Json(data): Json<UserSerializer>,
     #[inject] conn: Arc<DatabaseConnection>,
 ) -> Result<Response> {
-    // Parse request body
-    let data: UserSerializer = request.json()?;
-
     // Create user
     let user = User::create(&conn, data.username, data.email).await?;
     let serialized = UserSerializer::from(user);
@@ -169,7 +168,7 @@ Edit `users/views.rs` to implement full CRUD operations:
 
 ```rust
 use reinhardt::prelude::*;
-use reinhardt::{get, post};
+use reinhardt::{get, post, Json};
 use reinhardt::http::Path;
 use reinhardt::db::DatabaseConnection;
 use std::sync::Arc;
@@ -202,11 +201,9 @@ pub async fn retrieve_user(
 
 #[post("/users", name = "create_user")]
 pub async fn create_user(
-    request: Request,
+    Json(data): Json<UserSerializer>,
     #[inject] conn: Arc<DatabaseConnection>,
 ) -> Result<Response> {
-    let data: UserSerializer = request.json()?;
-
     let user = User::create(&conn, data.username, data.email).await?;
     let serialized = UserSerializer::from(user);
 
