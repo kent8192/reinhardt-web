@@ -416,7 +416,7 @@ reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.4" }
 
 # DI subcrates
-reinhardt-di-macros = { path = "crates/reinhardt-di/macros", version = "0.1.0-alpha.2" }
+reinhardt-di-macros = { path = "crates/reinhardt-di/macros", version = "0.1.0-alpha.3" }
 
 # REST subcrates
 reinhardt-openapi-macros = { path = "crates/reinhardt-rest/openapi-macros", version = "0.1.0-alpha.5" }
