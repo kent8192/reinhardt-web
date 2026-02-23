@@ -181,13 +181,10 @@ pub fn routes() -> UnifiedRouter {
 //   GET         /users/{id}/
 ```
 
-Start the server in `main.rs`:
+Start the development server:
 
-```rust
-#[tokio::main]
-async fn main() -> Result<()> {
-    reinhardt::serve("0.0.0.0:8000").await
-}
+```bash
+cargo make runserver
 ```
 
 ## Code Comparison: Function-based vs ViewSet

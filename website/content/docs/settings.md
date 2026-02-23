@@ -438,16 +438,16 @@ pub fn get_settings() -> Settings {
 
 ### Using in Application
 
+Access settings anywhere in your application code:
+
 ```rust
 use crate::config::settings::get_settings;
 
-fn main() {
-    let settings = get_settings();
+let settings = get_settings();
 
-    println!("Debug mode: {}", settings.debug);
-    println!("Database host: {}", settings.database.host);
-    println!("Database port: {}", settings.database.port);
-}
+println!("Debug mode: {}", settings.debug);
+println!("Database host: {}", settings.database.host);
+println!("Database port: {}", settings.database.port);
 ```
 
 ---
@@ -856,11 +856,10 @@ static SETTINGS: Lazy<Settings> = Lazy::new(|| {
     get_settings()
 });
 
-fn main() {
-    // Settings are loaded only once, even if accessed multiple times
-    println!("{}", SETTINGS.debug);
-    println!("{}", SETTINGS.database.host);
-}
+// Settings are loaded only once, even if accessed multiple times
+// Access from anywhere in your application:
+// SETTINGS.debug
+// SETTINGS.database.host
 ```
 
 ### 2. Settings Validation

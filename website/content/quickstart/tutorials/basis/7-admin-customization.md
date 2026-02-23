@@ -225,27 +225,35 @@ pub fn register_admin(site: &mut AdminSite) {
 
 **Note**: When using `#[admin(...)]` on models, you don't need manual registration in `src/admin.rs`. The macro handles registration automatically.
 
-Update `src/main.rs` to include the admin:
+Update `src/config/apps.rs` to include the admin:
 
 ```rust
-mod admin;
-
 use reinhardt::prelude::*;
 use reinhardt::admin::AdminSite;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ... existing setup ...
-
-    // Setup admin
+pub fn configure_admin() -> AdminSite {
     let mut admin_site = AdminSite::new("Polls Administration");
     admin::register_admin(&mut admin_site);
-
-    // Add admin routes
-    router.mount("/admin/", admin_site.urls());
-
-    // ... rest of setup ...
+    admin_site
 }
+```
+
+Register the admin routes in `src/config/urls.rs`:
+
+```rust
+use crate::config::apps::configure_admin;
+
+pub fn url_patterns() -> UnifiedRouter {
+    UnifiedRouter::new()
+        .mount("/admin/", configure_admin().urls())
+        // ... other routes ...
+}
+```
+
+Then start the server:
+
+```bash
+cargo make runserver
 ```
 
 Now visit `http://127.0.0.1:8000/admin/` and log in with your superuser credentials.

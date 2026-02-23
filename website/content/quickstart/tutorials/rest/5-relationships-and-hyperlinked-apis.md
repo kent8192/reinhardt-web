@@ -242,8 +242,8 @@ struct SnippetSerializer {
     owner: String,  // URL to owner
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+// In config/urls.rs
+pub fn url_patterns() -> UnifiedRouter {
     let mut router = DefaultRouter::new();
 
     // Register ViewSets
@@ -253,20 +253,18 @@ async fn main() -> Result<()> {
     router.register_viewset("snippets", snippet_viewset);
     router.register_viewset("users", user_viewset);
 
-    // Example: Generate snippet URL
-    let mut params = HashMap::new();
-    params.insert("id".to_string(), "1".to_string());
-    let snippet_url = router.reverse("snippet-detail", &params)?;
-    println!("Snippet URL: {}", snippet_url);
-
-    // Example: Generate user URL
-    params.clear();
-    params.insert("id".to_string(), "42".to_string());
-    let user_url = router.reverse("user-detail", &params)?;
-    println!("User URL: {}", user_url);
-
-    Ok(())
+    router.into()
 }
+
+// Example: Generate snippet URL via router.reverse()
+// let mut params = HashMap::new();
+// params.insert("id".to_string(), "1".to_string());
+// let snippet_url = router.reverse("snippet-detail", &params)?;
+// => "/api/snippets/1/"
+//
+// params.insert("id".to_string(), "42".to_string());
+// let user_url = router.reverse("user-detail", &params)?;
+// => "/api/users/42/"
 ```
 
 ## Benefits of Hyperlinked APIs
