@@ -1,7 +1,11 @@
 +++
 title = "API Reference"
 description = "Reinhardt API reference documentation."
-sort_by = "title"
+sort_by = "weight"
+weight = 10
+
+[extra]
+sidebar_weight = 10
 +++
 
 
@@ -196,7 +200,7 @@ async fn handler(db: Depends<Database>) -> Result<Response> {
 
 - [Module documentation](https://docs.rs/reinhardt-di) (available after crates.io publish)
 - See `crates/reinhardt-di/src/lib.rs` for comprehensive DI documentation
-- [Tutorial: Dependency Injection](../tutorials/en/07-dependency-injection.md)
+- [Tutorial: Dependency Injection](/quickstart/tutorials/)
 
 ## Database & ORM
 
@@ -353,7 +357,7 @@ impl Serializer<User> for UserSerializer {
 
 - [Module documentation](https://docs.rs/reinhardt-rest) (available after crates.io publish)
 - See `crates/reinhardt-rest/crates/serializers/src/lib.rs` for comprehensive serializers documentation
-- [Tutorial: Serialization](../tutorials/en/rest/1-serialization.md)
+- [Tutorial: Serialization](/quickstart/tutorials/rest/1-serialization/)
 
 ### reinhardt-views (viewsets feature)
 
@@ -388,7 +392,7 @@ reinhardt-views = { version = "0.1.0-alpha.1", features = ["viewsets"] }
 
 - [Module documentation](https://docs.rs/reinhardt-views) (available after crates.io publish)
 - See `crates/reinhardt-views/crates/viewsets/src/lib.rs` for comprehensive ViewSets documentation
-- [Tutorial: ViewSets and Routers](../tutorials/en/rest/6-viewsets-and-routers.md)
+- [Tutorial: ViewSets and Routers](/quickstart/tutorials/rest/6-viewsets-and-routers/)
 
 ### reinhardt-rest::routers / reinhardt-urls::routers
 
@@ -504,7 +508,7 @@ let auth = JwtAuth::new(secret_key);
 **Documentation:**
 
 - [Module documentation](https://docs.rs/reinhardt-auth) (available after crates.io publish)
-- [Tutorial: Authentication & Permissions](../tutorials/en/rest/4-authentication-and-permissions.md)
+- [Tutorial: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
 
 ## Additional Components
 
@@ -799,7 +803,7 @@ reinhardt-pages = { version = "0.1.0-alpha.1", features = ["pages-full"] }
 **Documentation:**
 
 - [Module documentation](https://docs.rs/reinhardt-pages) (available after crates.io publish)
-- [Tutorial: Building Interactive UIs](../tutorials/en/pages/1-getting-started.md) (planned)
+- [Tutorial: Building Interactive UIs](/quickstart/tutorials/) (planned)
 
 ### reinhardt-core::backends (cache)
 
@@ -906,7 +910,7 @@ Main package that re-exports all components based on feature flags.
 **Documentation:**
 
 - [Main documentation](https://docs.rs/reinhardt) (available after crates.io publish)
-- [Feature Flags Guide](../FEATURE_FLAGS.md)
+- [Feature Flags Guide](/docs/feature-flags/)
 
 ### reinhardt-micro
 
@@ -964,9 +968,9 @@ fn validate_email(email: &str) -> ValidationResult {
 
 ## Quick Links
 
-- [Getting Started Guide](../GETTING_STARTED.md)
-- [Tutorials](../tutorials/README.md)
-- [Feature Flags](../FEATURE_FLAGS.md)
+- [Getting Started Guide](/quickstart/getting-started/)
+- [Tutorials](/quickstart/tutorials/)
+- [Feature Flags](/docs/feature-flags/)
 - [GitHub Repository](https://github.com/kent8192/reinhardt-web)
 
 ## Contributing

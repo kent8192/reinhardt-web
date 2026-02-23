@@ -1,5 +1,6 @@
 +++
 title = "Pagination"
+weight = 40
 +++
 
 # Pagination

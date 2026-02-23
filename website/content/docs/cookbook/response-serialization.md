@@ -1,5 +1,6 @@
 +++
 title = "Response Serialization"
+weight = 60
 +++
 
 # Response Serialization

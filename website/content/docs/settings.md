@@ -1,7 +1,10 @@
 +++
 title = "Settings Reference"
 description = "Complete reference for Reinhardt settings."
-weight = 30
+weight = 40
+
+[extra]
+sidebar_weight = 40
 +++
 
 # Reinhardt Settings System Documentation

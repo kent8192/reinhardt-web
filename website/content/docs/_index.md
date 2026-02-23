@@ -1,5 +1,5 @@
 +++
 title = "Documentation"
-description = "Reinhardt framework documentation — getting started, tutorials, API reference, and more."
-sort_by = "title"
+description = "Reinhardt framework reference documentation — API, configuration, cookbook, and more."
+sort_by = "weight"
 +++

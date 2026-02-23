@@ -1,7 +1,11 @@
 +++
 title = "Cookbook"
 description = "Practical recipes for common Reinhardt patterns."
-sort_by = "title"
+sort_by = "weight"
+weight = 50
+
+[extra]
+sidebar_weight = 50
 +++
 
 
@@ -34,5 +38,5 @@ The Cookbook provides practical guides for solving common tasks.
 ## See Also
 
 - [API Reference](https://docs.rs/reinhardt/)
-- [Migration Guides](../migration-guides/)
+- [Migration Guides](/quickstart/migration-guides/)
 - [Troubleshooting](../troubleshooting/)

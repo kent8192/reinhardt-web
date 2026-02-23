@@ -2,6 +2,9 @@
 title = "Feature Flags"
 description = "Fine-tune your Reinhardt build with feature flags."
 weight = 20
+
+[extra]
+sidebar_weight = 20
 +++
 
 # Feature Flags Guide

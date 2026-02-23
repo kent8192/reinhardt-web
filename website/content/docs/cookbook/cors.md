@@ -1,5 +1,6 @@
 +++
 title = "CORS Configuration"
+weight = 20
 +++
 
 # CORS Configuration

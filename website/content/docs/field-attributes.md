@@ -1,7 +1,10 @@
 +++
 title = "Field Attributes"
 description = "Reference for model field attributes."
-weight = 40
+weight = 30
+
+[extra]
+sidebar_weight = 30
 +++
 
 # Field Attributes Reference

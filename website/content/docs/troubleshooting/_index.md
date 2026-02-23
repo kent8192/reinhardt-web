@@ -1,7 +1,11 @@
 +++
 title = "Troubleshooting"
 description = "Common issues and solutions for Reinhardt."
-sort_by = "title"
+sort_by = "weight"
+weight = 60
+
+[extra]
+sidebar_weight = 60
 +++
 
 
@@ -27,4 +31,4 @@ Troubleshooting guides provide solutions to common problems encountered during d
 
 - [API Reference](https://docs.rs/reinhardt/)
 - [Cookbook](../cookbook/)
-- [Migration Guides](../migration-guides/)
+- [Migration Guides](/quickstart/migration-guides/)

@@ -1,5 +1,6 @@
 +++
 title = "Serving Static Files"
+weight = 10
 +++
 
 # Serving Static Files
