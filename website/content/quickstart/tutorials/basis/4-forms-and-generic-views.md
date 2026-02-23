@@ -600,7 +600,7 @@ The `form!` macro automatically injects CSRF tokens for POST/PUT/PATCH/DELETE me
 // POST form automatically includes CSRF token
 let contact_form = form! {
 	name: ContactForm,
-	action: "/api/contact",
+	server_fn: submit_contact,
 	method: Post,
 
 	fields: {
@@ -612,7 +612,7 @@ let contact_form = form! {
 The generated HTML includes a hidden CSRF token field:
 
 ```html
-<form action="/api/contact" method="post">
+<form action="/api/submit_contact" method="post">
 	<input type="hidden" name="csrfmiddlewaretoken" value="[token]">
 	<!-- field elements -->
 </form>
@@ -624,7 +624,7 @@ GET forms do NOT include CSRF tokens since they are safe methods that don't need
 // GET form does NOT include CSRF token (safe method)
 let search_form = form! {
 	name: SearchForm,
-	action: "/search",
+	server_fn: search,
 	method: Get,
 
 	fields: {

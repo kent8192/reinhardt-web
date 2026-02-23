@@ -250,15 +250,9 @@ Create `src/server_fn/polls.rs`:
 
 ```rust
 use crate::shared::types::{ChoiceInfo, QuestionInfo, VoteRequest};
-
-// Re-export server_fn types
-#[cfg(not(target_arch = "wasm32"))]
-use reinhardt::pages::server_fn::{server_fn, ServerFnError};
-#[cfg(target_arch = "wasm32")]
 use reinhardt::pages::server_fn::{server_fn, ServerFnError};
 
 /// Get all questions (latest 5)
-#[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn get_questions(
 	#[inject] _db: reinhardt::DatabaseConnection,
@@ -276,14 +270,7 @@ pub async fn get_questions(
 	Ok(latest)
 }
 
-#[cfg(target_arch = "wasm32")]
-#[server_fn]
-pub async fn get_questions() -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-	unreachable!()
-}
-
 /// Get question detail with choices
-#[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn get_question_detail(
 	question_id: i64,
@@ -305,16 +292,7 @@ pub async fn get_question_detail(
 	Ok((QuestionInfo::from(question), choices.into_iter().map(ChoiceInfo::from).collect()))
 }
 
-#[cfg(target_arch = "wasm32")]
-#[server_fn]
-pub async fn get_question_detail(
-	_question_id: i64,
-) -> std::result::Result<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError> {
-	unreachable!()
-}
-
 /// Vote for a choice
-#[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn vote(
 	request: VoteRequest,
@@ -339,19 +317,13 @@ pub async fn vote(
 
 	Ok(ChoiceInfo::from(updated_choice))
 }
-
-#[cfg(target_arch = "wasm32")]
-#[server_fn]
-pub async fn vote(_request: VoteRequest) -> std::result::Result<ChoiceInfo, ServerFnError> {
-	unreachable!()
-}
 ```
 
 **Key points:**
 
 - `#[server_fn(use_inject = true)]`: Enables dependency injection for database connections
 - `#[inject]` attribute: Automatically injects dependencies like `DatabaseConnection`
-- Conditional compilation: Server implementation vs WASM stub
+- The `#[server_fn]` macro automatically generates WASM client stubs — no manual conditional compilation needed
 - Type-safe RPC: Client calls server functions as regular async functions
 
 ### Understanding Server Functions in Depth
@@ -459,20 +431,17 @@ match vote(VoteRequest { question_id, choice_id }).await {
 }
 ```
 
-#### Conditional Compilation Patterns
+#### Automatic WASM Stub Generation
 
-Server functions use conditional compilation to separate server and client code.
-
-**Server side** (`not(target_arch = "wasm32")`):
+The `#[server_fn]` macro automatically handles conditional compilation. You only need to write the server-side implementation — the macro generates the WASM client stub automatically:
 
 ```rust
-#[cfg(not(target_arch = "wasm32"))]
 #[server_fn(use_inject = true)]
 pub async fn vote(
 	request: VoteRequest,
 	#[inject] db: Arc<DatabaseConnection>,
 ) -> Result<ChoiceInfo, ServerFnError> {
-	// Actual implementation with database access
+	// Server-side implementation only
 	let mut choice = Choice::find_by_id(&db, request.choice_id).await
 		.map_err(|e| ServerFnError::ServerError(e.to_string()))?;
 
@@ -484,25 +453,15 @@ pub async fn vote(
 }
 ```
 
-**WASM client** (`target_arch = "wasm32"`):
+**What happens under the hood:**
 
-```rust
-#[cfg(target_arch = "wasm32")]
-#[server_fn]
-pub async fn vote(_request: VoteRequest) -> Result<ChoiceInfo, ServerFnError> {
-	unreachable!()  // Never executed - auto-generated RPC stub
-}
-```
-
-**Why `unreachable!()`?**
-
-The WASM version is never executed directly. When you call `vote(...)` in WASM code, the `#[server_fn]` macro intercepts the call and:
-1. Serializes the request
+When you call `vote(...)` in WASM code, the `#[server_fn]` macro intercepts the call and:
+1. Serializes the request to JSON
 2. Sends HTTP POST to `/api/vote`
 3. Deserializes the response
 4. Returns `Result<ChoiceInfo, ServerFnError>`
 
-The function body (`unreachable!()`) is only present to satisfy the compiler - it's never actually executed.
+No manual conditional compilation or `unreachable!()` stubs are needed.
 
 ## Creating Client Components
 
