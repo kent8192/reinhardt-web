@@ -6,6 +6,7 @@ on:
     paths:
       - "website/**"
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - "website/**"
 
@@ -21,6 +22,7 @@ concurrency:
 jobs:
   build-and-deploy:
     name: Build & Deploy
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,7 +43,10 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy website/public --project-name=reinhardt-web
+          command: >-
+            pages deploy website/public
+            --project-name=reinhardt-web
+            --branch=${{ github.head_ref || github.ref_name }}
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
@@ -51,3 +56,36 @@ jobs:
           message: |
             ### Website Preview
             Deployed to: ${{ steps.deploy.outputs.deployment-url }}
+
+  cleanup-preview:
+    name: Cleanup Preview
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete preview deployments
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT_NAME: reinhardt-web
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          # Fetch deployments for this branch
+          deployments=$(curl -sf \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/deployments?per_page=100" \
+            | jq -r --arg branch "$BRANCH" \
+              '.result[] | select(.deployment_trigger.metadata.branch == $branch) | .id')
+
+          if [ -z "$deployments" ]; then
+            echo "No preview deployments found for branch: ${BRANCH}"
+            exit 0
+          fi
+
+          # Delete each deployment (latest may fail due to API constraint — that's OK)
+          for id in $deployments; do
+            echo "Deleting deployment: ${id}"
+            curl -sf -X DELETE \
+              -H "Authorization: Bearer ${CF_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/deployments/${id}" \
+              | jq -r '"  status: \(.success)"' || echo "  skipped (latest deployment cannot be deleted)"
+          done
