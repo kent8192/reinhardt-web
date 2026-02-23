@@ -191,7 +191,7 @@ async fn test_mysql_ddl_implicit_commit_partial_state(
 	// This proves MySQL's implicit commit behavior - the CREATE TABLE
 	// was committed before the failing operation.
 	let table_exists = sqlx::query(
-		"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'test_partial_table'",
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test_db' AND table_name = 'test_partial_table'",
 	)
 	.fetch_one(pool.as_ref())
 	.await
@@ -205,7 +205,7 @@ async fn test_mysql_ddl_implicit_commit_partial_state(
 
 	// Verify the table has the expected columns
 	let columns = sqlx::query(
-		"SELECT column_name FROM information_schema.columns WHERE table_name = 'test_partial_table' ORDER BY ordinal_position",
+		"SELECT column_name FROM information_schema.columns WHERE table_schema = 'test_db' AND table_name = 'test_partial_table' ORDER BY ordinal_position",
 	)
 	.fetch_all(pool.as_ref())
 	.await
@@ -299,7 +299,7 @@ async fn test_mysql_partial_state_error_message(
 
 	// Verify partial state - first table should exist
 	let table_exists = sqlx::query(
-		"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'before_failure'",
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test_db' AND table_name = 'before_failure'",
 	)
 	.fetch_one(pool.as_ref())
 	.await
@@ -413,7 +413,7 @@ async fn test_mysql_multiple_ddl_statements(
 
 	// Verify all three tables exist
 	async fn check_table(pool: &sqlx::MySqlPool, name: &str) -> i64 {
-		sqlx::query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?")
+		sqlx::query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test_db' AND table_name = ?")
 			.bind(name)
 			.fetch_one(pool)
 			.await
