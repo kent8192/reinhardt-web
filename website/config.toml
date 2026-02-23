@@ -12,8 +12,8 @@ external_links_no_follow = false
 smart_punctuation = false
 
 [markdown.highlighting]
-enabled = true
-theme = "ayu-dark"
+theme = "github-dark"
+style = "class"
 
 [link_checker]
 skip_anchor_prefixes = ["#"]
