@@ -21,7 +21,6 @@ The `reinhardt-conf` crate provides a comprehensive configuration management fra
 This crate provides the following modules:
 
 - **`` `settings` ``**: Core settings management functionality
-- **`` `settings-cli` ``**: CLI tool for managing settings
 
 ## Installation
 
@@ -88,18 +87,6 @@ let settings = SettingsBuilder::new()
 let database_url = settings.get::<String>("DATABASE_URL")?;
 ```
 
-## CLI Tool
-
-The `` `settings-cli` `` module provides a command-line tool for managing settings:
-
-```bash
-# Install the CLI tool
-cargo install --path crates/settings-cli
-
-# Use the tool
-reinhardt-settings --help
-```
-
 ## Field Status
 
 The `Settings` struct contains fields that are either actively consumed by the framework or reserved for future implementation.
@@ -152,7 +139,6 @@ These fields exist for Django settings compatibility but are **not yet consumed*
 `` `reinhardt-conf` `` is organized into the following modules:
 
 - `` `settings` `` - Core settings management (builder, validation, encryption)
-- `` `settings-cli` `` - CLI tool for settings operations
 
 ### Using Modules
 

@@ -291,7 +291,6 @@ members = [
   "crates/reinhardt-query/macros",
   "crates/reinhardt-apps",
   "crates/reinhardt-conf",
-  "crates/reinhardt-conf/crates/settings-cli",
   "crates/reinhardt-core",
   "crates/reinhardt-core/macros",
   "crates/reinhardt-di",
@@ -368,7 +367,6 @@ reinhardt = { path = ".", package = "reinhardt-web", version = "0.1.0-alpha.17" 
 # Internal crates
 reinhardt-apps = { path = "crates/reinhardt-apps", version = "0.1.0-alpha.11" }
 reinhardt-conf = { path = "crates/reinhardt-conf", version = "0.1.0-alpha.14" }
-reinhardt-settings-cli = { path = "crates/reinhardt-conf/crates/settings-cli", version = "0.1.0-alpha.1" }
 reinhardt-core = { path = "crates/reinhardt-core", version = "0.1.0-alpha.7" }
 reinhardt-di = { path = "crates/reinhardt-di", version = "0.1.0-alpha.8" }
 reinhardt-http = { path = "crates/reinhardt-http", version = "0.1.0-alpha.8" }
