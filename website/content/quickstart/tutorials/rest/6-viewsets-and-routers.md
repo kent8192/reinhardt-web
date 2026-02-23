@@ -58,28 +58,31 @@ let snippet_viewset = ReadOnlyModelViewSet::<Snippet, SnippetSerializer>::new("s
 
 ## Using Routers
 
-Register ViewSets with routers to automatically generate URLs:
+Register ViewSets with routers to automatically generate URLs.
+
+Define your ViewSet registrations in `urls.rs`:
 
 ```rust
+// src/config/urls.rs
 use reinhardt::prelude::*;
+use reinhardt::routes;
+use std::sync::Arc;
 
-#[tokio::main]
-async fn main() {
-    let mut router = DefaultRouter::new();
-
-    // Register ViewSets
+#[routes]
+pub fn routes() -> UnifiedRouter {
     let snippet_viewset = ModelViewSet::<Snippet, SnippetSerializer>::new("snippet");
     let user_viewset = ReadOnlyModelViewSet::<User, UserSerializer>::new("user");
 
-    router.register_viewset("snippets", snippet_viewset);
-    router.register_viewset("users", user_viewset);
-
-    // URLs are automatically generated:
-    // GET/POST    /snippets/           - List/create
-    // GET/PUT/PATCH/DELETE /snippets/{id}/ - Detail/update/delete
-    // GET         /users/              - List
-    // GET         /users/{id}/         - Detail
+    UnifiedRouter::new()
+        .register_viewset("/snippets", Arc::new(snippet_viewset))
+        .register_viewset("/users", Arc::new(user_viewset))
 }
+
+// URLs are automatically generated:
+// GET/POST    /snippets/           - List/create
+// GET/PUT/PATCH/DELETE /snippets/{id}/ - Detail/update/delete
+// GET         /users/              - List
+// GET         /users/{id}/         - Detail
 ```
 
 ## Automatic URL Generation
@@ -118,6 +121,8 @@ Routers automatically generate URL patterns from ViewSets:
 
 ## Complete Example
 
+Define models and serializers:
+
 ```rust
 use reinhardt::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -149,25 +154,39 @@ struct UserSerializer {
     id: i64,
     username: String,
 }
+```
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let mut router = DefaultRouter::new();
+Register ViewSets in `urls.rs`:
 
-    // Register ViewSets
+```rust
+// src/config/urls.rs
+use reinhardt::prelude::*;
+use reinhardt::routes;
+use std::sync::Arc;
+
+#[routes]
+pub fn routes() -> UnifiedRouter {
     let snippet_viewset = ModelViewSet::<Snippet, SnippetSerializer>::new("snippet");
     let user_viewset = ReadOnlyModelViewSet::<User, UserSerializer>::new("user");
 
-    router.register_viewset("snippets", snippet_viewset);
-    router.register_viewset("users", user_viewset);
+    UnifiedRouter::new()
+        .register_viewset("/snippets", Arc::new(snippet_viewset))
+        .register_viewset("/users", Arc::new(user_viewset))
+}
 
-    println!("API endpoints:");
-    println!("  GET/POST    /snippets/");
-    println!("  GET/PUT/PATCH/DELETE /snippets/{{id}}/");
-    println!("  GET         /users/");
-    println!("  GET         /users/{{id}}/");
+// API endpoints:
+//   GET/POST    /snippets/
+//   GET/PUT/PATCH/DELETE /snippets/{id}/
+//   GET         /users/
+//   GET         /users/{id}/
+```
 
-    Ok(())
+Start the server in `main.rs`:
+
+```rust
+#[tokio::main]
+async fn main() -> Result<()> {
+    reinhardt::serve("0.0.0.0:8000").await
 }
 ```
 
