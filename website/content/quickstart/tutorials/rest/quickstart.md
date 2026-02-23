@@ -132,7 +132,7 @@ pub async fn create_user(
 First, create a users app:
 
 ```bash
-cargo run --bin manage startapp users --template-type restful
+reinhardt-admin startapp users --template-type restful
 ```
 
 ### Define Models and Serializers
@@ -282,7 +282,7 @@ This configures the following URL patterns:
 First, start the development server:
 
 ```bash
-cargo run --bin runserver
+cargo make runserver
 ```
 
 Test the API using curl or httpie:

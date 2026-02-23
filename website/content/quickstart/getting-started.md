@@ -165,11 +165,8 @@ The generated project already has a working server! Let's customize it.
 ### Step 4: Run the Development Server
 
 ```bash
-# Using the runserver binary (recommended)
-cargo run --bin runserver
-
-# Or using manage command
-cargo run --bin manage runserver
+# Using cargo-make (recommended)
+cargo make runserver
 ```
 
 Visit `http://127.0.0.1:8000/` in your browser. You should see a welcome
@@ -180,7 +177,7 @@ message.
 Create an app and add a simple endpoint:
 
 ```bash
-cargo run --bin manage startapp hello --template-type restful
+reinhardt-admin startapp hello --template-type restful
 ```
 
 Edit `hello/views.rs`:
@@ -214,7 +211,7 @@ Test: `curl http://127.0.0.1:8000/hello`
 Create a CRUD API using ViewSets:
 
 ```bash
-cargo run --bin manage startapp todos --template-type restful
+reinhardt-admin startapp todos --template-type restful
 ```
 
 Define model (`todos/models.rs`), serializer (`todos/serializers.rs`), and
@@ -264,29 +261,29 @@ commands.
 
 ```bash
 # Create a new app
-cargo run --bin manage startapp myapp --template-type restful
+reinhardt-admin startapp myapp --template-type restful
 
 # Development server
-cargo run --bin manage runserver
+cargo make runserver
 
 # Database migrations (when using database features)
 # Auto-detects app label if single app has models
-cargo run --bin manage makemigrations
+cargo make makemigrations
 
 # Or specify app label explicitly (when multiple apps exist)
-cargo run --bin manage makemigrations <app_label>
+cargo make makemigrations-app -- <app_label>
 
 # Apply migrations
-cargo run --bin manage migrate
+cargo make migrate
 
 # Check project for issues
-cargo run --bin manage check
+cargo make check
 
 # Collect static files
-cargo run --bin manage collectstatic
+cargo make collectstatic
 
 # Interactive shell
-cargo run --bin manage shell
+cargo make shell
 ```
 
 **Note on makemigrations:** The command now automatically detects the app label

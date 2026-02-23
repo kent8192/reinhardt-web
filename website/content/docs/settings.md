@@ -93,12 +93,12 @@ password = "local-password"
 
 ```bash
 # Start in local environment (default)
-cargo run --bin runserver
+cargo make runserver
 
 # Explicitly specify environment
-REINHARDT_ENV=local cargo run --bin runserver
-REINHARDT_ENV=staging cargo run --bin runserver
-REINHARDT_ENV=production cargo run --bin runserver
+REINHARDT_ENV=local cargo make runserver
+REINHARDT_ENV=staging cargo make runserver
+REINHARDT_ENV=production cargo make runserver
 ```
 
 ---

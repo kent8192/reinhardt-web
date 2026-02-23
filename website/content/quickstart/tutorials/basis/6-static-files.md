@@ -1197,7 +1197,7 @@ The `collectstatic` command:
 
 ```bash
 # Collect all static files to STATIC_ROOT
-cargo run --bin manage collectstatic
+cargo make collectstatic
 
 # Options:
 # --clear: Clear existing files before collecting
@@ -1243,7 +1243,7 @@ A typical production deployment workflow:
 cargo make dev
 
 # Traditional projects
-cargo run --bin manage runserver
+cargo make runserver
 ```
 
 **2. Build for Production**:

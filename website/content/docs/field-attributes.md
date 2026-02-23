@@ -708,10 +708,10 @@ appropriate SQL:
 
 ```bash
 # Generate migration files
-cargo run --bin manage makemigrations
+cargo make makemigrations
 
 # Apply migrations
-cargo run --bin manage migrate
+cargo make migrate
 ```
 
 Example generated SQL (PostgreSQL):

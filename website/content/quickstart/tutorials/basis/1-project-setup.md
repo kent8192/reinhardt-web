@@ -666,7 +666,7 @@ In Reinhardt, we organize features into apps (similar to Django). Let's create a
 `polls` app:
 
 ```bash
-cargo run --bin manage startapp polls
+reinhardt-admin startapp polls
 ```
 
 This creates a `polls` directory with the following structure:
@@ -946,7 +946,7 @@ Unlike Django's runtime registration, Reinhardt uses compile-time feature flags:
 - ✅ **Type safety**: Features are validated at compile time
 - ✅ **Smaller binaries**: Exclude unnecessary code
 
-Restart your server (press Ctrl-C and run `cargo run --bin manage runserver` again) and
+Restart your server (press Ctrl-C and run `cargo make runserver` again) and
 visit `http://127.0.0.1:8000/polls/`. You should see the message.
 
 ## Adding More Components and Server Functions

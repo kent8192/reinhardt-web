@@ -266,11 +266,11 @@ The complete working example is available in `examples-tutorial-rest`:
 cd examples/examples-tutorial-rest
 
 # Option 1: Function-based views (Tutorial 1-5)
-cargo run --bin manage runserver
+cargo make runserver
 # Visit http://127.0.0.1:8000/api/snippets/
 
 # Option 2: ViewSet-based views (Tutorial 6)
-USE_VIEWSET=1 cargo run --bin manage runserver
+USE_VIEWSET=1 cargo make runserver
 # Visit http://127.0.0.1:8000/api/snippets-viewset/
 ```
 
