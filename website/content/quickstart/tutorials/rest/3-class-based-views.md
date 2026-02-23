@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 3: Class-Based Views"
 weight = 40
+
+[extra]
+sidebar_weight = 50
 +++
 
 # Tutorial 3: Class-Based Views

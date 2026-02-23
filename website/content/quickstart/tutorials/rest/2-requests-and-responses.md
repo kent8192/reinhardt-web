@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 2: Requests and Responses"
 weight = 30
+
+[extra]
+sidebar_weight = 40
 +++
 
 # Tutorial 2: Requests and Responses

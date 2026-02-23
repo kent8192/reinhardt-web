@@ -1,6 +1,9 @@
 +++
 title = "Part 6: Static Files and Styling"
 weight = 60
+
+[extra]
+sidebar_weight = 60
 +++
 
 # Part 6: Static Files and Styling

@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 4: Authentication and Permissions"
 weight = 50
+
+[extra]
+sidebar_weight = 60
 +++
 
 # Tutorial 4: Authentication and Permissions

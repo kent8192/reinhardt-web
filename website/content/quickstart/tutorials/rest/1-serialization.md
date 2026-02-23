@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 1: Serialization"
 weight = 20
+
+[extra]
+sidebar_weight = 30
 +++
 
 # Tutorial 1: Serialization

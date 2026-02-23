@@ -1,6 +1,9 @@
 +++
 title = "Part 5: Testing"
 weight = 50
+
+[extra]
+sidebar_weight = 50
 +++
 
 # Part 5: Testing

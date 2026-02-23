@@ -1,6 +1,9 @@
 +++
 title = "Part 7: Admin Customization"
 weight = 70
+
+[extra]
+sidebar_weight = 70
 +++
 
 # Part 7: Admin Customization

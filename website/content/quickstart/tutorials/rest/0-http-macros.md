@@ -1,6 +1,9 @@
 +++
 title = "HTTP Method Decorators"
 weight = 10
+
+[extra]
+sidebar_weight = 20
 +++
 
 # HTTP Method Decorators

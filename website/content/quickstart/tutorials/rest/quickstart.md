@@ -1,6 +1,9 @@
 +++
 title = "Quickstart"
 weight = 5
+
+[extra]
+sidebar_weight = 10
 +++
 
 # Quickstart

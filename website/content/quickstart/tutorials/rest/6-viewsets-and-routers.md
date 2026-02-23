@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 6: ViewSets and Routers"
 weight = 70
+
+[extra]
+sidebar_weight = 80
 +++
 
 # Tutorial 6: ViewSets and Routers

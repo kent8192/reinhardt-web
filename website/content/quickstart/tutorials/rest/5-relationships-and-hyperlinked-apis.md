@@ -1,6 +1,9 @@
 +++
 title = "Tutorial 5: Relationships and Hyperlinked APIs"
 weight = 60
+
+[extra]
+sidebar_weight = 70
 +++
 
 # Tutorial 5: Relationships and Hyperlinked APIs

@@ -1,6 +1,9 @@
 +++
 title = "Part 1: Project Setup"
 weight = 10
+
+[extra]
+sidebar_weight = 10
 +++
 
 # Part 1: Project Setup
