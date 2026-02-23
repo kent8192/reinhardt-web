@@ -922,7 +922,7 @@ Reinhardt's settings system is:
 
 - [Getting Started Guide](/quickstart/getting-started/) - Basic usage of Reinhardt
 - [Example Projects](https://github.com/kent8192/reinhardt-web/tree/main/examples) - Real project examples
-- [reinhardt-settings API Documentation](https://docs.rs/reinhardt-settings) -
+- [reinhardt-conf API Documentation](https://docs.rs/reinhardt-conf) -
   Detailed API specification
 
 ---
