@@ -232,6 +232,9 @@ a {
 	&-primary {
 		background: var(--color-primary);
 		color: var(--color-primary-text);
+		&:visited {
+			color: var(--color-primary-text);
+		}
 		&:hover, &:focus {
 			background: var(--color-primary-hover);
 			color: var(--color-primary-text);
@@ -243,6 +246,9 @@ a {
 		background: transparent;
 		border-color: var(--color-border);
 		color: var(--color-text);
+		&:visited {
+			color: var(--color-text);
+		}
 		&:hover, &:focus {
 			background: var(--color-surface);
 			text-decoration: none;
