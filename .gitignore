@@ -139,3 +139,10 @@ examples/examples-twitter/static/admin/
 docs/plans/
 website/public/
 website/static/giallo*.css
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/.terraform.tfstate.lock.info
+infra/terraform.tfvars
