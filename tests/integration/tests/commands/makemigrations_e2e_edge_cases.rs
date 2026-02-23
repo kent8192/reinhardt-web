@@ -180,9 +180,9 @@ async fn ec_mm_01_02_emoji_column_names() {
 				.auto_increment(true)
 				.primary_key(true),
 		)
-		.col(ColumnDef::new(Alias::new("\"😀\"")).string())
-		.col(ColumnDef::new(Alias::new("\"🚀\"")).string())
-		.col(ColumnDef::new(Alias::new("\"💡\"")).text())
+		.col(ColumnDef::new(Alias::new("😀")).string())
+		.col(ColumnDef::new(Alias::new("🚀")).string())
+		.col(ColumnDef::new(Alias::new("💡")).text())
 		.to_string(PostgresQueryBuilder::new());
 
 	let content = format!(
@@ -244,7 +244,7 @@ async fn ec_mm_01_03_mixed_unicode_identifiers() {
 	// Create table with mixed Unicode identifiers
 	let mut create_table_stmt = Query::create_table();
 	let create_table = create_table_stmt
-		.table(Alias::new("\"製品\""))
+		.table(Alias::new("製品"))
 		.col(
 			ColumnDef::new(Alias::new("id"))
 				.integer()
@@ -252,17 +252,9 @@ async fn ec_mm_01_03_mixed_unicode_identifiers() {
 				.auto_increment(true)
 				.primary_key(true),
 		)
-		.col(
-			ColumnDef::new(Alias::new("\"製品名\""))
-				.string()
-				.not_null(true),
-		)
-		.col(
-			ColumnDef::new(Alias::new("\"価格\""))
-				.integer()
-				.not_null(true),
-		)
-		.col(ColumnDef::new(Alias::new("\"🏷️\"")).string())
+		.col(ColumnDef::new(Alias::new("製品名")).string().not_null(true))
+		.col(ColumnDef::new(Alias::new("価格")).integer().not_null(true))
+		.col(ColumnDef::new(Alias::new("🏷️")).string())
 		.to_string(PostgresQueryBuilder::new());
 
 	let content = format!(
