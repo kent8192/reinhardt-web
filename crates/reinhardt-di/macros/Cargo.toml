@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-di-macros"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 edition = "2024"
 license = "BSD-3-Clause"
 description = "Procedural macros for Reinhardt dependency injection"

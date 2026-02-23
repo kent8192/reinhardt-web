@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- release-plz-separator -->
 <!-- Entries below this line were created before release-plz adoption -->
 
+## [0.1.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.15...reinhardt-openapi@v0.1.0-alpha.16) - 2026-02-23
+
+### Maintenance
+
+- *(license)* migrate from MIT/Apache-2.0 to BSD 3-Clause
+
 ## [0.1.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-openapi@v0.1.0-alpha.14...reinhardt-openapi@v0.1.0-alpha.15) - 2026-02-23
 
 ### Maintenance
