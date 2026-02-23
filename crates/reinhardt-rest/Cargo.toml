@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-rest"
-version = "0.1.0-alpha.17"
+version = "0.1.0-alpha.18"
 description = "REST API framework aggregator for Reinhardt"
 edition.workspace = true
 license.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-query-macros"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 edition = "2024"
 license = "BSD-3-Clause"
 description = "Procedural macros for reinhardt-query SQL identifier derivation"
