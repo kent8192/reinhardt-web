@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.1.0-alpha.16"
+version = "0.1.0-alpha.17"
 edition = "2024"
 authors = ["Reinhardt Contributors"]
 license = "MIT OR Apache-2.0"
