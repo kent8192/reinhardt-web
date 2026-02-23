@@ -410,7 +410,7 @@ reinhardt-deeplink = { path = "crates/reinhardt-deeplink", version = "0.1.0-alph
 reinhardt-openapi = { path = "crates/reinhardt-openapi", version = "0.1.0-alpha.14" }
 
 # Query subcrates
-reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-alpha.3" }
+reinhardt-query-macros = { path = "crates/reinhardt-query/macros", version = "0.1.0-alpha.4" }
 
 # Core subcrates
 reinhardt-macros = { path = "crates/reinhardt-core/macros", version = "0.1.0-alpha.4" }
