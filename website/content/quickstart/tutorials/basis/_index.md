@@ -1,7 +1,8 @@
 +++
 title = "Basics Tutorials"
 description = "Core concepts and fundamentals of Reinhardt."
-sort_by = "title"
+sort_by = "weight"
+weight = 10
 +++
 
 
@@ -105,9 +106,9 @@ Work through the tutorials in order, as each part builds on the previous ones. Y
 
 If you encounter issues while following this tutorial:
 
-- Check the [Reinhardt documentation](../../../../README.md)
-- Review the [Getting Started Guide](../../../GETTING_STARTED.md)
-- Look at the [Feature Flags Guide](../../../FEATURE_FLAGS.md)
+- Check the [Reinhardt documentation](https://github.com/kent8192/reinhardt-web)
+- Review the [Getting Started Guide](/quickstart/getting-started/)
+- Look at the [Feature Flags Guide](/docs/feature-flags/)
 - Examine the individual crate READMEs for detailed information
 
 ## Comparison with REST Tutorial

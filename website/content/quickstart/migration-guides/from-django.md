@@ -1,5 +1,6 @@
 +++
 title = "Migrating from Django"
+weight = 10
 +++
 
 # Migrating from Django

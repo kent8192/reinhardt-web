@@ -1,5 +1,6 @@
 +++
 title = "Tutorial 6: ViewSets and Routers"
+weight = 70
 +++
 
 # Tutorial 6: ViewSets and Routers

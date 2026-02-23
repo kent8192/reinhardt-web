@@ -1,5 +1,6 @@
 +++
 title = "Part 7: Admin Customization"
+weight = 70
 +++
 
 # Part 7: Admin Customization

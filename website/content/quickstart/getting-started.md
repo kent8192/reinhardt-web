@@ -2,6 +2,9 @@
 title = "Getting Started"
 description = "Step-by-step guide to get up and running with Reinhardt."
 weight = 10
+
+[extra]
+sidebar_weight = 10
 +++
 
 # Getting Started with Reinhardt
@@ -153,7 +156,7 @@ serde = { version = "1.0", features = ["derive"] }
 
 For this guide, we'll use the **Full** flavor (default).
 
-**💡 Want more control?** See the [Feature Flags Guide](FEATURE_FLAGS.md) for
+**💡 Want more control?** See the [Feature Flags Guide](/docs/feature-flags/) for
 detailed information on 70+ individual feature flags to fine-tune your build.
 
 The project template already includes all necessary dependencies in
@@ -307,7 +310,7 @@ reinhardt-admin startapp myapp
 ```
 
 For more details, see the
-[reinhardt-commands documentation](../crates/reinhardt-commands/README.md).
+[reinhardt-commands documentation](#).
 
 ## Next Steps
 
@@ -316,17 +319,17 @@ next:
 
 ### 📚 Tutorials
 
-- [Tutorial 1: Serialization](tutorials/en/rest/1-serialization.md)
-- [Tutorial 2: Requests and Responses](tutorials/en/rest/2-requests-and-responses.md)
-- [Tutorial 3: Class-Based Views](tutorials/en/rest/3-class-based-views.md)
-- [Tutorial 4: Authentication & Permissions](tutorials/en/rest/4-authentication-and-permissions.md)
+- [Tutorial 1: Serialization](/quickstart/tutorials/rest/1-serialization/)
+- [Tutorial 2: Requests and Responses](/quickstart/tutorials/rest/2-requests-and-responses/)
+- [Tutorial 3: Class-Based Views](/quickstart/tutorials/rest/3-class-based-views/)
+- [Tutorial 4: Authentication & Permissions](/quickstart/tutorials/rest/4-authentication-and-permissions/)
 
 ### 🎛️ Advanced Features
 
 - **Dependency Injection** - FastAPI-style DI (Tutorial coming soon)
-- [Feature Flags Guide](FEATURE_FLAGS.md) - Optimize your build
+- [Feature Flags Guide](/docs/feature-flags/) - Optimize your build
 - [Database Integration](#database-integration) - Connect to PostgreSQL/MySQL
-- [Management Commands](../crates/reinhardt-commands/README.md) - Django-style
+- [Management Commands](#) - Django-style
   CLI
 
 ### 🔌 Database Integration
@@ -339,7 +342,7 @@ reinhardt = { version = "0.1.0-alpha.1", features = ["standard", "database"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 ```
 
-Check out the [ORM documentation](api/README.md) for more details.
+Check out the [ORM documentation](/docs/api/) for more details.
 
 > **Note**: Complete working examples are planned for future releases.
 

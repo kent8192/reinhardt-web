@@ -1,5 +1,6 @@
 +++
 title = "HTTP Method Decorators"
+weight = 10
 +++
 
 # HTTP Method Decorators

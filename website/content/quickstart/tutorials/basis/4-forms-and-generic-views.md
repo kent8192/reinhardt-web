@@ -1,5 +1,6 @@
 +++
 title = "Part 4: Client-Side Forms and Component Patterns"
+weight = 40
 +++
 
 # Part 4: Client-Side Forms and Component Patterns

@@ -1,5 +1,6 @@
 +++
 title = "Part 2: Models and Database"
+weight = 20
 +++
 
 # Part 2: Models and Database

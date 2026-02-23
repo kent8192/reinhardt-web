@@ -1,5 +1,6 @@
 +++
 title = "Tutorial 4: Authentication and Permissions"
+weight = 50
 +++
 
 # Tutorial 4: Authentication and Permissions

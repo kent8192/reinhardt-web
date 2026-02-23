@@ -1,5 +1,6 @@
 +++
 title = "Tutorial 5: Relationships and Hyperlinked APIs"
+weight = 60
 +++
 
 # Tutorial 5: Relationships and Hyperlinked APIs

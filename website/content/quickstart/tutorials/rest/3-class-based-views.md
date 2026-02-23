@@ -1,5 +1,6 @@
 +++
 title = "Tutorial 3: Class-Based Views"
+weight = 40
 +++
 
 # Tutorial 3: Class-Based Views

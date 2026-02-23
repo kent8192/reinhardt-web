@@ -1,5 +1,6 @@
 +++
 title = "Part 1: Project Setup"
+weight = 10
 +++
 
 # Part 1: Project Setup

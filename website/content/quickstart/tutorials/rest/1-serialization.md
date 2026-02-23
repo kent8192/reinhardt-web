@@ -1,5 +1,6 @@
 +++
 title = "Tutorial 1: Serialization"
+weight = 20
 +++
 
 # Tutorial 1: Serialization

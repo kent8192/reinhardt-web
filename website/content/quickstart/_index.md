@@ -1,6 +1,8 @@
 +++
 title = "Quickstart"
-description = "Get started with Reinhardt in 5 minutes."
+description = "Get started with Reinhardt — quickstart guide, full setup, and tutorials."
+sort_by = "weight"
+weight = 10
 +++
 
 # Quickstart
@@ -32,4 +34,4 @@ async fn main() {
 cargo run
 ```
 
-See [Getting Started](/docs/getting-started/) for a complete guide.
+See [Getting Started](/quickstart/getting-started/) for a complete guide, or explore the [Tutorials](/quickstart/tutorials/) to learn by building.

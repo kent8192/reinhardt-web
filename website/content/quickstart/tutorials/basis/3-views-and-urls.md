@@ -1,5 +1,6 @@
 +++
 title = "Part 3: Server Functions and Client Components"
+weight = 30
 +++
 
 # Part 3: Server Functions and Client Components
