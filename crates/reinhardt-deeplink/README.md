@@ -149,4 +149,4 @@ let config = CustomSchemeConfig::builder()
 
 ## License
 
-This project is dual-licensed under MIT or Apache-2.0.
+Licensed under the BSD 3-Clause License.

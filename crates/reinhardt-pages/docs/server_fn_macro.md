@@ -434,4 +434,4 @@ If you find issues with the `server_fn` macro or have suggestions for improvemen
 
 ## License
 
-This documentation is part of the Reinhardt project and is licensed under the same terms (MIT/Apache-2.0).
+This documentation is part of the Reinhardt project and is licensed under the BSD 3-Clause License.

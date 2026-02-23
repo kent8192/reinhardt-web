@@ -13,7 +13,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/reinhardt-web.svg)](https://crates.io/crates/reinhardt-web)
 [![Documentation](https://docs.rs/reinhardt-web/badge.svg)](https://docs.rs/reinhardt-web)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE.md)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](../../LICENSE)
 [![codecov](https://codecov.io/gh/kent8192/reinhardt-web/graph/badge.svg)](https://codecov.io/gh/kent8192/reinhardt-web)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kent8192/reinhardt-web)
 
@@ -1051,12 +1051,7 @@ Reinhardt是一個社群驅動的專案。以下是取得幫助的途徑:
 
 ## 授權
 
-雙重授權，可選擇以下之一:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](../../LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](../../LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-由您選擇。
+本專案基於 [BSD 3-Clause License](../../LICENSE) 授權。
 
 ### 第三方歸屬
 
