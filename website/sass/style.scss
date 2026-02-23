@@ -505,6 +505,16 @@ table {
 	}
 }
 
+.standalone-layout {
+	padding-top: var(--spacing-lg);
+	padding-bottom: var(--spacing-xl);
+
+	.page-content {
+		max-width: 72ch;
+		margin: 0 auto;
+	}
+}
+
 .sidebar {
 	position: sticky;
 	top: 4rem;
