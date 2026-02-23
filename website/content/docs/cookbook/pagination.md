@@ -308,16 +308,16 @@ let query = Query::select()
         User::Username,
         User::Email,
     ])
-    .from_table(User::Table)
+    .from(User::Table)
     .order_by(User::CreatedAt, Order::Desc)
-    .limit(limit)
-    .offset(offset)
+    .limit(limit as u64)
+    .offset(offset as u64)
     .to_owned();
 
 // Separate query for total count
 let count_query = Query::select()
     .expr(Func::count(Expr::col(User::Id)))
-    .from_table(User::Table)
+    .from(User::Table)
     .to_owned();
 ```
 

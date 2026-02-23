@@ -13,7 +13,7 @@ sidebar_weight = 10
 
 Welcome to the Reinhardt API reference documentation. This guide provides comprehensive information about Reinhardt's APIs, modules, and components.
 
-> **Note**: Full API documentation will be available at [docs.rs/reinhardt](https://docs.rs/reinhardt) once published to crates.io.
+> **Note**: Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io.
 > In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
 
 ## Reinhardt Crate Structure
@@ -261,7 +261,7 @@ let sql = query.to_string(PostgresQueryBuilder);
 // Planned Django-style API
 use reinhardt::db::orm::{Model, QuerySet};
 
-#[derive(Model)]  // Macro is planned
+#[model(table_name = "users")]  // Macro is planned
 struct User {
     id: i64,
     username: String,
@@ -385,7 +385,7 @@ let viewset = ModelViewSet::<User, UserSerializer>::new();
 
 ```toml
 [dependencies]
-reinhardt-views = { version = "0.1.0-alpha.1", features = ["viewsets"] }
+reinhardt-views = { version = "0.1.0-alpha.18", features = ["viewsets"] }
 ```
 
 **Documentation:**
@@ -791,7 +791,7 @@ pub fn main() {
 
 ```toml
 [dependencies]
-reinhardt-pages = { version = "0.1.0-alpha.1", features = ["pages-full"] }
+reinhardt-pages = { version = "0.1.0-alpha.18", features = ["pages-full"] }
 ```
 
 **Feature Flags:**
@@ -909,7 +909,7 @@ Main package that re-exports all components based on feature flags.
 
 **Documentation:**
 
-- [Main documentation](https://docs.rs/reinhardt) (available after crates.io publish)
+- [Main documentation](https://docs.rs/reinhardt-web) (available after crates.io publish)
 - [Feature Flags Guide](/docs/feature-flags/)
 
 ## Common Patterns
@@ -963,6 +963,7 @@ fn validate_email(email: &str) -> ValidationResult {
 - [Tutorials](/quickstart/tutorials/)
 - [Feature Flags](/docs/feature-flags/)
 - [GitHub Repository](https://github.com/kent8192/reinhardt-web)
+- [DeepWiki](https://deepwiki.com/kent8192/reinhardt-web) - AI-generated codebase documentation
 
 ## Contributing
 
@@ -973,4 +974,4 @@ Found an error in the documentation? Want to improve it?
 
 ---
 
-**Note**: This is a high-level overview. Full API documentation will be available at [docs.rs/reinhardt](https://docs.rs/reinhardt) once published to crates.io. In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.
+**Note**: This is a high-level overview. Full API documentation will be available at [docs.rs/reinhardt-web](https://docs.rs/reinhardt-web) once published to crates.io. In the meantime, comprehensive documentation is available in each crate's `lib.rs` file.

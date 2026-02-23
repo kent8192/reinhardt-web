@@ -25,8 +25,8 @@ Reinhardt uses matchit Radix Tree for **O(m)** route matching (m = path length).
 ```rust
 // Fast matching even with 1000+ routes
 let router = ServerRouter::new()
-    .function("/api/resource{id}", Method::GET, handler)
-    .function("/api/resource{id}/posts", Method::GET, handler)
+    .function("/api/resources/{id}", Method::GET, handler)
+    .function("/api/resources/{id}/posts", Method::GET, handler)
     .function("/api/posts/{post_id}/comments/{comment_id}", Method::GET, handler);
 ```
 
@@ -76,18 +76,18 @@ let (limit, offset) = (page_size, (page - 1) * page_size);
 
 let query = Query::select()
     .columns([User::Id, User::Username, User::Email])
-    .from_table(User::Table)
-    .where(Expr::col(User::IsActive).eq(true))
+    .from(User::Table)
+    .and_where(Expr::col(User::IsActive).eq(true))
     .order_by(User::CreatedAt, Order::Desc)  // Sort by indexed column
-    .limit(limit)
-    .offset(offset)
+    .limit(limit as u64)
+    .offset(offset as u64)
     .to_owned();
 
 // ✅ Count query is separate
 let count_query = Query::select()
     .expr(Func::count(Expr::col(User::Id)))
-    .from_table(User::Table)
-    .where(Expr::col(User::IsActive).eq(true))
+    .from(User::Table)
+    .and_where(Expr::col(User::IsActive).eq(true))
     .to_owned();
 ```
 
