@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Token storage error
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenStorageError {
 	/// Token not found
 	NotFound,
@@ -51,7 +51,7 @@ pub type TokenStorageResult<T> = Result<T, TokenStorageError>;
 ///     metadata: Default::default(),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredToken {
 	/// The token value
 	pub token: String,

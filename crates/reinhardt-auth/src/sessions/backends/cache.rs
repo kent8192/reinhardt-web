@@ -39,7 +39,7 @@ use thiserror::Error;
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
 /// Session backend errors
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SessionError {
 	#[error("Cache error: {0}")]
 	CacheError(String),

@@ -52,7 +52,7 @@ use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 /// JWT-specific session errors
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum JwtSessionError {
 	#[error("JWT encoding error: {0}")]
 	EncodingError(String),
@@ -84,7 +84,7 @@ pub enum JwtSessionError {
 ///     .with_issuer("my-app".to_string())
 ///     .with_audience("web-users".to_string());
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JwtConfig {
 	/// Secret key for signing tokens (for HS256, HS512, etc.)
 	pub secret: String,
