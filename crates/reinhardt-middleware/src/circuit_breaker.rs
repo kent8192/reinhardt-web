@@ -123,6 +123,7 @@ impl CircuitBreakerState {
 }
 
 /// Circuit breaker configuration
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
 	/// Error rate threshold (0.0 - 1.0)

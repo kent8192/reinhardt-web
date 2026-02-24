@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Common middleware configuration
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommonConfig {
 	/// Append trailing slash to URLs that don't have one (except URLs with file extensions)
