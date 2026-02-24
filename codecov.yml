@@ -8,6 +8,25 @@ coverage:
         target: auto
         threshold: 1%
         if_ci_failed: success
+        flags:
+          - unit
+          - intra-crate-integration
+          - cross-crate-integration
+      unit:
+        flags:
+          - unit
+        target: auto
+        threshold: 1%
+      intra-crate-integration:
+        flags:
+          - intra-crate-integration
+        target: auto
+        threshold: 1%
+      cross-crate-integration:
+        flags:
+          - cross-crate-integration
+        target: auto
+        threshold: 1%
     patch:
       default:
         target: 80%
@@ -88,3 +107,6 @@ comment:
   require_base: false
   require_head: true
   hide_comment_details: false
+
+github_checks:
+  annotations: true
