@@ -408,7 +408,7 @@ impl<'a, T: Clone> IntoIterator for &'a Page<T> {
 }
 
 /// Schema parameter for OpenAPI/documentation
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SchemaParameter {
 	pub name: String,
 	pub required: bool,

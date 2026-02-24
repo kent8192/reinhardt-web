@@ -314,7 +314,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Categorical classification of `Error` variants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
 	Http,
 	Database,
