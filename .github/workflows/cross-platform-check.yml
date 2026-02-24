@@ -35,21 +35,30 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          # Use Strawberry Perl's bundled OpenSSL which includes static libraries
-          # and development headers, already present on GitHub Actions windows-latest.
-          # This avoids chocolatey install issues where runtime-only DLLs are provided
-          # without the .lib files required by openssl-sys for static or dynamic linking.
-          $opensslDir = "C:\Strawberry\c"
-          if (Test-Path "$opensslDir\include\openssl") {
-            Write-Host "Using Strawberry Perl OpenSSL at $opensslDir"
-            echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
-            echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
-            echo "OPENSSL_LIB_DIR=$opensslDir\lib" >> $env:GITHUB_ENV
-            echo "OPENSSL_INCLUDE_DIR=$opensslDir\include" >> $env:GITHUB_ENV
-          } else {
-            Write-Error "Strawberry Perl OpenSSL not found at $opensslDir"
+          # Install OpenSSL via chocolatey. The choco openssl package provides MSVC-compatible
+          # import libraries (.lib), which are required by openssl-sys for dynamic linking
+          # with the MSVC Rust toolchain. Static linking is not used because choco's package
+          # does not include full static libraries; dynamic import libs suffice for cargo check.
+          choco install openssl --yes --no-progress 2>&1 | Out-Null
+
+          # Find the installed OpenSSL directory (choco may install to different paths)
+          $candidatePaths = @(
+            "C:\Program Files\OpenSSL-Win64",
+            "C:\Program Files\OpenSSL"
+          )
+          $opensslDir = $null
+          foreach ($path in $candidatePaths) {
+            if (Test-Path "$path\include\openssl\ssl.h") {
+              $opensslDir = $path
+              break
+            }
+          }
+          if (-not $opensslDir) {
+            Write-Error "OpenSSL not found after installation. Searched: $($candidatePaths -join ', ')"
             exit 1
           }
+          Write-Host "Using OpenSSL at: $opensslDir"
+          echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
 
       - name: Run cargo check (${{ matrix.os }})
         run: cargo check --workspace --all --all-features
