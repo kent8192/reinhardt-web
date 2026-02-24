@@ -31,22 +31,25 @@ jobs:
       - name: Setup protoc
         uses: ./.github/actions/setup-protoc
 
-      - name: Install and configure OpenSSL (Windows)
+      - name: Configure OpenSSL (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          # Install 64-bit OpenSSL via chocolatey to ensure the correct libraries
-          # are available for openssl-sys linking on Windows runners.
-          $targetDir = "C:\Program Files\OpenSSL-Win64"
-          if (-not (Test-Path "$targetDir\lib")) {
-            choco install openssl --yes --no-progress 2>&1 | Out-Null
-            Write-Host "Installed OpenSSL via chocolatey"
+          # Use Strawberry Perl's bundled OpenSSL which includes static libraries
+          # and development headers, already present on GitHub Actions windows-latest.
+          # This avoids chocolatey install issues where runtime-only DLLs are provided
+          # without the .lib files required by openssl-sys for static or dynamic linking.
+          $opensslDir = "C:\Strawberry\c"
+          if (Test-Path "$opensslDir\include\openssl") {
+            Write-Host "Using Strawberry Perl OpenSSL at $opensslDir"
+            echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
+            echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
+            echo "OPENSSL_LIB_DIR=$opensslDir\lib" >> $env:GITHUB_ENV
+            echo "OPENSSL_INCLUDE_DIR=$opensslDir\include" >> $env:GITHUB_ENV
           } else {
-            Write-Host "Using pre-installed OpenSSL at $targetDir"
+            Write-Error "Strawberry Perl OpenSSL not found at $opensslDir"
+            exit 1
           }
-          echo "OPENSSL_DIR=$targetDir" >> $env:GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
-          Write-Host "OPENSSL_DIR set to $targetDir"
 
       - name: Run cargo check (${{ matrix.os }})
         run: cargo check --workspace --all --all-features
