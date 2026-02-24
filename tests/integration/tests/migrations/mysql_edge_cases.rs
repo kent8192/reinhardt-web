@@ -203,7 +203,10 @@ async fn test_mysql_ddl_implicit_commit_partial_state(
 		"Table should exist due to MySQL's implicit commit behavior, even though migration failed"
 	);
 
-	// Verify the table has the expected columns
+	// Verify the table has the expected columns.
+	// Note: Using index-based access instead of column name because MySQL returns
+	// information_schema column names in uppercase (COLUMN_NAME), while sqlx uses
+	// case-sensitive lookup. Index-based access is robust across databases. (fixes #1357)
 	let columns = sqlx::query(
 		"SELECT column_name FROM information_schema.columns WHERE table_schema = 'test_db' AND table_name = 'test_partial_table' ORDER BY ordinal_position",
 	)
@@ -217,10 +220,7 @@ async fn test_mysql_ddl_implicit_commit_partial_state(
 		"Table should have both columns (id, name)"
 	);
 
-	let column_names: Vec<String> = columns
-		.iter()
-		.map(|row| row.get::<String, _>("column_name"))
-		.collect();
+	let column_names: Vec<String> = columns.iter().map(|row| row.get::<String, _>(0)).collect();
 
 	assert!(
 		column_names.contains(&"id".to_string()),
