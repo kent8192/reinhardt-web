@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.18...reinhardt-web@v0.1.0-alpha.19) - 2026-02-24
+
+### Fixed
+
+- *(website)* set cloudflare pages production branch to main before deploy
+- *(website)* add workflow_dispatch trigger for manual deployment
+
 ## [0.1.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.1.0-alpha.17...reinhardt-web@v0.1.0-alpha.18) - 2026-02-24
 
 ### Added
