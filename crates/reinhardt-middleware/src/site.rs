@@ -102,12 +102,12 @@ impl SiteRegistry {
 	}
 
 	/// Get default site
-	pub fn get_default(&self) -> Option<Site> {
+	pub fn default_site(&self) -> Option<Site> {
 		self.default_site.read().unwrap().clone()
 	}
 
 	/// Get all registered sites
-	pub fn get_all(&self) -> Vec<Site> {
+	pub fn all(&self) -> Vec<Site> {
 		self.sites.read().unwrap().values().cloned().collect()
 	}
 
@@ -310,7 +310,7 @@ impl Middleware for SiteMiddleware {
 
 		// If no site found, try default site if fallback enabled
 		if site.is_none() && self.config.fallback_enabled {
-			site = self.registry.get_default();
+			site = self.registry.default_site();
 		}
 
 		// Call handler
@@ -576,13 +576,13 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_get_all_sites() {
+	async fn test_all_sites() {
 		let registry = SiteRegistry::new();
 
 		registry.register(Site::new(1, "site1.com".to_string(), "Site 1".to_string()));
 		registry.register(Site::new(2, "site2.com".to_string(), "Site 2".to_string()));
 
-		let sites = registry.get_all();
+		let sites = registry.all();
 		assert_eq!(sites.len(), 2);
 	}
 
@@ -599,7 +599,7 @@ mod tests {
 
 		registry.clear();
 
-		assert_eq!(registry.get_all().len(), 0);
+		assert_eq!(registry.all().len(), 0);
 		assert!(registry.default_site.read().unwrap().is_none());
 	}
 

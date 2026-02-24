@@ -481,7 +481,7 @@ async fn test_concurrent_circuit_breaker_state() {
 
 	// Circuit should be open after failures exceed threshold
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		reinhardt_middleware::circuit_breaker::CircuitState::Open,
 		"Circuit should be open after concurrent failures"
 	);

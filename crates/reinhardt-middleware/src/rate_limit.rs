@@ -106,7 +106,7 @@ impl RateLimitStore {
 	}
 
 	/// Get the number of requests within a specified duration
-	pub fn get_request_count(&self, key: &str, duration: Duration) -> usize {
+	pub fn request_count(&self, key: &str, duration: Duration) -> usize {
 		let history = self.history.read().unwrap();
 		if let Some(requests) = history.get(key) {
 			let cutoff = Utc::now() - chrono::Duration::from_std(duration).unwrap();
@@ -364,7 +364,7 @@ impl RateLimitMiddleware {
 	/// let middleware = RateLimitMiddleware::new(
 	///     RateLimitConfig::new(RateLimitStrategy::PerRoute, 100.0, 10.0)
 	/// );
-	/// let count = middleware.store().get_request_count("route:/api/data", Duration::from_secs(60));
+	/// let count = middleware.store().request_count("route:/api/data", Duration::from_secs(60));
 	/// println!("Request count: {}", count);
 	/// ```
 	pub fn store(&self) -> &RateLimitStore {
@@ -796,7 +796,7 @@ mod tests {
 		store.record_request("test");
 		store.record_request("test");
 
-		let count = store.get_request_count("test", Duration::from_secs(60));
+		let count = store.request_count("test", Duration::from_secs(60));
 		assert_eq!(count, 3);
 	}
 
@@ -809,7 +809,7 @@ mod tests {
 
 		store.cleanup(Duration::from_millis(50));
 
-		let count = store.get_request_count("test", Duration::from_secs(60));
+		let count = store.request_count("test", Duration::from_secs(60));
 		assert_eq!(count, 0);
 	}
 

@@ -270,12 +270,12 @@ impl CircuitBreakerMiddleware {
 	}
 
 	/// Get the current state
-	pub fn get_state(&self) -> CircuitState {
+	pub fn state(&self) -> CircuitState {
 		self.state.read().unwrap().state
 	}
 
 	/// Get statistics
-	pub fn get_stats(&self) -> CircuitStats {
+	pub fn stats(&self) -> CircuitStats {
 		self.state.read().unwrap().stats.clone()
 	}
 
@@ -378,7 +378,7 @@ impl Default for CircuitBreakerMiddleware {
 impl Middleware for CircuitBreakerMiddleware {
 	async fn process(&self, request: Request, handler: Arc<dyn Handler>) -> Result<Response> {
 		// Check state
-		let current_state = self.get_state();
+		let current_state = self.state();
 
 		match current_state {
 			CircuitState::Open => {
@@ -386,7 +386,7 @@ impl Middleware for CircuitBreakerMiddleware {
 				self.check_and_update_state();
 
 				// If still open, return error
-				if self.get_state() == CircuitState::Open {
+				if self.state() == CircuitState::Open {
 					return Ok(self.circuit_breaker_error());
 				}
 			}
@@ -471,7 +471,7 @@ mod tests {
 		let response = middleware.process(request, handler).await.unwrap();
 
 		assert_eq!(response.status, StatusCode::OK);
-		assert_eq!(middleware.get_state(), CircuitState::Closed);
+		assert_eq!(middleware.state(), CircuitState::Closed);
 	}
 
 	#[tokio::test]
@@ -494,7 +494,7 @@ mod tests {
 		}
 
 		// Circuit should be open
-		assert_eq!(middleware.get_state(), CircuitState::Open);
+		assert_eq!(middleware.state(), CircuitState::Open);
 	}
 
 	#[tokio::test]
@@ -550,7 +550,7 @@ mod tests {
 			let _response = middleware.process(request, handler.clone()).await.unwrap();
 		}
 
-		assert_eq!(middleware.get_state(), CircuitState::Open);
+		assert_eq!(middleware.state(), CircuitState::Open);
 
 		// After timeout
 		thread::sleep(Duration::from_millis(150));
@@ -566,7 +566,7 @@ mod tests {
 			.unwrap();
 		let _response = middleware.process(request, handler).await.unwrap();
 
-		assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
+		assert_eq!(middleware.state(), CircuitState::HalfOpen);
 	}
 
 	#[tokio::test]
@@ -609,7 +609,7 @@ mod tests {
 			.await
 			.unwrap();
 
-		assert_eq!(middleware.get_state(), CircuitState::HalfOpen);
+		assert_eq!(middleware.state(), CircuitState::HalfOpen);
 
 		// Continue with successes
 		for _ in 0..3 {
@@ -628,7 +628,7 @@ mod tests {
 		}
 
 		// Circuit should be closed
-		assert_eq!(middleware.get_state(), CircuitState::Closed);
+		assert_eq!(middleware.state(), CircuitState::Closed);
 	}
 
 	#[tokio::test]
@@ -671,7 +671,7 @@ mod tests {
 				.unwrap();
 		}
 
-		let stats = middleware.get_stats();
+		let stats = middleware.stats();
 		assert_eq!(stats.total_requests(), 5);
 		assert_eq!(stats.successful_requests(), 3);
 		assert_eq!(stats.failed_requests(), 2);
@@ -697,13 +697,13 @@ mod tests {
 			let _response = middleware.process(request, handler.clone()).await.unwrap();
 		}
 
-		assert_eq!(middleware.get_state(), CircuitState::Open);
+		assert_eq!(middleware.state(), CircuitState::Open);
 
 		// Reset
 		middleware.reset();
 
-		assert_eq!(middleware.get_state(), CircuitState::Closed);
-		let stats = middleware.get_stats();
+		assert_eq!(middleware.state(), CircuitState::Closed);
+		let stats = middleware.stats();
 		assert_eq!(stats.total_requests(), 0);
 	}
 }

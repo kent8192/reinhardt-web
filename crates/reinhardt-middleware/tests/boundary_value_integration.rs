@@ -337,7 +337,7 @@ async fn test_circuit_breaker_error_threshold_boundary(
 	}
 
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		expected_state,
 		"CircuitBreaker should be in {:?} state after {}/{} failures (threshold: {})",
 		expected_state,
@@ -374,7 +374,7 @@ async fn test_circuit_breaker_min_requests_boundary(
 	}
 
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		expected_state,
 		"CircuitBreaker should be in {:?} state after {} requests (min_requests: {})",
 		expected_state,
@@ -409,7 +409,7 @@ async fn test_circuit_breaker_half_open_success_threshold_boundary(
 		let _ = middleware.process(request, failure_handler.clone()).await;
 	}
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		CircuitState::Open,
 		"Circuit should be open"
 	);
@@ -420,7 +420,7 @@ async fn test_circuit_breaker_half_open_success_threshold_boundary(
 	// Send success requests in HalfOpen state
 	let success_handler = Arc::new(ConfigurableTestHandler::always_success());
 	for _ in 0..success_count {
-		if middleware.get_state() == CircuitState::Closed {
+		if middleware.state() == CircuitState::Closed {
 			break; // Already closed, no need to send more
 		}
 		let request = create_test_request("GET", "/api/data");
@@ -428,7 +428,7 @@ async fn test_circuit_breaker_half_open_success_threshold_boundary(
 	}
 
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		expected_state,
 		"CircuitBreaker should be in {:?} state after {} successes (threshold: {})",
 		expected_state,
@@ -806,7 +806,7 @@ async fn test_circuit_breaker_threshold_precision_boundary(
 	}
 
 	assert_eq!(
-		middleware.get_state(),
+		middleware.state(),
 		expected_state,
 		"CircuitBreaker with threshold {} should be {:?} after {}/{} failures",
 		error_threshold,
