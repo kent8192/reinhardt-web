@@ -281,4 +281,4 @@ However, we recommend completing the migration before the 0.3.0 release.
 If you encounter issues during migration, please:
 
 1. Check the [reinhardt-pages documentation](https://docs.rs/reinhardt-pages)
-2. Open an issue on [GitHub](https://github.com/kent8192/reinhardt-rs/issues)
+2. Open an issue on [GitHub](https://github.com/kent8192/reinhardt-web/issues)

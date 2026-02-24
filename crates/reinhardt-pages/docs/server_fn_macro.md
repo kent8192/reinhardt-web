@@ -425,7 +425,7 @@ quote! {
 
 If you find issues with the `server_fn` macro or have suggestions for improvements, please:
 
-1. Check existing issues: https://github.com/kent8192/reinhardt-rs/issues
+1. Check existing issues: https://github.com/kent8192/reinhardt-web/issues
 2. Open a new issue with:
    - Clear description of the problem
    - Minimal reproducible example
