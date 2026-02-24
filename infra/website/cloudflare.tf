@@ -41,3 +41,12 @@ resource "cloudflare_dns_record" "website_www" {
 
   depends_on = [cloudflare_pages_domain.website]
 }
+
+# Google Search Console domain verification
+resource "cloudflare_dns_record" "google_verification" {
+  zone_id = data.cloudflare_zone.website.zone_id
+  name    = "@"
+  type    = "TXT"
+  content = var.google_site_verification
+  ttl     = 3600
+}
